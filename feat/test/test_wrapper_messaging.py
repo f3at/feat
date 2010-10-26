@@ -1,23 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-#
-# Flumotion - a streaming media server
-# Copyright (C) 2004,2005,2006,2007 Fluendo, S.L. (www.fluendo.com).
-# All rights reserved.
-
-# This file may be distributed and/or modified under the terms of
-# the GNU General Public License version 2 as published by
-# the Free Software Foundation.
-# This file is distributed without any warranty; without even the implied
-# warranty of merchantability or fitness for a particular purpose.
-# See "LICENSE.GPL" in the source distribution for more information.
-
-# Licensees having purchased or holding a valid Flumotion Advanced
-# Streaming Server license may use this file in accordance with the
-# Flumotion Advanced Streaming Server Commercial License Agreement.
-# See "LICENSE.Flumotion" in the source distribution for more information.
-
-# Headers in this file shall remain intact.
 
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
@@ -81,3 +63,29 @@ class TestQueue(unittest.TestCase):
         
         d.addCallback(self._assert5Msgs)
         return d
+
+
+class TestExchange(unittest.TestCase):
+    
+    def setUp(self):
+        self.exchange = messaging.Exchange(name='test')
+        self.queues = map(lambda x: messaging.Queue(name='queue %d' % x), \
+                              range(3))
+
+    def testQueueBindingAndUnbinding(self):
+        for queue in self.queues:
+            self.exchange.bind(queue.name, queue)
+
+        self.assertEqual(3, len(self.exchange._bindings.keys()))
+        for key in self.exchange._bindings:
+            self.assertTrue(isinstance(self.exchange._bindings[key], list))
+            self.assertEqual(1, len(self.exchange._bindings[key]))
+
+        self.exchange.bind('queue 1', self.queues[0])
+        self.assertEqual(2, len(self.exchange._bindings['queue 1']))
+        self.exchange.unbind('queue 1', self.queues[0])
+        
+        for queue in self.queues:
+            self.exchange.unbind(queue.name, queue)
+            
+        self.assertEqual(0, len(self.exchange._bindings))
