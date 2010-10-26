@@ -1,4 +1,4 @@
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
 
 import contracts
 
@@ -10,6 +10,9 @@ class IManagerFactory(Interface):
 
 
 class IAgencyManager(contracts.IContractPeer):
+
+    bids = Attribute()
+    refusals = Attribute()
 
     def announce(announce):
         pass
