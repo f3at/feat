@@ -4,12 +4,16 @@ import requests
 
 
 class IRequesterFactory(Interface):
+    '''This class is used to create instances of a requester
+    implementing L{IAgentRequester}.
+    Used by the agency when initiating a request.'''
 
     def __call__(agency, agent, requester, *args, **kwargs):
-        pass
 
 
 class IAgencyRequester(requests.IRequestPeer):
+    '''Agency part of a requester. Used by L{IAgentRequester} to perform
+    the requester role of the request protocol.'''
 
     replies = Attribute()
 
@@ -21,6 +25,9 @@ class IAgencyRequester(requests.IRequestPeer):
 
 
 class IAgentRequester(Interface):
+    '''Agent part of the requester. It uses an instance implementing
+    L{IAdgencyRequester} given at creation time to perform the requester
+    role of the request protocol.'''
 
     def initiate():
         pass

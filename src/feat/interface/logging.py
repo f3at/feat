@@ -8,12 +8,14 @@ class LogLevel(enum.Enum):
 
 
 class ILogger(Interface):
+    '''Store logging entries'''
 
     def log_entry(level, category, name, format, *args, **kwargs):
         pass
 
 
 class ILoggable(Interface):
+    '''Can be used to generate contextual logging entries'''
 
     def log(format, *args, **kwargs):
         pass

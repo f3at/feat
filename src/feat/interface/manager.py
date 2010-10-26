@@ -4,15 +4,19 @@ import contracts
 
 
 class IManagerFactory(Interface):
+    '''This class is used to create instances of a contract manager
+    implementing L{IAgentManager}.
+    Used by the agency when initiating a contract.'''
 
     def __call__(agency, agent, manager, *args, **kwargs):
-        '''creates the instance of the agent'''
-
+        pass
 
 class IAgencyManager(contracts.IContractPeer):
+    '''Agency part of a contract manager. Used by L{IAgentManager} to perform
+    the manager role of the contract protocol.'''
 
-    bids = Attribute()
-    refusals = Attribute()
+    bids = Attribute("Contracts's received bids")
+    refusals = Attribute("Contract's received refusals")
 
     def announce(announce):
         pass
@@ -31,6 +35,8 @@ class IAgencyManager(contracts.IContractPeer):
 
 
 class IAgentManager(Interface):
+    '''Agent part of the contract manager. Use the L{IAgencyManager} given
+    at creation time to perform the manager role in the contract protocol.'''
 
     def initiate():
         pass
@@ -42,15 +48,11 @@ class IAgentManager(Interface):
         pass
 
     def closed():
-        """
-        Called when the contract expire or there is no more
-        bid or refusal expected.
-        """
+        '''Called when the contract expire or there is no more
+        bid or refusal expected.'''
 
     def canceled(cancelation):
-        """
-        The contractor canceled the task.
-        """
+        '''The contractor canceled the task.'''
 
     def updated(update):
         pass
@@ -59,6 +61,4 @@ class IAgentManager(Interface):
         pass
 
     def aborted():
-        """
-        The contractor did not report in time.
-        """
+        '''Called when the contractor did not report in time.'''
