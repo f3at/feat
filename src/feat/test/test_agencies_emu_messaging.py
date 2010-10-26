@@ -7,7 +7,7 @@ from twisted.python import log
 
 from feat.agencies.emu import messaging
 from zope.interface import implements
-from feat.interfaces import agent
+from feat.interface import agent
 
 import uuid
 
@@ -101,7 +101,7 @@ class TestExchange(unittest.TestCase):
 
         self.exchange.bind(queue.name, queue)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
-        
+
     def testPublishingSameKey(self):
         routing_key = 'some key'
         for queue in self.queues:
@@ -134,7 +134,7 @@ class TestExchange(unittest.TestCase):
 
 class StubAgent(object):
     implements(agent.IAgentMessaging)
-    
+
     def __init__(self, shard_id=None):
         self._uuid = uuid.uuid1().get_hex()
         self._shard_id = shard_id or uuid.uuid1().get_hex()
@@ -142,16 +142,16 @@ class StubAgent(object):
 
     def getId(self):
         return self._uuid
-    
+
     def onMessage(self, msg):
         self.messages.append(msg)
 
     def getShardId(self):
         return self._shard_id
-        
+
 
 class TestMessaging(unittest.TestCase):
-    
+
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = StubAgent()
@@ -185,7 +185,7 @@ class TestMessaging(unittest.TestCase):
             self.assertEqual(0, len(self.connection.interests))
 
         d.addCallback(revoke_interest)
-        
+
         return d
 
     def testTwoAgentsWithSameInterest(self):
@@ -213,9 +213,9 @@ class TestMessaging(unittest.TestCase):
             self.assertEqual(0, len(self.connection.interests))
 
         d.addCallback(revoke_interest)
-        
+
         return d
-        
+
     def testPublishingByAgent(self):
         key = self.agent.getId()
         self.connection.createPersonalInterest(key)

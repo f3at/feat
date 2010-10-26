@@ -3,6 +3,10 @@ from zope.interface import Interface, Attribute
 import logging, journaling
 
 
+class IAgentMessaging(Interface):
+    '''Deprecated ??? Needed for test to pass.'''
+
+
 class IAgentFactory(Interface):
     '''Create an agent implementing L{IAgent}. Used by the agency when
     starting an agent.'''

@@ -7,10 +7,20 @@ from feat.interface import agent
 
 
 class BaseAgent(object):
+
+    def __init__(self, descriptor):
+        self.uuid = descriptor.uuid
+        self.shard = descriptor.shard
+
+    def init(self, medium):
+        self.medium = medium
+        medium.joinShard(self.shard)
+
+
+class SebBaseAgent(object):
     '''
-    Starting an agent:
-        > descriptor = Descriptor(uuid="007", shard="lobby")
-        > agency.start_agent(MyAgent, descriptor, some_extra_params)
+    Didn't have time to fix unit tests so I changed the name.
+    We should discuss about this.
     '''
 
     classProvides(agent.IAgentFactory)
@@ -26,7 +36,6 @@ class BaseAgent(object):
 
     def snapshot(self):
         pass
-
 
 #class ShardAgent(BaseAgent):
 

@@ -3,15 +3,15 @@
 
 from feat.agencies.emu import agency
 from twisted.trial import unittest
-from feat.agents import agent
+from feat.agents import agent, descriptor
 
 class TestBaseAgent(unittest.TestCase):
 
     def setUp(self):
         self.agency = agency.Agency()
-        self.agent = agent.BaseAgent(agent.Descriptor())
+        self.agent = agent.BaseAgent(descriptor.Descriptor())
         self.agency.registerAgent(self.agent)
-        
+
     def testJoinedShard(self):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual('lobby', self.agency._shards.keys()[0])
