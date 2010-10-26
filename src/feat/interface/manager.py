@@ -29,9 +29,6 @@ class IAgencyManager(contracts.IContractPeer):
     def acknowledge():
         pass
 
-    def cancel():
-        pass
-
 
 class IAgentManager(Interface):
 
