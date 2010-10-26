@@ -2,6 +2,6 @@ from zope.interface import Interface
 
 
 class IAgency(Interface):
-    pass
-
-
+    '''The adgency. It manage agents communications, state, log, journal...
+    This only publish the interface global for all agents, agent normally use
+    there L{IAgencyAgent} reference given at initialization time.'''

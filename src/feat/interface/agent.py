@@ -1,33 +1,38 @@
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
 
 import logging, journaling
 
 
-class IAgentFactory(Interface):
-
-    def __call__(agency, *args, **kwargs):
-        pass
-
-
 class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
+    '''Agency part of an agent. Used by the agent L{IAgent} implementation.'''
+
+    agency = Attribute("L{IAdgency}")
 
     def register(factory, *args, **kwargs):
-        pass
+        '''Registers an interest in a contract or a request.'''
 
-    def revoke(factory, *args, **kwargs):
-        pass
+    def revoke(factory):
+        '''Revokes any interest in a contract or a request.'''
 
     def initiate(factory, *args, **kwargs):
+        '''Initiates a contract or a request.'''
+
+    def retrieve_document(id):
+        pass
+
+    def update_document(doc):
         pass
 
 
 class IAgent(Interface):
 
-    def initiate():
-        pass
+    def init(agency):
+        '''Called after the agent is registered to an agency.'''
 
     def snapshot():
-        pass
+        '''Called to retrieve the current state of an agent.
+        It should return only structures of basic python types
+        or instances implementing L{ISerializable}.'''
 
 
 
