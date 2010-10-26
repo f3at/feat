@@ -5,16 +5,7 @@ import messaging
 import database
 
 
-class IAgent(Interface):
-    
-    def getId(self):
-        """Get the UUID of the agent"""
-
-    def onMessage(self, message):
-        """Implement to get messages"""
-
-
-class Wrapper(object):
+class Agency(object):
     
     def __init__(self):
         self._agents = []

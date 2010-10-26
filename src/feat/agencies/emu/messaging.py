@@ -13,15 +13,16 @@ class Messaging(object):
         # name -> exchange
         self._exchanges = {}
 
-    def _defineExchange(self, name):
+    def defineExchange(self, name):
         exchange = self._getExchange(name)
         if not exchange:
             log.msg("Defining exchange: %r" % name)
-            self._exchanges[name] = Exchange(name)
+            exchange = Exchange(name)
+            self._exchanges[name] = exchange
         return exchange
         
-    def _getExchange(name):
-        return self.exchanges.get(name, None)
+    def _getExchange(self, name):
+        return self._exchanges.get(name, None)
 
     def createConnection(self, agent):
         return Connection(self, agent)
@@ -38,6 +39,10 @@ class Messaging(object):
         return queue
 
 
+class FinishConnection(Exception):
+    pass
+
+
 class Connection(object):
     
     def __init__(self, messaging, agent):
@@ -46,17 +51,21 @@ class Connection(object):
 
         self._queue = self._messaging.defineQueue(self._agent.getId())
         self._mainLoop(self._queue)
+        self.interests = []
 
     def _mainLoop(self, queue):
 
         def rebind(_):
-            reactor.callLater(0, self._consumeQueue)
+            reactor.callLater(0, bind)
      
         def stop(reason):
             log.msg('Error handler: exiting, reason %r' % reason)
 
-        d = self._consumeQueue(queue)
-        d.addCallbacks(rebind, stop)
+        def bind():
+            d = self._consumeQueue(queue)
+            d.addCallbacks(rebind, stop)
+
+        bind()
 
     def _consumeQueue(self, queue):
         self._consumeDeferred = queue.consume()
@@ -64,7 +73,41 @@ class Connection(object):
         return self._consumeDeferred 
         
     def disconnect(self):
-        self._consumeDeferred.errback("Disconnecting")
+        self._consumeDeferred.errback(FinishConnection("Disconnecting"))
+
+    def createInterest1to1(self, key, shard=None):
+        return PersonalInterest(self, key, shard=shard)
+
+
+class BaseInterest(object):
+    
+    def __init__(self, connection, **kwargs):
+        self._args = kwargs
+        self.connection = connection
+        self.connection.interests.append(self)
+        
+    def revoke(self):
+        self.connection.interests.remove(self)
+
+    def getShard(self):
+        shard = self._args.get('shard', None)
+        if not shard:
+            shard = self.connection._agent.getShardId()
+        return shard
+
+
+class PersonalInterest(BaseInterest):
+    
+    def __init__(self, connection, key, **kwargs):
+        BaseInterest.__init__(self, connection, **kwargs)
+        shard = self.getShard()
+        self.key = key
+        self.exchange = self.connection._messaging.defineExchange(shard)
+        self.exchange.bind(self.key, self.connection._queue)
+
+    def revoke(self):
+        self.exchange.unbind(self.key, self.connection._queue)
+        BaseInterest.revoke(self)
 
 
 class Queue(object):

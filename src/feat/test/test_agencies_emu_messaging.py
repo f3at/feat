@@ -6,6 +6,8 @@ from twisted.internet import defer, reactor
 from twisted.python import log
 
 from feat.agencies.emu import messaging
+from zope.interface import implements
+from feat.interfaces import agent
 
 import uuid
 
@@ -123,25 +125,58 @@ class TestExchange(unittest.TestCase):
 
 
 class StubAgent(object):
+    implements(agent.IAgentMessaging)
     
-    def __init__(self):
-        self.uuid = uuid.uuid1().get_hex()
+    def __init__(self, shard_id=None):
+        self._uuid = uuid.uuid1().get_hex()
+        self._shard_id = shard_id or uuid.uuid1().get_hex()
         self.messages = []
 
     def getId(self):
-        return self.uuid
+        return self._uuid
     
     def onMessage(self, msg):
         self.messages.append(msg)
 
+    def getShardId(self):
+        return self._shard_id
+        
 
 class TestMessaging(unittest.TestCase):
     
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = StubAgent()
+        self.connection = self.messaging.createConnection(self.agent)
 
     def testCreateConnection(self):
-        connection = self.messaging.createConnection(self.agent)
-        self.assertTrue(isinstance(connection, messaging.Connection))
+        self.assertTrue(isinstance(self.connection, messaging.Connection))
         self.assertEqual(1, len(self.messaging._queues))
+
+        self.connection.disconnect()
+
+    def test1To1Interest(self):
+        key = self.agent.getId()
+        interest = self.connection.createInterest1to1(key)
+        self.assertEqual(1, len(self.connection.interests))
+
+        exchange = self.messaging._exchanges.values()[0]
+        for x in range(5):
+            exchange.publish('Msg %d' % x, key)
+
+        d = defer.Deferred()
+        def asserts(finished):
+            self.assertEqual(5, len(self.agent.messages))
+            expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+            self.assertEqual(expected, self.agent.messages)
+            finished.callback(None)
+        reactor.callLater(0.1, asserts, d)
+
+        def revoke_interest(_):
+            interest.revoke()
+            self.assertEqual(0, len(self.connection.interests))
+
+        d.addCallback(revoke_interest)
+        
+        return d
+
