@@ -1,0 +1,3 @@
+
+class BaseContractor(object):
+    pass

@@ -1,0 +1,3 @@
+
+class BaseRequester(object):
+    pass
