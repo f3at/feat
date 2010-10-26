@@ -5,7 +5,7 @@ from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from twisted.python import log
 
-from feat.agencies.testing import messaging
+from feat.agencies.emu import messaging
 
 import uuid
 
