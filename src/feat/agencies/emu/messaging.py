@@ -38,6 +38,13 @@ class Messaging(object):
             log.msg("Defining queue: %r" % name)
         return queue
 
+    def publish(self, key, shard, message):
+        exchange = self._getExchange(shard)
+        if exchange:
+            exchange.publish(message, key)
+        else:
+            log.err("Exchange %r not found!" % shard)
+
 
 class FinishConnection(Exception):
     pass
@@ -78,6 +85,8 @@ class Connection(object):
     def createInterest1to1(self, key, shard=None):
         return PersonalInterest(self, key, shard=shard)
 
+    def publish(self, key, shard, message):
+        return self._messaging.publish(key, shard, message)
 
 class BaseInterest(object):
     

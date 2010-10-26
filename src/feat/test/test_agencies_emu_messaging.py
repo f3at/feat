@@ -216,3 +216,16 @@ class TestMessaging(unittest.TestCase):
         
         return d
         
+    def testPublishingByAgent(self):
+        key = self.agent.getId()
+        self.connection.createInterest1to1(key)
+        self.connection.publish(key, self.agent.getShardId(),\
+                                   'some message')
+        d = defer.Deferred()
+        def asserts(d):
+            self.assertEqual(['some message'], self.agent.messages)
+            d.callback(None)
+
+        reactor.callLater(0.1, asserts, d)
+
+        return d
