@@ -88,12 +88,16 @@ class Connection(object):
     def publish(self, key, shard, message):
         return self._messaging.publish(key, shard, message)
 
+    def getInterestForShard(self, shard):
+        return filter(lambda x: x.shard == shard, self.interest)
+
 class BaseInterest(object):
     
     def __init__(self, connection, **kwargs):
         self._args = kwargs
         self.connection = connection
         self.connection.interests.append(self)
+        self.shard = None
         
     def revoke(self):
         self.connection.interests.remove(self)
@@ -109,9 +113,9 @@ class PersonalInterest(BaseInterest):
     
     def __init__(self, connection, key, **kwargs):
         BaseInterest.__init__(self, connection, **kwargs)
-        shard = self.getShard()
+        self.shard = self.getShard()
         self.key = key
-        self.exchange = self.connection._messaging.defineExchange(shard)
+        self.exchange = self.connection._messaging.defineExchange(self.shard)
         self.exchange.bind(self.key, self.connection._queue)
 
     def revoke(self):

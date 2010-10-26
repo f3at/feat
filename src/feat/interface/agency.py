@@ -1,7 +1,7 @@
 from zope.interface import Interface
 
 
-class IAdgency(Interface):
+class IAgency(Interface):
 
     def register_interest(self, factory):
         """
