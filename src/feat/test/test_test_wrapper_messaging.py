@@ -89,3 +89,32 @@ class TestExchange(unittest.TestCase):
             self.exchange.unbind(queue.name, queue)
             
         self.assertEqual(0, len(self.exchange._bindings))
+
+    def testPublishingSameKey(self):
+        routing_key = 'some key'
+        for queue in self.queues:
+            self.exchange.bind(routing_key, queue)
+        
+        for x in range(5):
+            self.exchange.publish('Msg %d' % x, routing_key)
+            
+        for queue in self.queues:
+            self.assertEqual(5, len(queue._messages))
+            expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+            self.assertEqual(expected, queue._messages)
+            
+
+    def testPublishingOneQueueBound(self):
+        routing_key = 'some key'
+        queue = self.queues[0]
+        self.exchange.bind(routing_key, queue)
+
+        for x in range(5):
+            self.exchange.publish('Msg %d' % x, routing_key)
+        
+        self.assertEqual(5, len(queue._messages))
+        expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+        self.assertEqual(expected, queue._messages)
+        
+        self.assertEqual(0, len(self.queues[1]._messages))
+        self.assertEqual(0, len(self.queues[2]._messages))
