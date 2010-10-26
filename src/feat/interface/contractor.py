@@ -4,12 +4,15 @@ import contracts
 
 
 class IContractorFactory(Interface):
+    '''This class constructs contactro instance upon receiving announce message.
+    It is passed as a parameter during registration of interest'''
 
     def __call__(agency, agent, contractor, *args, **kwargs):
         pass
 
 
 class IAgencyContractor(contracts.IContractPeer):
+    '''This is a part of interface used by AgentContractor to send messages'''
 
     rejection = Attribute()
 
@@ -30,9 +33,10 @@ class IAgencyContractor(contracts.IContractPeer):
 
 
 class IAgentContractor(Interface):
+    '''This is agent part of the cotractor'''
 
     def announced(announce):
-        pass
+        '''announce is a parsed message'''
 
     def rejected(rejection):
         pass

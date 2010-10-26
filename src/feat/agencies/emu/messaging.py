@@ -82,7 +82,7 @@ class Connection(object):
     def disconnect(self):
         self._consumeDeferred.errback(FinishConnection("Disconnecting"))
 
-    def createInterest1to1(self, key, shard=None):
+    def createPersonalInterest(self, key, shard=None):
         return PersonalInterest(self, key, shard=shard)
 
     def publish(self, key, shard, message):

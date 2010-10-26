@@ -165,7 +165,7 @@ class TestMessaging(unittest.TestCase):
 
     def test1To1Interest(self):
         key = self.agent.getId()
-        interest = self.connection.createInterest1to1(key)
+        interest = self.connection.createPersonalInterest(key)
         self.assertEqual(1, len(self.connection.interests))
 
         exchange = self.messaging._exchanges.values()[0]
@@ -195,7 +195,7 @@ class TestMessaging(unittest.TestCase):
         connections = [ self.connection, second_connection ]
 
         key = 'some key'
-        interests = map(lambda x: x.createInterest1to1(key), connections)
+        interests = map(lambda x: x.createPersonalInterest(key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
@@ -218,7 +218,7 @@ class TestMessaging(unittest.TestCase):
         
     def testPublishingByAgent(self):
         key = self.agent.getId()
-        self.connection.createInterest1to1(key)
+        self.connection.createPersonalInterest(key)
         self.connection.publish(key, self.agent.getShardId(),\
                                    'some message')
         d = defer.Deferred()

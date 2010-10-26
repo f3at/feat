@@ -6,7 +6,7 @@ import contracts
 class IManagerFactory(Interface):
 
     def __call__(agency, agent, manager, *args, **kwargs):
-        pass
+        '''creates the instance of the agent'''
 
 
 class IAgencyManager(contracts.IContractPeer):
