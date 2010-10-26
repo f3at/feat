@@ -6,6 +6,7 @@ from twisted.internet import defer, reactor
 from twisted.python import log
 from wrapper import messaging
 
+import uuid
 
 class TestQueue(unittest.TestCase):
 
@@ -118,3 +119,28 @@ class TestExchange(unittest.TestCase):
         
         self.assertEqual(0, len(self.queues[1]._messages))
         self.assertEqual(0, len(self.queues[2]._messages))
+
+
+class StubAgent(object):
+    
+    def __init__(self):
+        self.uuid = uuid.uuid1().get_hex()
+        self.messages = []
+
+    def getId(self):
+        return self.uuid
+    
+    def onMessage(self, msg):
+        self.messages.append(msg)
+
+
+class TestMessaging(unittest.TestCase):
+    
+    def setUp(self):
+        self.messaging = messaging.Messaging()
+        self.agent = StubAgent()
+
+    def testCreateConnection(self):
+        connection = self.messaging.createConnection(self.agent)
+        self.assertTrue(isinstance(connection, messaging.Connection))
+        self.assertEqual(1, len(self.messaging._queues))
