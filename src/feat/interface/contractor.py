@@ -11,6 +11,8 @@ class IContractorFactory(Interface):
 
 class IAgencyContractor(contracts.IContractPeer):
 
+    rejection = Attribute()
+
     def bid(bid):
         pass
 

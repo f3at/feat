@@ -8,13 +8,10 @@ class ContractState(enum.Enum):
 
 
 class IContractPeer(Interface):
+
     state = Attribute()
     announce = Attribute()
-    bids = Attribute()
-    refusals = Attribute()
-    rejection = Attribute()
     grant = Attribute()
     report = Attribute()
-
 
 
