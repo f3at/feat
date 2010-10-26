@@ -101,7 +101,6 @@ class TestExchange(unittest.TestCase):
 
         self.exchange.bind(queue.name, queue)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
-
         
     def testPublishingSameKey(self):
         routing_key = 'some key'
@@ -189,3 +188,31 @@ class TestMessaging(unittest.TestCase):
         
         return d
 
+    def testTwoAgentsWithSameInterest(self):
+        second_agent = StubAgent(shard_id=self.agent.getShardId())
+        second_connection = self.messaging.createConnection(second_agent)
+        agents = [ self.agent, second_agent ]
+        connections = [ self.connection, second_connection ]
+
+        key = 'some key'
+        interests = map(lambda x: x.createInterest1to1(key), connections)
+
+        self.assertEqual(1, len(self.messaging._exchanges))
+        exchange = self.messaging._exchanges.values()[0]
+        exchange.publish('some message', key)
+
+        d = defer.Deferred()
+        def asserts(finished):
+            for agent in agents:
+                self.assertEqual(1, len(agent.messages))
+            finished.callback(None)
+        reactor.callLater(0.1, asserts, d)
+
+        def revoke_interest(_):
+            map(lambda interest: interest.revoke(), interests)
+            self.assertEqual(0, len(self.connection.interests))
+
+        d.addCallback(revoke_interest)
+        
+        return d
+        
