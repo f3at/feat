@@ -4,7 +4,8 @@
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from twisted.python import log
-from wrapper import messaging
+
+from feat.agencies.testing import messaging
 
 import uuid
 
@@ -39,11 +40,11 @@ class TestQueue(unittest.TestCase):
             d = self.queue.consume().addCallback(self._rcvCallback)
             defers.append(d)
             self.queue.enqueue("Msg %d" % x)
-        
+
         d = defer.DeferredList(defers).addCallback(self._assert5Msgs)
 
         return d
-        
+
     def testQueueWithoutConsumersKeepsMsgs(self):
         received = []
 
@@ -51,23 +52,23 @@ class TestQueue(unittest.TestCase):
 
         d = defer.Deferred()
         reactor.callLater(0.1, self._appendConsumers, d)
-            
+
         d.addCallback(self._assert5Msgs)
 
         return d
-        
+
     def testAppendConsumersThanSendMsgs(self):
         d  = defer.Deferred()
         self._appendConsumers(d)
 
         self._enqueueMsgs()
-        
+
         d.addCallback(self._assert5Msgs)
         return d
 
 
 class TestExchange(unittest.TestCase):
-    
+
     def setUp(self):
         self.exchange = messaging.Exchange(name='test')
         self.queues = map(lambda x: messaging.Queue(name='queue %d' % x), \
@@ -85,25 +86,25 @@ class TestExchange(unittest.TestCase):
         self.exchange.bind('queue 1', self.queues[0])
         self.assertEqual(2, len(self.exchange._bindings['queue 1']))
         self.exchange.unbind('queue 1', self.queues[0])
-        
+
         for queue in self.queues:
             self.exchange.unbind(queue.name, queue)
-            
+
         self.assertEqual(0, len(self.exchange._bindings))
 
     def testPublishingSameKey(self):
         routing_key = 'some key'
         for queue in self.queues:
             self.exchange.bind(routing_key, queue)
-        
+
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
-            
+
         for queue in self.queues:
             self.assertEqual(5, len(queue._messages))
             expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
             self.assertEqual(expected, queue._messages)
-            
+
 
     def testPublishingOneQueueBound(self):
         routing_key = 'some key'
@@ -112,11 +113,11 @@ class TestExchange(unittest.TestCase):
 
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
-        
+
         self.assertEqual(5, len(queue._messages))
         expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
         self.assertEqual(expected, queue._messages)
-        
+
         self.assertEqual(0, len(self.queues[1]._messages))
         self.assertEqual(0, len(self.queues[2]._messages))
 
