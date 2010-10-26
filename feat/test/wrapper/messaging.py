@@ -19,7 +19,7 @@
 
 # Headers in this file shall remain intact.
 
-from twisted.internet return defer, reactor
+from twisted.internet import defer, reactor
 from twisted.python import log
 
 
