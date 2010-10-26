@@ -3,18 +3,29 @@ from zope.interface import Interface, Attribute
 import logging, journaling
 
 
+class IAgentFactory(Interface):
+    '''Create an agent implementing L{IAgent}. Used by the agency when
+    starting an agent.'''
+
+    def __call__(medium, *args, **kwargs):
+        pass
+
+
 class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
-    '''Agency part of an agent. Used by the agent L{IAgent} implementation.'''
+    '''Agency part of an agent. Used as a medium by the agent
+    L{IAgent} implementation.'''
 
     agency = Attribute("L{IAdgency}")
+    shard = Attribute("Shard identifier")
+    descriptor = Attribute("Agent descriptor")
 
-    def register(factory, *args, **kwargs):
+    def register_interest(factory, *args, **kwargs):
         '''Registers an interest in a contract or a request.'''
 
-    def revoke(factory):
+    def revoke_interest(factory):
         '''Revokes any interest in a contract or a request.'''
 
-    def initiate(factory, *args, **kwargs):
+    def initiate_protocol(factory, *args, **kwargs):
         '''Initiates a contract or a request.'''
 
     def retrieve_document(id):
@@ -25,8 +36,10 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
 
 
 class IAgent(Interface):
+    '''Agent interface. It uses the L{IAgencyAgent} given at initialization
+    time in order to perform its task.'''
 
-    def init(agency):
+    def initiate():
         '''Called after the agent is registered to an agency.'''
 
     def snapshot():

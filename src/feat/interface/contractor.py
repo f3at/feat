@@ -8,14 +8,14 @@ class IContractorFactory(Interface):
     L{IAgentContractor}. Used upon receiving announce messages.
     It is passed as a parameter during registration of interest'''
 
-    def __call__(agency, agent, contractor, *args, **kwargs):
+    def __call__(agent, medium, *args, **kwargs):
         pass
 
 
 class IAgencyContractor(contracts.IContractPeer):
-    '''This is the agency part of a contractor.
-    Used by L{IAgentContractor} implementations to perform the contractor
-    role of the contract protocol'''
+    '''This is the agency part of a contractor, the medium between the agent
+    and the agency. It is used by L{IAgentContractor} implementations
+    to perform the contractor role of the contract protocol'''
 
     rejection = Attribute("Contract's rejection message")
 
@@ -36,9 +36,9 @@ class IAgencyContractor(contracts.IContractPeer):
 
 
 class IAgentContractor(Interface):
-    '''This is agent part of a contractor.
-    It use a reference to a L{IAgencyContractor} given at construction time
-    in order to perform the contractor role of the contract protocol.'''
+    '''This is agent part of a contractor. It use a reference to a
+    L{IAgencyContractor} given at construction time as a medium in order
+    to perform the contractor role of the contract protocol.'''
 
     def announced(announce):
         '''Called by the agency when a contract matching

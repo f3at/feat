@@ -8,7 +8,7 @@ class IReplierFactory(Interface):
     L{IAgentReplier}. Used upon receiving request messages.
     It is passed as a parameter during registration of interest'''
 
-    def __call__(agency, agent, replier, *args, **kwargs):
+    def __call__(agent, medium, *args, **kwargs):
         pass
 
 
@@ -22,7 +22,7 @@ class IAgencyReplier(requests.IRequestPeer):
 
 class IAgentReplier(Interface):
     '''Agent part of the request replier. Uses a reference to L{IAgencyReplier}
-    given at creation time in order to perform the replier role
+    given at creation time as a medium in order to perform the replier role
     in the request protocol.'''
 
     def requested(request):

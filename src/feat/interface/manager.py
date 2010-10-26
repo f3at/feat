@@ -5,14 +5,15 @@ import contracts
 
 class IManagerFactory(Interface):
     '''This class is used to create instances of a contract manager
-    implementing L{IAgentManager}.
-    Used by the agency when initiating a contract.'''
+    implementing L{IAgentManager}. Used by the agency
+    when initiating a contract.'''
 
-    def __call__(agency, agent, manager, *args, **kwargs):
+    def __call__(agent, medium, *args, **kwargs):
         pass
 
 class IAgencyManager(contracts.IContractPeer):
-    '''Agency part of a contract manager. Used by L{IAgentManager} to perform
+    '''Agency part of a contract manager, it is a medium between the agent
+    agent and the agency. Used by L{IAgentManager} to perform
     the manager role of the contract protocol.'''
 
     bids = Attribute("Contracts's received bids")
@@ -36,7 +37,8 @@ class IAgencyManager(contracts.IContractPeer):
 
 class IAgentManager(Interface):
     '''Agent part of the contract manager. Use the L{IAgencyManager} given
-    at creation time to perform the manager role in the contract protocol.'''
+    at creation time as a medium to perform the manager role
+    in the contract protocol.'''
 
     def initiate():
         pass

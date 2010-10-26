@@ -1,25 +1,32 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import uuid
+from zope.interface import implements, classProvides
 
-
-class Descriptor(object):
-    
-    def __init__(self, uid=None):
-        self.uuid = uid or uuid.uuid1()
+from feat.interface import agent
 
 
 class BaseAgent(object):
-    
-    def __init__(self, descriptor, shard='lobby'):
-        self.uuid = descriptor.uuid
-        self.shard = shard
+    '''
+    Starting an agent:
+        > descriptor = Descriptor(uuid="007", shard="lobby")
+        > agency.start_agent(MyAgent, descriptor, some_extra_params)
+    '''
 
-    def init(self, agency):
-        self.agency = agency
-        agency.joinShard(self.shard)
-        
+    classProvides(agent.IAgentFactory)
+    implements(agent.IAgent)
+
+    def __init__(self, medium):
+        self.medium = medium
+
+    ## IAgent Methods ##
+
+    def initiate(self):
+        pass
+
+    def snapshot(self):
+        pass
+
 
 #class ShardAgent(BaseAgent):
-    
+
