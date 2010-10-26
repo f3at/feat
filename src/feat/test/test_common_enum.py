@@ -1,8 +1,6 @@
 # -*- Mode: Python; test-case-name: flumotion.test.test_fileutils -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import common
-
 from twisted.trial import unittest
 from feat.common import enum
 
