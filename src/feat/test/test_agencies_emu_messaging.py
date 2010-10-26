@@ -94,6 +94,15 @@ class TestExchange(unittest.TestCase):
 
         self.assertEqual(0, len(self.exchange._bindings))
 
+    def testNotDoublingBindings(self):
+        queue = self.queues[0]
+        self.exchange.bind(queue.name, queue)
+        self.assertEqual(1, len(self.exchange._bindings[queue.name]))
+
+        self.exchange.bind(queue.name, queue)
+        self.assertEqual(1, len(self.exchange._bindings[queue.name]))
+
+        
     def testPublishingSameKey(self):
         routing_key = 'some key'
         for queue in self.queues:
