@@ -1,13 +1,21 @@
 from zope.interface import Interface
 
+import requests
+
 
 class IReplierFactory(Interface):
-    pass
+
+    def __call__(agency, agent, replier, *args, **kwargs):
+        pass
 
 
-class IAgencyReplier(Interface):
-    pass
+class IAgencyReplier(requests.IRequestPeer):
+
+    def reply(reply):
+        pass
 
 
 class IAgentReplier(Interface):
-    pass
+
+    def requested(request):
+        pass

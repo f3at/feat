@@ -1,4 +1,6 @@
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
+
+import requests
 
 
 class IRequesterFactory(Interface):
@@ -7,11 +9,26 @@ class IRequesterFactory(Interface):
         pass
 
 
+class IAgencyRequester(requests.IRequestPeer):
 
-class IAgencyRequester(Interface):
+    replies = Attribute()
 
+    def request(request):
+        pass
 
+    def terminate():
+        pass
 
 
 class IAgentRequester(Interface):
-    pass
+
+    def initiate():
+        pass
+
+    def got_reply(reply):
+        pass
+
+    def closed():
+        """
+        Called when the request expire or there is no more reply expected.
+        """

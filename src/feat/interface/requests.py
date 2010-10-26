@@ -8,6 +8,7 @@ class RequestState(enum.Enum):
 
 
 class IRequestPeer(Interface):
+
     state = Attribute()
     request = Attribute()
-    replies = Attribute()
+
