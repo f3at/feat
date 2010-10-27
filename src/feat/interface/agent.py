@@ -34,9 +34,6 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
     def update_document(doc):
         pass
 
-    def on_message(message):
-        '''called when the new message comes in'''
-
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
