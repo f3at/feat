@@ -91,7 +91,7 @@ class Connection(object):
         return self._messaging.publish(key, shard, message)
 
     def getInterestForShard(self, shard):
-        return filter(lambda x: x.shard == shard, self.interest)
+        return filter(lambda x: x.shard == shard, self.interests)
 
 
 class BaseInterest(object):

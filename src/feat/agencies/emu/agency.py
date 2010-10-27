@@ -66,7 +66,7 @@ class AgencyAgent(object):
 
     def leaveShard(self):
         interests = self._messaging.getInterestForShard(self.descriptor.shard)
-        map(lambda interest: interest.revoke(), interest)
+        map(lambda interest: interest.revoke(), interests)
         self.agency.leftShard(self, self.descriptor.shard)
         self.descriptor.shard = None
         

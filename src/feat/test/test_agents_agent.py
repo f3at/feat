@@ -16,3 +16,8 @@ class TestBaseAgent(unittest.TestCase):
     def testJoinedShard(self):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual('lobby', self.agency._shards.keys()[0])
+        self.assertEqual(1, len(self.agency._shards['lobby']))
+
+        self.agent.leaveShard()
+        self.assertEqual(1, len(self.agency._shards))
+        self.assertEqual(0, len(self.agency._shards['lobby']))
