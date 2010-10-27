@@ -19,7 +19,7 @@ class IAgencyManager(contracts.IContractPeer):
     bids = Attribute("Contracts's received bids")
     refusals = Attribute("Contract's received refusals")
 
-    def announce(announce):
+    def announce(recipients, announce):
         pass
 
     def reject(rejection):

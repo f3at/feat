@@ -8,7 +8,7 @@ class IRequesterFactory(Interface):
     implementing L{IAgentRequester}. Used by the agency when
     initiating a request.'''
 
-    def __call__(agency, agent, requester, *args, **kwargs):
+    def __call__(agent, medium, *args, **kwargs):
 
 
 class IAgencyRequester(requests.IRequestPeer):
@@ -17,8 +17,11 @@ class IAgencyRequester(requests.IRequestPeer):
 
     replies = Attribute()
 
-    def request(request):
-        pass
+    def request(recipients, request):
+        '''Post a request message to specified recipients.
+        @param recipients: recipients of the request
+        @type  recipients: L{feat.interface.types.Recipient} or list
+        '''
 
     def terminate():
         pass
