@@ -1,7 +1,14 @@
 from zope.interface import Interface, Attribute
 
 
-class IRestorer(Interface):
+class IRegistry(Interface):
+    '''Register factories to unserialize object.'''
+
+    def register(restorator):
+        '''Register L{IRestorer} and L{ISingleton}'''
+
+
+class IRestorator(Interface):
     '''Knows how to restore a snapshot for a type name.
     Should be registered to a L{IUnserializer}.'''
 
@@ -49,10 +56,7 @@ class IUnserializer(Interface):
     A L{IRestorator} must be registered for any types other
     than python basic types.'''
 
-    def register(restorator):
-        '''Register L{IRestorer} and L{ISingleton}'''
-
-    def restore(data):
+    def unserialize(data):
         pass
 
 
