@@ -90,7 +90,7 @@ class Enum(int):
 
     To use it, define an enum subclass like this:
 
-    >>> from flumotion.inhouse.enum import Enum
+    >>> from feat.common.enum import Enum
     >>>
     >>> class Status(Enum):
     >>>     OPEN, CLOSE = range(2)
