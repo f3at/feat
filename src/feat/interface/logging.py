@@ -1,33 +1,46 @@
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
 
 class LogLevel(enum.Enum):
-    log, debug, info, warning, error = range(5)
+    error, warning, info, debug, log = range(1, 6)
 
 
 class ILogger(Interface):
     '''Store logging entries'''
 
-    def log_entry(level, category, name, format, *args, **kwargs):
-        pass
+    def do_log(level, object, category, format, args,
+               where=-1, file_path=None, line_num=None):
+        '''Adds a log entry with specified level, category and object.
+        @param where: what to log file and line number for;
+                      -1 for one frame above; -2 and down for higher up.
+        @type  where: int
+        @param file_path: file to show the message as coming from, if caller
+                          knows best
+        @type  file_path: str
+        @param line_num: line to show the message as coming from, if caller
+                         knows best
+        @type  line_num: int
+        '''
 
 
 class ILoggable(Interface):
     '''Can be used to generate contextual logging entries'''
 
-    def log(format, *args, **kwargs):
+    logname = Attribute("Logging name")
+
+    def log(format, *args):
         pass
 
-    def debug(format, *args, **kwargs):
+    def debug(format, *args):
         pass
 
-    def info(format, *args, **kwargs):
+    def info(format, *args):
         pass
 
-    def warning(format, *args, **kwargs):
+    def warning(format, *args):
         pass
 
-    def error(format, *args, **kwargs):
+    def error(format, *args):
         pass
