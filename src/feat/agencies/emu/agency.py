@@ -61,12 +61,12 @@ class AgencyAgent(object):
         
     def joinShard(self):
         shard = self.descriptor.shard
-        self._messaging.createPersonalInterest(self.descriptor.uuid, shard)
+        self._messaging.createPersonalBinding(self.descriptor.uuid, shard)
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):
-        interests = self._messaging.getInterestForShard(self.descriptor.shard)
-        map(lambda interest: interest.revoke(), interests)
+        bindings = self._messaging.getBindingsForShard(self.descriptor.shard)
+        map(lambda binding: binding.revoke(), bindings)
         self.agency.leftShard(self, self.descriptor.shard)
         self.descriptor.shard = None
         

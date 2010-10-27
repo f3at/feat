@@ -58,7 +58,7 @@ class Connection(object):
 
         self._queue = self._messaging.defineQueue(self._agent.descriptor.uuid)
         self._mainLoop(self._queue)
-        self.interests = []
+        self.bindings = []
 
     def _mainLoop(self, queue):
 
@@ -82,41 +82,47 @@ class Connection(object):
     def disconnect(self):
         self._consumeDeferred.errback(FinishConnection("Disconnecting"))
 
-    def createPersonalInterest(self, key, shard=None):
+    def createPersonalBinding(self, key, shard=None):
         if not shard:
             shard = self._agent.descriptor.shard
-        return PersonalInterest(self, key=key, shard=shard)
+        return PersonalBinding(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
         return self._messaging.publish(key, shard, message)
 
-    def getInterestForShard(self, shard):
-        return filter(lambda x: x.shard == shard, self.interests)
+    def getBindingsForShard(self, shard):
+        return filter(lambda x: x.shard == shard, self.bindings)
+
+    def appendBinding(self, binding):
+        self.bindings.append(binding)
+
+    def removeBinding(self, binding):
+        self.bindings.remove(binding)
 
 
-class BaseInterest(object):
+class BaseBinding(object):
     
     def __init__(self, connection, shard, **kwargs):
         self._args = kwargs
         self.connection = connection
-        self.connection.interests.append(self)
+        self.connection.appendBinding(self)
         self.shard = shard
         
     def revoke(self):
-        self.connection.interests.remove(self)
+        self.connection.removeBinding(self)
 
 
-class PersonalInterest(BaseInterest):
+class PersonalBinding(BaseBinding):
     
     def __init__(self, connection, shard, key, **kwargs):
-        BaseInterest.__init__(self, connection, shard, **kwargs)
+        BaseBinding.__init__(self, connection, shard, **kwargs)
         self.key = key
         self.exchange = self.connection._messaging.defineExchange(self.shard)
         self.exchange.bind(self.key, self.connection._queue)
 
     def revoke(self):
         self.exchange.unbind(self.key, self.connection._queue)
-        BaseInterest.revoke(self)
+        BaseBinding.revoke(self)
 
 
 class Queue(object):

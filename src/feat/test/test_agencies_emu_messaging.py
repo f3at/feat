@@ -159,10 +159,10 @@ class TestMessaging(unittest.TestCase):
 
         self.connection.disconnect()
 
-    def test1To1Interest(self):
+    def test1To1Binding(self):
         key = self.agent.get_id()
-        interest = self.connection.createPersonalInterest(key)
-        self.assertEqual(1, len(self.connection.interests))
+        binding = self.connection.createPersonalBinding(key)
+        self.assertEqual(1, len(self.connection.bindings))
 
         exchange = self.messaging._exchanges.values()[0]
         for x in range(5):
@@ -176,22 +176,22 @@ class TestMessaging(unittest.TestCase):
             finished.callback(None)
         reactor.callLater(0.1, asserts, d)
 
-        def revoke_interest(_):
-            interest.revoke()
-            self.assertEqual(0, len(self.connection.interests))
+        def revoke_binding(_):
+            binding.revoke()
+            self.assertEqual(0, len(self.connection.bindings))
 
-        d.addCallback(revoke_interest)
+        d.addCallback(revoke_binding)
 
         return d
 
-    def testTwoAgentsWithSameInterest(self):
+    def testTwoAgentsWithSameBinding(self):
         second_agent = StubAgent()
         second_connection = self.messaging.createConnection(second_agent)
         agents = [ self.agent, second_agent ]
         connections = [ self.connection, second_connection ]
 
         key = 'some key'
-        interests = map(lambda x: x.createPersonalInterest(key), connections)
+        bindings = map(lambda x: x.createPersonalBinding(key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
@@ -204,17 +204,17 @@ class TestMessaging(unittest.TestCase):
             finished.callback(None)
         reactor.callLater(0.1, asserts, d)
 
-        def revoke_interest(_):
-            map(lambda interest: interest.revoke(), interests)
-            self.assertEqual(0, len(self.connection.interests))
+        def revoke_bindings(_):
+            map(lambda x: x.revoke(), bindings)
+            self.assertEqual(0, len(self.connection.bindings))
 
-        d.addCallback(revoke_interest)
+        d.addCallback(revoke_bindings)
 
         return d
 
     def testPublishingByAgent(self):
         key = self.agent.get_id()
-        self.connection.createPersonalInterest(key)
+        self.connection.createPersonalBinding(key)
         self.connection.publish(key, self.agent.descriptor.shard,\
                                    'some message')
         d = defer.Deferred()
