@@ -1,15 +1,13 @@
-from zope.interface import Interface, Attribute
+from zope.interface import Attribute
 
-import contracts
+import protocols, contracts
 
 
-class IManagerFactory(Interface):
+class IManagerFactory(protocols.IInitiatorFactory):
     '''This class is used to create instances of a contract manager
     implementing L{IAgentManager}. Used by the agency
     when initiating a contract.'''
 
-    def __call__(agent, medium, *args, **kwargs):
-        pass
 
 class IAgencyManager(contracts.IContractPeer):
     '''Agency part of a contract manager, it is a medium between the agent
@@ -20,7 +18,11 @@ class IAgencyManager(contracts.IContractPeer):
     refusals = Attribute("Contract's received refusals")
 
     def announce(recipients, announce):
-        pass
+        '''Post an announce message to specified recipients.
+        @param recipients: recipients of the request
+        @type  recipients: L{feat.interface.recipient.IRecipient} or list
+                of L{feat.interface.recipient.IRecipient}
+        '''
 
     def reject(rejection):
         pass
@@ -35,7 +37,7 @@ class IAgencyManager(contracts.IContractPeer):
         pass
 
 
-class IAgentManager(Interface):
+class IAgentManager(protocols.IInitiator):
     '''Agent part of the contract manager. Use the L{IAgencyManager} given
     at creation time as a medium to perform the manager role
     in the contract protocol.'''

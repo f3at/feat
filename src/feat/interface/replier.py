@@ -1,15 +1,12 @@
 from zope.interface import Interface
 
-import requests
+import protocols, requests
 
 
-class IReplierFactory(Interface):
+class IReplierFactory(protocols.IInterest):
     '''This class constructs replier instances implementing
     L{IAgentReplier}. Used upon receiving request messages.
     It is passed as a parameter during registration of interest'''
-
-    def __call__(agent, medium, *args, **kwargs):
-        pass
 
 
 class IAgencyReplier(requests.IRequestPeer):
@@ -20,7 +17,7 @@ class IAgencyReplier(requests.IRequestPeer):
         pass
 
 
-class IAgentReplier(Interface):
+class IAgentReplier(protocols.IInterested):
     '''Agent part of the request replier. Uses a reference to L{IAgencyReplier}
     given at creation time as a medium in order to perform the replier role
     in the request protocol.'''

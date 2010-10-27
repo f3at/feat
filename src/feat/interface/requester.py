@@ -1,14 +1,12 @@
-from zope.interface import Interface, Attribute
+from zope.interface import Attribute
 
-import requests
+import protocols, requests
 
 
-class IRequesterFactory(Interface):
+class IRequesterFactory(protocols.IInitiatorFactory):
     '''This class is used to create instances of a requester
     implementing L{IAgentRequester}. Used by the agency when
     initiating a request.'''
-
-    def __call__(agent, medium, *args, **kwargs):
 
 
 class IAgencyRequester(requests.IRequestPeer):
@@ -20,14 +18,15 @@ class IAgencyRequester(requests.IRequestPeer):
     def request(recipients, request):
         '''Post a request message to specified recipients.
         @param recipients: recipients of the request
-        @type  recipients: L{feat.interface.types.Recipient} or list
+        @type  recipients: L{feat.interface.recipient.IRecipient} or list
+                of L{feat.interface.recipient.IRecipient}
         '''
 
     def terminate():
         pass
 
 
-class IAgentRequester(Interface):
+class IAgentRequester(protocols.IInitiator):
     '''Agent part of the requester. It uses an instance implementing
     L{IAdgencyRequester} given at creation time as a medium to perform
     the requester role of the request protocol.'''

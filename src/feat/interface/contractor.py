@@ -1,9 +1,9 @@
-from zope.interface import Interface
+from zope.interface import Attribute
 
-import contracts
+import protocols, contracts
 
 
-class IContractorFactory(Interface):
+class IContractorFactory(protocols.IInterest):
     '''This class constructs contractor instance implementing
     L{IAgentContractor}. Used upon receiving announce messages.
     It is passed as a parameter during registration of interest'''
@@ -35,7 +35,7 @@ class IAgencyContractor(contracts.IContractPeer):
         pass
 
 
-class IAgentContractor(Interface):
+class IAgentContractor(protocols.IInterested):
     '''This is agent part of a contractor. It use a reference to a
     L{IAgencyContractor} given at construction time as a medium in order
     to perform the contractor role of the contract protocol.'''
