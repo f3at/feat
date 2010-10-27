@@ -5,7 +5,7 @@ class IRegistry(Interface):
     '''Register factories to unserialize object.'''
 
     def register(restorator):
-        '''Register L{IRestorer} and L{ISingleton}'''
+        '''Register L{IRestorer}'''
 
 
 class IRestorator(Interface):
@@ -16,16 +16,6 @@ class IRestorator(Interface):
 
     def restore(snapshot):
         pass
-
-
-class ISingleton(Interface):
-    '''Used to allow reference to not serialized singleton
-    instance from inside a serialized instance.
-    A L{ISerializer} will serialize it as a named reference,
-    and L{IUnserializer} will restore it from the registered
-    singleton.'''
-
-    instance_name = Attribute()
 
 
 class ISerializable(Interface):
