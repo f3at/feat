@@ -61,9 +61,8 @@ class AgencyAgent(object):
         self.agency.leftShard(self, shard)
 
         
-    def getId(self):
-        '''called by messaging layer to resolve queue name'''
+    def get_id(self):
         return self.agent.uuid
 
-    def onMessage(self, message):
+    def on_message(self, message):
         pass

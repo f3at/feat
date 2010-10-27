@@ -5,6 +5,7 @@ from feat.agencies.emu import agency
 from twisted.trial import unittest
 from feat.agents import agent, descriptor
 
+
 class TestBaseAgent(unittest.TestCase):
 
     def setUp(self):

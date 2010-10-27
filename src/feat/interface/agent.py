@@ -3,10 +3,6 @@ from zope.interface import Interface, Attribute
 import logging, journaling
 
 
-class IAgentMessaging(Interface):
-    '''Deprecated ??? Needed for test to pass.'''
-
-
 class IAgentFactory(Interface):
     '''Create an agent implementing L{IAgent}. Used by the agency when
     starting an agent.'''
@@ -37,6 +33,12 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
 
     def update_document(doc):
         pass
+
+    def get_id():
+        '''returns the agents id'''
+
+    def on_message():
+        '''called when the new message comes in'''
 
 
 class IAgent(Interface):

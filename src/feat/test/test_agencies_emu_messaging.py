@@ -133,21 +133,18 @@ class TestExchange(unittest.TestCase):
 
 
 class StubAgent(object):
-    implements(agent.IAgentMessaging)
+    implements(agent.IAgencyAgent)
 
     def __init__(self, shard_id=None):
         self._uuid = uuid.uuid1().get_hex()
-        self._shard_id = shard_id or uuid.uuid1().get_hex()
+        self.shard = shard_id or uuid.uuid1().get_hex()
         self.messages = []
 
-    def getId(self):
+    def get_id(self):
         return self._uuid
 
-    def onMessage(self, msg):
+    def on_message(self, msg):
         self.messages.append(msg)
-
-    def getShardId(self):
-        return self._shard_id
 
 
 class TestMessaging(unittest.TestCase):
@@ -164,7 +161,7 @@ class TestMessaging(unittest.TestCase):
         self.connection.disconnect()
 
     def test1To1Interest(self):
-        key = self.agent.getId()
+        key = self.agent.get_id()
         interest = self.connection.createPersonalInterest(key)
         self.assertEqual(1, len(self.connection.interests))
 
@@ -189,7 +186,7 @@ class TestMessaging(unittest.TestCase):
         return d
 
     def testTwoAgentsWithSameInterest(self):
-        second_agent = StubAgent(shard_id=self.agent.getShardId())
+        second_agent = StubAgent(shard_id=self.agent.shard)
         second_connection = self.messaging.createConnection(second_agent)
         agents = [ self.agent, second_agent ]
         connections = [ self.connection, second_connection ]
@@ -217,9 +214,9 @@ class TestMessaging(unittest.TestCase):
         return d
 
     def testPublishingByAgent(self):
-        key = self.agent.getId()
+        key = self.agent.get_id()
         self.connection.createPersonalInterest(key)
-        self.connection.publish(key, self.agent.getShardId(),\
+        self.connection.publish(key, self.agent.shard,\
                                    'some message')
         d = defer.Deferred()
         def asserts(d):

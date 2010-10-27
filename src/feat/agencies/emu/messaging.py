@@ -56,7 +56,7 @@ class Connection(object):
         self._messaging = messaging
         self._agent = agent
 
-        self._queue = self._messaging.defineQueue(self._agent.getId())
+        self._queue = self._messaging.defineQueue(self._agent.get_id()) 
         self._mainLoop(self._queue)
         self.interests = []
 
@@ -76,14 +76,16 @@ class Connection(object):
 
     def _consumeQueue(self, queue):
         self._consumeDeferred = queue.consume()
-        self._consumeDeferred.addCallback(self._agent.onMessage)
+        self._consumeDeferred.addCallback(self._agent.on_message)
         return self._consumeDeferred 
         
     def disconnect(self):
         self._consumeDeferred.errback(FinishConnection("Disconnecting"))
 
     def createPersonalInterest(self, key, shard=None):
-        return PersonalInterest(self, key, shard=shard)
+        if not shard:
+            shard = self._agent.shard
+        return PersonalInterest(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
         return self._messaging.publish(key, shard, message)
@@ -91,29 +93,23 @@ class Connection(object):
     def getInterestForShard(self, shard):
         return filter(lambda x: x.shard == shard, self.interest)
 
+
 class BaseInterest(object):
     
-    def __init__(self, connection, **kwargs):
+    def __init__(self, connection, shard, **kwargs):
         self._args = kwargs
         self.connection = connection
         self.connection.interests.append(self)
-        self.shard = None
+        self.shard = shard
         
     def revoke(self):
         self.connection.interests.remove(self)
 
-    def getShard(self):
-        shard = self._args.get('shard', None)
-        if not shard:
-            shard = self.connection._agent.getShardId()
-        return shard
-
 
 class PersonalInterest(BaseInterest):
     
-    def __init__(self, connection, key, **kwargs):
-        BaseInterest.__init__(self, connection, **kwargs)
-        self.shard = self.getShard()
+    def __init__(self, connection, shard, key, **kwargs):
+        BaseInterest.__init__(self, connection, shard, **kwargs)
         self.key = key
         self.exchange = self.connection._messaging.defineExchange(self.shard)
         self.exchange.bind(self.key, self.connection._queue)
