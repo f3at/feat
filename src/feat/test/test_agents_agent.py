@@ -10,8 +10,8 @@ class TestBaseAgent(unittest.TestCase):
 
     def setUp(self):
         self.agency = agency.Agency()
-        self.agent = agent.BaseAgent(descriptor.Descriptor())
-        self.agency.registerAgent(self.agent)
+        desc = descriptor.Descriptor()
+        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
     def testJoinedShard(self):
         self.assertEqual(1, len(self.agency._shards))

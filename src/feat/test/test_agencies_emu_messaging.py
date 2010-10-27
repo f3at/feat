@@ -8,6 +8,7 @@ from twisted.python import log
 from feat.agencies.emu import messaging
 from zope.interface import implements
 from feat.interface import agent
+from feat.agents import descriptor
 
 import uuid
 
@@ -135,17 +136,15 @@ class TestExchange(unittest.TestCase):
 class StubAgent(object):
     implements(agent.IAgencyAgent)
 
-    def __init__(self, shard_id=None):
-        self._uuid = uuid.uuid1().get_hex()
-        self.shard = shard_id or uuid.uuid1().get_hex()
+    def __init__(self):
+        self.descriptor = descriptor.Descriptor()
         self.messages = []
-
-    def get_id(self):
-        return self._uuid
 
     def on_message(self, msg):
         self.messages.append(msg)
 
+    def get_id(self):
+        return self.descriptor.uuid
 
 class TestMessaging(unittest.TestCase):
 
@@ -186,7 +185,7 @@ class TestMessaging(unittest.TestCase):
         return d
 
     def testTwoAgentsWithSameInterest(self):
-        second_agent = StubAgent(shard_id=self.agent.shard)
+        second_agent = StubAgent()
         second_connection = self.messaging.createConnection(second_agent)
         agents = [ self.agent, second_agent ]
         connections = [ self.connection, second_connection ]
@@ -216,7 +215,7 @@ class TestMessaging(unittest.TestCase):
     def testPublishingByAgent(self):
         key = self.agent.get_id()
         self.connection.createPersonalInterest(key)
-        self.connection.publish(key, self.agent.shard,\
+        self.connection.publish(key, self.agent.descriptor.shard,\
                                    'some message')
         d = defer.Deferred()
         def asserts(d):

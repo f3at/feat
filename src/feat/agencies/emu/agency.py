@@ -4,9 +4,12 @@
 import messaging
 import database
 from twisted.python import log
-
+from feat.interface.agent import IAgencyAgent, IAgentFactory
+from feat.interface.agency import IAgency
+from zope.interface import implements
 
 class Agency(object):
+    implements(IAgency)
     
     def __init__(self):
         self._agents = []
@@ -16,9 +19,11 @@ class Agency(object):
         self._messaging = messaging.Messaging()
         self._database = database.Database()
 
-    def registerAgent(self, plain_agent):
-        agent = AgencyAgent(plain_agent, self)
-        self._agents.append(agent)
+    def start_agent(self, factory, descriptor):
+        factory = IAgentFactory(factory)
+        medium = AgencyAgent(self, factory, descriptor)
+        self._agents.append(medium)
+        return medium
 
     def unregisterAgent(self, agent):
         self._agents.remove(agent)
@@ -40,29 +45,30 @@ class Agency(object):
 
 
 class AgencyAgent(object):
-    '''methods that agency may want to run upon agent and vice versa'''
+    implements(IAgencyAgent)
 
-    def __init__(self, agent, agency):
-        self.agent = agent
-        self.agency = agency
+    def __init__(self, agency, factory, descriptor):
+        
+        self.agency = IAgency(agency)
+        self.descriptor = descriptor
+        self.agent = factory(self)
 
         self._messaging = agency._messaging.createConnection(self)
         self._database = agency._database
 
-        agent.init(self)
+        self.joinShard()
+        self.agent.initiate()
         
-    def joinShard(self, shard):
-        self._messaging.createPersonalInterest(self.agent.uuid, shard)
+    def joinShard(self):
+        shard = self.descriptor.shard
+        self._messaging.createPersonalInterest(self.descriptor.uuid, shard)
         self.agency.joinedShard(self, shard)
 
-    def leaveShard(self, shard):
-        interests = self._messaging.getInterestForShard(shard)
+    def leaveShard(self):
+        interests = self._messaging.getInterestForShard(self.descriptor.shard)
         map(lambda interest: interest.revoke(), interest)
-        self.agency.leftShard(self, shard)
-
+        self.agency.leftShard(self, self.descriptor.shard)
+        self.descriptor.shard = None
         
-    def get_id(self):
-        return self.agent.uuid
-
     def on_message(self, message):
         pass

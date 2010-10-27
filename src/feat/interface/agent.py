@@ -15,8 +15,8 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
     '''Agency part of an agent. Used as a medium by the agent
     L{IAgent} implementation.'''
 
-    agency = Attribute("L{IAdgency}")
-    shard = Attribute("Shard identifier")
+    agent = Attribute("L{IAgent}")
+    agency = Attribute("L{IAgency}")
     descriptor = Attribute("Agent descriptor")
 
     def register_interest(factory, *args, **kwargs):
@@ -34,10 +34,7 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
     def update_document(doc):
         pass
 
-    def get_id():
-        '''returns the agents id'''
-
-    def on_message():
+    def on_message(message):
         '''called when the new message comes in'''
 
 

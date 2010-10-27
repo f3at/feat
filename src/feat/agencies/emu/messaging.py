@@ -3,7 +3,7 @@
 
 from twisted.internet import defer, reactor
 from twisted.python import log
-
+from feat.interface.agent import IAgencyAgent
 
 class Messaging(object):
     
@@ -54,9 +54,9 @@ class Connection(object):
     
     def __init__(self, messaging, agent):
         self._messaging = messaging
-        self._agent = agent
+        self._agent = IAgencyAgent(agent)
 
-        self._queue = self._messaging.defineQueue(self._agent.get_id()) 
+        self._queue = self._messaging.defineQueue(self._agent.descriptor.uuid)
         self._mainLoop(self._queue)
         self.interests = []
 
@@ -84,7 +84,7 @@ class Connection(object):
 
     def createPersonalInterest(self, key, shard=None):
         if not shard:
-            shard = self._agent.shard
+            shard = self._agent.descriptor.shard
         return PersonalInterest(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
