@@ -74,7 +74,7 @@ class FluLogKeeper(object):
         flulog.doLog(int(level), object, category, format, args,
                      where=-depth, filePath=file_path, line=line_num)
 
-class LogKeeperProxy(object):
+class LogProxy(object):
     '''Proxies log entries to another log keeper.'''
 
     implements(ILogKeeper)

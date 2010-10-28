@@ -132,14 +132,14 @@ class AgencyRequesterFactory(object):
         return AgencyRequester(agent, recipients, *args, **kwargs)
 
 
-class AgencyRequester(log.LogKeeperProxy, log.Logger):
+class AgencyRequester(log.LogProxy, log.Logger):
     implements(IAgencyRequester)
 
     log_category = 'agency-requester'
 
     def __init__(self, agent, recipients, *args, **kwargs):
         log.Logger.__init__(self, agent)
-        log.LogKeeperProxy.__init__(self, agent)
+        log.LogProxy.__init__(self, agent)
 
         self.agent = agent
         self.recipients = recipients
