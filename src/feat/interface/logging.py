@@ -11,11 +11,10 @@ class ILogKeeper(Interface):
     '''Store logging entries'''
 
     def do_log(level, object, category, format, args,
-               where=-1, file_path=None, line_num=None):
+               depth=1, file_path=None, line_num=None):
         '''Adds a log entry with specified level, category and object.
-        @param where: what to log file and line number for;
-                      -1 for one frame above; -2 and down for higher up.
-        @type  where: int
+        @param depth: The depth in the calling stack from the logging call.
+        @type  depth: int
         @param file_path: file to show the message as coming from, if caller
                           knows best
         @type  file_path: str

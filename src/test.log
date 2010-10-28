@@ -1,0 +1,134 @@
+DEBUG [ 6277]                                  log               Oct 28 18:51:17      Integrating twisted logger (feat/test/common.py:9)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Log opened.
+ (feat/test/common.py:9)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Log opened.
+ (twisted/trial/runner.py:825)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_agency.TestAgencyAgent.testJoinShard <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('9548eeac-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  agency_agent      Oct 28 18:51:17      Join shard called (feat/agencies/emu/agency.py:88)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_agency.TestAgencyAgent.testSendsMessage <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testNotDoublingBindings <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testPublishingOneQueueBound <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testPublishingSameKey <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testQueueBindingAndUnbinding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.test1To1Binding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('954a086e-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testCreateConnection <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('9559f634-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  connection        Oct 28 18:51:17      Error handler: exiting, reason <twisted.python.failure.Failure <class 'feat.agencies.emu.messaging.FinishConnection'>> (feat/agencies/emu/messaging.py:77)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testPublishingByAgent <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('955a80a4-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testTwoAgentsWithSameBinding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('956a5510-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining queue: UUID('956a67c6-e2b3-11df-aa36-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 6277]                                  messaging         Oct 28 18:51:17      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testAppendConsumersThanSendMsgs <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testQueueConsumers <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:17       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testQueueWithoutConsumersKeepsMsgs <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:18       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:18       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:18       [-] --> feat.test.test_common_enum.TestEnum.testComparations <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:18       [-] --> feat.test.test_common_enum.TestEnum.testConstructor <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 6277]                                  twisted           Oct 28 18:51:18       [-] --> feat.test.test_common_enum.TestEnum.testDictProtocol <--
+ (twisted/trial/unittest.py:1072)
+DEBUG [ 7505]                                  log               Oct 28 18:56:01      Integrating twisted logger (feat/test/common.py:9)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] Log opened.
+ (feat/test/common.py:9)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] Log opened.
+ (twisted/trial/runner.py:825)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_agency.TestAgencyAgent.testJoinShard <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining queue: UUID('3eae65ee-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  agency-agent      Oct 28 18:56:01      Join shard called (feat/agencies/emu/agency.py:88)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_agency.TestAgencyAgent.testSendsMessage <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testNotDoublingBindings <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testPublishingOneQueueBound <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testPublishingSameKey <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestExchange.testQueueBindingAndUnbinding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.test1To1Binding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining queue: UUID('3eaf88d4-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testCreateConnection <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining queue: UUID('3ebfb7cc-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  messaging-connection Oct 28 18:56:01      Error handler: exiting, reason <twisted.python.failure.Failure <class 'feat.agencies.emu.messaging.FinishConnection'>> (feat/agencies/emu/messaging.py:77)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:01       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testPublishingByAgent <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining queue: UUID('3ec04dea-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:01      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_agencies_emu_messaging.TestMessaging.testTwoAgentsWithSameBinding <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:02      Defining queue: UUID('3ed02fee-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:02      Defining queue: UUID('3ed0439e-e2b4-11df-995c-00221925f2f9') (feat/agencies/emu/messaging.py:43)
+LOG   [ 7505]                                  messaging         Oct 28 18:56:02      Defining exchange: 'lobby' (feat/agencies/emu/messaging.py:24)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testAppendConsumersThanSendMsgs <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testQueueConsumers <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_agencies_emu_messaging.TestQueue.testQueueWithoutConsumersKeepsMsgs <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Received: ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+ (feat/test/test_agencies_emu_messaging.py:30)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] Main loop terminated.
+ (twisted/internet/base.py:1187)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_common_enum.TestEnum.testComparations <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_common_enum.TestEnum.testConstructor <--
+ (twisted/trial/unittest.py:1072)
+LOG   [ 7505]                                  twisted           Oct 28 18:56:02       [-] --> feat.test.test_common_enum.TestEnum.testDictProtocol <--
+ (twisted/trial/unittest.py:1072)

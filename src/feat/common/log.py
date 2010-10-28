@@ -12,7 +12,7 @@ class Logger(object):
     implements(ILogger)
 
     log_name = None
-    log_category = None
+    log_category = "feat"
 
     def __init__(self, logger):
         self._logger = ILogKeeper(logger)
@@ -68,20 +68,21 @@ class FluLogKeeper(object):
 
     ### ILogger Methods ###
 
-    @classmethod
-    def do_log(cls, level, object, category, format, args,
-               where=-1, file_path=None, line_num=None):
+    def do_log(self, level, object, category, format, args,
+               depth=-1, file_path=None, line_num=None):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
-                     where=where, filePath=file_path, line=line_num)
+                     where=-depth, filePath=file_path, line=line_num)
 
 class LogKeeperProxy(object):
+    '''Proxies log entries to another log keeper.'''
+
     implements(ILogKeeper)
 
     def __init__(self, logkeeper):
         self._logkeeper = ILogKeeper(logkeeper)
 
     def do_log(self, level, object, category, format, args,
-               where=-1, file_path=None, line_num=None):
+               depth=1, file_path=None, line_num=None):
         self._logkeeper.do_log(level, object, category, format, args,
-               where=where-1, file_path=file_path, line_num=line_num)
+               depth=depth+1, file_path=file_path, line_num=line_num)

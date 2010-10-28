@@ -17,7 +17,7 @@ import uuid
 
 class Agency(object):
     implements(IAgency)
-    
+
     def __init__(self):
         self._agents = []
         # shard -> [ agents ]
@@ -62,10 +62,10 @@ class Agency(object):
 class AgencyAgent(log.FluLogKeeper, log.Logger):
     implements(IAgencyAgent)
 
-    log_category = "agency_agent"
+    log_category = "agency-agent"
 
     def __init__(self, agency, factory, descriptor):
-        
+
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
@@ -83,7 +83,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         self.joinShard()
         self.agent.initiate()
-        
+
     def joinShard(self):
         self.log("Join shard called")
         shard = self.descriptor.shard
@@ -95,12 +95,12 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         map(lambda binding: binding.revoke(), bindings)
         self.agency.leftShard(self, self.descriptor.shard)
         self.descriptor.shard = None
-        
+
     def on_message(self, message):
         if message.session_id in self._listeners:
             listener = self._listeners[session_id]
             return listener.on_message(message)
-            
+
         if message.protocol_id in self._listener_factoriers:
             factory = self._listener_factories[message.protocol_id]
             self.create_listener_instance(factory, message.instance_id)
@@ -130,12 +130,12 @@ class AgencyRequesterFactory(object):
 
     def __call__(self, agent, recipients, *args, **kwargs):
         return AgencyRequester(agent, recipients, *args, **kwargs)
-        
+
 
 class AgencyRequester(log.LogKeeperProxy, log.Logger):
     implements(IAgencyRequester)
 
-    log_category = 'agency_requester'
+    log_category = 'agency-requester'
 
     def __init__(self, agent, recipients, *args, **kwargs):
         log.Logger.__init__(self, agent)

@@ -7,15 +7,15 @@ import uuid
 
 class BaseRequester(log.Logger):
     implements(requester.IAgentRequester)
-    
-    log_category = "base_requester"
+
+    log_category = "requester"
 
     def __init__(self, agent, medium, recipients):
         log.Logger.__init__(self, medium)
 
         self.agent = agent
         self.medium = medium
-        self.recipients = recipients    
+        self.recipients = recipients
 
         self.protocol_key = None
         self.protocol_type = "Request"

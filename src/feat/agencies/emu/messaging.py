@@ -8,7 +8,7 @@ from feat.interface.agent import IAgencyAgent
 class Messaging(log.Logger, log.FluLogKeeper):
 
     log_category = "messaging"
-    
+
     def __init__(self):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
@@ -25,7 +25,7 @@ class Messaging(log.Logger, log.FluLogKeeper):
             exchange = Exchange(name)
             self._exchanges[name] = exchange
         return exchange
-        
+
     def _getExchange(self, name):
         return self._exchanges.get(name, None)
 
@@ -57,8 +57,8 @@ class FinishConnection(Exception):
 
 class Connection(log.Logger):
 
-    log_category = 'connection'
-    
+    log_category = 'messaging-connection'
+
     def __init__(self, messaging, agent):
         log.Logger.__init__(self, messaging)
         self._messaging = messaging
@@ -72,7 +72,7 @@ class Connection(log.Logger):
 
         def rebind(_):
             reactor.callLater(0, bind)
-     
+
         def stop(reason):
             self.log('Error handler: exiting, reason %r' % reason)
 
@@ -85,8 +85,8 @@ class Connection(log.Logger):
     def _consumeQueue(self, queue):
         self._consumeDeferred = queue.consume()
         self._consumeDeferred.addCallback(self._agent.on_message)
-        return self._consumeDeferred 
-        
+        return self._consumeDeferred
+
     def disconnect(self):
         self._consumeDeferred.errback(FinishConnection("Disconnecting"))
 
@@ -109,19 +109,19 @@ class Connection(log.Logger):
 
 
 class BaseBinding(object):
-    
+
     def __init__(self, connection, shard, **kwargs):
         self._args = kwargs
         self.connection = connection
         self.connection.appendBinding(self)
         self.shard = shard
-        
+
     def revoke(self):
         self.connection.removeBinding(self)
 
 
 class PersonalBinding(BaseBinding):
-    
+
     def __init__(self, connection, shard, key, **kwargs):
         BaseBinding.__init__(self, connection, shard, **kwargs)
         self.key = key
@@ -134,7 +134,7 @@ class PersonalBinding(BaseBinding):
 
 
 class Queue(object):
-    
+
     def __init__(self, name):
         self.name = name
         self._messages = []
@@ -158,9 +158,9 @@ class Queue(object):
         self._messages.append(message)
         reactor.callLater(0, self._sendMessages)
 
-    
+
 class Exchange(object):
-    
+
     def __init__(self, name):
         self.name = name
         # key -> [ list of queues ]
@@ -168,7 +168,7 @@ class Exchange(object):
 
     def bind(self, key, queue):
         assert isinstance(queue, Queue)
-        
+
         list_for_key = self._bindings.get(key, [])
         if not queue in list_for_key:
             list_for_key.append(queue)
