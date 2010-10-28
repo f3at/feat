@@ -27,26 +27,29 @@ class ISerializable(Interface):
 
     type_name = Attribute()
 
-    def __restore__(snapshot):
+    def __restore__(snapshot, context):
         pass
 
-    def snapshot():
-        pass
+    def snapshot(context):
+        '''Called to retrieve the current state of an object.
+        It should return only structures of basic python types
+        or instances implementing L{ISerializable}.'''
 
 
 class ISerializer(Interface):
     '''Knows how to convert an object to bytes.'''
 
-    def serialize(obj):
+    def serialize(obj, context={}):
         pass
 
 
 class IUnserializer(Interface):
     '''Knows how to convert bytes to object.
     A L{IRestorator} must be registered for any types other
-    than python basic types.'''
+    than python basic types.
+    '''
 
-    def unserialize(data):
+    def unserialize(data, context={}):
         pass
 
 

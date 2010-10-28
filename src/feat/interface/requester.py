@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, requests
+import protocols, requests, logging
 
 
 class IRequesterFactory(protocols.IInitiatorFactory):
@@ -9,7 +9,7 @@ class IRequesterFactory(protocols.IInitiatorFactory):
     initiating a request.'''
 
 
-class IAgencyRequester(protocols.IAgencyInitiator, requests.IRequestPeer):
+class IAgencyRequester(protocols.IAgencyInitiator, requests.IRequestPeer, logging.ILogKeeper):
     '''Agency part of a requester. Used by L{IAgentRequester} to perform
     the requester role of the request protocol.'''
 

@@ -4,12 +4,12 @@
 
 from zope.interface import implements
 
-from feat.interface.logging import ILogger, ILoggable, LogLevel
+from feat.interface.logging import ILogKeeper, ILogger, LogLevel
 
 
-class Loggable(object):
+class Logger(object):
 
-    implements(ILoggable)
+    implements(ILogger)
 
     log_name = None
     log_category = None
@@ -40,8 +40,8 @@ class Loggable(object):
                             self.log_category, format, args)
 
 
-class FluLogger(object):
-    '''Logger using flumotion logging library.
+class FluLogKeeper(object):
+    '''Log keeper using flumotion logging library.
     The class method init() should be called before logger instance are used.
     The class method set_debug() is used to set the debug filter string.
 
@@ -51,7 +51,7 @@ class FluLogger(object):
         > FluLogger.set_debug("*:5")
     '''
 
-    implements(ILogger)
+    implements(ILogKeeper)
 
     @classmethod
     def init(cls):
