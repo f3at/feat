@@ -3,10 +3,16 @@
 
 import messaging
 import database
-from twisted.python import log
+from twisted.python import log, components
 from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.agency import IAgency
-from zope.interface import implements
+from feat.interface.protocols import IInitiatorFactory,\
+                                     IAgencyInitiatorFactory,\
+                                     IInterested
+from feat.interface.requester import IAgencyRequester, IRequesterFactory
+from zope.interface import implements, classProvides
+
+import uuid
 
 class Agency(object):
     implements(IAgency)
@@ -56,6 +62,11 @@ class AgencyAgent(object):
         self._messaging = agency._messaging.createConnection(self)
         self._database = agency._database
 
+        # instance_id -> IListener
+        self._listeners = {}
+        # contract_type -> IListenerFactory
+        self._listener_factories = []
+
         self.joinShard()
         self.agent.initiate()
         
@@ -71,4 +82,62 @@ class AgencyAgent(object):
         self.descriptor.shard = None
         
     def on_message(self, message):
-        pass
+        if message.session_id in self._listeners:
+            listener = self._listeners[session_id]
+            return listener.on_message(message)
+            
+        if message.protocol_id in self._listener_factoriers:
+            factory = self._listener_factories[message.protocol_id]
+            self.create_listener_instance(factory, message.instance_id)
+
+    def initiate_protocol(self, factory, recipients, *args, **kwargs):
+        factory = IInitiatorFactory(factory)
+        medium_factory = IAgencyInitiatorFactory(factory)
+        medium = medium_factory(self, recipients, *args, **kwargs)
+
+        initiator = factory(self, medium, *args, **kwargs)
+        self.register_listener(initiator)
+        initiator.initiate()
+
+    def register_listener(self, listener):
+        listener = IInterested(listener)
+        session_id = listener.get_session_id()
+        assert session_id not in self._listeners
+
+        self._listeners[session_id] = listener
+
+    def create_listener_instance(self, factory, instance_id):
+        instance = factory(self.agent, instance_id)
+        medium = IListenerAgency(instance)
+        self._listeners.append[instance_id] = medium
+
+
+class AgencyRequesterFactory(object):
+    implements(IAgencyInitiatorFactory)
+
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self, agent, recipients, *args, **kwargs):
+        return AgencyRequester(agent, recipients, *args, **kwargs)
+        
+
+class AgencyRequester(object):
+    implements(IAgencyRequester)
+
+    def __init__(self, agent, recipients, *args, **kwargs):
+        self.agent = agent
+        self.recipients = recipients
+        self.session_id = uuid.uuid1()
+
+    def request(self, request):
+        request.session_id = self.session_id
+        self.reply_to_shard = self.agent.descriptor.shard
+        self.reply_to_key = self.agent.descriptor.uuid
+
+        self.agent._messaging.publish(self.recipients.key,\
+                                      self.recipients.shard, request)
+
+
+components.registerAdapter(AgencyRequesterFactory,
+                           IRequesterFactory, IAgencyInitiatorFactory)

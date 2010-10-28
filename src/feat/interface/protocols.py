@@ -31,9 +31,29 @@ class IInterest(Interface):
 class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
+    session_id = Attribute("Session identification. "
+                            "Generate this at creation")
+
     def initiate():
         pass
 
 
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
+
+    protocol_type = Attribute("Protocol type")
+    protocol_key = Attribute("Protocol key")
+    session_id = Attribute("Identifies the dialog")
+
+    def on_message(message):
+        '''hook called when message arrives'''
+
+
+class IAgencyInitiator(Interface):
+    '''Medium class for agency side initiator protocol'''
+
+    pass
+
+
+class IAgencyInitiatorFactory(Interface):
+    '''Factory constructing L{IAgencyInitiator} instance'''

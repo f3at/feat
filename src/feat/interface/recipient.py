@@ -9,9 +9,9 @@ class RecipientType(enum.Enum):
 
 class IRecipient(Interface):
 
-    shard = Attribute()
-    key = Attribute()
-    type = Attribute()
+    shard = Attribute('Shard of reciepient')
+    key = Attribute('Routing key of reciepient')
+    type = Attribute('Broadcast or agent?')
 
 
 class Agent(object):

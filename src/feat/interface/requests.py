@@ -1,6 +1,7 @@
 from zope.interface import Interface, Attribute
 
 from feat.common import enum
+from feat.interface import protocols
 
 
 class RequestState(enum.Enum):

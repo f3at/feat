@@ -9,13 +9,17 @@ class IRequesterFactory(protocols.IInitiatorFactory):
     initiating a request.'''
 
 
-class IAgencyRequester(requests.IRequestPeer):
+class IAgencyRequester(protocols.IAgencyInitiator, requests.IRequestPeer):
     '''Agency part of a requester. Used by L{IAgentRequester} to perform
     the requester role of the request protocol.'''
 
-    replies = Attribute()
+    replies = Attribute('list of replies received')
+    session_id = Attribute('Indentifier of dialog passed in messages')
 
-    def request(recipients, request):
+    def __init__(agent, recipients):
+        '''@type agent: L{feat.interface.agency.IAgencyAgent} '''
+
+    def request(request):
         '''Post a request message to specified recipients.
         @param recipients: recipients of the request
         @type  recipients: L{feat.interface.recipient.IRecipient} or list
@@ -28,7 +32,7 @@ class IAgencyRequester(requests.IRequestPeer):
 
 class IAgentRequester(protocols.IInitiator):
     '''Agent part of the requester. It uses an instance implementing
-    L{IAdgencyRequester} given at creation time as a medium to perform
+    L{IAgencyRequester} given at creation time as a medium to perform
     the requester role of the request protocol.'''
 
     def initiate():
