@@ -10,9 +10,8 @@ from feat.interface.requester import IRequesterFactory
 from feat.common import log
 
 import uuid
-import helper
+import common
 
-helper.init(__name__)
 
 class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)

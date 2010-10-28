@@ -66,7 +66,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def __init__(self, agency, factory, descriptor):
         
-        log.FluLogKeeper.__init__(self) 
+        log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
         self.agency = IAgency(agency)

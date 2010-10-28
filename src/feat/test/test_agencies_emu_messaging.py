@@ -12,9 +12,7 @@ from feat.agents import descriptor
 
 import uuid
 
-import helper
-
-helper.init(__name__)
+import common
 
 
 class TestQueue(unittest.TestCase):

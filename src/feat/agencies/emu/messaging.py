@@ -2,12 +2,17 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from twisted.internet import defer, reactor
-from twisted.python import log
+from feat.common import log
 from feat.interface.agent import IAgencyAgent
 
-class Messaging(object):
+class Messaging(log.Logger, log.FluLogKeeper):
+
+    log_category = "messaging"
     
     def __init__(self):
+        log.FluLogKeeper.__init__(self)
+        log.Logger.__init__(self, self)
+
         # name -> queue
         self._queues = {}
         # name -> exchange
@@ -16,7 +21,7 @@ class Messaging(object):
     def defineExchange(self, name):
         exchange = self._getExchange(name)
         if not exchange:
-            log.msg("Defining exchange: %r" % name)
+            self.log("Defining exchange: %r" % name)
             exchange = Exchange(name)
             self._exchanges[name] = exchange
         return exchange
@@ -35,7 +40,7 @@ class Messaging(object):
         if not queue:
             queue = Queue(name)
             self._queues[name] = queue
-            log.msg("Defining queue: %r" % name)
+            self.log("Defining queue: %r" % name)
         return queue
 
     def publish(self, key, shard, message):
@@ -43,16 +48,19 @@ class Messaging(object):
         if exchange:
             exchange.publish(message, key)
         else:
-            log.err("Exchange %r not found!" % shard)
+            self.error("Exchange %r not found!" % shard)
 
 
 class FinishConnection(Exception):
     pass
 
 
-class Connection(object):
+class Connection(log.Logger):
+
+    log_category = 'connection'
     
     def __init__(self, messaging, agent):
+        log.Logger.__init__(self, messaging)
         self._messaging = messaging
         self._agent = IAgencyAgent(agent)
 
@@ -66,7 +74,7 @@ class Connection(object):
             reactor.callLater(0, bind)
      
         def stop(reason):
-            log.msg('Error handler: exiting, reason %r' % reason)
+            self.log('Error handler: exiting, reason %r' % reason)
 
         def bind():
             d = self._consumeQueue(queue)
@@ -165,7 +173,7 @@ class Exchange(object):
         if not queue in list_for_key:
             list_for_key.append(queue)
         self._bindings[key] = list_for_key
-        log.msg('Binding list for the key: %r is now: %r' % (key, list_for_key))
+
 
     def unbind(self, key, queue):
         list_for_key = self._bindings.get(key, [])
@@ -173,11 +181,10 @@ class Exchange(object):
             list_for_key.remove(queue)
             if len(list_for_key) == 0:
                 del(self._bindings[key])
-        log.msg('Binding list for the key: %r is now: %r' % (key, list_for_key))
+
 
     def publish(self, message, key):
         list_for_key = self._bindings.get(key, [])
         for queue in list_for_key:
             queue.enqueue(message)
-            log.msg('Publishing message: %r to the queue: %r' %\
-                                                        (message, queue))
+
