@@ -59,11 +59,16 @@ class Agency(object):
         return queue.consume()
 
 
-class AgencyAgent(log.FluLogKeeper):
+class AgencyAgent(log.FluLogKeeper, log.Logger):
     implements(IAgencyAgent)
+
+    log_category = "agency_agent"
 
     def __init__(self, agency, factory, descriptor):
         
+        log.FluLogKeeper.__init__(self) 
+        log.Logger.__init__(self, self)
+
         self.agency = IAgency(agency)
         self.descriptor = descriptor
         self.agent = factory(self)
@@ -80,6 +85,7 @@ class AgencyAgent(log.FluLogKeeper):
         self.agent.initiate()
         
     def joinShard(self):
+        self.log("Join shard called")
         shard = self.descriptor.shard
         self._messaging.createPersonalBinding(self.descriptor.uuid, shard)
         self.agency.joinedShard(self, shard)

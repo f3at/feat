@@ -7,7 +7,6 @@ class BaseMessage(object):
     reply_to_shard = None
     reply_to_key = None
     message_id = None
-    instance_id = None
     protocol_id = None
     payload = {}
 

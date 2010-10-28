@@ -7,7 +7,10 @@ from feat.agents import agent, descriptor, requester
 from feat.interface import recipient
 from zope.interface import classProvides
 from feat.interface.requester import IRequesterFactory
-from twisted.python import log
+from feat.common import log
+
+log.FluLogKeeper.init()
+log.FluLogKeeper.set_debug("*:5")
 
 import uuid
 
@@ -50,10 +53,20 @@ class TestAgencyAgent(unittest.TestCase):
     def testSendsMessage(self):
         recipients = recipient.Agent('some_agent', 'lobby')
         d = self.agency.callbackOnMessage('lobby', 'some_agent')
-        self.agent.initiate_protocol(DummyRequest, recipients, 5)
+        payload = 5
+        self.agent.initiate_protocol(DummyRequest, recipients, payload)
         
         def asserts(message):
-            log.msg(message)
+            self.assertEqual(self.agent.descriptor.shard, \
+                             message.reply_to_shard)
+            self.assertEqual(self.agent.descriptor.key, \
+                             message.reply_to_key)
+            self.assertEqual('Request', message.protocol_type)
+            self.assertEqual('DummyRequest', message.protocol_id)
+            self.assertEqual(payload. message.payload)
+
+            session_id = message.session_id
+            
 
         d.addCallback(asserts)
 
