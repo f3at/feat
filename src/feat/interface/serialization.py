@@ -28,7 +28,7 @@ class ISerializable(Interface):
     type_name = Attribute('')
 
     def __restore__(snapshot, context):
-        pass
+        '''FIXME: can't use double underscores ! ! !'''
 
     def snapshot(context):
         '''Called to retrieve the current state of an object.

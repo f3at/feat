@@ -1,12 +1,46 @@
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
+
+import serialization
+
+
+class IRecordInput(serialization.ISerializable):
+    pass
+
+
+class IRecordOutput(serialization.ISerializable):
+    pass
+
+
+class IRecordingResult(Interface):
+
+    output = Attribute("Recording output")
+
+    def proceed():
+        '''Continue with the stateless part of a recording.'''
 
 
 class IJournalKeeper(Interface):
     '''Store journal entries'''
 
-    def do_journal():
-        """To be defined"""
+    def do_record(instance_id, entry_id, input, output):
+        pass
 
 
-class IJournaler(Interface):
-    pass
+class IJournalPlayer(Interface):
+
+    def register(recorder):
+        pass
+
+
+class IRecorder(Interface):
+
+    def identify(instance_id):
+        pass
+
+    def record(entry_id, input, output):
+        pass
+
+    def replay(entry_id, input):
+        pass
+
+
