@@ -33,8 +33,8 @@ class BaseAgent(object):
         pass
 
 
-class DummyResponder(object):
-    implements(protocols.IInterested)
+class RequestResponder(object):
+    implements(protocols.IListener)
 
     def __init__(self, requester):
         self.requester = requester
@@ -46,5 +46,5 @@ class DummyResponder(object):
         self.requester.medium.session_id
 
 
-components.registerAdapter(DummyResponder, IAgentRequester, \
-                                           protocols.IInterested)
+components.registerAdapter(RequestResponder, IAgentRequester, \
+                                           protocols.IListener)

@@ -24,20 +24,14 @@ class DummyRequest(requester.BaseRequester):
         msg.payload = self.payload
         self.medium.request(msg)
 
-    def on_respond(self, message):
+    def got_reply(self, message):
         print message
         self.medium.terminate()
 
 
-def callbackOnMessage(agency, shard, key):
-    m = agency._messaging
-    queue = m.defineQueue(name=uuid.uuid1())
-    exchange = m._getExchange(shard)
-    exchange.bind(key, queue)
-    return queue.consume()
-
-
 class TestAgencyAgent(unittest.TestCase):
+
+    timeout = 3
 
     def setUp(self):
         self.agency = agency.Agency()
@@ -55,7 +49,7 @@ class TestAgencyAgent(unittest.TestCase):
 
     def testSendsMessage(self):
         recipients = recipient.Agent('some_agent', 'lobby')
-        d = callbackOnMessage(self.agency, 'lobby', 'some_agent')
+        d = self.agency.callbackOnMessage('lobby', 'some_agent')
         self.agent.initiate_protocol(DummyRequest, recipients, 5)
         
         def asserts(message):
@@ -64,3 +58,4 @@ class TestAgencyAgent(unittest.TestCase):
         d.addCallback(asserts)
 
         return d
+

@@ -37,9 +37,13 @@ class IInitiator(Interface):
     def initiate():
         pass
 
-
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
+
+    pass
+
+class IListener(Interface):
+    '''Represents sth which can be registered in AgencyAgent to listen for message'''
 
     protocol_type = Attribute("Protocol type")
     protocol_key = Attribute("Protocol key")

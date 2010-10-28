@@ -8,7 +8,7 @@ from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.agency import IAgency
 from feat.interface.protocols import IInitiatorFactory,\
                                      IAgencyInitiatorFactory,\
-                                     IInterested
+                                     IListener
 from feat.interface.requester import IAgencyRequester, IRequesterFactory
 from zope.interface import implements, classProvides
 
@@ -48,6 +48,17 @@ class Agency(object):
             log.err('Was supposed to leave shard %r, but it was not there!' %\
                         shard)
         self._shards[shard] = shard_list
+
+    # FOR TESTS
+    def callbackOnMessage(self, shard, key):
+        m = self._messaging
+        queue = m.defineQueue(name=uuid.uuid1())
+        exchange = m._getExchange(shard)
+        exchange.bind(key, queue)
+        return queue.consume()
+
+
+
 
 
 class AgencyAgent(object):
@@ -100,16 +111,11 @@ class AgencyAgent(object):
         initiator.initiate()
 
     def register_listener(self, listener):
-        listener = IInterested(listener)
+        listener = IListener(listener)
         session_id = listener.get_session_id()
         assert session_id not in self._listeners
 
         self._listeners[session_id] = listener
-
-    def create_listener_instance(self, factory, instance_id):
-        instance = factory(self.agent, instance_id)
-        medium = IListenerAgency(instance)
-        self._listeners.append[instance_id] = medium
 
 
 class AgencyRequesterFactory(object):
