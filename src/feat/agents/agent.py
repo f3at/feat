@@ -6,7 +6,7 @@ from twisted.python import components
 
 from feat.interface import agent, recipient, protocols
 from feat.interface.requester import IRequesterFactory, IAgentRequester
-from feat.agents import requester 
+from feat.agents import requester
 from feat.common import log
 
 import message
@@ -18,6 +18,8 @@ class BaseAgent(log.Logger):
     Didn't have time to fix unit tests so I changed the name.
     We should discuss about this.
     '''
+
+    log_category = "agent"
 
     classProvides(agent.IAgentFactory)
     implements(agent.IAgent)
