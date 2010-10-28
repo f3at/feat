@@ -11,6 +11,7 @@ from feat.interface.protocols import IInitiatorFactory,\
                                      IListener
 from feat.interface.requester import IAgencyRequester, IRequesterFactory
 from zope.interface import implements, classProvides
+from feat.common import log
 
 import uuid
 
@@ -58,10 +59,7 @@ class Agency(object):
         return queue.consume()
 
 
-
-
-
-class AgencyAgent(object):
+class AgencyAgent(log.FluLogKeeper):
     implements(IAgencyAgent)
 
     def __init__(self, agency, factory, descriptor):

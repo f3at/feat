@@ -12,7 +12,7 @@ class IRestorator(Interface):
     '''Knows how to restore a snapshot for a type name.
     Should be registered to a L{IUnserializer}.'''
 
-    type_name = Attribute()
+    type_name = Attribute('')
 
     def restore(snapshot):
         pass
@@ -25,7 +25,7 @@ class ISerializable(Interface):
     When restored, __init__() will not be called on the instance,
     instead __restore__() will be called with a snapshot.'''
 
-    type_name = Attribute()
+    type_name = Attribute('')
 
     def __restore__(snapshot, context):
         pass
