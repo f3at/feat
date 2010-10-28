@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, contracts
+import protocols, contracts, logging
 
 
 class IManagerFactory(protocols.IInitiatorFactory):
@@ -9,7 +9,7 @@ class IManagerFactory(protocols.IInitiatorFactory):
     when initiating a contract.'''
 
 
-class IAgencyManager(contracts.IContractPeer):
+class IAgencyManager(contracts.IContractPeer, logging.ILogKeeper):
     '''Agency part of a contract manager, it is a medium between the agent
     agent and the agency. Used by L{IAgentManager} to perform
     the manager role of the contract protocol.'''

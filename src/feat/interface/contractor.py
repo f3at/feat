@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, contracts
+import protocols, contracts, logging
 
 
 class IContractorFactory(protocols.IInterest):
@@ -12,7 +12,7 @@ class IContractorFactory(protocols.IInterest):
         pass
 
 
-class IAgencyContractor(contracts.IContractPeer):
+class IAgencyContractor(contracts.IContractPeer, logging.ILogKeeper):
     '''This is the agency part of a contractor, the medium between the agent
     and the agency. It is used by L{IAgentContractor} implementations
     to perform the contractor role of the contract protocol'''

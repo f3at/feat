@@ -1,6 +1,6 @@
 from zope.interface import Interface, Attribute
 
-import logging, journaling
+import logging, serialization, journaling
 
 
 class IAgentFactory(Interface):
@@ -11,7 +11,7 @@ class IAgentFactory(Interface):
         pass
 
 
-class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
+class IAgencyAgent(logging.ILogKeeper, journaling.IJournalKeeper):
     '''Agency part of an agent. Used as a medium by the agent
     L{IAgent} implementation.'''
 
@@ -35,17 +35,12 @@ class IAgencyAgent(logging.ILogger, journaling.IJournalKeeper):
         pass
 
 
-class IAgent(Interface):
+class IAgent(serialization.ISerializable):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''
 
     def initiate():
         '''Called after the agent is registered to an agency.'''
-
-    def snapshot():
-        '''Called to retrieve the current state of an agent.
-        It should return only structures of basic python types
-        or instances implementing L{ISerializable}.'''
 
 
 

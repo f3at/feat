@@ -7,7 +7,7 @@ class LogLevel(enum.Enum):
     error, warning, info, debug, log = range(1, 6)
 
 
-class ILogger(Interface):
+class ILogKeeper(Interface):
     '''Store logging entries'''
 
     def do_log(level, object, category, format, args,
@@ -25,7 +25,7 @@ class ILogger(Interface):
         '''
 
 
-class ILoggable(Interface):
+class ILogger(Interface):
     '''Can be used to generate contextual logging entries'''
 
     logname = Attribute("Logging name")
