@@ -53,11 +53,5 @@ class IListener(Interface):
         '''hook called when message arrives'''
 
 
-class IAgencyInitiator(Interface):
-    '''Medium class for agency side initiator protocol'''
-
-    pass
-
-
 class IAgencyInitiatorFactory(Interface):
     '''Factory constructing L{IAgencyInitiator} instance'''

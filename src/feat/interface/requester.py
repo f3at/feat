@@ -9,7 +9,7 @@ class IRequesterFactory(protocols.IInitiatorFactory):
     initiating a request.'''
 
 
-class IAgencyRequester(protocols.IAgencyInitiator, requests.IRequestPeer):
+class IAgencyRequester(requests.IRequestPeer):
     '''Agency part of a requester. Used by L{IAgentRequester} to perform
     the requester role of the request protocol.'''
 
