@@ -59,6 +59,7 @@ class FluLogKeeper(object):
         from feat.extern.log import log as flulog
         flulog.init('FEAT_DEBUG')
         flulog.setPackageScrubList('feat', 'twisted')
+        flulog.logTwisted()
 
     @classmethod
     def set_debug(self, string):
@@ -67,8 +68,20 @@ class FluLogKeeper(object):
 
     ### ILogger Methods ###
 
-    def do_log(self, level, object, category, format, args,
+    @classmethod
+    def do_log(cls, level, object, category, format, args,
                where=-1, file_path=None, line_num=None):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
                      where=where, filePath=file_path, line=line_num)
+
+class LogKeeperProxy(object):
+    implements(ILogKeeper)
+
+    def __init__(self, logkeeper):
+        self._logkeeper = ILogKeeper(logkeeper)
+
+    def do_log(self, level, object, category, format, args,
+               where=-1, file_path=None, line_num=None):
+        self._logkeeper.do_log(level, object, category, format, args,
+               where=where-1, file_path=file_path, line_num=line_num)

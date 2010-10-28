@@ -12,6 +12,11 @@ from feat.agents import descriptor
 
 import uuid
 
+import helper
+
+helper.init(__name__)
+
+
 class TestQueue(unittest.TestCase):
 
     def _appendConsumers(self, finished):

@@ -9,11 +9,10 @@ from zope.interface import classProvides
 from feat.interface.requester import IRequesterFactory
 from feat.common import log
 
-log.FluLogKeeper.init()
-log.FluLogKeeper.set_debug("*:5")
-
 import uuid
+import helper
 
+helper.init(__name__)
 
 class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)

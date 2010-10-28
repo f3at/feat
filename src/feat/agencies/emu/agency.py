@@ -110,7 +110,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
-        initiator = factory(self, medium, *args, **kwargs)
+        initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(initiator)
         initiator.initiate()
 
@@ -132,15 +132,22 @@ class AgencyRequesterFactory(object):
         return AgencyRequester(agent, recipients, *args, **kwargs)
         
 
-class AgencyRequester(object):
+class AgencyRequester(log.LogKeeperProxy, log.Logger):
     implements(IAgencyRequester)
 
+    log_category = 'agency_requester'
+
     def __init__(self, agent, recipients, *args, **kwargs):
+        log.Logger.__init__(self, agent)
+        log.LogKeeperProxy.__init__(self, agent)
+
         self.agent = agent
         self.recipients = recipients
-        self.session_id = uuid.uuid1()
+        self.session_id = str(uuid.uuid1())
+        self.log_name = self.session_id
 
     def request(self, request):
+        self.debug("Sending request")
         request.session_id = self.session_id
         self.reply_to_shard = self.agent.descriptor.shard
         self.reply_to_key = self.agent.descriptor.uuid
