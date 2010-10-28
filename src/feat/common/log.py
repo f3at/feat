@@ -15,7 +15,7 @@ class Logger(object):
     log_category = None
 
     def __init__(self, logger):
-        self._logger = ILogger(logger)
+        self._logger = ILogKeeper(logger)
 
     ### ILoggable Methods ###
 
