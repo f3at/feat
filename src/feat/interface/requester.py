@@ -31,10 +31,14 @@ class IAgencyRequester(requests.IRequestPeer, logging.ILogKeeper):
     def terminate():
         pass
 
-    def callLater(timeout, method, *args, **kwargs):
+    def initiate(requester):
         '''
-        Wrapper for reactor.callLater.
+        Called by AgencyAgent to pass the L{IAgentRequester} instance
+        and perform all the necesseary setup.
+        @param requester: requester instance
+        @type requester: L{IAgentRequester}
         '''
+
 
 class IAgentRequester(protocols.IInitiator):
     '''Agent part of the requester. It uses an instance implementing

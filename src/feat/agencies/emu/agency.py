@@ -194,11 +194,6 @@ class AgencyRequester(log.LogProxy, log.Logger):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
 
-    def callLater(self, timeout, method, *args, **kwargs):
-        return self.agent.callLater(timeout, method, *args, **kwargs)
-
-    def set_timeout(self, timeout):
-        self.agent.callLater(timeout, self._expire)
 
 components.registerAdapter(AgencyRequesterFactory,
                            IRequesterFactory, IAgencyInitiatorFactory)
