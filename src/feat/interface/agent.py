@@ -26,7 +26,11 @@ class IAgencyAgent(logging.ILogKeeper, journaling.IJournalKeeper):
         '''Revokes any interest in a contract or a request.'''
 
     def initiate_protocol(factory, *args, **kwargs):
-        '''Initiates a contract or a request.'''
+        '''
+        Initiates a contract or a request.
+        @rtype: L{IInitiator}
+        @return: Instance of protocols initiator
+        '''
 
     def retrieve_document(id):
         pass

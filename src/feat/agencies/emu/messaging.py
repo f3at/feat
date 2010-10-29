@@ -74,6 +74,7 @@ class Connection(log.Logger):
             reactor.callLater(0, bind)
 
         def stop(reason):
+            raise reason
             self.log('Error handler: exiting, reason %r' % reason)
 
         def bind():
@@ -144,7 +145,7 @@ class Queue(object):
     def consume(self):
         d = defer.Deferred()
         self._consumers.append(d)
-        reactor.callLater(0, self._sendMessages)
+        self._sendMessages()
 
         return d
 

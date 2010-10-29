@@ -4,7 +4,7 @@
 
 
 from feat.agencies.emu import agency
-from feat.agents import agent, descriptor, requester
+from feat.agents import agent, descriptor, requester, message
 from feat.interface import recipient
 from zope.interface import classProvides
 from feat.interface.requester import IRequesterFactory
@@ -12,7 +12,7 @@ from feat.common import log
 
 import uuid
 import common
-
+import twisted
 
 class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)
@@ -22,6 +22,7 @@ class DummyRequest(requester.BaseRequester):
     def __init__(self, agent, medium, argument):
         requester.BaseRequester.__init__(self, agent, medium, argument)
         self.payload = argument
+        self.got_response = False
 
     def initiate(self):
         msg = requester.BaseRequester.initiate(self)
@@ -29,7 +30,7 @@ class DummyRequest(requester.BaseRequester):
         self.medium.request(msg)
 
     def got_reply(self, message):
-        print message
+        self.got_response = True
         self.medium.terminate()
 
 
@@ -51,11 +52,12 @@ class TestAgencyAgent(common.TestCase):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual(0, len(self.agency._shards['lobby']))
 
-    def testSendsMessage(self):
+    def testRequester(self):
         recipients = recipient.Agent('some_agent', 'lobby')
         d = self.agency.callbackOnMessage('lobby', 'some_agent')
         payload = 5
-        self.agent.initiate_protocol(DummyRequest, recipients, payload)
+        self.requester =\
+                self.agent.initiate_protocol(DummyRequest, recipients, payload)
         
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
@@ -68,17 +70,36 @@ class TestAgencyAgent(common.TestCase):
 
             session_id = message.session_id
             self.assertEqual(session_id, str(session_id))
+            return session_id
 
         d.addCallback(assertsOnMessage)
 
-        def assertsOnAgency(_):
-            self.assertEqual(1, len(self.agent._listeners))
-            listener = self.agent._listeners.values()[0]
-#            self.assertEqual(
+        def assertsOnAgency(session_id):
+            self.log('%r', self.agent._listeners.keys())
+            self.assertTrue(session_id in self.agent._listeners.keys())
+            listener = self.agent._listeners[session_id]
+            self.assertEqual('RequestResponder', listener.__class__.__name__)
+            return session_id
         
         d.addCallback(assertsOnAgency)
 
+        def mimicReceivingResponse(session_id):
+            response = message.ResponseMessage()
+            response.session_id = session_id
+            key, shard = self.agent.descriptor.uuid, self.agent.descriptor.shard
+            self.agent._messaging.publish(key, shard, response)
+            return session_id
 
+        d.addCallback(mimicReceivingResponse)
+        d.addCallback(self._cb_after, \
+                      obj=self.agent, method='unregister_listener')
+        
+        def assertGotResponseAndTerminated(session_id):
+            self.log('received: %r', session_id)
+            self.assertFalse(session_id in self.agent._listeners.keys())
+            self.assertTrue(self.requester.got_response)
+
+        d.addCallback(assertGotResponseAndTerminated)
 
         return d
 

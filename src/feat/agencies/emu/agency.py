@@ -99,7 +99,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def on_message(self, message):
         if message.session_id in self._listeners:
-            listener = self._listeners[session_id]
+            listener = self._listeners[message.session_id]
             return listener.on_message(message)
 
         if message.protocol_id in self._listener_factoriers:
@@ -114,13 +114,22 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(initiator)
         initiator.initiate()
+        return initiator
 
     def register_listener(self, listener):
         listener = IListener(listener)
         session_id = listener.get_session_id()
+        self.debug('Registering listener session_id: %r', session_id)
         assert session_id not in self._listeners
-
         self._listeners[session_id] = listener
+
+    def unregister_listener(self, session_id):
+        if session_id in self._listeners:
+            self.debug('Unregistering listener session_id: %r', session_id)
+            del(self._listeners[session_id])
+        else:
+            self.error('Tried to unregister listener with session_id: %r,\
+                        but not found!', session_id)
 
 
 class AgencyRequesterFactory(object):
@@ -156,6 +165,9 @@ class AgencyRequester(log.LogProxy, log.Logger):
         self.agent._messaging.publish(self.recipients.key,\
                                       self.recipients.shard, request)
 
+    def terminate(self):
+        self.debug('Terminate called')
+        self.agent.unregister_listener(self.session_id)
 
 components.registerAdapter(AgencyRequesterFactory,
                            IRequesterFactory, IAgencyInitiatorFactory)
@@ -165,13 +177,14 @@ class IListener(Interface):
     '''Represents sth which can be registered in AgencyAgent to 
     listen for message'''
 
-    protocol_type = Attribute("Protocol type")
-    protocol_key = Attribute("Protocol key")
-    session_id = Attribute("Identifies the dialog")
-
     def on_message(message):
         '''hook called when message arrives'''
 
+    def get_session_id():
+        '''
+        @return: session_id to bound to
+        @rtype: string
+        '''
 
 class RequestResponder(object):
     implements(IListener)
@@ -180,10 +193,10 @@ class RequestResponder(object):
         self.requester = requester
 
     def on_message(self, message):
-        requester.got_reply(message)
+        self.requester.got_reply(message)
 
     def get_session_id(self):
-        self.requester.medium.session_id
+        return self.requester.medium.session_id
 
 
 components.registerAdapter(RequestResponder, IAgentRequester, IListener)
