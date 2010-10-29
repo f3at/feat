@@ -26,12 +26,11 @@ class DummyRequest(requester.BaseRequester):
         self.got_response = False
 
     def initiate(self):
-        msg = requester.BaseRequester.initiate(self)
+        msg = message.RequestMessage()
         msg.payload = self.payload
         self.medium.request(msg)
 
     def got_reply(self, message):
-        requester.BaseRequester.got_reply(self, message)
         self.got_response = True
         self.medium.terminate()
 

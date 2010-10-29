@@ -19,22 +19,14 @@ class BaseRequester(log.Logger):
         self.agent = agent
         self.medium = medium
         self.recipients = recipients
-        self.closed_call = None
 
     def initiate(self):
-        if self.timeout > 0:
-            self.closed_call = self.medium.callLater(self.timeout, self.closed)
-            
-        self.debug("Initiate called")
-        msg = message.RequestMessage()
-        msg.message_id = uuid.uuid1()
-        msg.protocol_id = self.protocol_id
-        return msg
+        pass
 
     def got_reply(self, reply):
-        if self.closed_call:
-            self.closed_call.cancel()
+        pass
 
     def closed(self):
-        self.medium.terminate()
+        pass
+        
         

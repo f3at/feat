@@ -123,8 +123,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(initiator)
-        initiator.initiate()
-        return initiator
+        return medium.initiate(initiator)
 
     def register_listener(self, listener):
         listener = IListener(listener)
@@ -165,12 +164,28 @@ class AgencyRequester(log.LogProxy, log.Logger):
         self.recipients = recipients
         self.session_id = str(uuid.uuid1())
         self.log_name = self.session_id
+        self.closed_call = None
 
+    def initiate(self, requester):
+        self.requester = requester
+        if requester.timeout > 0:
+            self.closed_call = self.agent.callLater(requester.timeout,
+                                                    self.expired)
+        requester.initiate()
+
+        return requester
+    
+    def expired(self):
+        self.requester.closed()
+        self.terminate()
+    
     def request(self, request):
         self.debug("Sending request")
         request.session_id = self.session_id
         request.reply_to_shard = self.agent.descriptor.shard
         request.reply_to_key = self.agent.descriptor.uuid
+        request.message_id = str(uuid.uuid1())
+        request.protocol_id = self.requester.protocol_id
 
         self.agent._messaging.publish(self.recipients.key,\
                                       self.recipients.shard, request)
@@ -209,6 +224,8 @@ class RequestResponder(object):
         self.requester = requester
 
     def on_message(self, message):
+        if self.requester.medium.closed_call:
+            self.requester.medium.closed_call.cancel()
         self.requester.got_reply(message)
 
     def get_session_id(self):
