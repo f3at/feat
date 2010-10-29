@@ -34,18 +34,3 @@ class BaseAgent(log.Logger):
         pass
 
 
-class RequestResponder(object):
-    implements(protocols.IListener)
-
-    def __init__(self, requester):
-        self.requester = requester
-
-    def on_message(self, message):
-        requester.got_reply(message)
-
-    def get_session_id(self):
-        self.requester.medium.session_id
-
-
-components.registerAdapter(RequestResponder, IAgentRequester, \
-                                           protocols.IListener)

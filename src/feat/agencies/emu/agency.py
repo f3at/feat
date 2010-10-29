@@ -7,13 +7,14 @@ from twisted.python import log, components
 from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.agency import IAgency
 from feat.interface.protocols import IInitiatorFactory,\
-                                     IAgencyInitiatorFactory,\
-                                     IListener
-from feat.interface.requester import IAgencyRequester, IRequesterFactory
-from zope.interface import implements, classProvides
+                                     IAgencyInitiatorFactory
+from feat.interface.requester import IAgencyRequester, IRequesterFactory,\
+                                     IAgentRequester
+from zope.interface import implements, classProvides, Interface, Attribute
 from feat.common import log
 
 import uuid
+
 
 class Agency(object):
     implements(IAgency)
@@ -158,3 +159,31 @@ class AgencyRequester(log.LogProxy, log.Logger):
 
 components.registerAdapter(AgencyRequesterFactory,
                            IRequesterFactory, IAgencyInitiatorFactory)
+
+
+class IListener(Interface):
+    '''Represents sth which can be registered in AgencyAgent to 
+    listen for message'''
+
+    protocol_type = Attribute("Protocol type")
+    protocol_key = Attribute("Protocol key")
+    session_id = Attribute("Identifies the dialog")
+
+    def on_message(message):
+        '''hook called when message arrives'''
+
+
+class RequestResponder(object):
+    implements(IListener)
+
+    def __init__(self, requester):
+        self.requester = requester
+
+    def on_message(self, message):
+        requester.got_reply(message)
+
+    def get_session_id(self):
+        self.requester.medium.session_id
+
+
+components.registerAdapter(RequestResponder, IAgentRequester, IListener)

@@ -42,16 +42,6 @@ class IInterested(Interface):
 
     pass
 
-class IListener(Interface):
-    '''Represents sth which can be registered in AgencyAgent to listen for message'''
-
-    protocol_type = Attribute("Protocol type")
-    protocol_key = Attribute("Protocol key")
-    session_id = Attribute("Identifies the dialog")
-
-    def on_message(message):
-        '''hook called when message arrives'''
-
 
 class IAgencyInitiatorFactory(Interface):
     '''Factory constructing L{IAgencyInitiator} instance'''

@@ -72,7 +72,9 @@ class TestAgencyAgent(common.TestCase):
         d.addCallback(assertsOnMessage)
 
         def assertsOnAgency(_):
-            pass
+            self.assertEqual(1, len(self.agent._listeners))
+            listener = self.agent._listeners.values()[0]
+#            self.assertEqual(
         
         d.addCallback(assertsOnAgency)
 
