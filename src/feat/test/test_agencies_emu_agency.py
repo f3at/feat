@@ -71,4 +71,4 @@ class TestAgencyAgent(unittest.TestCase):
 
         return d
 
-    testSendsMessage.skip = "To be done mańana"        
+#    testSendsMessage.skip = "To be done mańana"        
