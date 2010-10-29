@@ -14,7 +14,7 @@ class IRestorator(Interface):
 
     type_name = Attribute('')
 
-    def restore(snapshot):
+    def restore(snapshot, context={}):
         pass
 
 
@@ -23,12 +23,12 @@ class ISerializable(Interface):
     The type name will be used to know which L{IUnserializer}
     to use in order to restore a snapshot.
     When restored, __init__() will not be called on the instance,
-    instead __restore__() will be called with a snapshot.'''
+    instead recover() will be called with a snapshot.'''
 
     type_name = Attribute('')
 
-    def __restore__(snapshot, context):
-        '''FIXME: can't use double underscores ! ! !'''
+    def recover(snapshot, context={}):
+        pass
 
     def snapshot(context):
         '''Called to retrieve the current state of an object.

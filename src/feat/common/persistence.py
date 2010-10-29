@@ -1,5 +1,5 @@
 
-from zope.interface import implements
+from zope.interface import implements, classProvides
 
 from feat.interface import serialization
 
@@ -7,6 +7,36 @@ from feat.interface import serialization
 def register(restorator):
     global _global_registry
     return _global_registry.register(restorator)
+
+
+class MetaSerializable(type):
+
+    def __init__(cls, name, bases, dct):
+        if "type_name" not in dct:
+            type_name = dct["__module__"] + "." + name
+            setattr(cls, "type_name", type_name)
+        super(MetaSerializable, cls).__init__(name, bases, dct)
+
+
+class Serializable(object):
+    __metaclass__ = MetaSerializable
+
+    classProvides(serialization.IRestorator)
+    implements(serialization.ISerializable)
+
+    type_name = None
+
+    @classmethod
+    def restore(cls, snapshot, context={}):
+        obj = cls.__new__(cls)
+        obj.recover(snapshot, context)
+        return obj
+
+    def recover(self, snapshot, context={}):
+        self.__dict__.update(snapshot)
+
+    def snapshot(self, context={}):
+        return self.__dict__
 
 
 class Registry(object):
