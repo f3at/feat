@@ -1,6 +1,6 @@
 from zope.interface import Interface, Attribute
 
-import serialization
+from . import serialization
 
 
 class IRecordInput(serialization.ISerializable):

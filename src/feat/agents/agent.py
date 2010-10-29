@@ -1,17 +1,18 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import implements, classProvides
-from twisted.python import components
+import uuid
 
+from twisted.python import components
+from zope.interface import implements, classProvides
+
+from feat.common import log
 from feat.interface import agent, recipient, protocols
 from feat.interface.requester import IRequesterFactory, IAgentRequester
-from feat.agents import requester
-from feat.common import log
 
-import message
+from . import requester
+from . import message
 
-import uuid
 
 class BaseAgent(log.Logger):
     '''

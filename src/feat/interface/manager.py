@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, contracts
+from . import protocols, contracts
 
 
 class IManagerFactory(protocols.IInitiatorFactory):

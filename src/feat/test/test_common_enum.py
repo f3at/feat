@@ -1,8 +1,9 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.trial import unittest
 from feat.common import enum
+
+from . import common
 
 
 class A(enum.Enum):
@@ -15,7 +16,7 @@ class B(enum.Enum):
     d = 666
 
 
-class TestEnum(unittest.TestCase):
+class TestEnum(common.TestCase):
 
     def testConstructor(self):
         self.assertIdentical(A.a, A(A.a))

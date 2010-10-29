@@ -1,9 +1,12 @@
-from feat.agents import message
-from zope.interface import implements, classProvides
-from feat.interface import requester
-from feat.common import log
-
 import uuid
+
+from zope.interface import implements, classProvides
+
+from feat.common import log
+from feat.interface import requester
+
+from . import message
+
 
 class BaseRequester(log.Logger):
     classProvides(requester.IRequesterFactory)
@@ -28,5 +31,5 @@ class BaseRequester(log.Logger):
 
     def closed(self):
         pass
-        
-        
+
+

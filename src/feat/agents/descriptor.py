@@ -3,7 +3,7 @@
 
 import uuid
 
-import document
+from . import document
 
 
 class Descriptor(document.Document):

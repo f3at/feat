@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, requests
+from . import protocols, requests
 
 
 class IRequesterFactory(protocols.IInitiatorFactory):
@@ -40,7 +40,7 @@ class IAgentRequester(protocols.IInitiator):
     protocol_id = Attribute('Defines whan particular request it is')
     timeout = Attribute('Number of seconds after which contract expires.\
                          Default=0 means no timeout')
-    
+
     def initiate():
         pass
 

@@ -2,17 +2,15 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+from zope.interface import classProvides
 
 from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, requester, message
 from feat.interface import recipient
-from zope.interface import classProvides
 from feat.interface.requester import IRequesterFactory
-from feat.common import log
 
-import uuid
-import common
-import twisted
+from . import common
+
 
 class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)
@@ -59,7 +57,7 @@ class TestAgencyAgent(common.TestCase):
         payload = 5
         self.requester =\
                 self.agent.initiate_protocol(DummyRequest, recipients, payload)
-        
+
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
                              message.reply_to_shard)
@@ -81,7 +79,7 @@ class TestAgencyAgent(common.TestCase):
             listener = self.agent._listeners[session_id]
             self.assertEqual('RequestResponder', listener.__class__.__name__)
             return session_id
-        
+
         d.addCallback(assertsOnAgency)
 
         def mimicReceivingResponse(session_id):
@@ -94,7 +92,7 @@ class TestAgencyAgent(common.TestCase):
         d.addCallback(mimicReceivingResponse)
         d.addCallback(self.cb_after, \
                       obj=self.agent, method='unregister_listener')
-        
+
         def assertGotResponseAndTerminated(session_id):
             self.assertFalse(session_id in self.agent._listeners.keys())
             self.assertTrue(self.requester.got_response)
@@ -106,7 +104,7 @@ class TestAgencyAgent(common.TestCase):
 
     def testRequestTimeout(self):
         self.agency.time_scale = 0.01
-        
+
         recipients = recipient.Agent('some_agent', 'lobby')
         d = self.agency.callbackOnMessage('lobby', 'some_agent')
         payload = 5
@@ -122,5 +120,5 @@ class TestAgencyAgent(common.TestCase):
             self.assertFalse(self.requester.got_response)
 
         d.addCallback(assertTerminatedWithNoResponse)
-        
+
         return d

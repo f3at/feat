@@ -2,16 +2,13 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from twisted.internet import defer, reactor
-from twisted.python import log
+from zope.interface import implements
 
 from feat.agencies.emu import messaging
-from zope.interface import implements
-from feat.interface import agent
 from feat.agents import descriptor
+from feat.interface import agent
 
-import uuid
-
-import common
+from . import common
 
 class TestQueue(common.TestCase):
 

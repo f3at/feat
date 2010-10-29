@@ -1,7 +1,7 @@
-from feat.common import log
-from feat.interface import logging
-from twisted.trial import unittest
 from twisted.internet import defer, reactor
+from twisted.trial import unittest
+
+from feat.common import log
 
 log.FluLogKeeper.init('test.log')
 
@@ -25,9 +25,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         d.addCallback(self._cb_after, obj=something, method=some_method)
         d.addCallback(jobAfterCallOfSomeMethod)
 
-        This will fire last callback after something.some_method has been 
+        This will fire last callback after something.some_method has been
         called.
-        Parameter passed to the last callback is either return value of 
+        Parameter passed to the last callback is either return value of
         doSomeStuff, or, if this is None, the return value of stubbed method.
         '''
         old_method = obj.__getattribute__(method)
