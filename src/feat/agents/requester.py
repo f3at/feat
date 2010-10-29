@@ -1,11 +1,12 @@
 from feat.agents import message
-from zope.interface import implements
+from zope.interface import implements, classProvides
 from feat.interface import requester
 from feat.common import log
 
 import uuid
 
 class BaseRequester(log.Logger):
+    classProvides(requester.IRequesterFactory)
     implements(requester.IAgentRequester)
 
     log_category = "requester"

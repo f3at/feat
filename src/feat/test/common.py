@@ -16,7 +16,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         log.Logger.__init__(self, self)
 
 
-    def _cb_after(self, arg, obj, method):
+    def cb_after(self, arg, obj, method):
         '''
         Returns defered fired after the call of method on object.
         Can be used in defered chain like this:

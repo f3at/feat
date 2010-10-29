@@ -93,7 +93,7 @@ class TestAgencyAgent(common.TestCase):
             return session_id
 
         d.addCallback(mimicReceivingResponse)
-        d.addCallback(self._cb_after, \
+        d.addCallback(self.cb_after, \
                       obj=self.agent, method='unregister_listener')
         
         def assertGotResponseAndTerminated(session_id):
@@ -114,7 +114,7 @@ class TestAgencyAgent(common.TestCase):
         self.requester =\
                 self.agent.initiate_protocol(DummyRequest, recipients, payload)
 
-        d.addCallback(self._cb_after, obj=self.agent,
+        d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
 
         def assertTerminatedWithNoResponse(_):
