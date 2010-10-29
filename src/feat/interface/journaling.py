@@ -34,8 +34,8 @@ class IJournalPlayer(Interface):
 
 class IRecorderNamer(Interface):
 
-    def name_me(recorder):
-         pass
+    def gen_name(recorder):
+        pass
 
 
 class IRecorder(IRecorderNamer):

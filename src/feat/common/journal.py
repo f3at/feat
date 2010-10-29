@@ -4,8 +4,10 @@ from zope.interface import implements
 
 from feat.interface import journaling
 
+from . import persistence
 
-class RecordInput(object):
+
+class RecordInput(persistence.Serializable):
 
     implements(journaling.IRecordInput)
 
@@ -13,33 +15,13 @@ class RecordInput(object):
         self.args = args
         self.kwargs = kwargs
 
-    ### ISerializable Methods ###
 
-    type_name = "record-input"
-
-    def __restore__(self, snapshot, context):
-        self.args, self.kwargs = snapshot
-
-    def snapshot(self, context):
-        return self.args, self.kwargs
-
-
-class RecordOutput(object):
+class RecordOutput(persistence.Serializable):
 
     implements(journaling.IRecordOutput)
 
     def __init__(self, fields):
         self.fields = fields
-
-    ### ISerializable Methods ###
-
-    type_name = "record-output"
-
-    def __restore__(self, snapshot, context):
-        self.fields = snapshot
-
-    def snapshot(self, context):
-        return self.fields
 
 
 class RecordingResult(object):
@@ -56,11 +38,28 @@ class RecordingResult(object):
         pass
 
 
-class Recorder(object):
+class RecorderNamer(object):
+
+    implements(journaling.IRecorderNamer)
+
+    def __init__(self, parent):
+        self._parent = journaling.IRecorderNamer(parent)
+        self._ident = self._parent.gen_name(self)
+        self._count = 0
+
+    ### IRecorderNamer Methods ###
+
+    def gen_name(self, recorder):
+        self._count += 1
+        return self._ident + (self._count,)
+
+
+class Recorder(RecorderNamer):
 
     implements(journaling.IRecorder)
 
-    def __init__(self, journal_keeper):
+    def __init__(self, parent, journal_keeper):
+        RecorderNamer.__init__(self, parent)
         self._jkeeper = journaling.IJournalKeeper(journal_keeper)
         self.identify(str(uuid.uuid1()))
 
