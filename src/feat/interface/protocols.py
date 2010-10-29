@@ -45,3 +45,6 @@ class IInterested(Interface):
 
 class IAgencyInitiatorFactory(Interface):
     '''Factory constructing L{IAgencyInitiator} instance'''
+
+class IAgencyInterestedFactory(Interface):
+    '''Factory contructing L{IAgencyInterested} instance'''

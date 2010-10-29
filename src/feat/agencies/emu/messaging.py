@@ -5,6 +5,7 @@ from twisted.internet import defer, reactor
 from feat.common import log
 from feat.interface.agent import IAgencyAgent
 
+
 class Messaging(log.Logger, log.FluLogKeeper):
 
     log_category = "messaging"
@@ -185,6 +186,7 @@ class Exchange(object):
 
 
     def publish(self, message, key):
+        assert message is not None
         list_for_key = self._bindings.get(key, [])
         for queue in list_for_key:
             queue.enqueue(message)

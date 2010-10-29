@@ -1,5 +1,3 @@
-import uuid
-
 from zope.interface import implements, classProvides
 
 from feat.common import log

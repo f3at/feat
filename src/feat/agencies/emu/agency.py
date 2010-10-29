@@ -11,9 +11,13 @@ from feat.common import log
 from feat.interface.agency import IAgency
 from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.protocols import IInitiatorFactory,\
-                                     IAgencyInitiatorFactory
+                                     IAgencyInitiatorFactory,\
+                                     IInterest,\
+                                     IAgencyInterestedFactory
 from feat.interface.requester import IAgencyRequester, IRequesterFactory,\
                                      IAgentRequester
+from feat.interface.replier import IAgencyReplier
+from feat.interface import recipient
 
 from . import messaging
 from . import database
@@ -62,9 +66,9 @@ class Agency(object):
         self._shards[shard] = shard_list
 
     # FOR TESTS
-    def callbackOnMessage(self, shard, key):
+    def cb_on_msg(self, shard, key):
         m = self._messaging
-        queue = m.defineQueue(name=uuid.uuid1())
+        queue = m.defineQueue(name=str(uuid.uuid1()))
         exchange = m._getExchange(shard)
         exchange.bind(key, queue)
         return queue.consume()
@@ -89,8 +93,8 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         # instance_id -> IListener
         self._listeners = {}
-        # contract_type -> IListenerFactory
-        self._listener_factories = []
+        # protocol_type -> protocol_key -> IInterest
+        self._interests = {}
 
         self.joinShard()
         self.agent.initiate()
@@ -111,13 +115,27 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.descriptor.shard = None
 
     def on_message(self, message):
+        # handle registered dialog
         if message.session_id in self._listeners:
             listener = self._listeners[message.session_id]
             return listener.on_message(message)
 
-        if message.protocol_id in self._listener_factoriers:
-            factory = self._listener_factories[message.protocol_id]
-            self.create_listener_instance(factory, message.instance_id)
+        # handle new conversation comming in (interest)
+        if message.protocol_type in self._interests and\
+           message.protocol_id in self._interests[message.protocol_type]:
+            self.log('Looking for interest to instantiate')
+            factory = self._interests[message.protocol_type]\
+                                     [message.protocol_id]
+            medium_factory = IAgencyInterestedFactory(factory)
+            medium = medium_factory(self, message)
+            interested = factory(self.agent, medium)
+            medium.initiate(interested)
+            listener = self.register_listener(medium)
+
+            return listener.on_message(message)
+
+        self.error("Couldn't find appriopriate listener for message: %r",
+                   message)
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         factory = IInitiatorFactory(factory)
@@ -128,12 +146,30 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.register_listener(initiator)
         return medium.initiate(initiator)
 
+    def register_interest(self, factory):
+        factory = IInterest(factory)
+        p_type = factory.protocol_type
+        p_id = factory.protocol_id
+        if p_type not in self._interests:
+            self._interests[p_type] = dict()
+        if p_id in self._interests[p_type]:
+            self.error('Already interested in %s.%s protocol!', p_type, p_id)
+            return False
+        self._interests[p_type][p_id] = factory
+        return True
+        
     def register_listener(self, listener):
-        listener = IListener(listener)
+        self.debug("Here: %r", listener)
+        try:
+            listener = IListener(listener)
+        except Exception as e:
+            self.debug(e)
+        self.debug("After adapt: %r", listener)
         session_id = listener.get_session_id()
         self.debug('Registering listener session_id: %r', session_id)
         assert session_id not in self._listeners
         self._listeners[session_id] = listener
+        return listener
 
     def unregister_listener(self, session_id):
         if session_id in self._listeners:
@@ -152,6 +188,10 @@ class AgencyRequesterFactory(object):
 
     def __call__(self, agent, recipients, *args, **kwargs):
         return AgencyRequester(agent, recipients, *args, **kwargs)
+
+
+components.registerAdapter(AgencyRequesterFactory,
+                           IRequesterFactory, IAgencyInitiatorFactory)
 
 
 class AgencyRequester(log.LogProxy, log.Logger):
@@ -198,10 +238,6 @@ class AgencyRequester(log.LogProxy, log.Logger):
         self.agent.unregister_listener(self.session_id)
 
 
-components.registerAdapter(AgencyRequesterFactory,
-                           IRequesterFactory, IAgencyInitiatorFactory)
-
-
 class IListener(Interface):
     '''Represents sth which can be registered in AgencyAgent to
     listen for message'''
@@ -229,5 +265,73 @@ class RequestResponder(object):
     def get_session_id(self):
         return self.requester.medium.session_id
 
-
 components.registerAdapter(RequestResponder, IAgentRequester, IListener)
+
+
+class AgencyReplierFactory(object):
+    implements(IAgencyInterestedFactory)
+
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self, agent, message):
+        return AgencyReplier(agent, message)
+
+
+components.registerAdapter(AgencyReplierFactory,
+                           IInterest, IAgencyInterestedFactory)
+
+
+class AgencyReplier(log.LogProxy, log.Logger):
+    implements(IAgencyReplier, IListener)
+ 
+    log_category = 'agency-replier'
+
+    def __init__(self, agent, message):
+        log.Logger.__init__(self, agent)
+        log.LogProxy.__init__(self, agent)
+
+        self.agent = agent
+        self.recipients = recipient.Agent(message.reply_to_key,
+                                          message.reply_to_shard)
+        self.session_id = message.session_id
+        self.protocol_id = message.protocol_id
+
+        self.log_name = self.session_id
+        self.message_count = 0
+
+    def initiate(self, replier):
+        self.replier = replier
+        return replier
+    
+    def reply(self, reply):
+        self.debug("Sending reply")
+        reply.session_id = self.session_id
+        reply.reply_to_shard = self.agent.descriptor.shard
+        reply.reply_to_key = self.agent.descriptor.uuid
+        reply.message_id = str(uuid.uuid1())
+        reply.protocol_id = self.protocol_id
+
+        self.agent._messaging.publish(self.recipients.key,\
+                                      self.recipients.shard, reply)
+
+    def terminate(self):
+        self.debug('Terminate called')
+        self.agent.unregister_listener(self.session_id)
+
+    # IListener stuff
+
+    def on_message(self, message):
+        self.message_count += 1
+        if self.message_count == 1:
+            self.replier.requested(message)
+        else:
+            self.error("Got unexpected message: %r", message)
+
+    def get_session_id(self):
+        return self.session_id
+
+
+ 
+
+        

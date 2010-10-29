@@ -17,7 +17,7 @@ class IAgencyAgent(Interface):
     agency = Attribute("L{IAgency}")
     descriptor = Attribute("Agent descriptor")
 
-    def register_interest(factory, *args, **kwargs):
+    def register_interest(factory):
         '''Registers an interest in a contract or a request.'''
 
     def revoke_interest(factory):
