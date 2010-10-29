@@ -1,20 +1,23 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import messaging
-import database
+import uuid
+
 from twisted.python import components
 from twisted.internet import reactor
-from feat.interface.agent import IAgencyAgent, IAgentFactory
+from zope.interface import implements, Interface
+
+from feat.common import log
 from feat.interface.agency import IAgency
+from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.protocols import IInitiatorFactory,\
                                      IAgencyInitiatorFactory
 from feat.interface.requester import IAgencyRequester, IRequesterFactory,\
                                      IAgentRequester
-from zope.interface import implements, classProvides, Interface, Attribute
-from feat.common import log
 
-import uuid
+from . import messaging
+from . import database
+
 
 
 class Agency(object):
@@ -174,11 +177,11 @@ class AgencyRequester(log.LogProxy, log.Logger):
         requester.initiate()
 
         return requester
-    
+
     def expired(self):
         self.requester.closed()
         self.terminate()
-    
+
     def request(self, request):
         self.debug("Sending request")
         request.session_id = self.session_id
@@ -200,7 +203,7 @@ components.registerAdapter(AgencyRequesterFactory,
 
 
 class IListener(Interface):
-    '''Represents sth which can be registered in AgencyAgent to 
+    '''Represents sth which can be registered in AgencyAgent to
     listen for message'''
 
     def on_message(message):
