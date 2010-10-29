@@ -1,7 +1,5 @@
 from zope.interface import Interface, Attribute
 
-import logging, serialization, journaling
-
 
 class IAgentFactory(Interface):
     '''Create an agent implementing L{IAgent}. Used by the agency when
@@ -11,7 +9,7 @@ class IAgentFactory(Interface):
         pass
 
 
-class IAgencyAgent(logging.ILogKeeper, journaling.IJournalKeeper):
+class IAgencyAgent(Interface):
     '''Agency part of an agent. Used as a medium by the agent
     L{IAgent} implementation.'''
 
@@ -43,7 +41,7 @@ class IAgencyAgent(logging.ILogKeeper, journaling.IJournalKeeper):
         Wrapper for reactor.callLater.
         '''
 
-class IAgent(serialization.ISerializable):
+class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''
 

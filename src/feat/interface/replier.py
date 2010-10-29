@@ -1,6 +1,4 @@
-from zope.interface import Interface
-
-import protocols, requests, logging
+import protocols, requests
 
 
 class IReplierFactory(protocols.IInterest):
@@ -9,7 +7,7 @@ class IReplierFactory(protocols.IInterest):
     It is passed as a parameter during registration of interest'''
 
 
-class IAgencyReplier(requests.IRequestPeer, logging.ILogKeeper):
+class IAgencyReplier(requests.IRequestPeer):
     '''Agency part of a request replier. Used by L{IAgentReplier} in order
     to perform the replier role in the request protocol.'''
 

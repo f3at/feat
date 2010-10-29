@@ -32,10 +32,13 @@ class IJournalPlayer(Interface):
         pass
 
 
-class IRecorder(Interface):
+class IRecorderNamer(Interface):
 
-    def identify(instance_id):
-        pass
+    def name_me(recorder):
+         pass
+
+
+class IRecorder(IRecorderNamer):
 
     def record(entry_id, input, output):
         pass

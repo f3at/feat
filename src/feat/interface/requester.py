@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-import protocols, requests, logging
+import protocols, requests
 
 
 class IRequesterFactory(protocols.IInitiatorFactory):
@@ -9,7 +9,7 @@ class IRequesterFactory(protocols.IInitiatorFactory):
     initiating a request.'''
 
 
-class IAgencyRequester(requests.IRequestPeer, logging.ILogKeeper):
+class IAgencyRequester(requests.IRequestPeer):
 
     '''Agency part of a requester. Used by L{IAgentRequester} to perform
     the requester role of the request protocol.'''
@@ -17,16 +17,8 @@ class IAgencyRequester(requests.IRequestPeer, logging.ILogKeeper):
     replies = Attribute('list of replies received')
     session_id = Attribute('Indentifier of dialog passed in messages')
 
-    def __init__(agent, recipients):
-        '''@type agent: L{feat.interface.agency.IAgencyAgent} '''
-
     def request(request):
-        '''
-        Post a request message to specified recipients.
-        @param recipients: recipients of the request
-        @type  recipients: L{feat.interface.recipient.IRecipient} or list
-                of L{feat.interface.recipient.IRecipient}
-        '''
+        '''Post a request message.'''
 
     def terminate():
         pass
