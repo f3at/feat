@@ -4,7 +4,6 @@
 
 
 from feat.agencies.emu import agency
-from twisted.trial import unittest
 from feat.agents import agent, descriptor, requester
 from feat.interface import recipient
 from zope.interface import classProvides
@@ -32,7 +31,7 @@ class DummyRequest(requester.BaseRequester):
         self.medium.terminate()
 
 
-class TestAgencyAgent(unittest.TestCase):
+class TestAgencyAgent(common.TestCase):
 
     timeout = 3
 
@@ -71,4 +70,4 @@ class TestAgencyAgent(unittest.TestCase):
 
         return d
 
-#    testSendsMessage.skip = "To be done mańana"        
+

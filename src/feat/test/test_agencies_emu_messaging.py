@@ -1,7 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from twisted.python import log
 
@@ -14,8 +13,7 @@ import uuid
 
 import common
 
-
-class TestQueue(unittest.TestCase):
+class TestQueue(common.TestCase):
 
     def _appendConsumers(self, finished):
         defers = map(lambda _: self.queue.consume(
@@ -27,7 +25,7 @@ class TestQueue(unittest.TestCase):
             self.queue.enqueue("Msg %d" % x)
 
     def _assert5Msgs(self, _):
-        log.msg('Received: %r' % self.received)
+        self.log('Received: %r' % self.received)
         for x in range(5):
             self.assertTrue(len(self.received) > 0)
             self.assertEqual("Msg %d" % x, self.received.pop(0))
@@ -73,7 +71,7 @@ class TestQueue(unittest.TestCase):
         return d
 
 
-class TestExchange(unittest.TestCase):
+class TestExchange(common.TestCase):
 
     def setUp(self):
         self.exchange = messaging.Exchange(name='test')
@@ -149,7 +147,7 @@ class StubAgent(object):
     def get_id(self):
         return self.descriptor.uuid
 
-class TestMessaging(unittest.TestCase):
+class TestMessaging(common.TestCase):
 
     def setUp(self):
         self.messaging = messaging.Messaging()
