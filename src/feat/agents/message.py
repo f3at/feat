@@ -8,6 +8,7 @@ class BaseMessage(object):
     reply_to_key = None
     message_id = None
     protocol_id = None
+    protocol_type = None
     payload = {}
 
     def __init__(self, **kwargs):
@@ -19,15 +20,18 @@ class BaseMessage(object):
 
 
 class ContractMessage(BaseMessage):
-    pass
+    
+    protocol_type = 'Contract'
 
 
 class RequestMessage(BaseMessage):
-    pass
+    
+    protocol_type = 'Request'
 
 
 class ResponseMessage(BaseMessage):
-    pass
+    
+    protocol_type = 'Request'
 
 
 # messages send by menager to contractor

@@ -36,6 +36,8 @@ class IAgentRequester(protocols.IInitiator):
     L{IAgencyRequester} given at creation time as a medium to perform
     the requester role of the request protocol.'''
 
+    protocol_id = Attribute('Defines whan particular request it is')
+
     def initiate():
         pass
 

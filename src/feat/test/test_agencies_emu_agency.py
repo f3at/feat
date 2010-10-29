@@ -17,6 +17,8 @@ import common
 class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)
 
+    protocol_id = 'dummy-request'
+
     def __init__(self, agent, medium, argument):
         requester.BaseRequester.__init__(self, agent, medium, argument)
         self.payload = argument
@@ -55,18 +57,26 @@ class TestAgencyAgent(common.TestCase):
         payload = 5
         self.agent.initiate_protocol(DummyRequest, recipients, payload)
         
-        def asserts(message):
+        def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
                              message.reply_to_shard)
-            self.assertEqual(self.agent.descriptor.key, \
+            self.assertEqual(self.agent.descriptor.uuid, \
                              message.reply_to_key)
             self.assertEqual('Request', message.protocol_type)
-            self.assertEqual('DummyRequest', message.protocol_id)
-            self.assertEqual(payload. message.payload)
+            self.assertEqual('dummy-request', message.protocol_id)
+            self.assertEqual(payload, message.payload)
 
             session_id = message.session_id
+            self.assertEqual(session_id, str(session_id))
 
-        d.addCallback(asserts)
+        d.addCallback(assertsOnMessage)
+
+        def assertsOnAgency(_):
+            pass
+        
+        d.addCallback(assertsOnAgency)
+
+
 
         return d
 

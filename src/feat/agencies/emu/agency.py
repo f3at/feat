@@ -149,8 +149,8 @@ class AgencyRequester(log.LogProxy, log.Logger):
     def request(self, request):
         self.debug("Sending request")
         request.session_id = self.session_id
-        self.reply_to_shard = self.agent.descriptor.shard
-        self.reply_to_key = self.agent.descriptor.uuid
+        request.reply_to_shard = self.agent.descriptor.shard
+        request.reply_to_key = self.agent.descriptor.uuid
 
         self.agent._messaging.publish(self.recipients.key,\
                                       self.recipients.shard, request)
