@@ -18,6 +18,7 @@ class DummyRequest(requester.BaseRequester):
     classProvides(IRequesterFactory)
 
     protocol_id = 'dummy-request'
+    timeout = 2
 
     def __init__(self, agent, medium, argument):
         requester.BaseRequester.__init__(self, agent, medium, argument)
@@ -30,6 +31,7 @@ class DummyRequest(requester.BaseRequester):
         self.medium.request(msg)
 
     def got_reply(self, message):
+        requester.BaseRequester.got_reply(self, message)
         self.got_response = True
         self.medium.terminate()
 
@@ -95,7 +97,6 @@ class TestAgencyAgent(common.TestCase):
                       obj=self.agent, method='unregister_listener')
         
         def assertGotResponseAndTerminated(session_id):
-            self.log('received: %r', session_id)
             self.assertFalse(session_id in self.agent._listeners.keys())
             self.assertTrue(self.requester.got_response)
 
@@ -104,3 +105,23 @@ class TestAgencyAgent(common.TestCase):
         return d
 
 
+    def testRequestTimeout(self):
+        self.agency.time_scale = 0.01
+        
+        recipients = recipient.Agent('some_agent', 'lobby')
+        d = self.agency.callbackOnMessage('lobby', 'some_agent')
+        payload = 5
+        self.requester =\
+                self.agent.initiate_protocol(DummyRequest, recipients, payload)
+
+        d.addCallback(self._cb_after, obj=self.agent,
+                      method='unregister_listener')
+
+        def assertTerminatedWithNoResponse(_):
+            session_id = self.requester.medium.session_id
+            self.assertFalse(session_id in self.agent._listeners.keys())
+            self.assertFalse(self.requester.got_response)
+
+        d.addCallback(assertTerminatedWithNoResponse)
+        
+        return d

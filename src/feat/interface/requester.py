@@ -21,7 +21,8 @@ class IAgencyRequester(requests.IRequestPeer, logging.ILogKeeper):
         '''@type agent: L{feat.interface.agency.IAgencyAgent} '''
 
     def request(request):
-        '''Post a request message to specified recipients.
+        '''
+        Post a request message to specified recipients.
         @param recipients: recipients of the request
         @type  recipients: L{feat.interface.recipient.IRecipient} or list
                 of L{feat.interface.recipient.IRecipient}
@@ -30,6 +31,10 @@ class IAgencyRequester(requests.IRequestPeer, logging.ILogKeeper):
     def terminate():
         pass
 
+    def callLater(timeout, method, *args, **kwargs):
+        '''
+        Wrapper for reactor.callLater.
+        '''
 
 class IAgentRequester(protocols.IInitiator):
     '''Agent part of the requester. It uses an instance implementing
@@ -37,7 +42,9 @@ class IAgentRequester(protocols.IInitiator):
     the requester role of the request protocol.'''
 
     protocol_id = Attribute('Defines whan particular request it is')
-
+    timeout = Attribute('Number of seconds after which contract expires.\
+                         Default=0 means no timeout')
+    
     def initiate():
         pass
 

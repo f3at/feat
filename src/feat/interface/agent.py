@@ -38,6 +38,10 @@ class IAgencyAgent(logging.ILogKeeper, journaling.IJournalKeeper):
     def update_document(doc):
         pass
 
+    def callLater(timeout, method, *args, **kwargs):
+        '''
+        Wrapper for reactor.callLater.
+        '''
 
 class IAgent(serialization.ISerializable):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization

@@ -8,3 +8,8 @@ class IAgency(Interface):
 
     def start_agent(factory, descriptor, *args, **kwargs):
         '''Start new agent from factory. Returns the L{IAgencyAngent}'''
+
+    def callLater(timeout, method, *args, **kwargs):
+        '''
+        Wrapper for reactor.callLater.
+        '''

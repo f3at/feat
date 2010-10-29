@@ -3,7 +3,8 @@
 
 import messaging
 import database
-from twisted.python import log, components
+from twisted.python import components
+from twisted.internet import reactor
 from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.agency import IAgency
 from feat.interface.protocols import IInitiatorFactory,\
@@ -18,6 +19,8 @@ import uuid
 
 class Agency(object):
     implements(IAgency)
+
+    time_scale = 1
 
     def __init__(self):
         self._agents = []
@@ -36,6 +39,10 @@ class Agency(object):
     def unregisterAgent(self, agent):
         self._agents.remove(agent)
         agent._messaging.disconnect()
+
+    def callLater(self, timeout, method, *args, **kwargs):
+        return reactor.callLater(self.time_scale * timeout,\
+                                     method, *args, **kwargs)
 
     def joinedShard(self, agent, shard):
         shard_list = self._shards.get(shard, [])
@@ -84,6 +91,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         self.joinShard()
         self.agent.initiate()
+
+    def callLater(self, timeout, method, *args, **kwargs):
+        return self.agency.callLater(timeout, method, *args, **kwargs)
 
     def joinShard(self):
         self.log("Join shard called")
@@ -168,6 +178,12 @@ class AgencyRequester(log.LogProxy, log.Logger):
     def terminate(self):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
+
+    def callLater(self, timeout, method, *args, **kwargs):
+        return self.agent.callLater(timeout, method, *args, **kwargs)
+
+    def set_timeout(self, timeout):
+        self.agent.callLater(timeout, self._expire)
 
 components.registerAdapter(AgencyRequesterFactory,
                            IRequesterFactory, IAgencyInitiatorFactory)
