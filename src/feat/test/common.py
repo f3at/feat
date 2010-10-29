@@ -1,14 +1,8 @@
 from feat.common import log
 from feat.interface import logging
 from twisted.trial import unittest
-import sys
 
-try:
-    a = already_done
-except NameError:
-    sys.stderr = file('test.log', 'a')
-    log.FluLogKeeper.init()
-    already_done = True
+log.FluLogKeeper.init('test.log')
 
 
 class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
