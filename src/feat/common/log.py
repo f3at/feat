@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import sys
 
 from zope.interface import implements
 
@@ -47,19 +48,25 @@ class FluLogKeeper(object):
 
     Example::
 
-        > FluLogger.init()
-        > FluLogger.set_debug("*:5")
+        > FluLogKeeper.init()
+        > FluLogKeeper.set_debug("*:5")
     '''
 
     implements(ILogKeeper)
 
+    _initialized = False
+
     @classmethod
-    def init(cls):
+    def init(cls, path=None):
         global flulog
-        from feat.extern.log import log as flulog
-        flulog.init('FEAT_DEBUG')
-        flulog.setPackageScrubList('feat', 'twisted')
-        flulog.logTwisted()
+        if not cls._initialized:
+            from feat.extern.log import log as flulog
+            if path:
+                sys.stderr = file(path, 'a')
+            flulog.init('FEAT_DEBUG')
+            flulog.setPackageScrubList('feat', 'twisted')
+            flulog.logTwisted()
+            cls._initialized = True
 
     @classmethod
     def set_debug(self, string):
