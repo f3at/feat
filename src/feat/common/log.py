@@ -41,6 +41,20 @@ class Logger(object):
                             self.log_category, format, args)
 
 
+class LogProxy(object):
+    '''Proxies log entries to another log keeper.'''
+
+    implements(ILogKeeper)
+
+    def __init__(self, logkeeper):
+        self._logkeeper = ILogKeeper(logkeeper)
+
+    def do_log(self, level, object, category, format, args,
+               depth=1, file_path=None, line_num=None):
+        self._logkeeper.do_log(level, object, category, format, args,
+               depth=depth+1, file_path=file_path, line_num=line_num)
+
+
 class FluLogKeeper(object):
     '''Log keeper using flumotion logging library.
     The class method init() should be called before logger instance are used.
@@ -80,16 +94,3 @@ class FluLogKeeper(object):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
                      where=-depth, filePath=file_path, line=line_num)
-
-class LogProxy(object):
-    '''Proxies log entries to another log keeper.'''
-
-    implements(ILogKeeper)
-
-    def __init__(self, logkeeper):
-        self._logkeeper = ILogKeeper(logkeeper)
-
-    def do_log(self, level, object, category, format, args,
-               depth=1, file_path=None, line_num=None):
-        self._logkeeper.do_log(level, object, category, format, args,
-               depth=depth+1, file_path=file_path, line_num=line_num)
