@@ -1,8 +1,7 @@
-import uuid
-
 from zope.interface import implements
 
 from feat.interface import journaling
+from feat.interface.journaling import JournalMode
 
 from . import persistence
 
@@ -38,54 +37,62 @@ class RecordingResult(object):
         pass
 
 
-class RecorderNamer(object):
+class RecorderRoot(object):
 
-    implements(journaling.IRecorderNamer)
+    implements(journaling.IRecorderNode)
+
+    journal_parent = None
+
+    def __init__(self, keeper, mode=JournalMode.normal, base_id=None):
+        self.journal_keeper = journaling.IJournalKeeper(keeper)
+        self.journal_mode = mode
+        self._base_id = base_id and (base_id,) or ()
+        self._recorder_count = 0
+
+    ### IRecorderNode Methods ###
+
+    def generate_identifier(self, recorder):
+        self._recorder_count += 1
+        return self._base_id + (self._recorder_count,)
+
+
+class RecorderNode(object):
+
+    implements(journaling.IRecorderNode)
 
     def __init__(self, parent):
-        self._parent = journaling.IRecorderNamer(parent)
-        self._ident = self._parent.gen_name(self)
-        self._count = 0
+        node = journaling.IRecorderNode(parent)
+        identifier = node.generate_identifier(self)
+        self.journal_parent = node
+        self.journal_id = identifier
+        self.journal_keeper = node.journal_keeper
+        self.journal_mode = node.journal_mode
+        self._recorder_count = 0
 
-    ### IRecorderNamer Methods ###
+    ### IRecorderNode Methods ###
 
-    def gen_name(self, recorder):
-        self._count += 1
-        return self._ident + (self._count,)
+    def generate_identifier(self, recorder):
+        self._recorder_count += 1
+        return self.journal_id + (self._recorder_count,)
 
 
-class Recorder(RecorderNamer):
+class Recorder(RecorderNode):
 
     implements(journaling.IRecorder)
 
-    def __init__(self, parent, journal_keeper):
-        RecorderNamer.__init__(self, parent)
-        self._jkeeper = journaling.IJournalKeeper(journal_keeper)
-        self.identify(str(uuid.uuid1()))
+    def __init__(self, parent):
+        RecorderNode.__init__(self, parent)
 
     ### IRecorder Methods ###
 
-    def identify(self, instance_id):
-        self._instance_id = instance_id
-
     def record(self, entry_id, input, output):
-        self._jkeeper.do_record(self._instance_id, entry_id, input, output)
+        self.journal_keeper.do_record(self.journal_id, entry_id, input, output)
 
     def replay(self, entry_id, args, kwargs):
         pass
 
 
 class FileJournalKeeper(object):
-
-    implements(journaling.IJournalKeeper)
-
-    ### IJournalKeeper Methods ###
-
-    def do_record(self, instance_id, entry_id, args, kwargs, results):
-        pass
-
-
-class JournalProxy(object):
 
     implements(journaling.IJournalKeeper)
 
@@ -103,6 +110,3 @@ class JournalPlayer(object):
 
     def register(self, recorder):
         pass
-
-
-

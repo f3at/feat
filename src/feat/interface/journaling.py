@@ -1,6 +1,12 @@
 from zope.interface import Interface, Attribute
 
+from feat.common import enum
+
 from . import serialization
+
+
+class JournalMode(enum.Enum):
+    normal, replay = range(1, 3)
 
 
 class IRecordInput(serialization.ISerializable):
@@ -32,13 +38,20 @@ class IJournalPlayer(Interface):
         pass
 
 
-class IRecorderNamer(Interface):
+class IRecorderNode(Interface):
 
-    def gen_name(recorder):
+    journal_parent = Attribute('Parent recorder node, L{IRecorderNode} or '
+                               'None for the root node')
+    journal_keeper = Attribute('Journal keeper to use, L{IJournalKeeper}')
+    journal_mode = Attribute('Journaling mode, L{JournalMode}')
+
+    def generate_identifier(recorder):
         pass
 
 
-class IRecorder(IRecorderNamer):
+class IRecorder(IRecorderNode):
+
+    journal_id = Attribute('Journal recorder identifier, tuple of int')
 
     def record(entry_id, input, output):
         pass
