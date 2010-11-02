@@ -1,6 +1,8 @@
+from twisted.python import components
 from zope.interface import Interface, Attribute, implements
 
 from feat.common import enum
+from feat.interface.agent import IAgencyAgent
 
 
 class RecipientType(enum.Enum):
@@ -32,3 +34,14 @@ class Broadcast(object):
         self.type = RecipientType.broadcast
         self.shard = shard
         self.key = protocol_id
+
+class RecipientFromAgent(object):
+
+    implements(IRecipient)
+    
+    def __init__(self, agent):
+        self.agent = agent
+        self.shard = self.agent.descriptor.shard
+        self.key = self.agent.descriptor.uuid
+
+components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipient)

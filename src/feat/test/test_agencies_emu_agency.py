@@ -46,6 +46,7 @@ class DummyReplier(replier.BaseReplier):
     protocol_id = 'dummy-request'
     
     def requested(self, request):
+        self.agent.got_payload = request.payload
         self.medium.reply(message.ResponseMessage())
         self.medium.terminate()
 
@@ -126,7 +127,7 @@ class TestAgencyAgent(common.TestCase):
         d = self.agency.cb_on_msg('lobby', 'some_agent')
         payload = 5
         self.requester =\
-                self.agent.initiate_protocol(DummyRequester, recipients, payload)
+            self.agent.initiate_protocol(DummyRequester, recipients, payload)
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -161,6 +162,30 @@ class TestAgencyAgent(common.TestCase):
             self.assertEqual(req.session_id, msg.session_id)
             
         d.addCallback(assert_on_msg)
+
+        return d
+
+    def testTwoAgentsTalking(self):
+        receiver = self.agent
+        sender = self.agency.start_agent(agent.BaseAgent,
+                                         descriptor.Descriptor())
+        receiver.register_interest(DummyReplier)
+        requester = sender.initiate_protocol(DummyRequester, receiver, 1)
+
+        d = self.cb_after(arg=requester,
+                          obj=requester.medium, method='terminate')
+
+        def asserts_on_requester(requester):
+            self.assertTrue(requester.got_response)
+            self.assertEqual(0, len(sender._listeners))
+
+        d.addCallback(asserts_on_requester)
+        
+        def asserts_on_receiver(_, receiver):
+            self.assertEqual(0, len(receiver._listeners))
+            self.assertEqual(1, receiver.agent.got_payload)
+
+        d.addCallback(asserts_on_receiver, receiver)
 
         return d
 

@@ -139,6 +139,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         factory = IInitiatorFactory(factory)
+        recipients = recipient.IRecipient(recipients)
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
@@ -159,12 +160,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return True
         
     def register_listener(self, listener):
-        self.debug("Here: %r", listener)
-        try:
-            listener = IListener(listener)
-        except Exception as e:
-            self.debug(e)
-        self.debug("After adapt: %r", listener)
+        listener = IListener(listener)
         session_id = listener.get_session_id()
         self.debug('Registering listener session_id: %r', session_id)
         assert session_id not in self._listeners
