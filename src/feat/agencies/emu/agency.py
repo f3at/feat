@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import time
 import uuid
 
 from twisted.python import components
@@ -64,6 +65,9 @@ class Agency(object):
             log.err('Was supposed to leave shard %r, but it was not there!' %\
                         shard)
         self._shards[shard] = shard_list
+
+    def get_time(self):
+        return time.time()
 
     # FOR TESTS
     def cb_on_msg(self, shard, key):
@@ -188,6 +192,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self.error('Tried to unregister listener with session_id: %r,\
                         but not found!', session_id)
 
+    def get_time(self):
+        return self.agency.get_time()
+
 
 class AgencyRequesterFactory(object):
     implements(IAgencyInitiatorFactory)
@@ -251,6 +258,9 @@ class AgencyRequester(log.LogProxy, log.Logger):
         request.reply_to_key = self.agent.descriptor.uuid
         request.message_id = str(uuid.uuid1())
         request.protocol_id = self.requester.protocol_id
+        if self.requester.timeout > 0:
+            request.expiration_time =\
+                self.agent.get_time() + self.requester.timeout
 
         self.agent._messaging.publish(self.recipients.key,\
                                       self.recipients.shard, request)

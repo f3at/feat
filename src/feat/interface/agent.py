@@ -41,6 +41,13 @@ class IAgencyAgent(Interface):
         Wrapper for reactor.callLater.
         '''
 
+    def get_time():
+        '''
+        Use this to get current time. Should fetch the time from NTP server
+        @returns: Number of seconds since epoch
+        '''
+
+
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''

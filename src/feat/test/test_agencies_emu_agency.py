@@ -84,6 +84,7 @@ class TestAgencyAgent(common.TestCase):
             self.assertEqual('Request', message.protocol_type)
             self.assertEqual('dummy-request', message.protocol_id)
             self.assertEqual(payload, message.payload)
+            self.assertTrue(message.expiration_time is not None)
 
             session_id = message.session_id
             self.assertEqual(session_id, str(session_id))

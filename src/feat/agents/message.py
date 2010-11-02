@@ -9,6 +9,7 @@ class BaseMessage(object):
     message_id = None
     protocol_id = None
     protocol_type = None
+    expiration_time = None
     payload = {}
 
     def __init__(self, **kwargs):
