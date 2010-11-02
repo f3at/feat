@@ -159,6 +159,7 @@ class TestAgencyAgent(common.TestCase):
 
         shard = self.agent.descriptor.shard
         key = self.agent.descriptor.uuid
+        # define false sender, he will get the response later
         recp = recipient.Agent(str(uuid.uuid1()), shard)
         d = self.agency.cb_on_msg(shard, recp.key)
         req = self._build_req_msg(recp)
@@ -170,6 +171,21 @@ class TestAgencyAgent(common.TestCase):
             
         d.addCallback(assert_on_msg)
 
+        return d
+
+    def testGetingRequestWithoutInterest(self):
+        '''Current implementation just ignores such events. Update this test
+        in case we decide to do sth else'''
+        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+        self.log(self.agent)
+
+        shard = self.agent.descriptor.shard
+        key = self.agent.descriptor.uuid
+        recp = recipient.Agent(str(uuid.uuid1()), shard)
+        req = self._build_req_msg(recp)
+        self.agency._messaging.publish(key, recp.shard, req)
+
+        # wait for the message to be processed
         return d
 
     def testTwoAgentsTalking(self):

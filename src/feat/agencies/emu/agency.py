@@ -115,6 +115,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.descriptor.shard = None
 
     def on_message(self, message):
+        self.log('Received message: %r', message)
         # handle registered dialog
         if message.session_id in self._listeners:
             listener = self._listeners[message.session_id]
@@ -134,8 +135,8 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
             return listener.on_message(message)
 
-        self.error("Couldn't find appriopriate listener for message: %r",
-                   message)
+        self.error("Couldn't find appriopriate listener for message: %s.%s",
+                   message.protocol_type, message.protocol_id)
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         factory = IInitiatorFactory(factory)

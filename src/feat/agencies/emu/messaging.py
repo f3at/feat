@@ -85,8 +85,15 @@ class Connection(log.Logger):
         bind()
 
     def _consumeQueue(self, queue):
+
+        def get_and_call_on_message(message):
+            # it is important to always lookup the current message handler
+            # maybe someone bound callback to it ?
+            on_message = self._agent.on_message
+            return on_message(message)
+
         self._consumeDeferred = queue.consume()
-        self._consumeDeferred.addCallback(self._agent.on_message)
+        self._consumeDeferred.addCallback(get_and_call_on_message)
         return self._consumeDeferred
 
     def disconnect(self):
