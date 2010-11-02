@@ -120,10 +120,18 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def on_message(self, message):
         self.log('Received message: %r', message)
+
+        # check if it isn't expired message
+        ctime = self.get_time()
+        if message.expiration_time < ctime:
+            self.log('Throwing away expired message.')
+            return False
+
         # handle registered dialog
         if message.session_id in self._listeners:
             listener = self._listeners[message.session_id]
-            return listener.on_message(message)
+            listener.on_message(message)
+            return True
 
         # handle new conversation comming in (interest)
         if message.protocol_type in self._interests and\
@@ -136,11 +144,12 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             interested = factory(self.agent, medium)
             medium.initiate(interested)
             listener = self.register_listener(medium)
-
-            return listener.on_message(message)
+            listener.on_message(message)
+            return True
 
         self.error("Couldn't find appriopriate listener for message: %s.%s",
                    message.protocol_type, message.protocol_id)
+        return False
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         factory = IInitiatorFactory(factory)

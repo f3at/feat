@@ -107,6 +107,8 @@ class TestAgencyAgent(common.TestCase):
         def mimicReceivingResponse(session_id):
             response = message.ResponseMessage()
             response.session_id = session_id
+            response.expiration_time = self.requester.request.expiration_time
+
             key, shard = self.agent.descriptor.uuid, self.agent.descriptor.shard
             self.agent._messaging.publish(key, shard, response)
             return session_id
@@ -182,7 +184,6 @@ class TestAgencyAgent(common.TestCase):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
-        self.log(self.agent)
 
         shard = self.agent.descriptor.shard
         key = self.agent.descriptor.uuid
@@ -193,6 +194,28 @@ class TestAgencyAgent(common.TestCase):
         # wait for the message to be processed
         return d
 
+    def testNotProcessingExpiredRequests(self):
+        self.agent.register_interest(DummyReplier)
+        self.agent.agent.got_payload = False
+        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+
+        shard = self.agent.descriptor.shard
+        key = self.agent.descriptor.uuid
+        # define false sender, he will get the response later
+        recp = recipient.Agent(str(uuid.uuid1()), shard)
+        req = self._build_req_msg(recp)
+        req.expiration_time = time.time() - 1
+
+        self.agency._messaging.publish(key, recp.shard, req)
+        
+        def asserts_after_procesing(return_value):
+            self.assertFalse(return_value)
+            self.assertEqual(False, self.agent.agent.got_payload)
+
+        d.addCallback(asserts_after_procesing)
+        
+        return d
+        
     def testTwoAgentsTalking(self):
         receiver = self.agent
         sender = self.agency.start_agent(agent.BaseAgent,
@@ -226,4 +249,5 @@ class TestAgencyAgent(common.TestCase):
         r.protocol_id = 'dummy-request'
         r.reply_to_key = recp.key
         r.reply_to_shard = recp.shard
+        r.payload = 10
         return r
