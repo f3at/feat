@@ -12,11 +12,7 @@ from feat.interface import recipient, requests
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory
 
-
 from . import common
-
-
-#from feat.common import log
 
 
 class DummyRequester(requester.BaseRequester):

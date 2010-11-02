@@ -44,9 +44,11 @@ class Agency(object):
         self._agents.append(medium)
         return medium
 
-    def unregisterAgent(self, agent):
-        self._agents.remove(agent)
-        agent._messaging.disconnect()
+    # TODO: Implement this, but first discuss what this really
+    # means to unregister agent
+    # def unregisterAgent(self, agent):
+    #     self._agents.remove(agent)
+    #     agent._messaging.disconnect()
 
     def callLater(self, timeout, method, *args, **kwargs):
         return reactor.callLater(self.time_scale * timeout,\
