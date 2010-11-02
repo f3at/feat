@@ -94,7 +94,7 @@ class TestAgencyAgent(common.TestCase):
             self.log('%r', self.agent._listeners.keys())
             self.assertTrue(session_id in self.agent._listeners.keys())
             listener = self.agent._listeners[session_id]
-            self.assertEqual('RequestResponder', listener.__class__.__name__)
+            self.assertEqual('AgencyRequester', listener.__class__.__name__)
             return session_id
 
         d.addCallback(assertsOnAgency)

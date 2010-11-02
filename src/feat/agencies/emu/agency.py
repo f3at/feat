@@ -143,7 +143,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         medium = medium_factory(self, recipients, *args, **kwargs)
 
         initiator = factory(self.agent, medium, *args, **kwargs)
-        self.register_listener(initiator)
+        self.register_listener(medium)
         return medium.initiate(initiator)
 
     def register_interest(self, factory):
@@ -194,8 +194,21 @@ components.registerAdapter(AgencyRequesterFactory,
                            IRequesterFactory, IAgencyInitiatorFactory)
 
 
+class IListener(Interface):
+    '''Represents sth which can be registered in AgencyAgent to
+    listen for message'''
+
+    def on_message(message):
+        '''hook called when message arrives'''
+
+    def get_session_id():
+        '''
+        @return: session_id to bound to
+        @rtype: string
+        '''
+
 class AgencyRequester(log.LogProxy, log.Logger):
-    implements(IAgencyRequester)
+    implements(IAgencyRequester, IListener)
 
     log_category = 'agency-requester'
 
@@ -237,35 +250,15 @@ class AgencyRequester(log.LogProxy, log.Logger):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
 
-
-class IListener(Interface):
-    '''Represents sth which can be registered in AgencyAgent to
-    listen for message'''
-
-    def on_message(message):
-        '''hook called when message arrives'''
-
-    def get_session_id():
-        '''
-        @return: session_id to bound to
-        @rtype: string
-        '''
-
-class RequestResponder(object):
-    implements(IListener)
-
-    def __init__(self, requester):
-        self.requester = requester
+    # IListener stuff
 
     def on_message(self, message):
-        if self.requester.medium.closed_call:
-            self.requester.medium.closed_call.cancel()
+        if self.closed_call:
+            self.closed_call.cancel()
         self.requester.got_reply(message)
 
     def get_session_id(self):
-        return self.requester.medium.session_id
-
-components.registerAdapter(RequestResponder, IAgentRequester, IListener)
+        return self.session_id
 
 
 class AgencyReplierFactory(object):
