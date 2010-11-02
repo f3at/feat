@@ -141,11 +141,18 @@ class TestAgencyAgent(common.TestCase):
 
         return d
 
-    def testRegisteringReplier(self):
+    def testRegisteringAndRevokeReplier(self):
         self.agent.register_interest(DummyReplier)
 
         self.assertTrue('Request' in self.agent._interests)
         self.assertTrue('dummy-request' in self.agent._interests['Request'])
+
+        self.agent.revoke_interest(DummyReplier)
+        self.assertFalse('dummy-request' in self.agent._interests['Request'])
+
+        #calling once again nothing bad should happend
+        req = self.agent.revoke_interest(DummyReplier)
+        self.assertFalse(req)
 
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)

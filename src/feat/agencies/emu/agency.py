@@ -158,6 +158,18 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             return False
         self._interests[p_type][p_id] = factory
         return True
+
+    def revoke_interest(self, factory):
+        factory = IInterest(factory)
+        p_type = factory.protocol_type
+        p_id = factory.protocol_id
+        if p_type not in self._interests or\
+           p_id not in self._interests[p_type]:
+           self.error('Requested to revoke interest we are not interested in!'
+                      ' %s.%s', p_type, p_id)
+           return False
+        del(self._interests[p_type][p_id])
+        return True
         
     def register_listener(self, listener):
         listener = IListener(listener)
