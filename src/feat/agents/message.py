@@ -47,7 +47,9 @@ class Rejection(ContractMessage):
 
 
 class Grant(ContractMessage):
-    pass
+
+    bid = None # actual bid we are granting
+    update_report = None # set it to number to receive frequent reports
 
 
 class Cancellation(ContractMessage):
@@ -61,14 +63,16 @@ class Acknowledgement(ContractMessage):
 # messages send by contractor to manager
 
 class Bid(ContractMessage):
-    pass
+    
+    # list of bids (usual single element)
+    bids = []
 
 
 class Refusal(ContractMessage):
     pass
 
 
-class UpadeReport(ContractMessage):
+class UpdateReport(ContractMessage):
     pass
 
 

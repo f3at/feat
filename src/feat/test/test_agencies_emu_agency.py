@@ -3,14 +3,14 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid, time
 
-from zope.interface import classProvides
+from zope.interface import classProvides, implements
 from twisted.internet import reactor, defer
 
 from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, requester, message, replier
 from feat.interface import recipient, requests
 from feat.interface.requester import IRequesterFactory
-from feat.interface.replier import IReplierFactory
+from feat.interface.replier import IReplierFactory, IAgentReplier
 
 from . import common
 
@@ -38,6 +38,7 @@ class DummyRequester(requester.BaseRequester):
 
 class DummyReplier(replier.BaseReplier):
     classProvides(IReplierFactory)
+    implements(IAgentReplier)
     
     protocol_id = 'dummy-request'
     
