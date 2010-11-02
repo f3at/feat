@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import uuid
+import uuid, time
 
 from zope.interface import classProvides
 from twisted.internet import reactor, defer
 
 from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, requester, message, replier
-from feat.interface import recipient
+from feat.interface import recipient, requests
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory
 
@@ -88,6 +88,9 @@ class TestAgencyAgent(common.TestCase):
 
             session_id = message.session_id
             self.assertEqual(session_id, str(session_id))
+
+            self.assertEqual(requests.RequestState.requested,\
+                                 self.requester.state)
             return session_id
 
         d.addCallback(assertsOnMessage)
@@ -137,6 +140,7 @@ class TestAgencyAgent(common.TestCase):
             session_id = self.requester.medium.session_id
             self.assertFalse(session_id in self.agent._listeners.keys())
             self.assertFalse(self.requester.got_response)
+            self.assertEqual(requests.RequestState.closed, self.requester.state)
 
         d.addCallback(assertTerminatedWithNoResponse)
 
@@ -217,6 +221,7 @@ class TestAgencyAgent(common.TestCase):
         r = message.RequestMessage()
         r.message_id = str(uuid.uuid1())
         r.session_id = str(uuid.uuid1())
+        r.expiration_time = time.time() + 10
         r.protocol_type = 'Request'
         r.protocol_id = 'dummy-request'
         r.reply_to_key = recp.key

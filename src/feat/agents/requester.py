@@ -1,7 +1,7 @@
 from zope.interface import implements, classProvides
 
 from feat.common import log
-from feat.interface import requester
+from feat.interface import requester, requests
 
 from . import message
 
@@ -20,6 +20,8 @@ class BaseRequester(log.Logger):
         self.agent = agent
         self.medium = medium
         self.recipients = recipients
+
+        self.state = requests.RequestState.none
 
     def initiate(self):
         pass

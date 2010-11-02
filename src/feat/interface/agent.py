@@ -47,6 +47,13 @@ class IAgencyAgent(Interface):
         @returns: Number of seconds since epoch
         '''
 
+    def send_msg(recipient, message):
+        '''
+        Sends message to given recipients
+        @param recipient: Message destination
+        @type recipient: L{IRecipient}
+        @return: Message that was sent
+        '''
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization

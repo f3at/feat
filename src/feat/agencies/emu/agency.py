@@ -18,7 +18,7 @@ from feat.interface.protocols import IInitiatorFactory,\
 from feat.interface.requester import IAgencyRequester, IRequesterFactory,\
                                      IAgentRequester
 from feat.interface.replier import IAgencyReplier
-from feat.interface import recipient
+from feat.interface import recipient, requests
 
 from . import messaging
 from . import database
@@ -195,6 +195,14 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     def get_time(self):
         return self.agency.get_time()
 
+    def send_msg(self, recipients, msg):
+        recipients = recipient.IRecipient(recipients)
+        msg.reply_to_shard = self.descriptor.shard
+        msg.reply_to_key = self.descriptor.uuid
+        msg.message_id = str(uuid.uuid1())
+        assert msg.expiration_time is not None
+        self._messaging.publish(recipients.key, recipients.shard, msg)
+        return msg
 
 class AgencyRequesterFactory(object):
     implements(IAgencyInitiatorFactory)
@@ -243,6 +251,7 @@ class AgencyRequester(log.LogProxy, log.Logger):
         if requester.timeout > 0:
             self.closed_call = self.agent.callLater(requester.timeout,
                                                     self.expired)
+        requester.state = requests.RequestState.requested
         requester.initiate()
 
         return requester
@@ -254,19 +263,16 @@ class AgencyRequester(log.LogProxy, log.Logger):
     def request(self, request):
         self.debug("Sending request")
         request.session_id = self.session_id
-        request.reply_to_shard = self.agent.descriptor.shard
-        request.reply_to_key = self.agent.descriptor.uuid
-        request.message_id = str(uuid.uuid1())
         request.protocol_id = self.requester.protocol_id
         if self.requester.timeout > 0:
             request.expiration_time =\
                 self.agent.get_time() + self.requester.timeout
 
-        self.agent._messaging.publish(self.recipients.key,\
-                                      self.recipients.shard, request)
-
+        self.requester.request = self.agent.send_msg(self.recipients, request)
+        
     def terminate(self):
         self.debug('Terminate called')
+        self.requester.state = requests.RequestState.closed
         self.agent.unregister_listener(self.session_id)
 
     # IListener stuff
@@ -304,6 +310,7 @@ class AgencyReplier(log.LogProxy, log.Logger):
         log.LogProxy.__init__(self, agent)
 
         self.agent = agent
+        self.request = message
         self.recipients = recipient.Agent(message.reply_to_key,
                                           message.reply_to_shard)
         self.session_id = message.session_id
@@ -319,14 +326,11 @@ class AgencyReplier(log.LogProxy, log.Logger):
     def reply(self, reply):
         self.debug("Sending reply")
         reply.session_id = self.session_id
-        reply.reply_to_shard = self.agent.descriptor.shard
-        reply.reply_to_key = self.agent.descriptor.uuid
-        reply.message_id = str(uuid.uuid1())
         reply.protocol_id = self.protocol_id
+        reply.expiration_time = self.request.expiration_time
 
-        self.agent._messaging.publish(self.recipients.key,\
-                                      self.recipients.shard, reply)
-
+        self.agent.send_msg(self.recipients, reply)
+        
     def terminate(self):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
