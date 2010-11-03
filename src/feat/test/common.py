@@ -56,17 +56,18 @@ def stub(method):
 
     def decorated(self, *args, **kwargs):
         call = MockCall(method.__name__, args, kwargs)
-        self.__called__.append(call)
+        self._called.append(call)
 
     return decorated
 
 
 class Mock(object):
     
-    __called__ = []
+    def __init__(self):
+        self._called = []
 
     def find_calls(self, name):
-        return filter(lambda x: x.name == name, self.__called__)
+        return filter(lambda x: x.name == name, self._called)
 
 
 class MockCall(object):

@@ -52,10 +52,11 @@ class AgencyContractor(log.LogProxy, log.Logger):
 
         self.log_name = self.session_id
 
+        self._expiration_call = None
+
     def initiate(self, contractor):
         self.contractor = contractor
         self.contractor.state = contracts.ContractState.announced
-        self.contractor.announce = self.announce
         return contractor
 
     def bid(self, bid):
@@ -64,6 +65,9 @@ class AgencyContractor(log.LogProxy, log.Logger):
         assert isinstance(bid.bids, list)
         self.bid = self._send_message(bid)
         self.contractor.state = contracts.ContractState.bid
+        if self._expiration_call:
+            self.log('Canceling expiration call')
+            self._expiration_call.cancel()
         return self.bid
         
     def refuse(self, refusal):
@@ -97,7 +101,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
     def _send_message(self, msg):
         msg.session_id = self.session_id
         msg.protocol_id = self.protocol_id
-        msg.expiration_time = self.request.expiration_time
+        msg.expiration_time = self.announce.expiration_time
 
         return self.agent.send_msg(self.recipients, msg)
 
@@ -126,11 +130,22 @@ class AgencyContractor(log.LogProxy, log.Logger):
         self.contractor.acknowledged(msg)
         self._terminate()
 
+    def _setup(self, announcement):
+        expire_time = announcement.expiration_time
+        time_left = expire_time - self.agent.get_time()
+        if time_left < 0:
+            self.error('Tried to process expired announcement!')
+            self._terminate()
+            return
+        self._expiration_call = self.agent.callLater(time_left, self._terminate)
+        
+        self.contractor.announced(announcement)
+
     # IListener stuff
 
     def on_message(self, msg):
         mapping = {
-            message.Announcement: { 'method': self.contractor.announced },
+            message.Announcement: { 'method': self._setup },
             message.Rejection: { 'method': self.contractor.rejected,
                                  'state': contracts.ContractState.rejected },
             message.Grant: { 'method': self._validate_bid },

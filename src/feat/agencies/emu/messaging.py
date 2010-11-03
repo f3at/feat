@@ -150,7 +150,7 @@ class Queue(object):
 
         self._consumers = []
 
-    def consume(self):
+    def consume(self, *_):
         d = defer.Deferred()
         self._consumers.append(d)
         self._sendMessages()

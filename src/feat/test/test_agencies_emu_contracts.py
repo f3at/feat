@@ -19,6 +19,10 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     
     protocol_id = 'dummy-contract'
 
+    def __init__(self, *args, **kwargs):
+        contractor.BaseContractor.__init__(self, *args, **kwargs)
+        common.Mock.__init__(self)
+
     @common.stub
     def announced(announce):
         pass
@@ -38,6 +42,10 @@ class TestContractor(common.TestCase):
         self.queue = self.agency._messaging.defineQueue(self.endpoint.key)
         exchange = self.agency._messaging._getExchange(self.endpoint.shard)
         exchange.bind(self.endpoint.key, self.queue)
+        self.contractor = None
+
+    def tearDown(self):
+        self._cancel_expiration_call_if_necessary()
 
     def testRecivingAnnouncement(self):
         d = self._send_announcement()
@@ -57,24 +65,67 @@ class TestContractor(common.TestCase):
             announce = args[0]
             self.assertEqual(contracts.ContractState.announced,
                              contractor.state)
-            self.assertNotEqual(None, contractor.announce)
-            self.assertEqual(announce, contractor.announce)
-            self.assertTrue(isinstance(contractor.announce,\
+            self.assertNotEqual(None, contractor.medium.announce)
+            self.assertEqual(announce, contractor.medium.announce)
+            self.assertTrue(isinstance(contractor.medium.announce,\
                                        message.Announcement))
 
         d.addCallback(asserts_on_contractor)
         
         return d
 
-    def _get_contractor(self, _):
-        return self.agent._listeners.values()[0].contractor
+    def testContractorExpireExpirationTime(self):
+        self.agency.time_scale = 0.01
 
-    def _send_announcement(self):
+        d = self._send_announcement()
+        d.addCallback(self.cb_after, obj=self.agent,\
+                          method='unregister_listener')
+
+        return d
+
+    def testPutingBid(self):
+        d = self._send_announcement()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+
+        def asserts(contractor):
+            self.assertEqual(contracts.ContractState.bid, contractor.state)
+
+        d.addCallback(asserts)
+        d.addCallback(self.queue.consume)
+        
+        def asserts_on_bid(msg):
+            self.assertEqual(message.Bid, msg.__class__)
+            self.assertEqual(self.contractor.medium.bid, msg)
+
+        
+        d.addCallback(asserts_on_bid)
+
+        return d            
+
+    def _cancel_expiration_call_if_necessary(self):
+        if self.contractor and self.contractor.medium._expiration_call and\
+                not (self.contractor.medium._expiration_call.called or
+                     self.contractor.medium._expiration_call.cancelled):
+            self.warning("Canceling contractor expiration call in tearDown")
+            self.contractor.medium._expiration_call.cancel()    
+
+    def _get_contractor(self, _):
+        self.contractor = self.agent._listeners.values()[0].contractor
+        return self.contractor
+
+    def _send_bid(self, contractor):
+        msg = message.Bid()
+        msg.bids = [ 1 ]
+        contractor.medium.bid(msg)
+        return contractor
+
+    def _send_announcement(self, *_):
         msg = message.Announcement()
         msg.session_id = str(uuid.uuid1())
-        return self._sendMsg(msg)
+        return self._send_msg(msg)
 
-    def _sendMsg(self, msg):
+    def _send_msg(self, msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
         msg.reply_to_shard = self.endpoint.shard
         msg.reply_to_key = self.endpoint.key
