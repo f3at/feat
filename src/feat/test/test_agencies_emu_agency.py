@@ -66,6 +66,16 @@ class TestAgencyAgent(common.TestCase):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual(0, len(self.agency._shards['lobby']))
 
+
+class TestRequests(common.TestCase):
+
+    timeout = 3
+
+    def setUp(self):
+        self.agency = agency.Agency()
+        desc = descriptor.Descriptor()
+        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+
     def testRequester(self):
         recipients = recipient.Agent('some_agent', 'lobby')
         d = self.agency.cb_on_msg('lobby', 'some_agent')
