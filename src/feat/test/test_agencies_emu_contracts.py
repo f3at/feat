@@ -170,7 +170,7 @@ class TestContractor(common.TestCase):
 
         return d
 
-    def testGrantWeHaventSent(self):
+    def testGrantWithBidWeHaventSent(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
         bid = 1
