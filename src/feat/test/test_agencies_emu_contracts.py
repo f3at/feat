@@ -122,6 +122,18 @@ class TestContractor(common.TestCase):
 
         return d            
 
+    def testPuttingBidAndReachingTimeout(self):
+        self.agency.time_scale = 0.01
+
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self.cb_after, obj=self.agent,\
+                          method='unregister_listener')
+        d.addCallback(self.assertCalled, 'rejected')
+
+        return d
+
     def testRefusing(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -141,15 +153,47 @@ class TestContractor(common.TestCase):
     def testCorrectGrant(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
-        d.addCallback(self._send_bid, 1)
-        d.addCallback(self._recv_grant, 1)
+        bid = 1
+        d.addCallback(self._send_bid, bid)
+        d.addCallback(self._recv_grant, bid)
 
         def asserts(_):
             self.assertEqual(contracts.ContractState.granted,\
                                  self.contractor.state)
             self.assertCalled(self.contractor, 'granted')
+            call = self.contractor.find_calls('granted')[0]
+            self.assertEqual(1, len(call.args))
+            self.assertEqual(message.Grant, call.args[0].__class__)
+            self.assertEqual(bid, call.args[0].bid)
 
         d.addCallback(asserts)
+
+        return d
+
+    def testGrantWeHaventSent(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        bid = 1
+        d.addCallback(self._send_bid, bid)
+        d.addCallback(self._recv_grant, 2)
+
+        d.addCallback(self.assertUnregistered)
+
+        return d
+
+    def testGrantWithUpdater(self):
+        self.agency.time_scale = 0.01
+
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        bid = 1
+        d.addCallback(self._send_bid, bid)
+        d.addCallback(self._recv_grant, bid, update_report=1)
+
+        def assert_updater_set(_):
+            pass
+
+        d.addCallback(assert_updater_set)
 
         return d
 

@@ -40,6 +40,9 @@ class IAgentContractor(protocols.IInterested):
     L{IAgencyContractor} given at construction time as a medium in order
     to perform the contractor role of the contract protocol.'''
 
+    grant_wait_timeout = Attribute('How many seconds to wait after sending'\
+                                   'the bid before cancelling the contractor')
+
     def announced(announce):
         '''Called by the agency when a contract matching
         the contractor has been received. Called only once.'''

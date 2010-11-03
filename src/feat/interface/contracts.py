@@ -14,10 +14,10 @@ class ContractState(enum.Enum):
      - rejected: Only for contractors. The bid has been rejected by the manager.
      - granted: The contract has been granted to one or multiple contractor.
      - acknowledged: The contract has been acknowledged by the manager.
-     - aborted: The contract got aborted because of one of the peer failure.
+     - cancelled: The contract got aborted because of one of the peer failure.
     '''
     (none, announced, closed, bid, rejected,
-     granted, acknowledged, canceled, aborted) = range(9)
+     granted, acknowledged, cancelled) = range(8)
 
 
 class IContractPeer(Interface):

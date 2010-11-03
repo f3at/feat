@@ -63,11 +63,16 @@ class AgencyContractor(log.LogProxy, log.Logger):
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
         assert isinstance(bid.bids, list)
-        self.bid = self._send_message(bid)
         self.contractor.state = contracts.ContractState.bid
+        self.bid = self._send_message(bid)
         if self._expiration_call:
             self.log('Canceling expiration call')
             self._expiration_call.cancel()
+            self._expiration_call = None
+        expiration_time = self.agent.get_time() +\
+            self.contractor.grant_wait_timeout
+        self._expire_at(expiration_time, self._bid_timeout)
+
         return self.bid
         
     def refuse(self, refusal):
@@ -102,7 +107,13 @@ class AgencyContractor(log.LogProxy, log.Logger):
     def _send_message(self, msg):
         msg.session_id = self.session_id
         msg.protocol_id = self.protocol_id
-        msg.expiration_time = self.announce.expiration_time
+        if self.contractor.state < contracts.ContractState.bid:
+            msg.expiration_time = self.announce.expiration_time
+        elif self.contractor.state < contracts.ContractState.granted:
+            msg.expiration_time = self.agent.get_time() +\
+                                  self.contractor.grant_wait_timeout
+        else: 
+            msg.expiration_time = self.grant.expiration_time
 
         return self.agent.send_msg(self.recipients, msg)
 
@@ -116,12 +127,27 @@ class AgencyContractor(log.LogProxy, log.Logger):
             self.grant = grant
             self.contractor.granted(grant)
             if grant.update_report:
-                self._setup_reported()
+                self._setup_reporter()
         else:
             self.error("The bid granted doesn't match the one put upon!"
                        "Terminating!")
             self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
             self._terminate()
+
+    def _setup_reporter(self):
+        frequency = self.grant.update_report
+        
+        def send_report():
+            report = message.UpdateReport()
+            self.update(report)
+            bind()
+
+        def bind():
+            self.agent.callLater(frequency, send_report)
+
+    def _bid_timeout(self):
+        self.contractor.rejected(None)
+        self._terminate()
 
     def _terminate(self):
         self.log("Unregistering contractor")
@@ -129,22 +155,24 @@ class AgencyContractor(log.LogProxy, log.Logger):
         if self._expiration_call and not (self._expiration_call.called or\
                                           self._expiration_call.cancelled):
             self._expiration_call.cancel()
+            self._expiration_call = None
             self.log('Canceling expiration call in _terminate()')
         self.agent.unregister_listener(self.session_id)
+
+    def _expire_at(self, expire_time, method, *args, **kwargs):
+        time_left = expire_time - self.agent.get_time()
+        if time_left < 0:
+            self.error('Tried to call method in the past!')
+            self._terminate()
+            return
+        self._expiration_call = self.agent.callLater(time_left, method)
 
     def _on_ack(self, msg):
         self.contractor.acknowledged(msg)
         self._terminate()
 
     def _on_announce(self, announcement):
-        expire_time = announcement.expiration_time
-        time_left = expire_time - self.agent.get_time()
-        if time_left < 0:
-            self.error('Tried to process expired announcement!')
-            self._terminate()
-            return
-        self._expiration_call = self.agent.callLater(time_left, self._terminate)
-        
+        self._expire_at(announcement.expiration_time, self._terminate)
         self.contractor.announced(announcement)
 
     def _on_reject(self, rejection):
@@ -161,7 +189,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
             message.Grant: { 'method': self._on_grant,
                              'state': contracts.ContractState.granted },
             message.Cancellation: { 'method': self.contractor.canceled,
-                                    'state': contracts.ContractState.aborted },
+                                   'state': contracts.ContractState.cancelled },
             message.Acknowledgement: { 'method': self._on_ack,
                                 'state': contracts.ContractState.acknowledged },
         }
