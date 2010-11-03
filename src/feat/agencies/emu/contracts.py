@@ -75,6 +75,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
         assert isinstance(refusal, message.Refusal)
         refusal = self._send_message(refusal)
         self.contractor.state = contracts.ContractState.rejected
+        self._terminate()
         return refusal
 
     def cancel(self, cancellation):
@@ -127,7 +128,8 @@ class AgencyContractor(log.LogProxy, log.Logger):
         self.contractor.state = contracts.ContractState.closed
         if self._expiration_call and not (self._expiration_call.called or\
                                           self._expiration_call.cancelled):
-            self.expiration_call.cancel()
+            self._expiration_call.cancel()
+            self.log('Canceling expiration call in _terminate()')
         self.agent.unregister_listener(self.session_id)
 
     def _on_ack(self, msg):
@@ -156,11 +158,12 @@ class AgencyContractor(log.LogProxy, log.Logger):
             message.Announcement: { 'method': self._on_announce },
             message.Rejection: { 'method': self._on_reject,
                                  'state': contracts.ContractState.rejected },
-            message.Grant: { 'method': self._on_grant },
+            message.Grant: { 'method': self._on_grant,
+                             'state': contracts.ContractState.granted },
             message.Cancellation: { 'method': self.contractor.canceled,
                                     'state': contracts.ContractState.aborted },
             message.Acknowledgement: { 'method': self._on_ack,
-                                'state': contracts.ContractState.acknowledged},
+                                'state': contracts.ContractState.acknowledged },
         }
         klass = msg.__class__
         decision = mapping.get(klass, None)

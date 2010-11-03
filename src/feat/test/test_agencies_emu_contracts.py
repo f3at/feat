@@ -27,6 +27,25 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     def announced(announce):
         pass
 
+    @common.stub
+    def rejected(rejection):
+        pass
+
+    @common.stub
+    def granted(grant):
+        pass
+
+    @common.stub
+    def canceled(grant):
+        pass
+
+    @common.stub
+    def acknowledged(grant):
+        pass
+
+    @common.stub
+    def aborted():
+        pass
 
 class TestContractor(common.TestCase):
 
@@ -43,12 +62,13 @@ class TestContractor(common.TestCase):
         exchange = self.agency._messaging._getExchange(self.endpoint.shard)
         exchange.bind(self.endpoint.key, self.queue)
         self.contractor = None
+        self.session_id = None
 
     def tearDown(self):
         self._cancel_expiration_call_if_necessary()
 
     def testRecivingAnnouncement(self):
-        d = self._send_announcement()
+        d = self._recv_announce()
         
         def asserts(rpl):
             self.assertEqual(True, rpl)
@@ -77,14 +97,14 @@ class TestContractor(common.TestCase):
     def testContractorExpireExpirationTime(self):
         self.agency.time_scale = 0.01
 
-        d = self._send_announcement()
+        d = self._recv_announce()
         d.addCallback(self.cb_after, obj=self.agent,\
                           method='unregister_listener')
 
         return d
 
     def testPuttingBid(self):
-        d = self._send_announcement()
+        d = self._recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self._send_bid)
 
@@ -98,10 +118,45 @@ class TestContractor(common.TestCase):
             self.assertEqual(message.Bid, msg.__class__)
             self.assertEqual(self.contractor.medium.bid, msg)
 
-        
         d.addCallback(asserts_on_bid)
 
         return d            
+
+    def testRefusing(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_refusal)
+
+        d.addCallback(self.assertUnregistered)
+        d.addCallback(self.queue.consume)
+        
+        def asserts_on_refusal(msg):
+            self.assertEqual(message.Refusal, msg.__class__)
+            self.assertEqual(self.contractor.medium.session_id, msg.session_id)
+
+        d.addCallback(asserts_on_refusal)
+        
+        return d
+
+    def testCorrectGrant(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid, 1)
+        d.addCallback(self._recv_grant, 1)
+
+        def asserts(_):
+            self.assertEqual(contracts.ContractState.granted,\
+                                 self.contractor.state)
+            self.assertCalled(self.contractor, 'granted')
+
+        d.addCallback(asserts)
+
+        return d
+
+    def assertUnregistered(self, *_):
+        self.assertFalse(self.contractor.medium.session_id in\
+                             self.agent._listeners)
+        self.assertEqual(contracts.ContractState.closed, self.contractor.state)
 
     def _cancel_expiration_call_if_necessary(self):
         if self.contractor and self.contractor.medium._expiration_call and\
@@ -114,18 +169,31 @@ class TestContractor(common.TestCase):
         self.contractor = self.agent._listeners.values()[0].contractor
         return self.contractor
 
-    def _send_bid(self, contractor):
+    def _send_bid(self, contractor, bid=1):
         msg = message.Bid()
-        msg.bids = [ 1 ]
+        msg.bids = [ bid ]
         contractor.medium.bid(msg)
         return contractor
 
-    def _send_announcement(self, *_):
+    def _send_refusal(self, contractor):
+        msg = message.Refusal()
+        contractor.medium.refuse(msg)
+        return contractor
+
+    def _recv_announce(self, *_):
         msg = message.Announcement()
         msg.session_id = str(uuid.uuid1())
-        return self._send_msg(msg)
+        self.session_id = msg.session_id
+        return self._recv_msg(msg)
 
-    def _send_msg(self, msg):
+    def _recv_grant(self, _, bid, update_report=None):
+        msg = message.Grant()
+        msg.bid = bid
+        msg.update_report = update_report
+        msg.session_id = self.session_id
+        return self._recv_msg(msg)
+
+    def _recv_msg(self, msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
         msg.reply_to_shard = self.endpoint.shard
         msg.reply_to_key = self.endpoint.key
