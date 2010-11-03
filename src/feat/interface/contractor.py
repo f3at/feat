@@ -42,6 +42,9 @@ class IAgentContractor(protocols.IInterested):
 
     grant_wait_timeout = Attribute('How many seconds to wait after sending'\
                                    'the bid before cancelling the contractor')
+    ack_wait_timeout = Attribute('How long to wait for ack after sending'\
+                                 'the final report before cancelling'\
+                                 'the contractor')
 
     def announced(announce):
         '''Called by the agency when a contract matching

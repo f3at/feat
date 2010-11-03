@@ -21,6 +21,7 @@ class BaseContractor(log.Logger):
     protocol_id = None
 
     grant_wait_timeout = 10
+    ack_wait_timeout = 10
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
