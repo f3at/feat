@@ -1,11 +1,14 @@
 from zope.interface import implements, classProvides
 from feat.interface import contractor
 from feat.common import log
+from feat.agents import message
 
 
 class BaseContractor(log.Logger):
     classProvides(contractor.IContractorFactory)
     implements(contractor.IAgentContractor)
+
+    initiator = message.Announcement
 
     state = None
     announce = None

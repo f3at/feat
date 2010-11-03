@@ -134,8 +134,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             return True
 
         # handle new conversation comming in (interest)
-        if message.protocol_type in self._interests and\
-           message.protocol_id in self._interests[message.protocol_type]:
+        p_type = message.protocol_type
+        p_id = message.protocol_id
+        if p_type in self._interests and p_id in self._interests[p_type] and\
+           isinstance(message, self._interests[p_type][p_id].initiator):
             self.log('Looking for interest to instantiate')
             factory = self._interests[message.protocol_type]\
                                      [message.protocol_id]

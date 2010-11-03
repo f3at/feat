@@ -40,7 +40,7 @@ class IInitiator(Interface):
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
-    pass
+    initiator = Attribute("A message class that initiates the dialog")
 
 
 class IAgencyInitiatorFactory(Interface):
