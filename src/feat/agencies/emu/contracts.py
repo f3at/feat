@@ -53,6 +53,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
         self.log_name = self.session_id
 
         self._expiration_call = None
+        self._reporter_call = None
 
     def initiate(self, contractor):
         self.contractor = contractor
@@ -93,13 +94,13 @@ class AgencyContractor(log.LogProxy, log.Logger):
     def update(self, report):
         self.debug("Sending update report %r", report)
         assert isinstance(report, message.UpdateReport)
-        report = self._send_message(self, report)
+        report = self._send_message(report)
         return report
 
     def finalize(self, report):
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
-        self.report = self._send_message(self, report)
+        self.report = self._send_message(report)
         return self.report
     
     # private section
@@ -134,6 +135,12 @@ class AgencyContractor(log.LogProxy, log.Logger):
             self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
             self._terminate()
 
+    def _cancel_reporter(self):
+        if self._reporter_call and not (self._reporter_call.called or\
+                                        self._reporter_call.cancelled):
+            self._reporter_call.cancel()
+            self.log("Canceling periodical reporter")
+
     def _setup_reporter(self):
         frequency = self.grant.update_report
         
@@ -143,7 +150,9 @@ class AgencyContractor(log.LogProxy, log.Logger):
             bind()
 
         def bind():
-            self.agent.callLater(frequency, send_report)
+            self._reporter_call = self.agent.callLater(frequency, send_report)
+        
+        bind()
 
     def _bid_timeout(self):
         self.contractor.rejected(None)
@@ -157,6 +166,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
             self._expiration_call.cancel()
             self._expiration_call = None
             self.log('Canceling expiration call in _terminate()')
+        self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
 
     def _expire_at(self, expire_time, method, *args, **kwargs):

@@ -190,10 +190,17 @@ class TestContractor(common.TestCase):
         d.addCallback(self._send_bid, bid)
         d.addCallback(self._recv_grant, bid, update_report=1)
 
-        def assert_updater_set(_):
-            pass
+        d.addCallback(self.queue.consume) # this is a bid
+        
+        def assert_msg_is_report(msg):
+            self.assertEqual(message.UpdateReport, msg.__class__)
 
-        d.addCallback(assert_updater_set)
+        for x in range(3):
+            d.addCallback(self.queue.consume)
+            d.addCallback(assert_msg_is_report)
+
+        d.addCallback(self._get_contractor)
+        d.addCallback(lambda contractor: contractor.medium._terminate())
 
         return d
 
