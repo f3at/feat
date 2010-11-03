@@ -12,7 +12,7 @@ class ContractState(enum.Enum):
        has been recieved from all contractors.
      - bid: Only for contractors. A bid has been send to the manager.
      - rejected: Only for contractors. The bid has been rejected by the manager.
-     - granted: The contract has been granted to on or multiple contractor.
+     - granted: The contract has been granted to one or multiple contractor.
      - acknowledged: The contract has been acknowledged by the manager.
      - aborted: The contract got aborted because of one of the peer failure.
     '''

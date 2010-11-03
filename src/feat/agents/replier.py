@@ -2,7 +2,7 @@ from zope.interface import implements, classProvides
 from feat.interface import replier
 from feat.common import log
 
-
+ 
 class BaseReplier(log.Logger):
     classProvides(replier.IReplierFactory)
     implements(replier.IAgentReplier)

@@ -13,6 +13,7 @@ from feat.interface.protocols import IAgencyInitiatorFactory,\
 from feat.interface.contractor import IAgencyContractor, IAgentContractor,\
                                       IContractorFactory
 from feat.interface import contracts, recipient
+from feat.agents import message
 
 from interface import IListener
 
@@ -54,6 +55,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
     def initiate(self, contractor):
         self.contractor = contractor
         self.contractor.state = contracts.ContractState.announced
+        self.contractor.announce = self.announce
         return contractor
 
     def bid(self, bid):
@@ -111,7 +113,8 @@ class AgencyContractor(log.LogProxy, log.Logger):
             if grant.update_report:
                 self._setup_reported()
         else:
-            self.error("The bid granted doesn't much put upon! Terminating!")
+            self.error("The bid granted doesn't match the one put upon!"
+                       " Terminating!")
             self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
             self._terminate()
 
@@ -127,13 +130,13 @@ class AgencyContractor(log.LogProxy, log.Logger):
 
     def on_message(self, msg):
         mapping = {
-            message.Announcemnt: { 'method': self.contractor.announced },
+            message.Announcement: { 'method': self.contractor.announced },
             message.Rejection: { 'method': self.contractor.rejected,
                                  'state': contracts.ContractState.rejected },
             message.Grant: { 'method': self._validate_bid },
             message.Cancellation: { 'method': self.contractor.canceled,
                                     'state': contracts.ContractState.aborted },
-            message.Acknowledged: { 'method': self._ack_and_terminate,
+            message.Acknowledgement: { 'method': self._ack_and_terminate,
                                 'state': contracts.ContractState.acknowledged},
         }
         klass = msg.__class__

@@ -42,3 +42,36 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         obj.__setattr__(method, new_method)
 
         return d
+
+    def assertCalled(self, obj, name, times=1):
+        assert isinstance(obj, Mock)
+        times_called = len(obj.find_calls(name))
+        template = "Expected %s method to be called %d time(s), "\
+                   "was called %d time(s)"
+        self.assertEqual(times, times_called,\
+                             template % (name, times, times_called))
+        
+
+def stub(method):
+
+    def decorated(self, *args, **kwargs):
+        call = MockCall(method.__name__, args, kwargs)
+        self.__called__.append(call)
+
+    return decorated
+
+
+class Mock(object):
+    
+    __called__ = []
+
+    def find_calls(self, name):
+        return filter(lambda x: x.name == name, self.__called__)
+
+
+class MockCall(object):
+    
+    def __init__(self, name, args, kwargs):
+        self.name = name
+        self.args = args
+        self.kwargs = kwargs
