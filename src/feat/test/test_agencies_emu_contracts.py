@@ -83,7 +83,7 @@ class TestContractor(common.TestCase):
 
         return d
 
-    def testPutingBid(self):
+    def testPuttingBid(self):
         d = self._send_announcement()
         d.addCallback(self._get_contractor)
         d.addCallback(self._send_bid)

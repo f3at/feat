@@ -105,7 +105,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
 
         return self.agent.send_msg(self.recipients, msg)
 
-    def _validate_bid(self, grant):
+    def _on_grant(self, grant):
         '''
         Called upon receiving the grant. Check that grants bid includes
         actual bid we put. Than calls granted and sets up reporter if necessary.
@@ -118,19 +118,23 @@ class AgencyContractor(log.LogProxy, log.Logger):
                 self._setup_reported()
         else:
             self.error("The bid granted doesn't match the one put upon!"
-                       " Terminating!")
+                       "Terminating!")
             self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
             self._terminate()
 
     def _terminate(self):
         self.log("Unregistering contractor")
+        self.contractor.state = contracts.ContractState.closed
+        if self._expiration_call and not (self._expiration_call.called or\
+                                          self._expiration_call.cancelled):
+            self.expiration_call.cancel()
         self.agent.unregister_listener(self.session_id)
 
-    def _ack_and_terminate(self, msg):
+    def _on_ack(self, msg):
         self.contractor.acknowledged(msg)
         self._terminate()
 
-    def _setup(self, announcement):
+    def _on_announce(self, announcement):
         expire_time = announcement.expiration_time
         time_left = expire_time - self.agent.get_time()
         if time_left < 0:
@@ -141,17 +145,21 @@ class AgencyContractor(log.LogProxy, log.Logger):
         
         self.contractor.announced(announcement)
 
+    def _on_reject(self, rejection):
+        contractor.rejected(rejection)
+        self._terminate()
+
     # IListener stuff
 
     def on_message(self, msg):
         mapping = {
-            message.Announcement: { 'method': self._setup },
-            message.Rejection: { 'method': self.contractor.rejected,
+            message.Announcement: { 'method': self._on_announce },
+            message.Rejection: { 'method': self._on_reject,
                                  'state': contracts.ContractState.rejected },
-            message.Grant: { 'method': self._validate_bid },
+            message.Grant: { 'method': self._on_grant },
             message.Cancellation: { 'method': self.contractor.canceled,
                                     'state': contracts.ContractState.aborted },
-            message.Acknowledgement: { 'method': self._ack_and_terminate,
+            message.Acknowledgement: { 'method': self._on_ack,
                                 'state': contracts.ContractState.acknowledged},
         }
         klass = msg.__class__
