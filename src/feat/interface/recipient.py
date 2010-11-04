@@ -9,6 +9,9 @@ class RecipientType(enum.Enum):
     agent, broadcast = range(1, 3)
 
 
+class IRecipients(Interface):
+    '''TODO'''
+
 class IRecipient(Interface):
 
     shard = Attribute('Shard of reciepient')
@@ -38,7 +41,7 @@ class Broadcast(object):
 class RecipientFromAgent(object):
 
     implements(IRecipient)
-    
+
     def __init__(self, agent):
         self.agent = agent
         self.shard = self.agent.descriptor.shard

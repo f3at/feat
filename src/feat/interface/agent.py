@@ -23,9 +23,10 @@ class IAgencyAgent(Interface):
     def revoke_interest(factory):
         '''Revokes any interest in a contract or a request.'''
 
-    def initiate_protocol(factory, *args, **kwargs):
+    def initiate_protocol(factory, recipients, *args, **kwargs):
         '''
         Initiates a contract or a request.
+        @type recipients: L{IRecipients}
         @rtype: L{IInitiator}
         @return: Instance of protocols initiator
         '''

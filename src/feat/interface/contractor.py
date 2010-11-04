@@ -20,19 +20,16 @@ class IAgencyContractor(contracts.IContractPeer):
     rejection = Attribute("Contract's rejection message")
 
     def bid(bid):
-        pass
+        '''Puts a bid on the announcement'''
 
     def refuse(refusal):
-        pass
+        '''Refuses the announcement'''
 
     def cancel(cancelation):
-        pass
+        '''Cancels the granted job'''
 
-    def update(update):
-        pass
-
-    def finalize(report):
-        pass
+    def report(report):
+        '''Reports a completed job'''
 
 
 class IAgentContractor(protocols.IInterested):
@@ -40,15 +37,20 @@ class IAgentContractor(protocols.IInterested):
     L{IAgencyContractor} given at construction time as a medium in order
     to perform the contractor role of the contract protocol.'''
 
-    grant_wait_timeout = Attribute('How many seconds to wait after sending'\
-                                   'the bid before cancelling the contractor')
-    ack_wait_timeout = Attribute('How long to wait for ack after sending'\
-                                 'the final report before cancelling'\
-                                 'the contractor')
+    ack_timeout = Attribute('How long to wait for ack after sending'
+                            'the report before aborting')
+    bid_timeout = Attribute('How long to wait for grant or rejection '
+                            'after putting the bid')
 
     def announced(announce):
         '''Called by the agency when a contract matching
         the contractor has been received. Called only once.'''
+
+    def announce_expired():
+        pass
+
+    def closed():
+        pass
 
     def rejected(rejection):
         pass
@@ -56,7 +58,10 @@ class IAgentContractor(protocols.IInterested):
     def granted(grant):
         pass
 
-    def canceled(grant):
+    def bid_expired():
+        pass
+
+    def cancelled(grant):
         pass
 
     def acknowledged(grant):
