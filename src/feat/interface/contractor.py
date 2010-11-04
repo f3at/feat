@@ -28,7 +28,7 @@ class IAgencyContractor(contracts.IContractPeer):
     def cancel(cancelation):
         '''Cancels the granted job'''
 
-    def report(report):
+    def finalize(report):
         '''Reports a completed job'''
 
 

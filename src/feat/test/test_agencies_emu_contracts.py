@@ -28,6 +28,14 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
         pass
 
     @common.stub
+    def announce_expired():
+        pass
+
+    @common.stub
+    def bid_expired():
+        pass
+
+    @common.stub
     def rejected(rejection):
         pass
 
@@ -84,7 +92,7 @@ class TestContractor(common.TestCase):
             self.assertEqual(1, len(args))
             announce = args[0]
             self.assertEqual(contracts.ContractState.announced,
-                             contractor.state)
+                             contractor.medium.state)
             self.assertNotEqual(None, contractor.medium.announce)
             self.assertEqual(announce, contractor.medium.announce)
             self.assertTrue(isinstance(contractor.medium.announce,\
@@ -109,7 +117,8 @@ class TestContractor(common.TestCase):
         d.addCallback(self._send_bid)
 
         def asserts(contractor):
-            self.assertEqual(contracts.ContractState.bid, contractor.state)
+            self.assertEqual(contracts.ContractState.bid,
+                             contractor.medium.state)
 
         d.addCallback(asserts)
         d.addCallback(self.queue.consume)
@@ -130,7 +139,7 @@ class TestContractor(common.TestCase):
         d.addCallback(self._send_bid)
         d.addCallback(self.cb_after, obj=self.agent,\
                           method='unregister_listener')
-        d.addCallback(self.assertCalled, 'rejected')
+        d.addCallback(self.assertCalled, 'bid_expired')
 
         return d
 
@@ -139,7 +148,7 @@ class TestContractor(common.TestCase):
         d.addCallback(self._get_contractor)
         d.addCallback(self._send_refusal)
 
-        d.addCallback(self.assertUnregistered)
+        d.addCallback(self.assertUnregistered, contracts.ContractState.refused)
         d.addCallback(self.queue.consume)
         
         def asserts_on_refusal(msg):
@@ -159,7 +168,7 @@ class TestContractor(common.TestCase):
 
         def asserts(_):
             self.assertEqual(contracts.ContractState.granted,\
-                                 self.contractor.state)
+                                 self.contractor.medium.state)
             self.assertCalled(self.contractor, 'granted')
             call = self.contractor.find_calls('granted')[0]
             self.assertEqual(1, len(call.args))
@@ -177,7 +186,7 @@ class TestContractor(common.TestCase):
         d.addCallback(self._send_bid, bid)
         d.addCallback(self._recv_grant, 2)
 
-        d.addCallback(self.assertUnregistered)
+        d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
 
         return d
 
@@ -204,10 +213,10 @@ class TestContractor(common.TestCase):
 
         return d
 
-    def assertUnregistered(self, *_):
+    def assertUnregistered(self, _, state):
         self.assertFalse(self.contractor.medium.session_id in\
                              self.agent._listeners)
-        self.assertEqual(contracts.ContractState.closed, self.contractor.state)
+        self.assertEqual(state, self.contractor.medium.state)
 
     def _cancel_expiration_call_if_necessary(self):
         if self.contractor and self.contractor.medium._expiration_call and\

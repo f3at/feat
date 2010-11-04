@@ -4,7 +4,7 @@
 import uuid
 
 from twisted.python import components
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from zope.interface import implements
 
 from feat.common import log
@@ -31,6 +31,8 @@ class AgencyContractorFactory(object):
 components.registerAdapter(AgencyContractorFactory,
                            IContractorFactory, IAgencyInterestedFactory)
 
+class StateAssertationError(RuntimeError):
+    pass
 
 class AgencyContractor(log.LogProxy, log.Logger):
     implements(IAgencyContractor, IListener)
@@ -49,74 +51,168 @@ class AgencyContractor(log.LogProxy, log.Logger):
                                           announcement.reply_to_shard)
         self.session_id = announcement.session_id
         self.protocol_id = announcement.protocol_id
+        self.state = None
 
         self.log_name = self.session_id
 
         self._expiration_call = None
         self._reporter_call = None
-
+        
     def initiate(self, contractor):
         self.contractor = contractor
-        self.contractor.state = contracts.ContractState.announced
+        self._set_state(contracts.ContractState.initiated)
         return contractor
+
+    # IAgencyContractor stuff
 
     def bid(self, bid):
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
         assert isinstance(bid.bids, list)
-        self.contractor.state = contracts.ContractState.bid
-        self.bid = self._send_message(bid)
-        if self._expiration_call:
-            self.log('Canceling expiration call')
-            self._expiration_call.cancel()
-            self._expiration_call = None
-        expiration_time = self.agent.get_time() +\
-            self.contractor.grant_wait_timeout
-        self._expire_at(expiration_time, self._bid_timeout)
+
+        self._ensure_state(contracts.ContractState.announced)
+        self._set_state(contracts.ContractState.bid)
+
+        expiration_time = self.agent.get_time() + self.contractor.bid_timeout
+        self.bid = self._send_message(bid, expiration_time)
+
+        self._cancel_expiration_call()
+        self._expire_at(expiration_time, self.contractor.bid_expired,
+                        contracts.ContractState.expired)
 
         return self.bid
         
     def refuse(self, refusal):
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
+
+        self._ensure_state(contracts.ContractState.announced)
+        self._set_state(contracts.ContractState.refused)
+
         refusal = self._send_message(refusal)
-        self.contractor.state = contracts.ContractState.rejected
         self._terminate()
         return refusal
 
     def cancel(self, cancellation):
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
-        cancellation = self._send_message(cancellation)
-        self.contractor.state = contracts.ContractState.aborted
-        return cancellation
 
-    def update(self, report):
-        self.debug("Sending update report %r", report)
-        assert isinstance(report, message.UpdateReport)
-        report = self._send_message(report)
-        return report
+        self._ensure_state(contracts.ContractState.granted)
+        self._set_state(contracts.ContractState.cancelled)
+
+        cancellation = self._send_message(cancellation)
+        self._terminate()
+        return cancellation
 
     def finalize(self, report):
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
-        self.report = self._send_message(report)
+
+        self._ensure_state(contracts.ContractState.granted)
+        self._set_state(contracts.ContractState.completed)
+
+        expiration_time = self.agent.get_time() + self.contractor.bid_timeout
+        self.report = self._send_message(report, expiration_time)
+
+        self._cancel_expiration_call()
+        self._expire_at(expiration_time, self.contractor.aborted,
+                        contracts.ContractState.aborted)
         return self.report
     
     # private section
 
-    def _send_message(self, msg):
+    def _set_state(self, state):
+        self.log('Changing state from %r to %r', self.state, state)
+        self.state = state
+
+    def _ensure_state(self, states):
+        if not isinstance(states, list):
+            states = [ states ]
+        if self.state in states:
+            return True
+        raise StateAssertationError("Expected state in: %r, was: %r instead" %\
+                           (states, self.state))
+        
+    def _send_message(self, msg, expiration_time=None):
         msg.session_id = self.session_id
         msg.protocol_id = self.protocol_id
-        if self.contractor.state < contracts.ContractState.bid:
-            msg.expiration_time = self.announce.expiration_time
-        elif self.contractor.state < contracts.ContractState.granted:
-            msg.expiration_time = self.agent.get_time() +\
-                                  self.contractor.grant_wait_timeout
-        else: 
-            msg.expiration_time = self.grant.expiration_time
+        if expiration_time is None:
+            expiration_time = self.agent.get_time() + 10
+        msg.expiration_time = expiration_time
 
         return self.agent.send_msg(self.recipients, msg)
+
+    def _run_and_terminate(method, *args, **kwargs):
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addCallback(self._terminate)
+
+    def _terminate(self):
+        self.log("Unregistering contractor")
+
+        self._cancel_expiration_call()
+        self._cancel_reporter()
+        self.agent.unregister_listener(self.session_id)
+
+    # update reporter stuff
+
+    def _cancel_reporter(self):
+        if self._reporter_call and not (self._reporter_call.called or\
+                                        self._reporter_call.cancelled):
+            self._reporter_call.cancel()
+            self.log("Canceling periodical reporter")
+
+    def _setup_reporter(self):
+        frequency = self.grant.update_report
+        
+        def send_report():
+            report = message.UpdateReport()
+            self._update(report)
+            bind()
+
+        def bind():
+            self._reporter_call = self.agent.callLater(frequency, send_report)
+        
+        bind()
+
+    def _update(self, report):
+        self.debug("Sending update report %r", report)
+        assert isinstance(report, message.UpdateReport)
+        self._ensure_state(contracts.ContractState.granted)
+
+        report = self._send_message(report)
+        return report
+
+    # expiration calls and it's hooks
+
+    def _expire_at(self, expire_time, method, state, *args, **kwargs):
+        time_left = expire_time - self.agent.get_time()
+        if time_left < 0:
+            self.error('Tried to call method in the past!')
+            self._terminate()
+            return
+
+        def to_call():
+            self._set_state(state)
+            self.log('Calling method: %r with args: %r', method, args)
+            d = defer.maybeDeferred(method, *args, **kwargs)
+            d.addCallback(lambda _: self._terminate())
+
+        self._expiration_call = self.agent.callLater(time_left, to_call)
+
+    def _cancel_expiration_call(self):
+        if self._expiration_call and not (self._expiration_call.called or\
+                                          self._expiration_call.cancelled):
+            self.log('Canceling expiration call')
+            self._expiration_call.cancel()
+            self._expiration_call = None
+
+    # hooks for messages comming in
+
+    def _on_announce(self, announcement):
+        self._expire_at(announcement.expiration_time,
+                        self.contractor.announce_expired,
+                        contracts.ContractState.closed)
+        self.contractor.announced(announcement)
 
     def _on_grant(self, grant):
         '''
@@ -133,87 +229,61 @@ class AgencyContractor(log.LogProxy, log.Logger):
             self.error("The bid granted doesn't match the one put upon!"
                        "Terminating!")
             self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
+            self._set_state(contracts.ContractState.wtf)
             self._terminate()
-
-    def _cancel_reporter(self):
-        if self._reporter_call and not (self._reporter_call.called or\
-                                        self._reporter_call.cancelled):
-            self._reporter_call.cancel()
-            self.log("Canceling periodical reporter")
-
-    def _setup_reporter(self):
-        frequency = self.grant.update_report
-        
-        def send_report():
-            report = message.UpdateReport()
-            self.update(report)
-            bind()
-
-        def bind():
-            self._reporter_call = self.agent.callLater(frequency, send_report)
-        
-        bind()
-
-    def _bid_timeout(self):
-        self.contractor.rejected(None)
-        self._terminate()
-
-    def _terminate(self):
-        self.log("Unregistering contractor")
-        self.contractor.state = contracts.ContractState.closed
-        if self._expiration_call and not (self._expiration_call.called or\
-                                          self._expiration_call.cancelled):
-            self._expiration_call.cancel()
-            self._expiration_call = None
-            self.log('Canceling expiration call in _terminate()')
-        self._cancel_reporter()
-        self.agent.unregister_listener(self.session_id)
-
-    def _expire_at(self, expire_time, method, *args, **kwargs):
-        time_left = expire_time - self.agent.get_time()
-        if time_left < 0:
-            self.error('Tried to call method in the past!')
-            self._terminate()
-            return
-        self._expiration_call = self.agent.callLater(time_left, method)
 
     def _on_ack(self, msg):
-        self.contractor.acknowledged(msg)
-        self._terminate()
-
-    def _on_announce(self, announcement):
-        self._expire_at(announcement.expiration_time, self._terminate)
-        self.contractor.announced(announcement)
+        self._run_and_terminate(self.contractor.acknowledged, msg)
 
     def _on_reject(self, rejection):
-        contractor.rejected(rejection)
-        self._terminate()
+        self._run_and_terminate(self.contractor.rejected, rejection)
+
+    def _on_cancel(self, cancellation):
+        self._run_and_terminate(self.contractor.cancelled, cancellation)
 
     # IListener stuff
 
     def on_message(self, msg):
         mapping = {
-            message.Announcement: { 'method': self._on_announce },
-            message.Rejection: { 'method': self._on_reject,
-                                 'state': contracts.ContractState.rejected },
-            message.Grant: { 'method': self._on_grant,
-                             'state': contracts.ContractState.granted },
-            message.Cancellation: { 'method': self.contractor.canceled,
-                                   'state': contracts.ContractState.cancelled },
-            message.Acknowledgement: { 'method': self._on_ack,
-                                'state': contracts.ContractState.acknowledged },
+            message.Announcement:\
+                {'method': self._on_announce,
+                 'state_before': contracts.ContractState.initiated,
+                 'state_after': contracts.ContractState.announced},
+            message.Rejection:\
+                {'method': self._on_reject,
+                 'state_after': contracts.ContractState.rejected,
+                 'state_before': contracts.ContractState.bid},
+            message.Grant:\
+                {'method': self._on_grant,
+                 'state_after': contracts.ContractState.granted,
+                 'state_before': contracts.ContractState.bid},
+            message.Cancellation:\
+                {'method': self._on_cancel,
+                 'state_after': contracts.ContractState.cancelled,
+                 'state_before': [contracts.ContractState.granted,
+                                  contracts.ContractState.completed]},
+            message.Acknowledgement:\
+                {'method': self._on_ack,
+                 'state_after': contracts.ContractState.acknowledged,
+                 'state_before': contracts.ContractState.completed},
         }
         klass = msg.__class__
         decision = mapping.get(klass, None)
         if not decision:
             self.error("Unknown method class %r", msg)
             return False
+        
+        state_before = decision['state_before']
+        self._ensure_state(state_before)
 
-        change_state = decision.get('state', None)
-        if change_state:
-            self.contractor.state = change_state
-
-        decision['method'](msg)
+        state_after = decision['state_after']
+        self._set_state(state_after)
+        
+        try:
+            decision['method'](msg)
+        except StateAssertationError as e:
+            self.error('Terminating: %r', e)
+            self._terminate()
 
     def get_session_id(self):
         return self.session_id

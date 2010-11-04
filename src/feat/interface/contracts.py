@@ -22,10 +22,12 @@ class ContractState(enum.Enum):
      - acknowledged: All granted jobs have been acknowledged by the manager.
      - aborted:      Some jobs have been cancelled so all the contractors
                       got cancelled.
+     - wtf:          What a Terrible Failure
      - bid:          Only for contractors, invalid state for managers.
      - refused:      Only for contractors, invalid state for managers.
      - rejected:     Only for contractors, invalid state for managers.
      - completed:    Only for contractors, invalid state for managers.
+
 
     For contractor:
      - initiated:    The contractor is created, the announce message is not
@@ -42,9 +44,10 @@ class ContractState(enum.Enum):
      - acknowledged: The manager acknowledged the completed job.
      - aborted:      The manager has not acknowledged the report in time,
                       or explicitly canceled the job.
+     - wtf:          What a Terrible Failure
     '''
     (initiated, announced, closed, bid, refused, rejected, granted,
-     expired, completed, cancelled, acknowledged, aborted) = range(12)
+     expired, completed, cancelled, acknowledged, aborted, wtf) = range(13)
 
 
 class IContractPeer(Interface):
@@ -55,6 +58,6 @@ class IContractPeer(Interface):
     state = Attribute("L{ContractState}")
     announce = Attribute("Contract's announce message")
     grant = Attribute("Contract's grant message")
-    report = Attribute("Contract's report message")
+    final_report = Attribute("Contract's report message")
 
 

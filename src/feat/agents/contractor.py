@@ -10,7 +10,6 @@ class BaseContractor(log.Logger):
 
     initiator = message.Announcement
 
-    state = None
     announce = None
     grant = None
     report = None
@@ -20,8 +19,8 @@ class BaseContractor(log.Logger):
     protocol_type = "Contract"
     protocol_id = None
 
-    grant_wait_timeout = 10
-    ack_wait_timeout = 10
+    bid_timeout = 10
+    ack_timeout = 10
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
@@ -29,22 +28,26 @@ class BaseContractor(log.Logger):
         self.agent = agent
         self.medium = medium
 
-    def announced(announce):
+    def announce_expired(self):
         pass
 
-    def rejected(rejection):
+    def closed(self):
         pass
 
-    def granted(grant):
+    def rejected(self, rejection):
         pass
 
-    def canceled(grant):
+    def granted(self, grant):
         pass
 
-    def acknowledged(grant):
+    def bid_expired(self):
         pass
 
-    def aborted():
+    def cancelled(self, grant):
         pass
 
+    def acknowledged(self, grant):
+        pass
 
+    def aborted(self):
+        pass
