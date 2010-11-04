@@ -20,16 +20,16 @@ class IAgencyManager(contracts.IContractPeer):
     def announce(announce):
         '''Post an announce message.'''
 
-    def reject(rejection):
+    def reject(bid, rejection):
+
+
+    def grant(bid, grant):
         pass
 
-    def grant(grant):
+    def cancel(grant, cancelation):
         pass
 
-    def cancel(cancelation):
-        pass
-
-    def acknowledge():
+    def acknowledge(report):
         pass
 
 
@@ -51,14 +51,11 @@ class IAgentManager(protocols.IInitiator):
         '''Called when the contract expire or there is no more
         bid or refusal expected.'''
 
-    def canceled(cancelation):
+    def canceled(grant, cancelation):
         '''The contractor canceled the task.'''
 
-    def updated(update):
+    def finalized(grant, report):
         pass
 
-    def finalized(report):
-        pass
-
-    def aborted():
+    def aborted(grant):
         '''Called when the contractor did not report in time.'''
