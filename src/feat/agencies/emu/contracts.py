@@ -219,7 +219,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
         Called upon receiving the grant. Check that grants bid includes
         actual bid we put. Than calls granted and sets up reporter if necessary.
         '''
-        is_ok = grant.bid in self.bid.bids
+        is_ok = grant.bid_index < len(self.bid.bids)
         if is_ok:
             self.grant = grant
             self.contractor.granted(grant)

@@ -102,12 +102,14 @@ class TestContractor(common.TestCase):
         
         return d
 
-    def testContractorExpireExpirationTime(self):
+    def testAnnounceExpiration(self):
         self.agency.time_scale = 0.01
 
         d = self._recv_announce()
+        d.addCallback(self._get_contractor)
         d.addCallback(self.cb_after, obj=self.agent,\
                           method='unregister_listener')
+        d.addCallback(self.assertCalled, 'announce_expired')
 
         return d
 
@@ -140,6 +142,7 @@ class TestContractor(common.TestCase):
         d.addCallback(self.cb_after, obj=self.agent,\
                           method='unregister_listener')
         d.addCallback(self.assertCalled, 'bid_expired')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
 
         return d
 
@@ -162,9 +165,8 @@ class TestContractor(common.TestCase):
     def testCorrectGrant(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
-        bid = 1
-        d.addCallback(self._send_bid, bid)
-        d.addCallback(self._recv_grant, bid)
+        d.addCallback(self._send_bid, 1)
+        d.addCallback(self._recv_grant, bid_index=0)
 
         def asserts(_):
             self.assertEqual(contracts.ContractState.granted,\
@@ -173,7 +175,7 @@ class TestContractor(common.TestCase):
             call = self.contractor.find_calls('granted')[0]
             self.assertEqual(1, len(call.args))
             self.assertEqual(message.Grant, call.args[0].__class__)
-            self.assertEqual(bid, call.args[0].bid)
+            self.assertEqual(0, call.args[0].bid_index)
 
         d.addCallback(asserts)
 
@@ -182,9 +184,8 @@ class TestContractor(common.TestCase):
     def testGrantWithBidWeHaventSent(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
-        bid = 1
-        d.addCallback(self._send_bid, bid)
-        d.addCallback(self._recv_grant, 2)
+        d.addCallback(self._send_bid, 1)
+        d.addCallback(self._recv_grant, bid_index=1)
 
         d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
 
@@ -195,9 +196,8 @@ class TestContractor(common.TestCase):
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
-        bid = 1
-        d.addCallback(self._send_bid, bid)
-        d.addCallback(self._recv_grant, bid, update_report=1)
+        d.addCallback(self._send_bid, 1)
+        d.addCallback(self._recv_grant, bid_index=0, update_report=1)
 
         d.addCallback(self.queue.consume) # this is a bid
         
@@ -246,9 +246,9 @@ class TestContractor(common.TestCase):
         self.session_id = msg.session_id
         return self._recv_msg(msg)
 
-    def _recv_grant(self, _, bid, update_report=None):
+    def _recv_grant(self, _, bid_index, update_report=None):
         msg = message.Grant()
-        msg.bid = bid
+        msg.bid_index = bid_index
         msg.update_report = update_report
         msg.session_id = self.session_id
         return self._recv_msg(msg)

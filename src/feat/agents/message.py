@@ -48,7 +48,7 @@ class Rejection(ContractMessage):
 
 class Grant(ContractMessage):
 
-    bid = None # actual bid we are granting
+    bid_index = None # index of the bid we are granting
     update_report = None # set it to number to receive frequent reports
 
 
