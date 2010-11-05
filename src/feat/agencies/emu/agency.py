@@ -97,7 +97,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         # instance_id -> IListener
         self._listeners = {}
-        # protocol_type -> protocol_key -> IInterest
+        # protocol_type -> protocol_id -> IInterest
         self._interests = {}
 
         self.joinShard()

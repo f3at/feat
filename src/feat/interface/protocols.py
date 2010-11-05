@@ -8,7 +8,7 @@ class IInitiatorFactory(Interface):
     '''
 
     protocol_type = Attribute("Protocol type")
-    protocol_key = Attribute("Protocol key")
+    protocol_id = Attribute("Protocol id")
 
     def __call__(agent, medium, *args, **kwargs):
         '''Creates an instance implementing L{IInitiator}
@@ -22,7 +22,7 @@ class IInterest(Interface):
     '''
 
     protocol_type = Attribute("Protocol type")
-    protocol_key = Attribute("Protocol key")
+    protocol_id = Attribute("Protocol id")
 
     def __call__(agent, medium, *args, **kwargs):
         '''Creates an instance assuming the interested role.'''
@@ -41,6 +41,7 @@ class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
     initiator = Attribute("A message class that initiates the dialog")
+    protocol_id = Attribute("Protocol id")
 
 
 class IAgencyInitiatorFactory(Interface):
