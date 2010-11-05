@@ -12,12 +12,13 @@ class BaseMessage(object):
     expiration_time = None
     payload = {}
 
-    def __init__(self, **kwargs):
-        for key in kwargs:
-            if key in self:
-                self[key] = kwargs[key]
-            else:
-                raise AttributeError("Attribute %r not defined!" % key)
+    # FIXME: Not tested nor used
+    # def __init__(self, **kwargs):
+    #     for key in kwargs:
+    #         if key in self:
+    #             self[key] = kwargs[key]
+    #         else:
+    #             raise AttributeError("Attribute %r not defined!" % key)
 
 
 class ContractMessage(BaseMessage):
@@ -53,7 +54,8 @@ class Grant(ContractMessage):
 
 
 class Cancellation(ContractMessage):
-    pass
+
+    reason = None # why do we cancel?
 
 
 class Acknowledgement(ContractMessage):

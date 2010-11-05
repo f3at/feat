@@ -44,7 +44,7 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
         pass
 
     @common.stub
-    def canceled(grant):
+    def cancelled(grant):
         pass
 
     @common.stub
@@ -223,6 +223,33 @@ class TestContractor(common.TestCase):
 
         return d
         
+    def testCancelingGrant(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_grant)
+        d.addCallback(self._send_cancel)
+        
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.cancelled)
+
+        return d
+
+    def testCancellingByManager(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_grant)
+        d.addCallback(self._recv_cancel)
+        
+        d.addCallback(self.assertCalled, 'cancelled',
+                      params=[message.Cancellation])
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.cancelled)
+
+        return d
+        
+
     def assertUnregistered(self, _, state):
         self.assertFalse(self.contractor.medium.session_id in\
                              self.agent._listeners)
@@ -250,6 +277,12 @@ class TestContractor(common.TestCase):
         contractor.medium.refuse(msg)
         return contractor
 
+    def _send_cancel(self, contractor, reason=""):
+        msg = message.Cancellation()
+        msg.reason = reason
+        contractor.medium.cancel(msg)
+        return contractor
+
     def _recv_announce(self, *_):
         msg = message.Announcement()
         msg.session_id = str(uuid.uuid1())
@@ -268,6 +301,11 @@ class TestContractor(common.TestCase):
         msg.session_id = self.session_id
         return self._recv_msg(msg).addCallback(lambda ret: _)
 
+    def _recv_cancel(self, _, reason=""):
+        msg = message.Cancellation()
+        msg.reason = reason
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
 
     def _recv_msg(self, msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
