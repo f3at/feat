@@ -10,15 +10,14 @@ class BaseMessage(object):
     protocol_id = None
     protocol_type = None
     expiration_time = None
+    session_id = None
     payload = {}
 
-    # FIXME: Not tested nor used
-    # def __init__(self, **kwargs):
-    #     for key in kwargs:
-    #         if key in self:
-    #             self[key] = kwargs[key]
-    #         else:
-    #             raise AttributeError("Attribute %r not defined!" % key)
+    def __init__(self, **kwargs):
+        for key in kwargs:
+            self.__getattribute__(key) # this can throw AttributeError
+            self.__setattr__(key, kwargs[key])
+
 
 
 class ContractMessage(BaseMessage):

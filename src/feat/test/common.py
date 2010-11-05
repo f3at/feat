@@ -57,7 +57,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
                 for param, arg in zip(params, call.args):
                     self.assertTrue(isinstance(arg, param))
                     
-        
+        return obj
 
 def stub(method):
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import uuid, time
+import uuid, time, functools
 
 from zope.interface import classProvides, implements
 from twisted.internet import reactor, defer
@@ -249,11 +249,117 @@ class TestContractor(common.TestCase):
 
         return d
         
+    def testSendingReportThanExpiring(self):
+        self.agency.time_scale = 0.01
+
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_grant)
+        d.addCallback(self._send_final_report)
+        
+        def asserts(contractor):
+            self.assertEqual(contracts.ContractState.completed,
+                             contractor.medium.state)
+
+        d.addCallback(asserts)
+
+        d.addCallback(self.cb_after, obj=self.agent,
+                      method='unregister_listener')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.aborted)
+        d.addCallback(self.assertCalled, 'aborted')
+        
+        return d
+
+    def testSendingReportAndReceivingCancellation(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_grant)
+        d.addCallback(self._send_final_report)
+        d.addCallback(self._recv_cancel)
+
+        d.addCallback(self.assertCalled, 'cancelled',
+                      params=[message.Cancellation])
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.cancelled)
+
+        return d
+
+    def testCompletedAndAcked(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_grant)
+        d.addCallback(self._send_final_report)
+        d.addCallback(self._recv_ack)
+
+        d.addCallback(self.assertCalled, 'acknowledged',
+                      params=[message.Acknowledgement])
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.acknowledged)
+
+        return d
+
+    def testReceivingFromIncorrectState(self):
+        self.agency.time_scale = 0.01
+        
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._recv_grant)
+        # this will be ignored, we follow the path to expiration
+                
+        d.addCallback(self.cb_after, obj=self.agent,\
+                          method='unregister_listener')
+        d.addCallback(self.assertCalled, 'announce_expired')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
+        return d
+
+    def testReceivingUnknownMessage(self):
+        self.agency.time_scale = 0.01
+
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(lambda contractor:
+                 message.BaseMessage(session_id=contractor.medium.session_id))
+        d.addCallback(self._recv_msg)
+        # this will be ignored, we follow the path to expiration
+                
+        d.addCallback(lambda _: self.contractor)
+        d.addCallback(self.cb_after, obj=self.agent,
+                      method='unregister_listener')
+        d.addCallback(self.assertCalled, 'announce_expired')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
+        return d
+
+    def testSendingMessageFromIncorrectState(self):
+
+        def custom_handler(s, msg):
+            s.log("Sending refusal from incorrect state")
+            msg = message.Refusal()
+            msg.session_id = s.medium.session_id
+            s.medium.refuse(msg)
+
+        def stub_handler(contractor, handler):
+            handler = functools.partial(handler, contractor)
+            contractor.__setattr__('granted', handler)
+            return contractor
+
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(stub_handler, custom_handler)
+        d.addCallback(self._recv_grant)
+        
+        d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
+
+        return d
 
     def assertUnregistered(self, _, state):
         self.assertFalse(self.contractor.medium.session_id in\
                              self.agent._listeners)
         self.assertEqual(state, self.contractor.medium.state)
+        return self.contractor
 
     def _cancel_expiration_call_if_necessary(self):
         if self.contractor and self.contractor.medium._expiration_call and\
@@ -275,6 +381,11 @@ class TestContractor(common.TestCase):
     def _send_refusal(self, contractor):
         msg = message.Refusal()
         contractor.medium.refuse(msg)
+        return contractor
+
+    def _send_final_report(self, contractor):
+        msg = message.FinalReport()
+        contractor.medium.finalize(msg)
         return contractor
 
     def _send_cancel(self, contractor, reason=""):
@@ -304,6 +415,11 @@ class TestContractor(common.TestCase):
     def _recv_cancel(self, _, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+
+    def _recv_ack(self, _):
+        msg = message.Acknowledgement()
         msg.session_id = self.session_id
         return self._recv_msg(msg).addCallback(lambda ret: _)
 

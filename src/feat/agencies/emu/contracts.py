@@ -153,6 +153,11 @@ class AgencyContractor(log.LogProxy, log.Logger):
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
 
+    def _error_handler(self, e):
+        self.error('Terminating: %s', e.getErrorMessage())
+        self._set_state(contracts.ContractState.wtf)
+        self._terminate()
+
     # update reporter stuff
 
     def _cancel_reporter(self):
@@ -182,12 +187,13 @@ class AgencyContractor(log.LogProxy, log.Logger):
         report = self._send_message(report)
         return report
 
-    # expiration calls and it's hooks
+    # expiration calls
 
     def _expire_at(self, expire_time, method, state, *args, **kwargs):
         time_left = expire_time - self.agent.get_time()
         if time_left < 0:
             self.error('Tried to call method in the past!')
+            self._set_state(contracts.ContractState.wtf)
             self._terminate()
             return
 
@@ -271,20 +277,23 @@ class AgencyContractor(log.LogProxy, log.Logger):
         klass = msg.__class__
         decision = mapping.get(klass, None)
         if not decision:
-            self.error("Unknown method class %r", msg)
+            self.warning("Unknown message received %r. Ignoring", msg)
             return False
         
         state_before = decision['state_before']
-        self._ensure_state(state_before)
+        try:
+            self._ensure_state(state_before)
+        except StateAssertationError as e:
+            self.warning("Received message: %r in state: %r, expected state"
+                         "for this method is: %r",
+                         klass, self.state, decision['state_before'])
+            return False
 
         state_after = decision['state_after']
         self._set_state(state_after)
         
-        try:
-            decision['method'](msg)
-        except StateAssertationError as e:
-            self.error('Terminating: %r', e)
-            self._terminate()
+        d = defer.maybeDeferred(decision['method'], msg)
+        d.addErrback(self._error_handler)
 
     def get_session_id(self):
         return self.session_id
