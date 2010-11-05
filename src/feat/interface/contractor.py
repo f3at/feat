@@ -25,7 +25,7 @@ class IAgencyContractor(contracts.IContractPeer):
     def refuse(refusal):
         '''Refuses the announcement'''
 
-    def cancel(cancelation):
+    def defect(cancelation):
         '''Cancels the granted job'''
 
     def finalize(report):
@@ -47,9 +47,6 @@ class IAgentContractor(protocols.IInterested):
         the contractor has been received. Called only once.'''
 
     def announce_expired():
-        pass
-
-    def closed():
         pass
 
     def rejected(rejection):
