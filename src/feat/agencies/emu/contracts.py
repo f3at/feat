@@ -31,10 +31,56 @@ class AgencyContractorFactory(object):
 components.registerAdapter(AgencyContractorFactory,
                            IContractorFactory, IAgencyInterestedFactory)
 
+
 class StateAssertationError(RuntimeError):
     pass
 
-class AgencyContractor(log.LogProxy, log.Logger):
+
+class StateMachineMixin(object):
+    
+    def __init__(self):
+        self.state = None
+
+    def _set_state(self, state):
+        self.log('Changing state from %r to %r', self.state, state)
+        self.state = state
+
+    def _ensure_state(self, states):
+        if not isinstance(states, list):
+            states = [ states ]
+        if self.state in states:
+            return True
+        raise StateAssertationError("Expected state in: %r, was: %r instead" %\
+                           (states, self.state))
+        
+    def _event_handler(self, mapping, event):
+        klass = event.__class__
+        decision = mapping.get(klass, None)
+        if not decision:
+            self.warning("Unknown event received %r. Ignoring", event)
+            return False
+        
+        state_before = decision['state_before']
+        try:
+            self._ensure_state(state_before)
+        except StateAssertationError as e:
+            self.warning("Received event: %r in state: %r, expected state"
+                         "for this method is: %r",
+                         klass, self.state, decision['state_before'])
+            return False
+
+        state_after = decision['state_after']
+        self._set_state(state_after)
+        
+        d = defer.maybeDeferred(decision['method'], event)
+        d.addErrback(self._error_handler)
+
+    def _error_handler(self, e):
+        # overload me!
+        raise e
+
+
+class AgencyContractor(log.LogProxy, log.Logger, StateMachineMixin):
     implements(IAgencyContractor, IListener)
  
     log_category = 'agency-contractor'
@@ -42,6 +88,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
     def __init__(self, agent, announcement):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
+        StateMachineMixin.__init__(self)
 
         assert isinstance(announcement, message.Announcement)
 
@@ -51,7 +98,6 @@ class AgencyContractor(log.LogProxy, log.Logger):
                                           announcement.reply_to_shard)
         self.session_id = announcement.session_id
         self.protocol_id = announcement.protocol_id
-        self.state = None
 
         self.log_name = self.session_id
 
@@ -121,18 +167,6 @@ class AgencyContractor(log.LogProxy, log.Logger):
     
     # private section
 
-    def _set_state(self, state):
-        self.log('Changing state from %r to %r', self.state, state)
-        self.state = state
-
-    def _ensure_state(self, states):
-        if not isinstance(states, list):
-            states = [ states ]
-        if self.state in states:
-            return True
-        raise StateAssertationError("Expected state in: %r, was: %r instead" %\
-                           (states, self.state))
-        
     def _send_message(self, msg, expiration_time=None):
         msg.session_id = self.session_id
         msg.protocol_id = self.protocol_id
@@ -274,26 +308,7 @@ class AgencyContractor(log.LogProxy, log.Logger):
                  'state_after': contracts.ContractState.acknowledged,
                  'state_before': contracts.ContractState.completed},
         }
-        klass = msg.__class__
-        decision = mapping.get(klass, None)
-        if not decision:
-            self.warning("Unknown message received %r. Ignoring", msg)
-            return False
-        
-        state_before = decision['state_before']
-        try:
-            self._ensure_state(state_before)
-        except StateAssertationError as e:
-            self.warning("Received message: %r in state: %r, expected state"
-                         "for this method is: %r",
-                         klass, self.state, decision['state_before'])
-            return False
-
-        state_after = decision['state_after']
-        self._set_state(state_after)
-        
-        d = defer.maybeDeferred(decision['method'], msg)
-        d.addErrback(self._error_handler)
+        self._event_handler(mapping, msg)
 
     def get_session_id(self):
         return self.session_id
