@@ -17,9 +17,9 @@ class ContractState(enum.Enum):
      - granted:      The contract has been granted to one or multiple
                       contractor.
      - expired:      Contract expire without granting any bid.
+     - completed:    All granted jobs have been acknowledged by the manager.
      - cancelled:    Some contractor didn't report in time so all contractors
                       got cancelled.
-     - acknowledged: All granted jobs have been acknowledged by the manager.
      - aborted:      Some jobs have been cancelled so all the contractors
                       got cancelled.
      - wtf:          What a Terrible Failure
@@ -27,7 +27,7 @@ class ContractState(enum.Enum):
      - refused:      Only for contractors, invalid state for managers.
      - rejected:     Only for contractors, invalid state for managers.
      - defected:     Only for contractors, invalid state for managers.
-     - completed:    Only for contractors, invalid state for managers.
+     - acknowledged: Only for contractors, invalid state for managers.
 
 
     For contractor:

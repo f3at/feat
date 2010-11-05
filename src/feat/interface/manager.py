@@ -38,6 +38,9 @@ class IAgentManager(protocols.IInitiator):
     at creation time as a medium to perform the manager role
     in the contract protocol.'''
 
+    grant_timeout = Attribute('How long to wait for a grant to be done'
+                              'after the announce is closed')
+
     def initiate():
         pass
 
@@ -51,10 +54,14 @@ class IAgentManager(protocols.IInitiator):
         '''Called when the contract expire or there is no more
         bid or refusal expected.'''
 
+    def expired():
+        '''Called when the announce has been closed and no grant has
+        been done before time specified with the L{grant_timeout} attribute.'''
+
     def canceled(grant, cancelation):
         '''The contractor canceled the task.'''
 
-    def finalized(grant, report):
+    def completed(grant, report):
         pass
 
     def aborted(grant):
