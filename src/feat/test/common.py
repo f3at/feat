@@ -59,14 +59,6 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
                     
         return obj
 
-def stub(method):
-
-    def decorated(self, *args, **kwargs):
-        call = MockCall(method.__name__, args, kwargs)
-        self._called.append(call)
-
-    return decorated
-
 
 class Mock(object):
     
@@ -75,6 +67,15 @@ class Mock(object):
 
     def find_calls(self, name):
         return filter(lambda x: x.name == name, self._called)
+
+    @staticmethod
+    def stub(method):
+
+        def decorated(self, *args, **kwargs):
+            call = MockCall(method.__name__, args, kwargs)
+            self._called.append(call)
+
+        return decorated
 
 
 class MockCall(object):

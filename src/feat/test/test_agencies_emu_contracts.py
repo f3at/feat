@@ -23,35 +23,35 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
         contractor.BaseContractor.__init__(self, *args, **kwargs)
         common.Mock.__init__(self)
 
-    @common.stub
+    @common.Mock.stub
     def announced(announce):
         pass
 
-    @common.stub
+    @common.Mock.stub
     def announce_expired():
         pass
 
-    @common.stub
+    @common.Mock.stub
     def bid_expired():
         pass
 
-    @common.stub
+    @common.Mock.stub
     def rejected(rejection):
         pass
 
-    @common.stub
+    @common.Mock.stub
     def granted(grant):
         pass
 
-    @common.stub
+    @common.Mock.stub
     def cancelled(grant):
         pass
 
-    @common.stub
+    @common.Mock.stub
     def acknowledged(grant):
         pass
 
-    @common.stub
+    @common.Mock.stub
     def aborted():
         pass
 
