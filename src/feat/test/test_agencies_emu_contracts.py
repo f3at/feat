@@ -8,7 +8,7 @@ from twisted.internet import reactor, defer
 
 from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, contractor, message, manager
-from feat.interface import recipient, contracts
+from feat.interface import recipient, contracts, protocols
 from feat.interface.contractor import IContractorFactory
 
 from . import common
@@ -18,6 +18,7 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     classProvides(IContractorFactory)
     
     protocol_id = 'dummy-contract'
+    interest_type = protocols.InterestType.public
 
     def __init__(self, *args, **kwargs):
         contractor.BaseContractor.__init__(self, *args, **kwargs)
@@ -432,7 +433,7 @@ class TestContractor(common.TestCase):
         msg.protocol_id = "dummy-contract"
         msg.message_id = str(uuid.uuid1())
 
-        key = self.agent.descriptor.uuid
+        key = 'dummy-contract'
         shard = self.agent.descriptor.shard
         self.agent._messaging.publish(key, shard, msg)
         return d

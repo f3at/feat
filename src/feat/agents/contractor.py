@@ -9,6 +9,7 @@ class BaseContractor(log.Logger):
     implements(contractor.IAgentContractor)
 
     initiator = message.Announcement
+    binding = None
 
     announce = None
     grant = None

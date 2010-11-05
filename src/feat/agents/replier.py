@@ -1,5 +1,6 @@
 from zope.interface import implements, classProvides
-from feat.interface import replier
+
+from feat.interface import replier, protocols
 from feat.common import log
 from feat.agents import message
 
@@ -9,6 +10,7 @@ class BaseReplier(log.Logger):
     implements(replier.IAgentReplier)
 
     initiator = message.RequestMessage
+    interest_type = protocols.InterestType.private
 
     log_category = "replier"
     protocol_type = "Request"

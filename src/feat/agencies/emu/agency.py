@@ -13,7 +13,8 @@ from feat.interface.agent import IAgencyAgent, IAgentFactory
 from feat.interface.protocols import IInitiatorFactory,\
                                      IAgencyInitiatorFactory,\
                                      IInterest,\
-                                     IAgencyInterestedFactory
+                                     IAgencyInterestedFactory,\
+                                     InterestType
 from feat.interface import recipient
 
 from interface import IListener
@@ -109,7 +110,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     def joinShard(self):
         self.log("Join shard called")
         shard = self.descriptor.shard
-        self._messaging.createPersonalBinding(self.descriptor.uuid, shard)
+        self.create_binding(self.descriptor.uuid)
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):
@@ -173,6 +174,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self.error('Already interested in %s.%s protocol!', p_type, p_id)
             return False
         self._interests[p_type][p_id] = factory
+
+        if factory.interest_type == InterestType.public:
+            factory.binding = self.create_binding(p_id)
+
         return True
 
     def revoke_interest(self, factory):
@@ -185,6 +190,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
                       ' %s.%s', p_type, p_id)
            return False
         del(self._interests[p_type][p_id])
+
+        if factory.interest_type == InterestType.public:
+            factory.binding.revoke()
+        
         return True
         
     def register_listener(self, listener):
@@ -215,3 +224,5 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self._messaging.publish(recipients.key, recipients.shard, msg)
         return msg
 
+    def create_binding(self, key):
+        return self._messaging.createPersonalBinding(key)

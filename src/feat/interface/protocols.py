@@ -1,5 +1,7 @@
 from zope.interface import Interface, Attribute
 
+from feat.common import enum
+
 
 class IInitiatorFactory(Interface):
     '''This class represent a protocol initiator.
@@ -15,6 +17,16 @@ class IInitiatorFactory(Interface):
         assuming the initiator role.'''
 
 
+class InterestType(enum.Enum):
+    '''Type of Interest:
+
+    - private:   Dialog is initiated with 1-1 communication
+    - public:     Dialog is initiated with 1-* communication
+    '''
+
+    (private, public) = range(2)
+
+
 class IInterest(Interface):
     '''This class represent an interest in a type of protocol.
     It defines a protocol type, a protocol identifier and can be called
@@ -23,6 +35,8 @@ class IInterest(Interface):
 
     protocol_type = Attribute("Protocol type")
     protocol_id = Attribute("Protocol id")
+    initiator = Attribute("A message class that initiates the dialog")
+    interest_type = Attribute("Type of interest L{InterestType}")
 
     def __call__(agent, medium, *args, **kwargs):
         '''Creates an instance assuming the interested role.'''
@@ -40,7 +54,6 @@ class IInitiator(Interface):
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
-    initiator = Attribute("A message class that initiates the dialog")
     protocol_id = Attribute("Protocol id")
 
 
