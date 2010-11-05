@@ -142,9 +142,9 @@ class AgencyContractor(log.LogProxy, log.Logger):
 
         return self.agent.send_msg(self.recipients, msg)
 
-    def _run_and_terminate(method, *args, **kwargs):
+    def _run_and_terminate(self, method, *args, **kwargs):
         d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addCallback(self._terminate)
+        d.addCallback(lambda _: self._terminate())
 
     def _terminate(self):
         self.log("Unregistering contractor")
@@ -228,7 +228,8 @@ class AgencyContractor(log.LogProxy, log.Logger):
         else:
             self.error("The bid granted doesn't match the one put upon!"
                        "Terminating!")
-            self.error("Bid: %r, bids: %r", grant.bid, self.bid.bids)
+            self.error("Bid index: %r, bids: %r", grant.bid_index,
+                                                  self.bid.bids)
             self._set_state(contracts.ContractState.wtf)
             self._terminate()
 

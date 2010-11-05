@@ -43,13 +43,20 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return d
 
-    def assertCalled(self, obj, name, times=1):
-        assert isinstance(obj, Mock)
-        times_called = len(obj.find_calls(name))
+    def assertCalled(self, obj, name, times=1, params=None):
+        assert isinstance(obj, Mock), "Got: %r" % obj
+        calls = obj.find_calls(name)
+        times_called = len(calls)
         template = "Expected %s method to be called %d time(s), "\
                    "was called %d time(s)"
         self.assertEqual(times, times_called,\
                              template % (name, times, times_called))
+        if params:
+            for call in calls:
+                self.assertEqual(len(params), len(call.args))
+                for param, arg in zip(params, call.args):
+                    self.assertTrue(isinstance(arg, param))
+                    
         
 
 def stub(method):

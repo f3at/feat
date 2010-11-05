@@ -78,8 +78,7 @@ class TestContractor(common.TestCase):
     def testRecivingAnnouncement(self):
         d = self._recv_announce()
         
-        def asserts(rpl):
-            self.assertEqual(True, rpl)
+        def asserts(_):
             self.assertEqual(1, len(self.agent._listeners))
 
         d.addCallback(asserts)
@@ -213,6 +212,17 @@ class TestContractor(common.TestCase):
 
         return d
 
+    def testBidRejected(self):
+        d = self._recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(self._send_bid)
+        d.addCallback(self._recv_rejection)
+
+        d.addCallback(self.assertCalled, 'rejected', params=[message.Rejection])
+        d.addCallback(self.assertUnregistered, contracts.ContractState.rejected)
+
+        return d
+        
     def assertUnregistered(self, _, state):
         self.assertFalse(self.contractor.medium.session_id in\
                              self.agent._listeners)
@@ -244,14 +254,20 @@ class TestContractor(common.TestCase):
         msg = message.Announcement()
         msg.session_id = str(uuid.uuid1())
         self.session_id = msg.session_id
-        return self._recv_msg(msg)
-
-    def _recv_grant(self, _, bid_index, update_report=None):
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+        
+    def _recv_grant(self, _, bid_index=0, update_report=None):
         msg = message.Grant()
         msg.bid_index = bid_index
         msg.update_report = update_report
         msg.session_id = self.session_id
-        return self._recv_msg(msg)
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+        
+    def _recv_rejection(self, _):
+        msg = message.Rejection()
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+
 
     def _recv_msg(self, msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
