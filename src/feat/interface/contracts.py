@@ -26,6 +26,7 @@ class ContractState(enum.Enum):
      - bid:          Only for contractors, invalid state for managers.
      - refused:      Only for contractors, invalid state for managers.
      - rejected:     Only for contractors, invalid state for managers.
+     - defected:     Only for contractors, invalid state for managers.
      - completed:    Only for contractors, invalid state for managers.
 
 
@@ -41,13 +42,15 @@ class ContractState(enum.Enum):
      - expired:      Bid expired without grant nor rejection.
      - completed:    Granted job is completed.
      - cancelled:    The manager cancelled the job.
+     - defected:     The contractor renounced and sent a cancellation
+                     to the manager.
      - acknowledged: The manager acknowledged the completed job.
      - aborted:      The manager has not acknowledged the report in time,
                       or explicitly canceled the job.
      - wtf:          What a Terrible Failure
     '''
-    (initiated, announced, closed, bid, refused, rejected, granted,
-     expired, completed, cancelled, acknowledged, aborted, wtf) = range(13)
+    (initiated, announced, closed, bid, refused, rejected, granted, expired,
+     completed, defected, cancelled, acknowledged, aborted, wtf) = range(14)
 
 
 class IContractPeer(Interface):
