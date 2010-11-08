@@ -126,6 +126,11 @@ class AgencyTestHelper(object):
         exchange.bind(endpoint.key, queue)
         return endpoint, queue
 
+    def _send_announce(self, manager):
+        msg = message.Announcement()
+        manager.medium.announce(msg)
+        return manager
+
     def _send_bid(self, contractor, bid=1):
         msg = message.Bid()
         msg.bids = [ bid ]
@@ -209,6 +214,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
             endpoint, queue = self._setup_endpoint()
             self.contractors.append({'endpoint': endpoint, 'queue': queue})
         self.recipients = map(lambda x: x['endpoint'], self.contractors)
+        self.queues = map(lambda x: x['queue'], self.contractors)
 
     def start_manager(self):
         self.manager =\
@@ -224,6 +230,22 @@ class TestManager(common.TestCase, AgencyTestHelper):
                           method='unregister_listener')
 
         return d
+ 
+    def testSendAnnouncementAndWaitForClosed(self):
+        self.agency.time_scale = 0.01
+        self.start_manager()
+        
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+
+        def asserts_on_msgs(msgs):
+            self.log(msgs)
+
+        d.addCallback(asserts_on_msgs)
+        d.addCallback(lambda x: self.manager)
+        d.addCallback(self.assertCalled, 'closed', params=[])
+        return d
+    testSendAnnouncementAndWaitForClosed.skip = "Point to start tomorrow"
         
 class TestContractor(common.TestCase, AgencyTestHelper):
 

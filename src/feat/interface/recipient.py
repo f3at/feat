@@ -80,7 +80,7 @@ class RecipientsFromList(object):
             self.array.append(IRecipient(item))
 
     def __iter__(self):
-        return self.array.iter()
+        return self.array.__iter__()
     
 
 components.registerAdapter(RecipientsFromList, list, IRecipients)

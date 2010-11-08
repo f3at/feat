@@ -18,23 +18,33 @@ from . import common
 class ExpirationCallsMixin(object):
 
     def __init__(self):
-        self.expiration_call = None
+        self._expiration_call = None
     
-    def _expire_at(self, expire_time, method, state, *args, **kwargs):
+    def _setup_expiration_call(self, expire_time, method, state,
+                                  *args, **kwargs):
         time_left = expire_time - self.agent.get_time()
+
         if time_left < 0:
             self.error('Tried to call method in the past!')
             self._set_state(contracts.ContractState.wtf)
             self._terminate()
             return
 
-        def to_call():
+        def to_call(callback):
             self._set_state(state)
             self.log('Calling method: %r with args: %r', method, args)
             d = defer.maybeDeferred(method, *args, **kwargs)
-            d.addCallback(lambda _: self._terminate())
+            d.addCallback(callback.callback)
 
-        self._expiration_call = self.agent.callLater(time_left, to_call)
+        result = defer.Deferred()
+        self._expiration_call = self.agent.callLater(time_left, to_call, result)
+        return result
+
+    def _expire_at(self, expire_time, method, state, *args, **kwargs):
+        d = self._setup_expiration_call(expire_time, method,
+                                           state, *args, **kwargs)
+        d.addCallback(lambda _: self._terminate())
+        return d
 
     def _cancel_expiration_call(self):
         if self._expiration_call and not (self._expiration_call.called or\
@@ -84,6 +94,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.kwargs = kwargs
         self.session_id = str(uuid.uuid1())
         self.log_name = self.session_id
+
+        self.contractors = []
     
     # manager.IAgencyManager stuff
 
@@ -102,7 +114,21 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         return manager
 
     def announce(self, announce):
-        pass
+        self.debug("Sending announcement %r", announce)
+        assert isinstance(announce, message.Announcement)
+
+        self._ensure_state(contracts.ContractState.initiated)
+        self._set_state(contracts.ContractState.announced)
+
+        expiration_time = self.agent.get_time() + self.manager.announce_timeout
+        self.bid = self._send_message(announce, expiration_time)
+
+        self._cancel_expiration_call()
+        self._setup_expiration_call(expiration_time,
+                                    self.manager.closed,
+                                    contracts.ContractState.closed)
+
+        return self.bid
 
     def reject(self, bid, rejection):
         pass
@@ -128,6 +154,15 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
+
+    def _send_message(self, msg, expiration_time=None):
+        msg.session_id = self.session_id
+        msg.protocol_id = self.manager. protocol_id
+        if expiration_time is None:
+            expiration_time = self.agent.get_time() + 10
+        msg.expiration_time = expiration_time
+
+        return self.agent.send_msg(self.recipients, msg)
 
     # IListener stuff
 
