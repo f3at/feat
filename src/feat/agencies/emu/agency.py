@@ -138,10 +138,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         p_type = message.protocol_type
         p_id = message.protocol_id
         if p_type in self._interests and p_id in self._interests[p_type] and\
-           isinstance(message, self._interests[p_type][p_id].initiator):
+           isinstance(message, self._interests[p_type][p_id].factory.initiator):
             self.log('Looking for interest to instantiate')
             factory = self._interests[message.protocol_type]\
-                                     [message.protocol_id]
+                                     [message.protocol_id].factory
             medium_factory = IAgencyInterestedFactory(factory)
             medium = medium_factory(self, message)
             interested = factory(self.agent, medium)
@@ -173,10 +173,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         if p_id in self._interests[p_type]:
             self.error('Already interested in %s.%s protocol!', p_type, p_id)
             return False
-        self._interests[p_type][p_id] = factory
-
-        if factory.interest_type == InterestType.public:
-            factory.binding = self.create_binding(p_id)
+        self._interests[p_type][p_id] = Interest(self, factory)
 
         return True
 
@@ -189,10 +186,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
            self.error('Requested to revoke interest we are not interested in!'
                       ' %s.%s', p_type, p_id)
            return False
+        self._interests[p_type][p_id].revoke()
         del(self._interests[p_type][p_id])
 
-        if factory.interest_type == InterestType.public:
-            factory.binding.revoke()
         
         return True
         
@@ -226,3 +222,23 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def create_binding(self, key):
         return self._messaging.createPersonalBinding(key)
+
+
+class Interest(object):
+    '''Represents the interest from the point of view of agency.
+    Manages the binding and stores factory reference'''
+
+    factory = None
+    binding = None
+
+    def __init__(self, medium, factory):
+        self.factory = factory
+
+        if factory.interest_type == InterestType.public:
+            self.binding = medium.create_binding(self.factory.protocol_id)
+
+    def revoke(self):
+      if self.factory.interest_type == InterestType.public:
+          self.binding.revoke()
+                
+
