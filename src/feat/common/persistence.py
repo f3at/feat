@@ -18,7 +18,16 @@ class MetaSerializable(type):
         super(MetaSerializable, cls).__init__(name, bases, dct)
 
 
-class Serializable(object):
+class Snapshot(object):
+    __metaclass__ = MetaSerializable
+
+    implements(serialization.ISnapshot)
+
+    def snapshot(self, context={}):
+        return self.__dict__
+
+
+class Serializable(Snapshot):
     __metaclass__ = MetaSerializable
 
     classProvides(serialization.IRestorator)
@@ -34,9 +43,6 @@ class Serializable(object):
 
     def recover(self, snapshot, context={}):
         self.__dict__.update(snapshot)
-
-    def snapshot(self, context={}):
-        return self.__dict__
 
 
 class Registry(object):

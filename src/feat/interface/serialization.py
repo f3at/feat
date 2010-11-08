@@ -18,7 +18,17 @@ class IRestorator(Interface):
         pass
 
 
-class ISerializable(Interface):
+class ISnapshot(Interface):
+    '''Only know how to extract a snapshot of its state,
+    there is no guarantee of recoverability.'''
+
+    def snapshot(context):
+        '''Called to retrieve the current state of an object.
+        It should return only structures of basic python types
+        or instances implementing L{ISnapshot}.'''
+
+
+class ISerializable(ISnapshot):
     '''Knows how to serialize itself and know it's type name.
     The type name will be used to know which L{IUnserializer}
     to use in order to restore a snapshot.
@@ -30,17 +40,17 @@ class ISerializable(Interface):
     def recover(snapshot, context={}):
         pass
 
-    def snapshot(context):
-        '''Called to retrieve the current state of an object.
-        It should return only structures of basic python types
-        or instances implementing L{ISerializable}.'''
 
 
 class ISerializer(Interface):
     '''Knows how to convert an object to bytes.'''
 
-    def serialize(obj, context={}):
+    def snapshot(obj, context={}):
         pass
+
+    def serialize(obj, context={}):
+        '''Same has snapshot but enforce all instances
+        support L{ISerializable}'''
 
 
 class IUnserializer(Interface):
