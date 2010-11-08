@@ -16,6 +16,7 @@ from feat.interface import contracts, recipient
 from feat.agents import message
 
 from interface import IListener
+from . import common
 
 
 class AgencyContractorFactory(object):
@@ -32,55 +33,7 @@ components.registerAdapter(AgencyContractorFactory,
                            IContractorFactory, IAgencyInterestedFactory)
 
 
-class StateAssertationError(RuntimeError):
-    pass
-
-
-class StateMachineMixin(object):
-    
-    def __init__(self):
-        self.state = None
-
-    def _set_state(self, state):
-        self.log('Changing state from %r to %r', self.state, state)
-        self.state = state
-
-    def _ensure_state(self, states):
-        if not isinstance(states, list):
-            states = [ states ]
-        if self.state in states:
-            return True
-        raise StateAssertationError("Expected state in: %r, was: %r instead" %\
-                           (states, self.state))
-        
-    def _event_handler(self, mapping, event):
-        klass = event.__class__
-        decision = mapping.get(klass, None)
-        if not decision:
-            self.warning("Unknown event received %r. Ignoring", event)
-            return False
-        
-        state_before = decision['state_before']
-        try:
-            self._ensure_state(state_before)
-        except StateAssertationError as e:
-            self.warning("Received event: %r in state: %r, expected state"
-                         "for this method is: %r",
-                         klass, self.state, decision['state_before'])
-            return False
-
-        state_after = decision['state_after']
-        self._set_state(state_after)
-        
-        d = defer.maybeDeferred(decision['method'], event)
-        d.addErrback(self._error_handler)
-
-    def _error_handler(self, e):
-        # overload me!
-        raise e
-
-
-class AgencyContractor(log.LogProxy, log.Logger, StateMachineMixin):
+class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
     implements(IAgencyContractor, IListener)
  
     log_category = 'agency-contractor'
@@ -88,7 +41,7 @@ class AgencyContractor(log.LogProxy, log.Logger, StateMachineMixin):
     def __init__(self, agent, announcement):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
-        StateMachineMixin.__init__(self)
+        common.StateMachineMixin.__init__(self)
 
         assert isinstance(announcement, message.Announcement)
 
