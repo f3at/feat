@@ -14,9 +14,23 @@ class DummyJournalKeeper(object):
 
     implements(journaling.IJournalKeeper)
 
+    records = []
+
     ### IJournalKeeper Methods ###
 
-    def do_record(self, instance_id, entry_id, args, kwargs, results):
+    def record(self, instance_id, entry_id, input, output):
+        record = ( instance_id, entry_id, input.snapshot(), output.snapshot())
+        self.records.append(record)
+
+
+class A(journal.Recorder):
+
+    @journal.recorded()
+    def spam(self, accompaniment):
+        pass
+
+    @journal.recorded("bacon")
+    def more_spam(self, accompaniment):
         pass
 
 
@@ -37,3 +51,6 @@ class TestRecorder(common.TestCase):
         self.assertEqual(ABA.journal_id, ("test", 1, 2, 1))
         BA = journal.Recorder(B)
         self.assertEqual(BA.journal_id, ("test", 2, 1))
+
+    def testRecording(self):
+        pass

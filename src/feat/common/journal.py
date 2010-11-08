@@ -3,10 +3,30 @@ from zope.interface import implements
 from feat.interface import journaling
 from feat.interface.journaling import JournalMode
 
-from . import persistence
+from . import persistence, annotate
 
 
-class RecordInput(persistence.Serializable):
+## Decorators ###
+
+def recorded(entry_id=None):
+
+    def decorator(method):
+        fixed_id = entry_id or method.__name__
+
+        # Register the method as recorded call
+        annotate.injectClassCallback("recorded",
+                                     "_register_recorded_call",
+                                     fixed_id, method)
+
+        def wrapper(self, *args, **kwargs):
+            return self._call_recorded(fixed_id, method, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+class RecordInput(persistence.Snapshot):
 
     implements(journaling.IRecordInput)
 
@@ -15,7 +35,7 @@ class RecordInput(persistence.Serializable):
         self.kwargs = kwargs
 
 
-class RecordOutput(persistence.Serializable):
+class RecordOutput(persistence.Snapshot):
 
     implements(journaling.IRecordOutput)
 
@@ -76,12 +96,22 @@ class RecorderNode(object):
         return self.journal_id + (self._recorder_count,)
 
 
-class Recorder(RecorderNode):
+class Recorder(RecorderNode, annotate.Annotable):
 
     implements(journaling.IRecorder)
 
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
+        # Bind the _call_recorded method depending on the journal mode
+        if self.journal_mode == JournalMode.normal:
+            self._call_recorded = self._record_call
+        elif self.journal_mode == JournalMode.replay:
+            self._call_recorded = self._replay_call
+        else:
+            raise RuntimeError("Unsupported journal mode")
+
+    def register_playback(self):
+        pass
 
     ### IRecorder Methods ###
 
@@ -91,6 +121,23 @@ class Recorder(RecorderNode):
     def replay(self, entry_id, args, kwargs):
         pass
 
+    ### Private Methods ###
+
+    @classmethod
+    def _register_recorded_call(cls, entry_id, method):
+        pass
+
+    def _record_call(self, method, entry_id, *args, **kwargs):
+        input = RecordInput(args, kwargs)
+        result = method(self, *args, **kwargs)
+        recres = journaling.IRecordingResult(result)
+        output = recres.output
+        self.journal_keeper.record(self.journal_id, entry_id, input, output)
+        return recres.proceed()
+
+    def _replay_call(self, method, entry_id, *args, **kwargs):
+        pass
+
 
 class FileJournalKeeper(object):
 
@@ -98,7 +145,7 @@ class FileJournalKeeper(object):
 
     ### IJournalKeeper Methods ###
 
-    def do_record(self, instance_id, entry_id, args, kwargs, results):
+    def record(self, instance_id, entry_id, args, kwargs, results):
         pass
 
 

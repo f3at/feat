@@ -9,11 +9,11 @@ class JournalMode(enum.Enum):
     normal, replay = range(1, 3)
 
 
-class IRecordInput(serialization.ISerializable):
+class IRecordInput(serialization.ISnapshot):
     pass
 
 
-class IRecordOutput(serialization.ISerializable):
+class IRecordOutput(serialization.ISnapshot):
     pass
 
 
@@ -28,7 +28,7 @@ class IRecordingResult(Interface):
 class IJournalKeeper(Interface):
     '''Store journal entries'''
 
-    def do_record(instance_id, entry_id, input, output):
+    def record(instance_id, entry_id, input, output):
         pass
 
 
@@ -52,9 +52,6 @@ class IRecorderNode(Interface):
 class IRecorder(IRecorderNode):
 
     journal_id = Attribute('Journal recorder identifier, tuple of int')
-
-    def record(entry_id, input, output):
-        pass
 
     def replay(entry_id, input):
         pass
