@@ -8,14 +8,7 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface.agency import IAgency
-from feat.interface.agent import IAgencyAgent, IAgentFactory
-from feat.interface.protocols import IInitiatorFactory,\
-                                     IAgencyInitiatorFactory,\
-                                     IInterest,\
-                                     IAgencyInterestedFactory,\
-                                     InterestType
-from feat.interface import recipient
+from feat.interface import recipient, agency, agent, protocols
 
 from interface import IListener
 from . import messaging
@@ -25,7 +18,7 @@ from . import contracts
 
 
 class Agency(object):
-    implements(IAgency)
+    implements(agency.IAgency)
 
     time_scale = 1
 
@@ -38,7 +31,7 @@ class Agency(object):
         self._database = database.Database()
 
     def start_agent(self, factory, descriptor):
-        factory = IAgentFactory(factory)
+        factory = agent.IAgentFactory(factory)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
         return medium
@@ -80,25 +73,25 @@ class Agency(object):
 
 
 class AgencyAgent(log.FluLogKeeper, log.Logger):
-    implements(IAgencyAgent)
+    implements(agent.IAgencyAgent)
 
     log_category = "agency-agent"
 
-    def __init__(self, agency, factory, descriptor):
+    def __init__(self, aagency, factory, descriptor):
 
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
-        self.agency = IAgency(agency)
+        self.agency = agency.IAgency(aagency)
         self.descriptor = descriptor
         self.agent = factory(self)
 
-        self._messaging = agency._messaging.createConnection(self)
-        self._database = agency._database
+        self._messaging = self.agency._messaging.createConnection(self)
+        self._database = self.agency._database
 
         # instance_id -> IListener
         self._listeners = {}
-        # protocol_type -> protocol_id -> IInterest
+        # protocol_type -> protocol_id -> protocols.IInterest
         self._interests = {}
 
         self.joinShard()
@@ -142,7 +135,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self.log('Looking for interest to instantiate')
             factory = self._interests[message.protocol_type]\
                                      [message.protocol_id].factory
-            medium_factory = IAgencyInterestedFactory(factory)
+            medium_factory = protocols.IAgencyInterestedFactory(factory)
             medium = medium_factory(self, message)
             interested = factory(self.agent, medium)
             medium.initiate(interested)
@@ -155,9 +148,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return False
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
-        factory = IInitiatorFactory(factory)
+        factory = protocols.IInitiatorFactory(factory)
         recipients = recipient.IRecipient(recipients)
-        medium_factory = IAgencyInitiatorFactory(factory)
+        medium_factory = protocols.IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
         initiator = factory(self.agent, medium, *args, **kwargs)
@@ -165,7 +158,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return medium.initiate(initiator)
 
     def register_interest(self, factory):
-        factory = IInterest(factory)
+        factory = protocols.IInterest(factory)
         p_type = factory.protocol_type
         p_id = factory.protocol_id
         if p_type not in self._interests:
@@ -178,7 +171,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return True
 
     def revoke_interest(self, factory):
-        factory = IInterest(factory)
+        factory = protocols.IInterest(factory)
         p_type = factory.protocol_type
         p_id = factory.protocol_id
         if p_type not in self._interests or\
@@ -234,11 +227,11 @@ class Interest(object):
     def __init__(self, medium, factory):
         self.factory = factory
 
-        if factory.interest_type == InterestType.public:
+        if factory.interest_type == protocols.InterestType.public:
             self.binding = medium.create_binding(self.factory.protocol_id)
 
     def revoke(self):
-      if self.factory.interest_type == InterestType.public:
+      if self.factory.interest_type == protocols.InterestType.public:
           self.binding.revoke()
                 
 

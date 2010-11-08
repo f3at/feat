@@ -8,11 +8,7 @@ from twisted.internet import reactor, defer
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface.protocols import IAgencyInitiatorFactory,\
-                                     IAgencyInterestedFactory
-from feat.interface.contractor import IAgencyContractor, IAgentContractor,\
-                                      IContractorFactory
-from feat.interface import contracts, recipient
+from feat.interface import contracts, recipient, contractor, protocols
 from feat.agents import message
 
 from interface import IListener
@@ -20,7 +16,7 @@ from . import common
 
 
 class AgencyContractorFactory(object):
-    implements(IAgencyInterestedFactory)
+    implements(protocols.IAgencyInterestedFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -30,11 +26,12 @@ class AgencyContractorFactory(object):
 
 
 components.registerAdapter(AgencyContractorFactory,
-                           IContractorFactory, IAgencyInterestedFactory)
+                           contractor.IContractorFactory,
+                           protocols.IAgencyInterestedFactory)
 
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
-    implements(IAgencyContractor, IListener)
+    implements(contractor.IAgencyContractor, IListener)
  
     log_category = 'agency-contractor'
 
@@ -62,7 +59,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
         self._set_state(contracts.ContractState.initiated)
         return contractor
 
-    # IAgencyContractor stuff
+    # contractor.IAgencyContractor stuff
 
     def bid(self, bid):
         self.debug("Sending bid %r", bid)

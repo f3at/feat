@@ -7,22 +7,14 @@ from twisted.python import components
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface.protocols import IInitiatorFactory,\
-                                     IAgencyInitiatorFactory,\
-                                     IInterest,\
-                                     IAgencyInterestedFactory
-from feat.interface.requester import IAgencyRequester, IRequesterFactory,\
-                                     IAgentRequester
-from feat.interface.replier import IAgencyReplier, IAgentReplier,\
-                                   IReplierFactory
-from feat.interface import recipient, requests
+from feat.interface import recipient, requests, replier, requester, protocols
 from feat.agents import message
 
 from interface import IListener
 
 
 class AgencyRequesterFactory(object):
-    implements(IAgencyInitiatorFactory)
+    implements(protocols.IAgencyInitiatorFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -32,12 +24,13 @@ class AgencyRequesterFactory(object):
 
 
 components.registerAdapter(AgencyRequesterFactory,
-                           IRequesterFactory, IAgencyInitiatorFactory)
+                           requester.IRequesterFactory,
+                           protocols.IAgencyInitiatorFactory)
 
 
 
 class AgencyRequester(log.LogProxy, log.Logger):
-    implements(IAgencyRequester, IListener)
+    implements(requester.IAgencyRequester, IListener)
 
     log_category = 'agency-requester'
 
@@ -92,7 +85,7 @@ class AgencyRequester(log.LogProxy, log.Logger):
 
 
 class AgencyReplierFactory(object):
-    implements(IAgencyInterestedFactory)
+    implements(protocols.IAgencyInterestedFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -102,11 +95,12 @@ class AgencyReplierFactory(object):
 
 
 components.registerAdapter(AgencyReplierFactory,
-                           IReplierFactory, IAgencyInterestedFactory)
+                           replier.IReplierFactory,
+                           protocols.IAgencyInterestedFactory)
 
 
 class AgencyReplier(log.LogProxy, log.Logger):
-    implements(IAgencyReplier, IListener)
+    implements(replier.IAgencyReplier, IListener)
  
     log_category = 'agency-replier'
 
