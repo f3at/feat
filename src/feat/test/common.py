@@ -59,6 +59,12 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
                     
         return obj
 
+    def setup_endpoint(self):
+        self.endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
+        self.queue = self.agency._messaging.defineQueue(self.endpoint.key)
+        exchange = self.agency._messaging._getExchange(self.endpoint.shard)
+        exchange.bind(self.endpoint.key, self.queue)
+
 
 class Mock(object):
     

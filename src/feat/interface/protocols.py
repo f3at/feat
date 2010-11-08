@@ -45,9 +45,6 @@ class IInterest(Interface):
 class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
-    session_id = Attribute("Session identification. "
-                            "Generate this at creation")
-
     def initiate():
         pass
 

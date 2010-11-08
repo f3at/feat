@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<XMI verified="false" xmi.version="1.2" timestamp="2010-11-05T18:22:33" xmlns:UML="http://schema.omg.org/spec/UML/1.3">
+<XMI verified="false" xmi.version="1.2" timestamp="2010-11-08T13:07:50" xmlns:UML="http://schema.omg.org/spec/UML/1.3">
  <XMI.header>
   <XMI.documentation>
    <XMI.exporter>umbrello uml modeller http://uml.sf.net</XMI.exporter>
@@ -38,51 +38,51 @@
      </UML:Namespace.ownedElement>
      <XMI.extension xmi.extender="umbrello">
       <diagrams>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="class diagram" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="851" canvaswidth="1340" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="t4U0PZsw9pgD" documentation="" showscope="1" snapgrid="0" showatts="1" type="1">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="class diagram" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="184" canvaswidth="147" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="t4U0PZsw9pgD" documentation="" showscope="1" snapgrid="0" showatts="1" type="1">
         <widgets/>
         <messages/>
         <associations/>
        </diagram>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Contractor" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="1108" canvaswidth="1323" localid="" snapcsgrid="0" showgrid="1" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="MtoVsRWzcZ7n" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Contractor" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="1108" canvaswidth="777" localid="" snapcsgrid="0" showgrid="1" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="MtoVsRWzcZ7n" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
         <widgets>
          <statewidget width="30" showstereotype="1" x="406" y="40" usesdiagramusefillcolor="1" statename="State" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="30" linecolor="none" xmi.id="pJwOveYqMbfJ" statetype="0" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities/>
          </statewidget>
-         <statewidget width="251" showstereotype="1" x="296" y="244" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="zylU0woriKj9" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="251" showstereotype="1" x="296" y="244" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="zylU0woriKj9" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="contractor.announced()"/>
            <Activity name="set_timeout(announce.expiration)"/>
           </Activities>
          </statewidget>
-         <statewidget width="226" showstereotype="1" x="13" y="332" usesdiagramusefillcolor="0" statename="Closed" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="ojjLoXCbo60i" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="226" showstereotype="1" x="13" y="332" usesdiagramusefillcolor="0" statename="Closed" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="ojjLoXCbo60i" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="contractor.announce_expired()"/>
           </Activities>
          </statewidget>
-         <statewidget width="203" showstereotype="1" x="320" y="460" usesdiagramusefillcolor="0" statename="Bid" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="lYY59BO789b8" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="203" showstereotype="1" x="320" y="460" usesdiagramusefillcolor="0" statename="Bid" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="lYY59BO789b8" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="post(bid)"/>
            <Activity name="set_timeout(bid.expiration)"/>
           </Activities>
          </statewidget>
-         <statewidget width="152" showstereotype="1" x="599" y="325" usesdiagramusefillcolor="0" statename="Refused" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="4OzmiguUNdoB" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="152" showstereotype="1" x="599" y="325" usesdiagramusefillcolor="0" statename="Refused" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="4OzmiguUNdoB" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="post(refusal)"/>
            <Activity name="contractor.refused()"/>
           </Activities>
          </statewidget>
-         <statewidget width="220" showstereotype="1" x="311" y="676" usesdiagramusefillcolor="0" statename="Granted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="A0nz5lfqHDtP" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="220" showstereotype="1" x="311" y="676" usesdiagramusefillcolor="0" statename="Granted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="A0nz5lfqHDtP" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.granted()"/>
            <Activity name="set_timeout(grant.expiration)"/>
           </Activities>
          </statewidget>
-         <statewidget width="151" showstereotype="1" x="600" y="559" usesdiagramusefillcolor="0" statename="Rejected" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="NHWVP5bRTaD9" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="151" showstereotype="1" x="600" y="559" usesdiagramusefillcolor="0" statename="Rejected" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="NHWVP5bRTaD9" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.rejected()"/>
           </Activities>
          </statewidget>
-         <statewidget width="173" showstereotype="1" x="38" y="554" usesdiagramusefillcolor="0" statename="Expired" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="G7ccjQntOYqT" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="173" showstereotype="1" x="38" y="554" usesdiagramusefillcolor="0" statename="Expired" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="G7ccjQntOYqT" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.bid_expired()"/>
           </Activities>
@@ -93,17 +93,17 @@
            <Activity name="set_timeout(report.timeout)"/>
           </Activities>
          </statewidget>
-         <statewidget width="159" showstereotype="1" x="45" y="776" usesdiagramusefillcolor="0" statename="Cancelled" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="V6GzgR6uXiWG" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="159" showstereotype="1" x="45" y="776" usesdiagramusefillcolor="0" statename="Cancelled" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="V6GzgR6uXiWG" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.cancelled()"/>
           </Activities>
          </statewidget>
-         <statewidget width="195" showstereotype="1" x="578" y="999" usesdiagramusefillcolor="0" statename="Acknowledged" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="OZ6o1bbUfpTJ" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="195" showstereotype="1" x="578" y="999" usesdiagramusefillcolor="0" statename="Acknowledged" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="OZ6o1bbUfpTJ" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.acknowledged()"/>
           </Activities>
          </statewidget>
-         <statewidget width="149" showstereotype="1" x="50" y="998" usesdiagramusefillcolor="0" statename="Aborted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="HYCoGi2Ny7qn" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="149" showstereotype="1" x="50" y="998" usesdiagramusefillcolor="0" statename="Aborted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="38" linecolor="#ff0000" xmi.id="HYCoGi2Ny7qn" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="controller.aborted()"/>
           </Activities>
@@ -285,15 +285,15 @@
          </assocwidget>
         </associations>
        </diagram>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Manager Global State" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="851" canvaswidth="1340" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="zMflTOxj0mq9" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Manager Global State" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="831" canvaswidth="1469" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="zMflTOxj0mq9" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
         <widgets>
-         <statewidget width="225" showstereotype="1" x="424" y="82" usesdiagramusefillcolor="1" statename="Initiated" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="52" linecolor="none" xmi.id="BaH5o221dCI6" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
+         <statewidget width="225" showstereotype="1" x="426" y="82" usesdiagramusefillcolor="1" statename="Initiated" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="52" linecolor="none" xmi.id="BaH5o221dCI6" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="manager.initiate()"/>
            <Activity name="set_timeout(INITIATE_TIMEOUT)"/>
           </Activities>
          </statewidget>
-         <statewidget width="251" showstereotype="1" x="411" y="210" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="rQWbEdVQBmTz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="251" showstereotype="1" x="411" y="210" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="rQWbEdVQBmTz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="n * post(announce)"/>
            <Activity name="set_timeout(announce.expiration)"/>
@@ -305,7 +305,7 @@
            <Activity name="set_timeout(max([bid.expiration for bid in bids])"/>
           </Activities>
          </statewidget>
-         <statewidget width="220" showstereotype="1" x="568" y="456" usesdiagramusefillcolor="0" statename="Granted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="80" linecolor="#ff0000" xmi.id="P2YWxF0meUMs" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="220" showstereotype="1" x="568" y="456" usesdiagramusefillcolor="0" statename="Granted" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="80" linecolor="#ff0000" xmi.id="P2YWxF0meUMs" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="n * post(rejection)"/>
            <Activity name="n * post(grant)"/>
@@ -318,7 +318,7 @@
            <Activity name="manager.expired()"/>
           </Activities>
          </statewidget>
-         <statewidget width="196" showstereotype="1" x="574" y="701" usesdiagramusefillcolor="0" statename="Completed" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="r3BVXXNcOeqz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="196" showstereotype="1" x="574" y="701" usesdiagramusefillcolor="0" statename="Completed" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="r3BVXXNcOeqz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="n * post(acknowledgment)"/>
            <Activity name="manager.completed()"/>
@@ -329,7 +329,7 @@
            <Activity name="manager.aborted()"/>
           </Activities>
          </statewidget>
-         <statewidget width="161" showstereotype="1" x="848" y="622" usesdiagramusefillcolor="0" statename="Cancelled" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="RQxv10Ks3VLY" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,75,0,0,0,0,0">
+         <statewidget width="161" showstereotype="1" x="848" y="622" usesdiagramusefillcolor="0" statename="Cancelled" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="RQxv10Ks3VLY" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="n * post(cancellation)"/>
            <Activity name="manager.cancelled()"/>
@@ -346,12 +346,9 @@
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="390" showstereotype="1" y="271" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="186xLorvDiAt" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="299" showstereotype="1" y="295" text="All responses received" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="149" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="m8EW5GKOOZ0X" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="635" showstereotype="1" y="345" text="medium.grant()" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="105" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="It1M4H35P82i" height="18"/>
-         <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="639" showstereotype="1" y="226" text="" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="8" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="wrd8Zm1JuDpz" height="18"/>
-         <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="493" showstereotype="1" y="313" text="" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="8" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="T7NrhLOzCNJG" height="18"/>
-         <boxwidget width="20" showstereotype="1" x="797" y="513" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="20" linecolor="#000000" xmi.id="8Wy0hlzAsKzX" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
+         <boxwidget width="20" showstereotype="1" x="799" y="513" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="20" linecolor="#000000" xmi.id="8Wy0hlzAsKzX" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="507" showstereotype="1" y="386" text="medium.grant()" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="105" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="dLXpio3L9KNc" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="470" showstereotype="1" y="548" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="d50jRVOX0MXh" height="18"/>
-         <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="633" showstereotype="1" y="563" text="" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="8" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="5UqvmpTP9yCr" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="325" showstereotype="1" y="87" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="mDCuXXW8dUr2" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="500" showstereotype="1" y="661" text="All contractors completed" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="169" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="0FayZ5fcYTYK" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="211" showstereotype="1" y="426" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="HziQxsHh6SZb" height="18"/>
@@ -368,6 +365,7 @@
          <statewidget width="34" showstereotype="1" x="905" y="713" usesdiagramusefillcolor="1" statename="State" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="32" linecolor="none" xmi.id="SpcF6xsezaeb" statetype="2" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities/>
          </statewidget>
+         <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="193" showstereotype="1" y="113" text="What a Terrible Failure" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="141" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="aPtFf4zNmx2o" height="18"/>
         </widgets>
         <messages/>
         <associations>
@@ -385,7 +383,7 @@
          </assocwidget>
          <assocwidget indexa="1" indexb="1" visibilityA="0" widgetaid="BaH5o221dCI6" visibilityB="0" roleBdoc="" roleAdoc="" linecolor="none" changeabilityA="900" totalcounta="2" changeabilityB="900" widgetbid="khkzh4O8SJ1U" totalcountb="2" type="514" documentation="" linewidth="none">
           <linepath>
-           <startpoint startx="424" starty="107"/>
+           <startpoint startx="426" starty="107"/>
            <endpoint endx="286" endy="107"/>
           </linepath>
          </assocwidget>
@@ -493,7 +491,6 @@
       <listitem open="1" type="829" id="wu4wkbhnBWFh"/>
       <listitem open="1" type="829" id="Gm9uIC0t7a30"/>
       <listitem open="1" type="829" id="JNxs5U4zBBnv"/>
-      <listitem open="1" type="829" id="MCCLLBbdd2Zb"/>
       <listitem open="1" type="829" id="MCCLLBbdd2Zb"/>
       <listitem open="1" type="829" id="wkFHJaLTdCmD"/>
       <listitem open="1" type="829" id="bckAxh4qzOLR"/>

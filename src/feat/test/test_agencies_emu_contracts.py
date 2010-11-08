@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+
 import uuid, time, functools
 
 from zope.interface import classProvides, implements
@@ -10,6 +11,7 @@ from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, contractor, message, manager
 from feat.interface import recipient, contracts, protocols
 from feat.interface.contractor import IContractorFactory
+from feat.interface.manager import IManagerFactory
 
 from . import common
 
@@ -20,8 +22,8 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     protocol_id = 'dummy-contract'
     interest_type = protocols.InterestType.public
 
-    def __init__(self, *args, **kwargs):
-        contractor.BaseContractor.__init__(self, *args, **kwargs)
+    def __init__(self, medium, *args, **kwargs):
+        contractor.BaseContractor.__init__(self, medium, *args, **kwargs)
         common.Mock.__init__(self)
 
     @common.Mock.stub
@@ -56,22 +58,186 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     def aborted():
         pass
 
-class TestContractor(common.TestCase):
+
+class DummyManager(manager.BaseManager, common.Mock):
+    classProvides(IManagerFactory)
+
+    protocol_id = 'dummy-contract'
+
+    initiate_timeout = 10
+    grant_timeout = 10
+
+    def __init__(self, *args, **kwargs):
+        manager.BaseManager.__init__(self, *args, **kwargs)
+        common.Mock.__init__(self)
+
+    @common.Mock.stub
+    def initiate(self):
+        pass
+
+    @common.Mock.stub
+    def refused(self, refusal):
+        pass
+
+    @common.Mock.stub
+    def got_bid(self, bid):
+        pass
+
+    @common.Mock.stub
+    def closed(self):
+        pass
+
+    @common.Mock.stub
+    def expired(self):
+        pass
+
+    @common.Mock.stub
+    def cancelled(self, grant, cancellation):
+        pass
+
+    @common.Mock.stub
+    def completed(self, grant, report):
+        pass
+
+    @common.Mock.stub
+    def aborted(self, grant):
+        pass
+
+
+
+class AgencyTestHelper(object):
+
+    def setUp(self):
+        self.agency = agency.Agency()        
+        self.session_id = None
+
+    def _setup_endpoint(self):
+        '''
+        Sets up the destination for tested component to send messages to.
+
+        @returns endpoint: Receipient instance pointing to the queue above
+                           (use it for reply-to fields)
+        @returns queue: Queue instance we use may .consume() on to get
+                        messages from components being tested
+        '''
+        endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
+        queue = self.agency._messaging.defineQueue(endpoint.key)
+        exchange = self.agency._messaging.defineExchange(endpoint.shard)
+        exchange.bind(endpoint.key, queue)
+        return endpoint, queue
+
+    def _send_bid(self, contractor, bid=1):
+        msg = message.Bid()
+        msg.bids = [ bid ]
+        contractor.medium.bid(msg)
+        return contractor
+
+    def _send_refusal(self, contractor):
+        msg = message.Refusal()
+        contractor.medium.refuse(msg)
+        return contractor
+
+    def _send_final_report(self, contractor):
+        msg = message.FinalReport()
+        contractor.medium.finalize(msg)
+        return contractor
+
+    def _send_cancel(self, contractor, reason=""):
+        msg = message.Cancellation()
+        msg.reason = reason
+        contractor.medium.cancel(msg)
+        return contractor
+
+    def _recv_announce(self, *_):
+        msg = message.Announcement()
+        msg.session_id = str(uuid.uuid1())
+        self.session_id = msg.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+        
+    def _recv_grant(self, _, bid_index=0, update_report=None):
+        msg = message.Grant()
+        msg.bid_index = bid_index
+        msg.update_report = update_report
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+        
+    def _recv_rejection(self, _):
+        msg = message.Rejection()
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+
+    def _recv_cancel(self, _, reason=""):
+        msg = message.Cancellation()
+        msg.reason = reason
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+
+    def _recv_ack(self, _):
+        msg = message.Acknowledgement()
+        msg.session_id = self.session_id
+        return self._recv_msg(msg).addCallback(lambda ret: _)
+
+    def _recv_msg(self, msg, reply_to=None):
+        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+
+        if reply_to:
+            msg.reply_to = reply_to
+        else:
+            msg.reply_to = self.endpoint
+        msg.expiration_time = time.time() + 10
+        msg.protocol_type = "Contract"
+        msg.protocol_id = "dummy-contract"
+        msg.message_id = str(uuid.uuid1())
+
+        key = 'dummy-contract'
+        shard = self.agent.descriptor.shard
+        self.agent._messaging.publish(key, shard, msg)
+        return d
+
+
+class TestManager(common.TestCase, AgencyTestHelper):
+    
+    timeout = 3
+
+    def setUp(self):
+        AgencyTestHelper.setUp(self)
+        desc = descriptor.Descriptor()
+        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+
+        self.contractors = []
+        for x in range(3):
+            endpoint, queue = self._setup_endpoint()
+            self.contractors.append({'endpoint': endpoint, 'queue': queue})
+        self.recipients = map(lambda x: x['endpoint'], self.contractors)
+
+    def start_manager(self):
+        self.manager =\
+                self.agent.initiate_protocol(DummyManager, self.recipients)
+        self.medium = self.manager.medium
+        self.session_id = self.medium.session_id
+
+    def testInitiateTimeout(self):
+        self.agency.time_scale = 0.01
+        self.start_manager()
+
+        d = self.cb_after(arg=None, obj=self.agent,
+                          method='unregister_listener')
+
+        return d
+        
+class TestContractor(common.TestCase, AgencyTestHelper):
 
     timeout = 3
 
     def setUp(self):
-        self.agency = agency.Agency()
+        AgencyTestHelper.setUp(self)
         desc = descriptor.Descriptor()
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
         self.agent.register_interest(DummyContractor)
 
-        self.endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
-        self.queue = self.agency._messaging.defineQueue(self.endpoint.key)
-        exchange = self.agency._messaging._getExchange(self.endpoint.shard)
-        exchange.bind(self.endpoint.key, self.queue)
         self.contractor = None
         self.session_id = None
+        self.endpoint, self.queue = self._setup_endpoint()
 
     def tearDown(self):
         self._cancel_expiration_call_if_necessary()
@@ -203,6 +369,7 @@ class TestContractor(common.TestCase):
         
         def assert_msg_is_report(msg):
             self.assertEqual(message.UpdateReport, msg.__class__)
+            self.log("Received report message")
 
         for x in range(3):
             d.addCallback(self.queue.consume)
@@ -373,69 +540,6 @@ class TestContractor(common.TestCase):
         self.contractor = self.agent._listeners.values()[0].contractor
         return self.contractor
 
-    def _send_bid(self, contractor, bid=1):
-        msg = message.Bid()
-        msg.bids = [ bid ]
-        contractor.medium.bid(msg)
-        return contractor
-
-    def _send_refusal(self, contractor):
-        msg = message.Refusal()
-        contractor.medium.refuse(msg)
-        return contractor
-
-    def _send_final_report(self, contractor):
-        msg = message.FinalReport()
-        contractor.medium.finalize(msg)
-        return contractor
-
-    def _send_cancel(self, contractor, reason=""):
-        msg = message.Cancellation()
-        msg.reason = reason
-        contractor.medium.cancel(msg)
-        return contractor
-
-    def _recv_announce(self, *_):
-        msg = message.Announcement()
-        msg.session_id = str(uuid.uuid1())
-        self.session_id = msg.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
-        
-    def _recv_grant(self, _, bid_index=0, update_report=None):
-        msg = message.Grant()
-        msg.bid_index = bid_index
-        msg.update_report = update_report
-        msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
-        
-    def _recv_rejection(self, _):
-        msg = message.Rejection()
-        msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
-
-    def _recv_cancel(self, _, reason=""):
-        msg = message.Cancellation()
-        msg.reason = reason
-        msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
-
-    def _recv_ack(self, _):
-        msg = message.Acknowledgement()
-        msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
-
-    def _recv_msg(self, msg):
-        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
-        msg.reply_to = self.endpoint
-        msg.expiration_time = time.time() + 10
-        msg.protocol_type = "Contract"
-        msg.protocol_id = "dummy-contract"
-        msg.message_id = str(uuid.uuid1())
-
-        key = 'dummy-contract'
-        shard = self.agent.descriptor.shard
-        self.agent._messaging.publish(key, shard, msg)
-        return d
 
 
 

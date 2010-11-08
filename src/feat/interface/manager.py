@@ -21,12 +21,12 @@ class IAgencyManager(contracts.IContractPeer):
         '''Post an announce message.'''
 
     def reject(bid, rejection):
-
+        pass
 
     def grant(bid, grant):
         pass
 
-    def cancel(grant, cancelation):
+    def cancel(grant, cancellation):
         pass
 
     def acknowledge(report):
@@ -58,7 +58,7 @@ class IAgentManager(protocols.IInitiator):
         '''Called when the announce has been closed and no grant has
         been done before time specified with the L{grant_timeout} attribute.'''
 
-    def canceled(grant, cancelation):
+    def cancelled(grant, cancellation):
         '''The contractor canceled the task.'''
 
     def completed(grant, report):
@@ -66,3 +66,12 @@ class IAgentManager(protocols.IInitiator):
 
     def aborted(grant):
         '''Called when the contractor did not report in time.'''
+
+
+
+
+
+
+
+
+

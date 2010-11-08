@@ -3,16 +3,140 @@
 
 import uuid
 
-from twisted.python import components
+from twisted.python import components, failure
 from twisted.internet import reactor, defer
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface import contracts, recipient, contractor, protocols
+from feat.interface import contracts, recipient, contractor, protocols, manager
 from feat.agents import message
 
 from interface import IListener
 from . import common
+
+
+class ExpirationCallsMixin(object):
+
+    def __init__(self):
+        self.expiration_call = None
+    
+    def _expire_at(self, expire_time, method, state, *args, **kwargs):
+        time_left = expire_time - self.agent.get_time()
+        if time_left < 0:
+            self.error('Tried to call method in the past!')
+            self._set_state(contracts.ContractState.wtf)
+            self._terminate()
+            return
+
+        def to_call():
+            self._set_state(state)
+            self.log('Calling method: %r with args: %r', method, args)
+            d = defer.maybeDeferred(method, *args, **kwargs)
+            d.addCallback(lambda _: self._terminate())
+
+        self._expiration_call = self.agent.callLater(time_left, to_call)
+
+    def _cancel_expiration_call(self):
+        if self._expiration_call and not (self._expiration_call.called or\
+                                          self._expiration_call.cancelled):
+            self.log('Canceling expiration call')
+            self._expiration_call.cancel()
+            self._expiration_call = None
+
+    def _run_and_terminate(self, method, *args, **kwargs):
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addCallback(lambda _: self._terminate())
+
+    def _terminate(self):
+        self._cancel_expiration_call()
+
+
+class AgencyManagerFactory(object):
+    implements(protocols.IAgencyInitiatorFactory)
+
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self, agent, recipients, *args, **kwargs):
+        return AgencyManager(agent, recipients, *args, **kwargs)
+
+
+components.registerAdapter(AgencyManagerFactory,
+                           manager.IManagerFactory,
+                           protocols.IAgencyInitiatorFactory)
+
+
+class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
+                    ExpirationCallsMixin):
+    implements(manager.IAgencyManager, IListener)
+ 
+    log_category = 'agency-contractor'
+
+    def __init__(self, agent, recipients, *args, **kwargs):
+        log.Logger.__init__(self, agent)
+        log.LogProxy.__init__(self, agent)
+        common.StateMachineMixin.__init__(self)
+        ExpirationCallsMixin.__init__(self)
+
+        self.agent = agent
+        self.recipients = recipients
+        self.args = args
+        self.kwargs = kwargs
+        self.session_id = str(uuid.uuid1())
+        self.log_name = self.session_id
+    
+    # manager.IAgencyManager stuff
+
+    def initiate(self, manager):
+        self.manager = manager
+
+        self._set_state(contracts.ContractState.initiated)
+        d = defer.maybeDeferred(manager.initiate, *self.args, **self.kwargs) 
+        d.addErrback(self._error_handler)
+
+        timeout = self.agent.get_time() + self.manager.initiate_timeout
+        error = RuntimeError('Timeout exceeded waiting for manager.initate()'
+                               ' to send the announcement')
+        self._expire_at(timeout, self._error_handler,
+                        contracts.ContractState.wtf, failure.Failure(error))
+        return manager
+
+    def announce(self, announce):
+        pass
+
+    def reject(self, bid, rejection):
+        pass
+
+    def grant(self, bid, grant):
+        pass
+
+    def cancel(self, grant, cancellation):
+        pass
+
+    def acknowledge(self, report):
+        pass
+
+    # private
+
+    def _error_handler(self, e):
+        self.error('Terminating: %s', e.getErrorMessage())
+        self._set_state(contracts.ContractState.wtf)
+        self._terminate()
+
+    def _terminate(self):
+        ExpirationCallsMixin._terminate(self)
+
+        self.log("Unregistering manager")
+        self.agent.unregister_listener(self.session_id)
+
+    # IListener stuff
+
+    def on_message(self, msg):
+        mapping = {}
+        self._event_handler(mapping, msg)
+
+    def get_session_id(self):
+        return self.session_id
 
 
 class AgencyContractorFactory(object):
@@ -30,7 +154,8 @@ components.registerAdapter(AgencyContractorFactory,
                            protocols.IAgencyInterestedFactory)
 
 
-class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
+class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
+                       ExpirationCallsMixin):
     implements(contractor.IAgencyContractor, IListener)
  
     log_category = 'agency-contractor'
@@ -39,6 +164,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
+        ExpirationCallsMixin.__init__(self)
 
         assert isinstance(announcement, message.Announcement)
 
@@ -50,7 +176,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
 
         self.log_name = self.session_id
 
-        self._expiration_call = None
         self._reporter_call = None
         
     def initiate(self, contractor):
@@ -125,14 +250,10 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
 
         return self.agent.send_msg(self.recipients, msg)
 
-    def _run_and_terminate(self, method, *args, **kwargs):
-        d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate())
-
     def _terminate(self):
-        self.log("Unregistering contractor")
+        ExpirationCallsMixin._terminate(self)
 
-        self._cancel_expiration_call()
+        self.log("Unregistering contractor")
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
 
@@ -169,31 +290,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
 
         report = self._send_message(report)
         return report
-
-    # expiration calls
-
-    def _expire_at(self, expire_time, method, state, *args, **kwargs):
-        time_left = expire_time - self.agent.get_time()
-        if time_left < 0:
-            self.error('Tried to call method in the past!')
-            self._set_state(contracts.ContractState.wtf)
-            self._terminate()
-            return
-
-        def to_call():
-            self._set_state(state)
-            self.log('Calling method: %r with args: %r', method, args)
-            d = defer.maybeDeferred(method, *args, **kwargs)
-            d.addCallback(lambda _: self._terminate())
-
-        self._expiration_call = self.agent.callLater(time_left, to_call)
-
-    def _cancel_expiration_call(self):
-        if self._expiration_call and not (self._expiration_call.called or\
-                                          self._expiration_call.cancelled):
-            self.log('Canceling expiration call')
-            self._expiration_call.cancel()
-            self._expiration_call = None
 
     # hooks for messages comming in
 

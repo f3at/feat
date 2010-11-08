@@ -148,8 +148,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return False
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
+        self.log('Initiating protocol for factory: %r, args: %r, kwargs: %r',
+                 factory, args, kwargs)
         factory = protocols.IInitiatorFactory(factory)
-        recipients = recipient.IRecipient(recipients)
+        recipients = recipient.IRecipients(recipients)
         medium_factory = protocols.IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
@@ -205,11 +207,13 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return self.agency.get_time()
 
     def send_msg(self, recipients, msg):
-        recipients = recipient.IRecipient(recipients)
+        recipients = recipient.IRecipients(recipients)
         msg.reply_to = recipient.IRecipient(self)
         msg.message_id = str(uuid.uuid1())
         assert msg.expiration_time is not None
-        self._messaging.publish(recipients.key, recipients.shard, msg)
+        for recp in recipients:
+            self.log('Sending message to %r', recp)
+            self._messaging.publish(recp.key, recp.shard, msg)
         return msg
 
     def create_binding(self, key):

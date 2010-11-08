@@ -10,7 +10,11 @@ class RecipientType(enum.Enum):
 
 
 class IRecipients(Interface):
-    '''TODO'''
+    '''Iterable'''
+
+    def __iter__(self):
+        pass
+
 
 class IRecipient(Interface):
 
@@ -21,30 +25,62 @@ class IRecipient(Interface):
 
 class Agent(object):
 
-    implements(IRecipient)
+    implements(IRecipient, IRecipients)
 
     def __init__(self, agent_id, shard=None):
         self.type = RecipientType.agent
         self.shard = shard
         self.key = agent_id
+        self.array = [ self ]
 
+    def __iter__(self):
+        return self.array.__iter__()
+        
 
 class Broadcast(object):
 
-    implements(IRecipient)
+    implements(IRecipient, IRecipients)
 
     def __init__(self, protocol_id=None, shard=None):
         self.type = RecipientType.broadcast
         self.shard = shard
         self.key = protocol_id
 
+        self.array = [ self ]
+
+    def __iter__(self):
+        return self.array.__iter__()
+        
+
 class RecipientFromAgent(object):
 
-    implements(IRecipient)
+    implements(IRecipient, IRecipients)
 
     def __init__(self, agent):
         self.agent = agent
         self.shard = self.agent.descriptor.shard
         self.key = self.agent.descriptor.uuid
 
+        self.array = [ self ]
+
+    def __iter__(self):
+        return self.array.__iter__()
+
 components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipient)
+components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
+
+
+class RecipientsFromList(object):
+    
+    implements(IRecipients)
+
+    def __init__(self, llist):
+        self.array = []
+        for item in llist:
+            self.array.append(IRecipient(item))
+
+    def __iter__(self):
+        return self.array.iter()
+    
+
+components.registerAdapter(RecipientsFromList, list, IRecipients)
