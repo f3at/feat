@@ -12,7 +12,7 @@ def accompany(accompaniment):
 
         # Create a method for the accompaniment
         def get_accompaniment(self, *args, **kwargs):
-            return self.name + " want " + accompaniment
+            return self.name + " wants " + accompaniment
 
         # Inject the new method in the class
         annotate.injectAttribute("accompany", accompaniment, get_accompaniment)
@@ -117,5 +117,5 @@ class TestAnnotation(common.TestCase):
         self.assertEqual("Monthy like so much bacon",
                          obj.original_bacon("so much"))
 
-        self.assertEqual("Monthy want beans", obj.beans())
-        self.assertEqual("Monthy want eggs", obj.eggs())
+        self.assertEqual("Monthy wants beans", obj.beans())
+        self.assertEqual("Monthy wants eggs", obj.eggs())
