@@ -85,9 +85,9 @@ class TestRequests(common.TestCase):
 
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
-                             message.reply_to_shard)
+                             message.reply_to.shard)
             self.assertEqual(self.agent.descriptor.uuid, \
-                             message.reply_to_key)
+                             message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)
             self.assertEqual('dummy-request', message.protocol_id)
             self.assertEqual(payload, message.payload)
@@ -254,7 +254,6 @@ class TestRequests(common.TestCase):
         r.expiration_time = time.time() + 10
         r.protocol_type = 'Request'
         r.protocol_id = 'dummy-request'
-        r.reply_to_key = recp.key
-        r.reply_to_shard = recp.shard
+        r.reply_to = recp
         r.payload = 10
         return r

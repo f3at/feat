@@ -426,8 +426,7 @@ class TestContractor(common.TestCase):
 
     def _recv_msg(self, msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
-        msg.reply_to_shard = self.endpoint.shard
-        msg.reply_to_key = self.endpoint.key
+        msg.reply_to = self.endpoint
         msg.expiration_time = time.time() + 10
         msg.protocol_type = "Contract"
         msg.protocol_id = "dummy-contract"

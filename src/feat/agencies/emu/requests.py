@@ -110,8 +110,7 @@ class AgencyReplier(log.LogProxy, log.Logger):
 
         self.agent = agent
         self.request = message
-        self.recipients = recipient.Agent(message.reply_to_key,
-                                          message.reply_to_shard)
+        self.recipients = message.reply_to
         self.session_id = message.session_id
         self.protocol_id = message.protocol_id
 

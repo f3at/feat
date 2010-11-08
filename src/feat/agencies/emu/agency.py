@@ -206,8 +206,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def send_msg(self, recipients, msg):
         recipients = recipient.IRecipient(recipients)
-        msg.reply_to_shard = self.descriptor.shard
-        msg.reply_to_key = self.descriptor.uuid
+        msg.reply_to = recipient.IRecipient(self)
         msg.message_id = str(uuid.uuid1())
         assert msg.expiration_time is not None
         self._messaging.publish(recipients.key, recipients.shard, msg)

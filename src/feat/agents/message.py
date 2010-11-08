@@ -4,8 +4,7 @@
 
 class BaseMessage(object):
     
-    reply_to_shard = None
-    reply_to_key = None
+    reply_to = None
     message_id = None
     protocol_id = None
     protocol_type = None

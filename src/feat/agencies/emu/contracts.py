@@ -44,8 +44,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin):
 
         self.agent = agent
         self.announce = announcement
-        self.recipients = recipient.Agent(announcement.reply_to_key,
-                                          announcement.reply_to_shard)
+        self.recipients = announcement.reply_to
         self.session_id = announcement.session_id
         self.protocol_id = announcement.protocol_id
 
