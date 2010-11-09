@@ -240,6 +240,18 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.assertEqual(state, self.manager.medium.state)
         return self.manager
 
+    def _put_bids(self, results, costs):
+        defers = []
+        for result, sender, cost in zip(results, self.recipients, costs):
+            called, msg = result
+            bid = message.Bid()
+            bid.bids = [cost]
+            bid.session_id = msg.session_id
+            self.log('Puting bid')
+            defers.append(self._reply(bid, sender, msg))
+
+        return defer.DeferredList(defers)
+
     def testInitiateTimeout(self):
         self.agency.time_scale = 0.01
         self.start_manager()
@@ -279,21 +291,10 @@ class TestManager(common.TestCase, AgencyTestHelper):
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
+
         d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
 
-        def put_bids(results):
-            defers = []
-            for result, sender in zip(results, self.recipients):
-                called, msg = result
-                bid = message.Bid()
-                bid.bids = [1]
-                bid.session_id = msg.session_id
-                self.log('Puting bid')
-                defers.append(self._reply(bid, sender, msg))
-
-            return defer.DeferredList(defers)
-
-        d.addCallback(put_bids)
+        d.addCallback(self._put_bids, (1,1,1,))
         d.addCallback(lambda _: closed)
 
         def asserts_on_manager(_):
