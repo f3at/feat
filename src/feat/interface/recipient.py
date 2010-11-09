@@ -3,14 +3,26 @@ from zope.interface import Interface, Attribute, implements
 
 from feat.common import enum
 from feat.interface.agent import IAgencyAgent
+from feat.agents import message
 
+'''
+Provides interfaces for specifing the recipients of messages. 
+Types that can be passed as destination includes:
+
+- Agent (defined in this module)
+- Broadcast (defined in this module)
+- agent.IAgencyAgent this helps in tests - one can say that is sending message
+                     to the agent  
+- message.BaseMessage (and subclasses) - one can say he is responding to message
+- list - the list of any combination of above
+'''
 
 class RecipientType(enum.Enum):
     agent, broadcast = range(1, 3)
 
 
 class IRecipients(Interface):
-    '''Iterable'''
+    '''Iterable with all elements implementing IRecipient'''
 
     def __iter__(self):
         pass
@@ -66,6 +78,7 @@ class RecipientFromAgent(object):
     def __iter__(self):
         return self.array.__iter__()
 
+
 components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipient)
 components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
 
@@ -84,3 +97,25 @@ class RecipientsFromList(object):
     
 
 components.registerAdapter(RecipientsFromList, list, IRecipients)
+
+
+class RecipientFromMessage(object):
+    implements(IRecipient, IRecipients)
+
+    def __init__(self, message):
+        self.message = message
+        self.shard = self.message.reply_to.shard
+        self.key = self.message.reply_to.key
+
+        self.array = [ self ]
+
+    def __iter__(self):
+        return self.array.__iter__()
+
+
+components.registerAdapter(RecipientFromMessage, message.BaseMessage,
+                           IRecipient)
+components.registerAdapter(RecipientFromMessage, message.BaseMessage,
+                           IRecipients)
+
+
