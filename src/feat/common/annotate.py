@@ -1,4 +1,4 @@
-import sys
+from . import reflect
 
 _CLASS_ANNOTATIONS_ATTR = "_class_annotations"
 _ATTRIBUTE_INJECTIONS_ATTR = "_attribute_injections"
@@ -40,12 +40,14 @@ class Annotable(object):
     __metaclass__ = MetaAnnotable
 
 
-def injectClassCallback(annotationName, methodName, *args, **kwargs):
+def injectClassCallback(annotationName, depth, methodName, *args, **kwargs):
     """
     Inject an annotation for a class method to be called
     after class initialization without dealing with metaclass.
+
+    depth parameter specify the stack depth from the class definition.
     """
-    locals = _getClassLocals(annotationName)
+    locals = reflect.class_locals(depth, annotationName)
     annotations = locals.get(_CLASS_ANNOTATIONS_ATTR, None)
     if annotations is None:
         annotations = list()
@@ -53,29 +55,17 @@ def injectClassCallback(annotationName, methodName, *args, **kwargs):
     annotation = (annotationName, methodName, args, kwargs)
     annotations.append(annotation)
 
-def injectAttribute(annotationName, attr, value):
+def injectAttribute(annotationName, depth, attr, value):
     """
     Inject an attribute in a class from it's class frame.
     Use in class annnotation to create methods/properties dynamically
     at class creation time without dealing with metaclass.
+
+    depth parameter specify the stack depth from the class definition.
     """
-    locals = _getClassLocals(annotationName)
+    locals = reflect.class_locals(depth, annotationName)
     injections = locals.get(_ATTRIBUTE_INJECTIONS_ATTR, None)
     if injections is None:
         injections = list()
         locals[_ATTRIBUTE_INJECTIONS_ATTR] = injections
     injections.append((attr, value))
-
-
-## Private ##
-
-def _getClassLocals(tag, depth=3):
-    frame = sys._getframe(depth)
-    locals = frame.f_locals
-    # Try to make sure we were called from a class def. In 2.2.0 we can't
-    # check for __module__ since it doesn't seem to be added to the locals
-    # until later on.  (Copied From zope.interfaces.declartion._implements)
-    if (locals is frame.f_globals) or (
-        ('__module__' not in locals) and sys.version_info[:3] > (2, 2, 0)):
-        raise TypeError(tag + " can be used only from a class definition.")
-    return locals

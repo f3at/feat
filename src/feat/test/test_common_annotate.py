@@ -15,10 +15,11 @@ def accompany(accompaniment):
             return self.name + " wants " + accompaniment
 
         # Inject the new method in the class
-        annotate.injectAttribute("accompany", accompaniment, get_accompaniment)
+        annotate.injectAttribute("accompany", 3,
+                                 accompaniment, get_accompaniment)
 
         # Inject the original method with a new name
-        annotate.injectAttribute("accompany",
+        annotate.injectAttribute("accompany", 3,
                                  "original_" + method.__name__, method)
 
         # Wrapp a method call and add an accompaniment to its result
@@ -27,7 +28,7 @@ def accompany(accompaniment):
             return result + " and " + accompaniment
 
         # Call the class to register the decorator
-        annotate.injectClassCallback("accompany", "_decorator",
+        annotate.injectClassCallback("accompany", 3, "_decorator",
                                      accompaniment, method, wrapper)
 
         return wrapper
@@ -39,7 +40,7 @@ def shop(animal, status):
     # Create a getter method
     def getter(self):
         return self.name + " " + animal + " is " + status
-    annotate.injectAttribute("shop", "get_" + animal, getter)
+    annotate.injectAttribute("shop", 3, "get_" + animal, getter)
     return status
 
 
