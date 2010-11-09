@@ -332,21 +332,54 @@ class TestManager(common.TestCase, AgencyTestHelper):
         d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
         d.addCallback(self._put_bids, (3,2,1,))
 
-        def assert_on_msg(msg, klass):
-            self.assertTrue(isinstance(msg, klass))
-
         d = self.queues[0].consume()
-        d.addCallback(assert_on_msg, message.Rejection)
+        d.addCallback(self.assertIsInstance, message.Rejection)
         d.addCallback(lambda _: self.queues[1].consume())
-        d.addCallback(assert_on_msg, message.Rejection)
+        d.addCallback(self.assertIsInstance, message.Rejection)
         d.addCallback(lambda _: self.queues[2].consume())
-        d.addCallback(assert_on_msg, message.Grant)
+        d.addCallback(self.assertIsInstance, message.Grant)
 
         def asserts_on_manager(_):
             self.assertEqual(3, len(self.medium.contractors))
             self.assertEqual(1, len(self.medium.contractors.with_state(\
                         ContractorState.granted)))
             self.assertEqual(2, len(self.medium.contractors.with_state(\
+                        ContractorState.rejected)))
+
+        d.addCallback(asserts_on_manager)
+
+        return d
+
+    def testGrantingFromClosedState(self):
+        self.agency.time_scale = 0.01
+        
+        def closed_handler(s):
+            s.log('Contracts closed, sending grants')
+            to_grant = filter(lambda x: x.bids[0] < 3, s.medium.contractors)
+            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+                         to_grant)
+            s.medium.grant(params)
+
+        self.start_manager()
+        self.stub_method(self.manager, 'closed', closed_handler)
+        
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d.addCallback(self._put_bids, (3,2,1,))
+
+        d.addCallback(self.cb_after, obj=self.manager, method='closed')
+        d.addCallback(lambda _: self.queues[0].consume())
+        d.addCallback(self.assertIsInstance, message.Rejection)
+        d.addCallback(lambda _: self.queues[1].consume())
+        d.addCallback(self.assertIsInstance, message.Grant)
+        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(self.assertIsInstance, message.Grant)
+
+        def asserts_on_manager(_):
+            self.assertEqual(3, len(self.medium.contractors))
+            self.assertEqual(2, len(self.medium.contractors.with_state(\
+                        ContractorState.granted)))
+            self.assertEqual(1, len(self.medium.contractors.with_state(\
                         ContractorState.rejected)))
 
         d.addCallback(asserts_on_manager)

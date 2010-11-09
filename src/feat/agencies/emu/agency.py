@@ -200,8 +200,8 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self.debug('Unregistering listener session_id: %r', session_id)
             del(self._listeners[session_id])
         else:
-            self.error('Tried to unregister listener with session_id: %r,\
-                        but not found!', session_id)
+            self.error('Tried to unregister listener with session_id: %r, '
+                        'but not found!', session_id)
 
     def get_time(self):
         return self.agency.get_time()

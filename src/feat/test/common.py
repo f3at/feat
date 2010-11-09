@@ -61,6 +61,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
                     
         return obj
 
+    def assertIsInstance(self, _, klass):
+        self.assertTrue(isinstance(_, klass))
+        return _
 
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)

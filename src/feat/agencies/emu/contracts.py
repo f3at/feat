@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import uuid
+import uuid, traceback
 
 from twisted.python import components, failure
 from twisted.internet import reactor, defer
@@ -266,11 +266,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         if len(self.contractors) > 0:
             self._set_state(contracts.ContractState.closed)
-            self._call(self.manager.closed)
             expiration_time = max(map(lambda bid: bid.expiration_time,
                                       self.contractors))
             self._expire_at(expiration_time, self.manager.expired,
                             contracts.ContractState.expired)
+            self._call(self.manager.closed)
         else:
             self._set_state(contracts.ContractState.expired)
             self._run_and_terminate(self.manager.expired)
@@ -283,7 +283,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     # private
 
     def _error_handler(self, e):
-        self.error('Terminating: %s', e.getErrorMessage())
+        msg = e.getErrorMessage()
+        self.error('Terminating: %s', msg)
+
+        frames = traceback.extract_tb(e.getTracebackObject())
+        if len(frames) > 0:
+            self.error('Last traceback frame: %r', frames[-1])
+
         self._set_state(contracts.ContractState.wtf)
         self._terminate()
 
