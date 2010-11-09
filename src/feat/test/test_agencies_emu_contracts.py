@@ -2,7 +2,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import uuid, time, functools
+import uuid, time
 
 from zope.interface import classProvides, implements
 from twisted.internet import reactor, defer
@@ -597,15 +597,10 @@ class TestContractor(common.TestCase, AgencyTestHelper):
             msg.session_id = s.medium.session_id
             s.medium.refuse(msg)
 
-        def stub_handler(contractor, handler):
-            handler = functools.partial(handler, contractor)
-            contractor.__setattr__('granted', handler)
-            return contractor
-
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self._send_bid)
-        d.addCallback(stub_handler, custom_handler)
+        d.addCallback(self.stub_method, 'granted', custom_handler)
         d.addCallback(self._recv_grant)
         
         d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
