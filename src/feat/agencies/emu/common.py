@@ -45,10 +45,6 @@ class StateMachineMixin(object):
         state_after = decision['state_after']
         self._set_state(state_after)
         
-        d = defer.maybeDeferred(decision['method'], event)
-        d.addErrback(self._error_handler)
+        d = self._call(decision['method'], event)
 
-    def _error_handler(self, e):
-        # overload me!
-        raise e
 
