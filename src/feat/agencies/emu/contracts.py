@@ -283,7 +283,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     # private
 
     def _error_handler(self, e):
-        raise e
         self.error('Terminating: %s', e.getErrorMessage())
         self._set_state(contracts.ContractState.wtf)
         self._terminate()
