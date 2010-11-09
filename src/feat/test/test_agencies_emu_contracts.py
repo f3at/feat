@@ -354,6 +354,8 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         d.addCallback(asserts_on_manager)
 
+        d.addCallback(lambda _: self.medium._terminate())
+
         return d
 
     def testGrantingFromClosedState(self):
@@ -390,6 +392,8 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         d.addCallback(asserts_on_manager)
 
+        d.addCallback(lambda _: self.medium._terminate())
+
         return d
         
     def testRefusingContractors(self):
@@ -421,6 +425,28 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         return d
 
+
+    def testTimeoutAfterGrant(self):
+        self.agency.time_scale = 0.01
+
+        def bid_handler(s, bid):
+            s.medium.grant((bid, message.Grant(bid_index=0),))
+
+        self.start_manager()
+        self.stub_method(self.manager, 'bid', bid_handler)
+
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        # None stands for Refusal
+        d.addCallback(self._put_bids, (1,2,3,))
+        
+        d.addCallback(self.cb_after, obj=self.agent,
+                      method='unregister_listener')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.aborted)
+        d.addCallback(lambda _: self.manager)
+        d.addCallback(self.assertCalled, 'aborted')
+        
+        return d
         
 
 class TestContractor(common.TestCase, AgencyTestHelper):

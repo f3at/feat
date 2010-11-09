@@ -19,6 +19,7 @@ class BaseManager(log.Logger):
 
     initiate_timeout = 10
     announce_timeout = 10
+    grant_timeout = 10
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)

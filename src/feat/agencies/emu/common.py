@@ -37,7 +37,7 @@ class StateMachineMixin(object):
         try:
             self._ensure_state(state_before)
         except StateAssertationError as e:
-            self.warning("Received event: %r in state: %r, expected state"
+            self.warning("Received event: %r in state: %r, expected state "
                          "for this method is: %r",
                          klass, self.state, decision['state_before'])
             return False

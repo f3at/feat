@@ -54,6 +54,10 @@ class IAgentManager(protocols.IInitiator):
 
     grant_timeout = Attribute('How long to wait for a grant to be done'
                               'after the announce is closed')
+    initiate_timeout = Attribute('How long to wait for initiate method to'
+                                 'send announcement')
+    announce_timeout = Attribute('How long to wait for incoming bids/refusals'
+                                 'before going to closed state')
 
     def initiate():
         pass

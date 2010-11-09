@@ -27,9 +27,10 @@ class AgencyMiddleMixin(object):
     def _send_message(self, msg, expiration_time=None, recipients=None):
         msg.session_id = self.session_id
         msg.protocol_id = self.protocol_id
-        if expiration_time is None:
-            expiration_time = self.agent.get_time() + 10
-        msg.expiration_time = expiration_time
+        if msg.expiration_time is None:
+            if expiration_time is None:
+                expiration_time = self.agent.get_time() + 10
+            msg.expiration_time = expiration_time
 
         if not recipients:
             recipients = self.recipients
@@ -65,6 +66,7 @@ class ExpirationCallsMixin(object):
                 self._set_state(state)
             self.log('Calling method: %r with args: %r', method, args)
             d = defer.maybeDeferred(method, *args, **kwargs)
+            d.addErrback(self._error_handler)
             d.addCallback(callback.callback)
 
         result = defer.Deferred()
@@ -128,7 +130,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
         common.StateMachineMixin.__init__(self)
-        self._set_state(state or ContractState.bid)
+        self._set_state(state or ContractorState.bid)
         self.bid = bid
         self.manager = manager
         self.recipient = recipient.IRecipient(bid)
@@ -215,7 +217,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.bid = self._send_message(announce, expiration_time)
 
         self._cancel_expiration_call()
-        self._setup_expiration_call(expiration_time, self._on_announce_expire)  
+        self._setup_expiration_call(expiration_time,
+                                    self._on_announce_expire)  
 
         return self.bid
 
@@ -234,13 +237,18 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         if not isinstance(grants, list):
             grants = [ grants ]
 
-        for bid, grant in grants:
-            contractor = self.contractors[bid]
-            contractor.on_event(grant)
-        
         self._cancel_expiration_call()
         self._set_state(contracts.ContractState.granted)
 
+        expiration_time = self.agent.get_time() + self.manager.grant_timeout
+        self._expire_at(expiration_time, self._on_grant_expire,
+                        contracts.ContractState.aborted)
+
+        for bid, grant in grants:
+            grant.expiration_time = expiration_time
+            contractor = self.contractors[bid]
+            contractor.on_event(grant)
+        
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
@@ -252,6 +260,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # hooks for events (timeout and messages comming in)
     
+    def _on_grant_expire(self):
+        self._set_state(contracts.ContractState.aborted)
+        self._call(self.manager.aborted)
+
     def _on_announce_expire(self):
         self.log('Timeout expired, closing the announce window')
         self._ensure_state(contracts.ContractState.announced)
