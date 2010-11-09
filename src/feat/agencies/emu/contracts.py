@@ -7,7 +7,7 @@ from twisted.python import components, failure
 from twisted.internet import reactor, defer
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, enum
 from feat.interface import contracts, recipient, contractor, protocols, manager
 from feat.agents import message
 
@@ -110,14 +110,31 @@ components.registerAdapter(AgencyManagerFactory,
                            protocols.IAgencyInitiatorFactory)
 
 
-class ManagerContractor(object):
+class ContractorState(enum.Enum):
+    '''
+    bid - bid has been received
+    refused - refusal has been received
+    rejected - bid has been rejected
+    granted - job has been granted
+    '''
+
+    (bid, refused, rejected, granted) = range(4)
+
+
+class ManagerContractor(common.StateMachineMixin, log.Logger):
     '''
     Represents the contractor from the point of view of the manager
     '''
 
+    log_category = 'manager-contractor'
+    
     def __init__(self, manager, bid):
+        log.Logger.__init__(self, manager)
+        common.StateMachineMixin.__init__(self)
+        self._set_state(ContractorState.bid)
         self.bid = bid
         self.manager = manager
+        self.recipient = recipient.IRecipient(bid)
 
         if bid in self.manager.contractors:
             raise RuntimeError('Contractor for the bid already registered!')
@@ -125,6 +142,34 @@ class ManagerContractor(object):
 
     def remove(self):
         del(self.manager.contractors[self.bid])
+
+    def _send_message(self, msg):
+        self.log('Sending message: %r to contractor', msg)
+        self.manager._send_message(msg, recipients=self.recipient)
+
+    def _call(self, *args, **kwargs):
+        # delegate calling methods to medium class
+        # this way we can reuse the error handler
+        self.manager._call(*args, **kwargs)
+
+    def on_event(self, msg):
+        mapping = {
+            message.Rejection:\
+                {'method': self._send_message,
+                 'state_before': ContractorState.bid,
+                 'state_after': ContractorState.rejected},
+            message.Grant:\
+                {'method': self._send_message,
+                 'state_before': ContractorState.bid,
+                 'state_after': ContractorState.granted}
+        }
+        self._event_handler(mapping, msg)
+
+        
+class ManagerContractors(dict):
+    
+    def with_state(self, *states):
+        return filter(lambda x: x.state in states, self.values())
 
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
@@ -147,7 +192,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.session_id = str(uuid.uuid1())
         self.log_name = self.session_id
 
-        self.contractors = {}
+        self.contractors = ManagerContractors()
     
     # manager.IAgencyManager stuff
 
@@ -180,12 +225,30 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return self.bid
 
+    def reject(self, bid, rejection=None):
+        self._ensure_state(contracts.ContractState.announced)
+        
+        contractor = self.contractors[bid]
+        if not rejection:
+            rejection = message.Rejection()
+        contractor.on_event(rejection)
 
-    def reject(self, bid, rejection):
-        pass
+    def grant(self, grants):
+        self._ensure_state([contracts.ContractState.closed,
+                            contracts.ContractState.announced])
 
-    def grant(self, bid, grant):
-        pass
+        if not isinstance(grants, list):
+            grants = [ grants ]
+
+        for bid, grant in grants:
+            contractor = self.contractors[bid]
+            contractor.on_event(grant)
+        
+        self._cancel_expiration_call()
+        self._set_state(contracts.ContractState.granted)
+
+        for contractor in self.contractors.with_state(ContractorState.bid):
+            contractor.on_event(message.Rejection())
 
     def cancel(self, grant, cancellation):
         pass
@@ -220,6 +283,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     # private
 
     def _error_handler(self, e):
+        raise e
         self.error('Terminating: %s', e.getErrorMessage())
         self._set_state(contracts.ContractState.wtf)
         self._terminate()

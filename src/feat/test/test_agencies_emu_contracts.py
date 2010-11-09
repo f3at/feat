@@ -8,6 +8,7 @@ from zope.interface import classProvides, implements
 from twisted.internet import reactor, defer
 
 from feat.agencies.emu import agency
+from feat.agencies.emu.contracts import ContractorState
 from feat.agents import agent, descriptor, contractor, message, manager
 from feat.interface import recipient, contracts, protocols
 from feat.interface.contractor import IContractorFactory
@@ -202,8 +203,8 @@ class AgencyTestHelper(object):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
         dest = recipient.IRecipient(original_msg)
-        reply_to = recipient.IRecipient(reply_to)
 
+        msg.reply_to = recipient.IRecipient(reply_to)
         msg.message_id = str(uuid.uuid1())
         msg.protocol_id = original_msg.protocol_id
         msg.expiration_time = time.time() + 10
@@ -291,9 +292,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
-
         d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
-
         d.addCallback(self._put_bids, (1,1,1,))
         d.addCallback(lambda _: closed)
 
@@ -309,11 +308,50 @@ class TestManager(common.TestCase, AgencyTestHelper):
         d.addCallback(self.assertCalled, 'bid', times=3)
 
         d.addCallback(self.cb_after, obj=self.agent,
-                      method='unregister_listener')
+                       method='unregister_listener')
         d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
 
         return d
+
+    def testRefuseAndGrantFromBidHandler(self):
+
+        def bid_handler(s, bid):
+            s.log('Received bid: %r', bid.bids)
+            if bid.bids[0] == 3:
+                s.medium.reject(bid)
+            elif bid.bids[0] == 2:
+                pass
+            elif bid.bids[0] == 1:
+                grant = message.Grant(bid_index=0)
+                s.medium.grant((bid, grant,))
+
+        self.start_manager()
+        self.stub_method(self.manager, 'bid', bid_handler)
         
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d.addCallback(self._put_bids, (3,2,1,))
+
+        def assert_on_msg(msg, klass):
+            self.assertTrue(isinstance(msg, klass))
+
+        d = self.queues[0].consume()
+        d.addCallback(assert_on_msg, message.Rejection)
+        d.addCallback(lambda _: self.queues[1].consume())
+        d.addCallback(assert_on_msg, message.Rejection)
+        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(assert_on_msg, message.Grant)
+
+        def asserts_on_manager(_):
+            self.assertEqual(3, len(self.medium.contractors))
+            self.assertEqual(1, len(self.medium.contractors.with_state(\
+                        ContractorState.granted)))
+            self.assertEqual(2, len(self.medium.contractors.with_state(\
+                        ContractorState.rejected)))
+
+        d.addCallback(asserts_on_manager)
+
+        return d
         
 class TestContractor(common.TestCase, AgencyTestHelper):
 

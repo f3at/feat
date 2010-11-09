@@ -62,10 +62,10 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return obj
 
 
-    def stub_method(self, contractor, method, handler):
-        handler = functools.partial(handler, contractor)
-        contractor.__setattr__(method, handler)
-        return contractor
+    def stub_method(self, obj, method, handler):
+        handler = functools.partial(handler, obj)
+        obj.__setattr__(method, handler)
+        return obj
 
 class Mock(object):
     

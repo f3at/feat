@@ -21,10 +21,24 @@ class IAgencyManager(contracts.IContractPeer):
         '''Post an announce message.'''
 
     def reject(bid, rejection):
-        pass
+        '''
+        Reject the message.
 
-    def grant(bid, grant):
-        pass
+        @param bid: The bid message we are rejecting
+        @type bid: feat.agents.message.BidMessage
+        @param rejection: Optional. Rejection message. It can be constructed by
+                          the agency if not specified.
+        @type rejection: feat.agents.message.Rejection
+        '''
+
+    def grant(grants):
+        '''
+        Grant the contractor to specified bids. 
+
+        @param grants: Tuple or list of tuples in the format:
+                       [(bid1, grant1), (bid2, grant2), ... ]
+        '''
+               
 
     def cancel(grant, cancellation):
         pass
