@@ -47,8 +47,9 @@ class IAgentManager(protocols.IInitiator):
     def refused(refusal):
         pass
 
-    def got_bid(bid):
-        pass
+    def bid(bid):
+        '''Called on each bid received. One may elect to call medium.reject()
+        or medium.grant() from this method to close the contract faster'''
 
     def closed():
         '''Called when the contract expire or there is no more

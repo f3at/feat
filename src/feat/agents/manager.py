@@ -32,7 +32,7 @@ class BaseManager(log.Logger):
     def refused(self, refusal):
         pass
 
-    def got_bid(self, bid):
+    def bid(self, bid):
         pass
 
     def closed(self):

@@ -14,8 +14,9 @@ class StateMachineMixin(object):
         self.state = None
 
     def _set_state(self, state):
-        self.log('Changing state from %r to %r', self.state, state)
-        self.state = state
+        if not self.state or not (state == self.state):
+            self.log('Changing state from %r to %r', self.state, state)
+            self.state = state
 
     def _ensure_state(self, states):
         if not isinstance(states, list):

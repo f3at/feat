@@ -46,6 +46,7 @@ class AgencyMiddleMixin(object):
     def _error_handler(e):
         # overload me
         raise e
+
     
 class ExpirationCallsMixin(object):
 
@@ -118,12 +119,12 @@ class ManagerContractor(object):
         self.bid = bid
         self.manager = manager
 
-        if bid in self.manager._contractors:
+        if bid in self.manager.contractors:
             raise RuntimeError('Contractor for the bid already registered!')
-        self.manager._contractors[bid] = self
+        self.manager.contractors[bid] = self
 
     def remove(self):
-        del(self.manager._contractors[self.bid])
+        del(self.manager.contractors[self.bid])
 
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
@@ -158,8 +159,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._call(manager.initiate, *self.args, **self.kwargs) 
 
         timeout = self.agent.get_time() + self.manager.initiate_timeout
-        error = RuntimeError('Timeout exceeded waiting for manager.initate()'
-                               ' to send the announcement')
+        error = RuntimeError('Timeout exceeded waiting for manager.initate() '
+                             'to send the announcement')
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
         return manager
@@ -211,6 +212,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             self._set_state(contracts.ContractState.expired)
             self._run_and_terminate(self.manager.expired)
             
+    def _on_bid(self, bid):
+        self.log('Received bid %r', bid)
+        ManagerContractor(self, bid)
+        self._call(self.manager.bid, bid)
+
     # private
 
     def _error_handler(self, e):
@@ -227,7 +233,12 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     # IListener stuff
 
     def on_message(self, msg):
-        mapping = {}
+        mapping = {
+            message.Bid:\
+                {'method': self._on_bid,
+                 'state_after': contracts.ContractState.announced,
+                 'state_before': contracts.ContractState.announced},
+        }
         self._event_handler(mapping, msg)
 
     def get_session_id(self):
@@ -397,7 +408,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
             if grant.update_report:
                 self._setup_reporter()
         else:
-            self.error("The bid granted doesn't match the one put upon!"
+            self.error("The bid granted doesn't match the one put upon! "
                        "Terminating!")
             self.error("Bid index: %r, bids: %r", grant.bid_index,
                                                   self.bid.bids)

@@ -80,7 +80,7 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
     @common.Mock.stub
-    def got_bid(self, bid):
+    def bid(self, bid):
         pass
 
     @common.Mock.stub
@@ -182,7 +182,7 @@ class AgencyTestHelper(object):
         msg.session_id = self.session_id
         return self._recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_msg(self, msg, reply_to=None):
+    def _recv_msg(self, msg, reply_to=None, key='dummy-contract'):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
         if reply_to:
@@ -194,11 +194,23 @@ class AgencyTestHelper(object):
         msg.protocol_id = "dummy-contract"
         msg.message_id = str(uuid.uuid1())
 
-        key = 'dummy-contract'
         shard = self.agent.descriptor.shard
         self.agent._messaging.publish(key, shard, msg)
         return d
 
+    def _reply(self, msg, reply_to, original_msg):
+        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+
+        dest = recipient.IRecipient(original_msg)
+        reply_to = recipient.IRecipient(reply_to)
+
+        msg.message_id = str(uuid.uuid1())
+        msg.protocol_id = original_msg.protocol_id
+        msg.expiration_time = time.time() + 10
+        msg.protocol_type = original_msg.protocol_type
+
+        self.agent._messaging.publish(dest.key, dest.shard, msg)
+        return d
 
 class TestManager(common.TestCase, AgencyTestHelper):
     
@@ -260,6 +272,47 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         return d
 
+    def testSendAnnouncementRecvBidsAndGoToClosed(self):
+        self.agency.time_scale = 0.01
+        self.start_manager()
+        
+        closed = self.cb_after(None, self.medium, '_on_announce_expire')
+
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+
+        def put_bids(results):
+            defers = []
+            for result, sender in zip(results, self.recipients):
+                called, msg = result
+                bid = message.Bid()
+                bid.bids = [1]
+                bid.session_id = msg.session_id
+                self.log('Puting bid')
+                defers.append(self._reply(bid, sender, msg))
+
+            return defer.DeferredList(defers)
+
+        d.addCallback(put_bids)
+        d.addCallback(lambda _: closed)
+
+        def asserts_on_manager(_):
+            self.assertEqual(contracts.ContractState.closed, self.medium.state)
+            self.assertEqual(3, len(self.medium.contractors))
+            for bid in self.medium.contractors:
+                self.assertTrue(isinstance(bid, message.Bid))
+
+            return self.manager
+  
+        d.addCallback(asserts_on_manager)
+        d.addCallback(self.assertCalled, 'bid', times=3)
+
+        d.addCallback(self.cb_after, obj=self.agent,
+                      method='unregister_listener')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
+
+        return d
+        
         
 class TestContractor(common.TestCase, AgencyTestHelper):
 
