@@ -24,7 +24,7 @@ class Fiber(object):
 
     ### async.IFiber Methods ###
 
-    def proceed(self):
+    def run(self):
         return self._trigger(self._param)
 
     def succeed(self, param=None):

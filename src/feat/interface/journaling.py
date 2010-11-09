@@ -6,7 +6,7 @@ from . import serialization
 
 
 class JournalMode(enum.Enum):
-    normal, replay = range(1, 3)
+    recording, replay = range(1, 3)
 
 
 class IRecordInput(serialization.ISnapshot):
@@ -28,13 +28,11 @@ class IRecordingResult(Interface):
 class IJournalKeeper(Interface):
     '''Store journal entries'''
 
-    def record(instance_id, entry_id, input, output):
-        pass
-
-
-class IJournalPlayer(Interface):
-
     def register(recorder):
+        '''Register a recorder.
+        Should be called by every recorder when created.'''
+
+    def record(instance_id, entry_id, input, output):
         pass
 
 

@@ -5,7 +5,7 @@ from . import serialization
 
 class IFiber(serialization.ISnapshot):
 
-    def proceed():
+    def run():
         '''Run the fiber.'''
 
     def succeed(param=None):

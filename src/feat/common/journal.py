@@ -1,32 +1,28 @@
+from twisted.python import components
 from zope.interface import implements
 
-from feat.interface import journaling
+from feat.interface import journaling, async
 from feat.interface.journaling import JournalMode
 
-from . import persistence, annotate
+from . import persistence, annotate, decorator
 
 
-## Decorators ###
+@decorator.with_arguments
+def recorded(function, entry_id=None):
+    fixed_id = entry_id or function.__name__
 
-def recorded(entry_id=None):
+    # Register the method as recorded call
+    annotate.injectClassCallback("recorded", 4,
+                                 "_register_recorded_call",
+                                 fixed_id, function)
 
-    def decorator(method):
-        fixed_id = entry_id or method.__name__
+    def wrapper(self, *args, **kwargs):
+        return self._call_recorded(fixed_id, function, *args, **kwargs)
 
-        # Register the method as recorded call
-        annotate.injectClassCallback("recorded",
-                                     "_register_recorded_call",
-                                     fixed_id, method)
-
-        def wrapper(self, *args, **kwargs):
-            return self._call_recorded(fixed_id, method, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
+    return wrapper
 
 
-class RecordInput(persistence.Snapshot):
+class RecordInput(object):
 
     implements(journaling.IRecordInput)
 
@@ -34,27 +30,72 @@ class RecordInput(persistence.Snapshot):
         self.args = args
         self.kwargs = kwargs
 
+    ### serialization.ISnapshot ###
 
-class RecordOutput(persistence.Snapshot):
+    def snapshot(self, context={}):
+        return self.args, self.kwargs
+
+
+class RecordAsyncOutput(object):
 
     implements(journaling.IRecordOutput)
 
-    def __init__(self, fields):
-        self.fields = fields
+    def __init__(self, fiber):
+        self._fiber = fiber
+
+    ### serialization.ISnapshot ###
+
+    def snapshot(self, context={}):
+        return "async", self._fiber.snapshot()
 
 
-class RecordingResult(object):
+class RecordSyncOutput(object):
+
+    implements(journaling.IRecordOutput)
+
+    def __init__(self, output):
+        self._output = output
+
+    ### serialization.ISnapshot ###
+
+    def snapshot(self, context={}):
+        return "sync", self._output
+
+
+class RecordingAsyncResult(object):
 
     implements(journaling.IRecordingResult)
 
-
-    def __init__(self, output):
-        self.output = journaling.IRecordOutput(output)
+    def __init__(self, fiber):
+        self.output = RecordAsyncOutput(fiber)
+        self._fiber = fiber
 
     ### IRecordingResult Methods ###
 
     def proceed(self):
-        pass
+        return self._fiber.run()
+
+components.registerAdapter(RecordingAsyncResult,
+                           async.IFiber,
+                           journaling.IRecordingResult)
+
+
+class RecordingSyncResult(object):
+
+    implements(journaling.IRecordingResult)
+
+    def __init__(self, value):
+        self._value = value
+        self.output = RecordSyncOutput(value)
+
+    ### IRecordingResult Methods ###
+
+    def proceed(self):
+        return self._value
+
+components.registerAdapter(RecordingSyncResult,
+                           object,
+                           journaling.IRecordingResult)
 
 
 class RecorderRoot(object):
@@ -63,7 +104,7 @@ class RecorderRoot(object):
 
     journal_parent = None
 
-    def __init__(self, keeper, mode=JournalMode.normal, base_id=None):
+    def __init__(self, keeper, mode=JournalMode.recording, base_id=None):
         self.journal_keeper = journaling.IJournalKeeper(keeper)
         self.journal_mode = mode
         self._base_id = base_id and (base_id,) or ()
@@ -103,12 +144,14 @@ class Recorder(RecorderNode, annotate.Annotable):
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
         # Bind the _call_recorded method depending on the journal mode
-        if self.journal_mode == JournalMode.normal:
+        if self.journal_mode == JournalMode.recording:
             self._call_recorded = self._record_call
         elif self.journal_mode == JournalMode.replay:
             self._call_recorded = self._replay_call
         else:
             raise RuntimeError("Unsupported journal mode")
+        # Register the recorder
+        self.journal_keeper.register(self)
 
     def register_playback(self):
         pass
@@ -127,7 +170,7 @@ class Recorder(RecorderNode, annotate.Annotable):
     def _register_recorded_call(cls, entry_id, method):
         pass
 
-    def _record_call(self, method, entry_id, *args, **kwargs):
+    def _record_call(self, entry_id, method, *args, **kwargs):
         input = RecordInput(args, kwargs)
         result = method(self, *args, **kwargs)
         recres = journaling.IRecordingResult(result)
@@ -135,25 +178,18 @@ class Recorder(RecorderNode, annotate.Annotable):
         self.journal_keeper.record(self.journal_id, entry_id, input, output)
         return recres.proceed()
 
-    def _replay_call(self, method, entry_id, *args, **kwargs):
+    def _replay_call(self, entry_id, method, *args, **kwargs):
         pass
 
 
-class FileJournalKeeper(object):
+class FileJournalRecorder(object):
 
     implements(journaling.IJournalKeeper)
 
     ### IJournalKeeper Methods ###
 
-    def record(self, instance_id, entry_id, args, kwargs, results):
-        pass
-
-
-class JournalPlayer(object):
-
-    implements(journaling.IJournalPlayer)
-
-    ### IJournalPlayer Methods ###
-
     def register(self, recorder):
+        '''No registration needed for recording.'''
+
+    def record(self, instance_id, entry_id, args, kwargs, results):
         pass
