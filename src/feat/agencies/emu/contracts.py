@@ -58,10 +58,7 @@ class ExpirationCallsMixin(object):
         time_left = expire_time - self.agent.get_time()
 
         if time_left < 0:
-            self.error('Tried to call method in the past!')
-            self._set_state(contracts.ContractState.wtf)
-            self._terminate()
-            return
+            raise RuntimeError('Tried to call method in the past!')
 
         def to_call(callback):
             if state:
