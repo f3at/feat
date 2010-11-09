@@ -125,10 +125,10 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
 
     log_category = 'manager-contractor'
     
-    def __init__(self, manager, bid):
+    def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
         common.StateMachineMixin.__init__(self)
-        self._set_state(ContractorState.bid)
+        self._set_state(state or ContractState.bid)
         self.bid = bid
         self.manager = manager
         self.recipient = recipient.IRecipient(bid)
@@ -136,9 +136,6 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         if bid in self.manager.contractors:
             raise RuntimeError('Contractor for the bid already registered!')
         self.manager.contractors[bid] = self
-
-    def remove(self):
-        del(self.manager.contractors[self.bid])
 
     def _send_message(self, msg):
         self.log('Sending message: %r to contractor', msg)
@@ -261,7 +258,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._cancel_expiration_call()
 
-        if len(self.contractors) > 0:
+        if len(self.contractors.with_state(ContractorState.bid)) > 0:
             self._set_state(contracts.ContractState.closed)
             expiration_time = max(map(lambda bid: bid.expiration_time,
                                       self.contractors))
@@ -276,6 +273,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log('Received bid %r', bid)
         ManagerContractor(self, bid)
         self._call(self.manager.bid, bid)
+
+    def _on_refusal(self, refusal):
+        self.log('Received bid %r', refusal)
+        ManagerContractor(self, refusal, ContractorState.refused)
 
     # private
 
@@ -302,6 +303,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         mapping = {
             message.Bid:\
                 {'method': self._on_bid,
+                 'state_after': contracts.ContractState.announced,
+                 'state_before': contracts.ContractState.announced},
+            message.Refusal:\
+                {'method': self._on_refusal,
                  'state_after': contracts.ContractState.announced,
                  'state_before': contracts.ContractState.announced},
         }

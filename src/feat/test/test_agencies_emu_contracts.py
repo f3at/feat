@@ -213,6 +213,7 @@ class AgencyTestHelper(object):
         self.agent._messaging.publish(dest.key, dest.shard, msg)
         return d
 
+
 class TestManager(common.TestCase, AgencyTestHelper):
     
     timeout = 3
@@ -242,11 +243,16 @@ class TestManager(common.TestCase, AgencyTestHelper):
         return self.manager
 
     def _put_bids(self, results, costs):
+        '''Put None as a cost to send Refusal'''
+
         defers = []
         for result, sender, cost in zip(results, self.recipients, costs):
             called, msg = result
-            bid = message.Bid()
-            bid.bids = [cost]
+            if cost:
+                bid = message.Bid()
+                bid.bids = [cost]
+            else:
+                bid = message.Refusal()
             bid.session_id = msg.session_id
             self.log('Puting bid')
             defers.append(self._reply(bid, sender, msg))
@@ -386,6 +392,37 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         return d
         
+    def testRefusingContractors(self):
+        self.agency.time_scale = 0.01
+        self.start_manager()
+        
+        closed = self.cb_after(None, self.medium, '_on_announce_expire')
+
+        self._send_announce(self.manager)
+        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        # None stands for Refusal
+        d.addCallback(self._put_bids, (None,None,None,)) 
+        d.addCallback(lambda _: closed)
+
+        def asserts_on_manager(_):
+            self.assertEqual(contracts.ContractState.expired, self.medium.state)
+            self.assertEqual(3, len(self.medium.contractors))
+            for contractor in self.medium.contractors.values():
+                self.assertEqual(ContractorState.refused, contractor.state)
+
+            return self.manager
+  
+        d.addCallback(asserts_on_manager)
+        d.addCallback(self.assertCalled, 'bid', times=0)
+        d.addCallback(self.assertCalled, 'closed', times=0)
+        d.addCallback(self.assertCalled, 'expired', times=1)
+
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
+
+        return d
+
+        
+
 class TestContractor(common.TestCase, AgencyTestHelper):
 
     timeout = 3
