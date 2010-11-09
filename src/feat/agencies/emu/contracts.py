@@ -15,12 +15,44 @@ from interface import IListener
 from . import common
 
 
+class AgencyMiddleMixin(object):
+    '''Responsible for formating messages, calling methods etc'''
+
+    protocol_id = None
+    session_id = None
+
+    def __init__(self, protocol_id):
+        self.protocol_id = protocol_id
+
+    def _send_message(self, msg, expiration_time=None, recipients=None):
+        msg.session_id = self.session_id
+        msg.protocol_id = self.protocol_id
+        if expiration_time is None:
+            expiration_time = self.agent.get_time() + 10
+        msg.expiration_time = expiration_time
+
+        if not recipients:
+            recipients = self.recipients
+
+        return self.agent.send_msg(recipients, msg)
+
+    def _call(self, method, *args, **kwargs):
+        '''Call the method, wrap it in Deferred and bind error handler'''
+
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addErrback(self._error_handler)
+        return d
+
+    def _error_handler(e):
+        # overload me
+        raise e
+    
 class ExpirationCallsMixin(object):
 
     def __init__(self):
         self._expiration_call = None
     
-    def _setup_expiration_call(self, expire_time, method, state,
+    def _setup_expiration_call(self, expire_time, method, state=None,
                                   *args, **kwargs):
         time_left = expire_time - self.agent.get_time()
 
@@ -31,7 +63,8 @@ class ExpirationCallsMixin(object):
             return
 
         def to_call(callback):
-            self._set_state(state)
+            if state:
+                self._set_state(state)
             self.log('Calling method: %r with args: %r', method, args)
             d = defer.maybeDeferred(method, *args, **kwargs)
             d.addCallback(callback.callback)
@@ -54,7 +87,7 @@ class ExpirationCallsMixin(object):
             self._expiration_call = None
 
     def _run_and_terminate(self, method, *args, **kwargs):
-        d = defer.maybeDeferred(method, *args, **kwargs)
+        d = self._call(method, *args, **kwargs)
         d.addCallback(lambda _: self._terminate())
 
     def _terminate(self):
@@ -76,8 +109,25 @@ components.registerAdapter(AgencyManagerFactory,
                            protocols.IAgencyInitiatorFactory)
 
 
+class ManagerContractor(object):
+    '''
+    Represents the contractor from the point of view of the manager
+    '''
+
+    def __init__(self, manager, bid):
+        self.bid = bid
+        self.manager = manager
+
+        if bid in self.manager._contractors:
+            raise RuntimeError('Contractor for the bid already registered!')
+        self.manager._contractors[bid] = self
+
+    def remove(self):
+        del(self.manager._contractors[self.bid])
+
+
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    ExpirationCallsMixin):
+                    ExpirationCallsMixin, AgencyMiddleMixin):
     implements(manager.IAgencyManager, IListener)
  
     log_category = 'agency-contractor'
@@ -87,6 +137,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         ExpirationCallsMixin.__init__(self)
+       
 
         self.agent = agent
         self.recipients = recipients
@@ -95,16 +146,16 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.session_id = str(uuid.uuid1())
         self.log_name = self.session_id
 
-        self.contractors = []
+        self.contractors = {}
     
     # manager.IAgencyManager stuff
 
     def initiate(self, manager):
         self.manager = manager
+        AgencyMiddleMixin.__init__(self, manager.protocol_id)
 
         self._set_state(contracts.ContractState.initiated)
-        d = defer.maybeDeferred(manager.initiate, *self.args, **self.kwargs) 
-        d.addErrback(self._error_handler)
+        self._call(manager.initiate, *self.args, **self.kwargs) 
 
         timeout = self.agent.get_time() + self.manager.initiate_timeout
         error = RuntimeError('Timeout exceeded waiting for manager.initate()'
@@ -124,11 +175,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.bid = self._send_message(announce, expiration_time)
 
         self._cancel_expiration_call()
-        self._setup_expiration_call(expiration_time,
-                                    self.manager.closed,
-                                    contracts.ContractState.closed)
+        self._setup_expiration_call(expiration_time, self._on_announce_expire)  
 
         return self.bid
+
 
     def reject(self, bid, rejection):
         pass
@@ -142,6 +192,25 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def acknowledge(self, report):
         pass
 
+    # hooks for events (timeout and messages comming in)
+    
+    def _on_announce_expire(self):
+        self.log('Timeout expired, closing the announce window')
+        self._ensure_state(contracts.ContractState.announced)
+
+        self._cancel_expiration_call()
+
+        if len(self.contractors) > 0:
+            self._set_state(contracts.ContractState.closed)
+            self._call(self.manager.closed)
+            expiration_time = max(map(lambda bid: bid.expiration_time,
+                                      self.contractors))
+            self._expire_at(expiration_time, self.manager.expired,
+                            contracts.ContractState.expired)
+        else:
+            self._set_state(contracts.ContractState.expired)
+            self._run_and_terminate(self.manager.expired)
+            
     # private
 
     def _error_handler(self, e):
@@ -154,15 +223,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
-
-    def _send_message(self, msg, expiration_time=None):
-        msg.session_id = self.session_id
-        msg.protocol_id = self.manager. protocol_id
-        if expiration_time is None:
-            expiration_time = self.agent.get_time() + 10
-        msg.expiration_time = expiration_time
-
-        return self.agent.send_msg(self.recipients, msg)
 
     # IListener stuff
 
@@ -190,7 +250,7 @@ components.registerAdapter(AgencyContractorFactory,
 
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
-                       ExpirationCallsMixin):
+                       ExpirationCallsMixin, AgencyMiddleMixin):
     implements(contractor.IAgencyContractor, IListener)
  
     log_category = 'agency-contractor'
@@ -200,6 +260,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         ExpirationCallsMixin.__init__(self)
+        AgencyMiddleMixin.__init__(self, announcement.protocol_id)
 
         assert isinstance(announcement, message.Announcement)
 
@@ -207,7 +268,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.announce = announcement
         self.recipients = announcement.reply_to
         self.session_id = announcement.session_id
-        self.protocol_id = announcement.protocol_id
 
         self.log_name = self.session_id
 
@@ -276,15 +336,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     
     # private section
 
-    def _send_message(self, msg, expiration_time=None):
-        msg.session_id = self.session_id
-        msg.protocol_id = self.protocol_id
-        if expiration_time is None:
-            expiration_time = self.agent.get_time() + 10
-        msg.expiration_time = expiration_time
-
-        return self.agent.send_msg(self.recipients, msg)
-
     def _terminate(self):
         ExpirationCallsMixin._terminate(self)
 
@@ -332,7 +383,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(announcement.expiration_time,
                         self.contractor.announce_expired,
                         contracts.ContractState.closed)
-        self.contractor.announced(announcement)
+        self._call(self.contractor.announced, announcement)
 
     def _on_grant(self, grant):
         '''
@@ -342,7 +393,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         is_ok = grant.bid_index < len(self.bid.bids)
         if is_ok:
             self.grant = grant
-            self.contractor.granted(grant)
+            self._call(self.contractor.granted, grant)
             if grant.update_report:
                 self._setup_reporter()
         else:

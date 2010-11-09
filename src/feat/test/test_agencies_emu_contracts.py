@@ -222,6 +222,12 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.medium = self.manager.medium
         self.session_id = self.medium.session_id
 
+    def assertUnregistered(self, _, state):
+        self.assertFalse(self.manager.medium.session_id in\
+                             self.agent._listeners)
+        self.assertEqual(state, self.manager.medium.state)
+        return self.manager
+
     def testInitiateTimeout(self):
         self.agency.time_scale = 0.01
         self.start_manager()
@@ -231,21 +237,29 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         return d
  
-    def testSendAnnouncementAndWaitForClosed(self):
+    def testSendAnnouncementAndWaitForExpired(self):
         self.agency.time_scale = 0.01
         self.start_manager()
-        
+
         self._send_announce(self.manager)
         d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
 
-        def asserts_on_msgs(msgs):
-            self.log(msgs)
+        def asserts_on_msgs(results):
+            for result in results:
+                called, arg = result
+                self.assertTrue(called)
+                self.assertTrue(isinstance(arg, message.Announcement))
 
         d.addCallback(asserts_on_msgs)
         d.addCallback(lambda x: self.manager)
-        d.addCallback(self.assertCalled, 'closed', params=[])
+        d.addCallback(self.cb_after, obj=self.agent,
+                      method='unregister_listener')
+        d.addCallback(self.assertCalled, 'closed', times=0)
+        d.addCallback(self.assertCalled, 'expired')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
+
         return d
-    testSendAnnouncementAndWaitForClosed.skip = "Point to start tomorrow"
+
         
 class TestContractor(common.TestCase, AgencyTestHelper):
 
