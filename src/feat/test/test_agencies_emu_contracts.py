@@ -93,15 +93,15 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
     @common.Mock.stub
-    def cancelled(self, grant, cancellation):
+    def cancelled(self, cancellation):
         pass
 
     @common.Mock.stub
-    def completed(self, grant, report):
+    def completed(self, reports):
         pass
 
     @common.Mock.stub
-    def aborted(self, grant):
+    def aborted(self):
         pass
 
 
@@ -243,7 +243,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.assertEqual(state, self.manager.medium.state)
         return self.manager
 
-    def _consume_all(self):
+    def _consume_all(self, *_):
         return defer.DeferredList(map(lambda x: x.consume(), self.queues))
 
     def _put_bids(self, results, costs):
@@ -422,7 +422,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         d.addCallback(asserts_on_manager)
         d.addCallback(self.assertCalled, 'bid', times=0)
         d.addCallback(self.assertCalled, 'closed', times=0)
-        d.addCallback(self.assertCalled, 'expired', times=1)
+        d.addCallback(self.assertCalled, 'expired', times=1, params=[])
 
         d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
 
@@ -447,7 +447,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
                       method='unregister_listener')
         d.addCallback(self.assertUnregistered, contracts.ContractState.aborted)
         d.addCallback(lambda _: self.manager)
-        d.addCallback(self.assertCalled, 'aborted')
+        d.addCallback(self.assertCalled, 'aborted', params=[])
         
         return d
 
@@ -499,7 +499,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         def asserts_on_manager2(_):
             self.assertEqual(3, len(
                 self.medium.contractors.with_state(ContractorState.cancelled)))
-            self.assertCalled(self.manager, 'cancelled')
+            self.assertCalled(self.manager, 'cancelled', params=[])
 
         d.addCallback(asserts_on_manager2)
         d.addCallback(self.assertUnregistered,
@@ -507,9 +507,44 @@ class TestManager(common.TestCase, AgencyTestHelper):
 
         return d
                       
-            
+    def testContactorsFinishAckSent(self):
+        self.agency.time_scale = 0.01
+        
+        def closed_handler(s):
+            s.log('Contracts closed, granting everybody')
+            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+                         s.medium.contractors.keys())
+            s.medium.grant(params)
 
-                      
+        self.start_manager()
+        self.stub_method(self.manager, 'closed', closed_handler)
+        
+        self._send_announce(self.manager)
+        d = self._consume_all()
+        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(self._consume_all)
+
+        def finish_all(results):
+            for (called, grant), recipient in zip(results, self.recipients):
+                msg = message.FinalReport()
+                self._reply(msg, recipient, grant)
+
+        d.addCallback(finish_all)
+        
+        d.addCallback(self._consume_all)
+
+        def assert_acked(results):
+            for called, msg in results:
+                self.assertIsInstance(msg, message.Acknowledgement)
+
+        d.addCallback(assert_acked)
+
+        d.addCallback(lambda _: self.manager)
+        d.addCallback(self.assertCalled, 'completed', params=[list])
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.completed)
+        
+        return d
         
 
 class TestContractor(common.TestCase, AgencyTestHelper):

@@ -21,6 +21,8 @@ class AgencyMiddleMixin(object):
     protocol_id = None
     session_id = None
 
+    error_state = None
+
     def __init__(self, protocol_id):
         self.protocol_id = protocol_id
 
@@ -44,9 +46,18 @@ class AgencyMiddleMixin(object):
         d.addErrback(self._error_handler)
         return d
 
-    def _error_handler(e):
-        # overload me
-        raise e
+
+    def _error_handler(self, e):
+        msg = e.getErrorMessage()
+        self.error('Terminating: %s', msg)
+
+        frames = traceback.extract_tb(e.getTracebackObject())
+        if len(frames) > 0:
+            self.error('Last traceback frame: %r', frames[-1])
+
+        self._set_state(self.error_state)
+        self._terminate()
+
 
     
 class ExpirationCallsMixin(object):
@@ -117,9 +128,11 @@ class ContractorState(enum.Enum):
     granted - Grant has been sent
     completed - FinalReport has been received
     cancelled - Sent or received Cancellation
+    acknowledged - Ack has been sent
     '''
 
-    (bid, refused, rejected, granted, completed, cancelled) = range(6)
+    (bid, refused, rejected, granted,
+     completed, cancelled, acknowledged) = range(7)
 
 
 class ManagerContractor(common.StateMachineMixin, log.Logger):
@@ -134,6 +147,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         common.StateMachineMixin.__init__(self)
         self._set_state(state or ContractorState.bid)
         self.bid = bid
+        self.report = None
         self.manager = manager
         self.recipient = recipient.IRecipient(bid)
 
@@ -142,13 +156,17 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         self.manager.contractors[bid] = self
 
     def _send_message(self, msg):
-        self.log('Sending message: %r to contractor', msg)
+        self.log('Sending message: %r to contractor: %r',
+                 msg, self.recipient.key)
         self.manager._send_message(msg, recipients=self.recipient)
 
     def _call(self, *args, **kwargs):
         # delegate calling methods to medium class
         # this way we can reuse the error handler
         self.manager._call(*args, **kwargs)
+
+    def _on_report(self, report):
+        self.report = report
 
     def on_event(self, msg):
         mapping = {
@@ -164,7 +182,15 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
                 {'method': self._send_message,
                  'state_before': [ContractorState.granted,
                                   ContractorState.completed],
-                 'state_after': ContractorState.cancelled}
+                 'state_after': ContractorState.cancelled},
+            message.Acknowledgement:\
+                {'method': self._send_message,
+                 'state_before': ContractorState.completed,
+                 'state_after': ContractorState.acknowledged},
+            message.FinalReport:\
+                {'method': self._on_report,
+                 'state_before': ContractorState.granted,
+                 'state_after': ContractorState.completed}
             
         }
         self._event_handler(mapping, msg)
@@ -189,6 +215,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(manager.IAgencyManager, IListener)
  
     log_category = 'agency-contractor'
+
+    error_state = contracts.ContractState.wtf
 
     def __init__(self, agent, recipients, *args, **kwargs):
         log.Logger.__init__(self, agent)
@@ -322,7 +350,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             self.warning("%s Ignoring", str(e))
             return False
 
-        contractor._set_state(ContractorState.completed)
+        contractor.on_event(report)
         if len(self.contractors.with_state(ContractorState.granted)) == 0:
             self._on_complete()
 
@@ -340,18 +368,21 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                  cancellation.reason
         self.cancel(reason)
 
+    def _on_complete(self):
+        self.log('All Reports received. Sending ACKs')
+        self._ensure_state(contracts.ContractState.granted)
+        self._set_state(contracts.ContractState.completed)
+        self._cancel_expiration_call()
+
+        contractors = self.contractors.with_state(ContractorState.completed)
+        for contractor in contractors:
+            ack = message.Acknowledgement()
+            contractor.on_event(ack)
+
+        reports = map(lambda x: x.report, contractors)
+        self._run_and_terminate(self.manager.completed, reports)
+
     # private
-
-    def _error_handler(self, e):
-        msg = e.getErrorMessage()
-        self.error('Terminating: %s', msg)
-
-        frames = traceback.extract_tb(e.getTracebackObject())
-        if len(frames) > 0:
-            self.error('Last traceback frame: %r', frames[-1])
-
-        self._set_state(contracts.ContractState.wtf)
-        self._terminate()
 
     def _terminate(self):
         ExpirationCallsMixin._terminate(self)
@@ -407,6 +438,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
  
     log_category = 'agency-contractor'
 
+    error_state = contracts.ContractState.wtf
+    
     def __init__(self, agent, announcement):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
@@ -494,11 +527,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log("Unregistering contractor")
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
-
-    def _error_handler(self, e):
-        self.error('Terminating: %s', e.getErrorMessage())
-        self._set_state(contracts.ContractState.wtf)
-        self._terminate()
 
     # update reporter stuff
 

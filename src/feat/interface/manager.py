@@ -80,13 +80,13 @@ class IAgentManager(protocols.IInitiator):
         '''Called when the announce has been closed and no grant has
         been done before time specified with the L{grant_timeout} attribute.'''
 
-    def cancelled(grant, cancellation):
+    def cancelled(cancellation):
         '''The contractor canceled the task.'''
 
-    def completed(grant, report):
+    def completed(reports):
         pass
 
-    def aborted(grant):
+    def aborted():
         '''Called when the contractor did not report in time.'''
 
 
