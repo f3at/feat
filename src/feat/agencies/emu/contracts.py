@@ -327,7 +327,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             self._on_complete()
 
     def _on_cancel(self, cancellation):
-        self.log('Received cancellation: %r', cancellation)
+        self.log('Received cancellation: %r. Reason: %r',
+                 cancellation, cancellation.reason)
 
         try:
             contractor = self.contractors.by_message(cancellation)
