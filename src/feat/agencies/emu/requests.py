@@ -7,7 +7,7 @@ from twisted.python import components
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface import recipient, requests, replier, requester, protocols
+from feat.interface import requests, replier, requester
 from feat.agents import message
 
 from interface import IListener, IAgencyInitiatorFactory,\
@@ -65,10 +65,10 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def request(self, request):
         self.log("Sending request")
         self._ensure_state(requests.RequestState.requested)
-        
+
         self.requester.request =\
-                               self._send_message(request, self.expiration_time)
-        
+            self._send_message(request, self.expiration_time)
+
     def terminate(self):
         self._terminate()
 
@@ -87,8 +87,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
             message.ResponseMessage:\
                 {'state_before': requests.RequestState.requested,
                  'state_after': requests.RequestState.requested,
-                 'method': self.requester.got_reply}
-            }
+                 'method': self.requester.got_reply}}
         self._event_handler(mapping, msg)
 
     def get_session_id(self):
@@ -113,7 +112,7 @@ components.registerAdapter(AgencyReplierFactory,
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.AgencyMiddleMixin):
     implements(replier.IAgencyReplier, IListener)
- 
+
     log_category = 'agency-replier'
 
     error_state = requests.RequestState.wtf
@@ -137,12 +136,12 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.replier = replier
         self._set_state(requests.RequestState.requested)
         return replier
-    
+
     def reply(self, reply):
         self.debug("Sending reply")
         self._send_message(reply, self.request.expiration_time)
         self._terminate()
-        
+
     def _terminate(self):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
@@ -154,8 +153,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
             message.RequestMessage:\
             {'state_before': requests.RequestState.requested,
              'state_after': requests.RequestState.closed,
-             'method': self.replier.requested}
-        }
+             'method': self.replier.requested}}
         self._event_handler(mapping, msg)
 
     def get_session_id(self):

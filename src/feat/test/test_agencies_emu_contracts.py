@@ -2,15 +2,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import uuid, time
+from zope.interface import classProvides
+from twisted.internet import defer
 
-from zope.interface import classProvides, implements
-from twisted.internet import reactor, defer
-
-from feat.agencies.emu import agency
 from feat.agencies.emu.contracts import ContractorState
 from feat.agents import agent, descriptor, contractor, message, manager
-from feat.interface import recipient, contracts, protocols
+from feat.interface import contracts, protocols
 from feat.interface.contractor import IContractorFactory
 from feat.interface.manager import IManagerFactory
 
@@ -19,7 +16,7 @@ from . import common
 
 class DummyContractor(contractor.BaseContractor, common.Mock):
     classProvides(IContractorFactory)
-    
+
     protocol_id = 'dummy-contract'
     interest_type = protocols.InterestType.public
 
@@ -105,9 +102,8 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
 
-
 class TestManager(common.TestCase, common.AgencyTestHelper):
-    
+
     protocol_type = 'Contract'
     protocol_id = 'dummy-contract'
 
@@ -164,7 +160,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                           method='unregister_listener')
 
         return d
- 
+
     def testSendAnnouncementAndWaitForExpired(self):
         self.agency.time_scale = 0.01
         self.start_manager()
@@ -191,12 +187,12 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testSendAnnouncementRecvBidsAndGoToClosed(self):
         self.agency.time_scale = 0.01
         self.start_manager()
-        
+
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (1,1,1,))
+        d.addCallback(self._put_bids, (1, 1, 1, ))
         d.addCallback(lambda _: closed)
 
         def asserts_on_manager(_):
@@ -206,7 +202,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                 self.assertTrue(isinstance(bid, message.Bid))
 
             return self.manager
-  
+
         d.addCallback(asserts_on_manager)
         d.addCallback(self.assertCalled, 'bid', times=3)
 
@@ -226,14 +222,14 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                 pass
             elif bid.bids[0] == 1:
                 grant = message.Grant(bid_index=0)
-                s.medium.grant((bid, grant,))
+                s.medium.grant((bid, grant, ))
 
         self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
-        
+
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d = self.queues[0].consume()
         d.addCallback(self.assertIsInstance, message.Rejection)
@@ -257,20 +253,20 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
     def testGrantingFromClosedState(self):
         self.agency.time_scale = 0.01
-        
+
         def closed_handler(s):
             s.log('Contracts closed, sending grants')
             to_grant = filter(lambda x: x.bids[0] < 3, s.medium.contractors)
-            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
                          to_grant)
             s.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
-        
+
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d.addCallback(self.cb_after, obj=self.manager, method='closed')
         d.addCallback(lambda _: self.queues[0].consume())
@@ -292,27 +288,28 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(lambda _: self.medium._terminate())
 
         return d
-        
+
     def testRefusingContractors(self):
         self.agency.time_scale = 0.01
         self.start_manager()
-        
+
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
         d = self._consume_all()
         # None stands for Refusal
-        d.addCallback(self._put_bids, (None,None,None,)) 
+        d.addCallback(self._put_bids, (None, None, None, ))
         d.addCallback(lambda _: closed)
 
         def asserts_on_manager(_):
-            self.assertEqual(contracts.ContractState.expired, self.medium.state)
+            self.assertEqual(contracts.ContractState.expired,
+                             self.medium.state)
             self.assertEqual(3, len(self.medium.contractors))
             for contractor in self.medium.contractors.values():
                 self.assertEqual(ContractorState.refused, contractor.state)
 
             return self.manager
-  
+
         d.addCallback(asserts_on_manager)
         d.addCallback(self.assertCalled, 'bid', times=0)
         d.addCallback(self.assertCalled, 'closed', times=0)
@@ -322,12 +319,11 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         return d
 
-
     def testTimeoutAfterGrant(self):
         self.agency.time_scale = 0.01
 
         def bid_handler(s, bid):
-            s.medium.grant((bid, message.Grant(bid_index=0),))
+            s.medium.grant((bid, message.Grant(bid_index=0), ))
 
         self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
@@ -335,31 +331,31 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self._send_announce(self.manager)
         d = self._consume_all()
         # None stands for Refusal
-        d.addCallback(self._put_bids, (1,2,3,))
-        
+        d.addCallback(self._put_bids, (1, 2, 3, ))
+
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
         d.addCallback(self.assertUnregistered, contracts.ContractState.aborted)
         d.addCallback(lambda _: self.manager)
         d.addCallback(self.assertCalled, 'aborted', params=[])
-        
+
         return d
 
     def testRecvCancellation(self):
         self.agency.time_scale = 0.01
-        
+
         def closed_handler(s):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
                          s.medium.contractors.keys())
             s.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
-        
+
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(self._put_bids, (3, 2, 1, ))
         d.addCallback(lambda _: self.queues[2].consume()) #just swallow
         d.addCallback(lambda _: self.queues[0].consume())
 
@@ -369,7 +365,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
             return self._reply(msg, endpoint, grant)
 
         d.addCallback(complete_one)
-        
+
         def asserts_on_manager(_):
             self.assertEqual(1, len(
                 self.medium.contractors.with_state(ContractorState.completed)))
@@ -400,22 +396,22 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                       contracts.ContractState.cancelled)
 
         return d
-                      
+
     def testContactorsFinishAckSent(self):
         self.agency.time_scale = 0.01
-        
+
         def closed_handler(s):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
                          s.medium.contractors.keys())
             s.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
-        
+
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(self._put_bids, (3, 2, 1, ))
         d.addCallback(self._consume_all)
 
         def finish_all(results):
@@ -424,7 +420,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                 self._reply(msg, recipient, grant)
 
         d.addCallback(finish_all)
-        
+
         d.addCallback(self._consume_all)
 
         def assert_acked(results):
@@ -437,9 +433,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.assertCalled, 'completed', params=[list])
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.completed)
-        
+
         return d
-        
+
 
 class TestContractor(common.TestCase, common.AgencyTestHelper):
 
@@ -463,7 +459,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     def testRecivingAnnouncement(self):
         d = self._recv_announce()
-        
+
         def asserts(_):
             self.assertEqual(1, len(self.agent._listeners))
 
@@ -484,7 +480,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
                                        message.Announcement))
 
         d.addCallback(asserts_on_contractor)
-        
+
         return d
 
     def testAnnounceExpiration(self):
@@ -509,14 +505,14 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(asserts)
         d.addCallback(self.queue.consume)
-        
+
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
             self.assertEqual(self.contractor.medium.bid, msg)
 
         d.addCallback(asserts_on_bid)
 
-        return d            
+        return d
 
     def testPuttingBidAndReachingTimeout(self):
         self.agency.time_scale = 0.01
@@ -538,13 +534,13 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(self.assertUnregistered, contracts.ContractState.refused)
         d.addCallback(self.queue.consume)
-        
+
         def asserts_on_refusal(msg):
             self.assertEqual(message.Refusal, msg.__class__)
             self.assertEqual(self.contractor.medium.session_id, msg.session_id)
 
         d.addCallback(asserts_on_refusal)
-        
+
         return d
 
     def testCorrectGrant(self):
@@ -585,7 +581,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._recv_grant, bid_index=0, update_report=1)
 
         d.addCallback(self.queue.consume) # this is a bid
-        
+
         def assert_msg_is_report(msg):
             self.assertEqual(message.UpdateReport, msg.__class__)
             self.log("Received report message")
@@ -605,18 +601,20 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_bid)
         d.addCallback(self._recv_rejection)
 
-        d.addCallback(self.assertCalled, 'rejected', params=[message.Rejection])
-        d.addCallback(self.assertUnregistered, contracts.ContractState.rejected)
+        d.addCallback(self.assertCalled, 'rejected',
+                      params=[message.Rejection])
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.rejected)
 
         return d
-        
+
     def testCancelingGrant(self):
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self._send_bid)
         d.addCallback(self._recv_grant)
         d.addCallback(self._send_cancel)
-        
+
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.cancelled)
 
@@ -628,14 +626,14 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_bid)
         d.addCallback(self._recv_grant)
         d.addCallback(self._recv_cancel)
-        
+
         d.addCallback(self.assertCalled, 'cancelled',
                       params=[message.Cancellation])
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.cancelled)
 
         return d
-        
+
     def testSendingReportThanExpiring(self):
         self.agency.time_scale = 0.01
 
@@ -644,7 +642,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_bid)
         d.addCallback(self._recv_grant)
         d.addCallback(self._send_final_report)
-        
+
         def asserts(contractor):
             self.assertEqual(contracts.ContractState.completed,
                              contractor.medium.state)
@@ -655,7 +653,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
                       method='unregister_listener')
         d.addCallback(self.assertUnregistered, contracts.ContractState.aborted)
         d.addCallback(self.assertCalled, 'aborted')
-        
+
         return d
 
     def testSendingReportAndReceivingCancellation(self):
@@ -690,12 +688,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     def testReceivingFromIncorrectState(self):
         self.agency.time_scale = 0.01
-        
+
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self._recv_grant)
         # this will be ignored, we follow the path to expiration
-                
+
         d.addCallback(self.cb_after, obj=self.agent,\
                           method='unregister_listener')
         d.addCallback(self.assertCalled, 'announce_expired')
@@ -711,7 +709,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
                  message.BaseMessage(session_id=contractor.medium.session_id))
         d.addCallback(self._recv_msg)
         # this will be ignored, we follow the path to expiration
-                
+
         d.addCallback(lambda _: self.contractor)
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -732,7 +730,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_bid)
         d.addCallback(self.stub_method, 'granted', custom_handler)
         d.addCallback(self._recv_grant)
-        
+
         d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
 
         return d
@@ -748,15 +746,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
                 not (self.contractor.medium._expiration_call.called or
                      self.contractor.medium._expiration_call.cancelled):
             self.warning("Canceling contractor expiration call in tearDown")
-            self.contractor.medium._expiration_call.cancel()    
+            self.contractor.medium._expiration_call.cancel()
 
     def _get_contractor(self, _):
         self.contractor = self.agent._listeners.values()[0].contractor
         return self.contractor
-
-
-
-
-
-
-

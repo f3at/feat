@@ -55,6 +55,7 @@ def injectClassCallback(annotationName, depth, methodName, *args, **kwargs):
     annotation = (annotationName, methodName, args, kwargs)
     annotations.append(annotation)
 
+
 def injectAttribute(annotationName, depth, attr, value):
     """
     Inject an attribute in a class from it's class frame.

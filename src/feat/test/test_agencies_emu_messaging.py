@@ -10,6 +10,7 @@ from feat.interface import agent
 
 from . import common
 
+
 class TestQueue(common.TestCase):
 
     def _appendConsumers(self, finished):
@@ -47,8 +48,6 @@ class TestQueue(common.TestCase):
         return d
 
     def testQueueWithoutConsumersKeepsMsgs(self):
-        received = []
-
         self._enqueueMsgs()
 
         d = defer.Deferred()
@@ -59,7 +58,7 @@ class TestQueue(common.TestCase):
         return d
 
     def testAppendConsumersThanSendMsgs(self):
-        d  = defer.Deferred()
+        d = defer.Deferred()
         self._appendConsumers(d)
 
         self._enqueueMsgs()
@@ -114,7 +113,6 @@ class TestExchange(common.TestCase):
             expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
             self.assertEqual(expected, queue._messages)
 
-
     def testPublishingOneQueueBound(self):
         routing_key = 'some key'
         queue = self.queues[0]
@@ -144,6 +142,7 @@ class StubAgent(object):
     def get_id(self):
         return self.descriptor.uuid
 
+
 class TestMessaging(common.TestCase):
 
     def setUp(self):
@@ -167,6 +166,7 @@ class TestMessaging(common.TestCase):
             exchange.publish('Msg %d' % x, key)
 
         d = defer.Deferred()
+
         def asserts(finished):
             self.assertEqual(5, len(self.agent.messages))
             expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
@@ -185,8 +185,8 @@ class TestMessaging(common.TestCase):
     def testTwoAgentsWithSameBinding(self):
         second_agent = StubAgent()
         second_connection = self.messaging.createConnection(second_agent)
-        agents = [ self.agent, second_agent ]
-        connections = [ self.connection, second_connection ]
+        agents = [self.agent, second_agent]
+        connections = [self.connection, second_connection]
 
         key = 'some key'
         bindings = map(lambda x: x.createPersonalBinding(key), connections)
@@ -196,6 +196,7 @@ class TestMessaging(common.TestCase):
         exchange.publish('some message', key)
 
         d = defer.Deferred()
+
         def asserts(finished):
             for agent in agents:
                 self.assertEqual(1, len(agent.messages))
@@ -216,6 +217,7 @@ class TestMessaging(common.TestCase):
         self.connection.publish(key, self.agent.descriptor.shard,\
                                    'some message')
         d = defer.Deferred()
+
         def asserts(d):
             self.assertEqual(['some message'], self.agent.messages)
             d.callback(None)

@@ -78,7 +78,8 @@ class TestEnum(common.TestCase):
         self.assertEqual(akeys, aikeys)
 
         self.assertEqual(aitems, [(0, "a"), (1, "b"), (2, "c"), (42, "d")])
-        self.assertEqual(aitems, [(A.a, "a"), (A.b, "b"), (A.c, "c"), (A.d, "d")])
+        self.assertEqual(aitems, [(A.a, "a"), (A.b, "b"), (A.c, "c"),
+                                  (A.d, "d")])
         self.assertEqual(aitems, aiitems)
 
         for k in A:
@@ -100,4 +101,3 @@ class TestEnum(common.TestCase):
 
         self.assertRaises(KeyError, A.__getitem__, 5)
         self.assertRaises(TypeError, A.__getitem__, 5.6)
-

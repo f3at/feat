@@ -1,4 +1,5 @@
-import protocols, requests
+import protocols
+import requests
 
 
 class IReplierFactory(protocols.IInterest):

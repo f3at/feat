@@ -12,6 +12,7 @@ from feat.interface import recipient, agency, agent, protocols
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory
+
 from . import messaging
 from . import database
 from . import requests
@@ -63,14 +64,6 @@ class Agency(object):
 
     def get_time(self):
         return time.time()
-
-    # FOR TESTS
-    def cb_on_msg(self, shard, key):
-        m = self._messaging
-        queue = m.defineQueue(name=str(uuid.uuid1()))
-        exchange = m._getExchange(shard)
-        exchange.bind(key, queue)
-        return queue.consume()
 
 
 class AgencyAgent(log.FluLogKeeper, log.Logger):
@@ -132,7 +125,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         p_type = message.protocol_type
         p_id = message.protocol_id
         if p_type in self._interests and p_id in self._interests[p_type] and\
-           isinstance(message, self._interests[p_type][p_id].factory.initiator):
+          isinstance(message, self._interests[p_type][p_id].factory.initiator):
             self.log('Looking for interest to instantiate')
             factory = self._interests[message.protocol_type]\
                                      [message.protocol_id].factory
@@ -179,15 +172,14 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         p_id = factory.protocol_id
         if p_type not in self._interests or\
            p_id not in self._interests[p_type]:
-           self.error('Requested to revoke interest we are not interested in!'
+            self.error('Requested to revoke interest we are not interested in!'
                       ' %s.%s', p_type, p_id)
-           return False
+            return False
         self._interests[p_type][p_id].revoke()
         del(self._interests[p_type][p_id])
 
-        
         return True
-        
+
     def register_listener(self, listener):
         listener = IListener(listener)
         session_id = listener.get_session_id()
@@ -235,7 +227,5 @@ class Interest(object):
             self.binding = medium.create_binding(self.factory.protocol_id)
 
     def revoke(self):
-      if self.factory.interest_type == protocols.InterestType.public:
-          self.binding.revoke()
-                
-
+        if self.factory.interest_type == protocols.InterestType.public:
+            self.binding.revoke()

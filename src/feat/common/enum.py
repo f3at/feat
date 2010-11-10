@@ -18,7 +18,7 @@ class MetaEnum(type):
             raise TypeError("Enum value type must be int not %s"
                              % (value.__class__.__name__))
         if name in cls._names:
-            raise ValueError("There is already an enum called %s" % (name,))
+            raise ValueError("There is already an enum called %s" % (name, ))
         if value in cls._values:
             raise ValueError(
                 "Error while creating enum %s of type %s, "

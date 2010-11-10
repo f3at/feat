@@ -15,8 +15,10 @@ class Dummy(object):
     def bacon(self):
         pass
 
+
 def beans(self):
     pass
+
 
 def eggs(self):
     pass
@@ -24,6 +26,7 @@ def eggs(self):
 
 def direct_fun_call(result, arg):
     return "direct_fun_call", result, arg
+
 
 def alt_fun_call(result, fiber, orig, arg):
     return "alt_fun_call", fiber.fiber_id, orig(result, arg)
@@ -48,6 +51,7 @@ def test_nesting(result, arg):
     f.succeed(result)
     return f
 
+
 @fiber.nested
 def test_nesting_2a(result, arg):
     f = fiber.Fiber()
@@ -58,6 +62,7 @@ def test_nesting_2a(result, arg):
     f.succeed(result)
     return f
 
+
 @fiber.nested
 def test_nesting_2b(result, arg):
     f = fiber.Fiber()
@@ -67,6 +72,7 @@ def test_nesting_2b(result, arg):
     f.succeed(result)
     return f
 
+
 @fiber.nested
 def test_nesting_3(result, arg):
     f = fiber.Fiber()
@@ -75,6 +81,7 @@ def test_nesting_3(result, arg):
     f.addCallback(test_nesting_end, arg + 13)
     f.succeed(result)
     return f
+
 
 @fiber.nested
 def test_nesting_end(result, arg):
@@ -143,25 +150,31 @@ class TestFiber(common.TestCase):
 
         f.addCallback(o.spam, 42, parrot="dead")
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam", (42,), {"parrot": "dead"},
+                          [("feat.test.test_common_fiber.Dummy.spam",
+                            (42, ), {"parrot": "dead"},
                             None, None, None)]),
                          f.snapshot(f))
 
         f.addErrback(beans, 18, slug="mute")
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam", (42,), {"parrot": "dead"},
+                          [("feat.test.test_common_fiber.Dummy.spam",
+                            (42, ), {"parrot": "dead"},
                             None, None, None),
                            (None, None, None,
-                            "feat.test.test_common_fiber.beans", (18,), {"slug": "mute"})]),
+                            "feat.test.test_common_fiber.beans",
+                            (18, ), {"slug": "mute"})]),
                          f.snapshot(f))
 
         f.addCallbacks(o.bacon, eggs)
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam", (42,), {"parrot": "dead"},
+                          [("feat.test.test_common_fiber.Dummy.spam",
+                            (42, ), {"parrot": "dead"},
                             None, None, None),
                            (None, None, None,
-                             "feat.test.test_common_fiber.beans", (18,), {"slug": "mute"}),
-                           ("feat.test.test_common_fiber.Dummy.bacon", None, None,
+                             "feat.test.test_common_fiber.beans",
+                            (18, ), {"slug": "mute"}),
+                           ("feat.test.test_common_fiber.Dummy.bacon",
+                            None, None,
                             "feat.test.test_common_fiber.eggs", None, None)]),
                          f.snapshot(f))
 
@@ -277,6 +290,7 @@ class TestFiber(common.TestCase):
     ### Private Methods ###
 
     def assertAsyncEqual(self, expected, d):
+
         def check(result):
             self.assertEqual(expected, result)
         d.addCallback(check)

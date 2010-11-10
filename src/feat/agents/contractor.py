@@ -24,7 +24,7 @@ class BaseContractor(log.Logger):
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
-        
+
         self.agent = agent
         self.medium = medium
 

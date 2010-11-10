@@ -10,6 +10,7 @@ from . import reflect
 
 ### Decorator ###
 
+
 def nested(fun):
     '''Decorator that will start and nest fibers.'''
 
@@ -23,6 +24,7 @@ def nested(fun):
 
     return set_alternative(fun, alt)
 
+
 def set_alternative(orig, alt):
     '''Set the fiber-aware alternative for a callable.
     When a fiber call a function with an alternative,
@@ -35,6 +37,7 @@ def set_alternative(orig, alt):
     setattr(ns, "__fiber_call__", alt)
     return orig
 
+
 def remove_alternative(orig):
     '''Remove the callable alternative if it has been set.'''
     ns = _get_callable_namespace(orig)
@@ -42,9 +45,11 @@ def remove_alternative(orig):
         delattr(ns, "__fiber_call__")
     return orig
 
+
 def has_alternative(orig):
     ns = _get_callable_namespace(orig)
     return hasattr(ns, "__fiber_call__")
+
 
 def get_alternative(orig):
     ns = _get_callable_namespace(orig)
@@ -168,6 +173,7 @@ class Fiber(object):
 
 
 ### Private Functions ###
+
 
 def _get_callable_namespace(callable):
     '''Returns a writable namespace unique for a callable.

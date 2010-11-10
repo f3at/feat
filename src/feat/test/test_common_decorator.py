@@ -16,6 +16,7 @@ def test_simple_decorator(callable):
 
     return wrapper
 
+
 @decorator.parametrized
 def test_parametrized_decorator(callable, dec_arg, dec_keyword=None):
 
@@ -24,6 +25,7 @@ def test_parametrized_decorator(callable, dec_arg, dec_keyword=None):
         return dec_arg, dec_keyword, result
 
     return wrapper
+
 
 @decorator.simple_consistent
 def test_simple_consistent_decorator(original):
@@ -34,6 +36,7 @@ def test_simple_consistent_decorator(original):
         return "simple", callable(fun_arg)
 
     return wrapper
+
 
 @decorator.parametrized_consistent
 def test_parametrized_consistent_decorator(original, dec_arg):
@@ -51,20 +54,24 @@ def test_simple_fun(val):
     '''test_simple_fun doc'''
     return "test_simple_fun", val
 
+
 @test_parametrized_decorator(42)
 def test_param_fun1(arg):
     '''test_param_fun1 doc'''
     return "test_param_fun1", arg
+
 
 @test_parametrized_decorator(42, dec_keyword=66)
 def test_param_fun2():
     '''test_param_fun2 doc'''
     return "test_param_fun2"
 
+
 @test_simple_consistent_decorator
 def test_simple_cons_fun(arg):
     '''test_simple_cons_fun doc'''
     return "test_simple_cons_fun", arg
+
 
 @test_parametrized_consistent_decorator(42)
 def test_param_cons_fun(arg):
@@ -143,7 +150,6 @@ class TestDecorator(common.TestCase):
                          test_param_fun1(18))
         self.assertEqual((42, 66, "test_param_fun2"),
                          test_param_fun2())
-
 
     def testParametrizedMethodDecorator(self):
         d = Dummy("dummy")

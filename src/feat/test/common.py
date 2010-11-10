@@ -1,4 +1,6 @@
-import functools, uuid, time
+import functools
+import uuid
+import time
 
 from twisted.internet import defer, reactor
 from twisted.trial import unittest
@@ -19,7 +21,6 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         unittest.TestCase.__init__(self, *args, **kwargs)
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
-
 
     def cb_after(self, arg, obj, method):
         '''
@@ -61,7 +62,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
                 self.assertEqual(len(params), len(call.args))
                 for param, arg in zip(params, call.args):
                     self.assertTrue(isinstance(arg, param))
-                    
+
         return obj
 
     def assertIsInstance(self, _, klass):
@@ -74,8 +75,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         obj.__setattr__(method, handler)
         return obj
 
+
 class Mock(object):
-    
+
     def __init__(self):
         self._called = []
 
@@ -93,7 +95,7 @@ class Mock(object):
 
 
 class MockCall(object):
-    
+
     def __init__(self, name, args, kwargs):
         self.name = name
         self.args = args
@@ -106,7 +108,7 @@ class AgencyTestHelper(object):
     protocol_id = None
 
     def setUp(self):
-        self.agency = agency.Agency()        
+        self.agency = agency.Agency()
         self.session_id = None
 
     def _setup_endpoint(self):
@@ -131,7 +133,7 @@ class AgencyTestHelper(object):
 
     def _send_bid(self, contractor, bid=1):
         msg = message.Bid()
-        msg.bids = [ bid ]
+        msg.bids = [bid]
         contractor.medium.bid(msg)
         return contractor
 
@@ -156,14 +158,14 @@ class AgencyTestHelper(object):
         msg.session_id = str(uuid.uuid1())
         self.session_id = msg.session_id
         return self._recv_msg(msg).addCallback(lambda ret: _)
-        
+
     def _recv_grant(self, _, bid_index=0, update_report=None):
         msg = message.Grant()
         msg.bid_index = bid_index
         msg.update_report = update_report
         msg.session_id = self.session_id
         return self._recv_msg(msg).addCallback(lambda ret: _)
-        
+
     def _recv_rejection(self, _):
         msg = message.Rejection()
         msg.session_id = self.session_id
@@ -211,4 +213,3 @@ class AgencyTestHelper(object):
 
         self.agent._messaging.publish(dest.key, dest.shard, msg)
         return d
-

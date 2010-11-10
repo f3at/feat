@@ -10,7 +10,7 @@ class StateAssertationError(RuntimeError):
 
 
 class StateMachineMixin(object):
-    
+
     def __init__(self):
         self.state = None
 
@@ -21,23 +21,23 @@ class StateMachineMixin(object):
 
     def _ensure_state(self, states):
         if not isinstance(states, list):
-            states = [ states ]
+            states = [states]
         if self.state in states:
             return True
         raise StateAssertationError("Expected state in: %r, was: %r instead" %\
                            (states, self.state))
-        
+
     def _event_handler(self, mapping, event):
         klass = event.__class__
         decision = mapping.get(klass, None)
         if not decision:
             self.warning("Unknown event received %r. Ignoring", event)
             return False
-        
+
         state_before = decision['state_before']
         try:
             self._ensure_state(state_before)
-        except StateAssertationError as e:
+        except StateAssertationError:
             self.warning("Received event: %r in state: %r, expected state "
                          "for this method is: %r",
                          klass, self.state, decision['state_before'])
@@ -45,9 +45,8 @@ class StateMachineMixin(object):
 
         state_after = decision['state_after']
         self._set_state(state_after)
-        
-        d = self._call(decision['method'], event)
 
+        self._call(decision['method'], event)
 
 
 class AgencyMiddleMixin(object):
@@ -81,7 +80,6 @@ class AgencyMiddleMixin(object):
         d.addErrback(self._error_handler)
         return d
 
-
     def _error_handler(self, e):
         msg = e.getErrorMessage()
         self.error('Terminating: %s', msg)
@@ -94,12 +92,11 @@ class AgencyMiddleMixin(object):
         self._terminate()
 
 
-    
 class ExpirationCallsMixin(object):
 
     def __init__(self):
         self._expiration_call = None
-    
+
     def _setup_expiration_call(self, expire_time, method, state=None,
                                   *args, **kwargs):
         time_left = expire_time - self.agent.get_time()
@@ -116,7 +113,8 @@ class ExpirationCallsMixin(object):
             d.addCallback(callback.callback)
 
         result = defer.Deferred()
-        self._expiration_call = self.agent.callLater(time_left, to_call, result)
+        self._expiration_call = self.agent.callLater(
+            time_left, to_call, result)
         return result
 
     def _expire_at(self, expire_time, method, state, *args, **kwargs):
@@ -138,4 +136,3 @@ class ExpirationCallsMixin(object):
 
     def _terminate(self):
         self._cancel_expiration_call()
-

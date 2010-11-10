@@ -877,8 +877,8 @@ def getFailureMessage(failure):
     Return a short message based on L{twisted.python.failure.Failure}.
     Tries to find where the exception was triggered.
     """
-    exc = str(failure.type)
-    msg = failure.getErrorMessage()
+    str(failure.type)
+    failure.getErrorMessage()
     if len(failure.frames) == 0:
         return "failure %(exc)s: %(msg)s" % locals()
 
@@ -993,11 +993,11 @@ class TwistedLogObserver(Loggable):
 
 
 def logLevelToStdLevel(level):
-    t = {ERROR : logging.CRITICAL,
-         WARN : logging.ERROR,
-         INFO : logging.WARNING,
-         DEBUG : logging.INFO,
-         LOG : logging.DEBUG}
+    t = {ERROR: logging.CRITICAL,
+         WARN: logging.ERROR,
+         INFO: logging.WARNING,
+         DEBUG: logging.INFO,
+         LOG: logging.DEBUG}
     return t.get(level, logging.NOTSET)
 
 

@@ -56,5 +56,3 @@ class IRecorder(IRecorderNode):
 
     def replay(entry_id, input):
         pass
-
-

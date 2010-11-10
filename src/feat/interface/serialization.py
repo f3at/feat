@@ -41,7 +41,6 @@ class ISerializable(ISnapshot):
         pass
 
 
-
 class ISerializer(Interface):
     '''Knows how to convert an object to bytes.'''
 

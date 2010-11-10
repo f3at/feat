@@ -3,7 +3,7 @@
 
 
 class BaseMessage(object):
-    
+
     reply_to = None
     message_id = None
     protocol_id = None
@@ -18,19 +18,18 @@ class BaseMessage(object):
             self.__setattr__(key, kwargs[key])
 
 
-
 class ContractMessage(BaseMessage):
-    
+
     protocol_type = 'Contract'
 
 
 class RequestMessage(BaseMessage):
-    
+
     protocol_type = 'Request'
 
 
 class ResponseMessage(BaseMessage):
-    
+
     protocol_type = 'Request'
 
 
@@ -60,10 +59,11 @@ class Acknowledgement(ContractMessage):
     pass
 
 
-# messages send by contractor to manager
+# messages sent by contractor to manager
+
 
 class Bid(ContractMessage):
-    
+
     # list of bids (usual single element)
     bids = []
 
@@ -78,5 +78,3 @@ class UpdateReport(ContractMessage):
 
 class FinalReport(ContractMessage):
     pass
-
-

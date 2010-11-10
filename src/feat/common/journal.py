@@ -135,14 +135,14 @@ class RecorderRoot(object):
     def __init__(self, keeper, mode=JournalMode.recording, base_id=None):
         self.journal_keeper = journaling.IJournalKeeper(keeper)
         self.journal_mode = mode
-        self._base_id = base_id and (base_id,) or ()
+        self._base_id = base_id and (base_id, ) or ()
         self._recorder_count = 0
 
     ### IRecorderNode Methods ###
 
     def generate_identifier(self, recorder):
         self._recorder_count += 1
-        return self._base_id + (self._recorder_count,)
+        return self._base_id + (self._recorder_count, )
 
 
 class RecorderNode(object):
@@ -162,7 +162,7 @@ class RecorderNode(object):
 
     def generate_identifier(self, recorder):
         self._recorder_count += 1
-        return self.journal_id + (self._recorder_count,)
+        return self.journal_id + (self._recorder_count, )
 
 
 class Recorder(RecorderNode, annotate.Annotable):

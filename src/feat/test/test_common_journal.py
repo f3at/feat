@@ -78,9 +78,9 @@ class TestRecorder(common.TestCase):
 
         R = journal.RecorderRoot(K)
         A = journal.Recorder(R)
-        self.assertEqual(A.journal_id, (1,))
+        self.assertEqual(A.journal_id, (1, ))
         B = journal.Recorder(R)
-        self.assertEqual(B.journal_id, (2,))
+        self.assertEqual(B.journal_id, (2, ))
         AA = journal.Recorder(A)
         self.assertEqual(AA.journal_id, (1, 1))
 
@@ -101,7 +101,8 @@ class TestRecorder(common.TestCase):
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
         try:
             journaling.IRecordingResult(defer.succeed(None))
-            self.fail("Twisted Deferred is not a valid result for recorded functions")
+            self.fail("Twisted Deferred is not a valid result "
+                      "for recorded functions")
         except journal.RecordResultError:
             # Expected
             pass

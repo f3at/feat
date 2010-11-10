@@ -4,6 +4,7 @@ from . import reflect
 
 """TODO: Better function mimicry."""
 
+
 def simple(decorator):
     '''Decorator used to create decorators without arguments.
     Should be used with function returning another function
@@ -163,7 +164,6 @@ def parametrized_consistent(decorator):
 
     '''
 
-
     def meta_decorator(*args, **kwargs):
         return _ConsistentMetaDecorator(decorator, args, kwargs)
 
@@ -171,6 +171,7 @@ def parametrized_consistent(decorator):
 
 
 ### Private ###
+
 
 def _function_mimicry(original, mimic):
     #FIXME: We should do better and to copy function signature too

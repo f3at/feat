@@ -4,11 +4,10 @@
 import uuid
 
 from twisted.python import components, failure
-from twisted.internet import reactor, defer
 from zope.interface import implements
 
 from feat.common import log, enum
-from feat.interface import contracts, recipient, contractor, protocols, manager
+from feat.interface import contracts, recipient, contractor, manager
 from feat.agents import message
 
 from interface import IListener, IAgencyInitiatorFactory,\
@@ -52,7 +51,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     '''
 
     log_category = 'manager-contractor'
-    
+
     def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
         common.StateMachineMixin.__init__(self)
@@ -101,14 +100,12 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
             message.FinalReport:\
                 {'method': self._on_report,
                  'state_before': ContractorState.granted,
-                 'state_after': ContractorState.completed}
-            
-        }
+                 'state_after': ContractorState.completed}}
         self._event_handler(mapping, msg)
 
 
 class ManagerContractors(dict):
-    
+
     def with_state(self, *states):
         return filter(lambda x: x.state in states, self.values())
 
@@ -119,12 +116,12 @@ class ManagerContractors(dict):
             raise ValueError("Could not find ManagerContractor for msg: %r",
                              msg)
         return self.get(match[0])
-    
+
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin):
     implements(manager.IAgencyManager, IListener)
- 
+
     log_category = 'agency-contractor'
 
     error_state = contracts.ContractState.wtf
@@ -134,7 +131,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
-       
 
         self.agent = agent
         self.recipients = recipients
@@ -144,7 +140,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log_name = self.session_id
 
         self.contractors = ManagerContractors()
-    
+
     # manager.IAgencyManager stuff
 
     def initiate(self, manager):
@@ -152,7 +148,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.AgencyMiddleMixin.__init__(self, manager.protocol_id)
 
         self._set_state(contracts.ContractState.initiated)
-        self._call(manager.initiate, *self.args, **self.kwargs) 
+        self._call(manager.initiate, *self.args, **self.kwargs)
 
         timeout = self.agent.get_time() + self.manager.initiate_timeout
         error = RuntimeError('Timeout exceeded waiting for manager.initate() '
@@ -173,13 +169,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._cancel_expiration_call()
         self._setup_expiration_call(expiration_time,
-                                    self._on_announce_expire)  
+                                    self._on_announce_expire)
 
         return self.bid
 
     def reject(self, bid, rejection=None):
         self._ensure_state(contracts.ContractState.announced)
-        
+
         contractor = self.contractors[bid]
         if not rejection:
             rejection = message.Rejection()
@@ -190,7 +186,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                             contracts.ContractState.announced])
 
         if not isinstance(grants, list):
-            grants = [ grants ]
+            grants = [grants]
 
         self._cancel_expiration_call()
         self._set_state(contracts.ContractState.granted)
@@ -203,7 +199,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             grant.expiration_time = expiration_time
             contractor = self.contractors[bid]
             contractor.on_event(grant)
-        
+
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
@@ -219,9 +215,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             contractor.on_event(cancellation)
 
         self._run_and_terminate(self.manager.cancelled)
-        
+
     # hooks for events (timeout and messages comming in)
-    
+
     def _on_grant_expire(self):
         self._set_state(contracts.ContractState.aborted)
         self._call(self.manager.aborted)
@@ -242,7 +238,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         else:
             self._set_state(contracts.ContractState.expired)
             self._run_and_terminate(self.manager.expired)
-            
+
     def _on_bid(self, bid):
         self.log('Received bid %r', bid)
         ManagerContractor(self, bid)
@@ -346,11 +342,11 @@ components.registerAdapter(AgencyContractorFactory,
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        common.ExpirationCallsMixin, common.AgencyMiddleMixin):
     implements(contractor.IAgencyContractor, IListener)
- 
+
     log_category = 'agency-contractor'
 
     error_state = contracts.ContractState.wtf
-    
+
     def __init__(self, agent, announcement):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
@@ -368,7 +364,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log_name = self.session_id
 
         self._reporter_call = None
-        
+
     def initiate(self, contractor):
         self.contractor = contractor
         self._set_state(contracts.ContractState.initiated)
@@ -392,7 +388,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                         contracts.ContractState.expired)
 
         return self.bid
-        
+
     def refuse(self, refusal):
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
@@ -429,7 +425,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(expiration_time, self.contractor.aborted,
                         contracts.ContractState.aborted)
         return self.report
-    
+
     # private section
 
     def _terminate(self):
@@ -449,7 +445,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _setup_reporter(self):
         frequency = self.grant.update_report
-        
+
         def send_report():
             report = message.UpdateReport()
             self._update(report)
@@ -457,7 +453,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         def bind():
             self._reporter_call = self.agent.callLater(frequency, send_report)
-        
+
         bind()
 
     def _update(self, report):
@@ -479,7 +475,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _on_grant(self, grant):
         '''
         Called upon receiving the grant. Check that grants bid includes
-        actual bid we put. Than calls granted and sets up reporter if necessary.
+        actual bid we put. Than calls granted and sets up reporter
+        if necessary.
         '''
         is_ok = grant.bid_index < len(self.bid.bids)
         if is_ok:

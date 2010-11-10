@@ -21,14 +21,16 @@ class State(object):
 
 # Decorators
 
+
 def mutable():
     pass
+
 
 def immutable():
     pass
 
-
 ## Private ##
+
 
 def _getClassLocals(tag, depth=3):
     frame = sys._getframe(depth)

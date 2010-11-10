@@ -33,12 +33,11 @@ class IAgencyManager(contracts.IContractPeer):
 
     def grant(grants):
         '''
-        Grant the contractor to specified bids. 
+        Grant the contractor to specified bids.
 
         @param grants: Tuple or list of tuples in the format:
                        [(bid1, grant1), (bid2, grant2), ... ]
         '''
-               
 
     def cancel(reason):
         '''
@@ -88,12 +87,3 @@ class IAgentManager(protocols.IInitiator):
 
     def aborted():
         '''Called when the contractor did not report in time.'''
-
-
-
-
-
-
-
-
-

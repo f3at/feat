@@ -6,16 +6,18 @@ from feat.interface.agent import IAgencyAgent
 from feat.agents import message
 
 '''
-Provides interfaces for specifing the recipients of messages. 
+Provides interfaces for specifing the recipients of messages.
 Types that can be passed as destination includes:
 
 - Agent (defined in this module)
 - Broadcast (defined in this module)
 - agent.IAgencyAgent this helps in tests - one can say that is sending message
-                     to the agent  
-- message.BaseMessage (and subclasses) - one can say he is responding to message
+                     to the agent
+- message.BaseMessage (and subclasses) - one can say he is responding
+                                         to message
 - list - the list of any combination of above
 '''
+
 
 class RecipientType(enum.Enum):
     agent, broadcast = range(1, 3)
@@ -43,11 +45,11 @@ class Agent(object):
         self.type = RecipientType.agent
         self.shard = shard
         self.key = agent_id
-        self.array = [ self ]
+        self.array = [self]
 
     def __iter__(self):
         return self.array.__iter__()
-        
+
 
 class Broadcast(object):
 
@@ -58,11 +60,11 @@ class Broadcast(object):
         self.shard = shard
         self.key = protocol_id
 
-        self.array = [ self ]
+        self.array = [self]
 
     def __iter__(self):
         return self.array.__iter__()
-        
+
 
 class RecipientFromAgent(object):
 
@@ -73,7 +75,7 @@ class RecipientFromAgent(object):
         self.shard = self.agent.descriptor.shard
         self.key = self.agent.descriptor.uuid
 
-        self.array = [ self ]
+        self.array = [self]
 
     def __iter__(self):
         return self.array.__iter__()
@@ -84,7 +86,7 @@ components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
 
 
 class RecipientsFromList(object):
-    
+
     implements(IRecipients)
 
     def __init__(self, llist):
@@ -94,7 +96,7 @@ class RecipientsFromList(object):
 
     def __iter__(self):
         return self.array.__iter__()
-    
+
 
 components.registerAdapter(RecipientsFromList, list, IRecipients)
 
@@ -107,7 +109,7 @@ class RecipientFromMessage(object):
         self.shard = self.message.reply_to.shard
         self.key = self.message.reply_to.key
 
-        self.array = [ self ]
+        self.array = [self]
 
     def __iter__(self):
         return self.array.__iter__()
@@ -117,5 +119,3 @@ components.registerAdapter(RecipientFromMessage, message.BaseMessage,
                            IRecipient)
 components.registerAdapter(RecipientFromMessage, message.BaseMessage,
                            IRecipients)
-
-

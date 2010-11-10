@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import uuid, time
+import uuid
+import time
 
 from zope.interface import classProvides, implements
-from twisted.internet import reactor, defer
 
-from feat.agencies.emu import agency
 from feat.agents import agent, descriptor, requester, message, replier
-from feat.interface import recipient, requests
+from feat.interface import requests
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory, IAgentReplier
 
@@ -39,9 +38,9 @@ class DummyRequester(requester.BaseRequester):
 class DummyReplier(replier.BaseReplier):
     classProvides(IReplierFactory)
     implements(IAgentReplier)
-    
+
     protocol_id = 'dummy-request'
-    
+
     def requested(self, request):
         self.agent.got_payload = request.payload
         self.medium.reply(message.ResponseMessage())
@@ -55,7 +54,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
-        
+
         desc = descriptor.Descriptor()
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
@@ -101,7 +100,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
-        
+
         desc = descriptor.Descriptor()
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
@@ -112,7 +111,8 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         d = self.queue.consume()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester, self.endpoint, payload)
+            self.agent.initiate_protocol(DummyRequester,
+                                         self.endpoint, payload)
 
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
@@ -166,7 +166,8 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         d = self.queue.consume()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester, self.endpoint, payload)
+            self.agent.initiate_protocol(DummyRequester,
+                                         self.endpoint, payload)
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -191,11 +192,11 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         d = self._recv_msg(req, self.endpoint, key)
 
         d.addCallback(lambda _: self.queue.consume())
-        
+
         def assert_on_msg(msg):
             self.assertEqual('dummy-request', msg.protocol_id)
             self.assertEqual(req.session_id, msg.session_id)
-            
+
         d.addCallback(assert_on_msg)
 
         return d
@@ -216,9 +217,9 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(False, self.agent.agent.got_payload)
 
         d.addCallback(asserts_after_procesing)
-        
+
         return d
-        
+
     def testTwoAgentsTalking(self):
         receiver = self.agent
         sender = self.agency.start_agent(agent.BaseAgent,
@@ -234,7 +235,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(0, len(sender._listeners))
 
         d.addCallback(asserts_on_requester)
-        
+
         def asserts_on_receiver(_, receiver):
             self.assertEqual(0, len(receiver._listeners))
             self.assertEqual(1, receiver.agent.got_payload)

@@ -12,6 +12,7 @@ class Dummy(object):
     def spam(self):
         pass
 
+
 def bacon():
     pass
 

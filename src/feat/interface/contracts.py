@@ -62,5 +62,3 @@ class IContractPeer(Interface):
     announce = Attribute("Contract's announce message")
     grant = Attribute("Contract's grant message")
     final_report = Attribute("Contract's report message")
-
-

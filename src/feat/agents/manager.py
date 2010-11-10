@@ -1,7 +1,6 @@
 from zope.interface import implements, classProvides
 from feat.interface import manager
 from feat.common import log
-from feat.agents import message
 
 
 class BaseManager(log.Logger):
@@ -23,7 +22,7 @@ class BaseManager(log.Logger):
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
-        
+
         self.agent = agent
         self.medium = medium
 
@@ -50,4 +49,3 @@ class BaseManager(log.Logger):
 
     def aborted(self, grant):
         pass
-

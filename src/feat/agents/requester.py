@@ -1,9 +1,7 @@
 from zope.interface import implements, classProvides
 
 from feat.common import log
-from feat.interface import requester, requests
-
-from . import message
+from feat.interface import requester
 
 
 class BaseRequester(log.Logger):
@@ -28,5 +26,3 @@ class BaseRequester(log.Logger):
 
     def closed(self):
         pass
-
-

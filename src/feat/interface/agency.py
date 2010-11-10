@@ -13,7 +13,7 @@ class IAgency(Interface):
         '''
         Wrapper for reactor.callLater.
         '''
-    
+
     def get_time():
         '''
         Use this to get current time. Should fetch the time from NTP server

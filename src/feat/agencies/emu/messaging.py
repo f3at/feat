@@ -183,7 +183,6 @@ class Exchange(object):
             list_for_key.append(queue)
         self._bindings[key] = list_for_key
 
-
     def unbind(self, key, queue):
         list_for_key = self._bindings.get(key, [])
         if queue in list_for_key:
@@ -191,10 +190,8 @@ class Exchange(object):
             if len(list_for_key) == 0:
                 del(self._bindings[key])
 
-
     def publish(self, message, key):
         assert message is not None
         list_for_key = self._bindings.get(key, [])
         for queue in list_for_key:
             queue.enqueue(message)
-

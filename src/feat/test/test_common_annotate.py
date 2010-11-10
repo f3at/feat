@@ -6,12 +6,14 @@ from feat.common import annotate
 
 from . import common
 
-# Method decorator
+
 def accompany(accompaniment):
+    '''Method decorator'''
+
     def decorator(method):
 
-        # Create a method for the accompaniment
         def get_accompaniment(self, *args, **kwargs):
+            '''Create a method for the accompaniment'''
             return self.name + " wants " + accompaniment
 
         # Inject the new method in the class
@@ -22,8 +24,8 @@ def accompany(accompaniment):
         annotate.injectAttribute("accompany", 3,
                                  "original_" + method.__name__, method)
 
-        # Wrapp a method call and add an accompaniment to its result
         def wrapper(self, *args, **kwargs):
+            '''Wrapp a method call and add an accompaniment to its result'''
             result = method(self, *args, **kwargs)
             return result + " and " + accompaniment
 
@@ -35,9 +37,9 @@ def accompany(accompaniment):
     return decorator
 
 
-# Class annotation
 def shop(animal, status):
-    # Create a getter method
+    '''Class annotation. Create a getter method'''
+
     def getter(self):
         return self.name + " " + animal + " is " + status
     annotate.injectAttribute("shop", 3, "get_" + animal, getter)

@@ -56,12 +56,10 @@ class IAgencyAgent(Interface):
         @return: Message that was sent
         '''
 
+
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''
 
     def initiate():
         '''Called after the agent is registered to an agency.'''
-
-
-

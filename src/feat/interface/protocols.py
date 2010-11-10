@@ -48,8 +48,8 @@ class IInitiator(Interface):
     def initiate():
         pass
 
+
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
     protocol_id = Attribute("Protocol id")
-

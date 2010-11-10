@@ -20,4 +20,3 @@ class IRequestPeer(Interface):
 
     state = Attribute("L{RequestState}")
     request = Attribute("Request's request message")
-
