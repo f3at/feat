@@ -111,13 +111,15 @@ components.registerAdapter(AgencyManagerFactory,
 
 class ContractorState(enum.Enum):
     '''
-    bid - bid has been received
-    refused - refusal has been received
-    rejected - bid has been rejected
-    granted - job has been granted
+    bid - Bid has been received
+    refused - Refusal has been received
+    rejected - Bid has been rejected
+    granted - Grant has been sent
+    completed - FinalReport has been received
+    cancelled - Sent or received Cancellation
     '''
 
-    (bid, refused, rejected, granted) = range(4)
+    (bid, refused, rejected, granted, completed, cancelled) = range(6)
 
 
 class ManagerContractor(common.StateMachineMixin, log.Logger):
@@ -157,16 +159,30 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
             message.Grant:\
                 {'method': self._send_message,
                  'state_before': ContractorState.bid,
-                 'state_after': ContractorState.granted}
+                 'state_after': ContractorState.granted},
+            message.Cancellation:\
+                {'method': self._send_message,
+                 'state_before': [ContractorState.granted,
+                                  ContractorState.completed],
+                 'state_after': ContractorState.cancelled}
+            
         }
         self._event_handler(mapping, msg)
 
-        
+
 class ManagerContractors(dict):
     
     def with_state(self, *states):
         return filter(lambda x: x.state in states, self.values())
 
+    def by_message(self, msg):
+        key = msg.reply_to.key
+        match = filter(lambda x: x.reply_to.key == key, self.keys())
+        if len(match) != 1:
+            raise ValueError("Could not find ManagerContractor for msg: %r",
+                             msg)
+        return self.get(match[0])
+    
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     ExpirationCallsMixin, AgencyMiddleMixin):
@@ -252,12 +268,19 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
-    def cancel(self, grant, cancellation):
-        pass
+    def cancel(self, reason=None):
+        self._ensure_state([contracts.ContractState.granted,
+                            contracts.ContractState.cancelled])
+        self._set_state(contracts.ContractState.cancelled)
 
-    def acknowledge(self, report):
-        pass
+        to_cancel = self.contractors.with_state(\
+                        ContractorState.granted, ContractorState.completed)
+        for contractor in to_cancel:
+            cancellation = message.Cancellation(reason=reason)
+            contractor.on_event(cancellation)
 
+        self._run_and_terminate(self.manager.cancelled)
+        
     # hooks for events (timeout and messages comming in)
     
     def _on_grant_expire(self):
@@ -290,6 +313,32 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log('Received bid %r', refusal)
         ManagerContractor(self, refusal, ContractorState.refused)
 
+    def _on_report(self, report):
+        self.log('Received report: %r', report)
+
+        try:
+            contractor = self.contractors.by_message(report)
+        except ValueError as e:
+            self.warning("%s Ignoring", str(e))
+            return False
+
+        contractor._set_state(ContractorState.completed)
+        if len(self.contractors.with_state(ContractorState.granted)) == 0:
+            self._on_complete()
+
+    def _on_cancel(self, cancellation):
+        self.log('Received cancellation: %r', cancellation)
+
+        try:
+            contractor = self.contractors.by_message(cancellation)
+        except ValueError as e:
+            self.warning("%s Ignoring", str(e))
+            return False
+
+        reason = "Other contractor cancelled the job with reason: %s" %\
+                 cancellation.reason
+        self.cancel(reason)
+
     # private
 
     def _error_handler(self, e):
@@ -321,6 +370,14 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                 {'method': self._on_refusal,
                  'state_after': contracts.ContractState.announced,
                  'state_before': contracts.ContractState.announced},
+            message.FinalReport:\
+                {'method': self._on_report,
+                 'state_after': contracts.ContractState.granted,
+                 'state_before': contracts.ContractState.granted},
+            message.Cancellation:\
+                {'method': self._on_cancel,
+                 'state_before': contracts.ContractState.granted,
+                 'state_after': contracts.ContractState.cancelled},
         }
         self._event_handler(mapping, msg)
 

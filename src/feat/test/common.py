@@ -62,7 +62,8 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return obj
 
     def assertIsInstance(self, _, klass):
-        self.assertTrue(isinstance(_, klass))
+        self.assertTrue(isinstance(_, klass),
+             "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
     def stub_method(self, obj, method, handler):

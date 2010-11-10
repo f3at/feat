@@ -209,6 +209,7 @@ class AgencyTestHelper(object):
         msg.protocol_id = original_msg.protocol_id
         msg.expiration_time = time.time() + 10
         msg.protocol_type = original_msg.protocol_type
+        msg.session_id = original_msg.session_id
 
         self.agent._messaging.publish(dest.key, dest.shard, msg)
         return d
@@ -242,6 +243,9 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.assertEqual(state, self.manager.medium.state)
         return self.manager
 
+    def _consume_all(self):
+        return defer.DeferredList(map(lambda x: x.consume(), self.queues))
+
     def _put_bids(self, results, costs):
         '''Put None as a cost to send Refusal'''
 
@@ -253,7 +257,6 @@ class TestManager(common.TestCase, AgencyTestHelper):
                 bid.bids = [cost]
             else:
                 bid = message.Refusal()
-            bid.session_id = msg.session_id
             self.log('Puting bid')
             defers.append(self._reply(bid, sender, msg))
 
@@ -273,7 +276,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.start_manager()
 
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
 
         def asserts_on_msgs(results):
             for result in results:
@@ -298,7 +301,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
         d.addCallback(self._put_bids, (1,1,1,))
         d.addCallback(lambda _: closed)
 
@@ -335,7 +338,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.stub_method(self.manager, 'bid', bid_handler)
         
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
         d.addCallback(self._put_bids, (3,2,1,))
 
         d = self.queues[0].consume()
@@ -372,7 +375,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.stub_method(self.manager, 'closed', closed_handler)
         
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
         d.addCallback(self._put_bids, (3,2,1,))
 
         d.addCallback(self.cb_after, obj=self.manager, method='closed')
@@ -403,7 +406,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
         # None stands for Refusal
         d.addCallback(self._put_bids, (None,None,None,)) 
         d.addCallback(lambda _: closed)
@@ -436,7 +439,7 @@ class TestManager(common.TestCase, AgencyTestHelper):
         self.stub_method(self.manager, 'bid', bid_handler)
 
         self._send_announce(self.manager)
-        d = defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        d = self._consume_all()
         # None stands for Refusal
         d.addCallback(self._put_bids, (1,2,3,))
         
@@ -447,6 +450,66 @@ class TestManager(common.TestCase, AgencyTestHelper):
         d.addCallback(self.assertCalled, 'aborted')
         
         return d
+
+    def testRecvCancellation(self):
+        self.agency.time_scale = 0.01
+        
+        def closed_handler(s):
+            s.log('Contracts closed, granting everybody')
+            params = map(lambda bid: (bid, message.Grant(bid_index=0),),
+                         s.medium.contractors.keys())
+            s.medium.grant(params)
+
+        self.start_manager()
+        self.stub_method(self.manager, 'closed', closed_handler)
+        
+        self._send_announce(self.manager)
+        d = self._consume_all()
+        d.addCallback(self._put_bids, (3,2,1,))
+        d.addCallback(lambda _: self.queues[2].consume()) #just swallow
+        d.addCallback(lambda _: self.queues[0].consume())
+
+        def complete_one(grant):
+            msg = message.FinalReport()
+            endpoint = self.recipients[0]
+            return self._reply(msg, endpoint, grant)
+
+        d.addCallback(complete_one)
+        
+        def asserts_on_manager(_):
+            self.assertEqual(1, len(
+                self.medium.contractors.with_state(ContractorState.completed)))
+            self.assertEqual(2, len(
+                self.medium.contractors.with_state(ContractorState.granted)))
+
+        d.addCallback(lambda _: self.queues[1].consume())
+
+        def cancel_one(grant):
+            msg = message.Cancellation(reason='Ad majorem dei gloriam!')
+            endpoint = self.recipients[1]
+            return self._reply(msg, endpoint, grant)
+
+        d.addCallback(cancel_one)
+
+        d.addCallback(lambda _: self.queues[0].consume())
+        d.addCallback(self.assertIsInstance, message.Cancellation)
+        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(self.assertIsInstance, message.Cancellation)
+
+        def asserts_on_manager2(_):
+            self.assertEqual(3, len(
+                self.medium.contractors.with_state(ContractorState.cancelled)))
+            self.assertCalled(self.manager, 'cancelled')
+
+        d.addCallback(asserts_on_manager2)
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.cancelled)
+
+        return d
+                      
+            
+
+                      
         
 
 class TestContractor(common.TestCase, AgencyTestHelper):

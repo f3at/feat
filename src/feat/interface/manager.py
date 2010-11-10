@@ -40,11 +40,14 @@ class IAgencyManager(contracts.IContractPeer):
         '''
                
 
-    def cancel(grant, cancellation):
-        pass
+    def cancel(reason):
+        '''
+        Sends cancellations to all granted or completed contractors
+        and terminates.
 
-    def acknowledge(report):
-        pass
+        @param reason: Optional.
+        @type reason: str
+        '''
 
 
 class IAgentManager(protocols.IInitiator):
