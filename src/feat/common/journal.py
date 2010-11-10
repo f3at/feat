@@ -1,13 +1,17 @@
+from twisted.internet import defer
 from twisted.python import components
 from zope.interface import implements
 
 from feat.interface import journaling, async
 from feat.interface.journaling import JournalMode
 
-from . import persistence, annotate, decorator
+from . import annotate, decorator, fiber
 
 
-@decorator.with_arguments
+class RecordResultError(Exception): pass
+
+
+@decorator.parametrized
 def recorded(function, entry_id=None):
     fixed_id = entry_id or function.__name__
 
@@ -16,10 +20,16 @@ def recorded(function, entry_id=None):
                                  "_register_recorded_call",
                                  fixed_id, function)
 
-    def wrapper(self, *args, **kwargs):
-        return self._call_recorded(fixed_id, function, *args, **kwargs)
+    def fiber_wrapper(self, result, fiber, *args, **kwargs):
+        return self._call_recorded(fiber, fixed_id, function,
+                                   result, *args, **kwargs)
 
-    return wrapper
+    def direct_wrapper(self, *args, **kwargs):
+        return self._call_recorded(None, fixed_id, function, *args, **kwargs)
+
+    fiber.set_alternative(direct_wrapper, fiber_wrapper)
+
+    return direct_wrapper
 
 
 class RecordInput(object):
@@ -62,6 +72,18 @@ class RecordSyncOutput(object):
         return "sync", self._output
 
 
+class InvalidResult(object):
+
+    implements(journaling.IRecordingResult)
+
+    def __init__(self, result):
+        raise RecordResultError("Recorded function result invalid: %r" % result)
+
+components.registerAdapter(InvalidResult,
+                           defer.Deferred,
+                           journaling.IRecordingResult)
+
+
 class RecordingAsyncResult(object):
 
     implements(journaling.IRecordingResult)
@@ -71,6 +93,9 @@ class RecordingAsyncResult(object):
         self._fiber = fiber
 
     ### IRecordingResult Methods ###
+
+    def nest(self, fiber):
+        return self._fiber.nest(fiber)
 
     def proceed(self):
         return self._fiber.run()
@@ -89,6 +114,9 @@ class RecordingSyncResult(object):
         self.output = RecordSyncOutput(value)
 
     ### IRecordingResult Methods ###
+
+    def nest(self, fiber):
+        pass
 
     def proceed(self):
         return self._value
@@ -170,12 +198,16 @@ class Recorder(RecorderNode, annotate.Annotable):
     def _register_recorded_call(cls, entry_id, method):
         pass
 
-    def _record_call(self, entry_id, method, *args, **kwargs):
+    def _record_call(self, fiber, entry_id, method, *args, **kwargs):
         input = RecordInput(args, kwargs)
+
         result = method(self, *args, **kwargs)
         recres = journaling.IRecordingResult(result)
+        recres.nest(fiber)
+
         output = recres.output
         self.journal_keeper.record(self.journal_id, entry_id, input, output)
+
         return recres.proceed()
 
     def _replay_call(self, entry_id, method, *args, **kwargs):

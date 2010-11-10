@@ -13,7 +13,7 @@ def simple(decorator):
     so the wrapper function will have to know if the first
     argument is an instance (self).
 
-    Note that when using reflect module functions,
+    Note that when using reflect or annotate module functions,
     depth should be incremented by one.
 
     Example::
@@ -39,7 +39,64 @@ def simple(decorator):
     return meta_decorator
 
 
-def with_arguments(decorator):
+def simple_consistent(decorator):
+    '''Decorator used to create consistent decorators.
+    Consistent in the meaning that the wrapper do not have to
+    care if the wrapped callable is a function or a method,
+    it will always receive a valid callable.
+    If the decorator is used with a function, the wrapper will
+    receive the function itself, but if the decorator is used
+    with a method, the wrapper will receive a bound method
+    callable directly and the first argument (self) will be removed.
+    This allows writing decorators behaving consistently
+    with function and method.
+
+    Note that when using reflect or annotate module functions,
+    depth should be incremented by one.
+
+    Example::
+
+        @decorator.simple_consistent
+        def mydecorator(original_function):
+
+            def wrapper(callable, call, arguments):
+                # processing
+                return callable(call, arguments)
+
+            return wrapper
+
+        @mydecorator
+        def myfunction():
+            pass
+
+    '''
+
+    def meta_decorator(function):
+
+        wrapper = decorator(function)
+
+        if reflect.inside_class_definition(depth=2):
+
+            def method_wrapper(*args, **kwargs):
+                obj, args = args[0], args[1:]
+                method = types.MethodType(function, obj, obj.__class__)
+                return wrapper(method, *args, **kwargs)
+
+            meta_wrapper = _function_mimicry(function, method_wrapper)
+
+        else:
+
+            def function_wrapper(*args, **kwargs):
+                return wrapper(function, *args, **kwargs)
+
+            meta_wrapper = _function_mimicry(function, function_wrapper)
+
+        return meta_wrapper
+
+    return meta_decorator
+
+
+def parametrized(decorator):
     '''Decorator used to create decorators with arguments.
     Should be used with function returning another function
     that will be called with the original function has the first
@@ -48,7 +105,7 @@ def with_arguments(decorator):
     so the wrapper function will have to know if the first
     argument is an instance (self).
 
-    Note that when using reflect module functions,
+    Note that when using reflect or annotate module functions,
     depth should be incremented by one.
 
     Example::
@@ -74,24 +131,24 @@ def with_arguments(decorator):
     return meta_decorator
 
 
-def consistent(decorator):
-    '''Decorator used to create consistent decorators.
+def parametrized_consistent(decorator):
+    '''Decorator used to create consistent decorators with arguments.
     Consistent in the meaning that the wrapper do not have to
     care if the wrapped callable is a function or a method,
     it will always receive a valid callable.
     If the decorator is used with a function, the wrapper will
     receive the function itself, but if the decorator is used
     with a method, the wrapper will receive a bound method
-    callable directlly and the first argument (self) will be removed.
-    This allows writing decorators behaving consistentlly
+    callable directly and the first argument (self) will be removed.
+    This allows writing decorators behaving consistently
     with function and method.
 
-    Note that when using reflect module functions,
+    Note that when using reflect or annotate module functions,
     depth should be incremented by one.
 
     Example::
 
-        @decorator.consistent
+        @decorator.parametrized_consistent
         def mydecorator(original_function, decorator, arguments):
 
             def wrapper(callable, call, arguments):

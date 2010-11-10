@@ -102,7 +102,7 @@ class TestRecorder(common.TestCase):
         try:
             journaling.IRecordingResult(defer.succeed(None))
             self.fail("Twisted Deferred is not a valid result for recorded functions")
-        except TypeError:
+        except journal.RecordResultError:
             # Expected
             pass
 

@@ -21,8 +21,11 @@ class IRecordingResult(Interface):
 
     output = Attribute("Recording output")
 
+    def nest(self, fiber):
+        '''Specify the parent fiber that called the recorder'''
+
     def proceed():
-        '''Continue with the stateless part of a recording.'''
+        '''Continue with the state-less part of a recording.'''
 
 
 class IJournalKeeper(Interface):
