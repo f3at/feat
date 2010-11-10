@@ -11,12 +11,13 @@ from feat.common import log, enum
 from feat.interface import contracts, recipient, contractor, protocols, manager
 from feat.agents import message
 
-from interface import IListener
+from interface import IListener, IAgencyInitiatorFactory,\
+                      IAgencyInterestedFactory
 from . import common
 
 
 class AgencyManagerFactory(object):
-    implements(protocols.IAgencyInitiatorFactory)
+    implements(IAgencyInitiatorFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -27,7 +28,7 @@ class AgencyManagerFactory(object):
 
 components.registerAdapter(AgencyManagerFactory,
                            manager.IManagerFactory,
-                           protocols.IAgencyInitiatorFactory)
+                           IAgencyInitiatorFactory)
 
 
 class ContractorState(enum.Enum):
@@ -328,7 +329,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
 
 class AgencyContractorFactory(object):
-    implements(protocols.IAgencyInterestedFactory)
+    implements(IAgencyInterestedFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -339,7 +340,7 @@ class AgencyContractorFactory(object):
 
 components.registerAdapter(AgencyContractorFactory,
                            contractor.IContractorFactory,
-                           protocols.IAgencyInterestedFactory)
+                           IAgencyInterestedFactory)
 
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,

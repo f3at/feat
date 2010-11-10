@@ -10,12 +10,13 @@ from feat.common import log
 from feat.interface import recipient, requests, replier, requester, protocols
 from feat.agents import message
 
-from interface import IListener
+from interface import IListener, IAgencyInitiatorFactory,\
+                      IAgencyInterestedFactory
 from . import common
 
 
 class AgencyRequesterFactory(object):
-    implements(protocols.IAgencyInitiatorFactory)
+    implements(IAgencyInitiatorFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -26,7 +27,7 @@ class AgencyRequesterFactory(object):
 
 components.registerAdapter(AgencyRequesterFactory,
                            requester.IRequesterFactory,
-                           protocols.IAgencyInitiatorFactory)
+                           IAgencyInitiatorFactory)
 
 
 class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
@@ -95,7 +96,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
 
 class AgencyReplierFactory(object):
-    implements(protocols.IAgencyInterestedFactory)
+    implements(IAgencyInterestedFactory)
 
     def __init__(self, factory):
         self._factory = factory
@@ -106,7 +107,7 @@ class AgencyReplierFactory(object):
 
 components.registerAdapter(AgencyReplierFactory,
                            replier.IReplierFactory,
-                           protocols.IAgencyInterestedFactory)
+                           IAgencyInterestedFactory)
 
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,

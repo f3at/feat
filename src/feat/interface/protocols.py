@@ -53,9 +53,3 @@ class IInterested(Interface):
 
     protocol_id = Attribute("Protocol id")
 
-
-class IAgencyInitiatorFactory(Interface):
-    '''Factory constructing L{IAgencyInitiator} instance'''
-
-class IAgencyInterestedFactory(Interface):
-    '''Factory contructing L{IAgencyInterested} instance'''

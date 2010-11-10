@@ -10,7 +10,8 @@ from zope.interface import implements
 from feat.common import log
 from feat.interface import recipient, agency, agent, protocols
 
-from interface import IListener
+from interface import IListener, IAgencyInitiatorFactory,\
+                      IAgencyInterestedFactory
 from . import messaging
 from . import database
 from . import requests
@@ -135,7 +136,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self.log('Looking for interest to instantiate')
             factory = self._interests[message.protocol_type]\
                                      [message.protocol_id].factory
-            medium_factory = protocols.IAgencyInterestedFactory(factory)
+            medium_factory = IAgencyInterestedFactory(factory)
             medium = medium_factory(self, message)
             interested = factory(self.agent, medium)
             medium.initiate(interested)
@@ -152,7 +153,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
                  factory, args, kwargs)
         factory = protocols.IInitiatorFactory(factory)
         recipients = recipient.IRecipients(recipients)
-        medium_factory = protocols.IAgencyInitiatorFactory(factory)
+        medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
         initiator = factory(self.agent, medium, *args, **kwargs)
