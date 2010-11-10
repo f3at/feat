@@ -45,17 +45,21 @@ class DummyReplier(replier.BaseReplier):
     def requested(self, request):
         self.agent.got_payload = request.payload
         self.medium.reply(message.ResponseMessage())
-        self.medium.terminate()
 
 
-class TestAgencyAgent(common.TestCase):
+class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
+    protocol_type = 'Request'
+    protocol_id = 'dummy-request'
 
     def setUp(self):
-        self.agency = agency.Agency()
+        common.AgencyTestHelper.setUp(self)
+        
         desc = descriptor.Descriptor()
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+
+        self.queue, self.endpoint = self._setup_endpoint()
 
     def testJoinShard(self):
         self.assertEqual(1, len(self.agency._shards))
@@ -66,22 +70,49 @@ class TestAgencyAgent(common.TestCase):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual(0, len(self.agency._shards['lobby']))
 
+    def testRegisteringAndRevokeReplier(self):
+        self.agent.register_interest(DummyReplier)
 
-class TestRequests(common.TestCase):
+        self.assertTrue('Request' in self.agent._interests)
+        self.assertTrue('dummy-request' in self.agent._interests['Request'])
+
+        self.agent.revoke_interest(DummyReplier)
+        self.assertFalse('dummy-request' in self.agent._interests['Request'])
+
+        #calling once again nothing bad should happend
+        req = self.agent.revoke_interest(DummyReplier)
+        self.assertFalse(req)
+
+    def testGetingRequestWithoutInterest(self):
+        '''Current implementation just ignores such events. Update this test
+        in case we decide to do sth else'''
+        key = self.agent.descriptor.uuid
+        msg = message.RequestMessage()
+        msg.session_id = str(uuid.uuid1())
+        return self._recv_msg(msg, self.endpoint, key)
+
+
+class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
 
+    protocol_type = 'Request'
+    protocol_id = 'dummy-request'
+
     def setUp(self):
-        self.agency = agency.Agency()
+        common.AgencyTestHelper.setUp(self)
+        
         desc = descriptor.Descriptor()
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
+        self.endpoint, self.queue = self._setup_endpoint()
+
     def testRequester(self):
-        recipients = recipient.Agent('some_agent', 'lobby')
-        d = self.agency.cb_on_msg('lobby', 'some_agent')
+
+        d = self.queue.consume()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester, recipients, payload)
+            self.agent.initiate_protocol(DummyRequester, self.endpoint, payload)
 
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
@@ -97,7 +128,7 @@ class TestRequests(common.TestCase):
             self.assertEqual(session_id, str(session_id))
 
             self.assertEqual(requests.RequestState.requested,\
-                                 self.requester.state)
+                                 self.requester.medium.state)
             return session_id
 
         d.addCallback(assertsOnMessage)
@@ -113,11 +144,8 @@ class TestRequests(common.TestCase):
 
         def mimicReceivingResponse(session_id):
             response = message.ResponseMessage()
-            response.session_id = session_id
-            response.expiration_time = self.requester.request.expiration_time
+            self._reply(response, self.endpoint, self.requester.request)
 
-            key, shard = self.agent.descriptor.uuid, self.agent.descriptor.shard
-            self.agent._messaging.publish(key, shard, response)
             return session_id
 
         d.addCallback(mimicReceivingResponse)
@@ -132,15 +160,13 @@ class TestRequests(common.TestCase):
 
         return d
 
-
     def testRequestTimeout(self):
         self.agency.time_scale = 0.01
 
-        recipients = recipient.Agent('some_agent', 'lobby')
-        d = self.agency.cb_on_msg('lobby', 'some_agent')
+        d = self.queue.consume()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester, recipients, payload)
+            self.agent.initiate_protocol(DummyRequester, self.endpoint, payload)
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -149,36 +175,23 @@ class TestRequests(common.TestCase):
             session_id = self.requester.medium.session_id
             self.assertFalse(session_id in self.agent._listeners.keys())
             self.assertFalse(self.requester.got_response)
-            self.assertEqual(requests.RequestState.closed, self.requester.state)
+            self.assertEqual(requests.RequestState.closed,
+                             self.requester.medium.state)
 
         d.addCallback(assertTerminatedWithNoResponse)
 
         return d
 
-    def testRegisteringAndRevokeReplier(self):
-        self.agent.register_interest(DummyReplier)
-
-        self.assertTrue('Request' in self.agent._interests)
-        self.assertTrue('dummy-request' in self.agent._interests['Request'])
-
-        self.agent.revoke_interest(DummyReplier)
-        self.assertFalse('dummy-request' in self.agent._interests['Request'])
-
-        #calling once again nothing bad should happend
-        req = self.agent.revoke_interest(DummyReplier)
-        self.assertFalse(req)
-
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)
 
-        shard = self.agent.descriptor.shard
         key = self.agent.descriptor.uuid
-        # define false sender, he will get the response later
-        recp = recipient.Agent(str(uuid.uuid1()), shard)
-        d = self.agency.cb_on_msg(shard, recp.key)
-        req = self._build_req_msg(recp)
-        self.agency._messaging.publish(key, recp.shard, req)
 
+        req = self._build_req_msg(self.endpoint)
+        d = self._recv_msg(req, self.endpoint, key)
+
+        d.addCallback(lambda _: self.queue.consume())
+        
         def assert_on_msg(msg):
             self.assertEqual('dummy-request', msg.protocol_id)
             self.assertEqual(req.session_id, msg.session_id)
@@ -187,35 +200,18 @@ class TestRequests(common.TestCase):
 
         return d
 
-    def testGetingRequestWithoutInterest(self):
-        '''Current implementation just ignores such events. Update this test
-        in case we decide to do sth else'''
-        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
-
-        shard = self.agent.descriptor.shard
-        key = self.agent.descriptor.uuid
-        recp = recipient.Agent(str(uuid.uuid1()), shard)
-        req = self._build_req_msg(recp)
-        self.agency._messaging.publish(key, recp.shard, req)
-
-        # wait for the message to be processed
-        return d
-
     def testNotProcessingExpiredRequests(self):
         self.agent.register_interest(DummyReplier)
         self.agent.agent.got_payload = False
-        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
-        shard = self.agent.descriptor.shard
         key = self.agent.descriptor.uuid
         # define false sender, he will get the response later
-        recp = recipient.Agent(str(uuid.uuid1()), shard)
-        req = self._build_req_msg(recp)
-        req.expiration_time = time.time() - 1
+        req = self._build_req_msg(self.endpoint)
+        expiration_time = time.time() - 1
+        d = self._recv_msg(req, self.endpoint, key, expiration_time)
 
-        self.agency._messaging.publish(key, recp.shard, req)
-        
         def asserts_after_procesing(return_value):
+            self.log(return_value)
             self.assertFalse(return_value)
             self.assertEqual(False, self.agent.agent.got_payload)
 
@@ -249,11 +245,6 @@ class TestRequests(common.TestCase):
 
     def _build_req_msg(self, recp):
         r = message.RequestMessage()
-        r.message_id = str(uuid.uuid1())
         r.session_id = str(uuid.uuid1())
-        r.expiration_time = time.time() + 10
-        r.protocol_type = 'Request'
-        r.protocol_id = 'dummy-request'
-        r.reply_to = recp
         r.payload = 10
         return r

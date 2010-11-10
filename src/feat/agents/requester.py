@@ -14,14 +14,11 @@ class BaseRequester(log.Logger):
     timeout = 0
     protocol_id = None
 
-    def __init__(self, agent, medium, recipients):
+    def __init__(self, agent, medium, *args, **kwargs):
         log.Logger.__init__(self, medium)
 
         self.agent = agent
         self.medium = medium
-        self.recipients = recipients
-
-        self.state = requests.RequestState.none
 
     def initiate(self):
         pass

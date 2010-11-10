@@ -10,8 +10,9 @@ class RequestState(enum.Enum):
       - requested: The requested has send a request message to to repliers.
       - closed: The request expire or a response has been received
         from all repliers.
+      - wtf: What a Terrible Failure
     '''
-    none, requested, closed = range(3)
+    none, requested, closed, wtf = range(4)
 
 
 class IRequestPeer(Interface):

@@ -20,9 +20,6 @@ class IAgencyRequester(requests.IRequestPeer):
     def request(request):
         '''Post a request message.'''
 
-    def terminate():
-        pass
-
     def initiate(requester):
         '''
         Called by AgencyAgent to pass the L{IAgentRequester} instance

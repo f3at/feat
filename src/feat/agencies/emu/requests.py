@@ -11,6 +11,7 @@ from feat.interface import recipient, requests, replier, requester, protocols
 from feat.agents import message
 
 from interface import IListener
+from . import common
 
 
 class AgencyRequesterFactory(object):
@@ -28,57 +29,66 @@ components.registerAdapter(AgencyRequesterFactory,
                            protocols.IAgencyInitiatorFactory)
 
 
-
-class AgencyRequester(log.LogProxy, log.Logger):
+class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
+                    common.ExpirationCallsMixin, common.AgencyMiddleMixin):
     implements(requester.IAgencyRequester, IListener)
 
     log_category = 'agency-requester'
 
+    error_state = requests.RequestState.wtf
+
     def __init__(self, agent, recipients, *args, **kwargs):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
+        common.StateMachineMixin.__init__(self)
+        common.ExpirationCallsMixin.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
         self.session_id = str(uuid.uuid1())
         self.log_name = self.session_id
-        self.closed_call = None
+        self.expiration_time = None
 
     def initiate(self, requester):
         self.requester = requester
-        if requester.timeout > 0:
-            self.closed_call = self.agent.callLater(requester.timeout,
-                                                    self.expired)
-        requester.state = requests.RequestState.requested
-        requester.initiate()
+        common.AgencyMiddleMixin.__init__(self, requester.protocol_id)
+
+        self._set_state(requests.RequestState.requested)
+        self.expiration_time = self.agent.get_time() + requester.timeout
+        self._expire_at(self.expiration_time, self.requester.closed,
+                        requests.RequestState.closed)
+        self._call(requester.initiate)
 
         return requester
 
-    def expired(self):
-        self.requester.closed()
-        self.terminate()
-
     def request(self, request):
-        self.debug("Sending request")
-        request.session_id = self.session_id
-        request.protocol_id = self.requester.protocol_id
-        if self.requester.timeout > 0:
-            request.expiration_time =\
-                self.agent.get_time() + self.requester.timeout
-
-        self.requester.request = self.agent.send_msg(self.recipients, request)
+        self.log("Sending request")
+        self._ensure_state(requests.RequestState.requested)
+        
+        self.requester.request =\
+                               self._send_message(request, self.expiration_time)
         
     def terminate(self):
-        self.debug('Terminate called')
-        self.requester.state = requests.RequestState.closed
+        self._terminate()
+
+    # private
+
+    def _terminate(self):
+        common.ExpirationCallsMixin._terminate(self)
+
+        self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
 
     # IListener stuff
 
-    def on_message(self, message):
-        if self.closed_call:
-            self.closed_call.cancel()
-        self.requester.got_reply(message)
+    def on_message(self, msg):
+        mapping = {
+            message.ResponseMessage:\
+                {'state_before': requests.RequestState.requested,
+                 'state_after': requests.RequestState.requested,
+                 'method': self.requester.got_reply}
+            }
+        self._event_handler(mapping, msg)
 
     def get_session_id(self):
         return self.session_id
@@ -99,48 +109,53 @@ components.registerAdapter(AgencyReplierFactory,
                            protocols.IAgencyInterestedFactory)
 
 
-class AgencyReplier(log.LogProxy, log.Logger):
+class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
+                    common.AgencyMiddleMixin):
     implements(replier.IAgencyReplier, IListener)
  
     log_category = 'agency-replier'
 
+    error_state = requests.RequestState.wtf
+
     def __init__(self, agent, message):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
+        common.StateMachineMixin.__init__(self)
+        common.AgencyMiddleMixin.__init__(self, message.protocol_id)
 
         self.agent = agent
         self.request = message
         self.recipients = message.reply_to
         self.session_id = message.session_id
-        self.protocol_id = message.protocol_id
+        self._set_state(requests.RequestState.none)
 
         self.log_name = self.session_id
         self.message_count = 0
 
     def initiate(self, replier):
         self.replier = replier
+        self._set_state(requests.RequestState.requested)
         return replier
     
     def reply(self, reply):
         self.debug("Sending reply")
-        reply.session_id = self.session_id
-        reply.protocol_id = self.protocol_id
-        reply.expiration_time = self.request.expiration_time
-
-        self.agent.send_msg(self.recipients, reply)
+        self._send_message(reply, self.request.expiration_time)
+        self._terminate()
         
-    def terminate(self):
+    def _terminate(self):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
 
     # IListener stuff
 
-    def on_message(self, message):
-        self.message_count += 1
-        if self.message_count == 1:
-            self.replier.requested(message)
-        else:
-            self.error("Got unexpected message: %r", message)
+    def on_message(self, msg):
+        mapping = {
+            message.RequestMessage:\
+            {'state_before': requests.RequestState.requested,
+             'state_after': requests.RequestState.closed,
+             'method': self.replier.requested}
+        }
+        self._event_handler(mapping, msg)
 
     def get_session_id(self):
         return self.session_id
