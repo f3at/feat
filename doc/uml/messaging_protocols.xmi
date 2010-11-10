@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<XMI verified="false" xmi.version="1.2" timestamp="2010-11-09T13:02:50" xmlns:UML="http://schema.omg.org/spec/UML/1.3">
+<XMI verified="false" xmi.version="1.2" timestamp="2010-11-10T11:39:41" xmlns:UML="http://schema.omg.org/spec/UML/1.3">
  <XMI.header>
   <XMI.documentation>
    <XMI.exporter>umbrello uml modeller http://uml.sf.net</XMI.exporter>
@@ -38,12 +38,12 @@
      </UML:Namespace.ownedElement>
      <XMI.extension xmi.extender="umbrello">
       <diagrams>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="class diagram" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="184" canvaswidth="147" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="t4U0PZsw9pgD" documentation="" showscope="1" snapgrid="0" showatts="1" type="1">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="class diagram" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="831" canvaswidth="1536" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="t4U0PZsw9pgD" documentation="" showscope="1" snapgrid="0" showatts="1" type="1">
         <widgets/>
         <messages/>
         <associations/>
        </diagram>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Contractor" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="1108" canvaswidth="777" localid="" snapcsgrid="0" showgrid="1" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="MtoVsRWzcZ7n" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Contractor" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="1108" canvaswidth="1519" localid="" snapcsgrid="0" showgrid="1" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="MtoVsRWzcZ7n" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
         <widgets>
          <statewidget width="30" showstereotype="1" x="406" y="40" usesdiagramusefillcolor="1" statename="State" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="30" linecolor="none" xmi.id="pJwOveYqMbfJ" statetype="0" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities/>
@@ -285,7 +285,7 @@
          </assocwidget>
         </associations>
        </diagram>
-       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Manager Global State" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="881" canvaswidth="1536" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="zMflTOxj0mq9" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
+       <diagram showopsig="1" linecolor="#ff0000" snapx="10" showattribassocs="1" snapy="10" linewidth="0" showattsig="1" showpubliconly="1" showpackage="1" showstereotype="1" name="Manager Global State" font="Sans Serif,9,-1,5,50,0,0,0,0,0" canvasheight="831" canvaswidth="1536" localid="" snapcsgrid="0" showgrid="0" showops="1" usefillcolor="1" fillcolor="#ffff00" zoom="100" xmi.id="zMflTOxj0mq9" documentation="" showscope="1" snapgrid="0" showatts="1" type="5">
         <widgets>
          <statewidget width="225" showstereotype="1" x="426" y="82" usesdiagramusefillcolor="1" statename="Initiated" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="52" linecolor="none" xmi.id="BaH5o221dCI6" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
@@ -293,7 +293,7 @@
            <Activity name="set_timeout(INITIATE_TIMEOUT)"/>
           </Activities>
          </statewidget>
-         <statewidget width="251" showstereotype="1" x="411" y="210" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="rQWbEdVQBmTz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
+         <statewidget width="251" showstereotype="1" x="422" y="206" usesdiagramusefillcolor="0" statename="Announced" usesdiagramfillcolor="0" isinstance="0" fillcolor="#ffff00" height="52" linecolor="#ff0000" xmi.id="rQWbEdVQBmTz" statetype="1" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
           <Activities>
            <Activity name="n * post(announce)"/>
            <Activity name="set_timeout(announce.expiration)"/>
@@ -346,7 +346,6 @@
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="390" showstereotype="1" y="271" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="186xLorvDiAt" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="299" showstereotype="1" y="295" text="All responses received" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="149" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="m8EW5GKOOZ0X" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="635" showstereotype="1" y="345" text="medium.grant()" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="105" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="It1M4H35P82i" height="18"/>
-         <boxwidget width="20" showstereotype="1" x="799" y="513" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="20" linecolor="#000000" xmi.id="8Wy0hlzAsKzX" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="507" showstereotype="1" y="386" text="medium.grant()" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="105" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="dLXpio3L9KNc" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="470" showstereotype="1" y="548" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="d50jRVOX0MXh" height="18"/>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="325" showstereotype="1" y="87" text="Timeout" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="58" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="mDCuXXW8dUr2" height="18"/>
@@ -366,22 +365,20 @@
           <Activities/>
          </statewidget>
          <floatingtext linecolor="none" usesdiagramfillcolor="1" linewidth="none" usesdiagramusefillcolor="1" x="193" showstereotype="1" y="113" text="What a Terrible Failure" font="Sans Serif,9,-1,5,50,0,0,0,0,0" pretext="" role="700" width="141" isinstance="0" posttext="" usefillcolor="1" fillcolor="none" xmi.id="aPtFf4zNmx2o" height="18"/>
-         <forkjoin width="40" showstereotype="1" x="655" y="233" usesdiagramusefillcolor="1" drawvertical="0" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="4" linecolor="#000000" xmi.id="4b8Ifes1qPLK" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
-         <forkjoin width="40" showstereotype="1" x="847" y="272" usesdiagramusefillcolor="1" drawvertical="0" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="4" linecolor="#000000" xmi.id="gnhCcJGaasli" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
-         <boxwidget width="20" showstereotype="1" x="910" y="303" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="20" linecolor="#000000" xmi.id="RQOQ4Jd8ulRY" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
-         <boxwidget width="20" showstereotype="1" x="862" y="242" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="20" linecolor="#000000" xmi.id="PHXGesYKdFWD" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0"/>
-         <notewidget width="50" showstereotype="1" x="738" noteType="0" y="182" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="50" linecolor="none" xmi.id="tEH6l2utgTfj" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text=""/>
-         <notewidget width="50" showstereotype="1" x="677" noteType="0" y="186" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="50" linecolor="none" xmi.id="OpEOIIUd91XL" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text=""/>
-         <notewidget width="277" showstereotype="1" x="758" noteType="0" y="250" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="144" linecolor="none" xmi.id="usf0j1MroO5d" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text="When bid is received:&#xa;&#xa;1. Store bid&#xa;2. Call manager.bid()&#xa; - call medium.reject(bid) sends the rejection and removes bid from the list&#xa; - call medium.grant() transits to granted state"/>
-         <notewidget width="50" showstereotype="1" x="976" noteType="0" y="360" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="50" linecolor="none" xmi.id="uhEN513GnrTm" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text=""/>
-         <notewidget width="50" showstereotype="1" x="771" noteType="0" y="235" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="50" linecolor="none" xmi.id="22Fku5NvmOHd" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text=""/>
+         <notewidget width="277" showstereotype="1" x="743" noteType="0" y="269" usesdiagramusefillcolor="1" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="144" linecolor="none" xmi.id="usf0j1MroO5d" usefillcolor="1" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0" text="When bid is received:&#xa;&#xa;1. Store bid&#xa;2. Call manager.bid()&#xa; - call medium.reject(bid) sends the rejection and removes bid from the list&#xa; - call medium.grant() transits to granted state"/>
+         <statewidget width="10" showstereotype="1" x="1210" y="30" usesdiagramusefillcolor="1" statename="State" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="10" linecolor="none" xmi.id="hM3s6d9bjGZN" statetype="0" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
+          <Activities/>
+         </statewidget>
+         <statewidget width="10" showstereotype="1" x="1214" y="36" usesdiagramusefillcolor="1" statename="State" usesdiagramfillcolor="1" isinstance="0" fillcolor="none" height="10" linecolor="none" xmi.id="nZlEiXxLNkIo" statetype="0" usefillcolor="1" documentation="" linewidth="none" font="Sans Serif,9,-1,5,50,0,0,0,0,0">
+          <Activities/>
+         </statewidget>
         </widgets>
         <messages/>
         <associations>
          <assocwidget indexa="1" indexb="1" visibilityA="0" widgetaid="BaH5o221dCI6" visibilityB="0" roleBdoc="" roleAdoc="" linecolor="none" changeabilityA="900" totalcounta="2" changeabilityB="900" widgetbid="rQWbEdVQBmTz" totalcountb="2" type="514" documentation="" linewidth="none">
           <linepath>
            <startpoint startx="537" starty="134"/>
-           <endpoint endx="537" endy="210"/>
+           <endpoint endx="537" endy="206"/>
           </linepath>
          </assocwidget>
          <assocwidget indexa="1" indexb="1" visibilityA="0" widgetaid="JLKKogqpPyFk" visibilityB="0" roleBdoc="" roleAdoc="" linecolor="none" changeabilityA="900" totalcounta="2" changeabilityB="900" widgetbid="BaH5o221dCI6" totalcountb="2" type="514" documentation="" linewidth="none">
@@ -398,13 +395,13 @@
          </assocwidget>
          <assocwidget indexa="1" indexb="1" visibilityA="0" widgetaid="rQWbEdVQBmTz" visibilityB="0" roleBdoc="" roleAdoc="" linecolor="none" changeabilityA="900" totalcounta="3" changeabilityB="900" widgetbid="mTyPgETjQytK" totalcountb="2" type="514" documentation="" linewidth="none">
           <linepath>
-           <startpoint startx="454" starty="262"/>
+           <startpoint startx="454" starty="258"/>
            <endpoint endx="454" endy="331"/>
           </linepath>
          </assocwidget>
          <assocwidget indexa="2" indexb="2" visibilityA="0" widgetaid="rQWbEdVQBmTz" visibilityB="0" roleBdoc="" roleAdoc="" linecolor="none" changeabilityA="900" totalcounta="3" changeabilityB="900" widgetbid="P2YWxF0meUMs" totalcountb="3" type="514" documentation="" linewidth="none">
           <linepath>
-           <startpoint startx="626" starty="262"/>
+           <startpoint startx="626" starty="258"/>
            <endpoint endx="626" endy="456"/>
           </linepath>
          </assocwidget>
@@ -483,7 +480,7 @@
   </UML:Model>
  </XMI.content>
  <XMI.extensions xmi.extender="umbrello">
-  <docsettings viewid="zMflTOxj0mq9" uniqueid="hoWO0tS2winl" documentation=""/>
+  <docsettings viewid="zMflTOxj0mq9" uniqueid="tcAJpFnc3YxE" documentation=""/>
   <listview>
    <listitem open="1" type="800" id="Views">
     <listitem open="1" type="801" id="Logical View">
