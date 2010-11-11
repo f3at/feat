@@ -35,7 +35,7 @@ class IJournalKeeper(Interface):
         '''Register a recorder.
         Should be called by every recorder when created.'''
 
-    def record(instance_id, entry_id, input, output):
+    def record(instance_id, entry_id, fiber_id, fiber_depth, input, output):
         pass
 
 

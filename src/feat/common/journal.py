@@ -5,7 +5,7 @@ from zope.interface import implements
 from feat.interface import journaling, async
 from feat.interface.journaling import JournalMode
 
-from . import annotate, decorator, fiber
+from . import decorator, fiber
 
 
 class RecordResultError(Exception):
@@ -16,12 +16,7 @@ class RecordResultError(Exception):
 def recorded(function, entry_id=None):
     fixed_id = entry_id or function.__name__
 
-    # Register the method as recorded call
-    annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call",
-                                 fixed_id, function)
-
-    def fiber_wrapper(self, result, fiber, *args, **kwargs):
+    def fiber_wrapper(self, result, fiber, _original, *args, **kwargs):
         return self._call_recorded(fiber, fixed_id, function,
                                    result, *args, **kwargs)
 
@@ -167,7 +162,7 @@ class RecorderNode(object):
         return self.journal_id + (self._recorder_count, )
 
 
-class Recorder(RecorderNode, annotate.Annotable):
+class Recorder(RecorderNode):
 
     implements(journaling.IRecorder)
 
@@ -183,22 +178,12 @@ class Recorder(RecorderNode, annotate.Annotable):
         # Register the recorder
         self.journal_keeper.register(self)
 
-    def register_playback(self):
-        pass
-
     ### IRecorder Methods ###
-
-    def record(self, entry_id, input, output):
-        self.journal_keeper.do_record(self.journal_id, entry_id, input, output)
 
     def replay(self, entry_id, args, kwargs):
         pass
 
     ### Private Methods ###
-
-    @classmethod
-    def _register_recorded_call(cls, entry_id, method):
-        pass
 
     def _record_call(self, fiber, entry_id, method, *args, **kwargs):
         input = RecordInput(args, kwargs)
@@ -208,7 +193,8 @@ class Recorder(RecorderNode, annotate.Annotable):
         recres.nest(fiber)
 
         output = recres.output
-        self.journal_keeper.record(self.journal_id, entry_id, input, output)
+        self.journal_keeper.record(self.journal_id, entry_id,
+                                   None, None, input, output)
 
         return recres.proceed()
 
@@ -225,5 +211,6 @@ class FileJournalRecorder(object):
     def register(self, recorder):
         '''No registration needed for recording.'''
 
-    def record(self, instance_id, entry_id, args, kwargs, results):
+    def record(self, instance_id, entry_id,
+               fiber_id, fiber_depth, input, output):
         pass

@@ -23,7 +23,8 @@ class DummyJournalKeeper(object):
     def register(self, recorder):
         pass
 
-    def record(self, instance_id, entry_id, input, output):
+    def record(self, instance_id, entry_id,
+               fiber_id, fiber_depth, input, output):
         record = (instance_id, entry_id, input.snapshot(), output.snapshot())
         self.records.append(record)
 
