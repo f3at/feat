@@ -75,7 +75,6 @@ class Connection(log.Logger):
             reactor.callLater(0, bind)
 
         def stop(reason):
-            raise reason
             self.log('Error handler: exiting, reason %r' % reason)
 
         def bind():
