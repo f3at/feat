@@ -8,7 +8,8 @@ from feat.interface.journaling import JournalMode
 from . import annotate, decorator, fiber
 
 
-class RecordResultError(Exception): pass
+class RecordResultError(Exception):
+    pass
 
 
 @decorator.parametrized
@@ -77,7 +78,8 @@ class InvalidResult(object):
     implements(journaling.IRecordingResult)
 
     def __init__(self, result):
-        raise RecordResultError("Recorded function result invalid: %r" % result)
+        raise RecordResultError("Recorded function result invalid: %r" %\
+                                result)
 
 components.registerAdapter(InvalidResult,
                            defer.Deferred,
