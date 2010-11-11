@@ -8,7 +8,8 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.common import log
-from feat.interface import recipient, agency, agent, protocols
+from feat.agents import recipient
+from feat.interface import agency, agent, protocols
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory

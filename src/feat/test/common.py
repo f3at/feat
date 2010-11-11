@@ -6,8 +6,7 @@ from twisted.internet import defer, reactor
 from twisted.trial import unittest
 
 from feat.agencies.emu import agency
-from feat.agents import message
-from feat.interface import recipient
+from feat.agents import message, recipient
 from feat.common import log
 
 log.FluLogKeeper.init('test.log')

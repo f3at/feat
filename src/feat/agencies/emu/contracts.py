@@ -6,12 +6,12 @@ import uuid
 from twisted.python import components, failure
 from zope.interface import implements
 
+from feat.agents import message, recipient
 from feat.common import log, enum
-from feat.interface import contracts, recipient, contractor, manager
-from feat.agents import message
+from feat.interface import contracts, contractor, manager
 
-from interface import IListener, IAgencyInitiatorFactory,\
-                      IAgencyInterestedFactory
+from interface import (IListener, IAgencyInitiatorFactory,
+                       IAgencyInterestedFactory)
 from . import common
 
 
