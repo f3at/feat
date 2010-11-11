@@ -29,25 +29,25 @@ class BaseContractor(log.Logger):
         self.medium = medium
 
     def announce_expired(self):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def closed(self):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def rejected(self, rejection):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def granted(self, grant):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def bid_expired(self):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def cancelled(self, grant):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def acknowledged(self, grant):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''
 
     def aborted(self):
-        pass
+        '''@see: L{contractor.IAgentContractor}'''

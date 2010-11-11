@@ -27,25 +27,25 @@ class BaseManager(log.Logger):
         self.medium = medium
 
     def initiate(self):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def refused(self, refusal):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def bid(self, bid):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def closed(self):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def expired(self):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def cancelled(self, grant, cancellation):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def completed(self, grant, report):
-        pass
+        '''@see: L{manager.IAgentManager}'''
 
     def aborted(self, grant):
-        pass
+        '''@see: L{manager.IAgentManager}'''

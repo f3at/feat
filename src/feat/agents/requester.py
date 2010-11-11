@@ -19,10 +19,10 @@ class BaseRequester(log.Logger):
         self.medium = medium
 
     def initiate(self):
-        pass
+        '''@see: L{requester.IAgentRequester}'''
 
     def got_reply(self, reply):
-        pass
+        '''@see: L{requester.IAgentRequester}'''
 
     def closed(self):
-        pass
+        '''@see: L{requester.IAgentRequester}'''

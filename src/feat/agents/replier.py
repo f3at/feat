@@ -23,4 +23,4 @@ class BaseReplier(log.Logger):
         self.medium = medium
 
     def requested(self, request):
-        pass
+        '''@see: L{replier.IAgentReplier}'''
