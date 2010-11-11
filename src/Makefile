@@ -1,4 +1,4 @@
-PYTHON = /usr/bin/python
+PYTHON = /usr/bin/python2.6
 top_srcdir = .
 COVERAGE_MODULES = feat flt
 TOOLS = ../tools
@@ -15,7 +15,7 @@ coverage:
 	@test ! -z "$(COVERAGE_MODULES)" ||				\
 	(echo Define COVERAGE_MODULES in your Makefile; exit 1)
 	rm -f feat-saved-coverage.pickle
-	@$(TRIAL) --temp-directory=_trial_coverage --coverage --saved-coverage=feat-saved-coverage.pickle $(COVERAGE_MODULES)
+	@$(PYTHON) $(TRIAL) --temp-directory=_trial_coverage --coverage --saved-coverage=feat-saved-coverage.pickle $(COVERAGE_MODULES)
 	make show-coverage
 
 show-coverage:
