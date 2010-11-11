@@ -4,7 +4,7 @@ import uuid
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.interface import async
+from feat.interface.fiber import IFiber
 
 from . import reflect
 
@@ -16,8 +16,8 @@ def nested(fun):
 
     def alt(result, fiber, original, *args, **kwargs):
         result = original(result, *args, **kwargs)
-        if async.IFiber.providedBy(result):
-            child_fiber = async.IFiber(result)
+        if IFiber.providedBy(result):
+            child_fiber = IFiber(result)
             child_fiber.nest(fiber)
             return child_fiber.start()
         return result
@@ -69,7 +69,7 @@ class Fiber(object):
     This could be use to automatically chain the fibers.
     '''
 
-    implements(async.IFiber)
+    implements(IFiber)
 
     def __init__(self):
         self._succeed = None
@@ -94,10 +94,10 @@ class Fiber(object):
         # FIXME: Should we deep clone ?
         return self._succeed, self._param, self._state_calls
 
-    ### async.IFiber Methods ###
+    ### IFiber Methods ###
 
     def nest(self, parent):
-        parent = async.IFiber(parent)
+        parent = IFiber(parent)
         self.fiber_id = parent.fiber_id
         self.fiber_depth = parent.fiber_depth + 1
 

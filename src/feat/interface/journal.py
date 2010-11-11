@@ -4,6 +4,9 @@ from feat.common import enum
 
 from . import serialization
 
+__all__ = ["JournalMode", "IRecordInput", "IRecordOutput", "IRecordingResult",
+           "IJournalKeeper", "IRecorderNode", "IRecorder"]
+
 
 class JournalMode(enum.Enum):
     recording, replay = range(1, 3)

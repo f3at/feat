@@ -1,9 +1,9 @@
-from zope.interface import Attribute
+from zope.interface import Interface, Attribute
 
-from . import serialization
+__all__ = ["IFiber"]
 
 
-class IFiber(serialization.ISnapshot):
+class IFiber(Interface):
     '''Fibers are used to specify a chain of asynchronous execution.
 
     The use case is to specify a chain, return it and delegate

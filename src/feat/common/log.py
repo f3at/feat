@@ -5,7 +5,7 @@ import sys
 
 from zope.interface import implements
 
-from feat.interface.logging import ILogKeeper, ILogger, LogLevel
+from feat.interface.log import *
 
 
 class Logger(object):

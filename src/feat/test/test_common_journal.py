@@ -6,14 +6,16 @@ from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import journal, fiber
-from feat.interface import journaling, async
+from feat.interface.fiber import *
+from feat.interface.journal import *
+
 
 from . import common
 
 
 class DummyJournalKeeper(object):
 
-    implements(journaling.IJournalKeeper)
+    implements(IJournalKeeper)
 
     def __init__(self):
         self.records = []
@@ -31,7 +33,7 @@ class DummyJournalKeeper(object):
 
 class DummyFiber(object):
 
-    implements(async.IFiber)
+    implements(IFiber)
 
     def __init__(self, value):
         self.value = value
@@ -42,7 +44,7 @@ class DummyFiber(object):
     def snapshot(self, context={}):
         return self.value
 
-    ### async.IFiber ###
+    ### IFiber ###
 
     def run(self):
         self.started = True
@@ -86,22 +88,22 @@ class TestRecorder(common.TestCase):
         self.assertEqual(AA.journal_id, (1, 1))
 
     def testAdaptation(self):
-        recres = journaling.IRecordingResult(fiber.Fiber())
+        recres = IRecordingResult(fiber.Fiber())
         self.assertTrue(isinstance(recres, journal.RecordingAsyncResult))
-        recres = journaling.IRecordingResult(1)
+        recres = IRecordingResult(1)
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
-        recres = journaling.IRecordingResult([])
+        recres = IRecordingResult([])
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
-        recres = journaling.IRecordingResult((1, 2))
-        recres = journaling.IRecordingResult({})
+        recres = IRecordingResult((1, 2))
+        recres = IRecordingResult({})
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
-        recres = journaling.IRecordingResult(None)
+        recres = IRecordingResult(None)
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
-        recres = journaling.IRecordingResult("test")
+        recres = IRecordingResult("test")
         self.assertTrue(isinstance(recres, journal.RecordingSyncResult))
         try:
-            journaling.IRecordingResult(defer.succeed(None))
+            IRecordingResult(defer.succeed(None))
             self.fail("Twisted Deferred is not a valid result "
                       "for recorded functions")
         except journal.RecordResultError:

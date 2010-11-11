@@ -2,12 +2,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from feat.common import persistence
+from feat.common import serialization
 
 from . import common
 
 
-class A(persistence.Serializable):
+class A(serialization.Serializable):
 
     def __init__(self, x):
         self.x = x
@@ -20,7 +20,7 @@ class B(A):
         self.y = y
 
 
-class C(persistence.Serializable):
+class C(serialization.Serializable):
 
     type_name = "Custom"
 
@@ -28,7 +28,7 @@ class C(persistence.Serializable):
         self.z = z
 
 
-class D(persistence.Serializable):
+class D(serialization.Serializable):
 
     type_name = "D"
 

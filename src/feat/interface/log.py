@@ -2,6 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
+__all__ = ["LogLevel", "ILogKeeper", "ILogger"]
+
 
 class LogLevel(enum.Enum):
     error, warning, info, debug, log = range(1, 6)

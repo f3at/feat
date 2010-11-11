@@ -2,8 +2,8 @@ from twisted.internet import defer
 from twisted.python import components
 from zope.interface import implements
 
-from feat.interface import journaling, async
-from feat.interface.journaling import JournalMode
+from feat.interface.fiber import *
+from feat.interface.journal import *
 
 from . import decorator, fiber
 
@@ -30,7 +30,7 @@ def recorded(function, entry_id=None):
 
 class RecordInput(object):
 
-    implements(journaling.IRecordInput)
+    implements(IRecordInput)
 
     def __init__(self, args, kwargs):
         self.args = args
@@ -44,7 +44,7 @@ class RecordInput(object):
 
 class RecordAsyncOutput(object):
 
-    implements(journaling.IRecordOutput)
+    implements(IRecordOutput)
 
     def __init__(self, fiber):
         self._fiber = fiber
@@ -57,7 +57,7 @@ class RecordAsyncOutput(object):
 
 class RecordSyncOutput(object):
 
-    implements(journaling.IRecordOutput)
+    implements(IRecordOutput)
 
     def __init__(self, output):
         self._output = output
@@ -70,7 +70,7 @@ class RecordSyncOutput(object):
 
 class InvalidResult(object):
 
-    implements(journaling.IRecordingResult)
+    implements(IRecordingResult)
 
     def __init__(self, result):
         raise RecordResultError("Recorded function result invalid: %r" %\
@@ -78,12 +78,12 @@ class InvalidResult(object):
 
 components.registerAdapter(InvalidResult,
                            defer.Deferred,
-                           journaling.IRecordingResult)
+                           IRecordingResult)
 
 
 class RecordingAsyncResult(object):
 
-    implements(journaling.IRecordingResult)
+    implements(IRecordingResult)
 
     def __init__(self, fiber):
         self.output = RecordAsyncOutput(fiber)
@@ -98,13 +98,13 @@ class RecordingAsyncResult(object):
         return self._fiber.run()
 
 components.registerAdapter(RecordingAsyncResult,
-                           async.IFiber,
-                           journaling.IRecordingResult)
+                           IFiber,
+                           IRecordingResult)
 
 
 class RecordingSyncResult(object):
 
-    implements(journaling.IRecordingResult)
+    implements(IRecordingResult)
 
     def __init__(self, value):
         self._value = value
@@ -120,17 +120,17 @@ class RecordingSyncResult(object):
 
 components.registerAdapter(RecordingSyncResult,
                            object,
-                           journaling.IRecordingResult)
+                           IRecordingResult)
 
 
 class RecorderRoot(object):
 
-    implements(journaling.IRecorderNode)
+    implements(IRecorderNode)
 
     journal_parent = None
 
     def __init__(self, keeper, mode=JournalMode.recording, base_id=None):
-        self.journal_keeper = journaling.IJournalKeeper(keeper)
+        self.journal_keeper = IJournalKeeper(keeper)
         self.journal_mode = mode
         self._base_id = base_id and (base_id, ) or ()
         self._recorder_count = 0
@@ -144,10 +144,10 @@ class RecorderRoot(object):
 
 class RecorderNode(object):
 
-    implements(journaling.IRecorderNode)
+    implements(IRecorderNode)
 
     def __init__(self, parent):
-        node = journaling.IRecorderNode(parent)
+        node = IRecorderNode(parent)
         identifier = node.generate_identifier(self)
         self.journal_parent = node
         self.journal_id = identifier
@@ -164,7 +164,7 @@ class RecorderNode(object):
 
 class Recorder(RecorderNode):
 
-    implements(journaling.IRecorder)
+    implements(IRecorder)
 
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
@@ -189,7 +189,7 @@ class Recorder(RecorderNode):
         input = RecordInput(args, kwargs)
 
         result = method(self, *args, **kwargs)
-        recres = journaling.IRecordingResult(result)
+        recres = IRecordingResult(result)
         recres.nest(fiber)
 
         output = recres.output
@@ -204,7 +204,7 @@ class Recorder(RecorderNode):
 
 class FileJournalRecorder(object):
 
-    implements(journaling.IJournalKeeper)
+    implements(IJournalKeeper)
 
     ### IJournalKeeper Methods ###
 
