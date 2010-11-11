@@ -2,6 +2,19 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
+__all__ = ["InterestType", "IInitiatorFactory",
+           "IInterest", "IInitiator", "IInterested"]
+
+
+class InterestType(enum.Enum):
+    '''Type of Interest:
+
+    - private:   Dialog is initiated with 1-1 communication
+    - public:     Dialog is initiated with 1-* communication
+    '''
+
+    (private, public) = range(2)
+
 
 class IInitiatorFactory(Interface):
     '''This class represent a protocol initiator.
@@ -15,16 +28,6 @@ class IInitiatorFactory(Interface):
     def __call__(agent, medium, *args, **kwargs):
         '''Creates an instance implementing L{IInitiator}
         assuming the initiator role.'''
-
-
-class InterestType(enum.Enum):
-    '''Type of Interest:
-
-    - private:   Dialog is initiated with 1-1 communication
-    - public:     Dialog is initiated with 1-* communication
-    '''
-
-    (private, public) = range(2)
 
 
 class IInterest(Interface):

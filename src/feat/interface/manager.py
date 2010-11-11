@@ -2,6 +2,8 @@ from zope.interface import Attribute
 
 from . import protocols, contracts
 
+__all__ = ["IManagerFactory", "IAgencyManager","IAgentManager"]
+
 
 class IManagerFactory(protocols.IInitiatorFactory):
     '''This class is used to create instances of a contract manager

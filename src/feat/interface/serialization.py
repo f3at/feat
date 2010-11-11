@@ -1,5 +1,8 @@
 from zope.interface import Interface, Attribute
 
+__all__ = ["IRegistry", "IRestorator", "ISnapshot", "ISerializable",
+           "ISerializer", "IUnserializer", "IFormater", "IParser"]
+
 
 class IRegistry(Interface):
     '''Register factories to unserialize object.'''

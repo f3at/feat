@@ -2,6 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
+__all__ = ["RequestState", "IRequestPeer"]
+
 
 class RequestState(enum.Enum):
     '''Request protocol state:

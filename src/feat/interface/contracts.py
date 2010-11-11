@@ -2,6 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
+__all__ = ["ContractState", "IContractPeer"]
+
 
 class ContractState(enum.Enum):
     '''Contract protocol state:

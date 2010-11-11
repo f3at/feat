@@ -2,6 +2,8 @@ from zope.interface import Attribute
 
 from . import protocols, contracts
 
+__all__ = ["IContractorFactory", "IAgencyContractor", "IAgentContractor"]
+
 
 class IContractorFactory(protocols.IInterest):
     '''This class constructs contractor instance implementing

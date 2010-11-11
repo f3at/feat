@@ -1,5 +1,7 @@
 from zope.interface import Interface, Attribute
 
+__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent"]
+
 
 class IAgentFactory(Interface):
     '''Create an agent implementing L{IAgent}. Used by the agency when

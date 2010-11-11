@@ -2,6 +2,8 @@ from zope.interface import Attribute
 
 from . import protocols, requests
 
+__all__ = ["IRequesterFactory", "IAgencyRequester", "IAgentRequester"]
+
 
 class IRequesterFactory(protocols.IInitiatorFactory):
     '''This class is used to create instances of a requester

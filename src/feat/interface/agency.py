@@ -1,5 +1,7 @@
 from zope.interface import Interface
 
+__all__ = ["IAgency"]
+
 
 class IAgency(Interface):
     '''The agency. It manages agents communications, state, log, journal...
