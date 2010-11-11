@@ -88,7 +88,11 @@ def main(args):
     files = args[1:]
     files.sort()
     for file in files:
-        if 'flumotion.test' in file:
+        if 'feat.test' in file:
+            continue
+        if 'interface' in file:
+            continue
+        if 'feat.extern' in file:
             continue
         if '__init__' in file:
             continue
