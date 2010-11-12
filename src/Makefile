@@ -6,10 +6,13 @@ TRIAL = ${TOOLS}/flumotion-trial
 PEP8 = ${TOOLS}/pep8.py --repeat
 SHOW_COVERAGE = ${TOOLS}/show-coverage.py
 
-check-local: check-local-pep8
+check-local: check-tests check-local-pep8
 
 check-local-pep8:
 	find $(top_srcdir) -name \*.py | sort -u | xargs $(PYTHON) $(PEP8)
+
+check-tests:
+	$(PYTHON) $(TRIAL) $(COVERAGE_MODULES)
 
 coverage:
 	@test ! -z "$(COVERAGE_MODULES)" ||				\
@@ -28,3 +31,17 @@ show-coverage:
 	done;								\
 	$(PYTHON) $(SHOW_COVERAGE) $$keep
 
+check-commit:
+	@current=`pwd`;							\
+	repo=`dirname $$current`;					\
+	reponame=`basename $$repo`;					\
+	dst=/tmp/$$reponame;						\
+	if test -d $$dst; then 						\
+	(echo Removing old $$dst; rm -rf $$dst);			\
+	fi;								\
+	cd /tmp;							\
+	git clone -l --depth 0 $$repo;					\
+	cd $$reponame/src;						\
+	make check-local;						\
+	cd $$current;							\
+	rm -rf $$dst;
