@@ -3,6 +3,8 @@ from zope.interface import implements, classProvides
 from feat.common import log
 from feat.interface import requester
 
+'''testing post-receive hook'''
+
 
 class BaseRequester(log.Logger):
     classProvides(requester.IRequesterFactory)
