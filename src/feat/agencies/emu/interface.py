@@ -4,6 +4,28 @@
 from zope.interface import Interface
 
 
+class IListener(Interface):
+    '''Represents sth which can be registered in AgencyAgent to
+    listen for message'''
+
+    def on_message(message):
+        '''hook called when message arrives'''
+
+    def get_session_id():
+        '''
+        @return: session_id to bound to
+        @rtype: string
+        '''
+
+
+class IAgencyInitiatorFactory(Interface):
+    '''Factory constructing L{IAgencyInitiator} instance'''
+
+
+class IAgencyInterestedFactory(Interface):
+    '''Factory contructing L{IAgencyInterested} instance'''
+
+
 class IConnectionFactory(Interface):
     '''
     Responsible for creating connection to external server.

@@ -25,7 +25,7 @@ class IAgencyContractor(contracts.IContractPeer):
     def refuse(refusal):
         '''Refuses the announcement'''
 
-    def defect(cancelation):
+    def defect(cancellation):
         '''Cancels the granted job'''
 
     def finalize(report):
