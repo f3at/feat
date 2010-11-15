@@ -65,7 +65,7 @@ class Connection(log.Logger):
         self._messaging = messaging
         self._agent = IAgencyAgent(agent)
 
-        self._queue = self._messaging.defineQueue(self._agent.descriptor.uuid)
+        self._queue = self._messaging.defineQueue(self._agent.descriptor._id)
         self._mainLoop(self._queue)
         self.bindings = []
 

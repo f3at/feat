@@ -85,7 +85,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     def testGetingRequestWithoutInterest(self):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor._id
         msg = message.RequestMessage()
         msg.session_id = str(uuid.uuid1())
         return self._recv_msg(msg, self.endpoint, key)
@@ -117,7 +117,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
                              message.reply_to.shard)
-            self.assertEqual(self.agent.descriptor.uuid, \
+            self.assertEqual(self.agent.descriptor._id, \
                              message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)
             self.assertEqual('dummy-request', message.protocol_id)
@@ -186,7 +186,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)
 
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor._id
 
         req = self._build_req_msg(self.endpoint)
         d = self._recv_msg(req, self.endpoint, key)
@@ -205,7 +205,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.agent.register_interest(DummyReplier)
         self.agent.agent.got_payload = False
 
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor._id
         # define false sender, he will get the response later
         req = self._build_req_msg(self.endpoint)
         expiration_time = time.time() - 1

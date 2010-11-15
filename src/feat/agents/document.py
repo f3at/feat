@@ -5,13 +5,8 @@
 class Document(object):
 
     def __init__(self, uuid, rev=None):
-        self._uuid = uuid
+        self._id = uuid
         self._rev = rev
 
-    @property
-    def uuid(self):
-        return self._uuid
-
-    @property
-    def rev(self):
-        return self._rev
+    def to_json(self):
+        pass

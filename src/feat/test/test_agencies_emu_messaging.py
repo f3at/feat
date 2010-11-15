@@ -140,7 +140,7 @@ class StubAgent(object):
         self.messages.append(msg)
 
     def get_id(self):
-        return self.descriptor.uuid
+        return self.descriptor._id
 
 
 class TestMessaging(common.TestCase):

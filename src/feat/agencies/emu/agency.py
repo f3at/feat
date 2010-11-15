@@ -98,7 +98,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     def joinShard(self):
         self.log("Join shard called")
         shard = self.descriptor.shard
-        self.create_binding(self.descriptor.uuid)
+        self.create_binding(self.descriptor._id)
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):
