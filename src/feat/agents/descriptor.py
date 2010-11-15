@@ -8,6 +8,9 @@ from . import document
 
 class Descriptor(document.Document):
 
-    def __init__(self, uid=None, shard='lobby'):
-        document.Document.__init__(self, uid or str(uuid.uuid1()))
-        self.shard = shard
+    fields = ['shard']
+
+    def __init__(self, **kwargs):
+        kwargs['shard'] = kwargs.get('shard', 'lobby')
+        kwargs['_id'] = kwargs.get('_id', str(uuid.uuid1()))
+        document.Document.__init__(self, **kwargs)
