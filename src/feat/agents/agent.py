@@ -8,10 +8,6 @@ from feat.interface import agent
 
 
 class BaseAgent(log.Logger):
-    """
-    Didn't have time to fix unit tests so I changed the name.
-    We should discuss about this.
-    """
 
     log_category = "agent"
 
