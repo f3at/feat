@@ -31,7 +31,7 @@ class Agency(object):
         self._shards = {}
 
         self._messaging = IConnectionFactory(messaging.Messaging())
-        self._database = database.Database()
+        self._database = IConnectionFactory(database.Database())
 
     def start_agent(self, factory, descriptor):
         factory = agent.IAgentFactory(factory)
@@ -78,7 +78,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agent = factory(self)
 
         self._messaging = self.agency._messaging.get_connection(self)
-        self._database = self.agency._database
+        self._database = self.agency._database.get_connection(self)
 
         # instance_id -> IListener
         self._listeners = {}
@@ -89,9 +89,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agent.initiate()
 
     def joinShard(self):
-        self.log("Join shard called")
         shard = self.descriptor.shard
-        self.create_binding(self.descriptor.uuid)
+        self.log("Join shard called. Shard: %r", shard)
+
+        self.create_binding(self.descriptor.doc_id)
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):
@@ -205,6 +206,20 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def create_binding(self, key):
         return self._messaging.personal_binding(key)
+
+    # Delegation of methods to IDatabaseClient
+
+    def save_document(self, document):
+        self._database.save_document(document)
+
+    def reload_document(self, document):
+        self._database.reload_document(document)
+
+    def delete_document(self, document):
+        self._database.delete_document(document)
+
+    def get_document(self, document_id):
+        self._database.get_document(document_id)
 
 
 class Interest(object):

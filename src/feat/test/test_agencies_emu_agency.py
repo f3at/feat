@@ -5,6 +5,7 @@ import uuid
 import time
 
 from zope.interface import classProvides, implements
+from twisted.internet import defer
 
 from feat.agents import agent, descriptor, requester, message, replier
 from feat.interface import requests
@@ -53,10 +54,11 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     protocol_type = 'Request'
     protocol_id = 'dummy-request'
 
+    @defer.inlineCallbacks
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
 
-        desc = descriptor.Descriptor()
+        desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
         self.queue, self.endpoint = self.setup_endpoint()
@@ -86,7 +88,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     def testGetingRequestWithoutInterest(self):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor.doc_id
         msg = message.RequestMessage()
         msg.session_id = str(uuid.uuid1())
         return self.recv_msg(msg, self.endpoint, key)
@@ -99,10 +101,11 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     protocol_type = 'Request'
     protocol_id = 'dummy-request'
 
+    @defer.inlineCallbacks
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
 
-        desc = descriptor.Descriptor()
+        desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
         self.endpoint, self.queue = self.setup_endpoint()
@@ -118,7 +121,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         def assertsOnMessage(message):
             self.assertEqual(self.agent.descriptor.shard, \
                              message.reply_to.shard)
-            self.assertEqual(self.agent.descriptor.uuid, \
+            self.assertEqual(self.agent.descriptor.doc_id, \
                              message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)
             self.assertEqual('dummy-request', message.protocol_id)
@@ -187,7 +190,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)
 
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor.doc_id
 
         req = self._build_req_msg(self.endpoint)
         d = self.recv_msg(req, self.endpoint, key)
@@ -206,7 +209,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.agent.register_interest(DummyReplier)
         self.agent.agent.got_payload = False
 
-        key = self.agent.descriptor.uuid
+        key = self.agent.descriptor.doc_id
         # define false sender, he will get the response later
         req = self._build_req_msg(self.endpoint)
         expiration_time = time.time() - 1
@@ -221,29 +224,22 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @defer.inlineCallbacks
     def testTwoAgentsTalking(self):
         receiver = self.agent
-        sender = self.agency.start_agent(agent.BaseAgent,
-                                         descriptor.Descriptor())
+        desc = yield self.doc_factory(descriptor.Descriptor)
+        sender = self.agency.start_agent(agent.BaseAgent, desc)
         receiver.register_interest(DummyReplier)
         requester = sender.initiate_protocol(DummyRequester, receiver, 1)
 
-        d = self.cb_after(arg=requester,
+        requester = yield self.cb_after(arg=requester,
                           obj=requester.medium, method='terminate')
 
-        def asserts_on_requester(requester):
-            self.assertTrue(requester.got_response)
-            self.assertEqual(0, len(sender._listeners))
+        self.assertTrue(requester.got_response)
+        self.assertEqual(0, len(sender._listeners))
 
-        d.addCallback(asserts_on_requester)
-
-        def asserts_on_receiver(_, receiver):
-            self.assertEqual(0, len(receiver._listeners))
-            self.assertEqual(1, receiver.agent.got_payload)
-
-        d.addCallback(asserts_on_receiver, receiver)
-
-        return d
+        self.assertEqual(0, len(receiver._listeners))
+        self.assertEqual(1, receiver.agent.got_payload)
 
     def _build_req_msg(self, recp):
         r = message.RequestMessage()
