@@ -82,7 +82,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agent = factory(self)
 
         self._messaging = self.agency._messaging.createConnection(self)
-        self._database = self.agency._database
+        self._database = self.agency._database.connection
 
         # instance_id -> IListener
         self._listeners = {}
@@ -96,9 +96,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return self.agency.callLater(timeout, method, *args, **kwargs)
 
     def joinShard(self):
-        self.log("Join shard called")
         shard = self.descriptor.shard
-        self.create_binding(self.descriptor._id)
+        self.log("Join shard called. Shard: %r", shard)
+
+        self.create_binding(self.descriptor.doc_id)
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):

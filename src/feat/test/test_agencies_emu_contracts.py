@@ -109,9 +109,11 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
 
+    @defer.inlineCallbacks
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
-        desc = descriptor.Descriptor()
+        desc = yield self.doc_factory(descriptor.Descriptor)
+        self.log("Descriptor: %r", desc)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
         self.contractors = []
@@ -444,9 +446,10 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
 
+    @defer.inlineCallbacks
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
-        desc = descriptor.Descriptor()
+        desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
         self.agent.register_interest(DummyContractor)
 

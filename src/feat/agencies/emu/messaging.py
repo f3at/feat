@@ -20,6 +20,8 @@ class Messaging(log.Logger, log.FluLogKeeper):
         self._exchanges = {}
 
     def defineExchange(self, name):
+        assert name is not None
+
         exchange = self._getExchange(name)
         if not exchange:
             self.log("Defining exchange: %r" % name)
@@ -37,6 +39,8 @@ class Messaging(log.Logger, log.FluLogKeeper):
         return self._queues.get(name, None)
 
     def defineQueue(self, name):
+        assert name is not None
+
         queue = self._getQueue(name)
         if not queue:
             queue = Queue(name)
@@ -65,7 +69,8 @@ class Connection(log.Logger):
         self._messaging = messaging
         self._agent = IAgencyAgent(agent)
 
-        self._queue = self._messaging.defineQueue(self._agent.descriptor._id)
+        self._queue = self._messaging.defineQueue(
+            self._agent.descriptor.doc_id)
         self._mainLoop(self._queue)
         self.bindings = []
 

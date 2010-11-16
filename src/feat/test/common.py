@@ -9,6 +9,8 @@ from feat.agencies.emu import agency
 from feat.agents import message, recipient
 from feat.common import log
 
+from . import factories
+
 log.FluLogKeeper.init('test.log')
 
 
@@ -125,6 +127,19 @@ class AgencyTestHelper(object):
         exchange.bind(endpoint.key, queue)
         return endpoint, queue
 
+    # methods for handling documents
+
+    def doc_factory(self, doc_class, **options):
+        '''Builds document of selected class and saves it to the database
+
+        @returns: Document with id and revision set
+        @return_type: subclass of feat.agents.document.Document
+        '''
+        document = factories.build(doc_class, **options)
+        return self.agency._database.connection.save_document(document)
+
+    # methods for sending and receiving custom messages
+
     def _send_announce(self, manager):
         msg = message.Announcement()
         manager.medium.announce(msg)
@@ -185,10 +200,7 @@ class AgencyTestHelper(object):
                   expiration_time=None):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
-        if reply_to:
-            msg.reply_to = reply_to
-        else:
-            msg.reply_to = self.endpoint
+        msg.reply_to = reply_to or self.endpoint
         msg.expiration_time = expiration_time or (time.time() + 10)
         msg.protocol_type = self.protocol_type
         msg.protocol_id = self.protocol_id

@@ -1,16 +1,17 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import uuid
-
 from . import document
 
 
+@document.register
 class Descriptor(document.Document):
 
-    fields = ['shard']
+    document_type = 'descriptor'
 
-    def __init__(self, **kwargs):
-        kwargs['shard'] = kwargs.get('shard', 'lobby')
-        kwargs['_id'] = kwargs.get('_id', str(uuid.uuid1()))
+    def __init__(self, shard=None, **kwargs):
         document.Document.__init__(self, **kwargs)
+        self.shard = shard
+
+    def get_content(self):
+        return dict(shard=self.shard)

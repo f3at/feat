@@ -1,6 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import uuid
+
 from twisted.internet import defer, reactor
 from zope.interface import implements
 
@@ -133,14 +135,15 @@ class StubAgent(object):
     implements(agent.IAgencyAgent)
 
     def __init__(self):
-        self.descriptor = descriptor.Descriptor()
+        self.descriptor = descriptor.Descriptor(shard='lobby',
+                                                _id=str(uuid.uuid1()))
         self.messages = []
 
     def on_message(self, msg):
         self.messages.append(msg)
 
     def get_id(self):
-        return self.descriptor._id
+        return self.descriptor.doc_id
 
 
 class TestMessaging(common.TestCase):
