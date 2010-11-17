@@ -164,7 +164,7 @@ class AgencyTestHelper(object):
     def _send_cancel(self, contractor, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
-        contractor.medium.cancel(msg)
+        contractor.medium.defect(msg)
         return contractor
 
     def _recv_announce(self, *_):

@@ -34,6 +34,15 @@ class StateMachineMixin(object):
             self.warning("Unknown event received %r. Ignoring", event)
             return False
 
+        if isinstance(decision, list):
+            match = filter(lambda x: x['state_before'] == self.state, decision)
+            if len(match) != 1:
+                self.warning("Expected to find excatly one handler for %r in "
+                             "state %r, found %r handlers", event, self.state,
+                             len(match))
+                return False
+            decision = match[0]
+
         state_before = decision['state_before']
         try:
             self._ensure_state(state_before)

@@ -619,7 +619,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_cancel)
 
         d.addCallback(self.assertUnregistered,
-                      contracts.ContractState.cancelled)
+                      contracts.ContractState.defected)
 
         return d
 
@@ -667,10 +667,10 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._send_final_report)
         d.addCallback(self._recv_cancel)
 
-        d.addCallback(self.assertCalled, 'cancelled',
-                      params=[message.Cancellation])
+        d.addCallback(self.assertCalled, 'aborted',
+                      params=[])
         d.addCallback(self.assertUnregistered,
-                      contracts.ContractState.cancelled)
+                      contracts.ContractState.aborted)
 
         return d
 

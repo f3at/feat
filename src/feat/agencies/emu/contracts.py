@@ -400,12 +400,12 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return refusal
 
-    def cancel(self, cancellation):
+    def defect(self, cancellation):
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
 
         self._ensure_state(contracts.ContractState.granted)
-        self._set_state(contracts.ContractState.cancelled)
+        self._set_state(contracts.ContractState.defected)
 
         cancellation = self._send_message(cancellation)
         self._terminate()
@@ -498,8 +498,11 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _on_reject(self, rejection):
         self._run_and_terminate(self.contractor.rejected, rejection)
 
-    def _on_cancel(self, cancellation):
+    def _on_cancel_in_granted(self, cancellation):
         self._run_and_terminate(self.contractor.cancelled, cancellation)
+
+    def _on_cancel_in_completed(self, cancellation):
+        self._run_and_terminate(self.contractor.aborted)
 
     # IListener stuff
 
@@ -518,10 +521,12 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': contracts.ContractState.granted,
                  'state_before': contracts.ContractState.bid},
             message.Cancellation:\
-                {'method': self._on_cancel,
+                [{'method': self._on_cancel_in_granted,
                  'state_after': contracts.ContractState.cancelled,
-                 'state_before': [contracts.ContractState.granted,
-                                  contracts.ContractState.completed]},
+                 'state_before': contracts.ContractState.granted},
+                 {'method': self._on_cancel_in_completed,
+                 'state_after': contracts.ContractState.aborted,
+                 'state_before': contracts.ContractState.completed}],
             message.Acknowledgement:\
                 {'method': self._on_ack,
                  'state_after': contracts.ContractState.acknowledged,
