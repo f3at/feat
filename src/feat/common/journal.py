@@ -23,7 +23,7 @@ def recorded(function, entry_id=None):
     def direct_wrapper(self, *args, **kwargs):
         return self._call_recorded(None, fixed_id, function, *args, **kwargs)
 
-    fiber.set_alternative(direct_wrapper, fiber_wrapper)
+    #fiber.set_alternative(direct_wrapper, fiber_wrapper)
 
     return direct_wrapper
 

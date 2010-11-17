@@ -1,10 +1,14 @@
-# -*- coding: utf-8 -*-
+# -*- coding utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+
+from twisted.internet import reactor, defer
+from twisted.python import failure
 
 from feat.common import fiber
 
 from . import common
+from feat.interface.fiber import TriggerType
 
 
 class Dummy(object):
@@ -24,117 +28,100 @@ def eggs(self):
     pass
 
 
-def direct_fun_call(result, arg):
-    return "direct_fun_call", result, arg
-
-
-def alt_fun_call(result, fiber, orig, arg):
-    return "alt_fun_call", fiber.fiber_id, orig(result, arg)
-
-
-class AltTest(object):
-
-    def __init__(self, name):
-        self.name = name
-
-    def direct_meth_call(self, result, arg):
-        return self.name + ".direct_meth_call", result, arg
-
-
-@fiber.nested
-def test_nesting(result, arg):
+@fiber.woven
+def test_weaving(result, arg):
     f = fiber.Fiber()
     result.append(("1", arg, f))
 
-    f.addCallback(test_nesting_2a, arg + 2)
-    f.addCallback(test_nesting_2b, arg + 3)
+    f.addCallback(test_weaving_2a, arg + 2)
+    f.addCallback(test_weaving_2b, arg + 3)
     f.succeed(result)
     return f
 
 
-@fiber.nested
-def test_nesting_2a(result, arg):
+@fiber.woven
+def test_weaving_2a(result, arg):
     f = fiber.Fiber()
     result.append(("2a", arg, f))
 
-    f.addCallback(test_nesting_3, arg + 5)
-    f.addCallback(test_nesting_end, arg + 7)
+    f.addCallback(test_weaving_3, arg + 5)
+    f.addCallback(test_weaving_end, arg + 7)
     f.succeed(result)
     return f
 
 
-@fiber.nested
-def test_nesting_2b(result, arg):
+@fiber.woven
+def test_weaving_2b(result, arg):
     f = fiber.Fiber()
     result.append(("2b", arg, f))
 
-    f.addCallback(test_nesting_end, arg + 11)
+    f.addCallback(test_weaving_end, arg + 11)
     f.succeed(result)
     return f
 
 
-@fiber.nested
-def test_nesting_3(result, arg):
+@fiber.woven
+def test_weaving_3(result, arg):
     f = fiber.Fiber()
     result.append(("3", arg, f))
 
-    f.addCallback(test_nesting_end, arg + 13)
+    f.addCallback(test_weaving_end, arg + 13)
     f.succeed(result)
     return f
 
 
-@fiber.nested
-def test_nesting_end(result, arg):
+@fiber.woven
+def test_weaving_end(result, arg):
     f = fiber.Fiber()
     result.append(("end", arg, f))
     return f.succeed(result)
 
 
-class NestTest(object):
+class TestWeaving(object):
 
     def __init__(self, tag):
         self.tag = tag
 
-    @fiber.nested
-    def test_nesting(self, result, arg):
+    @fiber.woven
+    def test_weaving(self, result, arg):
         f = fiber.Fiber()
         result.append((self.tag, "1", arg, f))
 
-        f.addCallback(self.test_nesting_2a, arg + 2)
-        f.addCallback(self.test_nesting_2b, arg + 3)
+        f.addCallback(self.test_weaving_2a, arg + 2)
+        f.addCallback(self.test_weaving_2b, arg + 3)
         f.succeed(result)
         return f
 
-    @fiber.nested
-    def test_nesting_2a(self, result, arg):
+    @fiber.woven
+    def test_weaving_2a(self, result, arg):
         f = fiber.Fiber()
         result.append((self.tag, "2a", arg, f))
 
-        f.addCallback(self.test_nesting_3, arg + 5)
-        f.addCallback(self.test_nesting_end, arg + 7)
+        f.addCallback(self.test_weaving_3, arg + 5)
+        f.addCallback(self.test_weaving_end, arg + 7)
         f.succeed(result)
         return f
 
-    @fiber.nested
-    def test_nesting_2b(self, result, arg):
+    @fiber.woven
+    def test_weaving_2b(self, result, arg):
         f = fiber.Fiber()
         result.append((self.tag, "2b", arg, f))
 
-        f.addCallback(self.test_nesting_end, arg + 11)
+        f.addCallback(self.test_weaving_end, arg + 11)
         f.succeed(result)
         return f
 
-    @fiber.nested
-    def test_nesting_3(self, result, arg):
+    @fiber.woven
+    def test_weaving_3(self, result, arg):
         f = fiber.Fiber()
         result.append((self.tag, "3", arg, f))
 
-        f.addCallback(self.test_nesting_end, arg + 13)
+        f.addCallback(self.test_weaving_end, arg + 13)
         f.succeed(result)
         return f
 
-    @fiber.nested
-    def test_nesting_end(self, result, arg):
+    @fiber.woven
+    def test_weaving_end(self, result, arg):
         f = fiber.Fiber()
         result.append((self.tag, "end", arg, f))
         return f.succeed(result)
@@ -146,146 +133,789 @@ class TestFiber(common.TestCase):
         o = Dummy()
 
         f = fiber.Fiber()
-        self.assertEqual((None, None, []), f.snapshot(f))
+        self.assertEqual((None, None, []), f.snapshot())
 
         f.addCallback(o.spam, 42, parrot="dead")
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam",
-                            (42, ), {"parrot": "dead"},
-                            None, None, None)]),
-                         f.snapshot(f))
+                          [(("feat.test.test_common_fiber.Dummy.spam",
+                            (42, ), {"parrot": "dead"}), None)]),
+                         f.snapshot())
 
         f.addErrback(beans, 18, slug="mute")
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam",
-                            (42, ), {"parrot": "dead"},
-                            None, None, None),
-                           (None, None, None,
-                            "feat.test.test_common_fiber.beans",
-                            (18, ), {"slug": "mute"})]),
-                         f.snapshot(f))
+                          [(("feat.test.test_common_fiber.Dummy.spam",
+                             (42, ), {"parrot": "dead"}),
+                            None),
+                           (None,
+                            ("feat.test.test_common_fiber.beans",
+                             (18, ), {"slug": "mute"}))]),
+                         f.snapshot())
 
         f.addCallbacks(o.bacon, eggs)
         self.assertEqual((None, None,
-                          [("feat.test.test_common_fiber.Dummy.spam",
-                            (42, ), {"parrot": "dead"},
-                            None, None, None),
-                           (None, None, None,
-                             "feat.test.test_common_fiber.beans",
-                            (18, ), {"slug": "mute"}),
-                           ("feat.test.test_common_fiber.Dummy.bacon",
-                            None, None,
-                            "feat.test.test_common_fiber.eggs", None, None)]),
-                         f.snapshot(f))
+                          [(("feat.test.test_common_fiber.Dummy.spam",
+                             (42, ), {"parrot": "dead"}),
+                            None),
+                           (None,
+                            ("feat.test.test_common_fiber.beans",
+                             (18, ), {"slug": "mute"})),
+                           (("feat.test.test_common_fiber.Dummy.bacon",
+                             None, None),
+                            ("feat.test.test_common_fiber.eggs",
+                             None, None))]),
+                         f.snapshot())
 
-    def testFunCallWithoutAlternative(self):
-        fiber.remove_alternative(direct_fun_call)
+        f.succeed("shop")
+        self.assertEqual((TriggerType.succeed, "shop",
+                          [(("feat.test.test_common_fiber.Dummy.spam",
+                             (42, ), {"parrot": "dead"}),
+                            None),
+                           (None,
+                            ("feat.test.test_common_fiber.beans",
+                             (18, ), {"slug": "mute"})),
+                           (("feat.test.test_common_fiber.Dummy.bacon",
+                             None, None),
+                            ("feat.test.test_common_fiber.eggs",
+                             None, None))]),
+                         f.snapshot())
+
+    def testChainedSnapshot(self):
+        o = Dummy()
+
+        spam_id = "feat.test.test_common_fiber.Dummy.spam"
+        bacon_id = "feat.test.test_common_fiber.Dummy.bacon"
+        eggs_id = "feat.test.test_common_fiber.eggs"
+        beans_id = "feat.test.test_common_fiber.beans"
+
+        f1 = fiber.Fiber()
+        self.assertEqual((None, None, []), f1.snapshot())
+        f1.addCallback(o.spam, 1, 2, 3, accompaniment="beans")
+        self.assertEqual((None, None,
+                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                            None)]),
+                         f1.snapshot())
+
+        f2 = fiber.Fiber()
+        self.assertEqual((None, None, []), f2.snapshot())
+        f2.addErrback(o.bacon, accompaniment="eggs", extra="spam")
+        self.assertEqual((None, None,
+                          [(None,
+                            (bacon_id, None,
+                             {"accompaniment": "eggs", "extra": "spam"}))]),
+                         f2.snapshot())
+
+        f3 = fiber.Fiber()
+        self.assertEqual((None, None, []), f3.snapshot())
+        f3.addBoth(o.spam)
+        self.assertEqual((None, None,
+                          [((spam_id, None, None), (spam_id, None, None))]),
+                         f3.snapshot())
+
+        f2.chain(f3)
+        self.assertEqual((None, None,
+                          [(None,
+                            (bacon_id, None,
+                             {"accompaniment": "eggs", "extra": "spam"})),
+                           ((spam_id, None, None), (spam_id, None, None))]),
+                         f2.snapshot())
+
+        f2.addCallback(eggs)
+        self.assertEqual((None, None,
+                          [(None,
+                            (bacon_id, None,
+                             {"accompaniment": "eggs", "extra": "spam"})),
+                           ((spam_id, None, None), (spam_id, None, None)),
+                           ((eggs_id, None, None), None)]),
+                         f2.snapshot())
+
+        f1.chain(f2)
+        self.assertEqual((None, None,
+                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                            None),
+                            (None,
+                            (bacon_id, None,
+                             {"accompaniment": "eggs", "extra": "spam"})),
+                           ((spam_id, None, None), (spam_id, None, None)),
+                           ((eggs_id, None, None), None)]),
+                         f1.snapshot())
+
+        f1.addErrback(beans)
+        self.assertEqual((None, None,
+                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                            None),
+                            (None,
+                            (bacon_id, None,
+                             {"accompaniment": "eggs", "extra": "spam"})),
+                           ((spam_id, None, None), (spam_id, None, None)),
+                           ((eggs_id, None, None), None),
+                           (None, (beans_id, None, None))]),
+                         f1.snapshot())
+
+    def testFiberState(self):
+
+        def depth1():
+            state = fiber.get_state()
+            self.assertNotEqual(None, state)
+            self.assertTrue("root" in state)
+
+            state.add("depth1 in")
+
+            sub_state = depth2()
+            self.assertEqual(state, sub_state)
+            self.assertTrue("depth2 in" in state)
+            self.assertTrue("depth2 out" in state)
+            self.assertTrue("depth3" in state)
+
+            state.add("depth1 out")
+            return state
+
+        def depth2():
+            state = fiber.get_state()
+            self.assertNotEqual(None, state)
+            self.assertTrue("root" in state)
+            self.assertTrue("depth1 in" in state)
+
+            state.add("depth2 in")
+
+            sub_state = depth3()
+            self.assertEqual(state, sub_state)
+            self.assertTrue("depth3" in state)
+
+            state.add("depth2 out")
+            return state
+
+        def depth3():
+            state = fiber.get_state()
+            self.assertNotEqual(None, state)
+            self.assertTrue("root" in state)
+            self.assertTrue("depth1 in" in state)
+            self.assertTrue("depth2 in" in state)
+
+            state.add("depth3")
+            return state
+
+        self.assertEqual(None, fiber.get_state())
+        state = set(["root"])
+        fiber.set_state(state)
+        self.assertEqual(state, fiber.get_state())
+        sub_state = depth1()
+        # check that all states are reference to the same instance
+        self.assertEqual(state, sub_state)
+
+        self.assertTrue("root" in state)
+        self.assertTrue("depth1 in" in state)
+        self.assertTrue("depth1 out" in state)
+        self.assertTrue("depth2 in" in state)
+        self.assertTrue("depth2 out" in state)
+        self.assertTrue("depth3" in state)
+
+    def testCustomStateDepth(self):
+
+        def set_tag(tag):
+            # Extra depth to account for this function frame
+            state = fiber.get_state(depth=1)
+            if state is None:
+                state = set()
+                fiber.set_state(state, depth=1)
+            state.add(tag)
+
+        def have_tag(tag):
+            # Extra depth to account for this function frame
+            state = fiber.get_state(depth=1)
+            return state and tag in state
+
+        def sub_function():
+            self.assertTrue(have_tag("spam"))
+
+        self.assertFalse(have_tag("spam"))
+        set_tag("spam")
+        self.assertTrue(have_tag("spam"))
+        sub_function()
+
+        self.assertNotEqual(None, fiber.get_state())
+
+        # Check exception for invalid depth
+        self.assertRaises(RuntimeError, fiber.get_state, depth=-1)
+        self.assertRaises(RuntimeError, fiber.get_state, depth=666)
+        self.assertRaises(RuntimeError, fiber.set_state, None, depth=666)
+
+    def testFiberAttach(self):
+        r = fiber.RootFiberDescriptor()
+        fid = r.fiber_id
+
+        # Fiber 1 initial values
+        f1 = fiber.Fiber()
+        self.assertEqual(None, f1.fiber_id)
+        self.assertEqual(None, f1.fiber_depth)
+        self.assertEqual(None, f1.fiber_index)
+
+        # Fiber 1 after attached
+        r.attach(f1)
+        self.assertEqual(fid, f1.fiber_id)
+        self.assertEqual(0, f1.fiber_depth)
+        self.assertEqual(0, f1.fiber_index)
+
+        # Multiple attach are ignored
+        r.attach(f1)
+        self.assertEqual(fid, f1.fiber_id)
+        self.assertEqual(0, f1.fiber_depth)
+        self.assertEqual(0, f1.fiber_index)
+
+        # Fiber 2 initial values
+        f2 = fiber.Fiber()
+        self.assertEqual(None, f2.fiber_id)
+        self.assertEqual(None, f2.fiber_depth)
+        self.assertEqual(None, f2.fiber_index)
+
+        # Fiber 2 after attached
+        r.attach(f2)
+        self.assertEqual(fid, f2.fiber_id)
+        self.assertEqual(0, f2.fiber_depth)
+        self.assertEqual(1, f2.fiber_index)
+
+        # Multiple attach are ignored
+        r.attach(f2)
+        self.assertEqual(fid, f2.fiber_id)
+        self.assertEqual(0, f2.fiber_depth)
+        self.assertEqual(1, f2.fiber_index)
+
+        # Now sub-fibers
+
+        f21 = fiber.Fiber()
+        f2.attach(f21)
+        self.assertEqual(fid, f21.fiber_id)
+        self.assertEqual(1, f21.fiber_depth)
+        self.assertEqual(0, f21.fiber_index)
+        f2.attach(f21)
+        self.assertEqual(fid, f21.fiber_id)
+        self.assertEqual(1, f21.fiber_depth)
+        self.assertEqual(0, f21.fiber_index)
+
+        f211 = fiber.Fiber()
+        f21.attach(f211)
+        self.assertEqual(fid, f211.fiber_id)
+        self.assertEqual(2, f211.fiber_depth)
+        self.assertEqual(0, f211.fiber_index)
+
+        f212 = fiber.Fiber()
+        f21.attach(f212)
+        self.assertEqual(fid, f212.fiber_id)
+        self.assertEqual(2, f212.fiber_depth)
+        self.assertEqual(1, f212.fiber_index)
+
+        # Test errors
+
+        self.assertRaises(fiber.FiberError, r.attach, f212)
+        self.assertRaises(fiber.FiberError, f1.attach, f212)
+
+    def mkFiberCallTest(self, callback, errback, fail):
+
+        def check_fiber_id(result, fidref):
+            # Using a ugly list to pass a reference to the fid
+            fid = fidref and fidref[0] or None
+            state = fiber.get_state()
+            desc = state["descriptor"]
+            if fid:
+                self.assertEqual(fid, desc.fiber_id)
+            else:
+                fidref.append(desc.fiber_id)
+            return result
+
+        defs = []
+
+        ### Succeed trigger ###
 
         f = fiber.Fiber()
-        f.addCallback(direct_fun_call, 18)
-        f.succeed(42)
+        self.assertEqual(None, f.fiber_id)
 
-        self.assertEqual(("direct_fun_call", 42, 18), direct_fun_call(42, 18))
-        return self.assertAsyncEqual(("direct_fun_call", 42, 18),
-                                     f.start())
+        e = Exception()
+        fidref = []
 
-    def testMethCallWithoutAlternative(self):
-        fiber.remove_alternative(AltTest.direct_meth_call)
+        # Normal callback path
+        f.addCallback(callback, 2, value=3)
+        f.addCallback(check_fiber_id, fidref)
+        f.addErrback(fail) # Errback should not be called
+        f.addBoth(callback, 3, value=5)
+        f.addCallback(check_fiber_id, fidref)
+        f.addCallback(callback, 5, value=7)
+        f.addCallback(check_fiber_id, fidref)
+        f.addCallbacks(callback, fail, (7, ), {"value": 11})
+        f.addCallback(check_fiber_id, fidref)
 
-        o = AltTest("o")
+        # Failure path
+        f.addCallback(callback, 11, exception=e) # raise the exception
+        f.addErrback(check_fiber_id, fidref)
+        f.addCallback(fail) # Callback should not be called
+        f.addErrback(errback, e)
+        f.addErrback(check_fiber_id, fidref)
+        f.addBoth(errback, e)
+        f.addErrback(check_fiber_id, fidref)
+        f.addCallbacks(fail, errback, None, None, (e, ), {"value": 13})
+        f.addCallback(check_fiber_id, fidref)
+        f.addCallback(callback, 13, value=17) # Failure resolved
+        f.addCallback(check_fiber_id, fidref)
 
-        f = fiber.Fiber()
-        f.addCallback(o.direct_meth_call, 18)
-        f.succeed(42)
+        f.succeed(2)
+        defs.append(f.start())
+        self.assertNotEqual(None, f.fiber_id)
 
-        self.assertEqual(("o.direct_meth_call", 42, 18),
-                         o.direct_meth_call(42, 18))
-        return self.assertAsyncEqual(("o.direct_meth_call", 42, 18),
-                                     f.start())
-
-    def testFunCallWithAlternative(self):
-        fiber.set_alternative(direct_fun_call, alt_fun_call)
-
-        f = fiber.Fiber()
-        f.addCallback(direct_fun_call, 18)
-        f.succeed(42)
-
-        self.assertEqual(("direct_fun_call", 42, 18), direct_fun_call(42, 18))
-        return self.assertAsyncEqual(("alt_fun_call", f.fiber_id,
-                                      ("direct_fun_call", 42, 18)), f.start())
-
-    def testMethCallWithAlternative(self):
-        fiber.set_alternative(AltTest.direct_meth_call, alt_fun_call)
-
-        o = AltTest("o")
+        ### With fail trigger ###
 
         f = fiber.Fiber()
-        f.addCallback(o.direct_meth_call, 18)
-        f.succeed(42)
+        self.assertEqual(None, f.fiber_id)
 
-        self.assertEqual(("o.direct_meth_call", 42, 18),
-                         o.direct_meth_call(42, 18))
-        return self.assertAsyncEqual(("alt_fun_call", f.fiber_id,
-                                      ("o.direct_meth_call", 42, 18)),
-                                      f.start())
+        e = Exception()
 
-    def testAlternativeLimitations(self):
+        # Failure path
+        f.addCallback(fail) # Callback should not be called
+        f.addErrback(errback, e)
+        f.addBoth(errback, e)
+        f.addCallbacks(fail, errback, None, None, (e, ), {"value": 17})
+
+        # Normal callback path
+        f.addCallback(callback, 17, value=19)
+        f.addErrback(fail) # Errback should not be called
+        f.addBoth(callback, 19, value=23)
+        f.addCallbacks(callback, fail, (23, ), {"value": 29})
+
+        f.fail(e)
+        defs.append(f.start())
+        self.assertNotEqual(None, f.fiber_id)
+
+        return defer.DeferredList(defs, fireOnOneErrback=True)
+
+    def testFiberSyncCalls(self):
+
+        def fail(value):
+            self.fail("Unexpected call")
+
+        def callback(result, expected, value=None, exception=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, result)
+            if exception:
+                raise exception
+            if value is None:
+                return result
+            return value
+
+        def errback(failure, expected, value=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, failure.value)
+            if value is None:
+                return failure
+            return value
+
+        return self.mkFiberCallTest(callback, errback, fail)
+
+    def testFiberAsyncCallsUsingDeferred(self):
+
+        def fail(value):
+            self.fail("Unexpected call")
+
+        def raise_error(error):
+            raise error
+
+        def callback(result, expected, value=None, exception=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, result)
+            if exception:
+                d = delay(exception, 0.01)
+                d.addCallback(raise_error)
+                return d
+            else:
+                if value is None:
+                    value = result
+                return delay(value, 0.01)
+
+        def errback(failure, expected, value=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, failure.value)
+            return delay(value or failure, 0.01)
+
+        return self.mkFiberCallTest(callback, errback, fail)
+
+    def testFiberAsyncCallsUsingFibers(self):
+
+        def raise_error(error):
+            raise error
+
+        def fail(value):
+            self.fail("Unexpected call")
+
+        def callback(result, expected, value=None, exception=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, result)
+            if exception:
+                f = fiber.Fiber()
+                f.addCallback(delay, 0.01)
+                f.addCallback(raise_error)
+                f.succeed(exception)
+                return f
+            else:
+                if value is None:
+                    value = result
+                f = fiber.Fiber()
+                f.addCallback(delay, 0.01)
+                f.succeed(value)
+                return f
+
+        def errback(failure, expected, value=None):
+            self.assertNotEqual(None, fiber.get_state())
+            if expected is not None:
+                self.assertEqual(expected, failure.value)
+            f = fiber.Fiber()
+            f.addCallback(delay, 0.01)
+            f.succeed(value or failure)
+            return f
+
+        return self.mkFiberCallTest(callback, errback, fail)
+
+    def mkChainedFiberTest(self, push):
+        f1 = fiber.Fiber()
+        f1.addCallback(push, 1)
+
+        f2 = fiber.Fiber()
+        f2.addCallback(push, 2)
+
+        f3 = fiber.Fiber()
+        f3.addCallback(push, 3)
+
+        f2.chain(f3)
+        f2.addCallback(push, 4)
+
+        f1.chain(f2)
+        f1.addCallback(push, 5)
+
+        f1.succeed([])
+
+        return self.assertAsyncEqual(range(1, 6), f1.start())
+
+    def testChainedFiberSyncCalls(self):
+
+        def push(list, value):
+            list.append(value)
+            return list
+
+        return self.mkChainedFiberTest(push)
+
+    def testChainedFiberAsyncCalls(self):
+
+        def push(list, value):
+            list.append(value)
+            return delay(list, 0.01)
+
+        return self.mkChainedFiberTest(push)
+
+    def testChainedErrors(self):
+
+        def push(failure, l, v):
+            l.append(v)
+            return failure
+
+        result = []
+
+        f1 = fiber.Fiber()
+        f1.addErrback(push, result, 1)
+
+        f2 = fiber.Fiber()
+        f2.addErrback(push, result, 2)
+
+        f1.chain(f2)
+        f1.addErrback(push, result, 3)
+
+        f1.addErrback(lambda _: result) # Resolving the error
+
         try:
-            fiber.set_alternative(AltTest.direct_meth_call,
-                                  AltTest.direct_meth_call)
-            self.fail("Method should not be supported "
-                      "as fiber alternative call ? ?")
-        except RuntimeError:
-            pass
+            raise Exception()
+        except:
+            f1.fail()
 
-    def testNestingIdentifier(self):
+        return self.assertAsyncEqual(range(1, 4), f1.start())
+
+    def testFiberErrors(self):
+        # Started without trigger
+        f = fiber.Fiber()
+        self.assertRaises(fiber.FiberTriggerError, f.start)
+
+        # Cannot trigger more multiple time
+        f = fiber.Fiber()
+        f.succeed()
+        self.assertRaises(fiber.FiberTriggerError, f.fail)
+
+        # Cannot chain after triggered
+        f1 = fiber.Fiber()
+        f1.succeed()
+        f2 = fiber.Fiber()
+        self.assertRaises(fiber.FiberChainError, f1.chain, f2)
+        self.assertRaises(fiber.FiberChainError, f2.chain, f1)
+
+        # Cannot start chained fibers
         f1 = fiber.Fiber()
         f2 = fiber.Fiber()
-        f2.nest(f1)
-        self.assertEqual(f1.fiber_id, f2.fiber_id)
+        f1.chain(f2)
+        self.assertRaises(fiber.FiberChainError, f2.start)
 
-    def testFunctionNesting(self):
+        # Cannot trigger more multiple time
+        try:
+            raise Exception()
+        except:
+            # Create an exception context for failures to work
+            f = fiber.Fiber()
+            f.fail()
+            self.assertRaises(fiber.FiberTriggerError, f.succeed)
 
-        def check(result, fiber):
-            result = [(n, a, f.fiber_id, f.fiber_depth) for n, a, f in result]
-            fid = fiber.fiber_id
+        # Cannot add callback after a fiber has been triggered
+        f = fiber.Fiber()
+        f.addCallback(lambda r: r)
+        f.succeed()
+        self.assertRaises(fiber.FiberTriggerError, f.addCallback, lambda r: r)
 
-            self.assertEqual([('1', 0, fid, 0),
-                               ('2a', 2, fid, 1),
-                                ('3', 7, fid, 2),
-                                 ('end', 20, fid, 3),
-                                ('end', 9, fid, 2),
-                               ('2b', 3, fid, 1),
-                                ('end', 14, fid, 2),
-                              ], result)
+        # Cannot start fibers multiple times
+        f = fiber.Fiber()
+        f.addCallback(lambda r: r)
+        f.succeed()
+        f.start()
+        self.assertRaises(fiber.FiberStartedError, f.start)
 
-        f = test_nesting([], 0)
-        d = f.start()
-        d.addCallback(check, f)
-        return d
+        # Cannot add callback after a fiber has started
+        f = fiber.Fiber()
+        f.addCallback(lambda r: r)
+        f.succeed()
+        f.start()
+        self.assertRaises(fiber.FiberStartedError, f.addCallback, lambda r: r)
 
-    def testMethodNesting(self):
+    def testHandWovenSync(self):
 
-        def check(result, fiber, tag):
-            result = [(t, n, a, f.fiber_id, f.fiber_depth)
-                      for t, n, a, f in result]
-            fid = fiber.fiber_id
+        def invfact(value):
+            section = fiber.WovenSection()
+            section.enter()
+            result = 1
+            while True:
+                if factorial(result) >= value:
+                    break
+                result += 1
+            return section.exit(result)
 
-            self.assertEqual([(tag, '1', 0, fid, 0),
-                               (tag, '2a', 2, fid, 1),
-                                (tag, '3', 7, fid, 2),
-                                 (tag, 'end', 20, fid, 3),
-                                (tag, 'end', 9, fid, 2),
-                               (tag, '2b', 3, fid, 1),
-                                (tag, 'end', 14, fid, 2),
-                              ], result)
+        def factorial(value):
+            section = fiber.WovenSection()
+            section.enter()
+            result = 1
+            while value > 0:
+                result *= value
+                value -= 1
+            return section.exit(result)
 
-        o = NestTest("dummy")
-        f = o.test_nesting([], 0)
-        d = f.start()
-        d.addCallback(check, f, "dummy")
-        return d
+        return self.assertAsyncEqual(5, invfact(120))
 
+    def testHandWovenSyncWithFibers(self):
+
+        def invfact(value):
+            section = fiber.WovenSection()
+            section.enter()
+            f = fiber.Fiber()
+            f.addCallback(next, 0, value)
+            f.succeed(None)
+            return section.exit(f)
+
+        def next(fact, value, max):
+            section = fiber.WovenSection()
+            section.enter()
+            if fact and fact >= max:
+                return value
+            f = fiber.Fiber()
+            f.addCallback(factorial)
+            f.addCallback(next, value+1, max)
+            f.succeed(value+1)
+            return section.exit(f)
+
+        def factorial(value):
+            section = fiber.WovenSection()
+            section.enter()
+            result = 1
+            while value > 0:
+                result *= value
+                value -= 1
+            return section.exit(result)
+
+        return self.assertAsyncEqual(5, invfact(120))
+
+    def testHandWovenAsyncWithFibers(self):
+
+        def invfact(value):
+            section = fiber.WovenSection()
+            section.enter()
+            f = fiber.Fiber()
+            f.addCallback(delay, 0.01)
+            f.addCallback(next, 0, value)
+            f.addCallback(delay, 0.01)
+            f.succeed(None)
+            return section.exit(f)
+
+        def next(fact, value, max):
+            section = fiber.WovenSection()
+            section.enter()
+            if fact and fact >= max:
+                return value
+            f = fiber.Fiber()
+            f.addCallback(delay, 0.01)
+            f.addCallback(factorial)
+            f.addCallback(delay, 0.01)
+            f.addCallback(next, value+1, max)
+            f.addCallback(delay, 0.01)
+            f.succeed(value+1)
+            return section.exit(f)
+
+        def factorial(value):
+            section = fiber.WovenSection()
+            section.enter()
+            result = 1
+            while value > 0:
+                result *= value
+                value -= 1
+            return section.exit(result)
+
+        return self.assertAsyncEqual(5, invfact(120))
+
+    def testWovenDecorator(self):
+
+        @fiber.woven
+        def invfact(value):
+            f = fiber.Fiber()
+            f.addCallback(delay, 0.01)
+            f.addCallback(next, 0, value)
+            f.addCallback(delay, 0.01)
+            f.succeed(None)
+            return f
+
+        @fiber.woven
+        def next(fact, value, max):
+            if fact and fact >= max:
+                return value
+            f = fiber.Fiber()
+            f.addCallback(delay, 0.01)
+            f.addCallback(factorial)
+            f.addCallback(delay, 0.01)
+            f.addCallback(next, value+1, max)
+            f.addCallback(delay, 0.01)
+            f.succeed(value+1)
+            return f
+
+        @fiber.woven
+        def factorial(value):
+            result = 1
+            while value > 0:
+                result *= value
+                value -= 1
+            return result
+
+        return self.assertAsyncEqual(5, invfact(120))
+
+    def testWovenSectionErrors(self):
+        section = fiber.WovenSection()
+
+        # Cannot exit section before entering
+        self.assertRaises(fiber.FiberError, section.exit)
+
+        # Cannot abort before entering
+        self.assertRaises(fiber.FiberError, section.abort)
+
+        section.enter()
+
+        # Cannot enter multiple times
+        self.assertRaises(fiber.FiberError, section.enter)
+
+        section.exit()
+
+    @defer.inlineCallbacks
+    def testHandWovenExitValues(self):
+
+        def check(result, expected):
+            self.assertEqual(expected, result)
+
+        def test_direct(*args):
+            if len(args) < 2:
+                value, expected = 2*args #tuple multiplication
+            else:
+                value, expected = args
+
+            section = fiber.WovenSection()
+            section.enter()
+            result = section.exit(value)
+            self.assertNotEqual(result, defer.Deferred)
+            self.assertEqual(expected, result)
+
+        def test_callback(*args):
+            if len(args) < 2:
+                value, expected = 2*args #tuple multiplication
+            else:
+                value, expected = args
+
+            section = fiber.WovenSection()
+            section.enter()
+            d = section.exit(value)
+            self.assertTrue(isinstance(d, defer.Deferred))
+            d.addErrback(self.fail)
+            d.addCallback(check, expected)
+            return d
+
+        def test_errback(*args):
+            if len(args) < 2:
+                value, expected = 2*args #tuple multiplication
+            else:
+                value, expected = args
+
+            section = fiber.WovenSection()
+            section.enter()
+            result = section.exit(value)
+            self.assertTrue(isinstance(result, defer.Deferred))
+            result.addCallback(self.fail)
+            result.addErrback(check, expected)
+            return result
+
+        yield test_callback(None)
+        yield test_callback(123)
+        yield test_callback(defer.succeed(None), None)
+        yield test_callback(defer.succeed(123), 123)
+        yield test_callback(fiber.Fiber().succeed(None), None)
+        yield test_callback(fiber.Fiber().succeed(123), 123)
+
+        try:
+            raise Exception()
+        except:
+            f = failure.Failure()
+            yield test_errback(f)
+            yield test_errback(defer.fail(f), f)
+            yield test_errback(fiber.Fiber().fail(f), f)
+
+        section = fiber.WovenSection()
+        section.enter()
+
+        test_direct(None)
+        test_direct(123)
+        test_direct([1, 2, 3])
+        test_direct(fiber.Fiber().succeed(None))
+
+        try:
+            raise Exception()
+        except:
+            f = failure.Failure()
+            test_direct(f)
+            test_direct(fiber.Fiber().fail(f))
+
+        yield section.exit()
+
+    def testWovenSectionAbort(self):
+        section = fiber.WovenSection()
+        section.enter()
+        f = fiber.Fiber()
+        f.addBoth(self.fail)
+        f.succeed("Should never happen if aborted")
+        return section.abort(f)
 
     ### Private Methods ###
 
@@ -295,3 +925,12 @@ class TestFiber(common.TestCase):
             self.assertEqual(expected, result)
         d.addCallback(check)
         return d
+
+
+### Private Functions ###
+
+
+def delay(value, delay):
+    d = defer.Deferred()
+    reactor.callLater(delay, d.callback, value)
+    return d
