@@ -52,6 +52,10 @@ class TestEnum(common.TestCase):
         self.assertEqual(A.d, A.d)
         self.assertEqual(A.d, 42)
         self.assertEqual(int(A.a), B.a)
+        self.assertNotEqual(int(A.a), None)
+        self.assertNotEqual(None, int(A.a))
+        self.assertNotEqual(A.a, None)
+        self.assertNotEqual(None, A.a)
         self.assertRaises(TypeError, cmp, A.a, B.a)
         self.assertRaises(TypeError, cmp, A.d, B.d)
 

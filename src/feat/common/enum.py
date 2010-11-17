@@ -107,8 +107,10 @@ class Enum(int):
         return cls.get(value)
 
     def __cmp__(self, value):
+        if value is None:
+            return NotImplemented
         if isinstance(value, Enum) and not isinstance(value, type(self)):
-            raise TypeError("Cannot compare between enums")
+                raise TypeError("Cannot compare between enums")
         return super(Enum, self).__cmp__(value)
 
     def __str__(self):
