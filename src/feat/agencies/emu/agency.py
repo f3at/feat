@@ -45,10 +45,6 @@ class Agency(object):
     #     self._agents.remove(agent)
     #     agent._messaging.disconnect()
 
-    def callLater(self, timeout, method, *args, **kwargs):
-        return reactor.callLater(self.time_scale * timeout,\
-                                     method, *args, **kwargs)
-
     def joinedShard(self, agent, shard):
         shard_list = self._shards.get(shard, [])
         shard_list.append(agent)
@@ -91,9 +87,6 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         self.joinShard()
         self.agent.initiate()
-
-    def callLater(self, timeout, method, *args, **kwargs):
-        return self.agency.callLater(timeout, method, *args, **kwargs)
 
     def joinShard(self):
         shard = self.descriptor.shard

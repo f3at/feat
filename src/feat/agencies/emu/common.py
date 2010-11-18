@@ -3,6 +3,7 @@
 import traceback
 
 from twisted.internet import defer
+from feat.common import delay
 
 
 class StateAssertationError(RuntimeError):
@@ -122,7 +123,7 @@ class ExpirationCallsMixin(object):
             d.addCallback(callback.callback)
 
         result = defer.Deferred()
-        self._expiration_call = self.agent.callLater(
+        self._expiration_call = delay.callLater(
             time_left, to_call, result)
         return result
 

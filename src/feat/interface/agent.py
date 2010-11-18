@@ -39,11 +39,6 @@ class IAgencyAgent(Interface):
     def update_document(doc):
         pass
 
-    def callLater(timeout, method, *args, **kwargs):
-        '''
-        Wrapper for reactor.callLater.
-        '''
-
     def get_time():
         '''
         Use this to get current time. Should fetch the time from NTP server

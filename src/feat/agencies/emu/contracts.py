@@ -7,7 +7,7 @@ from twisted.python import components, failure
 from zope.interface import implements
 
 from feat.agents import message, recipient
-from feat.common import log, enum
+from feat.common import log, enum, delay
 from feat.interface import contracts, contractor, manager
 
 from interface import (IListener, IAgencyInitiatorFactory,
@@ -452,7 +452,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
             bind()
 
         def bind():
-            self._reporter_call = self.agent.callLater(frequency, send_report)
+            self._reporter_call = delay.callLater(frequency, send_report)
 
         bind()
 

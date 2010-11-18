@@ -11,6 +11,7 @@ from feat.agents import agent, descriptor, requester, message, replier
 from feat.interface import requests
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory, IAgentReplier
+from feat.common import delay
 
 from . import common
 
@@ -164,7 +165,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testRequestTimeout(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self.queue.consume()
         payload = 5

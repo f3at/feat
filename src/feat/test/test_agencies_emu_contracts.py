@@ -10,6 +10,7 @@ from feat.agents import agent, descriptor, contractor, message, manager
 from feat.interface import contracts, protocols
 from feat.interface.contractor import IContractorFactory
 from feat.interface.manager import IManagerFactory
+from feat.common import delay
 
 from . import common
 
@@ -155,7 +156,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return defer.DeferredList(defers)
 
     def testInitiateTimeout(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
         self.start_manager()
 
         d = self.cb_after(arg=None, obj=self.agent,
@@ -164,7 +165,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendAnnouncementAndWaitForExpired(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
         self.start_manager()
 
         self._send_announce(self.manager)
@@ -187,7 +188,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendAnnouncementRecvBidsAndGoToClosed(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
         self.start_manager()
 
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
@@ -254,7 +255,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testGrantingFromClosedState(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         def closed_handler(s):
             s.log('Contracts closed, sending grants')
@@ -292,7 +293,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testRefusingContractors(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
         self.start_manager()
 
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
@@ -322,7 +323,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testTimeoutAfterGrant(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         def bid_handler(s, bid):
             s.medium.grant((bid, message.Grant(bid_index=0), ))
@@ -344,7 +345,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testRecvCancellation(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         def closed_handler(s):
             s.log('Contracts closed, granting everybody')
@@ -400,7 +401,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testContactorsFinishAckSent(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         def closed_handler(s):
             s.log('Contracts closed, granting everybody')
@@ -487,7 +488,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testAnnounceExpiration(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -518,7 +519,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testPuttingBidAndReachingTimeout(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -576,7 +577,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testGrantWithUpdater(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -638,7 +639,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendingReportThanExpiring(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -690,7 +691,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testReceivingFromIncorrectState(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
@@ -704,7 +705,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testReceivingUnknownMessage(self):
-        self.agency.time_scale = 0.01
+        delay.time_scale = 0.01
 
         d = self._recv_announce()
         d.addCallback(self._get_contractor)
