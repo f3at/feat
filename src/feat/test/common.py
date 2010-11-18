@@ -71,6 +71,29 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
              "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
+    def assertAsyncEqual(self, expected, d):
+        '''Asserts the result of the specified deferred is equal
+        to the expected value. Returns the deferred.'''
+
+        def check(result):
+            self.assertEqual(expected, result)
+
+        d.addCallback(check)
+        return d
+
+    def break_chain(self, value):
+        '''Breaks a deferred call chain ensuring the rest will be called
+        asynchronously in the next reactor loop.'''
+        return self.delay(value, 0)
+
+    def delay(self, value, delay):
+        '''Returns a deferred triggered after the specified delay
+        with the specified value.'''
+        d = defer.Deferred()
+        #FIXME: change to support time scaling like in Agency
+        reactor.callLater(delay, d.callback, value)
+        return d
+
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)
         obj.__setattr__(method, handler)
