@@ -9,6 +9,7 @@ from zope.interface import implements
 from feat.agents import message, recipient
 from feat.common import log, enum, delay
 from feat.interface import contracts, contractor, manager
+from feat.interface.recipient import RecipientType
 
 from interface import (IListener, IAgencyInitiatorFactory,
                        IAgencyInterestedFactory)
@@ -134,6 +135,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.agent = agent
         self.recipients = recipients
+        self.expected_bids = self._count_expected_bids(recipients)
         self.args = args
         self.kwargs = kwargs
         self.session_id = str(uuid.uuid1())
@@ -229,12 +231,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._cancel_expiration_call()
 
         if len(self.contractors.with_state(ContractorState.bid)) > 0:
-            self._set_state(contracts.ContractState.closed)
-            expiration_time = max(map(lambda bid: bid.expiration_time,
-                                      self.contractors))
-            self._expire_at(expiration_time, self.manager.expired,
-                            contracts.ContractState.expired)
-            self._call(self.manager.closed)
+            self._close_announce_period()
         else:
             self._set_state(contracts.ContractState.expired)
             self._run_and_terminate(self.manager.expired)
@@ -243,6 +240,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log('Received bid %r', bid)
         ManagerContractor(self, bid)
         self._call(self.manager.bid, bid)
+        if self.expected_bids and len(self.contractors) >= self.expected_bids:
+            self._cancel_expiration_call()
+            self._close_announce_period()
 
     def _on_refusal(self, refusal):
         self.log('Received bid %r', refusal)
@@ -291,11 +291,33 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # private
 
+    def _close_announce_period(self):
+        self._set_state(contracts.ContractState.closed)
+        expiration_time = max(map(lambda bid: bid.expiration_time,
+                                  self.contractors))
+        self._expire_at(expiration_time, self.manager.expired,
+                        contracts.ContractState.expired)
+        self._call(self.manager.closed)
+
     def _terminate(self):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
+
+    def _count_expected_bids(self, recipients):
+        '''
+        Count the expected number of bids (after receiving them we close the
+        contract. If the recipient type is broadcast return None which denotes
+        unknown number of bids (contract will be closed after timeout).
+        '''
+
+        count = 0
+        for recp in recipients:
+            if recp.type == RecipientType.broadcast:
+                return None
+            count += 1
+        return count
 
     # IListener stuff
 

@@ -6,7 +6,8 @@ from zope.interface import classProvides
 from twisted.internet import defer
 
 from feat.agencies.emu.contracts import ContractorState
-from feat.agents import agent, descriptor, contractor, message, manager
+from feat.agents import (agent, descriptor, contractor,
+                        message, manager, recipient)
 from feat.interface import contracts, protocols
 from feat.interface.contractor import IContractorFactory
 from feat.interface.manager import IManagerFactory
@@ -140,16 +141,23 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return defer.DeferredList(map(lambda x: x.consume(), self.queues))
 
     def _put_bids(self, results, costs):
-        '''Put None as a cost to send Refusal'''
+        '''
+        Put "refuse" as a cost to send Refusal.
+        Put "skip" to ignore
+        '''
 
         defers = []
         for result, sender, cost in zip(results, self.recipients, costs):
             called, msg = result
-            if cost:
+            assert cost is not None
+            if cost and cost == "skip":
+                continue
+            elif cost and cost == "refuse":
+                bid = message.Refusal()
+            else:
                 bid = message.Bid()
                 bid.bids = [cost]
-            else:
-                bid = message.Refusal()
+
             self.log('Puting bid')
             defers.append(self._reply(bid, sender, msg))
 
@@ -195,19 +203,19 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         self._send_announce(self.manager)
         d = self._consume_all()
-        d.addCallback(self._put_bids, (1, 1, 1, ))
+        d.addCallback(self._put_bids, (1, 1, "skip", ))
         d.addCallback(lambda _: closed)
 
         def asserts_on_manager(_):
             self.assertEqual(contracts.ContractState.closed, self.medium.state)
-            self.assertEqual(3, len(self.medium.contractors))
+            self.assertEqual(2, len(self.medium.contractors))
             for bid in self.medium.contractors:
                 self.assertTrue(isinstance(bid, message.Bid))
 
             return self.manager
 
         d.addCallback(asserts_on_manager)
-        d.addCallback(self.assertCalled, 'bid', times=3)
+        d.addCallback(self.assertCalled, 'bid', times=2)
 
         d.addCallback(self.cb_after, obj=self.agent,
                        method='unregister_listener')
@@ -301,7 +309,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self._send_announce(self.manager)
         d = self._consume_all()
         # None stands for Refusal
-        d.addCallback(self._put_bids, (None, None, None, ))
+        d.addCallback(self._put_bids, ("refuse", "refuse", "refuse", ))
         d.addCallback(lambda _: closed)
 
         def asserts_on_manager(_):
@@ -436,6 +444,45 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.assertCalled, 'completed', params=[list])
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.completed)
+
+        return d
+
+    def testCountingExpectedBids(self):
+        self.start_manager()
+
+        self.assertEqual(len(self.recipients),
+               self.manager.medium._count_expected_bids(self.recipients))
+        broadcast = recipient.Broadcast('some protocol')
+        self.assertEqual(None,
+               self.manager.medium._count_expected_bids(broadcast))
+        self.assertEqual(None,
+               self.manager.medium._count_expected_bids(
+                             self.recipients + [broadcast]))
+        self.manager.medium._terminate()
+
+    def testGettingAllBidsGetsToClosed(self):
+        self.start_manager()
+
+        closed = self.cb_after(None, self.medium, '_close_announce_period')
+
+        self._send_announce(self.manager)
+        d = self._consume_all()
+        d.addCallback(self._put_bids, (1, 1, 1, ))
+        d.addCallback(lambda _: closed)
+
+        def asserts_on_manager(_):
+            self.assertEqual(3, self.medium.expected_bids)
+            self.assertEqual(contracts.ContractState.closed, self.medium.state)
+            self.assertEqual(3, len(self.medium.contractors))
+            for bid in self.medium.contractors:
+                self.assertTrue(isinstance(bid, message.Bid))
+
+            return self.manager
+
+        d.addCallback(asserts_on_manager)
+        d.addCallback(self.assertCalled, 'bid', times=3)
+
+        d.addCallback(lambda _: self.medium._terminate())
 
         return d
 

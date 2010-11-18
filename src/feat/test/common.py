@@ -7,7 +7,7 @@ from twisted.trial import unittest
 
 from feat.agencies.emu import agency
 from feat.agents import message, recipient
-from feat.common import log
+from feat.common import log, delay
 
 from . import factories
 
@@ -75,6 +75,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         handler = functools.partial(handler, obj)
         obj.__setattr__(method, handler)
         return obj
+
+    def tearDown(self):
+        delay.time_scale = 1
 
 
 class Mock(object):
