@@ -1,5 +1,7 @@
 from zope.interface import Interface, Attribute
 
+from feat.interface.database import IDatabaseClient
+
 __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent"]
 
 
@@ -11,7 +13,7 @@ class IAgentFactory(Interface):
         pass
 
 
-class IAgencyAgent(Interface):
+class IAgencyAgent(IDatabaseClient):
     '''Agency part of an agent. Used as a medium by the agent
     L{IAgent} implementation.'''
 
@@ -28,26 +30,23 @@ class IAgencyAgent(Interface):
     def initiate_protocol(factory, recipients, *args, **kwargs):
         '''
         Initiates a contract or a request.
+
         @type recipients: L{IRecipients}
         @rtype: L{IInitiator}
         @return: Instance of protocols initiator
         '''
 
-    def retrieve_document(id):
-        pass
-
-    def update_document(doc):
-        pass
-
     def get_time():
         '''
         Use this to get current time. Should fetch the time from NTP server
+
         @returns: Number of seconds since epoch
         '''
 
     def send_msg(recipient, message):
         '''
-        Sends message to given recipients
+        Sends message to the recipients.
+
         @param recipient: Message destination
         @type recipient: L{IRecipient}
         @return: Message that was sent
