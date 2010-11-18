@@ -10,6 +10,7 @@ from zope.interface import implements
 from feat.common import log
 from feat.agents import recipient
 from feat.interface import agency, agent, protocols
+from feat.interface.database import IDatabaseClient
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory
@@ -78,7 +79,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agent = factory(self)
 
         self._messaging = self.agency._messaging.createConnection(self)
-        self._database = self.agency._database.connection
+        self._database = IDatabaseClient(self.agency._database)
 
         # instance_id -> IListener
         self._listeners = {}
@@ -206,6 +207,20 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def create_binding(self, key):
         return self._messaging.createPersonalBinding(key)
+
+    # Delegation of methods to IDatabaseClient
+
+    def save_document(self, document):
+        self._database.save_document(document)
+
+    def reload_document(self, document):
+        self._database.reload_document(document)
+
+    def delete_document(self, document):
+        self._database.delete_document(document)
+
+    def get_document(self, document_id):
+        self._database.get_document(document_id)
 
 
 class Interest(object):
