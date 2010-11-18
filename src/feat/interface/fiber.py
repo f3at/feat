@@ -18,7 +18,7 @@ class TriggerType(enum.Enum):
 
 class WovenSection(Interface):
 
-    state = Attribute("Fiber state")
+    state = Attribute("Fiber section state")
 
     def enter():
         '''Initializes a woven section that will allow all functions
@@ -26,7 +26,7 @@ class WovenSection(Interface):
 
     def abort(result=None):
         '''Exits a woven section without starting any fibers.
-        Root section returns a deferred, sub-section the result as-is.'''
+        Returns None.'''
 
     def exit(result=None):
         '''Exits a woven section. Root sections return a deferred
@@ -37,6 +37,7 @@ class WovenSection(Interface):
 class IFiberDescriptor(Interface):
 
     fiber_id = Attribute("Fiber identifier, same for all nested fibers")
+    fiber_depth = Attribute("Depth in the fiber chain")
 
     def attach(fiber):
         '''Attaches a fiber to the descriptor.
@@ -79,9 +80,6 @@ class IFiber(IFiberDescriptor):
 
     '''
 
-    fiber_depth = Attribute("Depth in the fiber chain")
-    fiber_index = Attribute("Index of the fiber in the parent fiber")
-
     def start():
         '''Start the fiber asynchronous execution.
         Should theoretically not be called by the creator of the fiber,
@@ -116,7 +114,7 @@ class IFiber(IFiberDescriptor):
     def addBoth(callback, *args, **kwargs):
         pass
 
-    def _bind(descriptor, fiber_id, fiber_depth, fiber_index):
+    def _bind(descriptor, fiber_id, fiber_depth):
         '''Initializes the fiber as a nested sub-fiber
         of the specified fiber descriptor.
         Called by descriptor's attach method.

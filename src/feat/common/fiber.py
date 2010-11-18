@@ -1,7 +1,7 @@
 import sys
 import uuid
 
-from twisted.internet import reactor, defer
+from twisted.internet import defer
 from twisted.python import failure
 from zope.interface import implements
 
@@ -9,7 +9,7 @@ from feat.interface.fiber import *
 
 from . import reflect, decorator
 
-FIBER_STATE_TAG = "__fiber_dict__"
+SECTION_STATE_TAG = "__fiber_section_dict__"
 
 
 class FiberError(Exception):
@@ -57,11 +57,11 @@ def get_state(depth=0):
     frame = base_frame
     while frame:
         locals = frame.f_locals
-        state = locals.get(FIBER_STATE_TAG)
+        state = locals.get(SECTION_STATE_TAG)
         if state:
             if level > 0:
                 # Copy a reference of the fiber state in the base frame
-                base_frame.f_locals[FIBER_STATE_TAG] = state
+                base_frame.f_locals[SECTION_STATE_TAG] = state
             return state
         frame = frame.f_back
         level += 1
@@ -74,7 +74,7 @@ def set_state(state, depth=0):
         # Frame not found
         raise RuntimeError("Base frame not found")
 
-    base_frame.f_locals[FIBER_STATE_TAG] = state
+    base_frame.f_locals[SECTION_STATE_TAG] = state
 
 
 def _get_base_frame(depth):
@@ -94,31 +94,28 @@ class WovenSection(object):
 
     def __init__(self, descriptor=None):
         self._descriptor = descriptor
-        self._inside = False
         self.state = None
+        self._inside = False
 
     def enter(self):
         if self._inside:
             raise FiberError("Already inside a woven section")
         self._inside = True
 
-        if self._descriptor:
-            # If a descriptor was specified it's a root section
-            # just set an empty state in the calling function
-            # and remember to start the fibers.
-            state = {"descriptor": self._descriptor}
-            set_state(state, depth=1)
-        else:
+        if self._descriptor is None:
             # Use a depth of 1 because we want the state to be
             # in the calling function not in the method.
             state = get_state(depth=1)
-            if state is None:
-                # First woven section, we create an
-                # and remember to start the fibers.
-                self._descriptor = RootFiberDescriptor()
-                state = {"descriptor": self._descriptor}
-                set_state(state, depth=1)
+            if state is not None:
+                # We are in a sub-section, just update the state
+                self.state = state
+                return
+            # First woven section, we create an
+            # and remember to start the fibers.
+            self._descriptor = RootFiberDescriptor()
 
+        state = {"descriptor": self._descriptor}
+        set_state(state, depth=1)
         self.state = state
 
     def abort(self, result=None):
@@ -155,16 +152,16 @@ class RootFiberDescriptor(object):
 
     implements(IFiberDescriptor)
 
+    fiber_depth = 0
+
     def __init__(self):
         self.fiber_id = str(uuid.uuid4())
-        self._index = 0
 
     ### IFiberDescriptor ###
 
     def attach(self, fiber):
         fiber = IFiber(fiber)
-        if fiber._bind(self, self.fiber_id, 0, self._index):
-            self._index += 1
+        fiber._bind(self, self.fiber_id, 1)
 
 
 class Fiber(object):
@@ -181,9 +178,7 @@ class Fiber(object):
         self._descriptor = None
         self.fiber_depth = None
         self.fiber_id = None
-        self.fiber_index = None
 
-        self._index = 0
         self._started = False
         self._trigger = None
         self._param = None
@@ -200,8 +195,7 @@ class Fiber(object):
 
     def attach(self, fiber):
         fiber = IFiber(fiber)
-        if fiber._bind(self, self.fiber_id, self.fiber_depth + 1, self._index):
-            self._index += 1
+        fiber._bind(self, self.fiber_id, self.fiber_depth + 1)
 
     ### IFiber Methods ###
 
@@ -313,7 +307,7 @@ class Fiber(object):
                                  errbackArgs=args,
                                  errbackKeywords=kwargs)
 
-    def _bind(self, desc, fiber_id, fiber_depth, fiber_index):
+    def _bind(self, desc, fiber_id, fiber_depth):
         if self._descriptor is not None:
             if self._descriptor == desc:
                 # Already attached
@@ -322,7 +316,6 @@ class Fiber(object):
         self._descriptor = desc
         self.fiber_id = fiber_id
         self.fiber_depth = fiber_depth
-        self.fiber_index = fiber_index
         return True
 
     def _chain(self):
