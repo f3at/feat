@@ -93,7 +93,7 @@ class WovenSection(object):
     '''Handles fiber-aware sections.'''
 
     def __init__(self, descriptor=None):
-        self._descriptor = descriptor
+        self.descriptor = descriptor
         self.state = None
         self._inside = False
 
@@ -102,7 +102,7 @@ class WovenSection(object):
             raise FiberError("Already inside a woven section")
         self._inside = True
 
-        if self._descriptor is None:
+        if self.descriptor is None:
             # Use a depth of 1 because we want the state to be
             # in the calling function not in the method.
             state = get_state(depth=1)
@@ -112,9 +112,9 @@ class WovenSection(object):
                 return
             # First woven section, we create an
             # and remember to start the fibers.
-            self._descriptor = RootFiberDescriptor()
+            self.descriptor = RootFiberDescriptor()
 
-        state = {"descriptor": self._descriptor}
+        state = {"descriptor": self.descriptor}
         set_state(state, depth=1)
         self.state = state
 
@@ -128,7 +128,7 @@ class WovenSection(object):
             raise FiberError("Not inside a woven section")
         self._inside = False
 
-        if self._descriptor is None:
+        if self.descriptor is None:
             # If not a root section just return the result as-is
             return result
 
@@ -136,7 +136,7 @@ class WovenSection(object):
         if IFiber.providedBy(result):
             # If the result is a fiber, we initialize and start it
             fiber = IFiber(result)
-            self._descriptor.attach(fiber)
+            self.descriptor.attach(fiber)
             return fiber.start()
 
         if isinstance(result, defer.Deferred):
