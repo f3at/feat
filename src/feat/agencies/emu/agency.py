@@ -31,7 +31,7 @@ class Agency(object):
         # shard -> [ agents ]
         self._shards = {}
 
-        self._messaging = messaging.Messaging()
+        self._messaging = IConnectionFactory(messaging.Messaging())
         self._database = IConnectionFactory(database.Database())
 
     def start_agent(self, factory, descriptor):
@@ -78,7 +78,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.descriptor = descriptor
         self.agent = factory(self)
 
-        self._messaging = self.agency._messaging.createConnection(self)
+        self._messaging = self.agency._messaging.get_connection(self)
         self._database = self.agency._database.get_connection(self)
 
         # instance_id -> IListener
@@ -97,7 +97,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agency.joinedShard(self, shard)
 
     def leaveShard(self):
-        bindings = self._messaging.getBindingsForShard(self.descriptor.shard)
+        bindings = self._messaging.get_bindings(self.descriptor.shard)
         map(lambda binding: binding.revoke(), bindings)
         self.agency.leftShard(self, self.descriptor.shard)
         self.descriptor.shard = None
@@ -206,7 +206,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return msg
 
     def create_binding(self, key):
-        return self._messaging.createPersonalBinding(key)
+        return self._messaging.personal_binding(key)
 
     # Delegation of methods to IDatabaseClient
 

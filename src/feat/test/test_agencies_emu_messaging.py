@@ -151,7 +151,7 @@ class TestMessaging(common.TestCase):
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = StubAgent()
-        self.connection = self.messaging.createConnection(self.agent)
+        self.connection = self.messaging.get_connection(self.agent)
 
     def testCreateConnection(self):
         self.assertTrue(isinstance(self.connection, messaging.Connection))
@@ -161,8 +161,8 @@ class TestMessaging(common.TestCase):
 
     def test1To1Binding(self):
         key = self.agent.get_id()
-        binding = self.connection.createPersonalBinding(key)
-        self.assertEqual(1, len(self.connection.bindings))
+        binding = self.connection.personal_binding(key)
+        self.assertEqual(1, len(self.connection.get_bindings()))
 
         exchange = self.messaging._exchanges.values()[0]
         for x in range(5):
@@ -179,7 +179,7 @@ class TestMessaging(common.TestCase):
 
         def revoke_binding(_):
             binding.revoke()
-            self.assertEqual(0, len(self.connection.bindings))
+            self.assertEqual(0, len(self.connection.get_bindings()))
 
         d.addCallback(revoke_binding)
 
@@ -187,12 +187,12 @@ class TestMessaging(common.TestCase):
 
     def testTwoAgentsWithSameBinding(self):
         second_agent = StubAgent()
-        second_connection = self.messaging.createConnection(second_agent)
+        second_connection = self.messaging.get_connection(second_agent)
         agents = [self.agent, second_agent]
         connections = [self.connection, second_connection]
 
         key = 'some key'
-        bindings = map(lambda x: x.createPersonalBinding(key), connections)
+        bindings = map(lambda x: x.personal_binding(key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
@@ -208,7 +208,7 @@ class TestMessaging(common.TestCase):
 
         def revoke_bindings(_):
             map(lambda x: x.revoke(), bindings)
-            self.assertEqual(0, len(self.connection.bindings))
+            self.assertEqual(0, len(self.connection.get_bindings()))
 
         d.addCallback(revoke_bindings)
 
@@ -216,7 +216,7 @@ class TestMessaging(common.TestCase):
 
     def testPublishingByAgent(self):
         key = self.agent.get_id()
-        self.connection.createPersonalBinding(key)
+        self.connection.personal_binding(key)
         self.connection.publish(key, self.agent.descriptor.shard,\
                                    'some message')
         d = defer.Deferred()

@@ -1,12 +1,17 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+from zope.interface import implements
 from twisted.internet import defer, reactor
 from feat.common import log
 from feat.interface.agent import IAgencyAgent
 
+from interface import IConnectionFactory
+
 
 class Messaging(log.Logger, log.FluLogKeeper):
+
+    implements(IConnectionFactory)
 
     log_category = "messaging"
 
@@ -19,6 +24,13 @@ class Messaging(log.Logger, log.FluLogKeeper):
         # name -> exchange
         self._exchanges = {}
 
+    # IConnectionFactory implementation
+
+    def get_connection(self, agent):
+        return Connection(self, agent)
+
+    # end of IConnectionFactory
+
     def defineExchange(self, name):
         assert name is not None
 
@@ -28,15 +40,6 @@ class Messaging(log.Logger, log.FluLogKeeper):
             exchange = Exchange(name)
             self._exchanges[name] = exchange
         return exchange
-
-    def _getExchange(self, name):
-        return self._exchanges.get(name, None)
-
-    def createConnection(self, agent):
-        return Connection(self, agent)
-
-    def _getQueue(self, name):
-        return self._queues.get(name, None)
 
     def defineQueue(self, name):
         assert name is not None
@@ -55,6 +58,14 @@ class Messaging(log.Logger, log.FluLogKeeper):
         else:
             self.error("Exchange %r not found!" % shard)
 
+    # private
+
+    def _getExchange(self, name):
+        return self._exchanges.get(name, None)
+
+    def _getQueue(self, name):
+        return self._queues.get(name, None)
+
 
 class FinishConnection(Exception):
     pass
@@ -72,7 +83,7 @@ class Connection(log.Logger):
         self._queue = self._messaging.defineQueue(
             self._agent.descriptor.doc_id)
         self._mainLoop(self._queue)
-        self.bindings = []
+        self._bindings = []
 
     def _mainLoop(self, queue):
 
@@ -100,10 +111,18 @@ class Connection(log.Logger):
         self._consumeDeferred.addCallback(get_and_call_on_message)
         return self._consumeDeferred
 
+    def _append_binding(self, binding):
+        self._bindings.append(binding)
+
+    def _remove_binding(self, binding):
+        self._bindings.remove(binding)
+
+    # IMessagingClient implementation
+
     def disconnect(self):
         self._consumeDeferred.errback(FinishConnection("Disconnecting"))
 
-    def createPersonalBinding(self, key, shard=None):
+    def personal_binding(self, key, shard=None):
         if not shard:
             shard = self._agent.descriptor.shard
         return PersonalBinding(self, key=key, shard=shard)
@@ -111,14 +130,13 @@ class Connection(log.Logger):
     def publish(self, key, shard, message):
         return self._messaging.publish(key, shard, message)
 
-    def getBindingsForShard(self, shard):
-        return filter(lambda x: x.shard == shard, self.bindings)
+    def get_bindings(self, shard=None):
+        if shard:
+            return filter(lambda x: x.shard == shard, self._bindings)
+        else:
+            return self._bindings
 
-    def appendBinding(self, binding):
-        self.bindings.append(binding)
-
-    def removeBinding(self, binding):
-        self.bindings.remove(binding)
+    # end of IMessagingClient implementation
 
 
 class BaseBinding(object):
@@ -126,11 +144,11 @@ class BaseBinding(object):
     def __init__(self, connection, shard, **kwargs):
         self._args = kwargs
         self.connection = connection
-        self.connection.appendBinding(self)
+        self.connection._append_binding(self)
         self.shard = shard
 
     def revoke(self):
-        self.connection.removeBinding(self)
+        self.connection._remove_binding(self)
 
 
 class PersonalBinding(BaseBinding):
