@@ -24,3 +24,20 @@ class IAgencyInitiatorFactory(Interface):
 
 class IAgencyInterestedFactory(Interface):
     '''Factory contructing L{IAgencyInterested} instance'''
+
+
+class IConnectionFactory(Interface):
+    '''
+    Responsible for creating connection to external server.
+    Should be implemented by database and messaging drivers
+    passed to the agency.
+    '''
+
+    def get_connection(agent):
+        '''
+        Instantiate the connection for the agent.
+
+        @params agent: Agent to connect to.
+        @type agent: L{feat.interfaces.agent.IAgencyAgent}
+        @returns: The connection instance.
+        '''

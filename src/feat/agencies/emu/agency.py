@@ -13,7 +13,7 @@ from feat.interface import agency, agent, protocols
 from feat.interface.database import IDatabaseClient
 
 from interface import IListener, IAgencyInitiatorFactory,\
-                      IAgencyInterestedFactory
+                      IAgencyInterestedFactory, IConnectionFactory
 
 from . import messaging
 from . import database
@@ -32,7 +32,7 @@ class Agency(object):
         self._shards = {}
 
         self._messaging = messaging.Messaging()
-        self._database = database.Database()
+        self._database = IConnectionFactory(database.Database())
 
     def start_agent(self, factory, descriptor):
         factory = agent.IAgentFactory(factory)
@@ -79,7 +79,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agent = factory(self)
 
         self._messaging = self.agency._messaging.createConnection(self)
-        self._database = IDatabaseClient(self.agency._database)
+        self._database = self.agency._database.get_connection(self)
 
         # instance_id -> IListener
         self._listeners = {}

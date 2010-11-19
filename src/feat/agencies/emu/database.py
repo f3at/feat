@@ -5,12 +5,13 @@ import uuid
 import json
 
 from twisted.internet import defer
-from twisted.python import components
 from zope.interface import implements
 
 from feat.common import log
 from feat.agents import document
 from feat.interface.database import IDatabaseClient
+
+from interface import IConnectionFactory
 
 
 class ConflictError(RuntimeError):
@@ -27,6 +28,9 @@ class NotFoundError(RuntimeError):
 
 
 class Database(log.Logger, log.FluLogKeeper):
+
+    implements(IConnectionFactory)
+
     '''
     Imitates the CouchDB server internals.
     The bizare naming used in this class origins from paisley,
@@ -42,6 +46,13 @@ class Database(log.Logger, log.FluLogKeeper):
         # id -> document
         self._documents = {}
         self.connection = Connection(self)
+
+    # IConnectionFactory
+
+    def get_connection(self, agent):
+        return self.connection
+
+    # end of IConnectionFactory
 
     def saveDoc(self, doc, docId=None):
         '''Imitate sending HTTP request to CouchDB server'''
@@ -195,8 +206,6 @@ class Connection(log.Logger, log.FluLogKeeper):
         for key in doc:
             resp[key.encode('utf-8')] = doc[key]
         return resp
-
-components.registerAdapter(Connection, Database, IDatabaseClient)
 
 
 class Response(dict):
