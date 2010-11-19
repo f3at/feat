@@ -12,23 +12,7 @@ from . import reflect, decorator
 SECTION_STATE_TAG = "__fiber_section_dict__"
 
 
-class FiberError(Exception):
-    pass
-
-
-class FiberStartedError(FiberError):
-    pass
-
-
-class FiberTriggerError(FiberError):
-    pass
-
-
-class FiberChainError(FiberError):
-    pass
-
-
-@decorator.simple
+@decorator.simple_function
 def woven(fun):
     '''Decorator that will initialize and eventually start nested fibers.'''
 

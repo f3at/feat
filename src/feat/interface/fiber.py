@@ -2,7 +2,9 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["TriggerType", "IFiberDescriptor", "IFiber"]
+__all__ = ["TriggerType", "FiberError",
+           "FiberStartedError", "FiberTriggerError", "FiberChainError",
+           "IFiberDescriptor", "IFiber"]
 
 
 class TriggerType(enum.Enum):
@@ -14,6 +16,22 @@ class TriggerType(enum.Enum):
     '''
 
     succeed, fail, chained = range(3)
+
+
+class FiberError(Exception):
+    pass
+
+
+class FiberStartedError(FiberError):
+    pass
+
+
+class FiberTriggerError(FiberError):
+    pass
+
+
+class FiberChainError(FiberError):
+    pass
 
 
 class WovenSection(Interface):
