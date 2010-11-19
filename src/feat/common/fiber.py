@@ -6,6 +6,7 @@ from twisted.python import failure
 from zope.interface import implements
 
 from feat.interface.fiber import *
+from feat.interface.serialization import *
 
 from . import reflect, decorator
 
@@ -79,6 +80,7 @@ class WovenSection(object):
     def __init__(self, descriptor=None):
         self.descriptor = descriptor
         self.state = None
+        self._is_root = True
         self._inside = False
 
     def enter(self):
@@ -93,6 +95,8 @@ class WovenSection(object):
             if state is not None:
                 # We are in a sub-section, just update the state
                 self.state = state
+                self.descriptor = state["descriptor"]
+                self._is_root = False
                 return
             # First woven section, we create an
             # and remember to start the fibers.
@@ -112,7 +116,7 @@ class WovenSection(object):
             raise FiberError("Not inside a woven section")
         self._inside = False
 
-        if self.descriptor is None:
+        if not self._is_root:
             # If not a root section just return the result as-is
             return result
 
@@ -156,7 +160,7 @@ class Fiber(object):
     have there fiber_depth incremented.
     '''
 
-    implements(IFiber)
+    implements(IFiber, ISnapshot)
 
     def __init__(self):
         self._descriptor = None

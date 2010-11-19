@@ -522,19 +522,19 @@ class TestFiber(common.TestCase):
             if expected is not None:
                 self.assertEqual(expected, result)
             if exception:
-                d = self.break_chain(exception)
+                d = common.break_chain(exception)
                 d.addCallback(raise_error)
                 return d
             else:
                 if value is None:
                     value = result
-                return self.break_chain(value)
+                return common.break_chain(value)
 
         def errback(failure, expected, value=None):
             self.assertNotEqual(None, fiber.get_state())
             if expected is not None:
                 self.assertEqual(expected, failure.value)
-            return self.break_chain(value or failure)
+            return common.break_chain(value or failure)
 
         return self.mkFiberCallTest(callback, errback, fail)
 
@@ -552,7 +552,7 @@ class TestFiber(common.TestCase):
                 self.assertEqual(expected, result)
             if exception:
                 f = fiber.Fiber()
-                f.addCallback(self.break_chain)
+                f.addCallback(common.break_chain)
                 f.addCallback(raise_error)
                 f.succeed(exception)
                 return f
@@ -560,7 +560,7 @@ class TestFiber(common.TestCase):
                 if value is None:
                     value = result
                 f = fiber.Fiber()
-                f.addCallback(self.break_chain)
+                f.addCallback(common.break_chain)
                 f.succeed(value)
                 return f
 
@@ -569,7 +569,7 @@ class TestFiber(common.TestCase):
             if expected is not None:
                 self.assertEqual(expected, failure.value)
             f = fiber.Fiber()
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.succeed(value or failure)
             return f
 
@@ -593,7 +593,7 @@ class TestFiber(common.TestCase):
 
         f1.succeed([])
 
-        return self.assertAsyncEqual(range(1, 6), f1.start())
+        return self.assertAsyncEqual(None, range(1, 6), f1.start())
 
     def testChainedFiberSyncCalls(self):
 
@@ -607,7 +607,7 @@ class TestFiber(common.TestCase):
 
         def push(list, value):
             list.append(value)
-            return self.break_chain(list)
+            return common.break_chain(list)
 
         return self.mkChainedFiberTest(push)
 
@@ -635,7 +635,7 @@ class TestFiber(common.TestCase):
         except:
             f1.fail()
 
-        return self.assertAsyncEqual(range(1, 4), f1.start())
+        return self.assertAsyncEqual(None, range(1, 4), f1.start())
 
     def testFiberDepth(self):
 
@@ -766,7 +766,7 @@ class TestFiber(common.TestCase):
                 value -= 1
             return section.exit(result)
 
-        return self.assertAsyncEqual(5, invfact(120))
+        return self.assertAsyncEqual(None, 5, invfact(120))
 
     def testHandWovenSyncWithFibers(self):
 
@@ -798,7 +798,7 @@ class TestFiber(common.TestCase):
                 value -= 1
             return section.exit(result)
 
-        return self.assertAsyncEqual(5, invfact(120))
+        return self.assertAsyncEqual(None, 5, invfact(120))
 
     def testHandWovenAsyncWithFibers(self):
 
@@ -806,9 +806,9 @@ class TestFiber(common.TestCase):
             section = fiber.WovenSection()
             section.enter()
             f = fiber.Fiber()
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(next, 0, value)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.succeed(None)
             return section.exit(f)
 
@@ -818,11 +818,11 @@ class TestFiber(common.TestCase):
             if fact and fact >= max:
                 return value
             f = fiber.Fiber()
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(factorial)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(next, value+1, max)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.succeed(value+1)
             return section.exit(f)
 
@@ -835,16 +835,16 @@ class TestFiber(common.TestCase):
                 value -= 1
             return section.exit(result)
 
-        return self.assertAsyncEqual(5, invfact(120))
+        return self.assertAsyncEqual(None, 5, invfact(120))
 
     def testWovenDecorator(self):
 
         @fiber.woven
         def invfact(value):
             f = fiber.Fiber()
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(next, 0, value)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.succeed(None)
             return f
 
@@ -853,11 +853,11 @@ class TestFiber(common.TestCase):
             if fact and fact >= max:
                 return value
             f = fiber.Fiber()
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(factorial)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.addCallback(next, value+1, max)
-            f.addCallback(self.break_chain)
+            f.addCallback(common.break_chain)
             f.succeed(value+1)
             return f
 
@@ -869,7 +869,7 @@ class TestFiber(common.TestCase):
                 value -= 1
             return result
 
-        return self.assertAsyncEqual(5, invfact(120))
+        return self.assertAsyncEqual(None, 5, invfact(120))
 
     def testWovenSectionErrors(self):
         section = fiber.WovenSection()

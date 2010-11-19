@@ -7,7 +7,20 @@ from feat.common import decorator
 from . import common
 
 
-@decorator.simple
+@decorator.simple_class
+def test_simple_class_decorator(cls):
+    cls.decorated = True
+    return cls
+
+
+@decorator.parametrized_class
+def test_parametrized_class_decorator(cls, *args, **kwargs):
+    cls.args = args
+    cls.kwargs = kwargs
+    return cls
+
+
+@decorator.simple_function
 def test_simple_decorator(callable):
 
     def wrapper(*args, **kwargs):
@@ -17,7 +30,7 @@ def test_simple_decorator(callable):
     return wrapper
 
 
-@decorator.parametrized
+@decorator.parametrized_function
 def test_parametrized_decorator(callable, dec_arg, dec_keyword=None):
 
     def wrapper(*args, **kwargs):
@@ -27,7 +40,7 @@ def test_parametrized_decorator(callable, dec_arg, dec_keyword=None):
     return wrapper
 
 
-@decorator.simple_consistent
+@decorator.simple_callable
 def test_simple_consistent_decorator(original):
 
     def wrapper(callable, fun_arg):
@@ -38,7 +51,7 @@ def test_simple_consistent_decorator(original):
     return wrapper
 
 
-@decorator.parametrized_consistent
+@decorator.parametrized_callable
 def test_parametrized_consistent_decorator(original, dec_arg):
 
     def wrapper(callable, fun_arg):
@@ -110,7 +123,26 @@ class Dummy(object):
         return self.name + ".test_param_cons_meth", arg
 
 
+@test_simple_class_decorator
+class TestSimpleClassDecorator(object):
+    decorated = False
+
+
+@test_parametrized_class_decorator(1, 2, 3, spam="beans", bacon="eggs")
+class TestParametrizedClassDecorator(object):
+    args = None
+    kwargs = None
+
+
 class TestDecorator(common.TestCase):
+
+    def testSimpleClassDecorator(self):
+        self.assertTrue(TestSimpleClassDecorator.decorated)
+
+    def testParametrizedClassDecorator(self):
+        self.assertEqual((1, 2, 3), TestParametrizedClassDecorator.args)
+        self.assertEqual({"spam": "beans", "bacon": "eggs"},
+                         TestParametrizedClassDecorator.kwargs)
 
     def testSimpleFunctionDecorator(self):
         self.assertEqual(("decorated", ("test_simple_fun", 18)),

@@ -2,9 +2,7 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-from . import serialization
-
-__all__ = ["JournalMode", "IRecordInput", "IRecordOutput", "IRecordingResult",
+__all__ = ["JournalMode", "RecordingResultError", "ReentrantCallError",
            "IJournalKeeper", "IRecorderNode", "IRecorder"]
 
 
@@ -12,33 +10,25 @@ class JournalMode(enum.Enum):
     recording, replay = range(1, 3)
 
 
-class IRecordInput(serialization.ISnapshot):
+class RecordingResultError(Exception):
     pass
 
 
-class IRecordOutput(serialization.ISnapshot):
+class ReentrantCallError(Exception):
     pass
-
-
-class IRecordingResult(Interface):
-
-    output = Attribute("Recording output")
-
-    def nest(self, fiber):
-        '''Specify the parent fiber that called the recorder'''
-
-    def proceed():
-        '''Continue with the state-less part of a recording.'''
 
 
 class IJournalKeeper(Interface):
     '''Store journal entries'''
 
     def register(recorder):
-        '''Register a recorder.
-        Should be called by every recorder when created.'''
+        '''Adds the specified recorder to the journal keeper registry.
+        Should be called by every recorder when created.
+        Recorder will be automatically unregistered when they are deleted,
+        The journal keeper do not keep strong reference to the recorders.'''
 
-    def record(instance_id, entry_id, fiber_id, fiber_depth, input, output):
+    def record(instance_id, entry_id, fiber_id, fiber_depth,
+               input, side_effects, output):
         pass
 
 
@@ -57,5 +47,17 @@ class IRecorder(IRecorderNode):
 
     journal_id = Attribute('Journal recorder identifier, tuple of int')
 
-    def replay(entry_id, input):
-        pass
+    def call(fun_id, args=None, kwargs=None, reentrant=True):
+        '''Calls the function with specified identifier with specified
+        arguments and keywords.
+        If reentrant is False and we already are inside
+        a recorded call it will fail with a L{ReentrantCallError}.
+        Returns the result of the called function as returned
+        by the fiber section.'''
+
+    def replay(fun_id, input):
+        '''Calls the function with specified identifier with specified
+        input. Input is what was given as a parameter when calling
+        IJournalKeeper.record().
+        Returns a tuple containing the side effects and the output
+        of the function call but do NOT start any asynchronous operation.'''

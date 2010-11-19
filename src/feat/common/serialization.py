@@ -1,12 +1,31 @@
 
 from zope.interface import implements, classProvides
 
-from feat.interface import serialization
+from feat.interface.serialization import *
+
+from . import decorator, adapter
 
 
+@decorator.simple_class
 def register(restorator):
     global _global_registry
-    return _global_registry.register(restorator)
+    _global_registry.register(restorator)
+    return restorator
+
+
+@adapter.register(object, ISnapshot)
+class SnapshotWrapper(object):
+    '''Make any object a L{ISnapshot} that return themselves.'''
+
+    implements(ISnapshot)
+
+    def __init__(self, value):
+        self.value = value
+
+    ### ISnapshot Methods ###
+
+    def snapshot(self, context={}):
+        return self.value
 
 
 class MetaSerializable(type):
@@ -21,7 +40,9 @@ class MetaSerializable(type):
 class Snapshot(object):
     __metaclass__ = MetaSerializable
 
-    implements(serialization.ISnapshot)
+    implements(ISnapshot)
+
+    ### ISnapshot Methods ###
 
     def snapshot(self, context={}):
         return self.__dict__
@@ -30,8 +51,8 @@ class Snapshot(object):
 class Serializable(Snapshot):
     __metaclass__ = MetaSerializable
 
-    classProvides(serialization.IRestorator)
-    implements(serialization.ISerializable)
+    classProvides(IRestorator)
+    implements(ISerializable)
 
     type_name = None
 
@@ -47,7 +68,7 @@ class Serializable(Snapshot):
 
 class Registry(object):
 
-    implements(serialization.IRegistry)
+    implements(IRegistry)
 
     def __init__(self):
         self._registry = {} # {TYPE_NAME: IRestorator}
@@ -56,16 +77,16 @@ class Registry(object):
     ### IRegistry Methods ###
 
     def register(self, restorator):
-        r = serialization.IRestorator(restorator)
+        r = IRestorator(restorator)
         self._registry[r.type_name] = r
 
 
 class Serializer(object):
 
-    implements(serialization.ISerializer)
+    implements(ISerializer)
 
     def __init__(self, formater):
-        self._formater = serialization.IFormater(formater)
+        self._formater = IFormater(formater)
 
     ### ISerializer Methods ###
 
@@ -75,13 +96,13 @@ class Serializer(object):
 
 class Unserializer(object):
 
-    implements(serialization.IUnserializer)
+    implements(IUnserializer)
 
     def __init__(self, parser, registry=None):
         global _global_registry
-        self._parser = serialization.IParser(parser)
+        self._parser = IParser(parser)
         if registry:
-            self._registry = serialization.IRegistry(registry)
+            self._registry = IRegistry(registry)
         else:
             self._registry = _global_registry
 

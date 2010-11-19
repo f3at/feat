@@ -5,7 +5,33 @@ from . import reflect
 """TODO: Better function mimicry."""
 
 
-def simple(decorator):
+def simple_class(decorator):
+    '''Decorator used to make simple class decorator without arguments.
+    Doesn't really do anything, just here to have a central
+    implementation of the simple class decorator.'''
+
+    def meta_decorator(cls):
+        return decorator(cls)
+
+    return meta_decorator
+
+
+def parametrized_class(decorator):
+    '''Decorator used to make simple class decorator with arguments.
+    Doesn't really do anything, just here to have a central
+    implementation of the simple class decorator.'''
+
+    def decorator_builder(*args, **kwargs):
+
+        def meta_decorator(cls):
+            return decorator(cls, *args, **kwargs)
+
+        return meta_decorator
+
+    return decorator_builder
+
+
+def simple_function(decorator):
     '''Decorator used to create decorators without arguments.
     Should be used with function returning another function
     that will be called with the original function has the first
@@ -19,7 +45,7 @@ def simple(decorator):
 
     Example::
 
-        @decorator.simple
+        @decorator.simple_function
         def mydecorator(function_original):
 
             def wrapper(call, arguments):
@@ -40,7 +66,7 @@ def simple(decorator):
     return meta_decorator
 
 
-def simple_consistent(decorator):
+def simple_callable(decorator):
     '''Decorator used to create consistent decorators.
     Consistent in the meaning that the wrapper do not have to
     care if the wrapped callable is a function or a method,
@@ -57,7 +83,7 @@ def simple_consistent(decorator):
 
     Example::
 
-        @decorator.simple_consistent
+        @decorator.simple_callable
         def mydecorator(original_function):
 
             def wrapper(callable, call, arguments):
@@ -97,7 +123,7 @@ def simple_consistent(decorator):
     return meta_decorator
 
 
-def parametrized(decorator):
+def parametrized_function(decorator):
     '''Decorator used to create decorators with arguments.
     Should be used with function returning another function
     that will be called with the original function has the first
@@ -111,7 +137,7 @@ def parametrized(decorator):
 
     Example::
 
-        @decorator.with_args
+        @decorator.parametrized_function
         def mydecorator(function_original, decorator, arguments):
 
             def wrapper(call, arguments):
@@ -132,7 +158,7 @@ def parametrized(decorator):
     return meta_decorator
 
 
-def parametrized_consistent(decorator):
+def parametrized_callable(decorator):
     '''Decorator used to create consistent decorators with arguments.
     Consistent in the meaning that the wrapper do not have to
     care if the wrapped callable is a function or a method,
@@ -149,7 +175,7 @@ def parametrized_consistent(decorator):
 
     Example::
 
-        @decorator.parametrized_consistent
+        @decorator.parametrized_callable
         def mydecorator(original_function, decorator, arguments):
 
             def wrapper(callable, call, arguments):

@@ -1,126 +1,26 @@
 from twisted.internet import defer
-from twisted.python import components
 from zope.interface import implements
 
 from feat.interface.fiber import *
 from feat.interface.journal import *
 
-from . import decorator, fiber
+from . import decorator, annotate, fiber
+
+RECORDED_TAG = "__RECORDED__"
+SIDE_EFFECTS_TAG = "__SIDE_EFFECTS__"
 
 
-class RecordResultError(Exception):
-    pass
+@decorator.parametrized_function
+def recorded(function, custom_id=None, reentrant=True):
+    fun_id = custom_id or function.__name__
+    annotate.injectClassCallback("recorded", 4,
+                                 "_register_recorded_call", fun_id, function)
 
+    def wrapper(self, *args, **kwargs):
+        recorder = IRecorder(self)
+        return recorder.call(fun_id, args, kwargs, reentrant=reentrant)
 
-@decorator.parametrized
-def recorded(function, entry_id=None):
-    fixed_id = entry_id or function.__name__
-
-    def fiber_wrapper(self, result, fiber, _original, *args, **kwargs):
-        return self._call_recorded(fiber, fixed_id, function,
-                                   result, *args, **kwargs)
-
-    def direct_wrapper(self, *args, **kwargs):
-        return self._call_recorded(None, fixed_id, function, *args, **kwargs)
-
-    #fiber.set_alternative(direct_wrapper, fiber_wrapper)
-
-    return direct_wrapper
-
-
-class RecordInput(object):
-
-    implements(IRecordInput)
-
-    def __init__(self, args, kwargs):
-        self.args = args
-        self.kwargs = kwargs
-
-    ### serialization.ISnapshot ###
-
-    def snapshot(self, context={}):
-        return self.args, self.kwargs
-
-
-class RecordAsyncOutput(object):
-
-    implements(IRecordOutput)
-
-    def __init__(self, fiber):
-        self._fiber = fiber
-
-    ### serialization.ISnapshot ###
-
-    def snapshot(self, context={}):
-        return "async", self._fiber.snapshot()
-
-
-class RecordSyncOutput(object):
-
-    implements(IRecordOutput)
-
-    def __init__(self, output):
-        self._output = output
-
-    ### serialization.ISnapshot ###
-
-    def snapshot(self, context={}):
-        return "sync", self._output
-
-
-class InvalidResult(object):
-
-    implements(IRecordingResult)
-
-    def __init__(self, result):
-        raise RecordResultError("Recorded function result invalid: %r" %\
-                                result)
-
-components.registerAdapter(InvalidResult,
-                           defer.Deferred,
-                           IRecordingResult)
-
-
-class RecordingAsyncResult(object):
-
-    implements(IRecordingResult)
-
-    def __init__(self, fiber):
-        self.output = RecordAsyncOutput(fiber)
-        self._fiber = fiber
-
-    ### IRecordingResult Methods ###
-
-    def nest(self, fiber):
-        return self._fiber.nest(fiber)
-
-    def proceed(self):
-        return self._fiber.run()
-
-components.registerAdapter(RecordingAsyncResult,
-                           IFiber,
-                           IRecordingResult)
-
-
-class RecordingSyncResult(object):
-
-    implements(IRecordingResult)
-
-    def __init__(self, value):
-        self._value = value
-        self.output = RecordSyncOutput(value)
-
-    ### IRecordingResult Methods ###
-
-    def nest(self, fiber):
-        pass
-
-    def proceed(self):
-        return self._value
-
-components.registerAdapter(RecordingSyncResult,
-                           object,
-                           IRecordingResult)
+    return wrapper
 
 
 class RecorderRoot(object):
@@ -162,44 +62,102 @@ class RecorderNode(object):
         return self.journal_id + (self._recorder_count, )
 
 
-class Recorder(RecorderNode):
+class Recorder(RecorderNode, annotate.Annotable):
 
     implements(IRecorder)
 
+    _registry = None
+
+    @classmethod
+    def _register_recorded_call(cls, fun_id, function):
+        # Lazy registry creation to prevent all sub-classes
+        # from sharing the same dictionary
+        if cls._registry is None:
+            cls._registry = {}
+        cls._registry[fun_id] = function
+
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
-        # Bind the _call_recorded method depending on the journal mode
-        if self.journal_mode == JournalMode.recording:
-            self._call_recorded = self._record_call
-        elif self.journal_mode == JournalMode.replay:
-            self._call_recorded = self._replay_call
-        else:
-            raise RuntimeError("Unsupported journal mode")
-        # Register the recorder
         self.journal_keeper.register(self)
 
     ### IRecorder Methods ###
 
-    def replay(self, entry_id, args, kwargs):
-        pass
+    def call(self, fun_id, args=None, kwargs=None, reentrant=True):
+        # Starts the fiber section
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = None
+
+        # Check if this is the first recording in the fiber section
+        is_first = not section.state.get(RECORDED_TAG, False)
+        if not (is_first or reentrant):
+            # If not reentrant and it is not the first, it's BAAAAAD.
+            raise ReentrantCallError("Recorded functions %s "
+                                     "cannot be called from another "
+                                     "recorded function" % fun_id)
+
+        if is_first:
+            section.state[RECORDED_TAG] = True
+            side_effects = []
+            section.state[SIDE_EFFECTS_TAG] = side_effects
+
+        result = self._call_fun_id(fun_id, args or (), kwargs or {})
+
+        # If it is the first recording entry in the stack, add a journal entry
+        if is_first:
+            desc = section.descriptor
+            self.journal_keeper.record(self.journal_id, fun_id,
+                                   desc.fiber_id, desc.fiber_depth,
+                                   (args or None, kwargs or None),
+                                   side_effects or None, result)
+
+        # Exit the fiber section
+        return section.exit(result)
+
+    def replay(self, fun_id, input):
+        # Starts the fiber section
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = None
+
+        is_first = not section.state.get(RECORDED_TAG, False)
+
+        if is_first:
+            section.state[RECORDED_TAG] = True
+            side_effects = []
+            section.state[SIDE_EFFECTS_TAG] = side_effects
+
+        args, kwargs = input
+        result = self._call_fun_id(fun_id, args or (), kwargs or {})
+
+        # We don't want anything asynchronous to be called,
+        # so we abort the fiber section
+        section.abort(result)
+
+        # We return the side effects and the result
+        return side_effects or None, result
 
     ### Private Methods ###
 
-    def _record_call(self, fiber, entry_id, method, *args, **kwargs):
-        input = RecordInput(args, kwargs)
+    def _call_fun_id(self, fun_id, args, kwargs):
 
-        result = method(self, *args, **kwargs)
-        recres = IRecordingResult(result)
-        recres.nest(fiber)
+        # Retrieve the function from the registry
+        function = self._registry.get(fun_id)
+        if function is None:
+            raise AttributeError("Object '%s' has no recorded function "
+                                 "with identifier '%s'"
+                                 % (type(self).__name__, fun_id))
 
-        output = recres.output
-        self.journal_keeper.record(self.journal_id, entry_id,
-                                   None, None, input, output)
+        # Call the function
+        result = function(self, *args, **kwargs)
 
-        return recres.proceed()
+        # Check the function result. Deferred are not allowed because
+        # it would mean an asynchronous call chain is already started.
+        if isinstance(result, defer.Deferred):
+            raise RecordingResultError("Recorded functions %s "
+                                       "cannot return Deferred" % fun_id)
 
-    def _replay_call(self, entry_id, method, *args, **kwargs):
-        pass
+        return result
 
 
 class FileJournalRecorder(object):

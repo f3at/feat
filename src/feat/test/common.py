@@ -14,6 +14,21 @@ from . import factories
 log.FluLogKeeper.init('test.log')
 
 
+def delay(value, delay):
+    '''Returns a deferred triggered after the specified delay
+    with the specified value.'''
+    d = defer.Deferred()
+    #FIXME: change to support time scaling like in Agency
+    reactor.callLater(delay, d.callback, value)
+    return d
+
+
+def break_chain(value):
+    '''Breaks a deferred call chain ensuring the rest will be called
+    asynchronously in the next reactor loop.'''
+    return delay(value, 0)
+
+
 class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
     log_category = "test"
@@ -71,28 +86,40 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
              "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
-    def assertAsyncEqual(self, expected, d):
-        '''Asserts the result of the specified deferred is equal
-        to the expected value. Returns the deferred.'''
+    def assertAsyncEqual(self, chain, expected, value):
+        '''Adds an asynchronous assertion to the specified deferred chain.
+        If the chain deferred is None, a new fired one will be created.
+        The checks are serialized and done in order of declaration.
+        If the value is a Deferred, the check wait for its result,
+        if not it compare rightaway.
 
-        def check(result):
+        Used like this::
+
+          d = defer.succeed(None)
+          d = self.assertAsyncEqual(d, EXPECTED, FIRED_DEFERRED)
+          d = self.assertAsyncEqual(d, EXPECTED, VALUE)
+          d = self.assertAsyncEqual(d, 42, asyncDouble(21))
+          return d
+
+        Or::
+
+          return self.assertAsyncEqual(None, EXPECTED, FIRED_DEFERRED)
+        '''
+
+        def retrieve(_, expected, value):
+            if isinstance(value, defer.Deferred):
+                value.addCallback(check, expected)
+                return value
+            return check(value, expected)
+
+        def check(result, expected):
             self.assertEqual(expected, result)
+            return result
 
-        d.addCallback(check)
-        return d
+        if chain is None:
+            chain = defer.succeed(None)
 
-    def break_chain(self, value):
-        '''Breaks a deferred call chain ensuring the rest will be called
-        asynchronously in the next reactor loop.'''
-        return self.delay(value, 0)
-
-    def delay(self, value, delay):
-        '''Returns a deferred triggered after the specified delay
-        with the specified value.'''
-        d = defer.Deferred()
-        #FIXME: change to support time scaling like in Agency
-        reactor.callLater(delay, d.callback, value)
-        return d
+        return chain.addCallback(retrieve, expected, value)
 
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)
