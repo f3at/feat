@@ -10,7 +10,6 @@ from zope.interface import implements
 from feat.common import log
 from feat.agents import recipient
 from feat.interface import agency, agent, protocols
-from feat.interface.database import IDatabaseClient
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory

@@ -9,9 +9,8 @@ from zope.interface import implements
 
 from feat.common import log
 from feat.agents import document
-from feat.interface.database import IDatabaseClient
 
-from interface import IConnectionFactory
+from interface import IConnectionFactory, IDatabaseClient
 
 
 class ConflictError(RuntimeError):
