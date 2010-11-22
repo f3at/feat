@@ -86,12 +86,14 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
              "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
-    def assertAsyncEqual(self, chain, expected, value):
+    def assertAsyncEqual(self, chain, expected, value, *args, **kwargs):
         '''Adds an asynchronous assertion to the specified deferred chain.
         If the chain deferred is None, a new fired one will be created.
         The checks are serialized and done in order of declaration.
         If the value is a Deferred, the check wait for its result,
         if not it compare rightaway.
+        If value is a callable, it is called with specified arguments
+        and keyword WHEN THE PREVIOUS CALL HAS BEEN DONE.
 
         Used like this::
 
@@ -99,6 +101,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
           d = self.assertAsyncEqual(d, EXPECTED, FIRED_DEFERRED)
           d = self.assertAsyncEqual(d, EXPECTED, VALUE)
           d = self.assertAsyncEqual(d, 42, asyncDouble(21))
+          d = self.assertAsyncEqual(d, 42, asyncDouble, 21)
           return d
 
         Or::
@@ -106,10 +109,12 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
           return self.assertAsyncEqual(None, EXPECTED, FIRED_DEFERRED)
         '''
 
-        def retrieve(_, expected, value):
+        def retrieve(_, expected, value, args=None, kwargs=None):
             if isinstance(value, defer.Deferred):
                 value.addCallback(check, expected)
                 return value
+            if callable(value):
+                return retrieve(_, expected, value(*args, **kwargs))
             return check(value, expected)
 
         def check(result, expected):
@@ -119,7 +124,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         if chain is None:
             chain = defer.succeed(None)
 
-        return chain.addCallback(retrieve, expected, value)
+        return chain.addCallback(retrieve, expected, value, args, kwargs)
 
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)
