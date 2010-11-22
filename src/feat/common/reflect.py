@@ -56,9 +56,6 @@ def _canonical_builtin(obj):
     return "__builtin__." + obj.__name__
 
 
-def _canonical_function(obj):
-    return obj.__module__ + "." + obj.__name__
-
 _canonical_lookup = {types.TypeType: _canonical_class,
                      types.NoneType: _canonical_none,
                      types.MethodType: _canonical_method,
