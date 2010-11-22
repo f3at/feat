@@ -113,7 +113,7 @@ class AgencyTestHelper(object):
         self.agency = agency.Agency()
         self.session_id = None
 
-    def _setup_endpoint(self):
+    def setup_endpoint(self):
         '''
         Sets up the destination for tested component to send messages to.
 
@@ -128,63 +128,63 @@ class AgencyTestHelper(object):
         exchange.bind(endpoint.key, queue)
         return endpoint, queue
 
-    def _send_announce(self, manager):
+    def send_announce(self, manager):
         msg = message.Announcement()
         manager.medium.announce(msg)
         return manager
 
-    def _send_bid(self, contractor, bid=1):
+    def send_bid(self, contractor, bid=1):
         msg = message.Bid()
         msg.bids = [bid]
         contractor.medium.bid(msg)
         return contractor
 
-    def _send_refusal(self, contractor):
+    def send_refusal(self, contractor):
         msg = message.Refusal()
         contractor.medium.refuse(msg)
         return contractor
 
-    def _send_final_report(self, contractor):
+    def send_final_report(self, contractor):
         msg = message.FinalReport()
         contractor.medium.finalize(msg)
         return contractor
 
-    def _send_cancel(self, contractor, reason=""):
+    def send_cancel(self, contractor, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
         contractor.medium.defect(msg)
         return contractor
 
-    def _recv_announce(self, *_):
+    def recv_announce(self, *_):
         msg = message.Announcement()
         msg.session_id = str(uuid.uuid1())
         self.session_id = msg.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
+        return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_grant(self, _, bid_index=0, update_report=None):
+    def recv_grant(self, _, bid_index=0, update_report=None):
         msg = message.Grant()
         msg.bid_index = bid_index
         msg.update_report = update_report
         msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
+        return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_rejection(self, _):
+    def recv_rejection(self, _):
         msg = message.Rejection()
         msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
+        return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_cancel(self, _, reason=""):
+    def recv_cancel(self, _, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
         msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
+        return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_ack(self, _):
+    def recv_ack(self, _):
         msg = message.Acknowledgement()
         msg.session_id = self.session_id
-        return self._recv_msg(msg).addCallback(lambda ret: _)
+        return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def _recv_msg(self, msg, reply_to=None, key='dummy-contract',
+    def recv_msg(self, msg, reply_to=None, key='dummy-contract',
                   expiration_time=None):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
@@ -201,7 +201,7 @@ class AgencyTestHelper(object):
         self.agent._messaging.publish(key, shard, msg)
         return d
 
-    def _reply(self, msg, reply_to, original_msg):
+    def reply(self, msg, reply_to, original_msg):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
         dest = recipient.IRecipient(original_msg)
