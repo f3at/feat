@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
@@ -141,6 +141,7 @@ class DirectReplayDummy(journal.Recorder):
 
     @journal.recorded()
     def baz(self, value):
+
         def async_add(v):
             self.baz += v
             return self.baz
@@ -162,7 +163,6 @@ class RecordReplayDummy(journal.Recorder):
 
     def snapshot(self, context={}):
         return self.servings
-
 
     @journal.recorded()
     def spam(self, accompaniment, extra=None):
@@ -414,16 +414,16 @@ class TestJournaling(common.TestCase):
         self.assertEqual(o.bar, 0)
         self.assertEqual(o.baz, 0)
 
-        self.assertEqual((None, 3), o.replay("foo", ((3,), {})))
+        self.assertEqual((None, 3), o.replay("foo", ((3, ), {})))
         self.assertEqual(3, o.foo)
-        self.assertEqual((None, 6), o.replay("foo", ((3,), None)))
+        self.assertEqual((None, 6), o.replay("foo", ((3, ), None)))
         self.assertEqual(6, o.foo)
 
-        self.assertEqual((None, 2), o.replay("bar", ((2,), {})))
+        self.assertEqual((None, 2), o.replay("bar", ((2, ), {})))
         self.assertEqual(2, o.bar)
-        self.assertEqual((None, 4), o.replay("bar", ((2,), None)))
+        self.assertEqual((None, 4), o.replay("bar", ((2, ), None)))
         self.assertEqual(4, o.bar)
-        self.assertEqual((None, 5), o.replay("bar", ((2,), {"minus": 1})))
+        self.assertEqual((None, 5), o.replay("bar", ((2, ), {"minus": 1})))
         self.assertEqual(5, o.bar)
         self.assertEqual((None, 3), o.replay("barr", ((), {"minus": 2})))
         self.assertEqual(3, o.bar)
@@ -435,13 +435,13 @@ class TestJournaling(common.TestCase):
                                  [(("feat.test.test_common_journal.async_add",
                                     None, None),
                                    None)])),
-                         snapshot(o.replay("baz", ((5,), None))))
+                         snapshot(o.replay("baz", ((5, ), None))))
         self.assertEqual(0, o.baz)
         self.assertEqual((None, (TriggerType.succeed, 8,
                                  [(("feat.test.test_common_journal.async_add",
                                     None, None),
                                    None)])),
-                         snapshot(o.replay("baz", ((8,), None))))
+                         snapshot(o.replay("baz", ((8, ), None))))
         self.assertEqual(0, o.baz)
 
     def testRecordReplay(self):
