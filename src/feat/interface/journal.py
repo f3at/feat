@@ -10,11 +10,11 @@ class JournalMode(enum.Enum):
     recording, replay = range(1, 3)
 
 
-class RecordingResultError(Exception):
+class RecordingResultError(RuntimeError):
     pass
 
 
-class ReentrantCallError(Exception):
+class ReentrantCallError(RuntimeError):
     pass
 
 

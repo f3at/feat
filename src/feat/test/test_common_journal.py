@@ -21,12 +21,12 @@ class DummyJournalKeeper(object):
 
     def __init__(self):
         self.records = []
-        self.registry = []
+        self.registry = {}
 
     ### IJournalKeeper Methods ###
 
     def register(self, recorder):
-        self.registry.append(recorder)
+        self.registry[recorder.journal_id] = recorder
 
     def record(self, instance_id, entry_id,
                fiber_id, fiber_depth, input, side_effects, output):
@@ -116,6 +116,119 @@ class NestedRecordedDummy(journal.Recorder):
         return a + b
 
 
+class DirectReplayDummy(journal.Recorder):
+
+    def __init__(self, parent):
+        journal.Recorder.__init__(self, parent)
+        self.foo = 0
+        self.bar = 0
+        self.baz = 0
+
+    @journal.recorded()
+    def foo(self, value):
+        self.foo += value
+        return self.foo
+
+    @journal.recorded()
+    def bar(self, value, minus=0):
+        self.bar += value - minus
+        return self.bar
+
+    @journal.recorded()
+    def barr(self, minus=0):
+        self.bar -= minus
+        return self.bar
+
+    @journal.recorded()
+    def baz(self, value):
+        def async_add(v):
+            self.baz += v
+            return self.baz
+
+        f = fiber.Fiber()
+        f.addCallback(async_add)
+        f.succeed(value)
+        return f
+
+
+class RecordReplayDummy(journal.Recorder):
+
+    def __init__(self, parent):
+        journal.Recorder.__init__(self, parent)
+        self.reset()
+
+    def reset(self):
+        self.servings = []
+
+    def snapshot(self, context={}):
+        return self.servings
+
+
+    @journal.recorded()
+    def spam(self, accompaniment, extra=None):
+        extra = extra and " with " + extra or ""
+        serving = "spam and %s%s" % (accompaniment, extra)
+        return self._addServing(serving)
+
+    @journal.recorded()
+    def double_bacon(self, accompaniment):
+        serving = "bacon and %s" % accompaniment
+        self._addServing(serving)
+        f = fiber.Fiber()
+        f.addCallback(self.spam, extra=accompaniment)
+        f.addCallback(self._prepare_double, serving)
+        f.succeed("bacon")
+        return f
+
+    @journal.recorded()
+    def _addServing(self, serving):
+        '''Normally called only by other recorded functions'''
+        self.servings.append(serving)
+        return serving
+
+    def _prepare_double(self, second_serving, first_serving):
+        '''Should not modify state, because it's not journalled'''
+        return first_serving + " followed by " + second_serving
+
+
+class ReentrantDummy(journal.Recorder):
+
+    @journal.recorded()
+    def good(self):
+        return "the good, " + self.bad()
+
+    @journal.recorded()
+    def bad(self):
+        return "the bad and " + self.ugly()
+
+    @journal.recorded(reentrant=False)
+    def ugly(self):
+        return "the ugly"
+
+
+class ErrorDummy(journal.Recorder):
+
+    @journal.recorded()
+    def foo(self):
+        return "foo"
+
+    @journal.recorded()
+    def bar(self):
+        return "bar"
+
+    @journal.recorded("baz")
+    def barr(self):
+        return "barr"
+
+    @journal.recorded()
+    def bad(self):
+        return defer.succeed(None)
+
+    @journal.recorded()
+    def super_bad(self):
+        return self.bad()
+
+
 class TestJournaling(common.TestCase):
 
     def testJournalId(self):
@@ -173,15 +286,16 @@ class TestJournaling(common.TestCase):
         keeper = DummyJournalKeeper()
         root = journal.RecorderRoot(keeper)
         obj = BasicRecordingDummy(root)
-        self.assertEqual([obj], keeper.registry)
+        self.assertTrue(obj.journal_id in keeper.registry)
+        self.assertTrue(obj in keeper.registry.values())
         d = self.assertAsyncEqual(None, "spam and beans",
-                                  obj.spam("beans"))
+                                  obj.spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
-                                  obj.spam("beans", extra="spam"))
+                                  obj.spam, "beans", extra="spam")
         d = self.assertAsyncEqual(d, "spam and beans",
-                                  obj.async_spam("beans"))
+                                  obj.async_spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
-                                  obj.async_spam("beans", extra="spam"))
+                                  obj.async_spam, "beans", extra="spam")
         return d.addCallback(check_records, keeper.records)
 
     def testFiberInfo(self):
@@ -283,5 +397,146 @@ class TestJournaling(common.TestCase):
         d.addCallback(drop_result, obj.funC, 3, 5)
         d.addCallback(drop_result, obj.funD, 3, 5)
         d.addCallback(check_records, keeper.records)
+
+        return d
+
+    def testDirectReplay(self):
+
+        def snapshot(result):
+            side_effects, output = result
+            return (ISnapshot(side_effects).snapshot(),
+                    ISnapshot(output).snapshot())
+
+        k = DummyJournalKeeper()
+        r = journal.RecorderRoot(k)
+        o = DirectReplayDummy(r)
+        self.assertEqual(o.foo, 0)
+        self.assertEqual(o.bar, 0)
+        self.assertEqual(o.baz, 0)
+
+        self.assertEqual((None, 3), o.replay("foo", ((3,), {})))
+        self.assertEqual(3, o.foo)
+        self.assertEqual((None, 6), o.replay("foo", ((3,), None)))
+        self.assertEqual(6, o.foo)
+
+        self.assertEqual((None, 2), o.replay("bar", ((2,), {})))
+        self.assertEqual(2, o.bar)
+        self.assertEqual((None, 4), o.replay("bar", ((2,), None)))
+        self.assertEqual(4, o.bar)
+        self.assertEqual((None, 5), o.replay("bar", ((2,), {"minus": 1})))
+        self.assertEqual(5, o.bar)
+        self.assertEqual((None, 3), o.replay("barr", ((), {"minus": 2})))
+        self.assertEqual(3, o.bar)
+        self.assertEqual((None, 2), o.replay("barr", (None, {"minus": 1})))
+        self.assertEqual(2, o.bar)
+
+        # Test that fibers are not executed
+        self.assertEqual((None, (TriggerType.succeed, 5,
+                                 [(("feat.test.test_common_journal.async_add",
+                                    None, None),
+                                   None)])),
+                         snapshot(o.replay("baz", ((5,), None))))
+        self.assertEqual(0, o.baz)
+        self.assertEqual((None, (TriggerType.succeed, 8,
+                                 [(("feat.test.test_common_journal.async_add",
+                                    None, None),
+                                   None)])),
+                         snapshot(o.replay("baz", ((8,), None))))
+        self.assertEqual(0, o.baz)
+
+    def testRecordReplay(self):
+
+        def replay(_, keeper):
+            # Keep objects states and reset before replaying
+            states = {}
+            for jid, obj in keeper.registry.iteritems():
+                states[jid] = obj.snapshot()
+                obj.reset()
+
+            # Replaying
+            for record in keeper.records:
+                jid, fid, _, _, input, exp_side_effects, exp_output = record
+                self.assertTrue(jid in keeper.registry)
+                obj = keeper.registry[jid]
+                side_effects, output = obj.replay(fid, input)
+                self.assertEqual(exp_side_effects,
+                                 ISnapshot(side_effects).snapshot())
+                self.assertEqual(exp_output,
+                                 ISnapshot(output).snapshot())
+
+            # Check the objects state are the same after replay
+            for jid, obj in keeper.registry.iteritems():
+                self.assertEqual(states[jid], obj.snapshot())
+
+        k = DummyJournalKeeper()
+        r = journal.RecorderRoot(k)
+        o1 = RecordReplayDummy(r)
+        o2 = RecordReplayDummy(r)
+
+        d = self.assertAsyncEqual(None, "spam and beans",
+                                  o1.spam, "beans")
+        d = self.assertAsyncEqual(d, "spam and spam",
+                                  o2.spam, "spam")
+        d = self.assertAsyncEqual(d, "spam and beans with spam",
+                                  o1.spam, "beans", extra="spam")
+        d = self.assertAsyncEqual(d, "spam and spam with spam",
+                                  o2.spam, "spam", extra="spam")
+        d = self.assertAsyncEqual(d, "bacon and eggs followed by "
+                                  "spam and bacon with eggs",
+                                  o1.double_bacon, "eggs")
+        d = self.assertAsyncEqual(d, "bacon and spam followed by "
+                                  "spam and bacon with spam",
+                                  o2.double_bacon, "spam")
+        d = self.assertAsyncEqual(d, ["spam and beans",
+                                      "spam and beans with spam",
+                                      "bacon and eggs",
+                                      "spam and bacon with eggs"],
+                                  o1.servings)
+        d = self.assertAsyncEqual(d, ["spam and spam",
+                                      "spam and spam with spam",
+                                      "bacon and spam",
+                                      "spam and bacon with spam"],
+                                  o2.servings)
+        d.addCallback(replay, k)
+
+        return d
+
+    def testNonReentrant(self):
+        k = DummyJournalKeeper()
+        r = journal.RecorderRoot(k)
+        o = ReentrantDummy(r)
+
+        self.assertRaises(journal.ReentrantCallError, o.good)
+        self.assertRaises(journal.ReentrantCallError, o.bad)
+        d = self.assertAsyncEqual(None, "the ugly", o.ugly)
+
+        return d
+
+    def testErrors(self):
+        k = DummyJournalKeeper()
+        r = journal.RecorderRoot(k)
+        o = ErrorDummy(r)
+
+        self.assertRaises(AttributeError, o.call, "spam")
+        self.assertRaises(AttributeError, o.call, "barr")
+        self.assertRaises(AttributeError, o.replay, "spam", (None, None))
+        self.assertRaises(AttributeError, o.replay, "barr", (None, None))
+
+        self.assertRaises(RecordingResultError, o.bad)
+        self.assertRaises(RecordingResultError, o.super_bad)
+
+        self.assertRaises(RecordingResultError, o.call, "bad")
+        self.assertRaises(RecordingResultError, o.call, "super_bad")
+
+        d = self.assertAsyncEqual(None, "foo", o.call, "foo")
+        d = self.assertAsyncEqual(d, "bar", o.call, "bar")
+        d = self.assertAsyncEqual(d, "barr", o.call, "baz")
+
+        d = self.assertAsyncEqual(d, (None, "foo"),
+                                  o.replay, "foo", (None, None))
+        d = self.assertAsyncEqual(d, (None, "bar"),
+                                  o.replay, "bar", (None, None))
+        d = self.assertAsyncEqual(d, (None, "barr"),
+                                  o.replay, "baz", (None, None))
 
         return d

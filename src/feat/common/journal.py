@@ -3,8 +3,9 @@ from zope.interface import implements
 
 from feat.interface.fiber import *
 from feat.interface.journal import *
+from feat.interface.serialization import *
 
-from . import decorator, annotate, fiber
+from . import decorator, annotate, fiber, serialization
 
 RECORDED_TAG = "__RECORDED__"
 SIDE_EFFECTS_TAG = "__SIDE_EFFECTS__"
