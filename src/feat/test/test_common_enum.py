@@ -105,3 +105,11 @@ class TestEnum(common.TestCase):
 
         self.assertRaises(KeyError, A.__getitem__, 5)
         self.assertRaises(TypeError, A.__getitem__, 5.6)
+
+    def testCasting(self):
+        try:
+            unexpected = B.a in A.a
+            self.fail("Should not be able to cast between enums (%r)"
+                      % unexpected)
+        except:
+            pass
