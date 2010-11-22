@@ -16,9 +16,6 @@ class IAgencyManager(contracts.IContractPeer):
     agent and the agency. Used by L{IAgentManager} to perform
     the manager role of the contract protocol.'''
 
-    bids = Attribute("Contracts's received bids")
-    refusals = Attribute("Contract's received refusals")
-
     def announce(announce):
         '''Post an announce message.'''
 

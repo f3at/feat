@@ -61,6 +61,3 @@ class IContractPeer(Interface):
     agent = Attribute("Reference to the owner agent")
 
     state = Attribute("L{ContractState}")
-    announce = Attribute("Contract's announce message")
-    grant = Attribute("Contract's grant message")
-    final_report = Attribute("Contract's report message")

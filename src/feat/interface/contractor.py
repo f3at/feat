@@ -19,8 +19,6 @@ class IAgencyContractor(contracts.IContractPeer):
     and the agency. It is used by L{IAgentContractor} implementations
     to perform the contractor role of the contract protocol'''
 
-    rejection = Attribute("Contract's rejection message")
-
     def bid(bid):
         '''Puts a bid on the announcement'''
 
