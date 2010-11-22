@@ -61,7 +61,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
-        self.queue, self.endpoint = self._setup_endpoint()
+        self.queue, self.endpoint = self.setup_endpoint()
 
     def testJoinShard(self):
         self.assertEqual(1, len(self.agency._shards))
@@ -91,7 +91,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         key = self.agent.descriptor.doc_id
         msg = message.RequestMessage()
         msg.session_id = str(uuid.uuid1())
-        return self._recv_msg(msg, self.endpoint, key)
+        return self.recv_msg(msg, self.endpoint, key)
 
 
 class TestRequests(common.TestCase, common.AgencyTestHelper):
@@ -108,7 +108,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = self.agency.start_agent(agent.BaseAgent, desc)
 
-        self.endpoint, self.queue = self._setup_endpoint()
+        self.endpoint, self.queue = self.setup_endpoint()
 
     def testRequester(self):
 
@@ -148,7 +148,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         def mimicReceivingResponse(session_id):
             response = message.ResponseMessage()
-            self._reply(response, self.endpoint, self.requester.request)
+            self.reply(response, self.endpoint, self.requester.request)
 
             return session_id
 
@@ -193,7 +193,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         key = self.agent.descriptor.doc_id
 
         req = self._build_req_msg(self.endpoint)
-        d = self._recv_msg(req, self.endpoint, key)
+        d = self.recv_msg(req, self.endpoint, key)
 
         d.addCallback(lambda _: self.queue.consume())
 
@@ -213,7 +213,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         # define false sender, he will get the response later
         req = self._build_req_msg(self.endpoint)
         expiration_time = time.time() - 1
-        d = self._recv_msg(req, self.endpoint, key, expiration_time)
+        d = self.recv_msg(req, self.endpoint, key, expiration_time)
 
         def asserts_after_procesing(return_value):
             self.log(return_value)
