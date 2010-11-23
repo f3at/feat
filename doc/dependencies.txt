@@ -1,0 +1,7 @@
+Things needed by Messy to run.
+
+* Python 2.6
+* Twisted 10.1.0
+* CouchDB
+* Paisley
+* JSON 
