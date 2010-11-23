@@ -16,6 +16,29 @@ class B(enum.Enum):
     d = 666
 
 
+try:
+
+    string_not_allowed = False
+
+    class C(enum.Enum):
+        a = "bad"
+
+except TypeError, e:
+    string_not_allowed = True
+
+
+try:
+
+    same_value_not_allowed = False
+
+    class D(enum.Enum):
+        a = 1
+        b = 1
+
+except ValueError:
+    same_value_not_allowed = True
+
+
 class TestEnum(common.TestCase):
 
     def testConstructor(self):
@@ -107,9 +130,15 @@ class TestEnum(common.TestCase):
         self.assertRaises(TypeError, A.__getitem__, 5.6)
 
     def testCasting(self):
+        self.assertTrue(B.a in B)
+        self.assertTrue(A.a in A)
         try:
-            unexpected = B.a in A.a
+            unexpected = B.a in A
             self.fail("Should not be able to cast between enums (%r)"
                       % unexpected)
-        except:
+        except TypeError:
             pass
+
+    def testMetaErrors(self):
+        self.assertTrue(string_not_allowed)
+        self.assertTrue(same_value_not_allowed)
