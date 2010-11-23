@@ -81,8 +81,6 @@ def bacon():
 
 class TestIntrospection(common.TestCase):
 
-    class_local = True
-
     def testMetaErrors(self):
         self.assertTrue(meta_test1_pass)
         self.assertTrue(meta_test2_pass)
@@ -120,8 +118,3 @@ class TestIntrospection(common.TestCase):
 
     def testNone(self):
         self.assertEqual(None, reflect.canonical_name(None))
-
-#    def testNotInClass(self):
-#        self.assertRaises(TypeError, reflect.class_locals, 1)
-#        self.assertRaises(TypeError, reflect.class_locals, 2)
-#        self.assertTrue("class_local" in reflect.class_locals(4))
