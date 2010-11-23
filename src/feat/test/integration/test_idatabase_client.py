@@ -5,8 +5,14 @@ import shutil
 import os
 
 from twisted.internet import reactor, defer
+from twisted.trial.unittest import SkipTest
 
-from feat.agencies.net import database
+try:
+    from feat.agencies.net import database
+except ImportError as e:
+    database = None
+    import_error = e
+
 from feat.agencies.emu import database as emu_database
 from feat.agents import document
 from feat.agencies.emu.interface import ConflictError, NotFoundError
@@ -135,6 +141,10 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
+        if database is None:
+            raise SkipTest('Skipping the test because of missing '
+                           'dependecies: %r' % import_error)
+
         couchdb = '/usr/bin/couchdb'
         local_ini = '/tmp/local.ini'
 
