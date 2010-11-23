@@ -33,7 +33,6 @@ except annotate.AnnotationError:
     bad_annotation_method_fail = True
 
 
-
 def accompany(accompaniment):
     '''Method decorator'''
 
