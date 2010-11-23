@@ -30,9 +30,8 @@ class RecorderRoot(object):
 
     journal_parent = None
 
-    def __init__(self, keeper, mode=JournalMode.recording, base_id=None):
+    def __init__(self, keeper, base_id=None):
         self.journal_keeper = IJournalKeeper(keeper)
-        self.journal_mode = mode
         self._base_id = base_id and (base_id, ) or ()
         self._recorder_count = 0
 
@@ -53,7 +52,6 @@ class RecorderNode(object):
         self.journal_parent = node
         self.journal_id = identifier
         self.journal_keeper = node.journal_keeper
-        self.journal_mode = node.journal_mode
         self._recorder_count = 0
 
     ### IRecorderNode Methods ###

@@ -37,7 +37,6 @@ class IRecorderNode(Interface):
     journal_parent = Attribute('Parent recorder node, L{IRecorderNode} or '
                                'None for the root node')
     journal_keeper = Attribute('Journal keeper to use, L{IJournalKeeper}')
-    journal_mode = Attribute('Journaling mode, L{JournalMode}')
 
     def generate_identifier(recorder):
         pass
