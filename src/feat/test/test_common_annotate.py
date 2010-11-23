@@ -7,6 +7,33 @@ from feat.common import annotate
 from . import common
 
 
+class GoodDummy(annotate.Annotable):
+    '''Reference for the following test.'''
+
+    annotate.injectClassCallback("dummy", 2, "good_method")
+
+    @classmethod
+    def good_method(cls):
+        pass
+
+
+try:
+    bad_annotation_method_fail = False
+
+    class GoodDummy(annotate.Annotable):
+        '''Reference for the following test.'''
+
+        annotate.injectClassCallback("dummy", 2, "wrong_method")
+
+        @classmethod
+        def good_method(cls):
+            pass
+
+except annotate.AnnotationError:
+    bad_annotation_method_fail = True
+
+
+
 def accompany(accompaniment):
     '''Method decorator'''
 
@@ -80,6 +107,9 @@ class Annotated(annotate.Annotable):
 
 
 class TestAnnotation(common.TestCase):
+
+    def testMetaErrors(self):
+        self.assertTrue(bad_annotation_method_fail)
 
     def testInitialization(self):
         self.assertTrue(Annotated.class_init)
