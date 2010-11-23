@@ -120,36 +120,41 @@ class DirectReplayDummy(journal.Recorder):
 
     def __init__(self, parent):
         journal.Recorder.__init__(self, parent)
-        self.foo = 0
-        self.bar = 0
-        self.baz = 0
+        self.some_foo = 0
+        self.some_bar = 0
+        self.some_baz = 0
 
     @journal.recorded()
     def foo(self, value):
-        self.foo += value
-        return self.foo
+        self.some_foo += value
+        return self.some_foo
 
     @journal.recorded()
     def bar(self, value, minus=0):
-        self.bar += value - minus
-        return self.bar
+        self.some_bar += value - minus
+        return self.some_bar
 
     @journal.recorded()
     def barr(self, minus=0):
-        self.bar -= minus
-        return self.bar
+        self.some_bar -= minus
+        return self.some_bar
 
     @journal.recorded()
     def baz(self, value):
 
         def async_add(v):
-            self.baz += v
-            return self.baz
+            self.some_baz += v
+            return self.some_baz
 
         f = fiber.Fiber()
         f.addCallback(async_add)
         f.succeed(value)
         return f
+
+    @journal.recorded()
+    def bazz(self, value):
+        '''To test second level'''
+        return self.baz(value)
 
 
 class RecordReplayDummy(journal.Recorder):
@@ -410,25 +415,25 @@ class TestJournaling(common.TestCase):
         k = DummyJournalKeeper()
         r = journal.RecorderRoot(k)
         o = DirectReplayDummy(r)
-        self.assertEqual(o.foo, 0)
-        self.assertEqual(o.bar, 0)
-        self.assertEqual(o.baz, 0)
+        self.assertEqual(o.some_foo, 0)
+        self.assertEqual(o.some_bar, 0)
+        self.assertEqual(o.some_baz, 0)
 
         self.assertEqual((None, 3), o.replay("foo", ((3, ), {})))
-        self.assertEqual(3, o.foo)
+        self.assertEqual(3, o.some_foo)
         self.assertEqual((None, 6), o.replay("foo", ((3, ), None)))
-        self.assertEqual(6, o.foo)
+        self.assertEqual(6, o.some_foo)
 
         self.assertEqual((None, 2), o.replay("bar", ((2, ), {})))
-        self.assertEqual(2, o.bar)
+        self.assertEqual(2, o.some_bar)
         self.assertEqual((None, 4), o.replay("bar", ((2, ), None)))
-        self.assertEqual(4, o.bar)
+        self.assertEqual(4, o.some_bar)
         self.assertEqual((None, 5), o.replay("bar", ((2, ), {"minus": 1})))
-        self.assertEqual(5, o.bar)
+        self.assertEqual(5, o.some_bar)
         self.assertEqual((None, 3), o.replay("barr", ((), {"minus": 2})))
-        self.assertEqual(3, o.bar)
+        self.assertEqual(3, o.some_bar)
         self.assertEqual((None, 2), o.replay("barr", (None, {"minus": 1})))
-        self.assertEqual(2, o.bar)
+        self.assertEqual(2, o.some_bar)
 
         # Test that fibers are not executed
         self.assertEqual((None, (TriggerType.succeed, 5,
@@ -436,13 +441,25 @@ class TestJournaling(common.TestCase):
                                     None, None),
                                    None)])),
                          snapshot(o.replay("baz", ((5, ), None))))
-        self.assertEqual(0, o.baz)
+        self.assertEqual(0, o.some_baz)
         self.assertEqual((None, (TriggerType.succeed, 8,
                                  [(("feat.test.test_common_journal.async_add",
                                     None, None),
                                    None)])),
                          snapshot(o.replay("baz", ((8, ), None))))
-        self.assertEqual(0, o.baz)
+        self.assertEqual(0, o.some_baz)
+        self.assertEqual((None, (TriggerType.succeed, 5,
+                                 [(("feat.test.test_common_journal.async_add",
+                                    None, None),
+                                   None)])),
+                         snapshot(o.replay("bazz", ((5, ), None))))
+        self.assertEqual(0, o.some_baz)
+        self.assertEqual((None, (TriggerType.succeed, 8,
+                                 [(("feat.test.test_common_journal.async_add",
+                                    None, None),
+                                   None)])),
+                         snapshot(o.replay("bazz", ((8, ), None))))
+        self.assertEqual(0, o.some_baz)
 
     def testRecordReplay(self):
 
