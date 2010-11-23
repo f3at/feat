@@ -8,7 +8,8 @@ from twisted.trial import unittest
 
 from feat.agencies.emu import agency
 from feat.agents import message, recipient
-from feat.common import log, delay
+from feat.common import log
+from feat.common import delay as delay_module
 
 from . import factories
 
@@ -19,8 +20,7 @@ def delay(value, delay):
     '''Returns a deferred triggered after the specified delay
     with the specified value.'''
     d = defer.Deferred()
-    #FIXME: change to support time scaling like in Agency
-    reactor.callLater(delay, d.callback, value)
+    delay_module.callLater(delay, d.callback, value)
     return d
 
 
