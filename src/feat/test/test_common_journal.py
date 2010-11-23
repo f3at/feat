@@ -10,7 +10,6 @@ from feat.common import journal, fiber, serialization
 from feat.interface.journal import *
 from feat.interface.serialization import *
 
-
 from . import common
 from feat.interface.fiber import TriggerType
 
@@ -232,6 +231,105 @@ class ErrorDummy(journal.Recorder):
     @journal.recorded()
     def super_bad(self):
         return self.bad()
+
+
+# Used to inspect what side-effect code got really called
+_effect_calls = []
+
+
+@journal.side_effect
+def spam_effect(accomp, extra=None):
+    global _effect_calls
+    _effect_calls.append("spam_effect")
+    extra_desc = extra and (" with " + extra) or ""
+    return ("spam and %s%s followed by %s"
+            % (accomp, extra_desc, bacon_effect("spam", extra=extra)))
+
+
+@journal.side_effect
+def bacon_effect(accomp, extra=None):
+    global _effect_calls
+    _effect_calls.append("bacon_effect")
+    extra_desc = extra and (" with " + extra) or ""
+    return "bacon and %s%s" % (accomp, extra_desc)
+
+
+def fun_without_effect(obj):
+    global _effect_calls
+    _effect_calls.append("fun_without_effect")
+    return fun_with_effect(obj)
+
+
+@journal.side_effect
+def fun_with_effect(obj):
+    global _effect_calls
+    _effect_calls.append("fun_with_effect")
+    return obj.meth_without_effect()
+
+
+@journal.side_effect
+def bad_effect1():
+    return defer.succeed(None)
+
+
+@journal.side_effect
+def bad_effect2():
+    f = fiber.Fiber()
+    f.succeed(None)
+    return f
+
+
+@journal.side_effect
+def bad_effect3():
+    return bad_effect1()
+
+
+def bad_effect4():
+    return bad_effect2()
+
+
+@journal.side_effect
+def bad_replay_effect(*args, **kwargs):
+    return "ok"
+
+
+class SideEffectsDummy(object):
+
+    def __init__(self, name):
+        self.name = name
+
+    @journal.side_effect
+    def beans_effect(self, accomp, extra=None):
+        global _effect_calls
+        _effect_calls.append("beans_effect")
+        extra_desc = extra and (" with " + extra) or ""
+        return ("%s beans and %s%s followed by %s"
+                % (self.name, accomp, extra_desc,
+                   self.eggs_effect("spam", extra=extra)))
+
+    @journal.side_effect
+    def eggs_effect(self, accomp, extra=None):
+        global _effect_calls
+        _effect_calls.append("eggs_effect")
+        extra_desc = extra and (" with " + extra) or ""
+        return "%s eggs and %s%s" % (self.name, accomp, extra_desc)
+
+    @journal.side_effect
+    def test_effect(self):
+        global _effect_calls
+        _effect_calls.append("test_effect")
+        return fun_without_effect(self)
+
+    def meth_without_effect(self):
+        global _effect_calls
+        _effect_calls.append("meth_without_effect")
+        return self.meth_with_effect()
+
+    @journal.side_effect
+    def meth_with_effect(self):
+        global _effect_calls
+        _effect_calls.append("meth_with_effect")
+        return "ok"
 
 
 class TestJournaling(common.TestCase):
@@ -557,3 +655,310 @@ class TestJournaling(common.TestCase):
                                   o.replay, "baz", (None, None))
 
         return d
+
+    def testSideEffectsErrors(self):
+        # Tests outside recording context
+        self.assertRaises(SideEffectResultError, bad_effect1)
+        self.assertRaises(SideEffectResultError, bad_effect2)
+        self.assertRaises(SideEffectResultError, bad_effect3)
+        self.assertRaises(SideEffectResultError, bad_effect4)
+
+        # Setup a recording environment
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = []
+        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+
+        self.assertRaises(SideEffectResultError, bad_effect1)
+        self.assertRaises(SideEffectResultError, bad_effect2)
+        self.assertRaises(SideEffectResultError, bad_effect3)
+        self.assertRaises(SideEffectResultError, bad_effect4)
+
+        section.abort()
+
+        # Setup a replay environment
+        section = fiber.WovenSection()
+        section.enter()
+        funid = "feat.test.test_common_journal.bad_replay_effect"
+        side_effects = ([(funid, (42, 18), None, "ok"),
+                         (funid, None, {"extra": "foo"}, "ok"),
+                         (funid, (42, 18), {"extra": "foo"}, "ok")]
+                        + [(funid, None, None, "ok")] * 4)
+        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+
+        self.assertEqual("ok", bad_replay_effect(42, 18))
+        self.assertEqual("ok", bad_replay_effect(extra="foo"))
+        self.assertEqual("ok", bad_replay_effect(42, 18, extra="foo"))
+        self.assertEqual("ok", bad_replay_effect())
+        self.assertRaises(ReplayError, bad_replay_effect, 42)
+        self.assertRaises(ReplayError, bad_replay_effect, extra=18)
+        self.assertRaises(ReplayError, bad_effect1)
+        self.assertRaises(ReplayError, bad_replay_effect)
+
+        section.abort()
+
+    def testSideEffectsFunctionCalls(self):
+        global _effect_calls
+        _effect_calls = []
+        spam_effect_id = "feat.test.test_common_journal.spam_effect"
+        bacon_effect_id = "feat.test.test_common_journal.bacon_effect"
+
+        # Tests outside recording context
+        del _effect_calls[:]
+        self.assertEqual(bacon_effect("eggs", extra="spam"),
+                         "bacon and eggs with spam")
+        self.assertEqual(_effect_calls, ["bacon_effect"])
+
+        del _effect_calls[:]
+        self.assertEqual(spam_effect("spam", extra="beans"),
+                         "spam and spam with beans followed by "
+                         "bacon and spam with beans")
+        self.assertEqual(_effect_calls, ["spam_effect", "bacon_effect"])
+
+        # Tests inside recording context
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = []
+        replay_side_effects = []
+        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+
+        del _effect_calls[:]
+        del side_effects[:]
+        self.assertEqual(bacon_effect("spam", extra="eggs"),
+                         "bacon and spam with eggs")
+        self.assertEqual(_effect_calls, ["bacon_effect"])
+        self.assertEqual(side_effects,
+                         [(bacon_effect_id, ("spam", ), {"extra": "eggs"},
+                           "bacon and spam with eggs")])
+        replay_side_effects.extend(side_effects) # Keep for later replay
+
+        del _effect_calls[:]
+        del side_effects[:]
+        self.assertEqual(spam_effect("beans", extra="spam"),
+                         "spam and beans with spam followed by "
+                         "bacon and spam with spam")
+        self.assertEqual(_effect_calls, ["spam_effect", "bacon_effect"])
+        self.assertEqual(side_effects,
+                         [(spam_effect_id, ("beans", ), {"extra": "spam"},
+                           "spam and beans with spam followed by "
+                           "bacon and spam with spam")])
+        replay_side_effects.extend(side_effects) # Keep for later replay
+
+        section.abort()
+
+        # Test in replay context
+        section = fiber.WovenSection()
+        section.enter()
+        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+
+        del _effect_calls[:]
+        self.assertEqual(bacon_effect("spam", extra="eggs"),
+                         "bacon and spam with eggs")
+        self.assertEqual(_effect_calls, []) # Nothing got called
+
+        del _effect_calls[:]
+        self.assertEqual(spam_effect("beans", extra="spam"),
+                         "spam and beans with spam followed by "
+                         "bacon and spam with spam")
+        self.assertEqual(_effect_calls, []) # Nothing got called
+
+        section.abort()
+
+    def testSideEffectsMethodCalls(self):
+        global _effect_calls
+        _effect_calls = []
+        beans_effect_id = "feat.test.test_common_journal." \
+                          "SideEffectsDummy.beans_effect"
+        eggs_effect_id = "feat.test.test_common_journal." \
+                         "SideEffectsDummy.eggs_effect"
+
+        obj = SideEffectsDummy("chef's")
+
+        # Tests outside recording context
+        del _effect_calls[:]
+        self.assertEqual(obj.eggs_effect("spam", extra="bacon"),
+                         "chef's eggs and spam with bacon")
+        self.assertEqual(_effect_calls, ["eggs_effect"])
+
+        del _effect_calls[:]
+        self.assertEqual(obj.beans_effect("spam", extra="eggs"),
+                         "chef's beans and spam with eggs followed by "
+                         "chef's eggs and spam with eggs")
+        self.assertEqual(_effect_calls, ["beans_effect", "eggs_effect"])
+
+        # Tests inside recording context
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = []
+        replay_side_effects = []
+        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual(obj.eggs_effect("spam", extra="bacon"),
+                         "chef's eggs and spam with bacon")
+        self.assertEqual(_effect_calls, ["eggs_effect"])
+        self.assertEqual(side_effects,
+                         [(eggs_effect_id, ("spam", ), {"extra": "bacon"},
+                           "chef's eggs and spam with bacon")])
+        replay_side_effects.extend(side_effects) # Keep for later replay
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual(obj.beans_effect("spam", extra="eggs"),
+                         "chef's beans and spam with eggs followed by "
+                         "chef's eggs and spam with eggs")
+        self.assertEqual(_effect_calls, ["beans_effect", "eggs_effect"])
+        self.assertEqual(side_effects,
+                         [(beans_effect_id, ("spam", ), {"extra": "eggs"},
+                           "chef's beans and spam with eggs followed by "
+                         "chef's eggs and spam with eggs")])
+        replay_side_effects.extend(side_effects) # Keep for later replay
+
+        section.abort()
+
+        # Test in replay context
+        section = fiber.WovenSection()
+        section.enter()
+        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+
+        del _effect_calls[:]
+        self.assertEqual(obj.eggs_effect("spam", extra="bacon"),
+                         "chef's eggs and spam with bacon")
+        self.assertEqual(_effect_calls, []) # Nothing got called
+
+        del _effect_calls[:]
+        self.assertEqual(obj.beans_effect("spam", extra="eggs"),
+                         "chef's beans and spam with eggs followed by "
+                         "chef's eggs and spam with eggs")
+        self.assertEqual(_effect_calls, []) # Nothing got called
+
+        section.abort()
+
+    def testCallChain(self):
+        global _effect_calls
+        _effect_calls = []
+        fun_with_id = "feat.test.test_common_journal.fun_with_effect"
+        fun_without_id = "feat.test.test_common_journal.fun_without_effect"
+        meth_test_id = "feat.test.test_common_journal." \
+                       "SideEffectsDummy.test_effect"
+        meth_with_id = "feat.test.test_common_journal." \
+                       "SideEffectsDummy.meth_with_effect"
+        meth_without_id = "feat.test.test_common_journal." \
+                          "SideEffectsDummy.meth_without_effect"
+
+        obj = SideEffectsDummy("dummy")
+
+        # test outside of any reocrding context
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.test_effect())
+        self.assertEqual(["test_effect", "fun_without_effect",
+                          "fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_without_effect(obj))
+        self.assertEqual(["fun_without_effect",
+                          "fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_with_effect(obj))
+        self.assertEqual(["fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_without_effect())
+        self.assertEqual(["meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_with_effect())
+        self.assertEqual(["meth_with_effect"], _effect_calls)
+
+        # Test from inside a recording context
+        section = fiber.WovenSection()
+        section.enter()
+        side_effects = []
+        replay_side_effects = []
+        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.test_effect())
+        self.assertEqual(["test_effect", "fun_without_effect",
+                          "fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+        self.assertEqual([(meth_test_id, None, None, "ok")], side_effects)
+        replay_side_effects.extend(side_effects)
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_without_effect(obj))
+        self.assertEqual(["fun_without_effect",
+                          "fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+        self.assertEqual([(fun_with_id, (obj, ), None, "ok")], side_effects)
+        replay_side_effects.extend(side_effects)
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_with_effect(obj))
+        self.assertEqual(["fun_with_effect", "meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+        self.assertEqual([(fun_with_id, (obj, ), None, "ok")], side_effects)
+        replay_side_effects.extend(side_effects)
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_without_effect())
+        self.assertEqual(["meth_without_effect",
+                          "meth_with_effect"], _effect_calls)
+        self.assertEqual([(meth_with_id, None, None, "ok")], side_effects)
+        replay_side_effects.extend(side_effects)
+
+        del side_effects[:]
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_with_effect())
+        self.assertEqual(["meth_with_effect"], _effect_calls)
+        self.assertEqual([(meth_with_id, None, None, "ok")], side_effects)
+        replay_side_effects.extend(side_effects)
+
+        section.abort()
+
+        # Test from inside a replay context
+        # Test from inside a recording context
+        section = fiber.WovenSection()
+        section.enter()
+        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.test_effect())
+        self.assertEqual([], _effect_calls) # Nothing called
+
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_without_effect(obj))
+        self.assertEqual(["fun_without_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", fun_with_effect(obj))
+        self.assertEqual([], _effect_calls) # Nothing called
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_without_effect())
+        self.assertEqual(["meth_without_effect"], _effect_calls)
+
+        del _effect_calls[:]
+        self.assertEqual("ok", obj.meth_with_effect())
+        self.assertEqual([], _effect_calls) # Nothing called
+
+        section.abort()

@@ -2,7 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["JournalMode", "RecordingResultError", "ReentrantCallError",
+__all__ = ["JournalMode", "RecordingResultError", "SideEffectResultError",
+           "ReentrantCallError", "ReplayError",
            "IJournalKeeper", "IRecorderNode", "IRecorder"]
 
 
@@ -14,7 +15,15 @@ class RecordingResultError(RuntimeError):
     pass
 
 
+class SideEffectResultError(RuntimeError):
+    pass
+
+
 class ReentrantCallError(RuntimeError):
+    pass
+
+
+class ReplayError(RuntimeError):
     pass
 
 
