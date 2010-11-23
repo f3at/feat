@@ -157,17 +157,3 @@ class Recorder(RecorderNode, annotate.Annotable):
                                        "cannot return Deferred" % fun_id)
 
         return result
-
-
-class FileJournalRecorder(object):
-
-    implements(IJournalKeeper)
-
-    ### IJournalKeeper Methods ###
-
-    def register(self, recorder):
-        '''No registration needed for recording.'''
-
-    def record(self, instance_id, entry_id,
-               fiber_id, fiber_depth, input, output):
-        pass
