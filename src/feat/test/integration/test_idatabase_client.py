@@ -103,6 +103,7 @@ class TestCase(object):
         self.assertFailure(d, ConflictError)
         yield d
 
+    @defer.inlineCallbacks
     def testGettingDocumentUpdatingDeleting(self):
         id = 'test id'
         d = self.connection.get_document(id)
