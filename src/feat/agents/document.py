@@ -13,6 +13,11 @@ def register(klass):
 class Document(object):
 
     def __init__(self, _id=None, _rev=None, **kwargs):
+        if _id:
+            assert(isinstance(_id, str))
+        if _rev:
+            assert(isinstance(_rev, str))
+
         self._doc_id = _id
         self._rev = _rev
 
