@@ -14,9 +14,9 @@ class Document(object):
 
     def __init__(self, _id=None, _rev=None, **kwargs):
         if _id:
-            assert(isinstance(_id, str))
+            self._type_check(_id, '_id', str)
         if _rev:
-            assert(isinstance(_rev, str))
+            self._type_check(_rev, '_rev', str)
 
         self._doc_id = _id
         self._rev = _rev
@@ -44,8 +44,15 @@ class Document(object):
         doc_id = response.get('id', None)
         rev = response.get('rev', None)
         if doc_id:
+            self._type_check(doc_id, 'doc_id', str)
             self._doc_id = doc_id
         if rev:
+            self._type_check(rev, 'rev', str)
             self._rev = rev
 
         return self
+
+    def _type_check(self, to_check, var_name, type):
+        if not isinstance(to_check, type):
+            raise RuntimeError('%s should be of type %r, got %r instead' %
+                               (var_name, type, to_check.__class__, ))
