@@ -13,10 +13,8 @@ def register(klass):
 class Document(object):
 
     def __init__(self, _id=None, _rev=None, **kwargs):
-        if _id:
-            self._type_check(_id, '_id', str)
-        if _rev:
-            self._type_check(_rev, '_rev', str)
+        self._decode(_id)
+        self._decode(_rev)
 
         self._doc_id = _id
         self._rev = _rev
@@ -40,19 +38,22 @@ class Document(object):
         @type response: dict
         @returns: updated document
         '''
-
-        doc_id = response.get('id', None)
-        rev = response.get('rev', None)
+        doc_id = self._decode(response.get('id', None))
+        rev = self._decode(response.get('rev', None))
         if doc_id:
-            self._type_check(doc_id, 'doc_id', str)
             self._doc_id = doc_id
         if rev:
-            self._type_check(rev, 'rev', str)
             self._rev = rev
 
         return self
 
-    def _type_check(self, to_check, var_name, type):
-        if not isinstance(to_check, type):
-            raise RuntimeError('%s should be of type %r, got %r instead' %
-                               (var_name, type, to_check.__class__, ))
+    def _decode(self, var):
+        '''
+        Decodes unicode to string if necessary. This is important for some
+        fields, escescially doc_id which is used by CouchDB to generate URLs
+        '''
+
+        if isinstance(var, unicode):
+            return var.encode('utf-8')
+        else:
+            return var

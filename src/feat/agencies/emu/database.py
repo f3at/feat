@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 import uuid
-import simplejson as json
+import json
 
 from twisted.internet import defer
 from zope.interface import implements
@@ -162,6 +162,7 @@ class Connection(log.Logger, log.FluLogKeeper):
             return factory(**doc)
 
         d = self.database.openDoc(id)
+        d.addCallback(self._sanitize_unicode_keys)
         d.addCallback(instantiate)
 
         return d
@@ -174,6 +175,7 @@ class Connection(log.Logger, log.FluLogKeeper):
             return doc
 
         d = self.database.openDoc(doc.doc_id)
+        d.addCallback(self._sanitize_unicode_keys)
         d.addCallback(update, doc)
 
         return d
@@ -185,6 +187,12 @@ class Connection(log.Logger, log.FluLogKeeper):
         d.addCallback(doc.update)
 
         return d
+
+    def _sanitize_unicode_keys(self, doc):
+        resp = dict()
+        for key in doc:
+            resp[key.encode('utf-8')] = doc[key]
+        return resp
 
 
 class Response(dict):
