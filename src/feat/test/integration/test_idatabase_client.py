@@ -103,6 +103,24 @@ class TestCase(object):
         self.assertFailure(d, ConflictError)
         yield d
 
+    def testGettingDocumentUpdatingDeleting(self):
+        id = 'test id'
+        d = self.connection.get_document(id)
+        self.assertFailure(d, NotFoundError)
+        yield d
+
+        doc = DummyDocument(_id=id, field='value')
+        yield self.connection.save_document(doc)
+
+        fetched = yield self.connection.get_document(id)
+        self.assertEqual(doc.rev, fetched.rev)
+
+        yield self.connection.delete_document(fetched)
+
+        d = self.connection.get_document(id)
+        self.assertFailure(d, NotFoundError)
+        yield d
+
 
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
