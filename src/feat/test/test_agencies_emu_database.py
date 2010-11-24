@@ -4,6 +4,7 @@ from twisted.internet import defer
 
 from feat.agencies.emu import database
 from feat.agents import document
+from feat.agencies.emu.interface import ConflictError, NotFoundError
 
 from . import common
 
@@ -61,11 +62,11 @@ class TestDatabase(common.TestCase):
         content2['_id'] = doc_id
 
         d = self.database.saveDoc(json.dumps(content2))
-        self.assertFailure(d, RuntimeError)
+        self.assertFailure(d, ConflictError)
 
         content2['_rev'] = 'incorrect revision'
         d = self.database.saveDoc(json.dumps(content2))
-        self.assertFailure(d, RuntimeError)
+        self.assertFailure(d, ConflictError)
         yield d
 
     def testNonStringDocument(self):
@@ -121,7 +122,7 @@ class TestDatabaseIntegration(common.TestCase):
         self.assertNotEqual(rev2, rev)
 
         d = self.database.deleteDoc(id, rev)
-        self.assertFailure(d, RuntimeError)
+        self.assertFailure(d, ConflictError)
         yield d
 
         content['_rev'] = rev2
@@ -134,7 +135,7 @@ class TestDatabaseIntegration(common.TestCase):
     def testGettingDocumentUpdatingDeleting(self):
         id = 'test id'
         d = self.database.openDoc(id)
-        self.assertFailure(d, RuntimeError)
+        self.assertFailure(d, NotFoundError)
         yield d
 
         content = {'_id': id, 'field': 'value'}
@@ -151,92 +152,5 @@ class TestDatabaseIntegration(common.TestCase):
         self.assertTrue(del_resp['ok'])
 
         d = self.database.openDoc(id)
-        self.assertFailure(d, RuntimeError)
+        self.assertFailure(d, NotFoundError)
         yield d
-
-
-@document.register
-class DummyDocument(document.Document):
-
-    document_type = "dummy"
-
-    def __init__(self, field=None, **kwargs):
-        document.Document.__init__(self, **kwargs)
-        self.field = field
-
-    def get_content(self):
-        return dict(field=self.field)
-
-
-class TestConnection(common.TestCase):
-
-    def setUp(self):
-        self.database = database.Database()
-        self.connection = database.Connection(self.database)
-
-    @defer.inlineCallbacks
-    def testSavingDocument(self):
-        doc = DummyDocument(field='something')
-        doc = yield self.connection.save_document(doc)
-
-        self.assertTrue(doc.doc_id is not None)
-        self.assertTrue(doc.rev is not None)
-
-        doc_in_database = self.database._documents[doc.doc_id]
-        self.assertEqual('dummy', doc_in_database['document_type'])
-        self.assertEqual(doc.rev, doc_in_database['_rev'])
-        self.assertEqual(doc.doc_id, doc_in_database['_id'])
-
-    @defer.inlineCallbacks
-    def testSavingAndGettingTheDocument(self):
-        doc = DummyDocument(field='something')
-        doc = yield self.connection.save_document(doc)
-
-        fetched_doc = yield self.connection.get_document(doc.doc_id)
-        self.assertTrue(isinstance(fetched_doc, DummyDocument))
-        self.assertEqual('something', fetched_doc.field)
-        self.assertEqual(doc.rev, fetched_doc.rev)
-        self.assertEqual(doc.doc_id, fetched_doc.doc_id)
-
-    @defer.inlineCallbacks
-    def testCreatingAndUpdatingTheDocument(self):
-        doc = DummyDocument(field='something')
-        doc = yield self.connection.save_document(doc)
-        rev1 = doc.rev
-
-        doc.field = 'something else'
-        doc = yield self.connection.save_document(doc)
-        rev2 = doc.rev
-
-        self.assertNotEqual(rev1, rev2)
-
-        fetched_doc = yield self.connection.get_document(doc.doc_id)
-        self.assertEqual(fetched_doc.rev, rev2)
-        self.assertEqual('something else', fetched_doc.field)
-
-    @defer.inlineCallbacks
-    def testReloadingDocument(self):
-        doc = DummyDocument(field='something')
-        doc = yield self.connection.save_document(doc)
-        fetched_doc = yield self.connection.get_document(doc.doc_id)
-
-        doc.field = 'something else'
-        doc = yield self.connection.save_document(doc)
-
-        self.assertEqual('something', fetched_doc.field)
-        fetched_doc = yield self.connection.reload_document(fetched_doc)
-        self.assertEqual('something else', fetched_doc.field)
-
-    @defer.inlineCallbacks
-    def testDeletingDocumentThanSavingAgain(self):
-        doc = DummyDocument(field='something')
-        doc = yield self.connection.save_document(doc)
-        rev = doc.rev
-
-        yield self.connection.delete_document(doc)
-
-        self.assertNotEqual(doc.rev, rev)
-        rev2 = doc.rev
-
-        yield self.connection.save_document(doc)
-        self.assertNotEqual(doc.rev, rev2)

@@ -17,5 +17,5 @@ def build(doc_class, **options):
 
 
 def descriptor_factory(**options):
-    options['shard'] = options.get('shard', None) or 'lobby'
+    options['shard'] = options.get('shard', 'lobby')
     return options

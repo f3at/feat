@@ -10,20 +10,8 @@ from zope.interface import implements
 from feat.common import log
 from feat.agents import document
 
-from interface import IConnectionFactory, IDatabaseClient
-
-
-class ConflictError(RuntimeError):
-    '''
-    Raised when we encounter revision mismatch.
-    '''
-
-
-class NotFoundError(RuntimeError):
-    '''
-    Raised when we request document which is not there
-    or has been deleted.
-    '''
+from interface import (IConnectionFactory, IDatabaseClient, DatabaseError,
+                       ConflictError, NotFoundError)
 
 
 class Database(log.Logger, log.FluLogKeeper):
