@@ -1,7 +1,8 @@
 Things needed by Messy to run.
 
 * Python 2.6
-* Twisted 10.1.0
-* CouchDB 0.10 (version 1.0.1 doesn't work with Paisley 0.1)
-* Paisley (0.1)
-* JSON 
+* Twisted >= 8.2.0
+* CouchDB >= 0.10
+* Paisley 0.2 (Paisley has been frozen in feat.extern.paisley, because of
+  	       annoying bugs which needed to be fixed)
+* simplejson
