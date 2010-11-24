@@ -962,3 +962,23 @@ class TestJournaling(common.TestCase):
         self.assertEqual([], _effect_calls) # Nothing called
 
         section.abort()
+
+    def testSerialization(self):
+        keeper = DummyJournalKeeper()
+        root = journal.RecorderRoot(keeper, "dummy")
+        obj = BasicRecordingDummy(root)
+        sub = BasicRecordingDummy(obj)
+
+        root2 = journal.RecorderRoot.restore(root.snapshot())
+        self.assertEqual(root.journal_keeper, root2.journal_keeper)
+        # Check that the identifier generator has not been reset
+        self.assertNotEqual(obj.journal_id,
+                            BasicRecordingDummy(root2).journal_id)
+
+        obj2 = BasicRecordingDummy.restore(obj.snapshot())
+        self.assertEqual(obj.journal_keeper, obj2.journal_keeper)
+        self.assertEqual(obj.journal_parent, obj2.journal_parent)
+        self.assertEqual(obj.journal_id, obj2.journal_id)
+        # Check that the identifier generator has not been reset
+        self.assertNotEqual(sub.journal_id,
+                            BasicRecordingDummy(obj2).journal_id)

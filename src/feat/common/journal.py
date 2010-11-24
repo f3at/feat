@@ -102,7 +102,7 @@ def side_effect(original):
     return wrapper
 
 
-class RecorderRoot(object):
+class RecorderRoot(serialization.Serializable):
 
     implements(IRecorderNode)
 
@@ -113,6 +113,17 @@ class RecorderRoot(object):
         self._base_id = base_id and (base_id, ) or ()
         self._recorder_count = 0
 
+    ### ISerializable Methods ###
+
+    def recover(self, state):
+        keeper, base, count = state
+        self.journal_keeper = keeper
+        self._base_id = base
+        self._recorder_count = count
+
+    def snapshot(self):
+        return self.journal_keeper, self._base_id, self._recorder_count
+
     ### IRecorderNode Methods ###
 
     def generate_identifier(self, recorder):
@@ -120,7 +131,7 @@ class RecorderRoot(object):
         return self._base_id + (self._recorder_count, )
 
 
-class RecorderNode(object):
+class RecorderNode(serialization.Serializable):
 
     implements(IRecorderNode)
 
@@ -132,6 +143,19 @@ class RecorderNode(object):
         self.journal_keeper = node.journal_keeper
         self._recorder_count = 0
 
+    ### ISerializable Methods ###
+
+    def recover(self, state):
+        parent, keeper, ident, count = state
+        self.journal_parent = parent
+        self.journal_keeper = keeper
+        self.journal_id = ident
+        self._recorder_count = count
+
+    def snapshot(self):
+        return (self.journal_parent, self.journal_keeper,
+                self.journal_id, self._recorder_count)
+
     ### IRecorderNode Methods ###
 
     def generate_identifier(self, recorder):
@@ -140,6 +164,10 @@ class RecorderNode(object):
 
 
 class Recorder(RecorderNode, annotate.Annotable):
+
+    # Fix the metaclass inheritance
+    __metaclass__ = type("MetaRecorder", (annotate.MetaAnnotable,
+                                          serialization.MetaSerializable), {})
 
     implements(IRecorder)
 
