@@ -122,6 +122,20 @@ class TestCase(object):
         self.assertFailure(d, NotFoundError)
         yield d
 
+    @defer.inlineCallbacks
+    def testDeletingAndUpdating(self):
+        doc = DummyDocument(field='value')
+        yield self.connection.save_document(doc)
+        rev = doc.rev
+
+        yield self.connection.delete_document(doc)
+        rev2 = doc.rev
+        self.assertNotEqual(rev2, rev)
+
+        yield self.connection.save_document(doc)
+        rev3 = doc.rev
+        self.assertNotEqual(rev3, rev2)
+
 
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
