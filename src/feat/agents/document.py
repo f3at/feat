@@ -13,11 +13,8 @@ def register(klass):
 class Document(object):
 
     def __init__(self, _id=None, _rev=None, **kwargs):
-        self._decode(_id)
-        self._decode(_rev)
-
-        self._doc_id = _id
-        self._rev = _rev
+        self._doc_id = self._decode(_id)
+        self._rev = self._decode(_rev)
 
     @property
     def doc_id(self):
