@@ -2,7 +2,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from feat.common import guarded
+from feat.common import guard
 
 from feat.interface.serialization import *
 
@@ -10,12 +10,12 @@ from . import common
 from twisted.trial.unittest import SkipTest
 
 
-class Dummy(guarded.Guarded):
+class Dummy(guard.Guarded):
 
     def init_state(self, state):
         state.value = 0
 
-    @guarded.mutable
+    @guard.mutable
     def double(self, state, value, minus=None):
         result = value * 2
         if minus is not None:
@@ -23,7 +23,7 @@ class Dummy(guarded.Guarded):
         state.value += result
         return result
 
-    @guarded.immutable
+    @guard.immutable
     def get_value(self, state):
         return state.value
 
@@ -243,11 +243,11 @@ class TestStateGuard(common.TestCase):
         testNotFrozen(obj.list_ref[1])
         testNotFrozen(obj.tuple_ref[1])
 
-        obj = guarded.freeze(TopFreezeDummy())
+        obj = guard.freeze(TopFreezeDummy())
         testFrozen(obj)
         testFrozen(obj.reference)
         self.assertRaises(AttributeError, setattr, obj, "reference", None)
         testFrozen(obj.list_ref[1])
         testFrozen(obj.tuple_ref[1])
 
-    testFreeze.skip = "Freeze not implemented yet"
+    testFreeze.skip = "State freeze not implemented yet"
