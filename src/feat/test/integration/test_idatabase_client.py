@@ -121,7 +121,6 @@ class TestCase(object):
         d = self.connection.get_document(id)
         self.assertFailure(d, NotFoundError)
         yield d
-    testGettingDocumentUpdatingDeleting.skip = "Bugged paisley makes it fail."
 
 
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):

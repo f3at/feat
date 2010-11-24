@@ -1,5 +1,3 @@
-import paisley
-
 from zope.interface import implements
 from twisted.web import error as web_error
 
@@ -7,6 +5,7 @@ from feat.agencies.emu.database import Connection
 from feat.common import log, decorator
 from feat.agencies.emu.interface import (IConnectionFactory, ConflictError,
                                          NotFoundError)
+from feat.extern import paisley
 
 
 @decorator.simple_function
