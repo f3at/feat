@@ -9,7 +9,8 @@ SHOW_COVERAGE = ${TOOLS}/show-coverage.py
 check-local: check-tests check-local-pep8
 
 check-local-pep8:
-	find $(top_srcdir) -name \*.py | sort -u | xargs $(PYTHON) $(PEP8)
+	find $(top_srcdir) -name \*.py | grep -v extern | \
+	sort -u | xargs $(PYTHON) $(PEP8)
 
 check-tests:
 	$(PYTHON) $(TRIAL) $(COVERAGE_MODULES)
@@ -40,7 +41,7 @@ check-commit:
 	(echo Removing old $$dst; rm -rf $$dst);			\
 	fi;								\
 	cd /tmp;							\
-	git clone -l --depth 0 $$repo;					\
+	git clone -l --recursive --depth 0 $$repo;                      \
 	cd $$reponame/src;						\
 	make check-local;						\
 	cd $$current;							\

@@ -1,0 +1,3 @@
+[submodule "src/feat/extern/paisley"]
+	path = src/feat/extern/paisley
+	url = git://github.com/kowalski/paisley.git
