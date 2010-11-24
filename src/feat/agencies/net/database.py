@@ -5,7 +5,7 @@ from feat.agencies.emu.database import Connection
 from feat.common import log, decorator
 from feat.agencies.emu.interface import (IConnectionFactory, ConflictError,
                                          NotFoundError)
-from feat.extern import paisley
+from feat.extern.paisley import paisley as feat_paisley
 
 
 @decorator.simple_function
@@ -19,14 +19,14 @@ def wrap_in_error_handler(method):
     return wrapped
 
 
-class Database(paisley.CouchDB, log.FluLogKeeper, log.Logger):
+class Database(feat_paisley.CouchDB, log.FluLogKeeper, log.Logger):
 
     implements(IConnectionFactory)
 
     log_category = "database"
 
     def __init__(self, host, port, db_name):
-        paisley.CouchDB.__init__(self, host, port, db_name)
+        feat_paisley.CouchDB.__init__(self, host, port, db_name)
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
@@ -39,9 +39,9 @@ class Database(paisley.CouchDB, log.FluLogKeeper, log.Logger):
 
     # end of IConnectionFactory
 
-    openDoc = wrap_in_error_handler(paisley.CouchDB.openDoc)
-    saveDoc = wrap_in_error_handler(paisley.CouchDB.saveDoc)
-    deleteDoc = wrap_in_error_handler(paisley.CouchDB.deleteDoc)
+    openDoc = wrap_in_error_handler(feat_paisley.CouchDB.openDoc)
+    saveDoc = wrap_in_error_handler(feat_paisley.CouchDB.saveDoc)
+    deleteDoc = wrap_in_error_handler(feat_paisley.CouchDB.deleteDoc)
 
     def error_handler(self, failure):
         exception = failure.value
