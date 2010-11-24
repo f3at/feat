@@ -165,7 +165,7 @@ class RecordReplayDummy(journal.Recorder):
     def reset(self):
         self.servings = []
 
-    def snapshot(self, context={}):
+    def snapshot(self):
         return self.servings
 
     @journal.recorded()

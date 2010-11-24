@@ -17,7 +17,7 @@ class IRestorator(Interface):
 
     type_name = Attribute('')
 
-    def restore(snapshot, context={}):
+    def restore(snapshot):
         pass
 
 
@@ -40,17 +40,17 @@ class ISerializable(ISnapshot):
 
     type_name = Attribute('')
 
-    def recover(snapshot, context={}):
+    def recover(snapshot):
         pass
 
 
 class ISerializer(Interface):
     '''Knows how to convert an object to bytes.'''
 
-    def snapshot(obj, context={}):
+    def snapshot(obj):
         pass
 
-    def serialize(obj, context={}):
+    def serialize(obj):
         '''Same has snapshot but enforce all instances
         support L{ISerializable}'''
 
@@ -61,7 +61,7 @@ class IUnserializer(Interface):
     than python basic types.
     '''
 
-    def unserialize(data, context={}):
+    def unserialize(data):
         pass
 
 

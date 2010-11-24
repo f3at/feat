@@ -175,7 +175,7 @@ class Fiber(object):
 
     ### serialization.ISnapshot Methods ###
 
-    def snapshot(self, context={}):
+    def snapshot(self):
         # FIXME: Should we deep clone ?
         return self._trigger, self._param, self._calls
 

@@ -34,10 +34,10 @@ class Guarded(serialization.Serializable):
     def init_state(self, state):
         '''Override to initialize the state.'''
 
-    def recover(self, snapshot, context={}):
+    def recover(self, snapshot):
         setattr(self, STATE_TAG, snapshot)
 
-    def snapshot(self, context={}):
+    def snapshot(self):
         return self._get_state()
 
     ### Private Methods ###

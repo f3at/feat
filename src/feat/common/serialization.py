@@ -24,7 +24,7 @@ class SnapshotWrapper(object):
 
     ### ISnapshot Methods ###
 
-    def snapshot(self, context={}):
+    def snapshot(self):
         return self.value
 
 
@@ -44,7 +44,7 @@ class Snapshot(object):
 
     ### ISnapshot Methods ###
 
-    def snapshot(self, context={}):
+    def snapshot(self):
         return self.__dict__
 
 
@@ -57,12 +57,12 @@ class Serializable(Snapshot):
     type_name = None
 
     @classmethod
-    def restore(cls, snapshot, context={}):
+    def restore(cls, snapshot):
         obj = cls.__new__(cls)
-        obj.recover(snapshot, context)
+        obj.recover(snapshot)
         return obj
 
-    def recover(self, snapshot, context={}):
+    def recover(self, snapshot):
         self.__dict__.update(snapshot)
 
 
