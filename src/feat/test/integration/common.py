@@ -63,4 +63,5 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
     def processExited(self, status):
         self.log("Process exites with status: %r", status)
+        self.transport.loseConnection()
         self.exited.callback(None)
