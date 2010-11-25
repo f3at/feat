@@ -56,6 +56,16 @@ class Messaging(log.Logger, log.FluLogKeeper):
         else:
             self.error("Exchange %r not found!" % shard)
 
+    def createBinding(self, exchange, key, queue):
+        ex = self._getExchange(exchange)
+        que = self._getQueue(queue)
+        ex._bind(key, que)
+
+    def deleteBinding(self, exchange, key, queue):
+        ex = self._getExchange(exchange)
+        que = self._getQueue(queue)
+        ex._unbind(key, que)
+
     # private
 
     def _getExchange(self, name):
@@ -72,7 +82,7 @@ class Exchange(object):
         # key -> [ list of queues ]
         self._bindings = {}
 
-    def bind(self, key, queue):
+    def _bind(self, key, queue):
         assert isinstance(queue, Queue)
 
         list_for_key = self._bindings.get(key, [])
@@ -80,7 +90,7 @@ class Exchange(object):
             list_for_key.append(queue)
         self._bindings[key] = list_for_key
 
-    def unbind(self, key, queue):
+    def _unbind(self, key, queue):
         list_for_key = self._bindings.get(key, [])
         if queue in list_for_key:
             list_for_key.remove(queue)

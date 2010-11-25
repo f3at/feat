@@ -81,8 +81,8 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
                             ProcessState.failed])
 
         self.process = reactor.spawnProcess(
-            self.control, self.command, args=self.args,
-            env=self.env)
+            self.control, self.command,
+            args=[self.command] + self.args, env=self.env)
 
         self.control.ready.addCallback(self.on_ready)
         return self.control.ready
@@ -135,7 +135,6 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
 
     def validate_setup(self):
         self.check_installed(self.command)
-        self.args = [self.command] + self.args
 
     def get_free_port(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

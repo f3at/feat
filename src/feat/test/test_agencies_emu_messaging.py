@@ -16,7 +16,7 @@ from . import common
 class TestQueue(common.TestCase):
 
     def _appendConsumers(self, finished):
-        defers = map(lambda _: self.queue.consume(
+        defers = map(lambda _: self.queue.get(
                                     ).addCallback(self._rcvCallback), range(5))
         defer.DeferredList(defers).addCallback(finished.callback)
 
@@ -41,7 +41,7 @@ class TestQueue(common.TestCase):
         defers = []
 
         for x in range(5):
-            d = self.queue.consume().addCallback(self._rcvCallback)
+            d = self.queue.get().addCallback(self._rcvCallback)
             defers.append(d)
             self.queue.enqueue("Msg %d" % x)
 
@@ -78,34 +78,34 @@ class TestExchange(common.TestCase):
 
     def testQueueBindingAndUnbinding(self):
         for queue in self.queues:
-            self.exchange.bind(queue.name, queue)
+            self.exchange._bind(queue.name, queue)
 
         self.assertEqual(3, len(self.exchange._bindings.keys()))
         for key in self.exchange._bindings:
             self.assertTrue(isinstance(self.exchange._bindings[key], list))
             self.assertEqual(1, len(self.exchange._bindings[key]))
 
-        self.exchange.bind('queue 1', self.queues[0])
+        self.exchange._bind('queue 1', self.queues[0])
         self.assertEqual(2, len(self.exchange._bindings['queue 1']))
-        self.exchange.unbind('queue 1', self.queues[0])
+        self.exchange._unbind('queue 1', self.queues[0])
 
         for queue in self.queues:
-            self.exchange.unbind(queue.name, queue)
+            self.exchange._unbind(queue.name, queue)
 
         self.assertEqual(0, len(self.exchange._bindings))
 
     def testNotDoublingBindings(self):
         queue = self.queues[0]
-        self.exchange.bind(queue.name, queue)
+        self.exchange._bind(queue.name, queue)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
 
-        self.exchange.bind(queue.name, queue)
+        self.exchange._bind(queue.name, queue)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
 
     def testPublishingSameKey(self):
         routing_key = 'some key'
         for queue in self.queues:
-            self.exchange.bind(routing_key, queue)
+            self.exchange._bind(routing_key, queue)
 
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
@@ -118,7 +118,7 @@ class TestExchange(common.TestCase):
     def testPublishingOneQueueBound(self):
         routing_key = 'some key'
         queue = self.queues[0]
-        self.exchange.bind(routing_key, queue)
+        self.exchange._bind(routing_key, queue)
 
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
@@ -147,6 +147,8 @@ class StubAgent(object):
 
 
 class TestMessaging(common.TestCase):
+
+    timeout = 1
 
     def setUp(self):
         self.messaging = messaging.Messaging()

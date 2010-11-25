@@ -138,7 +138,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return self.manager
 
     def _consume_all(self, *_):
-        return defer.DeferredList(map(lambda x: x.consume(), self.queues))
+        return defer.DeferredList(map(lambda x: x.get(), self.queues))
 
     def _put_bids(self, results, costs):
         '''
@@ -242,11 +242,11 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self._consume_all()
         d.addCallback(self._put_bids, (3, 2, 1, ))
 
-        d = self.queues[0].consume()
+        d = self.queues[0].get()
         d.addCallback(self.assertIsInstance, message.Rejection)
-        d.addCallback(lambda _: self.queues[1].consume())
+        d.addCallback(lambda _: self.queues[1].get())
         d.addCallback(self.assertIsInstance, message.Rejection)
-        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(lambda _: self.queues[2].get())
         d.addCallback(self.assertIsInstance, message.Grant)
 
         def asserts_on_manager(_):
@@ -280,11 +280,11 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d.addCallback(self.cb_after, obj=self.manager, method='closed')
-        d.addCallback(lambda _: self.queues[0].consume())
+        d.addCallback(lambda _: self.queues[0].get())
         d.addCallback(self.assertIsInstance, message.Rejection)
-        d.addCallback(lambda _: self.queues[1].consume())
+        d.addCallback(lambda _: self.queues[1].get())
         d.addCallback(self.assertIsInstance, message.Grant)
-        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(lambda _: self.queues[2].get())
         d.addCallback(self.assertIsInstance, message.Grant)
 
         def asserts_on_manager(_):
@@ -367,8 +367,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.send_announce(self.manager)
         d = self._consume_all()
         d.addCallback(self._put_bids, (3, 2, 1, ))
-        d.addCallback(lambda _: self.queues[2].consume()) #just swallow
-        d.addCallback(lambda _: self.queues[0].consume())
+        d.addCallback(lambda _: self.queues[2].get()) #just swallow
+        d.addCallback(lambda _: self.queues[0].get())
 
         def complete_one(grant):
             msg = message.FinalReport()
@@ -383,7 +383,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(2, len(
                 self.medium.contractors.with_state(ContractorState.granted)))
 
-        d.addCallback(lambda _: self.queues[1].consume())
+        d.addCallback(lambda _: self.queues[1].get())
 
         def cancel_one(grant):
             msg = message.Cancellation(reason='Ad majorem dei gloriam!')
@@ -392,9 +392,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(cancel_one)
 
-        d.addCallback(lambda _: self.queues[0].consume())
+        d.addCallback(lambda _: self.queues[0].get())
         d.addCallback(self.assertIsInstance, message.Cancellation)
-        d.addCallback(lambda _: self.queues[2].consume())
+        d.addCallback(lambda _: self.queues[2].get())
         d.addCallback(self.assertIsInstance, message.Cancellation)
 
         def asserts_on_manager2(_):
@@ -555,7 +555,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
                              contractor.medium.state)
 
         d.addCallback(asserts)
-        d.addCallback(self.queue.consume)
+        d.addCallback(self.queue.get)
 
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
@@ -584,7 +584,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.send_refusal)
 
         d.addCallback(self.assertUnregistered, contracts.ContractState.refused)
-        d.addCallback(self.queue.consume)
+        d.addCallback(self.queue.get)
 
         def asserts_on_refusal(msg):
             self.assertEqual(message.Refusal, msg.__class__)
@@ -631,14 +631,14 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.send_bid, 1)
         d.addCallback(self.recv_grant, bid_index=0, update_report=1)
 
-        d.addCallback(self.queue.consume) # this is a bid
+        d.addCallback(self.queue.get) # this is a bid
 
         def assert_msg_is_report(msg):
             self.assertEqual(message.UpdateReport, msg.__class__)
             self.log("Received report message")
 
         for x in range(3):
-            d.addCallback(self.queue.consume)
+            d.addCallback(self.queue.get)
             d.addCallback(assert_msg_is_report)
 
         d.addCallback(self._get_contractor)

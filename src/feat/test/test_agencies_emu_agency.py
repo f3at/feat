@@ -116,7 +116,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     def testRequester(self):
 
-        d = self.queue.consume()
+        d = self.queue.get()
         payload = 5
         self.requester =\
             self.agent.initiate_protocol(DummyRequester,
@@ -171,7 +171,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def testRequestTimeout(self):
         delay.time_scale = 0.01
 
-        d = self.queue.consume()
+        d = self.queue.get()
         payload = 5
         self.requester =\
             self.agent.initiate_protocol(DummyRequester,
@@ -199,7 +199,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         req = self._build_req_msg(self.endpoint)
         d = self.recv_msg(req, self.endpoint, key)
 
-        d.addCallback(lambda _: self.queue.consume())
+        d.addCallback(lambda _: self.queue.get())
 
         def assert_on_msg(msg):
             self.assertEqual('dummy-request', msg.protocol_id)
