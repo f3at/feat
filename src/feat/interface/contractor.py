@@ -44,7 +44,10 @@ class IAgentContractor(protocols.IInterested):
 
     def announced(announce):
         '''Called by the agency when a contract matching
-        the contractor has been received. Called only once.'''
+        the contractor has been received. Called only once.
+
+        @type  announce: L{feat.agents.message.Announcement}
+        '''
 
     def announce_expired():
         pass

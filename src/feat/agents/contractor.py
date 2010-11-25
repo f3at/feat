@@ -5,6 +5,14 @@ from feat.agents import message
 
 
 class BaseContractor(log.Logger):
+    """
+    I am a base class for contractors of contracts.
+
+    @ivar protocol_type: the type of contract this contractor bids on.
+                         Must match the type of the manager for this contract;
+                         see L{feat.agents.manager.BaseManager}
+    @type protocol_type: str
+    """
     classProvides(contractor.IContractorFactory)
     implements(contractor.IAgentContractor)
 
