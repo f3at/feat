@@ -41,7 +41,7 @@ check-commit:
 	(echo Removing old $$dst; rm -rf $$dst);			\
 	fi;								\
 	cd /tmp;							\
-	git clone -l --recursive --depth 0 $$repo;                      \
+	git clone --recursive --depth 0 $$repo;                      	\
 	cd $$reponame/src;						\
 	make check-local;						\
 	cd $$current;							\
