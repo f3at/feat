@@ -72,6 +72,10 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual(0, len(self.agency._shards['lobby']))
 
+    def testRegisterTwice(self):
+        self.assertTrue(self.agent.register_interest(DummyReplier))
+        self.failIf(self.agent.register_interest(DummyReplier))
+
     def testRegisteringAndRevokeReplier(self):
         self.agent.register_interest(DummyReplier)
 
