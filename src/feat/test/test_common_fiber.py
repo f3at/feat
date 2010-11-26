@@ -77,7 +77,7 @@ def test_weaving_end(result, arg):
     return f.succeed(result)
 
 
-class TestWeaving(object):
+class WeavingDummy(object):
 
     def __init__(self, tag):
         self.tag = tag
@@ -611,6 +611,138 @@ class TestFiber(common.TestCase):
 
         return self.mkChainedFiberTest(push)
 
+    def mkTriggerChainTest(self, callback, errback):
+
+        def unexpected(_):
+            self.fail("Unexpected call")
+
+        # TRIGGERED
+        f1 = fiber.Fiber()
+        f1.succeed(0)
+        f1.addErrback(unexpected)
+        f1.addCallback(callback, 0, 3)
+        f1.addErrback(unexpected)
+        f1.addCallback(callback, 3, 2)
+        f1.addErrback(unexpected)
+        f1.addCallback(callback, 5, 2)
+        f1.addErrback(unexpected)
+
+        # NOT TRIGGERED, Should get called with master fiber result
+        f2 = fiber.Fiber()
+        f2.addErrback(unexpected)
+        f2.addCallback(callback, 7, 4)
+        f2.addErrback(unexpected)
+        f2.addCallback(callback, 11, 2)
+        f2.addErrback(unexpected)
+
+        # TRIGGERED, the master fiber result should be overridden
+        f3 = fiber.Fiber()
+        f3.succeed(59)
+        f3.addErrback(unexpected)
+        f3.addCallback(callback, 59, 2)
+        f3.addErrback(unexpected)
+        f3.addCallback(callback, 61, 6)
+        f3.addErrback(unexpected)
+
+        # NOT TRIGGERED, started with master fiber's result
+        f4 = fiber.Fiber()
+        f4.addErrback(unexpected)
+        f4.addCallback(callback, 67, 4)
+        f4.addErrback(unexpected)
+        f4.addCallback(callback, 71, "bad") # Make things fail
+        f4.addCallback(unexpected)
+        f4.addErrback(errback, exp_class=TypeError)
+        f4.addCallback(unexpected)
+
+        # TRIGGERED, the failure from the master fiber got overridden
+        f5 = fiber.Fiber()
+        e1 = ValueError("f5 e1")
+        e2 = TypeError("f5 e2")
+
+        try:
+            raise e1
+        except:
+            # Trigger the fiber in the exception context
+            # to be able to create a Failure
+            f5.fail()
+
+        f5.addCallback(unexpected)
+        f5.addErrback(errback, exp_error=e1, exception=e2)
+        f5.addCallback(unexpected)
+        f5.addErrback(errback, exp_error=e2, exception=e1)
+        f5.addCallback(unexpected)
+
+        # NOT TRIGGERED, errback started with master fiber's last failure
+        f6 = fiber.Fiber()
+        e2 = ValueError("f6 e2")
+
+        f6.addCallback(unexpected)
+        f6.addErrback(errback, exp_error=e1, exception=e2)
+        f6.addCallback(unexpected)
+        f6.addErrback(errback, exp_error=e2, result="recovered")
+        f6.addErrback(unexpected)
+        f6.addCallback(callback, "recovered", "")
+        f6.addErrback(unexpected)
+
+        f1.chain(f2.chain(f3.chain(f4.chain(f5.chain(f6)))))
+
+        d = f1.start()
+        d.addCallback(self.assertEqual, "recovered")
+
+        return d
+
+    def testSyncChainingTrigger(self):
+
+        def callback(param, expected, addvalue):
+            self.assertEqual(param, expected)
+            return param + addvalue
+
+        def errback(failure, exp_error=None, exp_class=None,
+                    result=None, exception=None):
+            if exp_class:
+                self.assertTrue(failure.check(exp_class) is not None)
+            if exp_error:
+                self.assertEqual(exp_error, failure.value)
+
+            if exception:
+                raise exception
+
+            return result or failure
+
+        return self.mkTriggerChainTest(callback, errback)
+
+    def testAsyncChainingTrigger(self):
+
+        def callback(param, expected, addvalue):
+
+            def async(param):
+                self.assertEqual(param, expected)
+                return param + addvalue
+
+            d = common.break_chain(param)
+            d.addCallback(async)
+            return d
+
+        def errback(failure, exp_error=None, exp_class=None,
+                    result=None, exception=None):
+
+            def async(failure):
+                if exp_class:
+                    self.assertTrue(failure.check(exp_class) is not None)
+                if exp_error:
+                    self.assertEqual(exp_error, failure.value)
+
+                if exception:
+                    raise exception
+
+                return result or failure
+
+            d = common.break_errback_chain(failure)
+            d.addErrback(async)
+            return d
+
+        return self.mkTriggerChainTest(callback, errback)
+
     def testChainedErrors(self):
 
         def push(failure, l, v):
@@ -703,18 +835,24 @@ class TestFiber(common.TestCase):
         f.succeed()
         self.assertRaises(fiber.FiberTriggerError, f.fail)
 
-        # Cannot chain after triggered
+        # Cannot trigger chained fibers
         f1 = fiber.Fiber()
-        f1.succeed()
         f2 = fiber.Fiber()
-        self.assertRaises(fiber.FiberChainError, f1.chain, f2)
-        self.assertRaises(fiber.FiberChainError, f2.chain, f1)
+        f1.chain(f2)
+        self.assertRaises(fiber.FiberTriggerError, f2.succeed)
 
         # Cannot start chained fibers
         f1 = fiber.Fiber()
         f2 = fiber.Fiber()
         f1.chain(f2)
-        self.assertRaises(fiber.FiberChainError, f2.start)
+        self.assertRaises(fiber.FiberStartupError, f2.start)
+
+        # Cannot chain a start fiber
+        f1 = fiber.Fiber()
+        f1.succeed()
+        f1.start()
+        f2 = fiber.Fiber()
+        self.assertRaises(fiber.FiberStartupError, f1.chain, f2)
 
         # Cannot trigger more multiple time
         try:
@@ -725,25 +863,19 @@ class TestFiber(common.TestCase):
             f.fail()
             self.assertRaises(fiber.FiberTriggerError, f.succeed)
 
-        # Cannot add callback after a fiber has been triggered
-        f = fiber.Fiber()
-        f.addCallback(lambda r: r)
-        f.succeed()
-        self.assertRaises(fiber.FiberTriggerError, f.addCallback, lambda r: r)
-
         # Cannot start fibers multiple times
         f = fiber.Fiber()
         f.addCallback(lambda r: r)
         f.succeed()
         f.start()
-        self.assertRaises(fiber.FiberStartedError, f.start)
+        self.assertRaises(fiber.FiberStartupError, f.start)
 
         # Cannot add callback after a fiber has started
         f = fiber.Fiber()
         f.addCallback(lambda r: r)
         f.succeed()
         f.start()
-        self.assertRaises(fiber.FiberStartedError, f.addCallback, lambda r: r)
+        self.assertRaises(fiber.FiberStartupError, f.addCallback, lambda r: r)
 
     def testHandWovenSync(self):
 

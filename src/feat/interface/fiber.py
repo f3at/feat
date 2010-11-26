@@ -3,7 +3,7 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 __all__ = ["TriggerType", "FiberError",
-           "FiberStartedError", "FiberTriggerError", "FiberChainError",
+           "FiberStartupError", "FiberTriggerError",
            "IFiberDescriptor", "IFiber"]
 
 
@@ -12,25 +12,20 @@ class TriggerType(enum.Enum):
 
      - succeed:   Execution starts by the callback part of the chain.
      - fail:      Execution starts by the errback part of the chain.
-     - chained:   Execution is started by the master fiber it was chained to.
     '''
 
-    succeed, fail, chained = range(3)
+    succeed, fail = range(2)
 
 
 class FiberError(Exception):
     pass
 
 
-class FiberStartedError(FiberError):
+class FiberStartupError(FiberError):
     pass
 
 
 class FiberTriggerError(FiberError):
-    pass
-
-
-class FiberChainError(FiberError):
     pass
 
 
@@ -105,13 +100,18 @@ class IFiber(IFiberDescriptor):
         Because parent fiber descriptor can be a fiber itself,
         '''
 
+    def trigger(trigger_type, param=None):
+        '''Trigger the fiber given a trigger type.'''
+
     def succeed(param=None):
         '''Set the fiber to start on the callback path
-        with the specified parameter'''
+        with the specified parameter.
+        Same as calling trigger(TriggerType.succeed, param).'''
 
     def fail(param=None):
         '''Set the fiber to start on the errback path
-        with the specified parameter'''
+        with the specified parameter.
+        Same as calling trigger(TriggerType.fail, failure).'''
 
     def chain(fiber):
         '''Chains the specified fiber.
@@ -131,17 +131,3 @@ class IFiber(IFiberDescriptor):
 
     def addBoth(callback, *args, **kwargs):
         pass
-
-    def _bind(descriptor, fiber_id, fiber_depth):
-        '''Initializes the fiber as a nested sub-fiber
-        of the specified fiber descriptor.
-        Called by descriptor's attach method.
-        Returns True if the fiber was bound, False if it was already bound
-        to this descriptor, and raise an exception if already bound
-        to another descriptor.
-        Not to be called by anything but a IFiberDescriptor.'''
-
-    def _chain():
-        '''Freezes the fiber as chained and returns a deferred
-        and serialized calls.
-        Not to be called by anything but other IFiber.'''

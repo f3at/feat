@@ -158,6 +158,53 @@ class Fiber(object):
     Fibers can be nested to follow the string of execution.
     Nested fibers have the same fiber_id but sub-fibers
     have there fiber_depth incremented.
+
+    When chaining fibers, the chained fiber cannot be started anymore.
+    If a chained fiber is not triggered, it will start in function
+    of the result and state of the master fiber at the point of chaining.
+
+    Examples 1::
+
+      def show(result, header):
+          print header, result
+          return result
+
+      f1 = Fiber()
+      f1.addCallback(show, "Fiber 1:")
+      f1.succeed("F1")
+
+      f2 = Fiber()
+      f2.addCallback(show, "Fiber 2:")
+      f2.succeed("F2") # f2 IS triggered
+
+      f1.chain(f2)
+
+      f1.start()
+
+      >> Fiber 1: F1
+      >> Fiber 2: F2
+
+    Examples 2::
+
+      def show(result, header):
+          print header, result
+          return result
+
+      f1 = Fiber()
+      f1.addCallback(show, "Fiber 1:")
+      f1.succeed("F1")
+
+      f2 = Fiber()
+      f2.addCallback(show, "Fiber 2:")
+      # f2 IS NOT triggered
+
+      f1.chain(f2)
+
+      f1.start()
+
+      >> Fiber 1: F1
+      >> Fiber 2: F1
+
     '''
 
     implements(IFiber, ISnapshot)
@@ -167,114 +214,97 @@ class Fiber(object):
         self.fiber_depth = None
         self.fiber_id = None
 
+        self._delegated_startup = False
         self._started = False
         self._trigger = None
         self._param = None
-        self._deferred = defer.Deferred()
+
+        # [(callable, tuple or None, dict or None,
+        #   callable, tuple or None, dict or None)
+        #  |Fiber]
         self._calls = []
+
+    @property
+    def trigger_type(self):
+        return self._trigger
+
+    @property
+    def trigger_param(self):
+        return self._param
 
     ### serialization.ISnapshot Methods ###
 
     def snapshot(self):
-        # FIXME: Should we deep clone ?
-        return self._trigger, self._param, self._calls
+        return self._trigger, self._param, self._snapshot_callbacks()
 
     ### IFiberDescriptor ###
 
     def attach(self, fiber):
-        fiber = IFiber(fiber)
+        assert isinstance(fiber, Fiber)
         fiber._bind(self, self.fiber_id, self.fiber_depth + 1)
 
     ### IFiber Methods ###
 
     def start(self):
+        # Check not started
+        self._check_not_started()
+
+        # More checks
+        if self._delegated_startup:
+            raise FiberStartupError("Fiber with delegated startup cannot "
+                                    "be started directly")
         if self._trigger is None:
             raise FiberTriggerError("Cannot start a fiber without trigger")
-        if self._trigger == TriggerType.chained:
-            raise FiberChainError("Chained fiber cannot be started")
-        if self._started:
-            raise FiberStartedError("Fiber already started")
 
-        self._started = True
+        # Ensure there is a descriptor set
+        self._ensure_descriptor()
 
-        descriptor = None
-        if self.fiber_id is None:
-            # If not attached, creates a root descriptor and attach it.
-            # Useful to use fiber directly without decorators.
-            descriptor = RootFiberDescriptor()
-            descriptor.attach(self)
+        # Prepare the deferred calls
+        d = self._prepare(defer.Deferred())
 
-        d = self._deferred
+        # Trigger the deferred
+        return self._fire(d, self._trigger, self._param)
 
-        if self._trigger == TriggerType.succeed:
-            d.callback(self._param)
+    def trigger(self, trigger_type, param=None):
+        self._check_not_started()
+
+        if self._delegated_startup:
+            raise FiberTriggerError("Fiber with delegated startup cannot "
+                                    "change it's trigger anymore")
+        if self._trigger is not None:
+            raise FiberTriggerError("Fiber already triggered")
+
+        self._trigger = TriggerType(trigger_type)
+        if self._trigger == TriggerType.fail and param is None:
+            self._param = failure.Failure()
         else:
-            d.errback(self._param)
-
-        return d
+            self._param = param
+        return self
 
     def succeed(self, param=None):
-        if self._trigger is not None:
-            raise FiberTriggerError("Fiber trigger already set")
-        self._trigger = TriggerType.succeed
-        self._param = param
-        return self
+        return self.trigger(TriggerType.succeed, param)
 
     def fail(self, failure=None):
-        if self._trigger is not None:
-            raise FiberTriggerError("Fiber trigger already set")
-        self._trigger = TriggerType.fail
-        self._param = failure
-        return self
+        return self.trigger(TriggerType.fail, failure)
 
     def chain(self, fiber):
+        self._check_not_started()
 
-        def chain_callback(value, d):
-            d.callback(value)
-            return d
-
-        def chain_errback(value, d):
-            d.errback(value)
-            return d
-
-        if self._trigger is not None:
-            raise FiberChainError("Fiber trigger already set, "
-                                  "cannot chain fibers")
-        fiber = IFiber(fiber)
-        d, calls = fiber._chain()
-        self._calls.extend(calls)
-        self._deferred.addCallbacks(chain_callback, chain_errback,
-                                    (d, ), None, (d, ), None)
+        assert isinstance(fiber, Fiber)
+        fiber._make_delegated()
+        self._calls.append(fiber)
         return self
 
     def addCallbacks(self, callback=None, errback=None,
                      callbackArgs=None, callbackKeywords=None,
                      errbackArgs=None, errbackKeywords=None):
-        if self._started:
-            raise FiberStartedError("Fiber already started, "
-                                    "cannot add callback anymore")
-        if self._trigger is not None:
-            raise FiberTriggerError("Fiber trigger already set, "
-                                    "cannot add callback anymore")
+        self._check_not_started()
 
-        # Use shorter names for parameters
-        cb = callback
-        cba = callbackArgs
-        cbk = callbackKeywords
-        eb = errback
-        eba = errbackArgs
-        ebk = errbackKeywords
+        record = (callback, errback,
+                  callbackArgs, callbackKeywords,
+                  errbackArgs, errbackKeywords)
 
-        # Serialize callbacks and arguments
-        dump = self._serialize_callbacks(cb, eb, cba, cbk, eba, ebk)
-        self._calls.append(dump)
-
-        # Wrap the callbacks
-        cb, cba, cbk = self._wrap_callback(cb, cba, cbk)
-        eb, eba, ebk = self._wrap_callback(eb, eba, ebk)
-
-        # Add the callbacks
-        self._deferred.addCallbacks(cb, eb, cba, cbk, eba, ebk)
+        self._calls.append(record)
 
         return self
 
@@ -295,26 +325,84 @@ class Fiber(object):
                                  errbackArgs=args,
                                  errbackKeywords=kwargs)
 
+    ### Protected Methods, called only by other instances of Fiber ###
+
     def _bind(self, desc, fiber_id, fiber_depth):
         if self._descriptor is not None:
             if self._descriptor == desc:
                 # Already attached
                 return False
             raise FiberError("Fiber already attached to another descriptor")
+
         self._descriptor = desc
         self.fiber_id = fiber_id
         self.fiber_depth = fiber_depth
         return True
 
-    def _chain(self):
-        if self._trigger is not None:
-            raise FiberChainError("Fibers already triggered cannot be chained")
-        self._trigger = TriggerType.chained
-        result = self._deferred, self._calls
-        self._deferred = None
-        self._calls = None
+    def _make_delegated(self):
+        self._delegated_startup = True
+
+    def _snapshot_callbacks(self):
+        result = []
+        for record in self._calls:
+            if isinstance(record, tuple):
+                cb, eb, cba, cbk, eba, ebk = record
+                dump = self._serialize_callbacks(cb, eb, cba, cbk, eba, ebk)
+                result.append(dump)
+            else:
+                result.extend(record._snapshot_callbacks())
         return result
 
+    def _ensure_descriptor(self):
+        descriptor = None
+        if self.fiber_id is None:
+            # If not attached, creates a root descriptor and attach it.
+            # Useful to use fiber directly without decorators.
+            descriptor = RootFiberDescriptor()
+            descriptor.attach(self)
+
+    def _check_not_started(self):
+        if self._started:
+            raise FiberStartupError("Fiber already started")
+
+    def _prepare(self, d):
+        self._started = True
+
+        for record in self._calls:
+            if isinstance(record, tuple):
+                cb, eb, cba, cbk, eba, ebk = record
+                # Wrap the callbacks
+                cb, cba, cbk = self._wrap_callback(cb, cba, cbk)
+                eb, eba, ebk = self._wrap_callback(eb, eba, ebk)
+                # Add the callbacks
+                d.addCallbacks(cb, eb, cba, cbk, eba, ebk)
+            else:
+                # If the chained fiber have been triggered, it will start
+                # with the triggered type and param, otherwise it will
+                # be started in function of the result of the parent fiber.
+                ct = record.trigger_type
+                cp = record.trigger_param
+                # Prepare the deferred chain to be started
+                # at the chaining point
+                cd = record._prepare(defer.Deferred())
+                d.addCallbacks(self._on_chain_cb, self._on_chain_cb,
+                               callbackArgs=(ct, cp, cd, TriggerType.succeed),
+                               errbackArgs=(ct, cp, cd, TriggerType.fail))
+
+        return d
+
+    def _fire(self, d, trigger, param=None,
+              default_trigger=None, default_param=None):
+        if trigger is None:
+            trigger = default_trigger
+            param = default_param
+
+        if trigger == TriggerType.succeed:
+            d.callback(param)
+        elif trigger == TriggerType.fail:
+            d.errback(param)
+
+        return d
 
     ### Private Methods ###
 
@@ -332,6 +420,7 @@ class Fiber(object):
         return section.exit(result)
 
     def _serialize_callbacks(self, cb, eb, cba, cbk, eba, ebk):
+        # FIXME: Should we deep clone ?
         cbd = None
         ebd = None
         if cb is not None:
@@ -339,3 +428,114 @@ class Fiber(object):
         if eb is not None:
             ebd = (reflect.canonical_name(eb), eba or None, ebk or None)
         return (cbd, ebd)
+
+    def _on_chain_cb(self, parent_param, trigger, param, d, default_trigger):
+        return self._fire(d, trigger, param, default_trigger, parent_param)
+
+
+class FiberList(Fiber):
+    '''List of fiber.
+    Created with an iterator over instances implementing L{IFiber}.
+
+    By default, the result passed to the first callback is a list of tuple
+    (SUCCESS, VALUE) where SUCCESS is a bool anv VALUE is a fiber result
+    if SUCCESS is True or a Failure instance if SUCCESS is False.
+
+    Constructor parameters can alter this behaviour.
+
+    If sub-fibers are not triggered, they will be started in function
+    of the state and result of the master fiber.
+
+    Example:
+
+          def show(result, header):
+          print header, result
+          return result
+
+          f1 = Fiber()
+          f1.addCallback(show, "Fiber 1:")
+          f1.succeed("F1") # f1 IS triggered
+
+          f2 = Fiber()
+          f2.addCallback(show, "Fiber 2:")
+          # f2 IS NOT triggered
+
+          fl = FiberList([f1, f2])
+          fl.succeed("FL")
+
+          >> Fiber 1: F1
+          >> Fiber 2: FL
+    '''
+
+    implements(IFiber, ISnapshot)
+
+    def __init__(self, fibers, fireOnOneCallback=False,
+                 fireOnOneErrback=False, consumeErrors=False):
+        """Initialize a FiberList.
+
+        @param fibers: an iterator over a collection of L{IFiber}.
+        @type fibers:  iterable
+        @param fireOnOneCallback: a flag indicating that only one callback
+                                  needs to be fired for me to call my callback
+        @param fireOnOneErrback: a flag indicating that only one errback needs
+                                 to be fired for me to call my errback
+        @param consumeErrors: a flag indicating that any errors raised
+                              in the original fibers should be consumed
+                              by this FiberList.  This is useful to prevent
+                              spurious warnings being logged.
+        """
+        Fiber.__init__(self)
+        self._fibers = list(fibers)
+        self._fire_on_first_cb = fireOnOneCallback
+        self._fire_on_first_eb = fireOnOneErrback
+        self._consume_errors = consumeErrors
+
+    ### serialization.ISnapshot Methods ###
+
+    def snapshot(self):
+        return [f.snapshot() for f in self._fibers]
+
+    ### Protected Methods, called only by other instances of Fiber ###
+
+    def _bind(self, desc, fiber_id, fiber_depth):
+        # Bind sub fibers
+        if Fiber._bind(self, desc, fiber_id, fiber_depth):
+            for f in self._fibers:
+                f._bind(desc, fiber_id, fiber_depth)
+            return True
+        return False
+
+    def _prepare(self, d):
+        self._started = True
+
+        items = []
+
+        # Start all fibers with there own Deferred and
+        for fiber in self._fibers:
+            # Check the fiber is not started
+            fiber._check_not_started()
+            # Prepare the deferred chain to be started when
+            # the deferred specified as parameter is started
+            fd = fiber._start(defer.Deferred())
+            item = (fiber.trigger_type, fiber.trigger_param, fd)
+            items.append(item)
+
+        return d.addCallbacks(self._on_callback, self._on_errback,
+                              callbackArgs=(items, TriggerType.succeed),
+                              errbackArgs=(items, TriggerType.fail))
+
+    ### Private Methods ###
+
+    def _on_callback(self, parent_param, items, default_trigger):
+        deferreds= []
+
+        for trigger, param, d in items:
+            deferreds.append(d)
+            self._fire(d, trigger, param, default_trigger, parent_param)
+
+        dl = defer.DeferredList(deferreds,
+                                fireOnOneCallback=self._fire_on_first_cb,
+                                fireOnOneErrback=self._fire_on_first_eb,
+                                consumeErrors=self._consume_errors)
+
+        return dl

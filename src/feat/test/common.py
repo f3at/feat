@@ -26,17 +26,35 @@ log.FluLogKeeper.init('test.log')
 
 
 def delay(value, delay):
-    '''Returns a deferred triggered after the specified delay
-    with the specified value.'''
+    '''Returns a deferred whose callback will be triggered
+    after the specified delay with the specified value.'''
     d = defer.Deferred()
     delay_module.callLater(delay, d.callback, value)
     return d
 
 
 def break_chain(value):
-    '''Breaks a deferred call chain ensuring the rest will be called
+    '''Breaks a deferred callback chain ensuring the rest will be called
     asynchronously in the next reactor loop.'''
-    return delay(value, 0)
+    return delay_callback(value, 0)
+
+
+def delay_errback(failure, delay):
+    '''Returns a deferred whose errback will be triggered
+    after the specified delay with the specified value.'''
+    d = defer.Deferred()
+    delay_module.callLater(delay, d.errback, failure)
+    return d
+
+
+def break_errback_chain(failure):
+    '''Breaks a deferred errback chain ensuring the rest will be called
+    asynchronously in the next reactor loop.'''
+    return delay_errback(failure, 0)
+
+
+delay_callback = delay
+break_callback_chain = break_chain
 
 
 def attr(*args, **kwargs):
