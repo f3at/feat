@@ -12,8 +12,8 @@ class StateAssertationError(RuntimeError):
 
 class StateMachineMixin(object):
 
-    def __init__(self):
-        self.state = None
+    def __init__(self, state=None):
+        self.state = state
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):

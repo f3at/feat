@@ -339,13 +339,14 @@ class AgencyTestHelper(object):
 
         @returns endpoint: Receipient instance pointing to the queue above
                            (use it for reply-to fields)
-        @returns queue: Queue instance we use may .consume() on to get
+        @returns queue: Queue instance we use may call .get() on to get
                         messages from components being tested
         '''
         endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
         queue = self.agency._messaging.defineQueue(endpoint.key)
         exchange = self.agency._messaging.defineExchange(endpoint.shard)
-        exchange.bind(endpoint.key, queue)
+        self.agency._messaging.createBinding(
+            endpoint.shard, endpoint.key, endpoint.key)
         return endpoint, queue
 
     # methods for handling documents

@@ -58,6 +58,19 @@ class Messaging(log.Logger, log.FluLogKeeper):
         else:
             self.error("Exchange %r not found!" % shard)
 
+    def createBinding(self, exchange, key, queue):
+        ex = self._getExchange(exchange)
+        que = self._getQueue(queue)
+        ex._bind(key, que)
+
+    def deleteBinding(self, exchange, key, queue):
+        ex = self._getExchange(exchange)
+        que = self._getQueue(queue)
+        ex._unbind(key, que)
+
+    def parseMessage(self, msg):
+        return msg
+
     # private
 
     def _getExchange(self, name):
@@ -80,12 +93,15 @@ class Connection(log.Logger):
         self._messaging = messaging
         self._agent = IAgencyAgent(agent)
 
-        self._queue = self._messaging.defineQueue(
-            self._agent.descriptor.doc_id)
-        self._mainLoop(self._queue)
         self._bindings = []
+        self._queue_name = self._agent.descriptor.doc_id
+        d = defer.maybeDeferred(self._messaging.defineQueue,
+            self._queue_name)
+
+        d.addCallback(self._mainLoop)
 
     def _mainLoop(self, queue):
+        self._queue = queue
 
         def rebind(_):
             reactor.callLater(0, bind)
@@ -104,10 +120,12 @@ class Connection(log.Logger):
         def get_and_call_on_message(message):
             # it is important to always lookup the current message handler
             # maybe someone bound callback to it ?
+            self.log('Received message: %r', message)
             on_message = self._agent.on_message
             return on_message(message)
 
-        self._consumeDeferred = queue.consume()
+        self._consumeDeferred = queue.get()
+        self._consumeDeferred.addCallback(self._messaging.parseMessage)
         self._consumeDeferred.addCallback(get_and_call_on_message)
         return self._consumeDeferred
 
@@ -141,8 +159,7 @@ class Connection(log.Logger):
 
 class BaseBinding(object):
 
-    def __init__(self, connection, shard, **kwargs):
-        self._args = kwargs
+    def __init__(self, connection, shard):
         self.connection = connection
         self.connection._append_binding(self)
         self.shard = shard
@@ -153,15 +170,20 @@ class BaseBinding(object):
 
 class PersonalBinding(BaseBinding):
 
-    def __init__(self, connection, shard, key, **kwargs):
-        BaseBinding.__init__(self, connection, shard, **kwargs)
+    def __init__(self, connection, shard, key):
+        BaseBinding.__init__(self, connection, shard)
         self.key = key
-        self.exchange = self.connection._messaging.defineExchange(self.shard)
-        self.exchange.bind(self.key, self.connection._queue)
+        d = defer.maybeDeferred(
+            self.connection._messaging.defineExchange, self.shard)
+        d.addCallback(lambda _:
+            self.connection._messaging.createBinding(
+                 self.shard, self.key, self.connection._queue_name))
+        self.created = d
 
     def revoke(self):
-        self.exchange.unbind(self.key, self.connection._queue)
         BaseBinding.revoke(self)
+        self.connection._messaging.deleteBinding(
+                 self.shard, self.key, self.connection._queue_name)
 
 
 class Queue(object):
@@ -172,7 +194,7 @@ class Queue(object):
 
         self._consumers = []
 
-    def consume(self, *_):
+    def get(self, *_):
         d = defer.Deferred()
         self._consumers.append(d)
         self._sendMessages()
@@ -197,7 +219,7 @@ class Exchange(object):
         # key -> [ list of queues ]
         self._bindings = {}
 
-    def bind(self, key, queue):
+    def _bind(self, key, queue):
         assert isinstance(queue, Queue)
 
         list_for_key = self._bindings.get(key, [])
@@ -205,7 +227,7 @@ class Exchange(object):
             list_for_key.append(queue)
         self._bindings[key] = list_for_key
 
-    def unbind(self, key, queue):
+    def _unbind(self, key, queue):
         list_for_key = self._bindings.get(key, [])
         if queue in list_for_key:
             list_for_key.remove(queue)
