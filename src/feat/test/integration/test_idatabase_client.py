@@ -18,6 +18,7 @@ from feat.agents import document
 from feat.agencies.emu.interface import ConflictError, NotFoundError
 
 from . import common
+from feat.test.common import attr
 
 
 @document.register
@@ -144,9 +145,11 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
         self.connection = self.database.get_connection(None)
 
 
+@attr('slow')
 class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
     timeout = 3
+    slow = True
 
     def configure(self):
         self.config = dict()
