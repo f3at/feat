@@ -13,7 +13,11 @@ check-local-pep8:
 	sort -u | xargs $(PYTHON) $(PEP8)
 
 check-tests:
-	$(PYTHON) $(TRIAL) $(COVERAGE_MODULES)
+	$(PYTHON) $(TRIAL) $(TRIAL_FLAGS) $(COVERAGE_MODULES)
+
+check-tests-fast:
+	@make check-tests \
+	   TRIAL_FLAGS="--skip-slow"
 
 coverage:
 	@test ! -z "$(COVERAGE_MODULES)" ||				\
@@ -31,6 +35,10 @@ show-coverage:
 		keep="$$keep `ls _trial_coverage/coverage/$$m*`";	\
 	done;								\
 	$(PYTHON) $(SHOW_COVERAGE) $$keep
+
+check-fast:
+	@make check-commit \
+	  TRIAL_FLAGS="--skip-slow"
 
 check-commit:
 	@current=`pwd`;							\

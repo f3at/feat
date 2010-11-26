@@ -6,6 +6,7 @@ import os
 
 from twisted.internet import reactor, defer
 from twisted.trial.unittest import SkipTest
+from feat.test.common import attr
 
 try:
     from feat.agencies.net import messaging
@@ -25,6 +26,7 @@ class TestCase(object):
         yield d
 
 
+@attr('slow')
 class RabbitIntegrationTest(common.IntegrationTest, TestCase):
 
     timeout = 3

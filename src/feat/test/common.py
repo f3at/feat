@@ -1,17 +1,26 @@
 import functools
 import uuid
 import re
+import inspect
 import time
 
 from twisted.internet import defer, reactor
-from twisted.trial import unittest
+from twisted.trial import unittest, util
+from twisted.scripts import trial
 
 from feat.agencies.emu import agency
 from feat.agents import message, recipient
-from feat.common import log
+from feat.common import log, decorator
 from feat.common import delay as delay_module
 
 from . import factories
+
+try:
+    _getConfig = trial.getConfig
+except AttributeError:
+    # trial.getConfig() is only available when using flumotion-trial
+    _getConfig = dict
+
 
 log.FluLogKeeper.init('test.log')
 
@@ -30,14 +39,70 @@ def break_chain(value):
     return delay(value, 0)
 
 
+def attr(*args, **kwargs):
+    """Decorator that adds attributes to objects.
+
+    It can be used to set the 'slow', 'skip', or 'todo' flags in test cases.
+    """
+
+    def wrap(func):
+        for name in args:
+            # these are just True flags:
+            setattr(func, name, True)
+        for name, value in kwargs.items():
+            setattr(func, name, value)
+        return func
+    return wrap
+
+
 class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
     log_category = "test"
 
-    def __init__(self, *args, **kwargs):
-        unittest.TestCase.__init__(self, *args, **kwargs)
+    def __init__(self, methodName=' impossible-name '):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+
+        # Twisted changed the TestCase.__init__ signature several
+        # times.
+        #
+        # In versions older than 2.1.0 there was no __init__ method.
+        #
+        # In versions 2.1.0 up to 2.4.0 there is a __init__ method
+        # with a methodName kwarg that has a default value of None.
+        #
+        # In version 2.5.0 the default value of the kwarg was changed
+        # to "runTest".
+        #
+        # In versions above 2.5.0 God only knows what's the default
+        # value, as we do not currently support them.
+        import inspect
+        if not inspect.ismethod(unittest.TestCase.__init__):
+            # it's Twisted < 2.1.0
+            unittest.TestCase.__init__(self)
+        else:
+            # it's Twisted >= 2.1.0
+            if methodName == ' impossible-name ':
+                # we've been called with no parameters, use the
+                # default parameter value from the superclass
+                defaults = inspect.getargspec(unittest.TestCase.__init__)[3]
+                methodName = defaults[0]
+            unittest.TestCase.__init__(self, methodName=methodName)
+
+        # Skip slow tests if '--skip-slow' option is enabled
+        if _getConfig().get('skip-slow'):
+            if self.getSlow() and not self.getSkip():
+                self.skip = 'slow test'
+
+    def getSlow(self):
+        """
+        Return whether this test has been marked as slow. Checks on the
+        instance first, then the class, then the module, then packages. As
+        soon as it finds something with a C{slow} attribute, returns that.
+        Returns C{False} if it cannot find anything.
+        """
+
+        return util.acquireAttribute(self._parents, 'slow', False)
 
     def cb_after(self, arg, obj, method):
         '''
