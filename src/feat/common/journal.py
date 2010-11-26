@@ -1,3 +1,5 @@
+import weakref
+
 from twisted.internet import defer
 from zope.interface import implements
 
@@ -268,3 +270,39 @@ class Recorder(RecorderNode, annotate.Annotable):
                                        "cannot return Deferred" % fun_id)
 
         return result
+
+
+class InMemoryJournalKeeper(object):
+    '''Dummy in-memory journal keeper, DO NOT USE for serious stuff.'''
+
+    implements(IJournalKeeper)
+
+    def __init__(self):
+        self.clear()
+
+    def get_records(self):
+        return self._records
+
+    def clear(self):
+        self._records = []
+        self._registry = weakref.WeakValueDictionary()
+
+    def lookup(self, journal_id):
+        return self._registry.get(journal_id)
+
+    def iter_recorders(self):
+        return self._registry.itervalues()
+
+    ### IJournalKeeper Methods ###
+
+    def register(self, recorder):
+        recorder = IRecorder(recorder)
+        self._registry[recorder.journal_id] = recorder
+
+    def record(self, instance_id, entry_id,
+               fiber_id, fiber_depth, input, side_effects, output):
+        record = (instance_id, entry_id, fiber_id, fiber_depth,
+                  ISnapshot(input).snapshot(),
+                  ISnapshot(side_effects).snapshot(),
+                  ISnapshot(output).snapshot())
+        self._records.append(record)

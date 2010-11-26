@@ -3,7 +3,6 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from twisted.internet import defer
-from twisted.trial import unittest
 from zope.interface import implements
 
 from feat.common import journal, fiber, serialization
@@ -12,28 +11,6 @@ from feat.interface.serialization import *
 
 from . import common
 from feat.interface.fiber import TriggerType
-
-
-class DummyJournalKeeper(object):
-
-    implements(IJournalKeeper)
-
-    def __init__(self):
-        self.records = []
-        self.registry = {}
-
-    ### IJournalKeeper Methods ###
-
-    def register(self, recorder):
-        self.registry[recorder.journal_id] = recorder
-
-    def record(self, instance_id, entry_id,
-               fiber_id, fiber_depth, input, side_effects, output):
-        record = (instance_id, entry_id, fiber_id, fiber_depth,
-                  ISnapshot(input).snapshot(),
-                  ISnapshot(side_effects).snapshot(),
-                  ISnapshot(output).snapshot())
-        self.records.append(record)
 
 
 class BasicRecordingDummy(journal.Recorder):
@@ -335,7 +312,7 @@ class SideEffectsDummy(object):
 class TestJournaling(common.TestCase):
 
     def testJournalId(self):
-        K = DummyJournalKeeper()
+        K = journal.InMemoryJournalKeeper()
         R = journal.RecorderRoot(K, base_id="test")
         A = journal.Recorder(R)
         self.assertEqual(A.journal_id, ("test", 1))
@@ -386,11 +363,10 @@ class TestJournaling(common.TestCase):
 
             self.assertEqual(expected, records)
 
-        keeper = DummyJournalKeeper()
+        keeper = journal.InMemoryJournalKeeper()
         root = journal.RecorderRoot(keeper)
         obj = BasicRecordingDummy(root)
-        self.assertTrue(obj.journal_id in keeper.registry)
-        self.assertTrue(obj in keeper.registry.values())
+        self.assertEqual(obj, keeper.lookup(obj.journal_id))
         d = self.assertAsyncEqual(None, "spam and beans",
                                   obj.spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
@@ -399,7 +375,7 @@ class TestJournaling(common.TestCase):
                                   obj.async_spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
                                   obj.async_spam, "beans", extra="spam")
-        return d.addCallback(check_records, keeper.records)
+        return d.addCallback(check_records, keeper.get_records())
 
     def testFiberInfo(self):
 
@@ -454,24 +430,24 @@ class TestJournaling(common.TestCase):
         d = defer.succeed(None)
 
         # Test with "synchronous" fibers where callbacks are called right away
-        keeper = DummyJournalKeeper()
+        keeper = journal.InMemoryJournalKeeper()
         root = journal.RecorderRoot(keeper)
         obj = FiberInfoDummy(root, False)
         d.addCallback(obj.fun3)
         d.addCallback(obj.fun2a)
         d.addCallback(obj.fun1a)
         d.addCallback(obj.test)
-        d.addCallback(check_records, keeper.records)
+        d.addCallback(check_records, keeper.get_records())
 
         # test with "real" asynchronous fibers
-        keeper = DummyJournalKeeper()
+        keeper = journal.InMemoryJournalKeeper()
         root = journal.RecorderRoot(keeper)
         obj = FiberInfoDummy(root, True)
         d.addCallback(obj.fun3)
         d.addCallback(obj.fun2a)
         d.addCallback(obj.fun1a)
         d.addCallback(obj.test)
-        d.addCallback(check_records, keeper.records)
+        d.addCallback(check_records, keeper.get_records())
 
         return d
 
@@ -489,7 +465,7 @@ class TestJournaling(common.TestCase):
                          8] # 3 + 5
             self.assertEqual(expected, [r[6] for r in records]),
 
-        keeper = DummyJournalKeeper()
+        keeper = journal.InMemoryJournalKeeper()
         root = journal.RecorderRoot(keeper)
         obj = NestedRecordedDummy(root)
 
@@ -499,7 +475,7 @@ class TestJournaling(common.TestCase):
         d.addCallback(drop_result, obj.funB, 3, 5)
         d.addCallback(drop_result, obj.funC, 3, 5)
         d.addCallback(drop_result, obj.funD, 3, 5)
-        d.addCallback(check_records, keeper.records)
+        d.addCallback(check_records, keeper.get_records())
 
         return d
 
@@ -510,7 +486,7 @@ class TestJournaling(common.TestCase):
             return (ISnapshot(side_effects).snapshot(),
                     ISnapshot(output).snapshot())
 
-        k = DummyJournalKeeper()
+        k = journal.InMemoryJournalKeeper()
         r = journal.RecorderRoot(k)
         o = DirectReplayDummy(r)
         self.assertEqual(o.some_foo, 0)
@@ -564,15 +540,15 @@ class TestJournaling(common.TestCase):
         def replay(_, keeper):
             # Keep objects states and reset before replaying
             states = {}
-            for jid, obj in keeper.registry.iteritems():
-                states[jid] = obj.snapshot()
+            for obj in keeper.iter_recorders():
+                states[obj.journal_id] = obj.snapshot()
                 obj.reset()
 
             # Replaying
-            for record in keeper.records:
+            for record in keeper.get_records():
                 jid, fid, _, _, input, exp_side_effects, exp_output = record
-                self.assertTrue(jid in keeper.registry)
-                obj = keeper.registry[jid]
+                obj = keeper.lookup(jid)
+                self.assertTrue(obj is not None)
                 side_effects, output = obj.replay(fid, input)
                 self.assertEqual(exp_side_effects,
                                  ISnapshot(side_effects).snapshot())
@@ -580,10 +556,10 @@ class TestJournaling(common.TestCase):
                                  ISnapshot(output).snapshot())
 
             # Check the objects state are the same after replay
-            for jid, obj in keeper.registry.iteritems():
-                self.assertEqual(states[jid], obj.snapshot())
+            for obj in keeper.iter_recorders():
+                self.assertEqual(states[obj.journal_id], obj.snapshot())
 
-        k = DummyJournalKeeper()
+        k = journal.InMemoryJournalKeeper()
         r = journal.RecorderRoot(k)
         o1 = RecordReplayDummy(r)
         o2 = RecordReplayDummy(r)
@@ -617,7 +593,7 @@ class TestJournaling(common.TestCase):
         return d
 
     def testNonReentrant(self):
-        k = DummyJournalKeeper()
+        k = journal.InMemoryJournalKeeper()
         r = journal.RecorderRoot(k)
         o = ReentrantDummy(r)
 
@@ -628,7 +604,7 @@ class TestJournaling(common.TestCase):
         return d
 
     def testErrors(self):
-        k = DummyJournalKeeper()
+        k = journal.InMemoryJournalKeeper()
         r = journal.RecorderRoot(k)
         o = ErrorDummy(r)
 
@@ -964,7 +940,7 @@ class TestJournaling(common.TestCase):
         section.abort()
 
     def testSerialization(self):
-        keeper = DummyJournalKeeper()
+        keeper = journal.InMemoryJournalKeeper()
         root = journal.RecorderRoot(keeper, "dummy")
         obj = BasicRecordingDummy(root)
         sub = BasicRecordingDummy(obj)
