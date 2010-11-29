@@ -171,11 +171,16 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return _
 
     def assertAsyncEqual(self, chain, expected, value, *args, **kwargs):
-        '''Adds an asynchronous assertion to the specified deferred chain.
-        If the chain deferred is None, a new fired one will be created.
+        '''Adds an asynchronous assertion for equality to the specified
+        deferred chain.
+
+        If the chain is None, a new fired one will be created.
+
         The checks are serialized and done in order of declaration.
+
         If the value is a Deferred, the check wait for its result,
         if not it compare rightaway.
+
         If value is a callable, it is called with specified arguments
         and keyword WHEN THE PREVIOUS CALL HAS BEEN DONE.
 
@@ -193,22 +198,58 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
           return self.assertAsyncEqual(None, EXPECTED, FIRED_DEFERRED)
         '''
 
-        def retrieve(_, expected, value, args=None, kwargs=None):
-            if isinstance(value, defer.Deferred):
-                value.addBoth(check, expected)
-                return value
-            if callable(value):
-                return retrieve(_, expected, value(*args, **kwargs))
-            return check(value, expected)
-
-        def check(result, expected):
+        def check(result):
             self.assertEqual(expected, result)
             return result
 
         if chain is None:
             chain = defer.succeed(None)
 
-        return chain.addBoth(retrieve, expected, value, args, kwargs)
+        return chain.addBoth(self._assertAsync, check, value, *args, **kwargs)
+
+    def assertAsyncFailure(self, chain, errorKlasses, value, *args, **kwargs):
+        '''Adds an asynchronous assertion for failure to the specified chain.
+
+        If the chain is None, a new fired one will be created.
+
+        The checks are serialized and done in order of declaration.
+
+        If the value is a Deferred, the check wait for its result,
+        if not it compare rightaway.
+
+        If value is a callable, it is called with specified arguments
+        and keyword WHEN THE PREVIOUS CALL HAS BEEN DONE.
+
+        Used like this::
+
+          d = defer.succeed(None)
+          d = self.assertAsyncFailure(d, ERROR_CLASSES, FIRED_DEFERRED)
+          d = self.assertAsyncFailure(d, ERROR_CLASSES, FUNCTION, ARG)
+          d = self.assertAsyncFailure(d, [ValueError, TypeError], fun(21))
+          d = self.assertAsyncFailure(d, [ValueError], fun, 21)
+          return d
+
+        '''
+
+        def check(failure):
+            self.assertTrue(failure.check(*errorKlasses))
+            return None # Resolve the error
+
+        if chain is None:
+            chain = defer.succeed(None)
+
+        return chain.addBoth(self._assertAsync, check, value, *args, **kwargs)
+
+    def assertAsyncRaises(self, chain, ErrorClass, fun, *args, **kwargs):
+
+        def check(param):
+            self.assertRaises(ErrorClass, fun, *args, **kwargs)
+            return None # Resolve the error
+
+        if chain is None:
+            chain = defer.succeed(None)
+
+        return chain.addBoth(check)
 
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)
@@ -243,6 +284,18 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         while lines and not lines[-1]:
             del lines[-1]
         return '\n'.join(lines) + '\n'
+
+    ### Private Methods ###
+
+    def _assertAsync(self, param, check, value, *args, **kwargs):
+        if isinstance(value, defer.Deferred):
+            value.addBoth(check)
+            return value
+
+        if args is not None and callable(value):
+            return self._assertAsync(param, check, value(*args, **kwargs))
+
+        return check(value)
 
 
 class Mock(object):
