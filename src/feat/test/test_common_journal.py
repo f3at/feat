@@ -186,6 +186,13 @@ class ReentrantDummy(journal.Recorder):
     def ugly(self):
         return "the ugly"
 
+    @journal.recorded(reentrant=False)
+    def async_ugly(self):
+        f = fiber.Fiber()
+        f.addCallback(common.break_chain)
+        f.addCallback(self.ugly)
+        return f.succeed()
+
 
 class ErrorDummy(journal.Recorder):
 
@@ -597,9 +604,11 @@ class TestJournaling(common.TestCase):
         r = journal.RecorderRoot(k)
         o = ReentrantDummy(r)
 
-        self.assertRaises(journal.ReentrantCallError, o.good)
-        self.assertRaises(journal.ReentrantCallError, o.bad)
+        self.assertRaises(ReentrantCallError, o.good)
+        self.assertRaises(ReentrantCallError, o.bad)
+
         d = self.assertAsyncEqual(None, "the ugly", o.ugly)
+        d = self.assertAsyncFailure(d, [ReentrantCallError], o.async_ugly)
 
         return d
 

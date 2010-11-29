@@ -197,14 +197,15 @@ class Recorder(RecorderNode, annotate.Annotable):
 
         # Check if this is the first recording in the fiber section
         journal_mode = section.state.get(RECORDED_TAG, None)
-        is_first = journal_mode is None
+        section_first = journal_mode is None
+        fiber_first = section_first and section.descriptor.fiber_depth == 0
 
-        if is_first:
+        if section_first:
             section.state[RECORDED_TAG] = JournalMode.recording
             side_effects = []
             section.state[SIDE_EFFECTS_TAG] = side_effects
 
-        elif not reentrant:
+        if not (fiber_first or reentrant):
             # If not reentrant and it is not the first, it's BAAAAAD.
             raise ReentrantCallError("Recorded functions %s "
                                      "cannot be called from another "
@@ -214,7 +215,7 @@ class Recorder(RecorderNode, annotate.Annotable):
         result = self._call_fun_id(fun_id, args or (), kwargs or {})
 
         # If it is the first recording entry in the stack, add a journal entry
-        if is_first:
+        if section_first:
             desc = section.descriptor
             self.journal_keeper.record(self.journal_id, fun_id,
                                    desc.fiber_id, desc.fiber_depth,
