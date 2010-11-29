@@ -195,7 +195,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         def retrieve(_, expected, value, args=None, kwargs=None):
             if isinstance(value, defer.Deferred):
-                value.addCallback(check, expected)
+                value.addBoth(check, expected)
                 return value
             if callable(value):
                 return retrieve(_, expected, value(*args, **kwargs))
@@ -208,7 +208,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         if chain is None:
             chain = defer.succeed(None)
 
-        return chain.addCallback(retrieve, expected, value, args, kwargs)
+        return chain.addBoth(retrieve, expected, value, args, kwargs)
 
     def stub_method(self, obj, method, handler):
         handler = functools.partial(handler, obj)
