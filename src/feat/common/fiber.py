@@ -441,7 +441,14 @@ class FiberList(Fiber):
     (SUCCESS, VALUE) where SUCCESS is a bool anv VALUE is a fiber result
     if SUCCESS is True or a Failure instance if SUCCESS is False.
 
-    Constructor parameters can alter this behaviour.
+    Constructor parameters can alter this behaviour:
+
+        if fireOnOneCallback is True, the first fiber returning a value
+        will fire the FiberList execution with parameter a tuple with
+        the value and the index of the fiber the result comes from.
+
+        if fireOnOneErrback is True, the first fiber returning a failure
+        will fire the FiberList errback with a L{defer.FirstError}.
 
     If sub-fibers are not triggered, they will be started in function
     of the state and result of the master fiber.
@@ -493,7 +500,8 @@ class FiberList(Fiber):
     ### serialization.ISnapshot Methods ###
 
     def snapshot(self):
-        return [f.snapshot() for f in self._fibers]
+        return (self.trigger_type, self.trigger_param,
+                [f.snapshot() for f in self._fibers])
 
     ### Protected Methods, called only by other instances of Fiber ###
 
@@ -516,17 +524,19 @@ class FiberList(Fiber):
             fiber._check_not_started()
             # Prepare the deferred chain to be started when
             # the deferred specified as parameter is started
-            fd = fiber._start(defer.Deferred())
+            fd = fiber._prepare(defer.Deferred())
             item = (fiber.trigger_type, fiber.trigger_param, fd)
             items.append(item)
 
-        return d.addCallbacks(self._on_callback, self._on_errback,
-                              callbackArgs=(items, TriggerType.succeed),
-                              errbackArgs=(items, TriggerType.fail))
+        fld = Fiber._prepare(self, defer.Deferred())
+
+        return d.addCallbacks(self._on_callback, self._on_callback,
+                              callbackArgs=(items, fld, TriggerType.succeed),
+                              errbackArgs=(items, fld, TriggerType.fail))
 
     ### Private Methods ###
 
-    def _on_callback(self, parent_param, items, default_trigger):
+    def _on_callback(self, parent_param, items, fld, default_trigger):
         deferreds= []
 
         for trigger, param, d in items:
@@ -537,5 +547,17 @@ class FiberList(Fiber):
                                 fireOnOneCallback=self._fire_on_first_cb,
                                 fireOnOneErrback=self._fire_on_first_eb,
                                 consumeErrors=self._consume_errors)
+
+        def chain_callback(r, d):
+            d.callback(r)
+            return d
+
+        def chain_errback(r, d):
+            d.errback(r)
+            return d
+
+        args = (fld, )
+        dl.addCallbacks(chain_callback, chain_errback,
+                        callbackArgs=args, errbackArgs=args)
 
         return dl

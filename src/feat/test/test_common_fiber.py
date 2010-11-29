@@ -129,7 +129,7 @@ class WeavingDummy(object):
 
 class TestFiber(common.TestCase):
 
-    def testSnapshot(self):
+    def testFiberSnapshot(self):
         o = Dummy()
 
         f = fiber.Fiber()
@@ -339,13 +339,13 @@ class TestFiber(common.TestCase):
         self.assertRaises(RuntimeError, fiber.get_state, depth=666)
         self.assertRaises(RuntimeError, fiber.set_state, None, depth=666)
 
-    def testFiberAttach(self):
+    def mkFiberAttachtest(self, Factory):
         r = fiber.RootFiberDescriptor()
         self.assertEqual(0, r.fiber_depth)
         fid = r.fiber_id
 
         # Fiber 1 initial values
-        f1 = fiber.Fiber()
+        f1 = Factory()
         self.assertEqual(None, f1.fiber_id)
         self.assertEqual(None, f1.fiber_depth)
 
@@ -360,7 +360,7 @@ class TestFiber(common.TestCase):
         self.assertEqual(1, f1.fiber_depth)
 
         # Fiber 2 initial values
-        f2 = fiber.Fiber()
+        f2 = Factory()
         self.assertEqual(None, f2.fiber_id)
         self.assertEqual(None, f2.fiber_depth)
 
@@ -376,7 +376,7 @@ class TestFiber(common.TestCase):
 
         # Now sub-fibers
 
-        f21 = fiber.Fiber()
+        f21 = Factory()
         f2.attach(f21)
         self.assertEqual(fid, f21.fiber_id)
         self.assertEqual(2, f21.fiber_depth)
@@ -384,12 +384,12 @@ class TestFiber(common.TestCase):
         self.assertEqual(fid, f21.fiber_id)
         self.assertEqual(2, f21.fiber_depth)
 
-        f211 = fiber.Fiber()
+        f211 = Factory()
         f21.attach(f211)
         self.assertEqual(fid, f211.fiber_id)
         self.assertEqual(3, f211.fiber_depth)
 
-        f212 = fiber.Fiber()
+        f212 = Factory()
         f21.attach(f212)
         self.assertEqual(fid, f212.fiber_id)
         self.assertEqual(3, f212.fiber_depth)
@@ -398,6 +398,9 @@ class TestFiber(common.TestCase):
 
         self.assertRaises(fiber.FiberError, r.attach, f212)
         self.assertRaises(fiber.FiberError, f1.attach, f212)
+
+    def testFiberAttach(self):
+        return self.mkFiberAttachtest(fiber.Fiber)
 
     def mkFiberCallTest(self, callback, errback, fail):
 
@@ -1115,3 +1118,241 @@ class TestFiber(common.TestCase):
         f1.addBoth(self.fail)
         f1.succeed("Should never happen if aborted")
         self.assertEqual(None, section1.abort(f1))
+
+    def testFiberListAttach(self):
+        return self.mkFiberAttachtest(lambda: fiber.FiberList([]))
+
+    def mkFiberListTest(self, add, sub, merge, check):
+        # Triggered Fiber
+        f1 = fiber.Fiber()
+        f1.succeed(12)
+        f1.addCallback(check, 12)
+        f1.addCallback(add, 4)
+        f1.addCallback(check, 12 + 4)
+        f1.addCallback(add, 1)
+        f1.addCallback(check, 12 + 4 + 1)
+
+        # Not Triggered Fiber
+        f2 = fiber.Fiber()
+        f2.addCallback(check, 33) # From the FiberList trigger bellow
+        f2.addCallback(add, 66)
+        f2.addCallback(check, 33 + 66)
+        f2.addCallback(sub, 24)
+        f2.addCallback(check, 33 + 66 - 24)
+
+        # Triggered Fiber List
+        f3 = fiber.FiberList([f1, f2])
+        f3.succeed(33)
+        f3.addCallback(merge)
+        f3.addCallback(check, (12 + 4 + 1) + (33 + 66 - 24))
+        f3.addCallback(add, 5)
+        f3.addCallback(check, 97)
+
+        # Triggered Fiber
+        f4 = fiber.Fiber()
+        f4.succeed(78)
+        f4.addCallback(check, 78)
+        f4.addCallback(sub, 18)
+        f4.addCallback(check, 78 - 18)
+        f4.addCallback(add, 7)
+        f4.addCallback(check, 78 - 18 + 7)
+
+        # Not Triggered Fiber
+        f5 = fiber.Fiber()
+        f5.addCallback(check, 12) # From the top fiber trigger
+        f5.addCallback(sub, 77)
+        f5.addCallback(check, 12 - 77)
+        f5.addCallback(sub, 2)
+        f5.addCallback(check, 12 - 77 - 2)
+
+        # Not Triggered Fiber List
+        f6 = fiber.FiberList([f4, f5])
+        f6.addCallback(merge)
+        f6.addCallback(check, (78 - 18 + 7) + (12 - 77 - 2))
+        f6.addCallback(sub, 3)
+        f6.addCallback(check, -3)
+
+        # Not Triggered Fiber
+        f7 = fiber.Fiber()
+        f7.addCallback(check, 12) # From top FiberList
+        f7.addCallback(add, 5)
+        f7.addCallback(check, 12 + 5)
+
+        # Top triggered Fiber List
+        f8 = fiber.FiberList([f3, f6, f7])
+        f8.addCallback(merge)
+        f8.addCallback(check, 97 - 3 + 12 + 5)
+        f8.addCallback(sub, 10)
+        f8.addCallback(check, 101)
+        f8.succeed(12)
+
+        return f8.start()
+
+    def testSyncFiberList(self):
+
+        def add(r, v):
+            return r + v
+
+        def sub(r, v):
+            return r - v
+
+        def merge(r):
+            t = 0
+            for s, v in r:
+                self.assertTrue(s)
+                t += v
+            return t
+
+        def check(r, expected):
+            self.assertEqual(r, expected)
+            return r
+
+        return  self.mkFiberListTest(add, sub, merge, check)
+
+    def testAsyncFiberList(self):
+
+        def add(r, v):
+            return common.break_chain(r + v)
+
+        def sub(r, v):
+            return common.break_chain(r - v)
+
+        def merge(r):
+            t = 0
+            for s, v in r:
+                self.assertTrue(s)
+                t += v
+            return common.break_chain(t)
+
+        def check(r, expected):
+            self.assertEqual(r, expected)
+            return common.break_chain(r)
+
+        return  self.mkFiberListTest(add, sub, merge, check)
+
+    def testFiberListSnapshot(self):
+        o = Dummy()
+
+        f1 = fiber.Fiber()
+        self.assertEqual((None, None, []), f1.snapshot())
+
+        f1.addCallback(o.spam, 42, parrot="dead")
+        f1.addErrback(beans, 18, slug="mute")
+        self.assertEqual((None, None,
+                          [(("feat.test.test_common_fiber.Dummy.spam",
+                             (42, ), {"parrot": "dead"}),
+                            None),
+                           (None,
+                            ("feat.test.test_common_fiber.beans",
+                             (18, ), {"slug": "mute"}))]),
+                         f1.snapshot())
+
+        f2 = fiber.Fiber()
+        self.assertEqual((None, None, []), f2.snapshot())
+        f2.addCallbacks(o.bacon, eggs)
+        f2.succeed("shop")
+        self.assertEqual((TriggerType.succeed, "shop",
+                          [(("feat.test.test_common_fiber.Dummy.bacon",
+                             None, None),
+                            ("feat.test.test_common_fiber.eggs",
+                             None, None))]),
+                         f2.snapshot())
+
+        f3 = fiber.FiberList([f1, f2])
+        self.assertEqual((None, None,
+                          [(None, None,
+                            [(("feat.test.test_common_fiber.Dummy.spam",
+                               (42, ), {"parrot": "dead"}),
+                               None),
+                              (None,
+                               ("feat.test.test_common_fiber.beans",
+                                (18, ), {"slug": "mute"}))]),
+                           (TriggerType.succeed, "shop",
+                            [(("feat.test.test_common_fiber.Dummy.bacon",
+                               None, None),
+                              ("feat.test.test_common_fiber.eggs",
+                               None, None))])]),
+                         f3.snapshot())
+        try:
+            raise Exception()
+        except:
+            # Need an exception context to create a Failure
+            error = failure.Failure()
+            f3.fail(error)
+
+        self.assertEqual((TriggerType.fail, error,
+                          [(None, None,
+                            [(("feat.test.test_common_fiber.Dummy.spam",
+                               (42, ), {"parrot": "dead"}),
+                               None),
+                              (None,
+                               ("feat.test.test_common_fiber.beans",
+                                (18, ), {"slug": "mute"}))]),
+                           (TriggerType.succeed, "shop",
+                            [(("feat.test.test_common_fiber.Dummy.bacon",
+                               None, None),
+                              ("feat.test.test_common_fiber.eggs",
+                               None, None))])]),
+                         f3.snapshot())
+
+    def testFiberListResult(self):
+
+        def test(d, v1, e1, v2, e2, expected, **kwargs):
+            f1 = fiber.Fiber()
+            f1.succeed(v1)
+            f1.addCallback(common.delay, 0.03)
+
+            f2 = fiber.Fiber()
+            f2.fail(e1)
+            f2.addErrback(common.delay_errback, 0.02)
+
+            f3 = fiber.Fiber()
+            f3.succeed(v2)
+            f3.addCallback(common.delay, 0.01)
+
+            f4 = fiber.Fiber()
+            f4.fail(e2)
+            f4.addErrback(common.delay_errback, 0.04)
+
+            fl = fiber.FiberList([f1, f2, f3, f4], **kwargs)
+            fl.succeed()
+
+            if callable(expected):
+                if d is None:
+                    d = defer.succeed(None)
+                d.addBoth(lambda _: fl.start())
+                d.addBoth(expected)
+            else:
+                d = self.assertAsyncEqual(d, expected, fl.start)
+
+            d.addBoth(common.delay, 0.04) # Ensure all callLater are fired
+            return d
+
+        def check_on_one_erback(f, error, index):
+            self.assertEqual(f.value.subFailure, error)
+            self.assertEqual(f.value.index, index)
+
+        try:
+            raise ValueError()
+        except:
+            e1 = failure.Failure()
+
+        try:
+            raise TypeError()
+        except:
+            e2 = failure.Failure()
+
+        d = None
+
+        d = test(d, 18, e1, 42, e2,
+                 [(True, 18), (False, e1), (True, 42), (False, e2)],
+                 consumeErrors=True)
+
+        d = test(d, 18, e1, 42, e2, (42, 2),
+                 consumeErrors=True, fireOnOneCallback=True)
+
+        d = test(d, 18, e1, 42, e2, lambda r: check_on_one_erback(r, e1, 1),
+                 consumeErrors=True, fireOnOneErrback=True)
+
+
+        return d
