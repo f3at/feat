@@ -127,6 +127,32 @@ class WeavingDummy(object):
         return f.succeed(result)
 
 
+@fiber.woven
+def fiberListFun(trace):
+
+    def append(v):
+        trace.append(v)
+        return v
+
+    def merge(r):
+        return ", ".join([v for s, v in r if s])
+
+    f1 = fiber.Fiber()
+    f1.succeed("f1")
+    f1.addCallback(common.break_chain)
+    f1.addCallback(append)
+
+    f2 = fiber.Fiber()
+    f2.succeed("f2")
+    f2.addCallback(common.break_chain)
+    f2.addCallback(append)
+
+    fl = fiber.FiberList([f1, f2])
+    fl.succeed()
+    fl.addCallback(merge)
+    return fl
+
+
 class TestFiber(common.TestCase):
 
     def testFiberSnapshot(self):
@@ -1355,4 +1381,17 @@ class TestFiber(common.TestCase):
                  consumeErrors=True, fireOnOneErrback=True)
 
 
+        return d
+
+    def testWovenFiberList(self):
+
+        def check(result, trace):
+            self.assertEqual(result, "f1, f2")
+            self.assertEqual(trace, ["f1", "f2"])
+
+        trace = []
+        d = fiberListFun(trace)
+        self.assertTrue(isinstance(d, defer.Deferred))
+        self.assertEqual(trace, [])
+        d.addCallback(check, trace)
         return d
