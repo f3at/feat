@@ -56,10 +56,12 @@ class Base(replay.Replayable):
     @replay.entry_point
     def async_main(self, state, value1, value2):
         f1 = fiber.Fiber()
+        f1.addCallback(common.break_chain)
         f1.addCallback(self.async_add_double)
         f1.succeed(value1)
 
         f2 = fiber.Fiber()
+        f2.addCallback(common.break_chain)
         f2.addCallback(self.async_add_double)
         f2.succeed(value2)
 
@@ -67,6 +69,7 @@ class Base(replay.Replayable):
             return sum([value for success, value in result if success])
 
         f = fiber.FiberList([f1, f2])
+        f.succeed()
         f.addCallback(sum_values)
 
         return f
@@ -75,22 +78,49 @@ class Base(replay.Replayable):
     def async_add_double(self, state, value, minus=None):
         result = value * 2 - (minus if minus is not None else 0)
         state.sum += result
-        return result
+        return fiber.Fiber().addCallback(common.break_chain).succeed(result)
 
     @replay.immutable
     def get_sum(self, state):
         return state.sum
 
     @replay.entry_point
-    def reentrance_error1(self, state):
+    def reentrance_sync_error(self, state):
         return self.sync_main(1, 2)
 
     @replay.mutable
-    def reentrance_error2(self, state):
-        return self.sync_main(1, 2)
+    def reentrance_async_error1(self, state):
+        f = fiber.Fiber()
+        f.addCallback(self.sync_main, 2)
+        f.succeed(1)
+        return f
+
+    @replay.mutable
+    def reentrance_async_error2(self, state):
+        f = fiber.Fiber()
+        f.addCallback(common.break_chain)
+        f.addCallback(self.sync_main, 2)
+        f.succeed(1)
+        return f
 
 
 class TestCombined(common.TestCase):
+
+    def testReentranceError(self):
+        keeper = journal.InMemoryJournalKeeper()
+        root = journal.RecorderRoot(keeper)
+        obj = Base(root, 18)
+
+        d = self.assertAsyncRaises(None, ReentrantCallError,
+                                   obj.reentrance_sync_error)
+
+        d = self.assertAsyncFailure(d, [ReentrantCallError],
+                                    obj.reentrance_async_error1)
+
+        d = self.assertAsyncFailure(d, [ReentrantCallError],
+                                    obj.reentrance_async_error2)
+
+        return d
 
     def testSynchronousCalls(self):
         keeper = journal.InMemoryJournalKeeper()
@@ -102,6 +132,20 @@ class TestCombined(common.TestCase):
         d = self.assertAsyncEqual(d, 24, base.sync_main, 5, 7)
         d = self.assertAsyncEqual(d, 42, base.get_sum)
         d = self.assertAsyncEqual(d, 24, base.sync_add_double, 13, minus=2)
+        d = self.assertAsyncEqual(d, 66, base.get_sum)
+
+        return d
+
+    def testAsynchronousCalls(self):
+        keeper = journal.InMemoryJournalKeeper()
+        root = journal.RecorderRoot(keeper)
+
+        base = Base(root, 18)
+
+        d = self.assertAsyncEqual(None, 18, base.get_sum)
+        d = self.assertAsyncEqual(d, 24, base.async_main, 5, 7)
+        d = self.assertAsyncEqual(d, 42, base.get_sum)
+        d = self.assertAsyncEqual(d, 24, base.async_add_double, 13, minus=2)
         d = self.assertAsyncEqual(d, 66, base.get_sum)
 
         return d
