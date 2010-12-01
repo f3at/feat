@@ -303,7 +303,7 @@ class InMemoryJournalKeeper(object):
     def record(self, instance_id, entry_id,
                fiber_id, fiber_depth, input, side_effects, output):
         record = (instance_id, entry_id, fiber_id, fiber_depth,
-                  ISnapshot(input).snapshot(),
-                  ISnapshot(side_effects).snapshot(),
-                  ISnapshot(output).snapshot())
+                  ISnapshotable(input).snapshot(),
+                  ISnapshotable(side_effects).snapshot(),
+                  ISnapshotable(output).snapshot())
         self._records.append(record)

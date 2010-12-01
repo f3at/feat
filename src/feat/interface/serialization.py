@@ -1,6 +1,7 @@
 from zope.interface import Interface, Attribute
 
-__all__ = ["IRegistry", "IRestorator", "ISnapshot", "ISerializable",
+__all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
+           "IInstance", "IReference", "IDereference",
            "ISerializer", "IUnserializer", "IFormater", "IParser"]
 
 
@@ -21,17 +22,17 @@ class IRestorator(Interface):
         pass
 
 
-class ISnapshot(Interface):
+class ISnapshotable(Interface):
     '''Only know how to extract a snapshot of its state,
     there is no guarantee of recoverability.'''
 
-    def snapshot(context):
+    def snapshot():
         '''Called to retrieve the current state of an object.
         It should return only structures of basic python types
         or instances implementing L{ISnapshot}.'''
 
 
-class ISerializable(ISnapshot):
+class ISerializable(ISnapshotable):
     '''Knows how to serialize itself and know it's type name.
     The type name will be used to know which L{IUnserializer}
     to use in order to restore a snapshot.
@@ -42,6 +43,24 @@ class ISerializable(ISnapshot):
 
     def recover(snapshot):
         pass
+
+
+class IInstance(Interface):
+    '''Used to represent ISerializable instances.'''
+
+    type_name = Attribute('Name of the instance type')
+    snapshot = Attribute('Snapshot of the instance')
+
+
+class IReference(Interface):
+
+    refid = Attribute('Reference identifier')
+    value = Attribute('Reference value')
+
+
+class IDereference(Interface):
+
+    refid = Attribute('Reference identifier')
 
 
 class ISerializer(Interface):

@@ -490,8 +490,8 @@ class TestJournaling(common.TestCase):
 
         def snapshot(result):
             side_effects, output = result
-            return (ISnapshot(side_effects).snapshot(),
-                    ISnapshot(output).snapshot())
+            return (ISnapshotable(side_effects).snapshot(),
+                    ISnapshotable(output).snapshot())
 
         k = journal.InMemoryJournalKeeper()
         r = journal.RecorderRoot(k)
@@ -558,9 +558,9 @@ class TestJournaling(common.TestCase):
                 self.assertTrue(obj is not None)
                 side_effects, output = obj.replay(fid, input)
                 self.assertEqual(exp_side_effects,
-                                 ISnapshot(side_effects).snapshot())
+                                 ISnapshotable(side_effects).snapshot())
                 self.assertEqual(exp_output,
-                                 ISnapshot(output).snapshot())
+                                 ISnapshotable(output).snapshot())
 
             # Check the objects state are the same after replay
             for obj in keeper.iter_recorders():

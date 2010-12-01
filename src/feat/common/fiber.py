@@ -207,7 +207,7 @@ class Fiber(object):
 
     '''
 
-    implements(IFiber, ISnapshot)
+    implements(IFiber, ISnapshotable)
 
     def __init__(self):
         self._descriptor = None
@@ -232,7 +232,7 @@ class Fiber(object):
     def trigger_param(self):
         return self._param
 
-    ### serialization.ISnapshot Methods ###
+    ### serialization.ISnapshotable Methods ###
 
     def snapshot(self):
         return self._trigger, self._param, self._snapshot_callbacks()
@@ -474,7 +474,7 @@ class FiberList(Fiber):
           >> Fiber 2: FL
     '''
 
-    implements(IFiber, ISnapshot)
+    implements(IFiber, ISnapshotable)
 
     def __init__(self, fibers, fireOnOneCallback=False,
                  fireOnOneErrback=False, consumeErrors=False):
@@ -497,7 +497,7 @@ class FiberList(Fiber):
         self._fire_on_first_eb = fireOnOneErrback
         self._consume_errors = consumeErrors
 
-    ### serialization.ISnapshot Methods ###
+    ### serialization.ISnapshotable Methods ###
 
     def snapshot(self):
         return (self.trigger_type, self.trigger_param,
