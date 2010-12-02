@@ -182,8 +182,10 @@ class PersonalBinding(BaseBinding):
 
     def revoke(self):
         BaseBinding.revoke(self)
-        self.connection._messaging.deleteBinding(
-                 self.shard, self.key, self.connection._queue_name)
+        d = defer.maybeDeferred(
+            self.connection._messaging.deleteBinding,
+            self.shard, self.key, self.connection._queue_name)
+        return d
 
 
 class Queue(object):

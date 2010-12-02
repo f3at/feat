@@ -8,7 +8,8 @@ import os
 from zope.interface import implements
 from twisted.internet import reactor, defer
 from twisted.trial.unittest import SkipTest
-from feat.test.common import attr
+
+from feat.test.common import attr, delay
 from feat.interface import agent
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents import descriptor
@@ -25,7 +26,7 @@ from . import common
 
 class TestCase(object):
 
-    number_of_agents = 2
+    number_of_agents = 4
 
     def _agent(self, n):
         return dict(key=self.agents[n].descriptor.doc_id,
@@ -57,78 +58,57 @@ class TestCase(object):
         self.assertEqual(1, len(self.agents[0].messages))
         self.assertEqual('buzz off', self.agents[0].messages[0])
 
-    @attr(skip='transfrom in integration test')
-    def test1To1Binding(self):
-        key = self.agent.get_id()
-        binding = self.connection.personal_binding(key)
-        self.assertEqual(1, len(self.connection.get_bindings()))
-
-        exchange = self.messaging._exchanges.values()[0]
-        for x in range(5):
-            exchange.publish('Msg %d' % x, key)
-
-        d = defer.Deferred()
-
-        def asserts(finished):
-            self.assertEqual(5, len(self.agent.messages))
-            expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
-            self.assertEqual(expected, self.agent.messages)
-            finished.callback(None)
-        reactor.callLater(0.1, asserts, d)
-
-        def revoke_binding(_):
-            binding.revoke()
-            self.assertEqual(0, len(self.connection.get_bindings()))
-
-        d.addCallback(revoke_binding)
-
-        return d
-
-    @attr(skip='transfrom in integration test')
-    def testTwoAgentsWithSameBinding(self):
-        second_agent = StubAgent()
-        second_connection = self.messaging.get_connection(second_agent)
-        agents = [self.agent, second_agent]
-        connections = [self.connection, second_connection]
-
+    @defer.inlineCallbacks
+    def testMultipleAgentsWithSameBinding(self):
         key = 'some key'
-        bindings = map(lambda x: x.personal_binding(key), connections)
+        bindings = map(lambda x: x.personal_binding(key), self.connections)
+        yield defer.DeferredList(map(lambda x: x.created, bindings))
 
-        self.assertEqual(1, len(self.messaging._exchanges))
-        exchange = self.messaging._exchanges.values()[0]
-        exchange.publish('some message', key)
+        self.connections[0].publish(message='some message',
+                                    key=key, shard='lobby')
+        yield defer.DeferredList(map(
+            lambda x: self.cb_after(None, method='on_message', obj=x),
+                                   self.agents))
 
-        d = defer.Deferred()
+        for agent in self.agents:
+            self.assertEqual(1, len(agent.messages))
 
-        def asserts(finished):
-            for agent in agents:
-                self.assertEqual(1, len(agent.messages))
-            finished.callback(None)
-        reactor.callLater(0.1, asserts, d)
+    @defer.inlineCallbacks
+    def testTellsDiffrenceBeetweenShards(self):
+        shard = 'some shard'
+        key = 'some key'
+        msg = "only for connection 0"
 
-        def revoke_bindings(_):
-            map(lambda x: x.revoke(), bindings)
-            self.assertEqual(0, len(self.connection.get_bindings()))
+        bindings = [self.connections[0].personal_binding(key, shard),
+                    self.connections[1].personal_binding(key)]
+        yield defer.DeferredList(map(lambda x: x.created, bindings))
 
-        d.addCallback(revoke_bindings)
+        d = self.cb_after(None, obj=self.agents[0], method="on_message")
+        yield self.connections[1].publish(message=msg, key=key, shard=shard)
+        yield d
 
-        return d
+        self.assertEqual(0, len(self.agents[1].messages))
+        self.assertEqual(1, len(self.agents[0].messages))
+        self.assertEqual(msg, self.agents[0].messages[0])
 
-    @attr(skip='transfrom in integration test')
-    def testPublishingByAgent(self):
-        key = self.agent.get_id()
-        self.connection.personal_binding(key)
-        self.connection.publish(key, self.agent.descriptor.shard,\
-                                   'some message')
-        d = defer.Deferred()
+    @defer.inlineCallbacks
+    def testRevokedBindingsDontBind(self):
+        shard = 'some shard'
+        key = 'some key'
+        msg = "only for connection 0"
 
-        def asserts(d):
-            self.assertEqual(['some message'], self.agent.messages)
-            d.callback(None)
+        bindings = [self.connections[0].personal_binding(key, shard),
+                    self.connections[1].personal_binding(key)]
+        yield defer.DeferredList(map(lambda x: x.created, bindings))
 
-        reactor.callLater(0.1, asserts, d)
+        yield defer.DeferredList(map(lambda x: x.revoke(), bindings))
 
-        return d
+        yield self.connections[1].publish(message=msg, key=key, shard=shard)
+
+        yield delay(None, 0.1)
+
+        for agent in self.agents:
+            self.assertEqual(0, len(agent.messages))
 
 
 class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
