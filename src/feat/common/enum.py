@@ -6,19 +6,20 @@ class MetaEnum(type):
 
     def __init__(cls, name, bases, namespace):
         type.__init__(cls, name, bases, namespace)
+        if bases == (int, ): # Base Enum class
+            return
+
         cls._names = {}  # {str: Enum}
         cls._values = {} # {int: Enum}
         cls._items = {}  # {Enum: str}
         for key, value in namespace.items():
-            if isinstance(value, int):
+            if not key.startswith("_"):
                 cls.add(key, value)
 
     def add(cls, name, value):
         if not isinstance(value, int):
             raise TypeError("Enum value type must be int not %s"
                              % (value.__class__.__name__))
-        if name in cls._names:
-            raise ValueError("There is already an enum called %s" % (name, ))
         if value in cls._values:
             raise ValueError(
                 "Error while creating enum %s of type %s, "
