@@ -6,3 +6,6 @@ Things needed by Messy to run.
 * Paisley 0.2 (Paisley has been frozen in feat.extern.paisley, because of
   	       annoying bugs which needed to be fixed)
 * simplejson
+* Txamqp 0.3
+* Amqp (required by txamqp)
+* Rabbitmq-server >= 2.0
