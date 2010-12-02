@@ -8,11 +8,44 @@ from twisted.trial import unittest
 
 from feat.agencies.emu import agency
 from feat.agents import message, recipient
-from feat.common import log, delay
+from feat.common import log
+from feat.common import delay as delay_module
 
 from . import factories
 
 log.FluLogKeeper.init('test.log')
+
+
+def delay(value, delay):
+    '''Returns a deferred whose callback will be triggered
+    after the specified delay with the specified value.'''
+    d = defer.Deferred()
+    delay_module.callLater(delay, d.callback, value)
+    return d
+
+
+def break_chain(value):
+    '''Breaks a deferred callback chain ensuring the rest will be called
+    asynchronously in the next reactor loop.'''
+    return delay_callback(value, 0)
+
+
+def delay_errback(failure, delay):
+    '''Returns a deferred whose errback will be triggered
+    after the specified delay with the specified value.'''
+    d = defer.Deferred()
+    delay_module.callLater(delay, d.errback, failure)
+    return d
+
+
+def break_errback_chain(failure):
+    '''Breaks a deferred errback chain ensuring the rest will be called
+    asynchronously in the next reactor loop.'''
+    return delay_errback(failure, 0)
+
+
+delay_callback = delay
+break_callback_chain = break_chain
 
 
 class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
