@@ -2,6 +2,7 @@ class Resource(object):
     '''
         This class handles all the operations related to resources
     '''
+
     def __init__(self, name, value):
         self._name = name
         self._value = value
@@ -17,21 +18,24 @@ class ResourceContainter(object):
     '''
         This class provides us operations to control a set of resources
     '''
+
     def __init__(self):
         self._bid_id = bid_id
         self._resources = {}
 
     def append_resource(r, force=False):
         ''' Append a resource to the container '''
+
         # be sure the resource we're adding is
         if (r.get_name() in self._resources.keys() and force)
-            or r.get_name() not in self._resources.keys():
-            self._resources[r.get_name()] = r
+        or r.get_name() not in self._resources.keys():
+                self._resources[r.get_name()] = r
         else:
             raise ResourceAlreadyExists # !!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     def append_resources(rlist, force=False):
         ''' Append a list of resources to the container '''
+
         for r in rlist:
             self.append_resource(r, force)
 
@@ -47,19 +51,17 @@ class ResourceContainter(object):
 
 
 class ResourceDescriptor(object):
+
     def __init__(self):
         self._resources = ResourceContainer()
         self._preallocated = {)
         self._allocated = {}
 
-
     def append_resource(r):
         self._resources.append_resource(r)
 
-
     def append_resources(rlist):
         self._resources.append_resources(rlist)
-
 
     def available(bid_id):
         # this part of code should be sincronized? might happend that it tells
@@ -84,8 +86,6 @@ class ResourceDescriptor(object):
 
         self._resources - self._preallocated - self._allocated
 
-
-
     def preallocate_resources(rlist, bid_id, on_expire=None, ttl=10):
         '''
         Preallocates all the resources at rlist, allowing them to be allocated
@@ -99,11 +99,10 @@ class ResourceDescriptor(object):
         else:
             raise BidAlreadyPreallocated
 
-
     def allocate(bid_id):
         '''
         Allocates all the resources belonging to the provided bid id, so it not
         interferes with other bids
         '''
-        pass
 
+        pass
