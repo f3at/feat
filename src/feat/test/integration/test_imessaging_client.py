@@ -121,7 +121,7 @@ class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 @attr('slow')
 class RabbitIntegrationTest(common.IntegrationTest, TestCase):
 
-    timeout = 3
+    timeout = 10
 
     def configure(self):
         self.config = dict()
