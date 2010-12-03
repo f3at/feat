@@ -26,7 +26,7 @@ from . import common
 
 class TestCase(object):
 
-    number_of_agents = 4
+    number_of_agents = 2
 
     def _agent(self, n):
         return dict(key=self.agents[n].descriptor.doc_id,
@@ -111,6 +111,33 @@ class TestCase(object):
             self.assertEqual(0, len(agent.messages))
 
 
+class ReconnectionTests(object):
+    """
+    This testcase is specific for RabbitMQ integration, as simulation of
+    disconnection doesn't make sense for the emu implementation.
+    """
+
+    def disconnect_client(self):
+        return self.messaging._connector.disconnect()
+
+    @defer.inlineCallbacks
+    def testReconnect(self):
+        d1 = self.cb_after(None, self.agents[0], "on_message")
+        yield self.connections[1].publish(message="first message",
+                                          **self._agent(0))
+        yield d1
+        yield self.disconnect_client()
+
+        d2 = self.cb_after(None, self.agents[0], "on_message")
+        yield self.connections[1].publish(message="second message",
+                                          **self._agent(0))
+        yield d2
+
+        self.assertEqual(2, len(self.agents[0].messages))
+        self.assertEqual("first message", self.agents[0].messages[0])
+        self.assertEqual("second message", self.agents[0].messages[1])
+
+
 class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
@@ -119,7 +146,8 @@ class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 
 
 @attr('slow')
-class RabbitIntegrationTest(common.IntegrationTest, TestCase):
+class RabbitIntegrationTest(common.IntegrationTest, TestCase,
+                            ReconnectionTests):
 
     timeout = 10
 

@@ -5,13 +5,14 @@ from txamqp import spec
 from txamqp.client import TwistedDelegate
 from txamqp.protocol import AMQClient
 from txamqp.content import Content
+from txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
-from twisted.internet import defer
+from twisted.internet import defer, error
 
 from feat.common import log, enum
 from feat.agencies.emu.interface import IConnectionFactory
-from feat.agencies.emu.messaging import Connection
+from feat.agencies.emu.messaging import Connection, Queue
 from feat.agencies.emu.common import StateMachineMixin
 
 
@@ -56,6 +57,7 @@ class MessagingClient(AMQClient, log.Logger):
 class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
 
     protocol = MessagingClient
+    initialDelay = 0.1
 
     log_category = 'amq-factory'
 
@@ -73,10 +75,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
                                   'amqp0-8.xml'))
 
         self._reset_client()
-
-    def _reset_client(self):
-        self.client = None
-        self._wait_for_client = defer.Deferred()
+        self._connection_lost_cbs = list()
 
     def buildProtocol(self, addr):
         return self.protocol(self, self._delegate, self._vhost,
@@ -88,26 +87,44 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         if not self._wait_for_client.called:
             self._wait_for_client.callback(client)
 
-    def get_client(self):
-
-        def call_and_return(d, ret):
-            d.callback(ret)
-            return ret
-
-        if self.client:
-            return defer.succeed(self.client)
-        else:
-            d = defer.Deferred()
-            self._wait_for_client.addCallback(
-                lambda client: call_and_return(d, client))
-            return d
-
     def clientConnectionLost(self, connector, reason):
         self._reset_client()
         protocol.ReconnectingClientFactory.clientConnectionLost(\
             self, connector, reason)
         self.log("Connection lost. Host: %s, Port: %d",
                  connector.host, connector.port)
+
+        for cb in self._connection_lost_cbs:
+            cb()
+        self._connection_lost_cbs = list()
+
+    def get_client(self):
+
+        if self.client:
+            return defer.succeed(self.client)
+        else:
+            return self.add_connection_made_cb()
+
+    def add_connection_made_cb(self):
+
+        def call_and_return(d, ret):
+            d.callback(ret)
+            return ret
+
+        d = defer.Deferred()
+        self._wait_for_client.addCallback(
+            lambda client: call_and_return(d, client))
+        return d
+
+    def add_connection_lost_cb(self, cb):
+        if not callable(cb):
+            raise AttributeError('Expected callable, got %r instead',
+                                 cb.__class__)
+        self._connection_lost_cbs.append(cb)
+
+    def _reset_client(self):
+        self.client = None
+        self._wait_for_client = defer.Deferred()
 
 
 class Messaging(log.Logger, log.FluLogKeeper):
@@ -140,7 +157,7 @@ class Messaging(log.Logger, log.FluLogKeeper):
 
     def get_connection(self, agent):
         d = self._factory.get_client()
-        channel_wrapped = Channel(self, d)
+        channel_wrapped = Channel(self, d, self._factory)
 
         return Connection(channel_wrapped, agent)
 
@@ -153,7 +170,11 @@ def wait_for_channel(method):
                      'processing chain', method.__name__)
             return self._append_method_call(method, self, *args, **kwargs)
         else:
-            return method(self, *args, **kwargs)
+            pc = ProcessingCall(method, self, *args, **kwargs)
+            self.log('Calling :%r', method.__name__)
+            d = method(self, *args, **kwargs)
+            d.addErrback(self._processing_error_handler, pc)
+            return d
 
     return wrapped
 
@@ -188,16 +209,17 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
     log_category = 'messaging-channel'
 
-    def __init__(self, messaging, client_defer):
+    def __init__(self, messaging, client_defer, factory):
         StateMachineMixin.__init__(self, ChannelState.recording)
         log.Logger.__init__(self, messaging)
         log.LogProxy.__init__(self, messaging)
 
         self.channel = None
         self.client = None
+        self.factory = factory
 
+        self._queues = []
         self._processing_chain = []
-        self._tag = 0
 
         client_defer.addCallback(self._setup_with_client)
 
@@ -216,6 +238,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             self.log("Finished channel configuration.")
             self.channel = channel
             self.client = client
+            self.factory.add_connection_lost_cb(self._on_connection_lost)
             return channel
 
         d = client.get_free_channel()
@@ -224,9 +247,25 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         d.addCallback(self._on_configured)
         return d
 
+    def _on_connection_lost(self):
+        self.info("Connection lost")
+        self._set_state(ChannelState.recording)
+
+        self.client = None
+        self.channel = None
+        self.factory.add_connection_made_cb(
+            ).addCallback(self._setup_with_client)
+
     def _on_configured(self, _):
         self._set_state(ChannelState.performing)
         self._process_next()
+
+        for queue in self._queues:
+            if queue.queue is not None:
+                self.warning('Reconfiguring queue: %r, but it still has the '
+                             'reference to the old queue!')
+            d = self.get_bare_queue(queue.name)
+            d.addCallback(queue.configure)
 
     def _append_method_call(self, method, *args, **kwargs):
         self._ensure_state(ChannelState.recording)
@@ -241,28 +280,33 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         if len(self._processing_chain) > 0:
             call = self._processing_chain.pop(0)
             d = call.perform()
-            d.addCallbacks(self._process_next, self._processing_error_handler)
+            d.addCallbacks(self._process_next, self._processing_error_handler,
+                           errbackArgs=(call, ))
 
-    def _processing_error_handler(self, f):
-        f.raiseException()
+    def _processing_error_handler(self, f, call):
         self.error('Processing failed: %r', f.getErrorMessage())
         self._set_state(ChannelState.recording)
+        self._processing_chain.insert(0, call)
 
-    def _get_tag(self):
-        self._tag += 1
-        return self._tag
+    @wait_for_channel
+    def get_bare_queue(self, name):
+        d = self.channel.queue_declare(queue=name, durable=True)
+        d.addCallback(lambda _:
+                      self.channel.basic_consume(queue=name, no_ack=False))
+        d.addCallback(lambda resp: self.client.queue(resp.consumer_tag))
+        return d
 
     @wait_for_channel
     def defineQueue(self, name):
         self.log('Defining queue: %r', name)
-        tag = "%s-%d" % (name, self._get_tag(), )
-        d = self.channel.queue_declare(queue=name, durable=True)
-        d.addCallback(lambda _:
-                      self.channel.basic_consume(
-                          queue=name, no_ack=False, consumer_tag=tag))
-        d.addCallback(lambda _:
-                      self.client.queue(tag))
-        return d
+
+        queue = WrappedQueue(self, name)
+        self._queues.append(queue)
+
+        # d = self.get_bare_queue(name)
+        # d.addCallback(queue.configure)
+        # return d
+        return defer.succeed(queue)
 
     @wait_for_channel
     def publish(self, key, shard, message):
@@ -292,5 +336,49 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return self.channel.queue_unbind(exchange=exchange, routing_key=key,
                                          queue=queue)
 
+    @wait_for_channel
+    def ack(self, message):
+        self.log("Sending ack for the message.")
+        return self.channel.basic_ack(message.delivery_tag)
+
     def parseMessage(self, msg):
-        return msg.content.body
+        d = self.ack(msg)
+        d.addCallback(lambda _: msg.content.body)
+        return d
+
+
+class WrappedQueue(Queue, log.Logger):
+
+    log_category = "messaging-queue"
+
+    def __init__(self, channel, name):
+        log.Logger.__init__(self, channel)
+        Queue.__init__(self, name)
+
+        self.channel = channel
+        self.queue = None
+
+    def configure(self, bare_queue):
+        self.log('Configuring queue with the instance: %r', bare_queue)
+        self.queue = bare_queue
+
+        self._main_loop()
+        return self
+
+    def _main_loop(self, *_):
+        d = self.queue.get()
+        d.addCallback(self.enqueue)
+        d.addCallbacks(self._main_loop, self._error_handler)
+
+    def _error_handler(self, f):
+        exception = f.value
+        if isinstance(exception, txamqp_queue.Closed):
+            if self.channel.factory.continueTrying:
+                self.log('Queue closed. Waiting to be reconfigured '
+                         'with the new queue')
+                self.queue = None
+            else:
+                self.log("Queue closed cleanly. Terminating")
+        else:
+            self.error('Unknown exception %r, reraising', f)
+            f.raiseException()
