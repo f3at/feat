@@ -4,7 +4,7 @@ from twisted.internet import defer
 
 from feat.agencies.emu import database
 from feat.agents import document
-from feat.agencies.emu.interface import ConflictError, NotFoundError
+from feat.agencies.interface import ConflictError, NotFoundError
 
 from . import common
 

@@ -15,7 +15,7 @@ except ImportError as e:
 
 from feat.agencies.emu import database as emu_database
 from feat.agents import document
-from feat.agencies.emu.interface import ConflictError, NotFoundError
+from feat.agencies.interface import ConflictError, NotFoundError
 
 from . import common
 from feat.test.common import attr

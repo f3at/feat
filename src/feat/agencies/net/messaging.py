@@ -11,9 +11,9 @@ from zope.interface import implements
 from twisted.internet import defer, error
 
 from feat.common import log, enum
-from feat.agencies.emu.interface import IConnectionFactory
-from feat.agencies.emu.messaging import Connection, Queue
-from feat.agencies.emu.common import StateMachineMixin
+from feat.agencies.interface import IConnectionFactory
+from feat.agencies.messaging import Connection, Queue
+from feat.agencies.common import StateMachineMixin
 
 
 class MessagingClient(AMQClient, log.Logger):

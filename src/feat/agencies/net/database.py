@@ -1,9 +1,9 @@
 from zope.interface import implements
 from twisted.web import error as web_error
 
-from feat.agencies.emu.database import Connection
+from feat.agencies.database import Connection
 from feat.common import log, decorator
-from feat.agencies.emu.interface import (IConnectionFactory, ConflictError,
+from feat.agencies.interface import (IConnectionFactory, ConflictError,
                                          NotFoundError)
 from feat.extern.paisley import paisley as feat_paisley
 
