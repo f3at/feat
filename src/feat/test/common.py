@@ -77,6 +77,10 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
     log_category = "test"
 
+    # define names of class variables here, which values can be change
+    # with the @attr decorator
+    configurable_attributes = []
+
     def __init__(self, methodName=' impossible-name '):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
@@ -111,6 +115,12 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         if _getConfig().get('skip-slow'):
             if self.getSlow() and not self.getSkip():
                 self.skip = 'slow test'
+
+        # Handle configurable attributes
+        for attr in self.configurable_attributes:
+            value = util.acquireAttribute(self._parents, attr, None)
+            if value is not None:
+                setattr(self, attr, value)
 
     def getSlow(self):
         """
