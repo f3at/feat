@@ -52,8 +52,9 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
     def outReceived(self, data):
         self.out_buffer += data
-        self.log("Process buffer so far:\n%s", self.out_buffer)
         if self.success_test(self.out_buffer):
+            self.log("Process start successful. "
+                     "Process stdout buffer so far:\n%s", self.out_buffer)
             if not self.ready.called:
                 self.ready.callback(self.out_buffer)
 
