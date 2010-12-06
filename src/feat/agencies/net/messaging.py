@@ -302,10 +302,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         queue = WrappedQueue(self, name)
         self._queues.append(queue)
-
-        # d = self.get_bare_queue(name)
-        # d.addCallback(queue.configure)
-        # return d
         return defer.succeed(queue)
 
     @wait_for_channel

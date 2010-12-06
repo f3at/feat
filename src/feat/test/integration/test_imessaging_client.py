@@ -111,7 +111,7 @@ class TestCase(object):
             self.assertEqual(0, len(agent.messages))
 
 
-class ReconnectionTests(object):
+class RabbitSpecific(object):
     """
     This testcase is specific for RabbitMQ integration, as simulation of
     disconnection doesn't make sense for the emu implementation.
@@ -137,6 +137,31 @@ class ReconnectionTests(object):
         self.assertEqual("first message", self.agents[0].messages[0])
         self.assertEqual("second message", self.agents[0].messages[1])
 
+    @attr(number_of_agents=0)
+    @defer.inlineCallbacks
+    def testCreatingBindingsOnReadyConnection(self):
+        '''
+        Checks that creating personal binding after the connection
+        has been initialized works the same as during initialization
+        time.
+        '''
+        agent = StubAgent()
+        self.agents = [agent]
+        connection = self.messaging.get_connection(agent)
+
+        # wait for connection to be established
+        client = yield connection._messaging.factory.add_connection_made_cb()
+
+        self.assertIsInstance(client, messaging.MessagingClient)
+        binding = connection.personal_binding(agent.descriptor.doc_id)
+        yield binding.created
+
+        d = self.cb_after(None, agent, 'on_message')
+        connection.publish(message='something', **self._agent(0))
+        yield d
+
+        self.assertEqual(1, len(agent.messages))
+
 
 class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 
@@ -147,9 +172,11 @@ class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 
 @attr('slow')
 class RabbitIntegrationTest(common.IntegrationTest, TestCase,
-                            ReconnectionTests):
+                            RabbitSpecific):
 
     timeout = 10
+
+    configurable_attributes = ['number_of_agents']
 
     def configure(self):
         self.config = dict()
