@@ -1,11 +1,11 @@
 import traceback
 import os
 
-from txamqp import spec
-from txamqp.client import TwistedDelegate
-from txamqp.protocol import AMQClient
-from txamqp.content import Content
-from txamqp import queue as txamqp_queue
+from feat.extern.txamqp import spec
+from feat.extern.txamqp.client import TwistedDelegate
+from feat.extern.txamqp.protocol import AMQClient
+from feat.extern.txamqp.content import Content
+from feat.extern.txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
 from twisted.internet import defer, error
