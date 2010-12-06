@@ -72,7 +72,26 @@ class AMQChannel(object):
 
         try:
             if not nowait and method.responses:
-                resp = (yield self.responses.get()).payload
+                msg = yield self.responses.get()
+                resp = msg.payload
+                # There might be a problem if we have more than one command
+                # with nowait=False running in the same time.
+                # The order RabbitMQ server sends responses is undefined.
+                # If the response for second request comes first we would
+                # end up in ValueError being raised.
+                # This is dirty hack: check that we get what we want and
+                # remove message to the queue otherwise.
+                # Moreover I don't quite understand the 
+                while resp.method not in method.responses:
+                    self.responses.put(msg)
+                    # More explanation is given by uncommening the print statement:
+                    # print "Expected: %r, Got: %r" %\
+                    #      (method.responses, resp.method, )
+                    # Results I obtained in situation which would fail:
+                    #Expected: [Method(name=consume-ok, id=21)], Got: Method(name=declare-ok, id=11)
+                    #Expected: [Method(name=bind-ok, id=21)], Got: Method(name=consume-ok, id=21)
+                    msg = yield self.responses.get()
+                    resp = msg.payload
 
                 if resp.method.content:
                     content = yield readContent(self.responses)
@@ -81,6 +100,11 @@ class AMQChannel(object):
                 if resp.method in method.responses:
                     defer.returnValue(Message(resp.method, resp.args, content))
                 else:
+                    # With the hack above we should never go into
+                    # this branch.
+                    # If something is messed up we will end up
+                    # in never firing Deferred. For this reason
+                    # this is more a hack than the actual solution.
                     raise ValueError(resp)
         except QueueClosed, e:
             if self.closed:
