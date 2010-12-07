@@ -66,3 +66,19 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         self.log("Process exites with status: %r", status)
         self.transport.loseConnection()
         self.exited.callback(None)
+
+
+class RunProtocol(protocol.ProcessProtocol, log.Logger):
+
+    def __init__(self, test_case):
+        log.Logger.__init__(self, test_case)
+
+        self.out_buffer = ""
+        self.finished = defer.Deferred()
+
+    def outReceived(self, data):
+        self.out_buffer += data
+
+    def processExited(self, status):
+        self.transport.loseConnection()
+        self.finished.callback(self.out_buffer)
