@@ -43,6 +43,7 @@ class TestCase(object):
             bindings.append(pb)
         return defer.DeferredList(map(lambda b: b.created, bindings))
 
+    @attr(number_of_agents=2)
     @defer.inlineCallbacks
     def testTwoAgentsTalking(self):
         d = self.cb_after(None, self.agents[1], 'on_message')
@@ -120,6 +121,7 @@ class RabbitSpecific(object):
     def disconnect_client(self):
         return self.messaging._connector.disconnect()
 
+    @attr(number_of_agents=10)
     @defer.inlineCallbacks
     def testReconnect(self):
         d1 = self.cb_after(None, self.agents[0], "on_message")
@@ -136,6 +138,40 @@ class RabbitSpecific(object):
         self.assertEqual(2, len(self.agents[0].messages))
         self.assertEqual("first message", self.agents[0].messages[0])
         self.assertEqual("second message", self.agents[0].messages[1])
+
+    @attr(number_of_agents=3, timeout=20)
+    @defer.inlineCallbacks
+    def testMultipleReconnects(self):
+
+        def wait_for_msgs():
+            return defer.DeferredList(map(
+                lambda ag: self.cb_after(None, ag, 'on_message'),
+                self.agents))
+
+        def send_to_neighbour(attempt):
+            total = len(self.connections)
+            deferrs = list()
+            for conn, i in zip(self.connections, range(total)):
+                target = (i + 1) % total
+                msg = "%s,%s" % (attempt, target, )
+                d = conn.publish(message=msg, **self._agent(target))
+                deferrs.append(d)
+            return defer.DeferredList(deferrs)
+
+        def asserts(attempt):
+            for agent in self.agents:
+                self.assertEqual(attempt, len(agent.messages))
+                self.assertTrue(agent.messages[-1].startswith("%s," % attempt))
+
+        number_of_reconnections = 5
+        for index in range(1, number_of_reconnections + 1):
+            d = wait_for_msgs()
+            yield send_to_neighbour(index)
+            self.log('Reconnecting %d time out of %d.',
+                     index, number_of_reconnections)
+            yield self.disconnect_client()
+            yield d
+            asserts(index)
 
     @attr(number_of_agents=0)
     @defer.inlineCallbacks
@@ -213,6 +249,7 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
 
         self.messaging = messaging.Messaging('127.0.0.1', self.config['port'])
         yield self.init_agents()
+        self.log('Setup finished, starting the testcase.')
 
     def _started_test(self, buffer):
         self.log("Checking buffer: %s", buffer)

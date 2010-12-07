@@ -8,7 +8,7 @@ from feat.extern.txamqp.content import Content
 from feat.extern.txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
-from twisted.internet import defer, error
+from twisted.internet import defer
 
 from feat.common import log, enum
 from feat.agencies.interface import IConnectionFactory
@@ -83,6 +83,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
 
     def clientConnectionMade(self, client):
         self.log('In client connection made, client: %r', client)
+        self.resetDelay()
         self.client = client
         if not self._wait_for_client.called:
             self._wait_for_client.callback(client)
@@ -171,7 +172,8 @@ def wait_for_channel(method):
             return self._append_method_call(method, self, *args, **kwargs)
         else:
             pc = ProcessingCall(method, self, *args, **kwargs)
-            self.log('Calling :%r', method.__name__)
+            self.log('Calling :%r, args: %r, kwargs: %r',
+                     method.__name__, args, kwargs)
             d = method(self, *args, **kwargs)
             d.addErrback(self._processing_error_handler, pc)
             return d
@@ -257,15 +259,24 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             ).addCallback(self._setup_with_client)
 
     def _on_configured(self, _):
-        self._set_state(ChannelState.performing)
-        self._process_next()
+
+        def noop(f):
+            # Reason for different error handler here is, that we just
+            # want to do nothing. If this request failed, we will get
+            # it right after the next reconnection.
+            self.log('get_queue_consumer() call failed with error: %r',
+                     f.getErrorMessage())
 
         for queue in self._queues:
             if queue.queue is not None:
                 self.warning('Reconfiguring queue: %r, but it still has the '
                              'reference to the old queue!')
-            d = self.get_bare_queue(queue.name)
+            d = self.get_queue_consumer(queue.name)
             d.addCallback(queue.configure)
+            d.addErrback(noop)
+
+        self._set_state(ChannelState.performing)
+        self._process_next()
 
     def _append_method_call(self, method, *args, **kwargs):
         self._ensure_state(ChannelState.recording)
@@ -279,18 +290,23 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         if len(self._processing_chain) > 0:
             call = self._processing_chain.pop(0)
+            self.log('Calling :%r, args: %r, kwargs: %r',
+                     call.method.__name__, call.args, call.kwargs)
             d = call.perform()
             d.addCallbacks(self._process_next, self._processing_error_handler,
                            errbackArgs=(call, ))
 
     def _processing_error_handler(self, f, call):
-        self.error('Processing failed: %r', f.getErrorMessage())
+        self.error('Processing failed: %r.', f.getErrorMessage())
+        self.error('Method being processed: %r, args: %r, kwargs: %r',
+                   call.method.__name__, call.args, call.kwargs)
         self._set_state(ChannelState.recording)
         self._processing_chain.insert(0, call)
 
     @wait_for_channel
-    def get_bare_queue(self, name):
-        d = self.channel.queue_declare(queue=name, durable=True)
+    def get_queue_consumer(self, name):
+        d = self.channel.queue_declare(
+            queue=name, durable=True, auto_delete=False)
         d.addCallback(lambda _:
                       self.channel.basic_consume(queue=name, no_ack=False))
         d.addCallback(lambda resp: self.client.queue(resp.consumer_tag))
@@ -302,21 +318,26 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         queue = WrappedQueue(self, name)
         self._queues.append(queue)
-        return defer.succeed(queue)
+        d = self.get_queue_consumer(name)
+        d.addCallback(queue.configure)
+        return d
 
     @wait_for_channel
     def publish(self, key, shard, message):
         assert isinstance(message, str)
         content = Content(message)
+        content.properties['delivery mode'] = 2  # persistent
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
-        return self.channel.basic_publish(exchange=shard, content=content,
-                                          routing_key=key)
+        d = self.channel.basic_publish(exchange=shard, content=content,
+                                       routing_key=key, immediate=False)
+        return d
 
     @wait_for_channel
     def defineExchange(self, name):
-        return self.channel.exchange_declare(exchange=name, type="direct",
-                                             durable=True, nowait=False)
+        return self.channel.exchange_declare(
+            exchange=name, type="direct", durable=True,
+            nowait=False, auto_delete=False)
 
     @wait_for_channel
     def createBinding(self, exchange, key, queue):
@@ -355,7 +376,10 @@ class WrappedQueue(Queue, log.Logger):
         self.queue = None
 
     def configure(self, bare_queue):
-        self.log('Configuring queue with the instance: %r', bare_queue)
+        if bare_queue is None:
+            raise ValueError('Got None, expected TimeoutDeferredQueue.')
+        self.log('Configuring queue %r with the instance: %r',
+                 self.name, bare_queue)
         self.queue = bare_queue
 
         self._main_loop()
