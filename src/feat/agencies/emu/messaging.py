@@ -66,9 +66,6 @@ class Messaging(log.Logger, log.FluLogKeeper):
         que = self._getQueue(queue)
         ex._unbind(key, que)
 
-    def parseMessage(self, msg):
-        return msg
-
     # private
 
     def _getExchange(self, name):

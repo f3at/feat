@@ -232,6 +232,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                  "client=%r", client)
 
         def open_channel(channel):
+            self.log_name = "channel %d" % client._channel_counter
             d = channel.channel_open()
             d.addCallback(lambda _: channel)
             return d
@@ -387,6 +388,7 @@ class WrappedQueue(Queue, log.Logger):
 
     def _main_loop(self, *_):
         d = self.queue.get()
+        d.addCallback(self.channel.parseMessage)
         d.addCallback(self.enqueue)
         d.addCallbacks(self._main_loop, self._error_handler)
 

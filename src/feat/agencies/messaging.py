@@ -51,7 +51,6 @@ class Connection(log.Logger):
             return on_message(message)
 
         self._consumeDeferred = queue.get()
-        self._consumeDeferred.addCallback(self._messaging.parseMessage)
         self._consumeDeferred.addCallback(get_and_call_on_message)
         return self._consumeDeferred
 
