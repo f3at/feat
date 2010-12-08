@@ -14,16 +14,36 @@ class StateMachineMixin(object):
 
     def __init__(self, state=None):
         self.state = state
+        self._changes_notifications = dict()
+
+    def wait_for_state(self, state):
+        if self.state == state:
+            return defer.succeed(None)
+        d = defer.Deferred()
+        if state not in self._changes_notifications:
+            self._changes_notifications[state] = [d]
+        else:
+            self._changes_notifications[state].append(d)
+        return d
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):
             self.log('Changing state from %r to %r', self.state, state)
             self.state = state
+        if state in self._changes_notifications:
+            for cb in self._changes_notifications[state]:
+                cb.callback(None)
+            del(self._changes_notifications[state])
 
-    def _ensure_state(self, states):
+    def _cmp_state(self, states):
         if not isinstance(states, list):
             states = [states]
         if self.state in states:
+            return True
+        return False
+
+    def _ensure_state(self, states):
+        if self._cmp_state(states):
             return True
         raise StateAssertationError("Expected state in: %r, was: %r instead" %\
                            (states, self.state))
@@ -36,7 +56,8 @@ class StateMachineMixin(object):
             return False
 
         if isinstance(decision, list):
-            match = filter(lambda x: x['state_before'] == self.state, decision)
+            match = filter(
+                lambda x: self._cmp_state(x['state_before']), decision)
             if len(match) != 1:
                 self.warning("Expected to find excatly one handler for %r in "
                              "state %r, found %r handlers", event, self.state,
