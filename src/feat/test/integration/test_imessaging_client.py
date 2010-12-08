@@ -139,8 +139,7 @@ class RabbitSpecific(object):
         self.assertEqual("first message", self.agents[0].messages[0])
         self.assertEqual("second message", self.agents[0].messages[1])
 
-    @attr(number_of_agents=3, timeout=20,
-          skip="occasionally fails probably because of nontransactional mode")
+    @attr(number_of_agents=3, timeout=20)
     @defer.inlineCallbacks
     def testMultipleReconnects(self):
 

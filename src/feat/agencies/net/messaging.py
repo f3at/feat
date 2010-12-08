@@ -234,6 +234,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         def open_channel(channel):
             self.log_name = "channel %d" % client._channel_counter
             d = channel.channel_open()
+            d.addCallback(lambda _: channel.tx_select())
             d.addCallback(lambda _: channel)
             return d
 
@@ -332,6 +333,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
         d = self.channel.basic_publish(exchange=shard, content=content,
                                        routing_key=key, immediate=False)
+        d.addCallback(self.tx_commit)
         return d
 
     @wait_for_channel
@@ -357,7 +359,13 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
     @wait_for_channel
     def ack(self, message):
         self.log("Sending ack for the message.")
-        return self.channel.basic_ack(message.delivery_tag)
+        d = self.channel.basic_ack(message.delivery_tag)
+        d.addCallback(self.tx_commit)
+        return d
+
+    @wait_for_channel
+    def tx_commit(self, *_):
+        return self.channel.tx_commit()
 
     def parseMessage(self, msg):
         d = self.ack(msg)
