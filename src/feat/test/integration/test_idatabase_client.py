@@ -1,10 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import shutil
-import os
-
-from twisted.internet import reactor, defer
+from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 try:
@@ -16,6 +13,8 @@ except ImportError as e:
 from feat.agencies.emu import database as emu_database
 from feat.agents import document
 from feat.agencies.interface import ConflictError, NotFoundError
+from feat.process import couchdb
+from feat.process.base import DependencyError
 
 from . import common
 from feat.test.common import attr
@@ -151,59 +150,23 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
     timeout = 3
     slow = True
 
-    def configure(self):
-        self.config = dict()
-        self.config['dir'] = '/tmp/couch_db'
-        self.config['port'] = self.get_free_port()
-        self.config['log'] = '/tmp/couch_test.log'
-
-    def prepare_workspace(self, local_ini_path):
-        local_ini_tmpl = self.format_block("""
-        [couchdb]
-        database_dir = %(dir)s
-        view_index_dir = %(dir)s
-
-        [httpd]
-        port = %(port)d
-
-        [log]
-        file = %(log)s
-        """)
-        shutil.rmtree(self.config['dir'], ignore_errors=True)
-
-        f = file(local_ini_path, 'w')
-        f.write(local_ini_tmpl % self.config)
-        f.close()
-
     @defer.inlineCallbacks
     def setUp(self):
         if database is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)
 
-        couchdb = '/usr/bin/couchdb'
-        local_ini = '/tmp/local.ini'
+        try:
+            self.process = couchdb.Process()
+        except DependencyError as e:
+            raise SkipTest(str(e))
 
-        self.check_installed(couchdb)
+        yield self.process.restart()
 
-        self.configure()
-        self.prepare_workspace(local_ini)
-
-        self.control = common.ControlProtocol(self, self._started_test)
-        self.process = reactor.spawnProcess(self.control, couchdb,
-                                            args=[couchdb, '-a', local_ini],
-                                            env={'HOME': os.environ['HOME']})
-        yield self.control.ready
-
-        self.database = database.Database('127.0.0.1', self.config['port'],
-                                          'test')
+        host, port = self.process.config['host'], self.process.config['port']
+        self.database = database.Database(host, port, 'test')
         yield self.database.createDB()
         self.connection = self.database.get_connection(None)
 
-    def _started_test(self, buffer):
-        self.log("Checking buffer: %s", buffer)
-        return "Apache CouchDB has started on http://127.0.0.1:" in buffer
-
     def tearDown(self):
-        self.process.signalProcess("TERM")
-        return self.control.exited
+        return self.process.terminate()
