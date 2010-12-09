@@ -11,7 +11,7 @@ except ImportError as e:
     import_error = e
 
 from feat.agencies.emu import database as emu_database
-from feat.agents import document
+from feat.agents.base import document
 from feat.agencies.interface import ConflictError, NotFoundError
 from feat.process import couchdb
 from feat.process.base import DependencyError

@@ -1,7 +1,7 @@
 from zope.interface import implements, classProvides
 from feat.interface import contractor
 from feat.common import log
-from feat.agents import message
+from feat.agents.base import message
 
 
 class BaseContractor(log.Logger):

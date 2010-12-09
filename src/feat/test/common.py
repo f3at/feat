@@ -7,7 +7,7 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
-from feat.agents import message, recipient
+from feat.agents.base import message, recipient
 from feat.common import log
 from feat.common import delay as delay_module
 

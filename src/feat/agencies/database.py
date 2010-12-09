@@ -6,7 +6,7 @@ import json
 from zope.interface import implements
 
 from feat.common import log
-from feat.agents import document
+from feat.agents.base import document
 
 from feat.agencies.interface import IDatabaseClient
 

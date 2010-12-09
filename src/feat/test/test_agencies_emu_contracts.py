@@ -6,7 +6,7 @@ from zope.interface import classProvides
 from twisted.internet import defer
 
 from feat.agencies.contracts import ContractorState
-from feat.agents import (agent, descriptor, contractor,
+from feat.agents.base import (agent, descriptor, contractor,
                         message, manager, recipient)
 from feat.interface import contracts, protocols
 from feat.interface.contractor import IContractorFactory

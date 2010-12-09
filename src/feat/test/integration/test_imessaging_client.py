@@ -10,7 +10,7 @@ from twisted.trial.unittest import SkipTest
 from feat.test.common import attr, delay
 from feat.interface import agent
 from feat.agencies.emu import messaging as emu_messaging
-from feat.agents import descriptor
+from feat.agents.base import descriptor
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
 

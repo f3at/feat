@@ -7,7 +7,7 @@ import time
 from zope.interface import classProvides, implements
 from twisted.internet import defer
 
-from feat.agents import agent, descriptor, requester, message, replier
+from feat.agents.base import agent, descriptor, requester, message, replier
 from feat.interface import requests
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory, IAgentReplier
