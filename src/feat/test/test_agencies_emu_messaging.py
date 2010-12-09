@@ -7,7 +7,7 @@ from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.agencies.emu import messaging
-from feat.agents import descriptor
+from feat.agents.base import descriptor
 from feat.interface import agent
 
 from . import common

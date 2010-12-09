@@ -6,7 +6,7 @@ import uuid
 from twisted.python import components, failure
 from zope.interface import implements
 
-from feat.agents import message, recipient
+from feat.agents.base import message, recipient
 from feat.common import log, enum, delay
 from feat.interface import contracts, contractor, manager
 from feat.interface.recipient import RecipientType

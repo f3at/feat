@@ -8,7 +8,7 @@ from zope.interface import implements
 
 from feat.common import log
 from feat.interface import requests, replier, requester
-from feat.agents import message
+from feat.agents.base import message
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory

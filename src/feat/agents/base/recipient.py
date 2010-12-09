@@ -1,7 +1,7 @@
 from twisted.python import components
 from zope.interface import implements
 
-from feat.agents import message
+from feat.agents.base import message
 from feat.interface.agent import *
 from feat.interface.recipient import *
 

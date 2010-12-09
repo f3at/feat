@@ -4,7 +4,7 @@
 
 from zope.interface import implements
 
-from feat.agents import replay
+from feat.agents.base import replay
 from feat.common import journal, fiber
 
 from feat.interface.serialization import *
