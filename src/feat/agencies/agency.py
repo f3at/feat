@@ -21,8 +21,6 @@ from . import contracts
 class Agency(object):
     implements(agency.IAgency)
 
-    time_scale = 1
-
     def __init__(self, messaging, database):
         self._agents = []
         # shard -> [ agents ]

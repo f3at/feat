@@ -7,6 +7,22 @@ from feat.common import log
 from feat.interface import agent
 
 
+registry = dict()
+
+
+def register(klass):
+    global registry
+    registry[klass.__name__] = klass
+    return klass
+
+
+def registry_lookup(name):
+    global registry
+    if name in registry:
+        return registry[name]
+    return None
+
+
 class BaseAgent(log.Logger):
 
     log_category = "agent"
