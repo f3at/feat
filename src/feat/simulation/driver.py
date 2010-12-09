@@ -1,22 +1,23 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import inspect
+
 import StringIO
 import re
 
-from twisted.internet import defer, protocol
+from twisted.internet import defer
+from zope.interface import implements
 
 from feat.common import log
 from feat.agencies import agency
 from feat.agencies.emu import messaging, database
-from feat.agents import descriptor, agent
-from feat.interface.agent import IAgentFactory
+from feat.agents.base import descriptor, agent
+from feat.interface.agent import IAgencyAgent
 from feat.test import factories
 
 
 class Commands(object):
     '''
-    Implementation of all the commands understood by protocol.
+    Implementation of all the commands understood by the protocol.
     This is a mixin mixed to Driver class.
     '''
 
@@ -29,10 +30,10 @@ class Commands(object):
         self._agencies.append(ag)
         return ag
 
-    def cmd_start_agent(self, ag, agent_name):
+    def cmd_start_agent(self, ag, agent_name, desc):
         """
         Start the agent inside the agency. Usage:
-          start_agent agency 'HostAgent'
+          start_agent agency 'HostAgent' descriptor
         """
         if not isinstance(ag, agency.Agency):
             raise AttributeError('First argument needs to be an agency')
@@ -40,8 +41,19 @@ class Commands(object):
         if factory is None:
             raise AttributeError('Second argument needs to be an agent type. '
                             'Name: %s not found in the registry.', agent_name)
-        desc = factories.build(descriptor.Descriptor)
+        if not isinstance(desc, descriptor.Descriptor):
+            raise AttributeError('Third argument needs to be an Descriptor')
         ag.start_agent(factory, desc)
+
+    def cmd_descriptor_factory(self, shard='lobby'):
+        """
+        Creates and returns a descriptor to pass it later
+        for starting the agent.
+        Parameter is optional (default lobby). Usage:
+          descriptor_factory 'some shard'
+        """
+        desc = factories.build(descriptor.Descriptor, shard=shard)
+        return self._database_connection.save_document(desc)
 
     def cmd_breakpoint(self, name):
         if name not in self._breakpoints:
@@ -51,9 +63,10 @@ class Commands(object):
         cb = self._breakpoints[name]
         cb.callback(None)
         return cb
-                             
+
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
+    implements(IAgencyAgent)
 
     log_category = 'simulation-driver'
 
@@ -63,11 +76,26 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
         self._messaging = messaging.Messaging()
         self._database = database.Database()
+
         self._output = Output()
-        self._parser = Parser(self, self.output, self)
-        
-        self._agencies = dict()
+        self._parser = Parser(self, self._output, self)
+
+        self._agencies = list()
         self._breakpoints = dict()
+
+        self._init_connections()
+
+    def _init_connections(self):
+
+        def store(desc):
+            self.descriptor = desc
+
+        self._database_connection = self._database.get_connection(self)
+        d = self._database_connection.save_document(
+            factories.build(descriptor.Descriptor))
+        d.addCallback(store)
+
+        self._messaging_connection = self._messaging.get_connection(self)
 
     def register_breakpoint(self, name):
         if name in self._breakpoints:
@@ -77,8 +105,16 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._breakpoints[name] = d
         return d
 
-    def process(script):
+    def process(self, script):
         self._parser.dataReceived(script)
+
+    def finished_processing(self):
+        '''Called when the protocol runs out of data to process'''
+
+    # IAgencyAgent
+
+    def on_message(self, msg):
+        pass
 
 
 class Parser(log.Logger):
@@ -88,6 +124,7 @@ class Parser(log.Logger):
     def __init__(self, driver, output, commands):
         log.Logger.__init__(self, driver)
 
+        self.driver = driver
         self.commands = commands
         self.buffer = ""
         self.output = output
@@ -138,7 +175,7 @@ class Parser(log.Logger):
             self.on_finish()
 
     def on_finish(self):
-        pass
+        self.driver.finished_processing()
 
     def set_local(self, value, variable_name):
         self.log('assigning %s = %r', variable_name, value)
@@ -169,17 +206,17 @@ class Parser(log.Logger):
     def _error_handler(self, f):
         self.error("Error processing: %s", f.getErrorMessage())
         self.send_output(f.getErrorMessage())
-            
+
     def lookup_cmd(self, name):
         cmd_name = "cmd_%s" % name
         try:
             method = getattr(self.commands, cmd_name)
             if not callable(method):
                 raise UnknownCommand('Unknown command: %s' % name)
-        except AttributeError: 
+        except AttributeError:
             raise UnknownCommand('Unknown command: %s' % name)
         return method
-                
+
 
 class UnknownCommand(Exception):
     pass
@@ -192,5 +229,5 @@ class UnknownVariable(Exception):
 class Output(StringIO.StringIO, object):
     """
     This class is given to parser as an output in unit tests,
-    when we don't there is no transport to write to.
+    when there is no transport to write to.
     """
