@@ -328,7 +328,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
     def publish(self, key, shard, message):
         assert isinstance(message, str)
         content = Content(message)
-        content.properties['delivery mode'] = 2  # persistent
+        content.properties['delivery mode'] = 1  # non-persistent
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
         d = self.channel.basic_publish(exchange=shard, content=content,
