@@ -63,9 +63,6 @@ class IAgentManager(protocols.IInitiator):
     def initiate():
         pass
 
-    def refused(refusal):
-        pass
-
     def bid(bid):
         '''Called on each bid received. One may elect to call medium.reject()
         or medium.grant() from this method to close the contract faster'''

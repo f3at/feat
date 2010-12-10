@@ -37,9 +37,6 @@ class BaseManager(log.Logger):
     def initiate(self):
         '''@see: L{manager.IAgentManager}'''
 
-    def refused(self, refusal):
-        '''@see: L{manager.IAgentManager}'''
-
     def bid(self, bid):
         '''@see: L{manager.IAgentManager}'''
 

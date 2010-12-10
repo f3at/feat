@@ -76,10 +76,6 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
     @common.Mock.stub
-    def refused(self, refusal):
-        pass
-
-    @common.Mock.stub
     def bid(self, bid):
         pass
 
