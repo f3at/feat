@@ -25,7 +25,7 @@ class Commands(object):
     def cmd_spawn_agency(self):
         '''
         Spawn new agency, returns the reference. Usage:
-          spawn_agency
+        > spawn_agency()
         '''
         ag = agency.Agency(self._messaging, self._database)
         self._agencies.append(ag)
@@ -34,7 +34,7 @@ class Commands(object):
     def cmd_start_agent(self, ag, agent_name, desc):
         """
         Start the agent inside the agency. Usage:
-          start_agent agency 'HostAgent' descriptor
+        > start_agent(agency, 'HostAgent', descriptor)
         """
         if not isinstance(ag, agency.Agency):
             raise AttributeError('First argument needs to be an agency')
@@ -52,12 +52,20 @@ class Commands(object):
         Creates and returns a descriptor to pass it later
         for starting the agent.
         Parameter is optional (default lobby). Usage:
-          descriptor_factory 'some shard'
+        > descriptor_factory('some shard')
         """
         desc = factories.build(descriptor.Descriptor, shard=shard)
         return self._database_connection.save_document(desc)
 
     def cmd_breakpoint(self, name):
+        """
+        Register the breakpoint of the name. Usage:
+        > breakpoint('setup-done')
+
+        The name should be used in a call of Driver.register_breakpoint(name)
+        method, which returns the Deferred, which will be fired by this
+        command.
+        """
         if name not in self._breakpoints:
             self.warning("Reached breakpoint %s but found no "
                          "callback registered")
@@ -212,6 +220,20 @@ class Parser(log.Logger):
 
     @defer.inlineCallbacks
     def process_array(self, array):
+        """
+        Main part of the protocol handling. Whan comes in as the parameter is
+        a array of expresions, for example:
+
+        ["1", "'some string'", "variable",
+         "some_call(param1, some_other_call())"]
+
+        Each element of the is evaluated in synchronous way. In case of method
+        calls, the call is performed by iterating the method.
+
+        The result of the function is list with elements subsituted by the
+        values they stand for (for variables: values, for method calls: the
+        result of deferred returned).
+        """
         result = list()
         for element in array:
             m = self.re['number'].search(element)
@@ -248,20 +270,37 @@ class Parser(log.Logger):
         defer.returnValue(result)
 
     def validate_result(self, result_array):
+        '''
+        Check that the result is a list with a single element, and return it.
+        If we had more than one element it would mean that the line processed
+        looked somewhat like this:
+        call1(), "blah blah blah"
+        '''
         if len(result_array) != 1:
             raise BadSyntax('Syntax error processing line: %s' %\
                             self._last_line)
         return result_array[0]
 
     def on_finish(self):
+        '''
+        Called when there is no more messages to be processed in the buffer.
+        '''
         self.driver.finished_processing()
 
     def set_local(self, value, variable_name):
+        '''
+        Assign local variable. The line processed looked somewhat like this:
+        variable = some_call()
+        '''
         self.log('assigning %s = %r', variable_name, value)
         self._locals[variable_name] = value
         return value
 
     def get_local(self, variable_name):
+        '''
+        Return the value of the local variable. Raises UnknownVariable is
+        the name is not known.
+        '''
         if variable_name not in self._locals:
             raise UnknownVariable('Unknown variable %s' % variable_name)
         return self._locals[variable_name]
@@ -271,6 +310,10 @@ class Parser(log.Logger):
         self.send_output(f.getErrorMessage())
 
     def lookup_cmd(self, name):
+        '''
+        Check if the protocol includes the message and return it.
+        Raises UnknownCommand otherwise.
+        '''
         cmd_name = "cmd_%s" % name
         try:
             method = getattr(self.commands, cmd_name)
