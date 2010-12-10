@@ -3,6 +3,7 @@
 
 import StringIO
 import re
+import shlex
 
 from twisted.internet import defer
 from zope.interface import implements
@@ -42,7 +43,8 @@ class Commands(object):
             raise AttributeError('Second argument needs to be an agent type. '
                             'Name: %s not found in the registry.', agent_name)
         if not isinstance(desc, descriptor.Descriptor):
-            raise AttributeError('Third argument needs to be an Descriptor')
+            raise AttributeError('Third argument needs to be an Descriptor, '
+                                 'got %r instead', desc)
         ag.start_agent(factory, desc)
 
     def cmd_descriptor_factory(self, shard='lobby'):
@@ -129,6 +131,43 @@ class Parser(log.Logger):
         self.buffer = ""
         self.output = output
         self._locals = dict()
+        self._last_line = None
+        self.re = dict(
+            assignment=re.compile('\A(\w+)\s*=\s*(\S.*)'),
+            number=re.compile('\A\d+(\.\d+)?\Z'),
+            string=re.compile('\A\'([^(?<!\)\']*)\'\Z'),
+            call=re.compile('\A(\w+)\((.*)\)\Z'),
+            variable=re.compile('\A([^\(\)\'\"\s\+]+)\Z'))
+
+    def split(self, text):
+        s = shlex.shlex(text, posix=False)
+        s.whitespace += ','
+        s.wordchars += '.'
+        s.whitespace_split = False
+        splitted = list(s)
+        try:
+            while True:
+                index = splitted.index(')')
+                while True:
+                    item = splitted[index]
+                    previous = splitted.pop(index - 1)
+                    if previous == '(':
+                        item = previous + item
+                        command = splitted.pop(index - 2)
+                        splitted[index - 2] = command + item
+                        break
+                    elif item == ')':
+                        item = previous + item
+                    else:
+                        item = previous + ', ' + item
+                    splitted[index - 1] = item
+                    index -= 1
+                    if index < 0:
+                        raise BadSyntax('Syntax error processing line: %s' %\
+                            self._last_line)
+
+        except ValueError:
+            return splitted
 
     def dataReceived(self, data):
         self.buffer += data
@@ -150,29 +189,69 @@ class Parser(log.Logger):
     def process_line(self):
         line = self.get_line()
         if line is not None:
+            self._last_line = line
             self.log('Processing line: %s', line)
             if not re.search('\w', line):
                 self.log('Empty line')
                 return self.process_line()
 
-            assignment = re.search('\A(\w+)\s*=\s*(\w+)\s*(.*)', line)
+            assignment = self.re['assignment'].search(line)
             if assignment:
                 variable_name = assignment.group(1)
-                command = assignment.group(2)
-                rest = assignment.group(3)
-                args = rest and rest.split() or list()
-            else:
-                args = line.split()
-                command = args.pop(0)
+                line = assignment.group(2)
 
-            d = defer.maybeDeferred(self.lookup_cmd, command)
-            d.addCallback(self.call_method, args)
+            d = defer.maybeDeferred(self.split, line)
+            d.addCallback(self.process_array)
+            d.addCallback(self.validate_result)
             if assignment:
                 d.addCallback(self.set_local, variable_name)
             d.addCallback(self.send_output)
             d.addCallbacks(lambda _: self.process_line(), self._error_handler)
         else:
             self.on_finish()
+
+    @defer.inlineCallbacks
+    def process_array(self, array):
+        result = list()
+        for element in array:
+            m = self.re['number'].search(element)
+            self.log('matching: #%s#', element)
+            if m:
+                result.append(eval(m.group(0)))
+                continue
+
+            m = self.re['string'].search(element)
+            if m:
+                result.append(m.group(1))
+                continue
+
+            m = self.re['variable'].search(element)
+            if m:
+                result.append(self.get_local(m.group(1)))
+                continue
+
+            m = self.re['call'].search(element)
+            if m:
+                command = m.group(1)
+                method = self.lookup_cmd(command)
+                arguments = yield self.process_array(self.split(m.group(2)))
+                d = defer.maybeDeferred(method, *arguments)
+                value = yield d
+                result.append(value)
+
+                continue
+
+            raise BadSyntax('Syntax error processing line: %s. '
+                            'Could not detect type of element: %s' %\
+                            (self._last_line, element, ))
+
+        defer.returnValue(result)
+
+    def validate_result(self, result_array):
+        if len(result_array) != 1:
+            raise BadSyntax('Syntax error processing line: %s' %\
+                            self._last_line)
+        return result_array[0]
 
     def on_finish(self):
         self.driver.finished_processing()
@@ -184,24 +263,8 @@ class Parser(log.Logger):
 
     def get_local(self, variable_name):
         if variable_name not in self._locals:
-            raise UnknownVariable('Variable %s not known', variable_name)
+            raise UnknownVariable('Unknown variable %s' % variable_name)
         return self._locals[variable_name]
-
-    def call_method(self, method, args):
-        parsed_args = list()
-        for arg in args:
-            m = re.search('\A[\'\"](.+)[\'\"]\Z', arg) #string
-            if m:
-                parsed_args.append(m.group(1))
-                continue
-            m = re.search('\A[0-9\.]\Z', arg) # number
-            if m:
-                parsed_args.append(arg)
-                continue
-
-            parsed_args.append(self.get_local(arg)) # variable name
-
-        return method(*parsed_args)
 
     def _error_handler(self, f):
         self.error("Error processing: %s", f.getErrorMessage())
@@ -219,6 +282,10 @@ class Parser(log.Logger):
 
 
 class UnknownCommand(Exception):
+    pass
+
+
+class BadSyntax(Exception):
     pass
 
 
