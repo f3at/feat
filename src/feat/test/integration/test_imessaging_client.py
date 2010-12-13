@@ -7,7 +7,7 @@ from zope.interface import implements
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
-from feat.test.common import attr, delay
+from feat.test.common import attr, delay, StubAgent
 from feat.interface import agent
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents.base import descriptor
@@ -247,18 +247,3 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
     def tearDown(self):
         self.messaging.disconnect()
         return self.process.terminate()
-
-
-class StubAgent(object):
-    implements(agent.IAgencyAgent)
-
-    def __init__(self):
-        self.descriptor = descriptor.Descriptor(shard='lobby',
-                                                _id=str(uuid.uuid1()))
-        self.messages = []
-
-    def on_message(self, msg):
-        self.messages.append(msg)
-
-    def get_id(self):
-        return self.descriptor.doc_id

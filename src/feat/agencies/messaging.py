@@ -20,7 +20,7 @@ class Connection(log.Logger):
         self._agent = IAgencyAgent(agent)
 
         self._bindings = []
-        self._queue_name = self._agent.descriptor.doc_id
+        self._queue_name = (self._agent.get_descriptor()).doc_id
         d = defer.maybeDeferred(self._messaging.defineQueue,
             self._queue_name)
 
@@ -67,7 +67,7 @@ class Connection(log.Logger):
 
     def personal_binding(self, key, shard=None):
         if not shard:
-            shard = self._agent.descriptor.shard
+            shard = (self._agent.get_descriptor()).shard
         return PersonalBinding(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):

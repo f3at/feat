@@ -2,15 +2,17 @@ import functools
 import uuid
 import time
 
+from zope.interface import implements
 from twisted.internet import defer, reactor
 from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
-from feat.agents.base import message, recipient
+from feat.agents.base import message, recipient, descriptor
 from feat.common import log
 from feat.common import delay as delay_module
+from feat.interface import agent
 
 from . import factories
 
@@ -424,7 +426,7 @@ class AgencyTestHelper(object):
         msg.protocol_id = self.protocol_id
         msg.message_id = str(uuid.uuid1())
 
-        shard = self.agent.descriptor.shard
+        shard = self.agent._descriptor.shard
         self.agent._messaging.publish(key, shard, msg)
         return d
 
@@ -442,3 +444,18 @@ class AgencyTestHelper(object):
 
         self.agent._messaging.publish(dest.key, dest.shard, msg)
         return d
+
+
+class StubAgent(object):
+    implements(agent.IAgencyAgent)
+
+    def __init__(self):
+        self.descriptor = descriptor.Descriptor(shard='lobby',
+                                                _id=str(uuid.uuid1()))
+        self.messages = []
+
+    def on_message(self, msg):
+        self.messages.append(msg)
+
+    def get_descriptor(self):
+        return self.descriptor

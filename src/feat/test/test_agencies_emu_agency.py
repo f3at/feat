@@ -68,9 +68,18 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertEqual('lobby', self.agency._shards.keys()[0])
         self.assertEqual(1, len(self.agency._shards['lobby']))
 
-        self.agent.leaveShard()
+        self.agent.leave_shard('lobby')
         self.assertEqual(1, len(self.agency._shards))
         self.assertEqual(0, len(self.agency._shards['lobby']))
+
+    @defer.inlineCallbacks
+    def testUpdateDocument(self):
+        desc = self.agent.get_descriptor()
+        self.assertIsInstance(desc, descriptor.Descriptor)
+
+        desc.shard = 'changed'
+        d = yield self.agent.update_descriptor(desc)
+        self.assertEqual('changed', self.agent._descriptor.shard)
 
     def testRegisterTwice(self):
         self.assertTrue(self.agent.register_interest(DummyReplier))
@@ -92,7 +101,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     def testGetingRequestWithoutInterest(self):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
-        key = self.agent.descriptor.doc_id
+        key = (self.agent.get_descriptor()).doc_id
         msg = message.RequestMessage()
         msg.session_id = str(uuid.uuid1())
         return self.recv_msg(msg, self.endpoint, key)
@@ -123,9 +132,10 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
                                          self.endpoint, payload)
 
         def assertsOnMessage(message):
-            self.assertEqual(self.agent.descriptor.shard, \
+            desc = self.agent.get_descriptor()
+            self.assertEqual(desc.shard, \
                              message.reply_to.shard)
-            self.assertEqual(self.agent.descriptor.doc_id, \
+            self.assertEqual(desc.doc_id, \
                              message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)
             self.assertEqual('dummy-request', message.protocol_id)
@@ -194,7 +204,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)
 
-        key = self.agent.descriptor.doc_id
+        key = (self.agent.get_descriptor()).doc_id
 
         req = self._build_req_msg(self.endpoint)
         d = self.recv_msg(req, self.endpoint, key)
@@ -213,7 +223,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.agent.register_interest(DummyReplier)
         self.agent.agent.got_payload = False
 
-        key = self.agent.descriptor.doc_id
+        key = (self.agent.get_descriptor()).doc_id
         # define false sender, he will get the response later
         req = self._build_req_msg(self.endpoint)
         expiration_time = time.time() - 1
