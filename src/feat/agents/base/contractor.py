@@ -36,10 +36,10 @@ class BaseContractor(log.Logger):
         self.agent = agent
         self.medium = medium
 
-    def announce_expired(self):
+    def announced(self, announcement):
         '''@see: L{contractor.IAgentContractor}'''
 
-    def closed(self):
+    def announce_expired(self):
         '''@see: L{contractor.IAgentContractor}'''
 
     def rejected(self, rejection):

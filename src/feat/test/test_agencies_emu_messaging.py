@@ -131,28 +131,13 @@ class TestExchange(common.TestCase):
         self.assertEqual(0, len(self.queues[2]._messages))
 
 
-class StubAgent(object):
-    implements(agent.IAgencyAgent)
-
-    def __init__(self):
-        self.descriptor = descriptor.Descriptor(shard='lobby',
-                                                _id=str(uuid.uuid1()))
-        self.messages = []
-
-    def on_message(self, msg):
-        self.messages.append(msg)
-
-    def get_id(self):
-        return self.descriptor.doc_id
-
-
 class TestMessaging(common.TestCase):
 
     timeout = 1
 
     def setUp(self):
         self.messaging = messaging.Messaging()
-        self.agent = StubAgent()
+        self.agent = common.StubAgent()
         self.connection = self.messaging.get_connection(self.agent)
 
     def testCreateConnection(self):
@@ -162,7 +147,7 @@ class TestMessaging(common.TestCase):
         self.connection.disconnect()
 
     def test1To1Binding(self):
-        key = self.agent.get_id()
+        key = (self.agent.get_descriptor()).doc_id
         binding = self.connection.personal_binding(key)
         self.assertEqual(1, len(self.connection.get_bindings()))
 
@@ -188,7 +173,7 @@ class TestMessaging(common.TestCase):
         return d
 
     def testTwoAgentsWithSameBinding(self):
-        second_agent = StubAgent()
+        second_agent = common.StubAgent()
         second_connection = self.messaging.get_connection(second_agent)
         agents = [self.agent, second_agent]
         connections = [self.connection, second_connection]
@@ -217,7 +202,7 @@ class TestMessaging(common.TestCase):
         return d
 
     def testPublishingByAgent(self):
-        key = self.agent.get_id()
+        key = (self.agent.get_descriptor()).doc_id
         self.connection.personal_binding(key)
         self.connection.publish(key, self.agent.descriptor.shard,\
                                    'some message')

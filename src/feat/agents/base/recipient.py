@@ -55,8 +55,9 @@ class RecipientFromAgent(object):
 
     def __init__(self, agent):
         self.agent = agent
-        self.shard = self.agent.descriptor.shard
-        self.key = self.agent.descriptor.doc_id
+        desc = self.agent.get_descriptor()
+        self.shard = desc.shard
+        self.key = desc.doc_id
 
         self.array = [self]
 

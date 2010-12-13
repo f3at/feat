@@ -3,6 +3,7 @@
 
 import time
 import uuid
+import copy
 
 from twisted.internet import reactor
 from zope.interface import implements
@@ -41,12 +42,12 @@ class Agency(object):
     #     self._agents.remove(agent)
     #     agent._messaging.disconnect()
 
-    def joinedShard(self, agent, shard):
+    def joined_shard(self, agent, shard):
         shard_list = self._shards.get(shard, [])
         shard_list.append(agent)
         self._shards[shard] = shard_list
 
-    def leftShard(self, agent, shard):
+    def left_shard(self, agent, shard):
         shard_list = self._shards.get(shard, [])
         if agent in shard_list:
             shard_list.remove(agent)
@@ -70,7 +71,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         log.Logger.__init__(self, self)
 
         self.agency = agency.IAgency(aagency)
-        self.descriptor = descriptor
+        self._descriptor = descriptor
         self.agent = factory(self)
 
         self._messaging = self.agency._messaging.get_connection(self)
@@ -81,21 +82,32 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         # protocol_type -> protocol_id -> protocols.IInterest
         self._interests = {}
 
-        self.joinShard()
+        self.join_shard(descriptor.shard)
         self.agent.initiate()
 
-    def joinShard(self):
-        shard = self.descriptor.shard
+    def get_descriptor(self):
+        return copy.deepcopy(self._descriptor)
+
+    def update_descriptor(self, desc):
+
+        def update(desc):
+            self.log("Updating descriptor: %r", desc)
+            self._descriptor = desc
+
+        d = self.save_document(desc)
+        d.addCallback(update)
+        return d
+
+    def join_shard(self, shard):
         self.log("Join shard called. Shard: %r", shard)
 
-        self.create_binding(self.descriptor.doc_id)
-        self.agency.joinedShard(self, shard)
+        self.create_binding(self._descriptor.doc_id)
+        self.agency.joined_shard(self, shard)
 
-    def leaveShard(self):
-        bindings = self._messaging.get_bindings(self.descriptor.shard)
+    def leave_shard(self, shard):
+        bindings = self._messaging.get_bindings(shard)
         map(lambda binding: binding.revoke(), bindings)
-        self.agency.leftShard(self, self.descriptor.shard)
-        self.descriptor.shard = None
+        self.agency.left_shard(self, shard)
 
     def on_message(self, message):
         self.log('Received message: %r', message)
@@ -206,16 +218,16 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     # Delegation of methods to IDatabaseClient
 
     def save_document(self, document):
-        self._database.save_document(document)
+        return self._database.save_document(document)
 
     def reload_document(self, document):
-        self._database.reload_document(document)
+        return self._database.reload_document(document)
 
     def delete_document(self, document):
-        self._database.delete_document(document)
+        return self._database.delete_document(document)
 
     def get_document(self, document_id):
-        self._database.get_document(document_id)
+        return self._database.get_document(document_id)
 
 
 class Interest(object):

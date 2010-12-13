@@ -17,7 +17,22 @@ class IAgencyAgent(Interface):
 
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
-    descriptor = Attribute("Agent descriptor")
+
+    def get_descriptor():
+        '''
+        Return the copy of the descriptor.
+        '''
+
+    def update_descriptor(desc):
+        '''
+        Save the descriptor into the database. This method should be used
+        instead of save_document, because agency side of implementation needs
+        to keep track of the changes.
+
+        @param desc: Descriptor to save.
+        @type desc: feat.agents.base.descriptor.Descriptor
+        @returns: Deferred
+        '''
 
     def register_interest(factory):
         '''Registers an interest in a contract or a request.'''

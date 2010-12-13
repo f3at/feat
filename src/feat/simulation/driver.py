@@ -98,7 +98,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def _init_connections(self):
 
         def store(desc):
-            self.descriptor = desc
+            self._descriptor = desc
 
         self._database_connection = self._database.get_connection(self)
         d = self._database_connection.save_document(
@@ -125,6 +125,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def on_message(self, msg):
         pass
+
+    def get_descriptor(self):
+        return self._descriptor
 
 
 class Parser(log.Logger):

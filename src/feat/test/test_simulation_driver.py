@@ -25,7 +25,7 @@ class DummyAgent(agent.BaseAgent, common.Mock):
 
 class TestDriver(common.TestCase):
 
-    timeout = 10
+    timeout = 2
 
     def setUp(self):
         self.driver = driver.Driver()
