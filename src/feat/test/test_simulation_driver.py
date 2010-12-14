@@ -43,7 +43,7 @@ class TestDriver(common.TestCase):
 
     @defer.inlineCallbacks
     def testCreateDescriptor(self):
-        test = 'desc = descriptor_factory()\n'
+        test = "desc = descriptor_factory('descriptor')\n"
         d = self.cb_after(None, self.driver, 'finished_processing')
         self.driver.process(test)
         yield d
@@ -59,7 +59,7 @@ class TestDriver(common.TestCase):
     def testStartAgent(self):
         test = format_block("""
         agency = spawn_agency()
-        start_agent(agency, 'DummyAgent', descriptor_factory())
+        start_agent(agency, 'DummyAgent', descriptor_factory('descriptor'))
         """)
         d = self.cb_after(None, self.driver, 'finished_processing')
         self.driver.process(test)
@@ -81,9 +81,9 @@ class TestDriver(common.TestCase):
             self.assertTrue(self._get_local_var('desc2') is not None)
 
         test = format_block("""
-        desc1 = descriptor_factory()
+        desc1 = descriptor_factory('descriptor')
         breakpoint('break')
-        desc2 = descriptor_factory()
+        desc2 = descriptor_factory('descriptor')
         """)
 
         d1 = self.driver.register_breakpoint('break')

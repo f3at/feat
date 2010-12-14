@@ -4,6 +4,7 @@
 import StringIO
 import re
 import shlex
+import traceback
 
 from twisted.internet import defer
 from zope.interface import implements
@@ -47,14 +48,15 @@ class Commands(object):
                                  'got %r instead', desc)
         ag.start_agent(factory, desc)
 
-    def cmd_descriptor_factory(self, shard='lobby'):
+    def cmd_descriptor_factory(self, document_type, shard='lobby'):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
-        Parameter is optional (default lobby). Usage:
-        > descriptor_factory('some shard')
+        First parameter is a document_type representing the descirptor.
+        Second parameter is optional (default lobby). Usage:
+        > descriptor_factory('shard-descriptor', 'some shard')
         """
-        desc = factories.build(descriptor.Descriptor, shard=shard)
+        desc = factories.build(document_type, shard=shard)
         return self._database_connection.save_document(desc)
 
     def cmd_breakpoint(self, name):
@@ -102,7 +104,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
         self._database_connection = self._database.get_connection(self)
         d = self._database_connection.save_document(
-            factories.build(descriptor.Descriptor))
+            factories.build('descriptor'))
         d.addCallback(store)
 
         self._messaging_connection = self._messaging.get_connection(self)
@@ -240,7 +242,7 @@ class Parser(log.Logger):
         result = list()
         for element in array:
             m = self.re['number'].search(element)
-            self.log('matching: #%s#', element)
+            self.log('matching: %s', element)
             if m:
                 result.append(eval(m.group(0)))
                 continue
@@ -310,6 +312,10 @@ class Parser(log.Logger):
 
     def _error_handler(self, f):
         self.error("Error processing: %s", f.getErrorMessage())
+        frames = traceback.extract_tb(f.getTracebackObject())
+        if len(frames) > 0:
+            self.error('Last traceback frame: %r', frames[-1])
+
         self.send_output(f.getErrorMessage())
 
     def lookup_cmd(self, name):
