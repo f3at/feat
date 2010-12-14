@@ -5,8 +5,14 @@ from feat.common import log
 from feat.agents.base import message
 
 
+class Meta(type):
+    implements(replier.IReplierFactory)
+
+
 class BaseReplier(log.Logger):
-    classProvides(replier.IReplierFactory)
+
+    __metaclass__ = Meta
+
     implements(replier.IAgentReplier)
 
     initiator = message.RequestMessage

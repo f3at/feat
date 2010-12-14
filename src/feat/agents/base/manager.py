@@ -1,6 +1,10 @@
-from zope.interface import implements, classProvides
+from zope.interface import implements
 from feat.interface import manager
 from feat.common import log
+
+
+class Meta(type):
+    implements(manager.IManagerFactory)
 
 
 class BaseManager(log.Logger):
@@ -12,7 +16,8 @@ class BaseManager(log.Logger):
                          contract; see L{feat.agents.contractor.BaseContractor}
     @type protocol_type: str
     """
-    classProvides(manager.IManagerFactory)
+    __metaclass__ = Meta
+
     implements(manager.IAgentManager)
 
     announce = None

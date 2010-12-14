@@ -1,7 +1,11 @@
-from zope.interface import implements, classProvides
+from zope.interface import implements
 from feat.interface import contractor
 from feat.common import log
 from feat.agents.base import message
+
+
+class Meta(type):
+    implements(contractor.IContractorFactory)
 
 
 class BaseContractor(log.Logger):
@@ -13,15 +17,11 @@ class BaseContractor(log.Logger):
                          see L{feat.agents.manager.BaseManager}
     @type protocol_type: str
     """
-    classProvides(contractor.IContractorFactory)
+    __metaclass__ = Meta
+
     implements(contractor.IAgentContractor)
 
     initiator = message.Announcement
-
-    announce = None
-    grant = None
-    report = None
-    agent = None
 
     log_category = "contractor"
     protocol_type = "Contract"

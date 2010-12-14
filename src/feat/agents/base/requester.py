@@ -4,8 +4,13 @@ from feat.common import log
 from feat.interface import requester
 
 
+class Meta(type):
+    implements(requester.IRequesterFactory)
+
+
 class BaseRequester(log.Logger):
-    classProvides(requester.IRequesterFactory)
+
+    __metaclass__ = Meta
     implements(requester.IAgentRequester)
 
     log_category = "requester"
