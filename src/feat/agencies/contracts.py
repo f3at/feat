@@ -5,10 +5,11 @@ import uuid
 
 from twisted.python import components, failure
 from zope.interface import implements
+from twisted.internet import defer
 
 from feat.agents.base import message, recipient
 from feat.common import log, enum, delay
-from feat.interface import contracts, contractor, manager
+from feat.interface import contracts, contractor, manager, protocols
 from feat.interface.recipient import RecipientType
 
 from interface import (IListener, IAgencyInitiatorFactory,
@@ -123,7 +124,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin):
     implements(manager.IAgencyManager, IListener)
 
-    log_category = 'agency-contractor'
+    log_category = 'agency-manager'
 
     error_state = contracts.ContractState.wtf
 
@@ -142,6 +143,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log_name = self.session_id
 
         self.contractors = ManagerContractors()
+        self.finish_deferred = defer.Deferred()
 
     # manager.IAgencyManager stuff
 
@@ -150,13 +152,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.AgencyMiddleMixin.__init__(self, manager.protocol_id)
 
         self._set_state(contracts.ContractState.initiated)
-        self._call(manager.initiate, *self.args, **self.kwargs)
-
         timeout = self.agent.get_time() + self.manager.initiate_timeout
         error = RuntimeError('Timeout exceeded waiting for manager.initate() '
                              'to send the announcement')
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
+
+        self._call(manager.initiate, *self.args, **self.kwargs)
         return manager
 
     def announce(self, announce):
@@ -287,7 +289,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             contractor.on_event(ack)
 
         reports = map(lambda x: x.report, contractors)
-        self._run_and_terminate(self.manager.completed, reports)
+        d = self._call(self.manager.completed, reports)
+        d.addCallback(self.finish_deferred.callback)
+        d.addCallback(lambda _: self._terminate())
 
     # Used by ExpirationCallsMixin
 
@@ -309,6 +313,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
+
+        if not self.finish_deferred.called:
+            ex = protocols.InitiatorFailed(self.state)
+            self.finish_deferred.errback(ex)
 
     def _count_expected_bids(self, recipients):
         '''

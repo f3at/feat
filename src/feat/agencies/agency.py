@@ -154,7 +154,8 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(medium)
-        return medium.initiate(initiator)
+        medium.initiate(initiator)
+        return medium.finish_deferred
 
     def register_interest(self, factory):
         factory = protocols.IInterest(factory)

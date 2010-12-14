@@ -121,9 +121,13 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.recipients = map(lambda x: x['endpoint'], self.contractors)
         self.queues = map(lambda x: x['queue'], self.contractors)
 
+    def tearDown(self):
+        return self.finished
+
     def start_manager(self):
-        self.manager =\
+        self.finished =\
                 self.agent.initiate_protocol(DummyManager, self.recipients)
+        self.manager = self.agent._listeners.values()[-1].manager
         self.medium = self.manager.medium
         self.session_id = self.medium.session_id
 
@@ -131,6 +135,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.assertFalse(self.manager.medium.session_id in\
                              self.agent._listeners)
         self.assertEqual(state, self.manager.medium.state)
+        self.assertTrue(self.finished.called)
+        if state != contracts.ContractState.completed:
+            self.assertFailure(self.finished, protocols.InitiatorFailed)
         return self.manager
 
     def _consume_all(self, *_):
@@ -165,6 +172,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         d = self.cb_after(arg=None, obj=self.agent,
                           method='unregister_listener')
+        d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
 
         return d
 
@@ -255,6 +263,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(asserts_on_manager)
 
         d.addCallback(lambda _: self.medium._terminate())
+        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
 
         return d
 
@@ -293,6 +302,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(asserts_on_manager)
 
         d.addCallback(lambda _: self.medium._terminate())
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.granted)
 
         return d
 
@@ -455,6 +466,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                self.manager.medium._count_expected_bids(
                              self.recipients + [broadcast]))
         self.manager.medium._terminate()
+        self.assertUnregistered(None, contracts.ContractState.initiated)
 
     def testGettingAllBidsGetsToClosed(self):
         self.start_manager()
@@ -479,6 +491,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.assertCalled, 'bid', times=3)
 
         d.addCallback(lambda _: self.medium._terminate())
+        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
 
         return d
 

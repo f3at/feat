@@ -5,9 +5,10 @@ import uuid
 
 from twisted.python import components
 from zope.interface import implements
+from twisted.internet import defer
 
 from feat.common import log
-from feat.interface import requests, replier, requester
+from feat.interface import requests, replier, requester, protocols
 from feat.agents.base import message
 
 from interface import IListener, IAgencyInitiatorFactory,\
@@ -50,6 +51,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log_name = self.session_id
         self.expiration_time = None
 
+        self.finish_deferred = defer.Deferred()
+
     def initiate(self, requester):
         self.requester = requester
         common.AgencyMiddleMixin.__init__(self, requester.protocol_id)
@@ -69,9 +72,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.requester.request =\
             self._send_message(request, self.expiration_time)
 
-    def terminate(self):
-        self._terminate()
-
     # private
 
     def _terminate(self):
@@ -79,6 +79,18 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
+
+        if not self.finish_deferred.called:
+            self.log("Firing errback of finish_deferred")
+            ex = protocols.InitiatorFailed(self.state)
+            self.finish_deferred.errback(ex)
+
+    def _on_reply(self, msg):
+        self.log('on_reply')
+        d = self._call(self.requester.got_reply, msg)
+        d.addCallback(self.finish_deferred.callback)
+        d.addCallback(lambda _: self._terminate())
+        return d
 
     # Used by ExpirationCallsMixin
 
@@ -92,7 +104,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
             message.ResponseMessage:\
                 {'state_before': requests.RequestState.requested,
                  'state_after': requests.RequestState.requested,
-                 'method': self.requester.got_reply}}
+                 'method': self._on_reply}}
         self._event_handler(mapping, msg)
 
     def get_session_id(self):

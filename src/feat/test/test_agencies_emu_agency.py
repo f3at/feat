@@ -8,7 +8,7 @@ from zope.interface import classProvides, implements
 from twisted.internet import defer
 
 from feat.agents.base import agent, descriptor, requester, message, replier
-from feat.interface import requests
+from feat.interface import requests, protocols
 from feat.interface.requester import IRequesterFactory
 from feat.interface.replier import IReplierFactory, IAgentReplier
 from feat.common import delay
@@ -34,7 +34,6 @@ class DummyRequester(requester.BaseRequester):
 
     def got_reply(self, message):
         self.got_response = True
-        self.medium.terminate()
 
 
 class DummyReplier(replier.BaseReplier):
@@ -78,7 +77,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertIsInstance(desc, descriptor.Descriptor)
 
         desc.shard = 'changed'
-        d = yield self.agent.update_descriptor(desc)
+        yield self.agent.update_descriptor(desc)
         self.assertEqual('changed', self.agent._descriptor.shard)
 
     def testRegisterTwice(self):
@@ -127,9 +126,11 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         d = self.queue.get()
         payload = 5
-        self.requester =\
+        self.finished =\
             self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.assertIsInstance(self.finished, defer.Deferred)
+        self.requester = (self.agent._listeners.values()[0]).requester
 
         def assertsOnMessage(message):
             desc = self.agent.get_descriptor()
@@ -167,8 +168,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             return session_id
 
         d.addCallback(mimicReceivingResponse)
-        d.addCallback(self.cb_after, \
-                      obj=self.agent, method='unregister_listener')
+        d.addCallback(lambda _: self.finished)
 
         def assertGotResponseAndTerminated(session_id):
             self.assertFalse(session_id in self.agent._listeners.keys())
@@ -183,9 +183,12 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         d = self.queue.get()
         payload = 5
-        self.requester =\
+        self.finished =\
             self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.assertFailure(self.finished, protocols.InitiatorFailed)
+
+        self.requester = (self.agent._listeners.values()[0]).requester
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -198,6 +201,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
                              self.requester.medium.state)
 
         d.addCallback(assertTerminatedWithNoResponse)
+        d.addCallback(lambda _: self.finished)
 
         return d
 
@@ -244,10 +248,13 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(descriptor.Descriptor)
         sender = self.agency.start_agent(agent.BaseAgent, desc)
         receiver.register_interest(DummyReplier)
-        requester = sender.initiate_protocol(DummyRequester, receiver, 1)
+        self.finished =\
+            sender.initiate_protocol(DummyRequester,
+                                         receiver, 1)
+        requester = (sender._listeners.values()[0]).requester
 
-        requester = yield self.cb_after(arg=requester,
-                          obj=requester.medium, method='terminate')
+        yield self.cb_after(arg=requester,
+                          obj=requester.medium, method='_terminate')
 
         self.assertTrue(requester.got_response)
         self.assertEqual(0, len(sender._listeners))
