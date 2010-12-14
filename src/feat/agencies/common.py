@@ -128,9 +128,12 @@ class ExpirationCallsMixin(object):
     def __init__(self):
         self._expiration_call = None
 
+    def _get_time(self):
+        raise NotImplemented('Should be define in the class using the mixin')
+
     def _setup_expiration_call(self, expire_time, method, state=None,
                                   *args, **kwargs):
-        time_left = expire_time - self.agent.get_time()
+        time_left = expire_time - self._get_time()
 
         if time_left < 0:
             raise RuntimeError('Tried to call method in the past!')

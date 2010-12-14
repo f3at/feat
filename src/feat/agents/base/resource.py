@@ -1,108 +1,168 @@
-class Resource(object):
-    '''
-        This class handles all the operations related to resources
-    '''
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+import copy
 
-    def __init__(self, name, value):
-        self._name = name
-        self._value = value
-
-    def get_name(self):
-        return self._name
-
-    def get_value(self):
-        return self._value
+from feat.common import log, enum
+from feat.agencies.common import StateMachineMixin, ExpirationCallsMixin
 
 
-class ResourceContainter(object):
-    '''
-        This class provides us operations to control a set of resources
-    '''
+class Resources(log.Logger, log.LogProxy):
 
-    def __init__(self):
-        self._bid_id = bid_id
-        self._resources = {}
+    def __init__(self, agent):
+        log.Logger.__init__(self, agent)
+        log.LogProxy.__init__(self, agent)
 
-    def append_resource(r, force=False):
-        ''' Append a resource to the container '''
+        self.agent = agent
 
-        # be sure the resource we're adding is
-        if (r.get_name() in self._resources.keys() and force)
-        or r.get_name() not in self._resources.keys():
-                self._resources[r.get_name()] = r
-        else:
-            raise ResourceAlreadyExists # !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self._totals = dict()
+        self._allocations = list()
 
-    def append_resources(rlist, force=False):
-        ''' Append a list of resources to the container '''
+    def define(self, name, value):
+        if not isinstance(value, int):
+            raise DeclarationError('Resource value should be int, '
+                                   'got %r instead.' % value.__class__)
 
-        for r in rlist:
-            self.append_resource(r, force)
+        new_totals = copy.copy(self._totals)
+        new_totals[name] = value
+        self.validate(new_totals)
+        self._totals = new_totals
 
-    def del_resource(r):
-        ''' Remove a resource from a container '''
+    def validate(self, totals=None, allocations=None):
+        totals, allocations = self._unpack_defaults(totals, allocations)
+
+        allocated = self.allocated(totals, allocations)
+        errors = list()
+        for name in totals:
+            if allocated[name] > totals[name]:
+                errors.append('Not enough %r. Allocated already: %d. '
+                              'New value: %d.' %\
+                              (name, allocated[name], totals[name], ))
+        if len(errors) > 0:
+            raise NotEnoughResources(' '.join(errors))
+
+    def allocated(self, totals=None, allocations=None):
+        totals, allocations = self._unpack_defaults(totals, allocations)
+
+        result = dict()
+        for name in totals:
+            result[name] = 0
+        for allocation in allocations:
+            for resource in allocation.resources:
+                result[resource] += allocation.resources[resource]
+        return result
+
+    def append_allocation(self, allocation):
+        if not isinstance(allocation, Allocation):
+            raise ValueError('Expected Allocation class, got %r instead!' %\
+                             allocation.__class__)
+        self.validate(self._totals, self._allocations + [allocation])
+        self._allocations.append(allocation)
+
+    def remove_allocation(self, allocation):
+        self._allocations.remove(allocation)
+
+    def preallocate(self, expiration_time=None, **params):
         try:
-            del(self._resources[r.get_name()])
-        except:
-            raise ResourceNotFound # !!!!!!!!!!!!!!
+            allocation = Allocation(self, expiration_time, **params)
+            return allocation
+        except NotEnoughResources:
+            return None
 
-    def get_resources_names():
-        return self._resources.keys()
+    def allocate(self, **params):
+        allocation = Allocation(self, expiration_time=None, **params)
+        allocation.confirm()
+        return allocation
 
-
-class ResourceDescriptor(object):
-
-    def __init__(self):
-        self._resources = ResourceContainer()
-        self._preallocated = {)
-        self._allocated = {}
-
-    def append_resource(r):
-        self._resources.append_resource(r)
-
-    def append_resources(rlist):
-        self._resources.append_resources(rlist)
-
-    def available(bid_id):
-        # this part of code should be sincronized? might happend that it tells
-        # to two *threads* that there're free resources when they're actually
-        # overlapping?
-        preallocated = []
-
-        try:
-            preallocated = self._preallocated[bid_id]
-        except Exception:
-            pass # !!!!!!!!!!!!!!!!!!!!!! such bid does not exist!!!!!!!!!!!!!!
-
-        # check that we're not asking for a resource that we don't provide
-        n_resources = set(self._resources.get_resources_names())
-        n_preallocated = set(preallocated.get_resources_names())
-        #diff = []
-        #[diff.append(x) for x in n_preallocated if x not in n_resources]
-        diff = (n_preallocated - n_resources)
-
-        if len(diff) > 0:
-            print "FAIL" # !!!!
-
-        self._resources - self._preallocated - self._allocated
-
-    def preallocate_resources(rlist, bid_id, on_expire=None, ttl=10):
+    def get_time(self):
         '''
-        Preallocates all the resources at rlist, allowing them to be allocated
-        for TTL time and if expired will call method on_expire
+        Used by Allocation class to setup expiration call.
         '''
-        # in case it's possible
-        if (bid_id not in self._preallocated):
-            self._preallocated[bid_id] = ResourceContainer()
-            for r in rlist:
-                self._preallocated[bid_id].append(r)
-        else:
-            raise BidAlreadyPreallocated
+        return self.agent.medium.get_time()
 
-    def allocate(bid_id):
-        '''
-        Allocates all the resources belonging to the provided bid id, so it not
-        interferes with other bids
-        '''
+    def _unpack_defaults(self, totals, allocations):
+        if totals is None:
+            totals = self._totals
+        if allocations is None:
+            allocations = self._allocations
+        return totals, allocations
 
-        pass
+
+class AllocationState(enum.Enum):
+    '''
+    initiated    - not yet allocated
+    preallocated - temporary allocation, will expire after the timeout
+    allocated    - confirmed, will live until released
+    expired      - preallocation has reached its timeout and has expired
+    released     - release() was called
+    '''
+
+    (initiated, preallocated, allocated, expired, released) = range(5)
+
+
+class Allocation(log.Logger, StateMachineMixin, ExpirationCallsMixin):
+
+    default_timeout = 10
+
+    def __init__(self, parent, expiration_time=None, **resources):
+        log.Logger.__init__(self, parent)
+        StateMachineMixin.__init__(self, AllocationState.initiated)
+        ExpirationCallsMixin.__init__(self)
+
+        self._parent = parent
+        for name in resources:
+            if name not in parent._totals:
+                raise UnknownResource('Unknown resource name: %r.' % name)
+            if not isinstance(resources[name], int):
+                raise DeclarationError(
+                    'Resource value should be int, got %r instead.' %\
+                    resources[name].__class__)
+
+        self.resources = resources
+        self._parent.append_allocation(self)
+        self._set_state(AllocationState.preallocated)
+
+        if expiration_time is None:
+            expiration_time = self._get_time() + self.default_timeout
+        self._expire_at(expiration_time, self._timeout,
+                        AllocationState.expired)
+
+    def confirm(self):
+        self._ensure_state(AllocationState.preallocated)
+        self._cancel_expiration_call()
+        self._set_state(AllocationState.allocated)
+
+    def release(self):
+        self._set_state(AllocationState.released)
+        self._cleanup()
+
+    def _timeout(self):
+        self.info('Preallocation of %r has reached its timeout.',
+                  self.resources)
+        self._cleanup()
+
+    def _cleanup(self):
+        self._parent.remove_allocation(self)
+
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self._parent.get_time()
+
+    def _error_handler(self, f):
+        self.error(f)
+
+
+class BaseResourceException(Exception):
+    pass
+
+
+class NotEnoughResources(BaseResourceException):
+    pass
+
+
+class UnknownResource(BaseResourceException):
+    pass
+
+
+class DeclarationError(BaseResourceException):
+    pass

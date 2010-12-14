@@ -80,6 +80,11 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
 
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self.agent.get_time()
+
     # IListener stuff
 
     def on_message(self, msg):

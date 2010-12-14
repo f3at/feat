@@ -289,6 +289,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         reports = map(lambda x: x.report, contractors)
         self._run_and_terminate(self.manager.completed, reports)
 
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self.agent.get_time()
+
     # private
 
     def _close_announce_period(self):
@@ -558,3 +563,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def get_session_id(self):
         return self.session_id
+
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self.agent.get_time()
