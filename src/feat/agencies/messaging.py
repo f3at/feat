@@ -46,7 +46,6 @@ class Connection(log.Logger):
         def get_and_call_on_message(message):
             # it is important to always lookup the current message handler
             # maybe someone bound callback to it ?
-            self.log('Received message: %r', message)
             on_message = self._agent.on_message
             return on_message(message)
 

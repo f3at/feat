@@ -133,8 +133,10 @@ class ExpirationCallsMixin(object):
 
     def _setup_expiration_call(self, expire_time, method, state=None,
                                   *args, **kwargs):
-        time_left = expire_time - self._get_time()
+        self.log('Seting expiration call of method: %r.%r',
+                 self.__class__.__name__, method.__name__)
 
+        time_left = expire_time - self._get_time()
         if time_left < 0:
             raise RuntimeError('Tried to call method in the past!')
 
