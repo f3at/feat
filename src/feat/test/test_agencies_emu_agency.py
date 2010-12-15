@@ -58,7 +58,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
-        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+        self.agent = yield self.agency.start_agent(desc)
 
         self.queue, self.endpoint = self.setup_endpoint()
 
@@ -118,7 +118,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
-        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+        self.agent = yield self.agency.start_agent(desc)
 
         self.endpoint, self.queue = self.setup_endpoint()
 
@@ -246,7 +246,8 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def testTwoAgentsTalking(self):
         receiver = self.agent
         desc = yield self.doc_factory(descriptor.Descriptor)
-        sender = self.agency.start_agent(agent.BaseAgent, desc)
+        sender = yield self.agency.start_agent(desc)
+
         receiver.register_interest(DummyReplier)
         self.finished =\
             sender.initiate_protocol(DummyRequester,

@@ -10,19 +10,6 @@ from feat.agents.base import agent, descriptor
 from feat.interface.agent import IAgentFactory
 
 
-@agent.register
-class DummyAgent(agent.BaseAgent, common.Mock):
-    classProvides(IAgentFactory)
-
-    def __init__(self, medium):
-        agent.BaseAgent.__init__(self, medium)
-        common.Mock.__init__(self)
-
-    @common.Mock.stub
-    def initiate(self):
-        pass
-
-
 class TestDriver(common.TestCase):
 
     timeout = 2
@@ -59,7 +46,7 @@ class TestDriver(common.TestCase):
     def testStartAgent(self):
         test = format_block("""
         agency = spawn_agency()
-        start_agent(agency, 'DummyAgent', descriptor_factory('descriptor'))
+        start_agent(agency, descriptor_factory('descriptor'))
         """)
         d = self.cb_after(None, self.driver, 'finished_processing')
         self.driver.process(test)
@@ -68,7 +55,7 @@ class TestDriver(common.TestCase):
         ag = self.driver._agencies[0]
         self.assertEqual(1, len(ag._agents))
         agent = ag._agents[0]
-        self.assertIsInstance(agent.agent, DummyAgent)
+        self.assertIsInstance(agent.agent, common.DummyAgent)
         self.assertCalled(agent.agent, 'initiate')
 
     def testBreakpoints(self):

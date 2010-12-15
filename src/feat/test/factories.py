@@ -29,6 +29,11 @@ def descriptor_factory(**options):
     return options
 
 
-def shard_descriptor_factory(**options):
+def shard_agent_factory(**options):
+    options = descriptor_factory(**options)
+    return options
+
+
+def host_agent_factory(**options):
     options = descriptor_factory(**options)
     return options

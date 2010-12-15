@@ -12,7 +12,7 @@ from zope.interface import implements
 from feat.common import log
 from feat.agencies import agency
 from feat.agencies.emu import messaging, database
-from feat.agents.base import descriptor, agent
+from feat.agents.base import descriptor
 from feat.interface.agent import IAgencyAgent
 from feat.test import factories
 
@@ -32,21 +32,17 @@ class Commands(object):
         self._agencies.append(ag)
         return ag
 
-    def cmd_start_agent(self, ag, agent_name, desc):
+    def cmd_start_agent(self, ag, desc):
         """
         Start the agent inside the agency. Usage:
         > start_agent(agency, 'HostAgent', descriptor)
         """
         if not isinstance(ag, agency.Agency):
             raise AttributeError('First argument needs to be an agency')
-        factory = agent.registry_lookup(agent_name)
-        if factory is None:
-            raise AttributeError('Second argument needs to be an agent type. '
-                            'Name: %s not found in the registry.', agent_name)
         if not isinstance(desc, descriptor.Descriptor):
-            raise AttributeError('Third argument needs to be an Descriptor, '
+            raise AttributeError('Second argument needs to be an Descriptor, '
                                  'got %r instead', desc)
-        ag.start_agent(factory, desc)
+        return ag.start_agent(desc)
 
     def cmd_descriptor_factory(self, document_type, shard='lobby'):
         """
@@ -54,7 +50,7 @@ class Commands(object):
         for starting the agent.
         First parameter is a document_type representing the descirptor.
         Second parameter is optional (default lobby). Usage:
-        > descriptor_factory('shard-descriptor', 'some shard')
+        > descriptor_factory('shard_descriptor', 'some shard')
         """
         desc = factories.build(document_type, shard=shard)
         return self._database_connection.save_document(desc)

@@ -10,6 +10,7 @@ from zope.interface import implements
 
 from feat.common import log
 from feat.agents.base import recipient
+from feat.agents.base.agent import registry_lookup
 from feat.interface import agency, agent, protocols
 
 from interface import IListener, IAgencyInitiatorFactory,\
@@ -30,8 +31,9 @@ class Agency(object):
         self._messaging = IConnectionFactory(messaging)
         self._database = IConnectionFactory(database)
 
-    def start_agent(self, factory, descriptor):
-        factory = agent.IAgentFactory(factory)
+    def start_agent(self, descriptor):
+        factory = agent.IAgentFactory(
+            registry_lookup(descriptor.document_type))
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
         return medium

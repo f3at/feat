@@ -8,10 +8,10 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
-from feat.agents.base import message, recipient, descriptor
+from feat.agents.base import message, recipient, descriptor, agent
 from feat.common import log
 from feat.common import delay as delay_module
-from feat.interface import agent
+from feat.interface.agent import IAgencyAgent
 
 from . import factories
 
@@ -433,7 +433,7 @@ class AgencyTestHelper(object):
 
 
 class StubAgent(object):
-    implements(agent.IAgencyAgent)
+    implements(IAgencyAgent)
 
     def __init__(self):
         self.descriptor = descriptor.Descriptor(shard='lobby',
@@ -445,3 +445,15 @@ class StubAgent(object):
 
     def get_descriptor(self):
         return self.descriptor
+
+
+@agent.register('descriptor')
+class DummyAgent(agent.BaseAgent, Mock):
+
+    def __init__(self, medium):
+        agent.BaseAgent.__init__(self, medium)
+        Mock.__init__(self)
+
+    @Mock.stub
+    def initiate(self):
+        pass

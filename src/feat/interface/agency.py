@@ -8,8 +8,12 @@ class IAgency(Interface):
     It only publishes the interface global for all agents, agent normally use
     there L{IAgencyAgent} reference given at initialization time.'''
 
-    def start_agent(factory, descriptor, *args, **kwargs):
-        '''Start new agent from factory. Returns the L{IAgencyAngent}'''
+    def start_agent(descriptor, *args, **kwargs):
+        '''
+        Start new agent for the given descriptor.
+        The factory is lookuped at in the agents registry.
+        @return_type: L{IAgencyAngent}
+        '''
 
     def get_time():
         '''

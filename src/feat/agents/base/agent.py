@@ -1,18 +1,19 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import implements, classProvides
+from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, decorator
 from feat.interface import agent
 
 
 registry = dict()
 
 
-def register(klass):
+@decorator.parametrized_class
+def register(klass, name):
     global registry
-    registry[klass.__name__] = klass
+    registry[name] = klass
     return klass
 
 
@@ -23,11 +24,14 @@ def registry_lookup(name):
     return None
 
 
-class BaseAgent(log.Logger):
+class Meta(type):
+    implements(agent.IAgentFactory)
 
-    log_category = "agent"
 
-    classProvides(agent.IAgentFactory)
+class BaseAgent(log.Logger, log.LogProxy):
+
+    __metaclass__ = Meta
+
     implements(agent.IAgent)
 
     def __init__(self, medium):
