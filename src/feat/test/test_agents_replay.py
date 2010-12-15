@@ -29,9 +29,9 @@ class DummyJournalKeeper(object):
     def record(self, instance_id, entry_id,
                fiber_id, fiber_depth, input, side_effects, output):
         record = (instance_id, entry_id, fiber_id, fiber_depth,
-                  ISnapshot(input).snapshot(),
-                  ISnapshot(side_effects).snapshot(),
-                  ISnapshot(output).snapshot())
+                  ISnapshotable(input).snapshot(),
+                  ISnapshotable(side_effects).snapshot(),
+                  ISnapshotable(output).snapshot())
         self.records.append(record)
 
 
@@ -56,13 +56,13 @@ class Base(replay.Replayable):
     @replay.entry_point
     def async_main(self, state, value1, value2):
         f1 = fiber.Fiber()
-        f1.addCallback(common.break_chain)
-        f1.addCallback(self.async_add_double)
+        f1.add_callback(common.break_chain)
+        f1.add_callback(self.async_add_double)
         f1.succeed(value1)
 
         f2 = fiber.Fiber()
-        f2.addCallback(common.break_chain)
-        f2.addCallback(self.async_add_double)
+        f2.add_callback(common.break_chain)
+        f2.add_callback(self.async_add_double)
         f2.succeed(value2)
 
         def sum_values(result):
@@ -70,7 +70,7 @@ class Base(replay.Replayable):
 
         f = fiber.FiberList([f1, f2])
         f.succeed()
-        f.addCallback(sum_values)
+        f.add_callback(sum_values)
 
         return f
 
@@ -78,7 +78,7 @@ class Base(replay.Replayable):
     def async_add_double(self, state, value, minus=None):
         result = value * 2 - (minus if minus is not None else 0)
         state.sum += result
-        return fiber.Fiber().addCallback(common.break_chain).succeed(result)
+        return fiber.Fiber().add_callback(common.break_chain).succeed(result)
 
     @replay.immutable
     def get_sum(self, state):
@@ -91,15 +91,15 @@ class Base(replay.Replayable):
     @replay.mutable
     def reentrance_async_error1(self, state):
         f = fiber.Fiber()
-        f.addCallback(self.sync_main, 2)
+        f.add_callback(self.sync_main, 2)
         f.succeed(1)
         return f
 
     @replay.mutable
     def reentrance_async_error2(self, state):
         f = fiber.Fiber()
-        f.addCallback(common.break_chain)
-        f.addCallback(self.sync_main, 2)
+        f.add_callback(common.break_chain)
+        f.add_callback(self.sync_main, 2)
         f.succeed(1)
         return f
 

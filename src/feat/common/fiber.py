@@ -170,11 +170,11 @@ class Fiber(object):
           return result
 
       f1 = Fiber()
-      f1.addCallback(show, "Fiber 1:")
+      f1.callback(show, "Fiber 1:")
       f1.succeed("F1")
 
       f2 = Fiber()
-      f2.addCallback(show, "Fiber 2:")
+      f2.callback(show, "Fiber 2:")
       f2.succeed("F2") # f2 IS triggered
 
       f1.chain(f2)
@@ -191,11 +191,11 @@ class Fiber(object):
           return result
 
       f1 = Fiber()
-      f1.addCallback(show, "Fiber 1:")
+      f1.callback(show, "Fiber 1:")
       f1.succeed("F1")
 
       f2 = Fiber()
-      f2.addCallback(show, "Fiber 2:")
+      f2.callback(show, "Fiber 2:")
       # f2 IS NOT triggered
 
       f1.chain(f2)
@@ -295,35 +295,27 @@ class Fiber(object):
         self._calls.append(fiber)
         return self
 
-    def addCallbacks(self, callback=None, errback=None,
-                     callbackArgs=None, callbackKeywords=None,
-                     errbackArgs=None, errbackKeywords=None):
+    def add_callbacks(self, callback=None, errback=None,
+                      cbargs=None, cbkws=None,
+                      ebargs=None, ebkws=None):
         self._check_not_started()
 
-        record = (callback, errback,
-                  callbackArgs, callbackKeywords,
-                  errbackArgs, errbackKeywords)
+        record = (callback, errback, cbargs, cbkws, ebargs, ebkws)
 
         self._calls.append(record)
 
         return self
 
-    def addCallback(self, callback, *args, **kwargs):
-        return self.addCallbacks(callback,
-                                 callbackArgs=args,
-                                 callbackKeywords=kwargs)
+    def add_callback(self, callback, *args, **kwargs):
+        return self.add_callbacks(callback, cbargs=args, cbkws=kwargs)
 
-    def addErrback(self, errback, *args, **kwargs):
-        return self.addCallbacks(errback=errback,
-                                 errbackArgs=args,
-                                 errbackKeywords=kwargs)
+    def add_errback(self, errback, *args, **kwargs):
+        return self.add_callbacks(errback=errback, ebargs=args, ebkws=kwargs)
 
-    def addBoth(self, callback, *args, **kwargs):
-        return self.addCallbacks(callback, callback,
-                                 callbackArgs=args,
-                                 callbackKeywords=kwargs,
-                                 errbackArgs=args,
-                                 errbackKeywords=kwargs)
+    def add_both(self, callback, *args, **kwargs):
+        return self.add_callbacks(callback, callback,
+                                  cbargs=args, cbkws=kwargs,
+                                  ebargs=args, ebkws=kwargs)
 
     ### Protected Methods, called only by other instances of Fiber ###
 

@@ -33,8 +33,8 @@ def test_weaving(result, arg):
     f = fiber.Fiber()
     result.append(("1", arg, f))
 
-    f.addCallback(test_weaving_2a, arg + 2)
-    f.addCallback(test_weaving_2b, arg + 3)
+    f.add_callback(test_weaving_2a, arg + 2)
+    f.add_callback(test_weaving_2b, arg + 3)
     f.succeed(result)
     return f
 
@@ -44,8 +44,8 @@ def test_weaving_2a(result, arg):
     f = fiber.Fiber()
     result.append(("2a", arg, f))
 
-    f.addCallback(test_weaving_3, arg + 5)
-    f.addCallback(test_weaving_end, arg + 7)
+    f.add_callback(test_weaving_3, arg + 5)
+    f.add_callback(test_weaving_end, arg + 7)
     f.succeed(result)
     return f
 
@@ -55,7 +55,7 @@ def test_weaving_2b(result, arg):
     f = fiber.Fiber()
     result.append(("2b", arg, f))
 
-    f.addCallback(test_weaving_end, arg + 11)
+    f.add_callback(test_weaving_end, arg + 11)
     f.succeed(result)
     return f
 
@@ -65,7 +65,7 @@ def test_weaving_3(result, arg):
     f = fiber.Fiber()
     result.append(("3", arg, f))
 
-    f.addCallback(test_weaving_end, arg + 13)
+    f.add_callback(test_weaving_end, arg + 13)
     f.succeed(result)
     return f
 
@@ -87,8 +87,8 @@ class WeavingDummy(object):
         f = fiber.Fiber()
         result.append((self.tag, "1", arg, f))
 
-        f.addCallback(self.test_weaving_2a, arg + 2)
-        f.addCallback(self.test_weaving_2b, arg + 3)
+        f.add_callback(self.test_weaving_2a, arg + 2)
+        f.add_callback(self.test_weaving_2b, arg + 3)
         f.succeed(result)
         return f
 
@@ -97,8 +97,8 @@ class WeavingDummy(object):
         f = fiber.Fiber()
         result.append((self.tag, "2a", arg, f))
 
-        f.addCallback(self.test_weaving_3, arg + 5)
-        f.addCallback(self.test_weaving_end, arg + 7)
+        f.add_callback(self.test_weaving_3, arg + 5)
+        f.add_callback(self.test_weaving_end, arg + 7)
         f.succeed(result)
         return f
 
@@ -107,7 +107,7 @@ class WeavingDummy(object):
         f = fiber.Fiber()
         result.append((self.tag, "2b", arg, f))
 
-        f.addCallback(self.test_weaving_end, arg + 11)
+        f.add_callback(self.test_weaving_end, arg + 11)
         f.succeed(result)
         return f
 
@@ -116,7 +116,7 @@ class WeavingDummy(object):
         f = fiber.Fiber()
         result.append((self.tag, "3", arg, f))
 
-        f.addCallback(self.test_weaving_end, arg + 13)
+        f.add_callback(self.test_weaving_end, arg + 13)
         f.succeed(result)
         return f
 
@@ -139,17 +139,17 @@ def fiberListFun(trace):
 
     f1 = fiber.Fiber()
     f1.succeed("f1")
-    f1.addCallback(common.break_chain)
-    f1.addCallback(append)
+    f1.add_callback(common.break_chain)
+    f1.add_callback(append)
 
     f2 = fiber.Fiber()
     f2.succeed("f2")
-    f2.addCallback(common.break_chain)
-    f2.addCallback(append)
+    f2.add_callback(common.break_chain)
+    f2.add_callback(append)
 
     fl = fiber.FiberList([f1, f2])
     fl.succeed()
-    fl.addCallback(merge)
+    fl.add_callback(merge)
     return fl
 
 
@@ -161,13 +161,13 @@ class TestFiber(common.TestCase):
         f = fiber.Fiber()
         self.assertEqual((None, None, []), f.snapshot())
 
-        f.addCallback(o.spam, 42, parrot="dead")
+        f.add_callback(o.spam, 42, parrot="dead")
         self.assertEqual((None, None,
                           [(("feat.test.test_common_fiber.Dummy.spam",
                             (42, ), {"parrot": "dead"}), None)]),
                          f.snapshot())
 
-        f.addErrback(beans, 18, slug="mute")
+        f.add_errback(beans, 18, slug="mute")
         self.assertEqual((None, None,
                           [(("feat.test.test_common_fiber.Dummy.spam",
                              (42, ), {"parrot": "dead"}),
@@ -177,7 +177,7 @@ class TestFiber(common.TestCase):
                              (18, ), {"slug": "mute"}))]),
                          f.snapshot())
 
-        f.addCallbacks(o.bacon, eggs)
+        f.add_callbacks(o.bacon, eggs)
         self.assertEqual((None, None,
                           [(("feat.test.test_common_fiber.Dummy.spam",
                              (42, ), {"parrot": "dead"}),
@@ -215,7 +215,7 @@ class TestFiber(common.TestCase):
 
         f1 = fiber.Fiber()
         self.assertEqual((None, None, []), f1.snapshot())
-        f1.addCallback(o.spam, 1, 2, 3, accompaniment="beans")
+        f1.add_callback(o.spam, 1, 2, 3, accompaniment="beans")
         self.assertEqual((None, None,
                           [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
                             None)]),
@@ -223,7 +223,7 @@ class TestFiber(common.TestCase):
 
         f2 = fiber.Fiber()
         self.assertEqual((None, None, []), f2.snapshot())
-        f2.addErrback(o.bacon, accompaniment="eggs", extra="spam")
+        f2.add_errback(o.bacon, accompaniment="eggs", extra="spam")
         self.assertEqual((None, None,
                           [(None,
                             (bacon_id, None,
@@ -232,7 +232,7 @@ class TestFiber(common.TestCase):
 
         f3 = fiber.Fiber()
         self.assertEqual((None, None, []), f3.snapshot())
-        f3.addBoth(o.spam)
+        f3.add_both(o.spam)
         self.assertEqual((None, None,
                           [((spam_id, None, None), (spam_id, None, None))]),
                          f3.snapshot())
@@ -245,7 +245,7 @@ class TestFiber(common.TestCase):
                            ((spam_id, None, None), (spam_id, None, None))]),
                          f2.snapshot())
 
-        f2.addCallback(eggs)
+        f2.add_callback(eggs)
         self.assertEqual((None, None,
                           [(None,
                             (bacon_id, None,
@@ -265,7 +265,7 @@ class TestFiber(common.TestCase):
                            ((eggs_id, None, None), None)]),
                          f1.snapshot())
 
-        f1.addErrback(beans)
+        f1.add_errback(beans)
         self.assertEqual((None, None,
                           [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
                             None),
@@ -453,28 +453,28 @@ class TestFiber(common.TestCase):
         fidref = []
 
         # Normal callback path
-        f.addCallback(callback, 2, value=3)
-        f.addCallback(check_fiber, fidref)
-        f.addErrback(fail) # Errback should not be called
-        f.addBoth(callback, 3, value=5)
-        f.addCallback(check_fiber, fidref)
-        f.addCallback(callback, 5, value=7)
-        f.addCallback(check_fiber, fidref)
-        f.addCallbacks(callback, fail, (7, ), {"value": 11})
-        f.addCallback(check_fiber, fidref)
+        f.add_callback(callback, 2, value=3)
+        f.add_callback(check_fiber, fidref)
+        f.add_errback(fail) # Errback should not be called
+        f.add_both(callback, 3, value=5)
+        f.add_callback(check_fiber, fidref)
+        f.add_callback(callback, 5, value=7)
+        f.add_callback(check_fiber, fidref)
+        f.add_callbacks(callback, fail, (7, ), {"value": 11})
+        f.add_callback(check_fiber, fidref)
 
         # Failure path
-        f.addCallback(callback, 11, exception=e) # raise the exception
-        f.addErrback(check_fiber, fidref)
-        f.addCallback(fail) # Callback should not be called
-        f.addErrback(errback, e)
-        f.addErrback(check_fiber, fidref)
-        f.addBoth(errback, e)
-        f.addErrback(check_fiber, fidref)
-        f.addCallbacks(fail, errback, None, None, (e, ), {"value": 13})
-        f.addCallback(check_fiber, fidref)
-        f.addCallback(callback, 13, value=17) # Failure resolved
-        f.addCallback(check_fiber, fidref)
+        f.add_callback(callback, 11, exception=e) # raise the exception
+        f.add_errback(check_fiber, fidref)
+        f.add_callback(fail) # Callback should not be called
+        f.add_errback(errback, e)
+        f.add_errback(check_fiber, fidref)
+        f.add_both(errback, e)
+        f.add_errback(check_fiber, fidref)
+        f.add_callbacks(fail, errback, None, None, (e, ), {"value": 13})
+        f.add_callback(check_fiber, fidref)
+        f.add_callback(callback, 13, value=17) # Failure resolved
+        f.add_callback(check_fiber, fidref)
 
         f.succeed(2)
         defs.append(f.start())
@@ -489,23 +489,23 @@ class TestFiber(common.TestCase):
         fidref = []
 
         # Failure path
-        f.addErrback(check_fiber, fidref)
-        f.addCallback(fail) # Callback should not be called
-        f.addErrback(errback, e)
-        f.addErrback(check_fiber, fidref)
-        f.addBoth(errback, e)
-        f.addErrback(check_fiber, fidref)
-        f.addCallbacks(fail, errback, None, None, (e, ), {"value": 17})
+        f.add_errback(check_fiber, fidref)
+        f.add_callback(fail) # Callback should not be called
+        f.add_errback(errback, e)
+        f.add_errback(check_fiber, fidref)
+        f.add_both(errback, e)
+        f.add_errback(check_fiber, fidref)
+        f.add_callbacks(fail, errback, None, None, (e, ), {"value": 17})
 
         # Normal callback path
-        f.addCallback(check_fiber, fidref)
-        f.addCallback(callback, 17, value=19)
-        f.addErrback(fail) # Errback should not be called
-        f.addCallback(check_fiber, fidref)
-        f.addBoth(callback, 19, value=23)
-        f.addCallback(check_fiber, fidref)
-        f.addCallbacks(callback, fail, (23, ), {"value": 29})
-        f.addCallback(check_fiber, fidref)
+        f.add_callback(check_fiber, fidref)
+        f.add_callback(callback, 17, value=19)
+        f.add_errback(fail) # Errback should not be called
+        f.add_callback(check_fiber, fidref)
+        f.add_both(callback, 19, value=23)
+        f.add_callback(check_fiber, fidref)
+        f.add_callbacks(callback, fail, (23, ), {"value": 29})
+        f.add_callback(check_fiber, fidref)
 
         f.fail(e)
         defs.append(f.start())
@@ -581,15 +581,15 @@ class TestFiber(common.TestCase):
                 self.assertEqual(expected, result)
             if exception:
                 f = fiber.Fiber()
-                f.addCallback(common.break_chain)
-                f.addCallback(raise_error)
+                f.add_callback(common.break_chain)
+                f.add_callback(raise_error)
                 f.succeed(exception)
                 return f
             else:
                 if value is None:
                     value = result
                 f = fiber.Fiber()
-                f.addCallback(common.break_chain)
+                f.add_callback(common.break_chain)
                 f.succeed(value)
                 return f
 
@@ -598,7 +598,7 @@ class TestFiber(common.TestCase):
             if expected is not None:
                 self.assertEqual(expected, failure.value)
             f = fiber.Fiber()
-            f.addCallback(common.break_chain)
+            f.add_callback(common.break_chain)
             f.succeed(value or failure)
             return f
 
@@ -606,19 +606,19 @@ class TestFiber(common.TestCase):
 
     def mkChainedFiberTest(self, push):
         f1 = fiber.Fiber()
-        f1.addCallback(push, 1)
+        f1.add_callback(push, 1)
 
         f2 = fiber.Fiber()
-        f2.addCallback(push, 2)
+        f2.add_callback(push, 2)
 
         f3 = fiber.Fiber()
-        f3.addCallback(push, 3)
+        f3.add_callback(push, 3)
 
         f2.chain(f3)
-        f2.addCallback(push, 4)
+        f2.add_callback(push, 4)
 
         f1.chain(f2)
-        f1.addCallback(push, 5)
+        f1.add_callback(push, 5)
 
         f1.succeed([])
 
@@ -648,40 +648,40 @@ class TestFiber(common.TestCase):
         # TRIGGERED
         f1 = fiber.Fiber()
         f1.succeed(0)
-        f1.addErrback(unexpected)
-        f1.addCallback(callback, 0, 3)
-        f1.addErrback(unexpected)
-        f1.addCallback(callback, 3, 2)
-        f1.addErrback(unexpected)
-        f1.addCallback(callback, 5, 2)
-        f1.addErrback(unexpected)
+        f1.add_errback(unexpected)
+        f1.add_callback(callback, 0, 3)
+        f1.add_errback(unexpected)
+        f1.add_callback(callback, 3, 2)
+        f1.add_errback(unexpected)
+        f1.add_callback(callback, 5, 2)
+        f1.add_errback(unexpected)
 
         # NOT TRIGGERED, Should get called with master fiber result
         f2 = fiber.Fiber()
-        f2.addErrback(unexpected)
-        f2.addCallback(callback, 7, 4)
-        f2.addErrback(unexpected)
-        f2.addCallback(callback, 11, 2)
-        f2.addErrback(unexpected)
+        f2.add_errback(unexpected)
+        f2.add_callback(callback, 7, 4)
+        f2.add_errback(unexpected)
+        f2.add_callback(callback, 11, 2)
+        f2.add_errback(unexpected)
 
         # TRIGGERED, the master fiber result should be overridden
         f3 = fiber.Fiber()
         f3.succeed(59)
-        f3.addErrback(unexpected)
-        f3.addCallback(callback, 59, 2)
-        f3.addErrback(unexpected)
-        f3.addCallback(callback, 61, 6)
-        f3.addErrback(unexpected)
+        f3.add_errback(unexpected)
+        f3.add_callback(callback, 59, 2)
+        f3.add_errback(unexpected)
+        f3.add_callback(callback, 61, 6)
+        f3.add_errback(unexpected)
 
         # NOT TRIGGERED, started with master fiber's result
         f4 = fiber.Fiber()
-        f4.addErrback(unexpected)
-        f4.addCallback(callback, 67, 4)
-        f4.addErrback(unexpected)
-        f4.addCallback(callback, 71, "bad") # Make things fail
-        f4.addCallback(unexpected)
-        f4.addErrback(errback, exp_class=TypeError)
-        f4.addCallback(unexpected)
+        f4.add_errback(unexpected)
+        f4.add_callback(callback, 67, 4)
+        f4.add_errback(unexpected)
+        f4.add_callback(callback, 71, "bad") # Make things fail
+        f4.add_callback(unexpected)
+        f4.add_errback(errback, exp_class=TypeError)
+        f4.add_callback(unexpected)
 
         # TRIGGERED, the failure from the master fiber got overridden
         f5 = fiber.Fiber()
@@ -695,23 +695,23 @@ class TestFiber(common.TestCase):
             # to be able to create a Failure
             f5.fail()
 
-        f5.addCallback(unexpected)
-        f5.addErrback(errback, exp_error=e1, exception=e2)
-        f5.addCallback(unexpected)
-        f5.addErrback(errback, exp_error=e2, exception=e1)
-        f5.addCallback(unexpected)
+        f5.add_callback(unexpected)
+        f5.add_errback(errback, exp_error=e1, exception=e2)
+        f5.add_callback(unexpected)
+        f5.add_errback(errback, exp_error=e2, exception=e1)
+        f5.add_callback(unexpected)
 
         # NOT TRIGGERED, errback started with master fiber's last failure
         f6 = fiber.Fiber()
         e2 = ValueError("f6 e2")
 
-        f6.addCallback(unexpected)
-        f6.addErrback(errback, exp_error=e1, exception=e2)
-        f6.addCallback(unexpected)
-        f6.addErrback(errback, exp_error=e2, result="recovered")
-        f6.addErrback(unexpected)
-        f6.addCallback(callback, "recovered", "")
-        f6.addErrback(unexpected)
+        f6.add_callback(unexpected)
+        f6.add_errback(errback, exp_error=e1, exception=e2)
+        f6.add_callback(unexpected)
+        f6.add_errback(errback, exp_error=e2, result="recovered")
+        f6.add_errback(unexpected)
+        f6.add_callback(callback, "recovered", "")
+        f6.add_errback(unexpected)
 
         f1.chain(f2.chain(f3.chain(f4.chain(f5.chain(f6)))))
 
@@ -781,15 +781,15 @@ class TestFiber(common.TestCase):
         result = []
 
         f1 = fiber.Fiber()
-        f1.addErrback(push, result, 1)
+        f1.add_errback(push, result, 1)
 
         f2 = fiber.Fiber()
-        f2.addErrback(push, result, 2)
+        f2.add_errback(push, result, 2)
 
         f1.chain(f2)
-        f1.addErrback(push, result, 3)
+        f1.add_errback(push, result, 3)
 
-        f1.addErrback(lambda _: result) # Resolving the error
+        f1.add_errback(lambda _: result) # Resolving the error
 
         try:
             raise Exception()
@@ -814,12 +814,12 @@ class TestFiber(common.TestCase):
             check_depth(expected)
 
             f = fiber.Fiber()
-            f.addCallback(expect, expected + 1)
-            f.addCallback(expect, expected + 1)
-            f.addCallback(fun1)
-            f.addCallback(expect, expected + 1)
-            f.addCallback(fun2)
-            f.addCallback(expect, expected + 1)
+            f.add_callback(expect, expected + 1)
+            f.add_callback(expect, expected + 1)
+            f.add_callback(fun1)
+            f.add_callback(expect, expected + 1)
+            f.add_callback(fun2)
+            f.add_callback(expect, expected + 1)
 
             return f.succeed()
 
@@ -894,17 +894,17 @@ class TestFiber(common.TestCase):
 
         # Cannot start fibers multiple times
         f = fiber.Fiber()
-        f.addCallback(lambda r: r)
+        f.add_callback(lambda r: r)
         f.succeed()
         f.start()
         self.assertRaises(fiber.FiberStartupError, f.start)
 
         # Cannot add callback after a fiber has started
         f = fiber.Fiber()
-        f.addCallback(lambda r: r)
+        f.add_callback(lambda r: r)
         f.succeed()
         f.start()
-        self.assertRaises(fiber.FiberStartupError, f.addCallback, lambda r: r)
+        self.assertRaises(fiber.FiberStartupError, f.add_callback, lambda r: r)
 
     def testHandWovenSync(self):
 
@@ -935,7 +935,7 @@ class TestFiber(common.TestCase):
             section = fiber.WovenSection()
             section.enter()
             f = fiber.Fiber()
-            f.addCallback(next, 0, value)
+            f.add_callback(next, 0, value)
             f.succeed(None)
             return section.exit(f)
 
@@ -945,8 +945,8 @@ class TestFiber(common.TestCase):
             if fact and fact >= max:
                 return value
             f = fiber.Fiber()
-            f.addCallback(factorial)
-            f.addCallback(next, value+1, max)
+            f.add_callback(factorial)
+            f.add_callback(next, value+1, max)
             f.succeed(value+1)
             return section.exit(f)
 
@@ -967,9 +967,9 @@ class TestFiber(common.TestCase):
             section = fiber.WovenSection()
             section.enter()
             f = fiber.Fiber()
-            f.addCallback(common.break_chain)
-            f.addCallback(next, 0, value)
-            f.addCallback(common.break_chain)
+            f.add_callback(common.break_chain)
+            f.add_callback(next, 0, value)
+            f.add_callback(common.break_chain)
             f.succeed(None)
             return section.exit(f)
 
@@ -979,11 +979,11 @@ class TestFiber(common.TestCase):
             if fact and fact >= max:
                 return value
             f = fiber.Fiber()
-            f.addCallback(common.break_chain)
-            f.addCallback(factorial)
-            f.addCallback(common.break_chain)
-            f.addCallback(next, value+1, max)
-            f.addCallback(common.break_chain)
+            f.add_callback(common.break_chain)
+            f.add_callback(factorial)
+            f.add_callback(common.break_chain)
+            f.add_callback(next, value+1, max)
+            f.add_callback(common.break_chain)
             f.succeed(value+1)
             return section.exit(f)
 
@@ -1003,9 +1003,9 @@ class TestFiber(common.TestCase):
         @fiber.woven
         def invfact(value):
             f = fiber.Fiber()
-            f.addCallback(common.break_chain)
-            f.addCallback(next, 0, value)
-            f.addCallback(common.break_chain)
+            f.add_callback(common.break_chain)
+            f.add_callback(next, 0, value)
+            f.add_callback(common.break_chain)
             f.succeed(None)
             return f
 
@@ -1014,11 +1014,11 @@ class TestFiber(common.TestCase):
             if fact and fact >= max:
                 return value
             f = fiber.Fiber()
-            f.addCallback(common.break_chain)
-            f.addCallback(factorial)
-            f.addCallback(common.break_chain)
-            f.addCallback(next, value+1, max)
-            f.addCallback(common.break_chain)
+            f.add_callback(common.break_chain)
+            f.add_callback(factorial)
+            f.add_callback(common.break_chain)
+            f.add_callback(next, value+1, max)
+            f.add_callback(common.break_chain)
             f.succeed(value+1)
             return f
 
@@ -1135,13 +1135,13 @@ class TestFiber(common.TestCase):
 
         # In section 2
         f2 = fiber.Fiber()
-        f2.addBoth(self.fail)
+        f2.add_both(self.fail)
         f2.succeed("Should never happen if aborted")
         self.assertEqual(None, section2.abort(f2))
 
         # In section 1
         f1 = fiber.Fiber()
-        f1.addBoth(self.fail)
+        f1.add_both(self.fail)
         f1.succeed("Should never happen if aborted")
         self.assertEqual(None, section1.abort(f1))
 
@@ -1152,64 +1152,64 @@ class TestFiber(common.TestCase):
         # Triggered Fiber
         f1 = fiber.Fiber()
         f1.succeed(12)
-        f1.addCallback(check, 12)
-        f1.addCallback(add, 4)
-        f1.addCallback(check, 12 + 4)
-        f1.addCallback(add, 1)
-        f1.addCallback(check, 12 + 4 + 1)
+        f1.add_callback(check, 12)
+        f1.add_callback(add, 4)
+        f1.add_callback(check, 12 + 4)
+        f1.add_callback(add, 1)
+        f1.add_callback(check, 12 + 4 + 1)
 
         # Not Triggered Fiber
         f2 = fiber.Fiber()
-        f2.addCallback(check, 33) # From the FiberList trigger bellow
-        f2.addCallback(add, 66)
-        f2.addCallback(check, 33 + 66)
-        f2.addCallback(sub, 24)
-        f2.addCallback(check, 33 + 66 - 24)
+        f2.add_callback(check, 33) # From the FiberList trigger bellow
+        f2.add_callback(add, 66)
+        f2.add_callback(check, 33 + 66)
+        f2.add_callback(sub, 24)
+        f2.add_callback(check, 33 + 66 - 24)
 
         # Triggered Fiber List
         f3 = fiber.FiberList([f1, f2])
         f3.succeed(33)
-        f3.addCallback(merge)
-        f3.addCallback(check, (12 + 4 + 1) + (33 + 66 - 24))
-        f3.addCallback(add, 5)
-        f3.addCallback(check, 97)
+        f3.add_callback(merge)
+        f3.add_callback(check, (12 + 4 + 1) + (33 + 66 - 24))
+        f3.add_callback(add, 5)
+        f3.add_callback(check, 97)
 
         # Triggered Fiber
         f4 = fiber.Fiber()
         f4.succeed(78)
-        f4.addCallback(check, 78)
-        f4.addCallback(sub, 18)
-        f4.addCallback(check, 78 - 18)
-        f4.addCallback(add, 7)
-        f4.addCallback(check, 78 - 18 + 7)
+        f4.add_callback(check, 78)
+        f4.add_callback(sub, 18)
+        f4.add_callback(check, 78 - 18)
+        f4.add_callback(add, 7)
+        f4.add_callback(check, 78 - 18 + 7)
 
         # Not Triggered Fiber
         f5 = fiber.Fiber()
-        f5.addCallback(check, 12) # From the top fiber trigger
-        f5.addCallback(sub, 77)
-        f5.addCallback(check, 12 - 77)
-        f5.addCallback(sub, 2)
-        f5.addCallback(check, 12 - 77 - 2)
+        f5.add_callback(check, 12) # From the top fiber trigger
+        f5.add_callback(sub, 77)
+        f5.add_callback(check, 12 - 77)
+        f5.add_callback(sub, 2)
+        f5.add_callback(check, 12 - 77 - 2)
 
         # Not Triggered Fiber List
         f6 = fiber.FiberList([f4, f5])
-        f6.addCallback(merge)
-        f6.addCallback(check, (78 - 18 + 7) + (12 - 77 - 2))
-        f6.addCallback(sub, 3)
-        f6.addCallback(check, -3)
+        f6.add_callback(merge)
+        f6.add_callback(check, (78 - 18 + 7) + (12 - 77 - 2))
+        f6.add_callback(sub, 3)
+        f6.add_callback(check, -3)
 
         # Not Triggered Fiber
         f7 = fiber.Fiber()
-        f7.addCallback(check, 12) # From top FiberList
-        f7.addCallback(add, 5)
-        f7.addCallback(check, 12 + 5)
+        f7.add_callback(check, 12) # From top FiberList
+        f7.add_callback(add, 5)
+        f7.add_callback(check, 12 + 5)
 
         # Top triggered Fiber List
         f8 = fiber.FiberList([f3, f6, f7])
-        f8.addCallback(merge)
-        f8.addCallback(check, 97 - 3 + 12 + 5)
-        f8.addCallback(sub, 10)
-        f8.addCallback(check, 101)
+        f8.add_callback(merge)
+        f8.add_callback(check, 97 - 3 + 12 + 5)
+        f8.add_callback(sub, 10)
+        f8.add_callback(check, 101)
         f8.succeed(12)
 
         return f8.start()
@@ -1262,8 +1262,8 @@ class TestFiber(common.TestCase):
         f1 = fiber.Fiber()
         self.assertEqual((None, None, []), f1.snapshot())
 
-        f1.addCallback(o.spam, 42, parrot="dead")
-        f1.addErrback(beans, 18, slug="mute")
+        f1.add_callback(o.spam, 42, parrot="dead")
+        f1.add_errback(beans, 18, slug="mute")
         self.assertEqual((None, None,
                           [(("feat.test.test_common_fiber.Dummy.spam",
                              (42, ), {"parrot": "dead"}),
@@ -1275,7 +1275,7 @@ class TestFiber(common.TestCase):
 
         f2 = fiber.Fiber()
         self.assertEqual((None, None, []), f2.snapshot())
-        f2.addCallbacks(o.bacon, eggs)
+        f2.add_callbacks(o.bacon, eggs)
         f2.succeed("shop")
         self.assertEqual((TriggerType.succeed, "shop",
                           [(("feat.test.test_common_fiber.Dummy.bacon",
@@ -1326,19 +1326,19 @@ class TestFiber(common.TestCase):
         def test(d, v1, e1, v2, e2, expected, **kwargs):
             f1 = fiber.Fiber()
             f1.succeed(v1)
-            f1.addCallback(common.delay, 0.03)
+            f1.add_callback(common.delay, 0.03)
 
             f2 = fiber.Fiber()
             f2.fail(e1)
-            f2.addErrback(common.delay_errback, 0.02)
+            f2.add_errback(common.delay_errback, 0.02)
 
             f3 = fiber.Fiber()
             f3.succeed(v2)
-            f3.addCallback(common.delay, 0.01)
+            f3.add_callback(common.delay, 0.01)
 
             f4 = fiber.Fiber()
             f4.fail(e2)
-            f4.addErrback(common.delay_errback, 0.04)
+            f4.add_errback(common.delay_errback, 0.04)
 
             fl = fiber.FiberList([f1, f2, f3, f4], **kwargs)
             fl.succeed()
