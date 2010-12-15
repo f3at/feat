@@ -6,6 +6,8 @@ from zope.interface import implements
 from feat.interface.fiber import *
 from feat.interface.journal import *
 from feat.interface.serialization import *
+from feat.common.serialization.base import MetaSerializable
+from feat.common.annotate import MetaAnnotable
 
 from . import decorator, annotate, reflect, fiber, serialization
 
@@ -168,8 +170,7 @@ class RecorderNode(serialization.Serializable):
 class Recorder(RecorderNode, annotate.Annotable):
 
     # Fix the metaclass inheritance
-    __metaclass__ = type("MetaRecorder", (annotate.MetaAnnotable,
-                                          serialization.MetaSerializable), {})
+    __metaclass__ = type("MetaRecorder", (MetaAnnotable, MetaSerializable), {})
 
     implements(IRecorder)
 
