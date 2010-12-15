@@ -408,6 +408,8 @@ class Unserializer(object):
 
     implements(IConverter)
 
+    pass_through_types = ()
+
     def __init__(self, pre_converter=None, registry=None):
         global _global_registry
         self._pre_converter = pre_converter and IConverter(pre_converter)
@@ -432,7 +434,32 @@ class Unserializer(object):
 
     ### Protected Methods ###
 
-    def delay_unpacking(self, container, fun, *args, **kwargs):
+    def unpack_data(self, data):
+        vtype = type(data)
+
+        # Just return pass-through types
+        if vtype in self.pass_through_types:
+            return data
+
+        analysis = self.analyse_data(data)
+
+        if analysis is None:
+            raise TypeError("Type %s not supported by unserializer %s"
+                            % (type(data).__name__, type(self).__name__))
+
+        constructor, unpacker = analysis
+
+        # Unpack the mutable containers that provides constructor
+        if constructor is not None:
+            # The container is specified two time once for the base class
+            # and once for the function call argument
+            container = constructor()
+            return self.delayed_unpacking(container, unpacker,
+                                          self, container, data)
+
+        return unpacker(self, data)
+
+    def delayed_unpacking(self, container, fun, *args, **kwargs):
         '''Should be used when unpacking mutable values.
         This allows circular references resolution by pausing serialization.'''
         try:
@@ -453,9 +480,9 @@ class Unserializer(object):
         # Prepare the instance for recovery
         instance = restorator.prepare()
         # Delay the instance restoration for later to handle circular refs
-        return self.delay_unpacking(instance,
-                                    self._continue_restoring_instance,
-                                    instance, snapshot)
+        return self.delayed_unpacking(instance,
+                                      self._continue_restoring_instance,
+                                      instance, snapshot)
 
     def restore_reference(self, refid, data):
         if refid in self._references:
@@ -476,10 +503,93 @@ class Unserializer(object):
                              % refid)
         return self._references[refid]
 
+    def unpack_unordered_values(self, values):
+        '''Unpack an unordered list of values taking DelayPacking
+        exceptions into account to resolve circular references .
+        Used to unpack set values when order is not guaranteed by
+        the serializer. See unpack_unordered_pairs().'''
+
+        values = list(values) # To support iterators
+        result = []
+
+        # Try to unpack values more than one time to resolve cross references
+        max_loop = 2
+        while values and max_loop:
+            next_values = []
+            for value_data in values:
+                try:
+                    # try unpacking the value
+                    value = self.unpack_data(value_data)
+                except DelayPacking:
+                    # If it is delayed keep it for later
+                    next_values.append(value_data)
+                    continue
+                result.append(value)
+            values = next_values
+            max_loop -= 1
+
+        if values:
+            # Not all items were resolved
+            raise DelayPacking()
+
+        return result
+
+    def unpack_unordered_pairs(self, pairs):
+        '''Unpack an unordered list of value pairs taking DelayPacking
+        exceptions into account to resolve circular references .
+        Used to unpack dictionary items when the order is not guarennteed
+        by the serializer. When item order change between packing
+        and unpacking, references are not guaranteed to appear before
+        dereferences anymore. So if unpacking an item fail because
+        of unknown dereference, we must keep it aside, continue unpacking
+        the other items and continue later.'''
+
+        items = [(False, k, v) for k, v in pairs]
+        result = []
+
+        # Try to unpack items more than one time to resolve cross references
+        max_loop = 2
+        while items and max_loop:
+            next_items = []
+            for key_unpacked, key_data, value_data in items:
+                if key_unpacked:
+                    key = key_data
+                else:
+                    try:
+                        # Try unpacking the key
+                        key = self.unpack_data(key_data)
+                    except DelayPacking:
+                        # If it is delayed keep it for later
+                        next_items.append((False, key_data, value_data))
+                        continue
+
+                try:
+                    # try unpacking the value
+                    value = self.unpack_data(value_data)
+                except DelayPacking:
+                    # If it is delayed keep it for later
+                    next_items.append((True, key, value_data))
+                    continue
+
+                # Update the container with the unpacked value and key
+                result.append((key, value))
+            items = next_items
+            max_loop -= 1
+
+        if items:
+            # Not all items were resolved
+            raise DelayPacking()
+
+        return result
+
     ### Virtual Methods, to be Overridden by Sub-Classes ###
 
-    def unpack_data(self, data):
-        '''Should be overridden by sub-classes.'''
+    def analyse_data(self, data):
+        '''Analyses the data provided and return a tuple containing
+        the data type and a function to unpack it.
+        The type can be None for immutable types, instances,
+        reference and dereferences.'''
+
 
     ### Private Methods ###
 

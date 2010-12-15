@@ -1,5 +1,3 @@
-from feat.interface.serialization import *
-
 from . import base
 
 UNICODE_ATOM = "unicode"
@@ -54,47 +52,33 @@ class Serializer(base.Serializer):
 class Unserializer(base.Unserializer):
     '''Unserialize a structure serialized with L{sexp.Serializer}.'''
 
+    pass_through_types = set([str, int, long, float])
+
     ### Overridden Methods ###
 
-    def unpack_data(self, data):
+    def analyse_data(self, data):
         vtype = type(data)
 
-        # Just return simple immutable values as-is
-        if vtype in (str, int, long, float):
-            return data
-
         if vtype is not list:
-            raise TypeError("Invalid input data for unserializer %s: %r"
-                            % (type(self).__name__, data))
+            return None
 
-        type_name, values = data[0], data[1:]
+        type_name = data[0]
 
-        unpacker = self._simple_unpacker.get(type_name)
-        if unpacker is not None:
-            return unpacker(self, values)
-
-        lookup = self._mutable_unpacker.get(type_name)
-        if lookup is not None:
-            unpacker, container_type = lookup
-            container = container_type()
-            return self.delay_unpacking(container, unpacker,
-                                        self, container, values)
-
-        # We assume it is an instance
-        value, = values
-        return self.restore_instance(type_name, value)
+        # We assume that if it's nothing we know about, it's an instance
+        default = (None, Unserializer.unpack_instance)
+        return self._unpackers.get(type_name, default)
 
     ### Private Methods ###
 
     def unpack_unicode(self, data):
-        value, = data
+        _, value = data
         if not isinstance(value, str):
             raise TypeError("Invalid %s value type: %r"
                             % (UNICODE_ATOM, value))
         return value.decode(UNICODE_FORMAT_ATOM)
 
     def unpack_bool(self, data):
-        value, = data
+        _, value = data
         if value == BOOL_TRUE_ATOM:
             return True
         if value == BOOL_FALSE_ATOM:
@@ -102,38 +86,40 @@ class Unserializer(base.Unserializer):
         raise ValueError("Invalid %s value: %r" % (BOOL_ATOM, value))
 
     def unpack_none(self, data):
-        if data:
-            raise ValueError("Invalid %s packet" % (NONE_ATOM, ))
+        _, = data
         return None
 
-    def unpack_tuple(self, data):
-        return tuple([self.unpack_data(d) for d in data])
+    def unpack_instance(self, data):
+        type_name, value = data
+        return self.restore_instance(type_name, value)
 
     def unpack_reference(self, data):
-        refid, value = data
+        _, refid, value = data
         return self.restore_reference(refid, value)
 
     def unpack_dereference(self, data):
-        refid, = data
+        _, refid = data
         return self.restore_dereference(refid)
 
+    def unpack_tuple(self, data):
+        return tuple([self.unpack_data(d) for d in data[1:]])
+
     def unpack_list(self, container, data):
-        container.extend([self.unpack_data(d) for d in data])
+        container.extend([self.unpack_data(d) for d in data[1:]])
 
     def unpack_set(self, container, data):
-        container.update([self.unpack_data(d) for d in data])
+        container.update([self.unpack_data(d) for d in data[1:]])
 
     def unpack_dict(self, container, data):
         container.update([(self.unpack_data(k), self.unpack_data(v))
-                          for k, v in data])
+                          for k, v in data[1:]])
 
-    _simple_unpacker = {UNICODE_ATOM: unpack_unicode,
-                        BOOL_ATOM: unpack_bool,
-                        NONE_ATOM: unpack_none,
-                        TUPLE_ATOM: unpack_tuple,
-                        REFERENCE_ATOM: unpack_reference,
-                        DEREFERENCE_ATOM: unpack_dereference}
-
-    _mutable_unpacker = {LIST_ATOM: (unpack_list, list),
-                         SET_ATOM: (unpack_set, set),
-                         DICT_ATOM: (unpack_dict, dict)}
+    _unpackers = {UNICODE_ATOM: (None, unpack_unicode),
+                  BOOL_ATOM: (None, unpack_bool),
+                  NONE_ATOM: (None, unpack_none),
+                  TUPLE_ATOM: (None, unpack_tuple),
+                  REFERENCE_ATOM: (None, unpack_reference),
+                  DEREFERENCE_ATOM: (None, unpack_dereference),
+                  LIST_ATOM: (list, unpack_list),
+                  SET_ATOM: (set, unpack_set),
+                  DICT_ATOM: (dict, unpack_dict)}

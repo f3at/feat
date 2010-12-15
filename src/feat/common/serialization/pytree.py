@@ -135,119 +135,55 @@ class Unserializer(base.Unserializer):
     The base class raises DelayUnpacking exception when an unknown
     reference got dereferenced, so unpacking '''
 
+    pass_through_types = set([str, unicode, int, long,
+                              float, bool, type(None)])
+
     ### Overridden Methods ###
 
-    def unpack_data(self, data):
-        vtype = type(data)
+    def analyse_data(self, data):
+        data_type = type(data)
 
-        # Just return simple immutable values as-is
-        if vtype in (str, unicode, int, long, float, bool, type(None)):
-            return data
-
-        # Special case for tuples
-        if vtype == tuple:
-            return tuple([self.unpack_data(d) for d in data])
-
-        # For mutable types, we create an empty instance and return it
-        # to break the deserialization chain in order to handle circular
-        # references, but we register a callback to continue later on.
-        unpacker = self._lookup_unpacker.get(vtype)
-        if unpacker is not None:
-            # First argument is self because the functions are not bound
-            # and the container is specified two time once for the base class
-            # and once for the function call argument
-            container = vtype()
-            return self.delay_unpacking(container, unpacker,
-                                        self, container, data)
+        lookup = self._unpackers.get(data_type)
+        if lookup is not None:
+            return lookup
 
         # Handle references, dereferences and instances
         # We want to be compatible with all implementations
         # of the interface so we cannot use lookup table
+
         if IInstance.providedBy(data):
-            return self.restore_instance(data.type_name, data.snapshot)
+            return None, Unserializer.unpack_instance
 
         if IDereference.providedBy(data):
-            return self.restore_dereference(data.refid)
+            return None, Unserializer.unpack_dereference
 
         if IReference.providedBy(data):
-            return self.restore_reference(data.refid, data.value)
-
-        raise TypeError("Type %s not supported by unserializer %s"
-                        % (type(data).__name__, type(self).__name__))
+            return None, Unserializer.unpack_reference
 
     ### Private Methods ###
+
+    def unpack_instance(self, data):
+        return self.restore_instance(data.type_name, data.snapshot)
+
+    def unpack_reference(self, data):
+        return self.restore_reference(data.refid, data.value)
+
+    def unpack_dereference(self, data):
+        return self.restore_dereference(data.refid)
+
+    def unpack_tuple(self, data):
+        return tuple([self.unpack_data(d) for d in data])
 
     def unpack_list(self, container, data):
         container.extend([self.unpack_data(d) for d in data])
 
     def unpack_set(self, container, data):
-        '''Unpacking sets is a pain not quite like dictionaries but not far.
-        See unpack_dict() doc for more info.'''
-
-        values = list(data)
-
-        # Try to unpack items more than one time to resolve cross references
-        max_loop = 3
-        while values and max_loop:
-            next_values = []
-            for value_data in values:
-                try:
-                    # try unpacking the value
-                    value = self.unpack_data(value_data)
-                except base.DelayPacking:
-                    # If it is delayed keep it for later
-                    next_values.append(value_data)
-                    continue
-                container.add(value)
-            values = next_values
-            max_loop -= 1
-
-        if values:
-            # Not all items were resolved
-            raise base.DelayPacking()
+        container.update(self.unpack_unordered_values(data))
 
     def unpack_dict(self, container, data):
-        '''Unpacking dictionary is a pain.
-        because item order change between packing and unpacking.
-        So if unpacking an item fail because of unknown dereference,
-        we must keep it aside, continue unpacking the other items
-        and continue later.'''
+        container.update(self.unpack_unordered_pairs(data.iteritems()))
 
-        items = [(False, k, v) for k, v in data.iteritems()]
-
-        # Try to unpack items more than one time to resolve cross references
-        max_loop = 3
-        while items and max_loop:
-            next_items = []
-            for key_unpacked, key_data, value_data in items:
-                if key_unpacked:
-                    key = key_data
-                else:
-                    try:
-                        # Try unpacking the key
-                        key = self.unpack_data(key_data)
-                    except base.DelayPacking:
-                        # If it is delayed keep it for later
-                        next_items.append((False, key_data, value_data))
-                        continue
-
-                try:
-                    # try unpacking the value
-                    value = self.unpack_data(value_data)
-                except base.DelayPacking:
-                    # If it is delayed keep it for later
-                    next_items.append((True, key, value_data))
-                    continue
-
-                # Update the container with the unpacked value and key
-                container[key] = value
-            items = next_items
-            max_loop -= 1
-
-        if items:
-            # Not all items were resolved
-            raise base.DelayPacking()
-
-    _lookup_unpacker = {list: unpack_list,
-                        set: unpack_set,
-                        dict: unpack_dict}
+    _unpackers = {tuple: (None, unpack_tuple),
+                  list: (list, unpack_list),
+                  set: (set, unpack_set),
+                  dict: (dict, unpack_dict)}
