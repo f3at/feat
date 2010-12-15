@@ -180,6 +180,16 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
              "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
+    def assertIs(self, expr1, expr2, msg=None):
+        self.assertEqual(id(expr1), id(expr2),
+                         msg or ("Expected same instances and got %r and %r"
+                                 % (expr1, expr2)))
+
+    def assertIsNot(self, expr1, expr2, msg=None):
+        self.assertNotEqual(id(expr1), id(expr2),
+                            msg or ("Expected different instances and got "
+                                    "two %r" % (expr1, )))
+
     def assertAsyncEqual(self, chain, expected, value, *args, **kwargs):
         '''Adds an asynchronous assertion for equality to the specified
         deferred chain.
