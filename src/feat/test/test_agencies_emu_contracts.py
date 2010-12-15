@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import time
+import uuid
 
 from zope.interface import classProvides
 from twisted.internet import defer
@@ -558,6 +560,36 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(self.contractor.medium.bid, msg)
 
         d.addCallback(asserts_on_bid)
+
+        return d
+
+    def testHandingOverTheBid(self):
+        d = self.recv_announce()
+        d.addCallback(self._get_contractor)
+
+        def send_delegated_bid(contractor):
+            msg = message.Bid()
+            msg.reply_to = self.endpoint
+            msg.expiration_time = time.time() + 10
+            msg.protocol_type = self.protocol_type
+            msg.protocol_id = self.protocol_id
+            msg.message_id = str(uuid.uuid1())
+
+            contractor.medium.handover(msg)
+            return contractor
+
+        d.addCallback(send_delegated_bid)
+
+        d.addCallback(self.queue.get)
+
+        def asserts_on_bid(msg):
+            self.assertEqual(message.Bid, msg.__class__)
+            self.assertEqual(self.contractor.medium.bid, msg)
+            self.assertEqual(self.endpoint, msg.reply_to)
+
+        d.addCallback(asserts_on_bid)
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.delegated)
 
         return d
 

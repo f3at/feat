@@ -39,6 +39,7 @@ class ContractState(enum.Enum):
      - closed:       The Announce expired without putting bid nor refusal.
      - bid:          A bid has been put on an announcement.
      - refused:      The announce has been refused.
+     - delegated:    The bid created by the nested contractor has been sent.
      - rejected:     The bid has been rejected by the manager.
      - granted:      The contract has been granted.
      - expired:      Bid expired without grant nor rejection.
@@ -51,8 +52,9 @@ class ContractState(enum.Enum):
                       or explicitly canceled the job.
      - wtf:          What a Terrible Failure
     '''
-    (initiated, announced, closed, bid, refused, rejected, granted, expired,
-     completed, defected, cancelled, acknowledged, aborted, wtf) = range(14)
+    (initiated, announced, closed, bid, refused, delegated, rejected, granted,
+     expired, completed, defected, cancelled, acknowledged, aborted, wtf) =\
+     range(15)
 
 
 class IContractPeer(Interface):

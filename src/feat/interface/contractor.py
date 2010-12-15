@@ -22,6 +22,13 @@ class IAgencyContractor(contracts.IContractPeer):
     def bid(bid):
         '''Puts a bid on the announcement'''
 
+    def handover(bid):
+        '''
+        Sends the bid received from the nested contractor. The reply-to field
+        is preserved, so the rest of dialog will be delegated to the nested
+        contractor. For us this means end of story.
+        '''
+
     def refuse(refusal):
         '''Refuses the announcement'''
 

@@ -113,6 +113,9 @@ class AgencyMiddleMixin(object):
 
         return self.agent.send_msg(recipients, msg)
 
+    def _handover_message(self, msg):
+        return self.agent.send_msg(self.recipients, msg, handover=True)
+
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
 

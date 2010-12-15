@@ -409,6 +409,17 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return self.bid
 
+    def handover(self, bid):
+        self.debug('Sending bid of the nested contractor: %r.', bid)
+        assert isinstance(bid, message.Bid)
+
+        self._ensure_state(contracts.ContractState.announced)
+        self._set_state(contracts.ContractState.delegated)
+
+        self.bid = self._handover_message(bid)
+        self._terminate()
+        return self.bid
+
     def refuse(self, refusal):
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)

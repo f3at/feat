@@ -215,10 +215,11 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     def get_time(self):
         return self.agency.get_time()
 
-    def send_msg(self, recipients, msg):
+    def send_msg(self, recipients, msg, handover=False):
         recipients = recipient.IRecipients(recipients)
-        msg.reply_to = recipient.IRecipient(self)
-        msg.message_id = str(uuid.uuid1())
+        if not handover:
+            msg.reply_to = recipient.IRecipient(self)
+            msg.message_id = str(uuid.uuid1())
         assert msg.expiration_time is not None
         for recp in recipients:
             self.log('Sending message to %r', recp)
