@@ -3,8 +3,19 @@ import types
 
 
 def canonical_name(obj):
-    global _canonical_lookup
-    return _canonical_lookup.get(type(obj), _canonical_default)(obj)
+    if isinstance(obj, types.MethodType):
+        return _canonical_method(obj)
+
+    if isinstance(obj, (type, types.FunctionType)):
+        return _canonical_type(obj)
+
+    if isinstance(obj, types.NoneType):
+        return _canonical_none(obj)
+
+    if isinstance(obj, types.BuiltinFunctionType):
+        return _canonical_builtin(obj)
+
+    return _canonical_type(obj.__class__)
 
 
 def class_locals(depth, tag=None):
@@ -36,11 +47,7 @@ def inside_class_definition(depth):
 ### Private Methods ###
 
 
-def _canonical_default(obj):
-    return _canonical_class(obj.__class__)
-
-
-def _canonical_class(obj):
+def _canonical_type(obj):
     return obj.__module__ + "." + obj.__name__
 
 
@@ -49,15 +56,8 @@ def _canonical_none(obj):
 
 
 def _canonical_method(obj):
-    return _canonical_class(obj.im_class) + "." + obj.__name__
+    return _canonical_type(obj.im_class) + "." + obj.__name__
 
 
 def _canonical_builtin(obj):
     return "__builtin__." + obj.__name__
-
-
-_canonical_lookup = {types.TypeType: _canonical_class,
-                     types.NoneType: _canonical_none,
-                     types.MethodType: _canonical_method,
-                     types.FunctionType: _canonical_class,
-                     types.BuiltinFunctionType: _canonical_builtin}
