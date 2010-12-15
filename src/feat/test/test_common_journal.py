@@ -25,7 +25,7 @@ class BasicRecordingDummy(journal.Recorder):
         extra = extra and " with " + extra or ""
         result = "spam and " + accompaniment + extra
         f = fiber.Fiber()
-        f.addCallback(common.break_chain)
+        f.add_callback(common.break_chain)
         f.succeed(result)
         return f
 
@@ -40,8 +40,8 @@ class FiberInfoDummy(journal.Recorder):
         f = fiber.Fiber()
         for a in args:
             if self.async:
-                f.addCallback(common.break_chain)
-            f.addCallback(a)
+                f.add_callback(common.break_chain)
+            f.add_callback(a)
         return f.succeed()
 
     @journal.recorded()
@@ -123,7 +123,7 @@ class DirectReplayDummy(journal.Recorder):
             return self.some_baz
 
         f = fiber.Fiber()
-        f.addCallback(async_add)
+        f.add_callback(async_add)
         f.succeed(value)
         return f
 
@@ -156,8 +156,8 @@ class RecordReplayDummy(journal.Recorder):
         serving = "bacon and %s" % accompaniment
         self._addServing(serving)
         f = fiber.Fiber()
-        f.addCallback(self.spam, extra=accompaniment)
-        f.addCallback(self._prepare_double, serving)
+        f.add_callback(self.spam, extra=accompaniment)
+        f.add_callback(self._prepare_double, serving)
         f.succeed("bacon")
         return f
 
@@ -189,8 +189,8 @@ class ReentrantDummy(journal.Recorder):
     @journal.recorded(reentrant=False)
     def async_ugly(self):
         f = fiber.Fiber()
-        f.addCallback(common.break_chain)
-        f.addCallback(self.ugly)
+        f.add_callback(common.break_chain)
+        f.add_callback(self.ugly)
         return f.succeed()
 
 
