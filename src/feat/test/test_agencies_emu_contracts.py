@@ -629,7 +629,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts_on_refusal(msg):
             self.assertEqual(message.Refusal, msg.__class__)
-            self.assertEqual(self.contractor.medium.session_id, msg.session_id)
+            self.assertEqual(self.contractor.medium.session_id, msg.sender_id)
 
         d.addCallback(asserts_on_refusal)
 
@@ -798,7 +798,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(lambda contractor:
-                 message.BaseMessage(session_id=contractor.medium.session_id))
+                 message.BaseMessage(receiver_id=contractor.medium.session_id))
         d.addCallback(self.recv_msg)
         # this will be ignored, we follow the path to expiration
 
@@ -842,4 +842,5 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     def _get_contractor(self, _):
         self.contractor = self.agent._listeners.values()[0].contractor
+        self.remote_id = self.contractor.medium.session_id
         return self.contractor

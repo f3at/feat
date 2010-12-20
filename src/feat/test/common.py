@@ -322,6 +322,7 @@ class AgencyTestHelper(object):
 
     protocol_type = None
     protocol_id = None
+    remote_id = None
 
     def setUp(self):
         self.agency = agency.Agency()
@@ -385,31 +386,31 @@ class AgencyTestHelper(object):
 
     def recv_announce(self, *_):
         msg = message.Announcement()
-        msg.session_id = str(uuid.uuid1())
-        self.session_id = msg.session_id
+        self.session_id = str(uuid.uuid1())
+        msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_grant(self, _, bid_index=0, update_report=None):
         msg = message.Grant()
         msg.bid_index = bid_index
         msg.update_report = update_report
-        msg.session_id = self.session_id
+        msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_rejection(self, _):
         msg = message.Rejection()
-        msg.session_id = self.session_id
+        msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_cancel(self, _, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
-        msg.session_id = self.session_id
+        msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_ack(self, _):
         msg = message.Acknowledgement()
-        msg.session_id = self.session_id
+        msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_msg(self, msg, reply_to=None, key='dummy-contract',
@@ -421,6 +422,7 @@ class AgencyTestHelper(object):
         msg.protocol_type = self.protocol_type
         msg.protocol_id = self.protocol_id
         msg.message_id = str(uuid.uuid1())
+        msg.receiver_id = self.remote_id
 
         shard = self.agent._descriptor.shard
         self.agent._messaging.publish(key, shard, msg)
@@ -436,7 +438,7 @@ class AgencyTestHelper(object):
         msg.protocol_id = original_msg.protocol_id
         msg.expiration_time = time.time() + 10
         msg.protocol_type = original_msg.protocol_type
-        msg.session_id = original_msg.session_id
+        msg.receiver_id = original_msg.sender_id
 
         self.agent._messaging.publish(dest.key, dest.shard, msg)
         return d

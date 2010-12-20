@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
 import traceback
 
 from twisted.internet import defer
@@ -85,14 +86,22 @@ class AgencyMiddleMixin(object):
 
     protocol_id = None
     session_id = None
+    remote_id = None
 
     error_state = None
 
-    def __init__(self, protocol_id):
+    def __init__(self, remote_id=None, protocol_id=None):
+        self.session_id = str(uuid.uuid1())
+        self.remote_id = remote_id
+        self._set_protocol_id(protocol_id)
+
+    def _set_protocol_id(self, protocol_id):
         self.protocol_id = protocol_id
 
-    def _send_message(self, msg, expiration_time=None, recipients=None):
-        msg.session_id = self.session_id
+    def _send_message(self, msg, expiration_time=None, recipients=None,
+                      remote_id=None):
+        msg.sender_id = self.session_id
+        msg.receiver_id = remote_id or self.remote_id
         msg.protocol_id = self.protocol_id
         if msg.expiration_time is None:
             if expiration_time is None:
@@ -104,7 +113,8 @@ class AgencyMiddleMixin(object):
 
         return self.agent.send_msg(recipients, msg)
 
-    def _handover_message(self, msg):
+    def _handover_message(self, msg, remote_id=None):
+        msg.receiver_id = remote_id or self.remote_id
         return self.agent.send_msg(self.recipients, msg, handover=True)
 
     def _call(self, method, *args, **kwargs):
