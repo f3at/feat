@@ -97,7 +97,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         req = self.agent.revoke_interest(DummyReplier)
         self.assertFalse(req)
 
-    def testGetingRequestWithoutInterest(self):
+    def tesGetingRequestWithoutInterest(self):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
         key = (self.agent.get_descriptor()).doc_id
@@ -126,11 +126,11 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         d = self.queue.get()
         payload = 5
-        self.finished =\
+        self.requester =\
             self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.finished = self.requester.notify_finish()
         self.assertIsInstance(self.finished, defer.Deferred)
-        self.requester = (self.agent._listeners.values()[0]).requester
 
         def assertsOnMessage(message):
             desc = self.agent.get_descriptor()
@@ -183,12 +183,11 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         d = self.queue.get()
         payload = 5
-        self.finished =\
+        self.requester =\
             self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.finished = self.requester.notify_finish()
         self.assertFailure(self.finished, protocols.InitiatorFailed)
-
-        self.requester = (self.agent._listeners.values()[0]).requester
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
@@ -246,7 +245,6 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         receiver = self.agent
         desc = yield self.doc_factory(descriptor.Descriptor)
         sender = yield self.agency.start_agent(desc)
-
         receiver.register_interest(DummyReplier)
         self.finished =\
             sender.initiate_protocol(DummyRequester,

@@ -5,6 +5,7 @@ from zope.interface import implements
 
 from feat.common import log, decorator
 from feat.interface import agent
+from feat.agents.base import resource
 
 
 registry = dict()
@@ -24,6 +25,19 @@ def registry_lookup(name):
     return None
 
 
+def update_descriptor(method):
+
+    def decorated(self, *args, **kwargs):
+        desc = self.medium.get_descriptor()
+        resp = method(self, desc, *args, **kwargs)
+        d = self.medium.update_descriptor(desc)
+        if resp:
+            d.addCallback(lambda _: resp)
+        return d
+
+    return decorated
+
+
 class Meta(type):
     implements(agent.IAgentFactory)
 
@@ -36,7 +50,10 @@ class BaseAgent(log.Logger, log.LogProxy):
 
     def __init__(self, medium):
         log.Logger.__init__(self, medium)
+        log.LogProxy.__init__(self, medium)
+
         self.medium = agent.IAgencyAgent(medium)
+        self.resources = resource.Resources(self)
 
     ## IAgent Methods ##
 

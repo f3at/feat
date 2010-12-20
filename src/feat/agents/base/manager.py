@@ -1,13 +1,14 @@
 from zope.interface import implements
 from feat.interface import manager
 from feat.common import log
+from feat.agencies import agency
 
 
 class Meta(type):
     implements(manager.IManagerFactory)
 
 
-class BaseManager(log.Logger):
+class BaseManager(log.Logger, agency.InitiatorMixin):
     """
     I am a base class for managers of contracts.
 
@@ -38,6 +39,7 @@ class BaseManager(log.Logger):
 
         self.agent = agent
         self.medium = medium
+        agency.InitiatorMixin.__init__(self)
 
     def initiate(self):
         '''@see: L{manager.IAgentManager}'''

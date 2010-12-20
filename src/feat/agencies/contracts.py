@@ -156,7 +156,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
 
-        self._call(manager.initiate, *self.args, **self.kwargs)
+        self._call(manager.initiate)
         return manager
 
     def announce(self, announce):
@@ -299,11 +299,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     # private
 
     def _close_announce_period(self):
-        self._set_state(contracts.ContractState.closed)
         expiration_time = max(map(lambda bid: bid.expiration_time,
                                   self.contractors))
         self._expire_at(expiration_time, self.manager.expired,
                         contracts.ContractState.expired)
+        self._set_state(contracts.ContractState.closed)
         self._call(self.manager.closed)
 
     def _terminate(self):
@@ -394,12 +394,11 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.announce = announcement
         self.recipients = announcement.reply_to
 
-        self.log_name = self.session_id
-
         self._reporter_call = None
 
     def initiate(self, contractor):
         self.contractor = contractor
+        self.log_name = self.contractor.__class__.__name__
         self._set_state(contracts.ContractState.initiated)
         return contractor
 
@@ -525,6 +524,11 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         is_ok = grant.bid_index < len(self.bid.bids)
         if is_ok:
             self.grant = grant
+            # this is necessary for nested contracts to work with handing
+            # the messages over
+            self._set_remote_id(grant.sender_id)
+            self.recipients = grant.reply_to
+
             self._call(self.contractor.granted, grant)
             if grant.update_report:
                 self._setup_reporter()

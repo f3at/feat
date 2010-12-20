@@ -42,6 +42,7 @@ class Commands(object):
         if not isinstance(desc, descriptor.Descriptor):
             raise AttributeError('Second argument needs to be an Descriptor, '
                                  'got %r instead', desc)
+
         return ag.start_agent(desc)
 
     def cmd_descriptor_factory(self, document_type, shard='lobby'):
@@ -199,7 +200,7 @@ class Parser(log.Logger):
         line = self.get_line()
         if line is not None:
             self._last_line = line
-            self.log('Processing line: %s', line)
+            self.debug('Processing line: %s', line)
             if not re.search('\w', line):
                 self.log('Empty line')
                 return self.process_line()
@@ -260,6 +261,7 @@ class Parser(log.Logger):
                 arguments = yield self.process_array(self.split(m.group(2)))
                 d = defer.maybeDeferred(method, *arguments)
                 value = yield d
+                self.debug("Finished processing command: %s", element)
                 result.append(value)
 
                 continue

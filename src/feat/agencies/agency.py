@@ -5,7 +5,7 @@ import time
 import uuid
 import copy
 
-from twisted.internet import reactor
+from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import log
@@ -36,7 +36,9 @@ class Agency(object):
             registry_lookup(descriptor.document_type))
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
-        return medium
+        d = defer.maybeDeferred(medium.agent.initiate)
+        d.addCallback(lambda _: medium)
+        return d
 
     # TODO: Implement this, but first discuss what this really
     # means to unregister agent
@@ -75,6 +77,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self.agency = agency.IAgency(aagency)
         self._descriptor = descriptor
         self.agent = factory(self)
+        self.log_name = self.agent.__class__.__name__
 
         self._messaging = self.agency._messaging.get_connection(self)
         self._database = self.agency._database.get_connection(self)
@@ -85,7 +88,6 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self._interests = {}
 
         self.join_shard(descriptor.shard)
-        self.agent.initiate()
 
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)
@@ -103,7 +105,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
     def join_shard(self, shard):
         self.log("Join shard called. Shard: %r", shard)
 
-        self.create_binding(self._descriptor.doc_id)
+        self.create_binding(self._descriptor.doc_id, shard)
         self.agency.joined_shard(self, shard)
 
     def leave_shard(self, shard):
@@ -159,7 +161,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(medium)
         medium.initiate(initiator)
-        return medium.finish_deferred
+        return initiator
 
     def register_interest(self, factory):
         factory = protocols.IInterest(factory)
@@ -170,9 +172,10 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         if p_id in self._interests[p_type]:
             self.error('Already interested in %s.%s protocol!', p_type, p_id)
             return False
-        self._interests[p_type][p_id] = Interest(self, factory)
-
-        return True
+        i = Interest(self, factory)
+        self._interests[p_type][p_id] = i
+        self.debug('Registered intereset in %s.%s protocol.', p_type, p_id)
+        return i
 
     def revoke_interest(self, factory):
         factory = protocols.IInterest(factory)
@@ -218,8 +221,8 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             self._messaging.publish(recp.key, recp.shard, msg)
         return msg
 
-    def create_binding(self, key):
-        return self._messaging.personal_binding(key)
+    def create_binding(self, key, shard=None):
+        return self._messaging.personal_binding(key, shard)
 
     # Delegation of methods to IDatabaseClient
 
@@ -236,6 +239,32 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         return self._database.get_document(document_id)
 
 
+class InitiatorMixin(object):
+    '''
+    This mixin should be mixed into class implementing IInitiator interface.
+    '''
+
+    def __init__(self):
+        self._finished_cbs = list()
+        self.medium.finish_deferred.addCallbacks(self._finish_callback,
+                                                 self._finish_errback)
+
+    def notify_finish(self):
+        d = defer.Deferred()
+        self._finished_cbs.append(d)
+        return d
+
+    def notify_state(self, state):
+        return self.medium.wait_for_state(state)
+
+    def _finish_callback(self, x):
+        map(lambda d: d.callback(x), self._finished_cbs)
+        return x
+
+    def _finish_errback(self, x):
+        map(lambda d: d.errback(x), self._finished_cbs)
+
+
 class Interest(object):
     '''Represents the interest from the point of view of agency.
     Manages the binding and stores factory reference'''
@@ -245,10 +274,15 @@ class Interest(object):
 
     def __init__(self, medium, factory):
         self.factory = factory
+        self.medium = medium
 
         if factory.interest_type == protocols.InterestType.public:
-            self.binding = medium.create_binding(self.factory.protocol_id)
+            self.binding = self.medium.create_binding(self.factory.protocol_id)
 
     def revoke(self):
         if self.factory.interest_type == protocols.InterestType.public:
             self.binding.revoke()
+
+    def bind_to_lobby(self):
+        self.medium._messaging.personal_binding(self.factory.protocol_id,
+                                                'lobby')

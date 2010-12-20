@@ -6,6 +6,9 @@ documents = dict()
 
 def register(klass):
     global documents
+    if klass.document_type in documents:
+        raise ValueError('document_type %s already registered!' %
+                         klass.document_type)
     documents[klass.document_type] = klass
     return klass
 

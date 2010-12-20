@@ -2,13 +2,14 @@ from zope.interface import implements, classProvides
 
 from feat.common import log
 from feat.interface import requester
+from feat.agencies import agency
 
 
 class Meta(type):
     implements(requester.IRequesterFactory)
 
 
-class BaseRequester(log.Logger):
+class BaseRequester(log.Logger, agency.InitiatorMixin):
 
     __metaclass__ = Meta
     implements(requester.IAgentRequester)
@@ -22,6 +23,7 @@ class BaseRequester(log.Logger):
 
         self.agent = agent
         self.medium = medium
+        agency.InitiatorMixin.__init__(self)
 
     def initiate(self):
         '''@see: L{requester.IAgentRequester}'''

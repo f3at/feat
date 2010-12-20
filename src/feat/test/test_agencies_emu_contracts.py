@@ -127,9 +127,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return self.finished
 
     def start_manager(self):
-        self.finished =\
+        self.manager =\
                 self.agent.initiate_protocol(DummyManager, self.recipients)
-        self.manager = self.agent._listeners.values()[-1].manager
+        self.finished = self.manager.notify_finish()
         self.medium = self.manager.medium
         self.session_id = self.medium.session_id
 

@@ -133,6 +133,7 @@ class Allocation(log.Logger, StateMachineMixin, ExpirationCallsMixin):
 
     def release(self):
         self._set_state(AllocationState.released)
+        self._cancel_expiration_call()
         self._cleanup()
 
     def _timeout(self):
