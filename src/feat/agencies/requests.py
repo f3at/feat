@@ -1,8 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-import uuid
-
 from twisted.python import components
 from zope.interface import implements
 
@@ -43,16 +40,16 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
+        common.AgencyMiddleMixin.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
-        self.session_id = str(uuid.uuid1())
-        self.log_name = self.session_id
         self.expiration_time = None
 
     def initiate(self, requester):
         self.requester = requester
-        common.AgencyMiddleMixin.__init__(self, requester.protocol_id)
+        self.log_name = requester.__class__.__name__
+        self._set_protocol_id(requester.protocol_id)
 
         self._set_state(requests.RequestState.requested)
         self.expiration_time = self.agent.get_time() + requester.timeout
@@ -121,12 +118,12 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
-        common.AgencyMiddleMixin.__init__(self, message.protocol_id)
+        common.AgencyMiddleMixin.__init__(self, message.sender_id,
+                                          message.protocol_id)
 
         self.agent = agent
         self.request = message
         self.recipients = message.reply_to
-        self.session_id = message.session_id
         self._set_state(requests.RequestState.none)
 
         self.log_name = self.session_id

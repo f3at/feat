@@ -121,8 +121,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             return False
 
         # handle registered dialog
-        if message.session_id in self._listeners:
-            listener = self._listeners[message.session_id]
+        if message.receiver_id is not None and\
+           message.receiver_id in self._listeners:
+            listener = self._listeners[message.receiver_id]
             listener.on_message(message)
             return True
 
@@ -131,7 +132,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         p_id = message.protocol_id
         if p_type in self._interests and p_id in self._interests[p_type] and\
           isinstance(message, self._interests[p_type][p_id].factory.initiator):
-            self.log('Looking for interest to instantiate')
+            self.log('Looking for interest to instantiate.')
             factory = self._interests[message.protocol_type]\
                                      [message.protocol_id].factory
             medium_factory = IAgencyInterestedFactory(factory)
@@ -142,8 +143,9 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
             listener.on_message(message)
             return True
 
-        self.error("Couldn't find appriopriate listener for message: %s.%s",
-                   message.protocol_type, message.protocol_id)
+        self.error("Couldn't find appriopriate listener for message: %s.%s.%s",
+                   message.protocol_type, message.protocol_id,
+                   message.__class__.__name__)
         return False
 
     def initiate_protocol(self, factory, recipients, *args, **kwargs):

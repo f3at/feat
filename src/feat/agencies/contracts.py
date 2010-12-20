@@ -1,8 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-import uuid
-
 from twisted.python import components, failure
 from zope.interface import implements
 
@@ -69,7 +66,8 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     def _send_message(self, msg):
         self.log('Sending message: %r to contractor: %r',
                  msg, self.recipient.key)
-        self.manager._send_message(msg, recipients=self.recipient)
+        self.manager._send_message(msg, recipients=self.recipient,
+                                   remote_id=self.bid.sender_id)
 
     def _call(self, *args, **kwargs):
         # delegate calling methods to medium class
@@ -132,14 +130,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
+        common.AgencyMiddleMixin.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
         self.expected_bids = self._count_expected_bids(recipients)
         self.args = args
         self.kwargs = kwargs
-        self.session_id = str(uuid.uuid1())
-        self.log_name = self.session_id
 
         self.contractors = ManagerContractors()
 
@@ -147,7 +144,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def initiate(self, manager):
         self.manager = manager
-        common.AgencyMiddleMixin.__init__(self, manager.protocol_id)
+        self.log_name = manager.__class__.__name__
+        self._set_protocol_id(manager.protocol_id)
 
         self._set_state(contracts.ContractState.initiated)
         self._call(manager.initiate, *self.args, **self.kwargs)
@@ -374,14 +372,14 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         log.LogProxy.__init__(self, agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
-        common.AgencyMiddleMixin.__init__(self, announcement.protocol_id)
+        common.AgencyMiddleMixin.__init__(self, announcement.sender_id,
+                                          announcement.protocol_id)
 
         assert isinstance(announcement, message.Announcement)
 
         self.agent = agent
         self.announce = announcement
         self.recipients = announcement.reply_to
-        self.session_id = announcement.session_id
 
         self.log_name = self.session_id
 

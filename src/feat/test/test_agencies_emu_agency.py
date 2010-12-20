@@ -142,7 +142,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(payload, message.payload)
             self.assertTrue(message.expiration_time is not None)
 
-            session_id = message.session_id
+            session_id = message.sender_id
             self.assertEqual(session_id, str(session_id))
 
             self.assertEqual(requests.RequestState.requested,\
@@ -213,7 +213,6 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         def assert_on_msg(msg):
             self.assertEqual('dummy-request', msg.protocol_id)
-            self.assertEqual(req.session_id, msg.session_id)
 
         d.addCallback(assert_on_msg)
 
