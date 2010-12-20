@@ -176,7 +176,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         return self.bid
 
     def reject(self, bid, rejection=None):
-        self._ensure_state(contracts.ContractState.announced)
+        self._ensure_state([contracts.ContractState.announced,
+                            contracts.ContractState.granted,
+                            contracts.ContractState.closed])
 
         contractor = self.contractors[bid]
         if not rejection:

@@ -5,7 +5,7 @@ from zope.interface import implements
 
 from feat.common import log, decorator
 from feat.interface import agent
-from feat.agents.base import resource
+from feat.agents.base import resource, recipient
 
 
 registry = dict()
@@ -59,3 +59,6 @@ class BaseAgent(log.Logger, log.LogProxy):
 
     def initiate(self):
         pass
+
+    def get_own_address(self):
+        return recipient.IRecipient(self.medium)

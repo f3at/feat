@@ -126,7 +126,7 @@ class JoinShardContractor(contractor.BaseContractor):
             if bid == best:
                 continue
             elif bid in nested_bids:
-                self.nested_manager.refuse_bid(bid)
+                self.nested_manager.reject_bid(bid)
         return best
 
     def _bid_refuse_or_handover(self, bid=None, original_bid=None):
@@ -151,7 +151,7 @@ class JoinShardContractor(contractor.BaseContractor):
     def granted(self, grant):
         self.preallocation.confirm()
 
-        joining_agent_id = self.medium.announce.reply_to.key
+        joining_agent_id = self.medium.announce.payload['joining_agent'].key
 
         if grant.payload['action_type'] == ActionType.create:
             f = fiber.Fiber()
@@ -191,7 +191,7 @@ class JoinShardContractor(contractor.BaseContractor):
 
     @fiber.woven
     def _request_start_agent(self, desc):
-        recp = self.medium.announce.reply_to
+        recp = self.medium.announce.payload['joining_agent']
         f = fiber.Fiber()
         f.add_callback(self.agent.medium.initiate_protocol, recp, desc)
         f.add_callback(host_agent.StartAgentRequester.notify_finish)
@@ -221,9 +221,9 @@ class NestedJoinShardManager(manager.BaseManager):
         f.succeed(ContractState.closed)
         return f
 
-    def refuse_bid(self, bid):
-        self.debug('Sending refusal to bid from nested manager.')
-        return self.medium.refuse(bid)
+    def reject_bid(self, bid):
+        self.debug('Sending rejection to bid from nested manager.')
+        return self.medium.reject(bid)
 
     def terminate(self):
         return self.medium._terminate()

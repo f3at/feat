@@ -78,7 +78,8 @@ class JoinShardManager(manager.BaseManager):
 
     def initiate(self):
         msg = message.Announcement()
-        msg.payload = dict(level=0)
+        msg.payload['level'] = 0
+        msg.payload['joining_agent'] = self.agent.get_own_address()
         self.medium.announce(msg)
 
     def closed(self):

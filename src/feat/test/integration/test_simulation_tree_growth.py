@@ -4,14 +4,14 @@ from twisted.internet import defer
 
 from feat.common import format_block
 from feat.test.integration import common
-
+from feat.test.common import attr
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
 
 
 class TreeGrowthSimulation(common.SimulationTest):
 
-    timeout = 6
+    timeout = 10
     hosts_per_shard = 10
     children_per_shard = 2
 
@@ -64,6 +64,29 @@ class TreeGrowthSimulation(common.SimulationTest):
         host = last_agency._agents[0].agent
         shard = (host.medium.get_descriptor()).shard
         self.assert_all_agents_in_shard(last_agency, shard)
+
+    @attr(skip="to be done when the serialization to json is there")
+    @defer.inlineCallbacks
+    def testStartLevel2(self):
+        # fill all the places in root shard, on shard lvl 1 + 1 hosts on lvl2
+        number_of_hosts_to_start =\
+            ((self.children_per_shard + 1) * self.hosts_per_shard)
+
+        script = self.start_host_agent * number_of_hosts_to_start
+        yield self.process(script)
+
+        root_shard_agencies = self.driver._agencies[0:self.hosts_per_shard]
+        for agency in root_shard_agencies:
+            self.assert_all_agents_in_shard(agency, 'root')
+
+        for lvl1child in range(self.children_per_shard):
+            first_agency_in_shard = self.driver._agencies[
+                self.hosts_per_shard * (lvl1child + 1)]
+            desc = (first_agency_in_shard._agents[1].agent.\
+                     medium.get_descriptor())
+            self.info(desc)
+#            self.assertEqual('root', desc.parent)
+#            self.assert_all_agents_in_shard(agency, desc.shard)
 
     @defer.inlineCallbacks
     def testFillupTwoShards(self):
