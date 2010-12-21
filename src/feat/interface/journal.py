@@ -36,8 +36,8 @@ class IJournalKeeper(Interface):
         Recorder will be automatically unregistered when they are deleted,
         The journal keeper do not keep strong reference to the recorders.'''
 
-    def record(instance_id, entry_id, fiber_id, fiber_depth,
-               input, side_effects, output):
+    def write_entry(instance_id, entry_id, fiber_id, fiber_depth,
+                    input, side_effects, output):
         pass
 
 
@@ -55,10 +55,19 @@ class IRecorder(IRecorderNode):
 
     journal_id = Attribute('Journal recorder identifier, tuple of int')
 
-    def call(fun_id, args=None, kwargs=None, reentrant=True):
-        '''Calls the function with specified identifier with specified
-        arguments and keywords.
+    def call(function, args=None, kwargs=None, reentrant=True):
+        '''Calls the specified function with arguments and keywords.
+        The function have to be the exact registered one, and because
+        the decorators are wrapping it inside another function
+        calling this method with the instance function will not work.
         If reentrant is False and we already are inside
+        a recorded call it will fail with a L{ReentrantCallError}.
+        Returns the result of the called function as returned
+        by the fiber section.'''
+
+    def record(function, args=None, kwargs=None, reentrant=True):
+        '''Calls the function with specified identifier, arguments
+        and keywords. If reentrant is False and we already are inside
         a recorded call it will fail with a L{ReentrantCallError}.
         Returns the result of the called function as returned
         by the fiber section.'''
