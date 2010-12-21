@@ -48,9 +48,6 @@ class IInterest(Interface):
 class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
-    finish_deferred = Attribute("Deffered which will be fired when the "
-                                "dialog is over.")
-
     def initiate():
         pass
 

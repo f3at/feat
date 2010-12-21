@@ -5,8 +5,7 @@ from zope.interface import implements
 
 from feat.common import log, decorator
 from feat.interface import agent
-from feat.agents.base import resource, recipient
-
+from feat.agents.base import resource, recipient, replay
 
 registry = dict()
 
@@ -25,12 +24,14 @@ def registry_lookup(name):
     return None
 
 
+@decorator.simple_function
 def update_descriptor(method):
 
-    def decorated(self, *args, **kwargs):
-        desc = self.medium.get_descriptor()
-        resp = method(self, desc, *args, **kwargs)
-        d = self.medium.update_descriptor(desc)
+    @replay.immutable
+    def decorated(self, state, *args, **kwargs):
+        desc = state.medium.get_descriptor()
+        resp = method(self, state, desc, *args, **kwargs)
+        d = state.medium.update_descriptor(desc)
         if resp:
             d.addCallback(lambda _: resp)
         return d
@@ -38,27 +39,60 @@ def update_descriptor(method):
     return decorated
 
 
-class Meta(type):
+class MetaAgent(type(replay.Replayable)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(log.Logger, log.LogProxy):
+class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
 
-    __metaclass__ = Meta
+    __metaclass__ = MetaAgent
 
     implements(agent.IAgent)
 
     def __init__(self, medium):
         log.Logger.__init__(self, medium)
         log.LogProxy.__init__(self, medium)
+        replay.Replayable.__init__(self, medium)
 
-        self.medium = agent.IAgencyAgent(medium)
-        self.resources = resource.Resources(self)
+    @replay.immutable
+    def restored(self, state):
+        log.Logger.__init__(self, state.medium)
+        log.LogProxy.__init__(self, state.medium)
+        replay.Replayable.__init__(self, state.medium)
+
+    def init_state(self, state, medium):
+        state.medium = agent.IAgencyAgent(medium)
+        state.resources = resource.Resources(self)
 
     ## IAgent Methods ##
 
     def initiate(self):
         pass
 
-    def get_own_address(self):
-        return recipient.IRecipient(self.medium)
+    @replay.immutable
+    def get_own_address(self, state):
+        return recipient.IRecipient(state.medium)
+
+    @replay.immutable
+    def get_descriptor(self, state):
+        return state.medium.get_descriptor()
+
+    @replay.immutable
+    def initiate_protocol(self, state, *args, **kwargs):
+        return state.medium.initiate_protocol(*args, **kwargs)
+
+    @replay.mutable
+    def preallocate_resource(self, state, expiration_time=None, **params):
+        return state.resources.preallocate(expiration_time, **params)
+
+    @replay.mutable
+    def allocate_resource(self, state, **params):
+        return state.resources.allocate(**params)
+
+    @replay.immutable
+    def get_time(self, state):
+        return state.medium.get_time()
+
+    @replay.immutable
+    def get_document(self, state, doc_id):
+        return state.medium.get_document(doc_id)

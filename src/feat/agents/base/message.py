@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
+import types
 
 
 class BaseMessage(object):
@@ -14,9 +16,17 @@ class BaseMessage(object):
     payload = {}
 
     def __init__(self, **kwargs):
-        for key in kwargs:
-            self.__getattribute__(key) # this can throw AttributeError
-            self.__setattr__(key, kwargs[key])
+        for key in dir(type(self)):
+            if key.startswith('_'):
+                continue
+            default = getattr(type(self), key)
+            if isinstance(default, types.FunctionType):
+                continue
+            value = kwargs.pop(key, copy.copy(default))
+            setattr(self, key, value)
+
+        if len(kwargs) > 0:
+            raise AttributeError('Unknown message field: %r', kwargs.keys())
 
 
 class ContractMessage(BaseMessage):

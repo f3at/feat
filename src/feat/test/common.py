@@ -364,29 +364,29 @@ class AgencyTestHelper(object):
 
     def send_announce(self, manager):
         msg = message.Announcement()
-        manager.medium.announce(msg)
+        manager._get_medium().announce(msg)
         return manager
 
     def send_bid(self, contractor, bid=1):
         msg = message.Bid()
         msg.bids = [bid]
-        contractor.medium.bid(msg)
+        contractor._get_medium().bid(msg)
         return contractor
 
     def send_refusal(self, contractor):
         msg = message.Refusal()
-        contractor.medium.refuse(msg)
+        contractor._get_medium().refuse(msg)
         return contractor
 
     def send_final_report(self, contractor):
         msg = message.FinalReport()
-        contractor.medium.finalize(msg)
+        contractor._get_medium().finalize(msg)
         return contractor
 
     def send_cancel(self, contractor, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
-        contractor.medium.defect(msg)
+        contractor._get_medium().defect(msg)
         return contractor
 
     def recv_announce(self, *_):

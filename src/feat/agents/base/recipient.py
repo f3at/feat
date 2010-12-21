@@ -54,8 +54,7 @@ class RecipientFromAgent(object):
     implements(IRecipient, IRecipients)
 
     def __init__(self, agent):
-        self.agent = agent
-        desc = self.agent.get_descriptor()
+        desc = agent.get_descriptor()
         self.shard = desc.shard
         self.key = desc.doc_id
 
@@ -89,9 +88,8 @@ class RecipientFromMessage(object):
     implements(IRecipient, IRecipients)
 
     def __init__(self, message):
-        self.message = message
-        self.shard = self.message.reply_to.shard
-        self.key = self.message.reply_to.key
+        self.shard = message.reply_to.shard
+        self.key = message.reply_to.key
 
         self.array = [self]
 

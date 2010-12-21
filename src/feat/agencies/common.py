@@ -191,3 +191,24 @@ class ExpirationCallsMixin(object):
 
     def _terminate(self):
         self._cancel_expiration_call()
+
+
+class InitiatorMediumBase(object):
+
+    def __init__(self):
+        self._finished_cbs = list()
+        self.finish_deferred = defer.Deferred()
+        self.finish_deferred.addCallbacks(self._finish_callback,
+                                           self._finish_errback)
+
+    def notify_finish(self):
+        d = defer.Deferred()
+        self._finished_cbs.append(d)
+        return d
+
+    def _finish_callback(self, x):
+        map(lambda d: d.callback(x), self._finished_cbs)
+        return x
+
+    def _finish_errback(self, x):
+        map(lambda d: d.errback(x), self._finished_cbs)

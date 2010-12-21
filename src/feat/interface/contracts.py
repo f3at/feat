@@ -61,5 +61,3 @@ class IContractPeer(Interface):
     '''Define common interface between both peers of the contract protocol.'''
 
     agent = Attribute("Reference to the owner agent")
-
-    state = Attribute("L{ContractState}")

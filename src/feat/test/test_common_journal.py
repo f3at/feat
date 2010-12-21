@@ -168,7 +168,7 @@ class RecordReplayDummy(journal.Recorder):
         return serving
 
     def _prepare_double(self, second_serving, first_serving):
-        '''Should not modify state, because it's not journalled'''
+        """Should not modify state, because it's not journalled"""
         return first_serving + " followed by " + second_serving
 
 

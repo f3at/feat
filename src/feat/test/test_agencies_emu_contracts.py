@@ -8,8 +8,8 @@ from zope.interface import classProvides
 from twisted.internet import defer
 
 from feat.agencies.contracts import ContractorState
-from feat.agents.base import (agent, descriptor, contractor,
-                        message, manager, recipient)
+from feat.agents.base import (agent, descriptor, contractor, replay,
+                              message, manager, recipient)
 from feat.interface import contracts, protocols
 from feat.interface.contractor import IContractorFactory
 from feat.interface.manager import IManagerFactory
@@ -27,6 +27,10 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
     def __init__(self, medium, *args, **kwargs):
         contractor.BaseContractor.__init__(self, medium, *args, **kwargs)
         common.Mock.__init__(self)
+
+    @replay.immutable
+    def _get_medium(self, state):
+        return state.medium
 
     @common.Mock.stub
     def announced(announce):
@@ -72,6 +76,10 @@ class DummyManager(manager.BaseManager, common.Mock):
     def __init__(self, *args, **kwargs):
         manager.BaseManager.__init__(self, *args, **kwargs)
         common.Mock.__init__(self)
+
+    @replay.immutable
+    def _get_medium(self, state):
+        return state.medium
 
     @common.Mock.stub
     def initiate(self):
@@ -130,13 +138,13 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.manager =\
                 self.agent.initiate_protocol(DummyManager, self.recipients)
         self.finished = self.manager.notify_finish()
-        self.medium = self.manager.medium
+        self.medium = self.manager._get_medium()
         self.session_id = self.medium.session_id
 
     def assertUnregistered(self, _, state):
-        self.assertFalse(self.manager.medium.session_id in\
+        self.assertFalse(self.manager._get_medium().session_id in\
                              self.agent._listeners)
-        self.assertEqual(state, self.manager.medium.state)
+        self.assertEqual(state, self.manager._get_medium().state)
         self.assertTrue(self.finished.called)
         if state != contracts.ContractState.completed:
             self.assertFailure(self.finished, protocols.InitiatorFailed)
@@ -231,15 +239,16 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
     def testRefuseAndGrantFromBidHandler(self):
 
-        def bid_handler(s, bid):
+        @replay.immutable
+        def bid_handler(s, state, bid):
             s.log('Received bid: %r', bid.bids)
             if bid.bids[0] == 3:
-                s.medium.reject(bid)
+                state.medium.reject(bid)
             elif bid.bids[0] == 2:
                 pass
             elif bid.bids[0] == 1:
                 grant = message.Grant(bid_index=0)
-                s.medium.grant((bid, grant, ))
+                state.medium.grant((bid, grant, ))
 
         self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
@@ -272,12 +281,14 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testGrantingFromClosedState(self):
         delay.time_scale = 0.01
 
-        def closed_handler(s):
+        @replay.immutable
+        def closed_handler(s, state):
             s.log('Contracts closed, sending grants')
-            to_grant = filter(lambda x: x.bids[0] < 3, s.medium.contractors)
+            to_grant = filter(lambda x: x.bids[0] < 3,
+                              state.medium.contractors)
             params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
                          to_grant)
-            s.medium.grant(params)
+            state.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
@@ -342,8 +353,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testTimeoutAfterGrant(self):
         delay.time_scale = 0.01
 
-        def bid_handler(s, bid):
-            s.medium.grant((bid, message.Grant(bid_index=0), ))
+        @replay.immutable
+        def bid_handler(s, state, bid):
+            state.medium.grant((bid, message.Grant(bid_index=0), ))
 
         self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
@@ -364,11 +376,12 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testRecvCancellation(self):
         delay.time_scale = 0.01
 
-        def closed_handler(s):
+        @replay.immutable
+        def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
             params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
-                         s.medium.contractors.keys())
-            s.medium.grant(params)
+                         state.medium.contractors.keys())
+            state.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
@@ -420,11 +433,12 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testContactorsFinishAckSent(self):
         delay.time_scale = 0.01
 
-        def closed_handler(s):
+        @replay.immutable
+        def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
             params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
-                         s.medium.contractors.keys())
-            s.medium.grant(params)
+                         state.medium.contractors.keys())
+            state.medium.grant(params)
 
         self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
@@ -460,14 +474,14 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.start_manager()
 
         self.assertEqual(len(self.recipients),
-               self.manager.medium._count_expected_bids(self.recipients))
+            self.manager._get_medium()._count_expected_bids(self.recipients))
         broadcast = recipient.Broadcast('some protocol')
         self.assertEqual(None,
-               self.manager.medium._count_expected_bids(broadcast))
+               self.manager._get_medium()._count_expected_bids(broadcast))
         self.assertEqual(None,
-               self.manager.medium._count_expected_bids(
+               self.manager._get_medium()._count_expected_bids(
                              self.recipients + [broadcast]))
-        self.manager.medium._terminate()
+        self.manager._get_medium()._terminate()
         self.assertUnregistered(None, contracts.ContractState.initiated)
 
     def testGettingAllBidsGetsToClosed(self):
@@ -534,11 +548,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             args = contractor.find_calls('announced')[0].args
             self.assertEqual(1, len(args))
             announce = args[0]
+            medium = contractor._get_medium()
             self.assertEqual(contracts.ContractState.announced,
-                             contractor.medium.state)
-            self.assertNotEqual(None, contractor.medium.announce)
-            self.assertEqual(announce, contractor.medium.announce)
-            self.assertTrue(isinstance(contractor.medium.announce,\
+                             medium.state)
+            self.assertNotEqual(None, medium.announce)
+            self.assertEqual(announce, medium.announce)
+            self.assertTrue(isinstance(medium.announce,\
                                        message.Announcement))
 
         d.addCallback(asserts_on_contractor)
@@ -563,14 +578,14 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts(contractor):
             self.assertEqual(contracts.ContractState.bid,
-                             contractor.medium.state)
+                             contractor._get_medium().state)
 
         d.addCallback(asserts)
         d.addCallback(self.queue.get)
 
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
-            self.assertEqual(self.contractor.medium.bid, msg)
+            self.assertEqual(self.contractor._get_medium().bid, msg)
 
         d.addCallback(asserts_on_bid)
 
@@ -588,7 +603,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             msg.protocol_id = self.protocol_id
             msg.message_id = str(uuid.uuid1())
 
-            contractor.medium.handover(msg)
+            contractor._get_medium().handover(msg)
             return contractor
 
         d.addCallback(send_delegated_bid)
@@ -597,7 +612,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
-            self.assertEqual(self.contractor.medium.bid, msg)
+            self.assertEqual(self.contractor._get_medium().bid, msg)
             self.assertEqual(self.endpoint, msg.reply_to)
 
         d.addCallback(asserts_on_bid)
@@ -629,7 +644,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts_on_refusal(msg):
             self.assertEqual(message.Refusal, msg.__class__)
-            self.assertEqual(self.contractor.medium.session_id, msg.sender_id)
+            self.assertEqual(self.contractor._get_medium().session_id,
+                             msg.sender_id)
 
         d.addCallback(asserts_on_refusal)
 
@@ -643,7 +659,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts(_):
             self.assertEqual(contracts.ContractState.granted,\
-                                 self.contractor.medium.state)
+                                 self.medium.state)
             self.assertCalled(self.contractor, 'granted')
             call = self.contractor.find_calls('granted')[0]
             self.assertEqual(1, len(call.args))
@@ -683,7 +699,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             d.addCallback(assert_msg_is_report)
 
         d.addCallback(self._get_contractor)
-        d.addCallback(lambda contractor: contractor.medium._terminate())
+        d.addCallback(lambda contractor: contractor._get_medium()._terminate())
 
         return d
 
@@ -737,7 +753,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts(contractor):
             self.assertEqual(contracts.ContractState.completed,
-                             contractor.medium.state)
+                             contractor._get_medium().state)
 
         d.addCallback(asserts)
 
@@ -798,7 +814,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(lambda contractor:
-                 message.BaseMessage(receiver_id=contractor.medium.session_id))
+                 message.BaseMessage(receiver_id=\
+                                     contractor._get_medium().session_id))
         d.addCallback(self.recv_msg)
         # this will be ignored, we follow the path to expiration
 
@@ -828,19 +845,20 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def assertUnregistered(self, _, state):
-        self.assertFalse(self.contractor.medium.session_id in\
+        self.assertFalse(self.medium.session_id in\
                              self.agent._listeners)
-        self.assertEqual(state, self.contractor.medium.state)
+        self.assertEqual(state, self.medium.state)
         return self.contractor
 
     def _cancel_expiration_call_if_necessary(self):
-        if self.contractor and self.contractor.medium._expiration_call and\
-                not (self.contractor.medium._expiration_call.called or
-                     self.contractor.medium._expiration_call.cancelled):
+        if self.contractor and self.medium._expiration_call and\
+                not (self.medium._expiration_call.called or
+                     self.medium._expiration_call.cancelled):
             self.warning("Canceling contractor expiration call in tearDown")
-            self.contractor.medium._expiration_call.cancel()
+            self.medium._expiration_call.cancel()
 
     def _get_contractor(self, _):
         self.contractor = self.agent._listeners.values()[0].contractor
-        self.remote_id = self.contractor.medium.session_id
+        self.medium = self.contractor._get_medium()
+        self.remote_id = self.medium.session_id
         return self.contractor

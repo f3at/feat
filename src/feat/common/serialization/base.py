@@ -191,6 +191,7 @@ class Serializer(object):
     pack_list = None
     pack_item = None
     pack_dict = None
+    pack_type_name = None
     pack_type = None
     pack_instance = None
     pack_reference = None
@@ -347,6 +348,9 @@ class Serializer(object):
         return self.pack_item, [self.flatten_value(key),
                                 self.flatten_value(value)]
 
+    def flatten_type(self, value):
+        return self.pack_type, reflect.canonical_name(value)
+
     @referenceable
     def flatten_tuple(self, value):
         return self.pack_tuple, [self.flatten_value(v) for v in value]
@@ -370,7 +374,7 @@ class Serializer(object):
 
     @referenceable
     def flatten_instance(self, value):
-        return self.pack_instance, [[self.pack_type, value.type_name],
+        return self.pack_instance, [[self.pack_type_name, value.type_name],
                                      self.flatten_value(value.snapshot())]
 
     ### Setup lookup table ###
@@ -385,6 +389,7 @@ class Serializer(object):
                long: flatten_long,
                float: flatten_float,
                bool: flatten_bool,
+               type: flatten_type,
                type(None): flatten_none}
 
 

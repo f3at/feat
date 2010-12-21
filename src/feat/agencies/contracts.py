@@ -2,9 +2,8 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.python import components, failure
 from zope.interface import implements
-from twisted.internet import defer
 
-from feat.agents.base import message, recipient
+from feat.agents.base import message, recipient, replay
 from feat.common import log, enum, delay
 from feat.interface import contracts, contractor, manager, protocols
 from feat.interface.recipient import RecipientType
@@ -119,7 +118,8 @@ class ManagerContractors(dict):
 
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.ExpirationCallsMixin, common.AgencyMiddleMixin):
+                    common.ExpirationCallsMixin, common.AgencyMiddleMixin,
+                    common.InitiatorMediumBase):
     implements(manager.IAgencyManager, IListener)
 
     log_category = 'agency-manager'
@@ -132,6 +132,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
+        common.InitiatorMediumBase.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
@@ -140,7 +141,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.kwargs = kwargs
 
         self.contractors = ManagerContractors()
-        self.finish_deferred = defer.Deferred()
 
     # manager.IAgencyManager stuff
 
@@ -159,6 +159,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._call(manager.initiate)
         return manager
 
+    @replay.side_effect
     def announce(self, announce):
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
@@ -175,6 +176,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return self.bid
 
+    @replay.side_effect
     def reject(self, bid, rejection=None):
         self._ensure_state([contracts.ContractState.announced,
                             contracts.ContractState.granted,
@@ -185,6 +187,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             rejection = message.Rejection()
         contractor.on_event(rejection)
 
+    @replay.side_effect
     def grant(self, grants):
         self._ensure_state([contracts.ContractState.closed,
                             contracts.ContractState.announced])
@@ -207,6 +210,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
+    @replay.side_effect
     def cancel(self, reason=None):
         self._ensure_state([contracts.ContractState.granted,
                             contracts.ContractState.cancelled])
@@ -406,6 +410,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # contractor.IAgencyContractor stuff
 
+    @replay.side_effect
     def bid(self, bid):
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
@@ -423,6 +428,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return self.bid
 
+    @replay.side_effect
     def handover(self, bid):
         self.debug('Sending bid of the nested contractor: %r.', bid)
         assert isinstance(bid, message.Bid)
@@ -434,6 +440,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return self.bid
 
+    @replay.side_effect
     def refuse(self, refusal):
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
@@ -445,6 +452,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return refusal
 
+    @replay.side_effect
     def defect(self, cancellation):
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
@@ -456,6 +464,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return cancellation
 
+    @replay.side_effect
     def finalize(self, report):
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)

@@ -6,7 +6,7 @@ from twisted.internet import defer
 
 from feat.common import log
 from feat.interface import requests, replier, requester, protocols
-from feat.agents.base import message
+from feat.agents.base import message, replay
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory
@@ -29,7 +29,8 @@ components.registerAdapter(AgencyRequesterFactory,
 
 
 class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.ExpirationCallsMixin, common.AgencyMiddleMixin):
+                    common.ExpirationCallsMixin, common.AgencyMiddleMixin,
+                      common.InitiatorMediumBase):
     implements(requester.IAgencyRequester, IListener)
 
     log_category = 'agency-requester'
@@ -42,12 +43,11 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
+        common.InitiatorMediumBase.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
         self.expiration_time = None
-
-        self.finish_deferred = defer.Deferred()
 
     def initiate(self, requester):
         self.requester = requester
@@ -62,6 +62,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return requester
 
+    @replay.side_effect
     def request(self, request):
         self.log("Sending request")
         self._ensure_state(requests.RequestState.requested)
@@ -151,6 +152,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(requests.RequestState.requested)
         return replier
 
+    @replay.side_effect
     def reply(self, reply):
         self.debug("Sending reply")
         self._send_message(reply, self.request.expiration_time)

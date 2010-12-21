@@ -43,7 +43,8 @@ class TreeGrowthSimulation(common.SimulationTest):
         shard_agent = self.get_local('agency')._agents[0].agent
         for i in range(2, self.hosts_per_shard + 1):
             yield self.process(self.start_host_agent)
-            self.assertEqual(i, shard_agent.resources.allocated()['hosts'])
+            self.assertEqual(i,
+                    shard_agent._get_state().resources.allocated()['hosts'])
 
         self.assertEqual(self.hosts_per_shard, len(self.driver._agencies))
         for agency in self.driver._agencies[1:]:
@@ -61,8 +62,8 @@ class TreeGrowthSimulation(common.SimulationTest):
                               host_agent.HostAgent)
         self.assertIsInstance(last_agency._agents[1].agent,
                               shard_agent.ShardAgent)
-        host = last_agency._agents[0].agent
-        shard = (host.medium.get_descriptor()).shard
+        host = last_agency._agents[0]
+        shard = (host.get_descriptor()).shard
         self.assert_all_agents_in_shard(last_agency, shard)
 
     @attr(skip="to be done when the serialization to json is there")

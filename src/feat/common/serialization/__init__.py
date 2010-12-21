@@ -1,1 +1,2 @@
-from .base import register, Registry, Snapshotable, Serializable
+from .base import (register, Registry, Snapshotable, Serializable,
+                   MetaSerializable, )

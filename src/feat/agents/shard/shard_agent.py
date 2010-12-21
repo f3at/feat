@@ -3,7 +3,7 @@
 import copy
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, document, )
+                              descriptor, document, replay)
 from feat.common import enum, fiber
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
@@ -13,30 +13,48 @@ from feat.agents.host import host_agent
 @agent.register('shard_agent')
 class ShardAgent(agent.BaseAgent):
 
-    def initiate(self):
+    @replay.mutable
+    def initiate(self, state):
         agent.BaseAgent.initiate(self)
 
-        self.resources.define('hosts', 10)
-        self.resources.define('children', 2)
+        state.resources.define('hosts', 10)
+        state.resources.define('children', 2)
 
-        desc = self.medium.get_descriptor()
+        desc = state.medium.get_descriptor()
+        self.info(id(state))
+        assert(isinstance(desc, Descriptor))
         for x in range(len(desc.children)):
-            self.resource.allocate(children=1)
+            state.resource.allocate(children=1)
         for x in range(len(desc.hosts)):
-            self.resource.allocate(hosts=1)
+            state.resource.allocate(hosts=1)
 
-        interest = self.medium.register_interest(JoinShardContractor)
-        if (self.medium.get_descriptor()).parent is None:
+        interest = state.medium.register_interest(JoinShardContractor)
+        if desc.parent is None:
             interest.bind_to_lobby()
 
     @agent.update_descriptor
-    def add_children_shard(self, descriptor, child):
+    def add_children_shard(self, state, descriptor, child):
         descriptor.children.append(child)
         return child
 
     @agent.update_descriptor
-    def add_agent(self, descriptor, agent):
+    def add_agent(self, state, descriptor, agent):
         descriptor.hosts.append(agent)
+
+    @replay.journaled
+    def generate_descriptor(self, state, **options):
+        desc = Descriptor(**options)
+
+        def set_shard(desc):
+            desc.shard = desc.doc_id
+            return desc
+
+        f = fiber.Fiber()
+        f.add_callback(state.medium.save_document)
+        f.add_callback(set_shard)
+        f.add_callback(state.medium.save_document)
+        f.succeed(desc)
+        return f
 
 
 class JoinShardContractor(contractor.BaseContractor):
@@ -44,19 +62,20 @@ class JoinShardContractor(contractor.BaseContractor):
     protocol_id = 'join-shard'
     interest_type = InterestType.public
 
-    @fiber.woven
-    def announced(self, announcement):
-        self.preallocation = self.agent.resources.preallocate(hosts=1)
-        self.nested_manager = None
+    @replay.mutable
+    def announced(self, state, announcement):
+        state.preallocation = state.agent.preallocate_resource(hosts=1)
+        state.announce = announcement
+        state.nested_manager = None
         action_type = None
 
         # check if we can serve the request on our own
-        if self.preallocation:
+        if state.preallocation:
             action_type = ActionType.join
             cost = 0
         else:
-            self.preallocation = self.agent.resources.preallocate(children=1)
-            if self.preallocation:
+            state.preallocation = state.agent.preallocate_resource(children=1)
+            if state.preallocation:
                 action_type = ActionType.create
                 cost = 20
 
@@ -70,15 +89,17 @@ class JoinShardContractor(contractor.BaseContractor):
 
         f = fiber.Fiber()
         if action_type != ActionType.join:
-            f.add_callback(self._fetch_children_bids, announcement)
+            f.add_callback(fiber.drop_result, self._fetch_children_bids,
+                           announcement)
         f.add_callback(self._pick_best_bid, bid)
         f.add_callback(self._bid_refuse_or_handover, bid)
         f.add_callback(self._terminate_nested_manager)
         f.succeed(None)
         return f
 
-    def _fetch_children_bids(self, _, announcement):
-        desc = self.agent.medium.get_descriptor()
+    @replay.mutable
+    def _fetch_children_bids(self, state, announcement):
+        desc = state.agent.get_descriptor()
         recipients = map(lambda shard: recipient.Agent(shard, shard),
                          desc.children)
         if len(recipients) == 0:
@@ -87,18 +108,20 @@ class JoinShardContractor(contractor.BaseContractor):
         new_announcement = copy.deepcopy(announcement)
         new_announcement.payload['level'] += 1
 
-        self.nested_manager = self.agent.medium.initiate_protocol(
+        state.nested_manager = state.agent.initiate_protocol(
             NestedJoinShardManager, recipients, new_announcement)
         f = fiber.Fiber()
-        f.add_callback(self.nested_manager.wait_for_bids)
-        f.succeed(None)
-        return f
+        f.add_callback(fiber.drop_result,
+                       state.nested_manager.wait_for_bids)
+        return f.succeed()
 
-    def _terminate_nested_manager(self, _):
-        if self.nested_manager:
-            self.nested_manager.terminate()
+    @replay.immutable
+    def _terminate_nested_manager(self, state, _):
+        if state.nested_manager:
+            state.nested_manager.terminate()
 
-    def _pick_best_bid(self, nested_bids, own_bid):
+    @replay.journaled
+    def _pick_best_bid(self, state, nested_bids, own_bid):
         # prepare the list of bids
         bids = list()
         if own_bid:
@@ -126,74 +149,81 @@ class JoinShardContractor(contractor.BaseContractor):
             if bid == best:
                 continue
             elif bid in nested_bids:
-                self.nested_manager.reject_bid(bid)
+                state.nested_manager.reject_bid(bid)
         return best
 
-    def _bid_refuse_or_handover(self, bid=None, original_bid=None):
+    @replay.journaled
+    def _bid_refuse_or_handover(self, state, bid=None, original_bid=None):
         if bid is None:
             refusal = message.Refusal()
-            return self.medium.refuse(refusal)
+            return state.medium.refuse(refusal)
         elif bid == original_bid:
-            return self.medium.bid(bid)
+            state.bid = bid
+            return state.medium.bid(bid)
         else:
             self.release_preallocation()
-            return self.medium.handover(bid)
+            return state.medium.handover(bid)
 
-    def release_preallocation(self, *_):
-        if self.preallocation is not None:
-            self.preallocation.release()
+    @replay.mutable
+    def release_preallocation(self, state, *_):
+        if state.preallocation is not None:
+            state.preallocation.release()
 
     announce_expired = release_preallocation
     rejected = release_preallocation
     expired = release_preallocation
 
-    @fiber.woven
-    def granted(self, grant):
-        self.preallocation.confirm()
+    @replay.mutable
+    def granted(self, state, grant):
+        state.preallocation.confirm()
 
-        joining_agent_id = self.medium.announce.payload['joining_agent'].key
+        joining_agent_id = state.announce.payload['joining_agent'].key
 
-        if grant.payload['action_type'] == ActionType.create:
+        if state.bid.payload['action_type'] == ActionType.create:
             f = fiber.Fiber()
             f.add_callback(self._prepare_child_descriptor)
             f.add_callback(self._request_start_agent)
             f.add_callback(self._extract_shard)
-            f.add_callback(self.agent.add_children_shard)
+            f.add_callback(state.agent.add_children_shard)
             f.add_callback(self._finalize)
             f.succeed(joining_agent_id)
             return f
         else: # ActionType.join
             f = fiber.Fiber()
-            f.add_callback(self.agent.add_agent)
+            f.add_callback(state.agent.add_agent)
             f.add_callback(self._get_our_shard)
             f.add_callback(self._finalize)
             f.succeed(joining_agent_id)
             return f
 
-    def _get_our_shard(self, *_):
-        return (self.agent.medium.get_descriptor()).shard
+    #FIXME: probably method get_shard() in base agent class would be better
 
-    def _get_our_id(self, *_):
-        return (self.agent.medium.get_descriptor()).doc_id
+    @replay.immutable
+    def _get_our_shard(self, state, *_):
+        return (state.agent.get_descriptor()).shard
 
-    def _finalize(self, shard):
+    @replay.immutable
+    def _get_our_id(self, state, *_):
+        return (state.agent.get_descriptor()).doc_id
+
+    @replay.mutable
+    def _finalize(self, state, shard):
         report = message.FinalReport()
         report.payload['shard'] = shard
-        self.medium.finalize(report)
+        state.medium.finalize(report)
 
-    @fiber.woven
-    def _prepare_child_descriptor(self, host_agent_id):
+    @replay.mutable
+    def _prepare_child_descriptor(self, state, host_agent_id):
         f = fiber.Fiber()
-        f.add_callback(generate_descriptor, hosts=[host_agent_id],
-                      parent=self._get_our_id())
-        f.succeed(self.agent.medium)
-        return f
+        f.add_callback(fiber.drop_result, state.agent.generate_descriptor,
+                       hosts=[host_agent_id], parent=self._get_our_id())
+        return f.succeed()
 
-    @fiber.woven
-    def _request_start_agent(self, desc):
-        recp = self.medium.announce.payload['joining_agent']
+    @replay.immutable
+    def _request_start_agent(self, state, desc):
+        recp = state.medium.announce.payload['joining_agent']
         f = fiber.Fiber()
-        f.add_callback(self.agent.medium.initiate_protocol, recp, desc)
+        f.add_callback(state.agent.initiate_protocol, recp, desc)
         f.add_callback(host_agent.StartAgentRequester.notify_finish)
         f.succeed(host_agent.StartAgentRequester)
         return f
@@ -206,27 +236,30 @@ class NestedJoinShardManager(manager.BaseManager):
 
     protocol_id = 'join-shard'
 
-    def __init__(self, agent, medium, announcement):
-        manager.BaseManager.__init__(self, agent, medium)
-        self._announcement = announcement
+    def init_state(self, state, agent, medium, announcement):
+        manager.BaseManager.init_state(self, state, agent, medium)
+        state._announcement = announcement
 
-    def initiate(self):
-        self.medium.announce(self._announcement)
+    @replay.journaled
+    def initiate(self, state):
+        state.medium.announce(state._announcement)
 
-    @fiber.woven
-    def wait_for_bids(self, _):
+    @replay.journaled
+    def wait_for_bids(self, state):
         f = fiber.Fiber()
-        f.add_callback(self.medium.wait_for_state)
-        f.add_callback(lambda _: self.medium.contractors.keys())
+        f.add_callback(state.medium.wait_for_state)
+        f.add_callback(lambda _: state.medium.contractors.keys())
         f.succeed(ContractState.closed)
         return f
 
-    def reject_bid(self, bid):
+    @replay.journaled
+    def reject_bid(self, state, bid):
         self.debug('Sending rejection to bid from nested manager.')
-        return self.medium.reject(bid)
+        return state.medium.reject(bid)
 
-    def terminate(self):
-        return self.medium._terminate()
+    @replay.journaled
+    def terminate(self, state):
+        return state.medium._terminate()
 
 
 class ActionType(enum.Enum):
@@ -256,17 +289,3 @@ class Descriptor(descriptor.Descriptor):
         c['hosts'] = self.hosts
         c['children'] = self.children
         return c
-
-
-def generate_descriptor(connection, **options):
-    desc = Descriptor(**options)
-
-    def set_shard(desc):
-        desc.shard = desc.doc_id
-        return desc
-
-    d = connection.save_document(desc)
-    d.addCallback(set_shard)
-    d.addCallback(connection.save_document)
-
-    return d

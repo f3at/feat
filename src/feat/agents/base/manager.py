@@ -2,13 +2,14 @@ from zope.interface import implements
 from feat.interface import manager
 from feat.common import log
 from feat.agencies import agency
+from feat.agents.base import protocol, replay
 
 
-class Meta(type):
+class Meta(type(replay.Replayable)):
     implements(manager.IManagerFactory)
 
 
-class BaseManager(log.Logger, agency.InitiatorMixin):
+class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     """
     I am a base class for managers of contracts.
 
@@ -34,12 +35,13 @@ class BaseManager(log.Logger, agency.InitiatorMixin):
     announce_timeout = 10
     grant_timeout = 10
 
-    def __init__(self, agent, medium):
+    def __init__(self, agent, medium, *args, **kwargs):
         log.Logger.__init__(self, medium)
+        replay.Replayable.__init__(self, agent, medium, *args, **kwargs)
 
-        self.agent = agent
-        self.medium = medium
-        agency.InitiatorMixin.__init__(self)
+    def init_state(self, state, agent, medium):
+        state.agent = agent
+        state.medium = medium
 
     def initiate(self):
         '''@see: L{manager.IAgentManager}'''

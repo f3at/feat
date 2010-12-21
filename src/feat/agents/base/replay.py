@@ -1,5 +1,4 @@
-
-from feat.common import decorator, annotate, serialization, guard, journal
+from feat.common import (decorator, annotate, guard, journal, )
 
 from feat.interface.journal import *
 
@@ -66,6 +65,8 @@ def entry_point(function):
 
 # Copy immutable decorator as-is from guarded module
 immutable = guard.immutable
+journaled = mutable
+side_effect = journal.side_effect
 
 
 class Replayable(journal.Recorder, guard.Guarded):
@@ -73,3 +74,11 @@ class Replayable(journal.Recorder, guard.Guarded):
     def __init__(self, parent, *args, **kwargs):
         journal.Recorder.__init__(self, parent)
         guard.Guarded.__init__(self, parent, *args, **kwargs)
+
+    def snapshot(self):
+        return journal.Recorder.snapshot(self), guard.Guarded.snapshot(self)
+
+    def recover(self, snapshot):
+        s1, s2 = snapshot
+        journal.Recorder.recover(s1)
+        guard.Guarded.revocer(s2)

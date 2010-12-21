@@ -77,7 +77,7 @@ class Resources(log.Logger, log.LogProxy):
         '''
         Used by Allocation class to setup expiration call.
         '''
-        return self.agent.medium.get_time()
+        return self.agent.get_time()
 
     def _unpack_defaults(self, totals, allocations):
         if totals is None:

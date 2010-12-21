@@ -13,6 +13,11 @@ from . import reflect, decorator
 SECTION_STATE_TAG = "__fiber_section_dict__"
 
 
+def drop_result(result, method, *args, **kwargs):
+    assert callable(method)
+    return method(*args, **kwargs)
+
+
 @decorator.simple_function
 def woven(fun):
     '''Decorator that will initialize and eventually start nested fibers.'''

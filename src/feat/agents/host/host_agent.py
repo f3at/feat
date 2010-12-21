@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from feat.agents.base import (agent, recipient, manager, message,
+from feat.agents.base import (agent, recipient, manager, message, replay,
                               replier, requester, document, descriptor)
 from feat.common import fiber
 from feat.agencies import agency
@@ -10,25 +10,28 @@ from feat.agencies import agency
 @agent.register('host_agent')
 class HostAgent(agent.BaseAgent):
 
-    def initiate(self):
+    @replay.mutable
+    def initiate(self, state):
         agent.BaseAgent.initiate(self)
 
-        self.medium.register_interest(StartAgentReplier)
+        state.medium.register_interest(StartAgentReplier)
 
         recp = recipient.Agent('join-shard', 'lobby')
-        join_manager = self.medium.initiate_protocol(JoinShardManager, recp)
-        return join_manager.notify_finish()
+        join_manager = state.medium.initiate_protocol(JoinShardManager, recp)
+        f = fiber.Fiber()
+        f.add_callback(fiber.drop_result, join_manager.notify_finish)
+        return f.succeed()
 
     @agent.update_descriptor
-    def switch_shard(self, desc, shard):
-        self.medium.leave_shard(desc.shard)
+    def switch_shard(self, state, desc, shard):
+        state.medium.leave_shard(desc.shard)
         desc.shard = shard
-        self.medium.join_shard(shard)
+        state.medium.join_shard(shard)
 
-    @fiber.woven
-    def start_agent(self, desc):
+    @replay.immutable
+    def start_agent(self, state, desc):
         f = fiber.Fiber()
-        f.add_callback(self.medium.agency.start_agent)
+        f.add_callback(state.medium.agency.start_agent)
         f.add_callback(agency.AgencyAgent.get_descriptor)
         f.succeed(desc)
         return f
@@ -39,14 +42,15 @@ class StartAgentRequester(requester.BaseRequester):
     protocol_id = 'start-agent'
     timeout = 10
 
-    def __init__(self, agent, medium, descriptor):
-        requester.BaseRequester.__init__(self, agent, medium)
-        self.descriptor = descriptor
+    def init_state(self, state, agent, medium, descriptor):
+        requester.BaseRequester.init_state(self, state, agent, medium)
+        state.descriptor = descriptor
 
-    def initiate(self):
+    @replay.mutable
+    def initiate(self, state):
         msg = message.RequestMessage()
-        msg.payload['doc_id'] = self.descriptor.doc_id
-        self.medium.request(msg)
+        msg.payload['doc_id'] = state.descriptor.doc_id
+        state.medium.request(msg)
 
     def got_reply(self, reply):
         return reply
@@ -56,39 +60,42 @@ class StartAgentReplier(replier.BaseReplier):
 
     protocol_id = 'start-agent'
 
-    @fiber.woven
-    def requested(self, request):
+    @replay.entry_point
+    def requested(self, state, request):
         f = fiber.Fiber()
-        f.add_callback(self.agent.medium.get_document)
-        f.add_callback(self.agent.start_agent)
+        f.add_callback(state.agent.get_document)
+        f.add_callback(state.agent.start_agent)
         f.add_callback(self._send_reply)
         f.succeed(request.payload['doc_id'])
         return f
 
-    def _send_reply(self, descriptor):
+    @replay.mutable
+    def _send_reply(self, state, descriptor):
         msg = message.ResponseMessage()
         msg.payload['shard'] = descriptor.shard
         msg.payload['doc_id'] = descriptor.doc_id
-        self.medium.reply(msg)
+        state.medium.reply(msg)
 
 
 class JoinShardManager(manager.BaseManager):
 
     protocol_id = 'join-shard'
 
-    def initiate(self):
+    @replay.immutable
+    def initiate(self, state):
         msg = message.Announcement()
         msg.payload['level'] = 0
-        msg.payload['joining_agent'] = self.agent.get_own_address()
-        self.medium.announce(msg)
+        msg.payload['joining_agent'] = state.agent.get_own_address()
+        state.medium.announce(msg)
 
-    def closed(self):
-        bids = map(lambda x: x.bids[0], self.medium.contractors)
+    @replay.immutable
+    def closed(self, state):
+        bids = map(lambda x: x.bids[0], state.medium.contractors)
         best = min(bids)
         best_bid = filter(
-            lambda x: x.bids[0] == best, self.medium.contractors)[0]
+            lambda x: x.bids[0] == best, state.medium.contractors)[0]
         params = (best_bid, message.Grant(bid_index=0), )
-        self.medium.grant(params)
+        state.medium.grant(params)
 
     def restart_contract(self):
         raise NotImplemented('TO BE DONE')
@@ -96,11 +103,11 @@ class JoinShardManager(manager.BaseManager):
     expired=restart_contract
     aborted=restart_contract
 
-    @fiber.woven
-    def completed(self, reports):
+    @replay.mutable
+    def completed(self, state, reports):
         report = reports[0]
         f = fiber.Fiber()
-        f.add_callback(self.agent.switch_shard)
+        f.add_callback(state.agent.switch_shard)
         f.succeed(report.payload['shard'])
         return f
 

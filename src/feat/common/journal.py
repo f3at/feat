@@ -20,7 +20,6 @@ INSIDE_EFFECT_TAG = "__INSIDE_EFFECT__"
 def recorded(function, custom_id=None, reentrant=True):
     '''MUST only be used only with method from child
     classes of L{{Recorder}}.'''
-
     annotate.injectClassCallback("recorded", 4,
                                  "_register_recorded_call",
                                  function, custom_id=custom_id)
@@ -34,7 +33,7 @@ def recorded(function, custom_id=None, reentrant=True):
 
 @decorator.simple_callable
 def side_effect(original):
-    '''Decorator for function or method that do not modify the recorder state
+    """Decorator for function or method that do not modify the recorder state
     but have some side effects that can't be replayed.
     What it does in recording mode is keep the function name, arguments,
     keyword and result as a side effect that will be recorded in the journal.
@@ -42,7 +41,7 @@ def side_effect(original):
     the function name, arguments and keywords and return the expected result
     without executing the real function code. If the function name, arguments
     or keywords were to be different than the expected ones, it would raise
-    L{ReplayError}. Should work for any function or method.'''
+    L{ReplayError}. Should work for any function or method."""
 
     def check_result(result, info):
         if isinstance(result, defer.Deferred):

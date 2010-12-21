@@ -8,22 +8,31 @@ import copy
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log, manhole
-from feat.agents.base import recipient
+from feat.common import log, manhole, journal
+from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
 from feat.interface import agency, agent, protocols
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory
 
-from . import requests
-from . import contracts
+from . import contracts, requests
 
 
-class Agency(manhole.Manhole):
+class Agency(manhole.Manhole, journal.RecorderRoot,
+             log.FluLogKeeper, log.Logger):
+
+    __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
+                                        type(journal.RecorderRoot),
+                                        type(log.FluLogKeeper)), {})
+
     implements(agency.IAgency)
 
     def __init__(self, messaging, database):
+        log.FluLogKeeper.__init__(self)
+        log.Logger.__init__(self, self)
+        journal.RecorderRoot.__init__(self, journal.InMemoryJournalKeeper())
+
         self._agents = []
         # shard -> [ agents ]
         self._shards = {}
@@ -35,6 +44,7 @@ class Agency(manhole.Manhole):
     def start_agent(self, descriptor):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
+        self.log('I will start: %r agent', factory)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
         d = defer.maybeDeferred(medium.agent.initiate)
@@ -57,28 +67,30 @@ class Agency(manhole.Manhole):
         if agent in shard_list:
             shard_list.remove(agent)
         else:
-            log.err('Was supposed to leave shard %r, but it was not there!' %\
-                        shard)
+            self.error('Was supposed to leave shard %r, '
+                       'but it was not there!' % shard)
         self._shards[shard] = shard_list
 
+    @replay.side_effect
     def get_time(self):
         return time.time()
 
 
-class AgencyAgent(log.FluLogKeeper, log.Logger):
+class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
     implements(agent.IAgencyAgent)
 
     log_category = "agency-agent"
 
     def __init__(self, aagency, factory, descriptor):
-
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, aagency)
         log.Logger.__init__(self, self)
+        journal.Recorder.__init__(self, aagency)
 
         self.agency = agency.IAgency(aagency)
         self._descriptor = descriptor
         self.agent = factory(self)
         self.log_name = self.agent.__class__.__name__
+        self.log('Instantiated the %r instance', self.agent)
 
         self._messaging = self.agency._messaging.get_connection(self)
         self._database = self.agency._database.get_connection(self)
@@ -90,6 +102,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
         self.join_shard(descriptor.shard)
 
+    @replay.side_effect
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)
 
@@ -151,6 +164,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
                    message.__class__.__name__)
         return False
 
+    @replay.side_effect
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         self.log('Initiating protocol for factory: %r, args: %r, kwargs: %r',
                  factory, args, kwargs)
@@ -164,6 +178,7 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         medium.initiate(initiator)
         return initiator
 
+    @replay.side_effect
     def register_interest(self, factory):
         factory = protocols.IInterest(factory)
         p_type = factory.protocol_type
@@ -238,32 +253,6 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
 
     def get_document(self, document_id):
         return self._database.get_document(document_id)
-
-
-class InitiatorMixin(object):
-    '''
-    This mixin should be mixed into class implementing IInitiator interface.
-    '''
-
-    def __init__(self):
-        self._finished_cbs = list()
-        self.medium.finish_deferred.addCallbacks(self._finish_callback,
-                                                 self._finish_errback)
-
-    def notify_finish(self):
-        d = defer.Deferred()
-        self._finished_cbs.append(d)
-        return d
-
-    def notify_state(self, state):
-        return self.medium.wait_for_state(state)
-
-    def _finish_callback(self, x):
-        map(lambda d: d.callback(x), self._finished_cbs)
-        return x
-
-    def _finish_errback(self, x):
-        map(lambda d: d.errback(x), self._finished_cbs)
 
 
 class Interest(object):
