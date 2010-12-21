@@ -4,6 +4,7 @@ import time
 
 from zope.interface import implements
 from twisted.internet import defer, reactor
+from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
 
@@ -282,6 +283,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
     ### Private Methods ###
 
     def _assertAsync(self, param, check, value, *args, **kwargs):
+        if isinstance(param, failure.Failure):
+            if param.check(AssertionError):
+                param.raiseException()
         if isinstance(value, defer.Deferred):
             value.addBoth(check)
             return value
