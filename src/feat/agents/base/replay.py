@@ -20,16 +20,14 @@ def mutable(function):
           pass
     '''
 
-    fun_id = function.__name__
     # Register the function
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call",
-                                 fun_id, function)
+                                 "_register_recorded_call", function)
 
     def wrapper(self, *args, **kwargs):
         state = self._get_state()
         recorder = IRecorder(self)
-        return recorder.call(fun_id, (state, ) + args, kwargs)
+        return recorder.call(function, (state, ) + args, kwargs)
 
     return wrapper
 
@@ -53,16 +51,15 @@ def entry_point(function):
           pass
     '''
 
-    fun_id = function.__name__
     # Register the function
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call",
-                                 fun_id, function)
+                                 "_register_recorded_call", function)
 
     def wrapper(self, *args, **kwargs):
         state = self._get_state()
         recorder = IRecorder(self)
-        return recorder.call(fun_id, (state, ) + args, kwargs, reentrant=False)
+        return recorder.call(function, (state, ) + args,
+                             kwargs, reentrant=False)
 
     return wrapper
 

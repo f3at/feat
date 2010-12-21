@@ -20,13 +20,14 @@ INSIDE_EFFECT_TAG = "__INSIDE_EFFECT__"
 def recorded(function, custom_id=None, reentrant=True):
     '''MUST only be used only with method from child
     classes of L{{Recorder}}.'''
-    fun_id = custom_id or function.__name__
+
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call", fun_id, function)
+                                 "_register_recorded_call",
+                                 function, custom_id=custom_id)
 
     def wrapper(self, *args, **kwargs):
         recorder = IRecorder(self)
-        return recorder.call(fun_id, args, kwargs, reentrant=reentrant)
+        return recorder.call(function, args, kwargs, reentrant=reentrant)
 
     return wrapper
 
@@ -177,12 +178,22 @@ class Recorder(RecorderNode, annotate.Annotable):
     _registry = None
 
     @classmethod
-    def _register_recorded_call(cls, fun_id, function):
-        # Lazy registry creation to prevent all sub-classes
-        # from sharing the same dictionary
-        if cls._registry is None:
-            cls._registry = {}
-        cls._registry[fun_id] = function
+    def _register_recorded_call(cls, function, custom_id=None):
+        global _registry, _reverse
+
+        if custom_id is not None:
+            fun_id = custom_id
+        else:
+            parts = [cls.__module__, cls.__name__, function.__name__]
+            fun_id = ".".join(parts)
+
+        if fun_id in _registry:
+            raise RuntimeError("Failed to register function %r with name '%s' "
+                               "it is already used by function %r"
+                               % (function, fun_id, _registry[fun_id]))
+
+        _registry[fun_id] = function
+        _reverse[function] = fun_id
 
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
@@ -190,7 +201,21 @@ class Recorder(RecorderNode, annotate.Annotable):
 
     ### IRecorder Methods ###
 
-    def call(self, fun_id, args=None, kwargs=None, reentrant=True):
+    def record(self, fun_id, args=None, kwargs=None, reentrant=True):
+        return self._record(fun_id, None, args or (), kwargs or {},
+                            reentrant=reentrant)
+
+    def call(self, function, args=None, kwargs=None, reentrant=True):
+        return self._record(None, function, args or (), kwargs or {},
+                            reentrant=reentrant)
+
+    def replay(self, fun_id, input):
+        args, kwargs = input
+        return self._replay(fun_id, None, args or (), kwargs or {})
+
+    ### Private Methods ###
+
+    def _record(self, fun_id, function, args, kwargs, reentrant=True):
         # Starts the fiber section
         section = fiber.WovenSection()
         section.enter()
@@ -208,25 +233,22 @@ class Recorder(RecorderNode, annotate.Annotable):
 
         if not (fiber_first or reentrant):
             # If not reentrant and it is not the first, it's BAAAAAD.
-            raise ReentrantCallError("Recorded functions %s "
-                                     "cannot be called from another "
-                                     "recorded function" % fun_id)
+            raise ReentrantCallError("Recorded functions cannot be called "
+                                     "from another recorded function")
 
-
-        result = self._call_fun_id(fun_id, args or (), kwargs or {})
+        fun_id, fun, result = self._call_fun(fun_id, function, args, kwargs)
 
         # If it is the first recording entry in the stack, add a journal entry
         if section_first:
             desc = section.descriptor
-            self.journal_keeper.record(self.journal_id, fun_id,
-                                   desc.fiber_id, desc.fiber_depth,
-                                   (args or None, kwargs or None),
-                                   side_effects or None, result)
+            self.journal_keeper.write_entry(self.journal_id, fun_id,
+                                            desc.fiber_id, desc.fiber_depth,
+                                            (args or None, kwargs or None),
+                                            side_effects or None, result)
 
-        # Exit the fiber section
         return section.exit(result)
 
-    def replay(self, fun_id, input):
+    def _replay(self, fun_id, function, args, kwargs):
         # Starts the fiber section
         section = fiber.WovenSection()
         section.enter()
@@ -241,8 +263,7 @@ class Recorder(RecorderNode, annotate.Annotable):
             side_effects = []
             section.state[SIDE_EFFECTS_TAG] = side_effects
 
-        args, kwargs = input
-        result = self._call_fun_id(fun_id, args or (), kwargs or {})
+        _, _, result = self._call_fun(fun_id, function, args, kwargs)
 
         # We don't want anything asynchronous to be called,
         # so we abort the fiber section
@@ -251,16 +272,23 @@ class Recorder(RecorderNode, annotate.Annotable):
         # We return the side effects and the result
         return side_effects or None, result
 
-    ### Private Methods ###
+    def _call_fun(self, fun_id, function, args, kwargs):
+        global _registry, _reverse
 
-    def _call_fun_id(self, fun_id, args, kwargs):
-
-        # Retrieve the function from the registry
-        function = self._registry.get(fun_id)
         if function is None:
-            raise AttributeError("Object '%s' has no recorded function "
-                                 "with identifier '%s'"
-                                 % (type(self).__name__, fun_id))
+            # Retrieve the function from the registry
+            function = _registry.get(fun_id)
+            if function is None:
+                raise AttributeError("No registered function found with "
+                                     "identifier '%s' to call with %r"
+                                     % (fun_id, self))
+
+        if fun_id is None:
+            # Retrieve the identifier from the registry
+            fun_id = _reverse.get(function)
+            if fun_id is None:
+                raise AttributeError("Function not register as recorded %r"
+                                     % (function, ))
 
         # Call the function
         result = function(self, *args, **kwargs)
@@ -271,7 +299,7 @@ class Recorder(RecorderNode, annotate.Annotable):
             raise RecordingResultError("Recorded functions %s "
                                        "cannot return Deferred" % fun_id)
 
-        return result
+        return fun_id, function, result
 
 
 class InMemoryJournalKeeper(object):
@@ -301,10 +329,16 @@ class InMemoryJournalKeeper(object):
         recorder = IRecorder(recorder)
         self._registry[recorder.journal_id] = recorder
 
-    def record(self, instance_id, entry_id,
-               fiber_id, fiber_depth, input, side_effects, output):
+    def write_entry(self, instance_id, entry_id,
+                    fiber_id, fiber_depth, input, side_effects, output):
         record = (instance_id, entry_id, fiber_id, fiber_depth,
                   ISnapshotable(input).snapshot(),
                   ISnapshotable(side_effects).snapshot(),
                   ISnapshotable(output).snapshot())
         self._records.append(record)
+
+
+### Private Stuff ###
+
+_registry = {} # {FUNCTION_ID: FUNCTION}
+_reverse = {} # {FUNCTION: FUNCTION_ID}
