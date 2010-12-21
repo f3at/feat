@@ -16,7 +16,8 @@ class TreeGrowthSimulation(common.SimulationTest):
     children_per_shard = 2
 
     start_host_agent = format_block("""
-        start_agent(spawn_agency(), descriptor_factory('host_agent'))
+        agency = spawn_agency()
+        agency.start_agent(descriptor_factory('host_agent'))
         """)
 
     def prolog(self):
@@ -24,8 +25,8 @@ class TreeGrowthSimulation(common.SimulationTest):
         agency = spawn_agency()
         shard_desc = descriptor_factory('shard_agent', 'root')
         host_desc = descriptor_factory('host_agent')
-        start_agent(agency, shard_desc)
-        start_agent(agency, host_desc)
+        agency.start_agent(shard_desc)
+        agency.start_agent(host_desc)
         """)
         return self.process(setup)
 

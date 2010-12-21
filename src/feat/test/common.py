@@ -9,7 +9,7 @@ from twisted.scripts import trial
 
 from feat.agencies.emu import agency
 from feat.agents.base import message, recipient, descriptor, agent
-from feat.common import log
+from feat.common import log, decorator
 from feat.common import delay as delay_module
 from feat.interface.agent import IAgencyAgent
 
@@ -301,6 +301,7 @@ class Mock(object):
         return filter(lambda x: x.name == name, self._called)
 
     @staticmethod
+    @decorator.simple_function
     def stub(method):
 
         def decorated(self, *args, **kwargs):

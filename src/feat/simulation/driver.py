@@ -9,7 +9,7 @@ import traceback
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, manhole
 from feat.agencies import agency
 from feat.agencies.emu import messaging, database
 from feat.agents.base import descriptor
@@ -17,13 +17,14 @@ from feat.interface.agent import IAgencyAgent
 from feat.test import factories
 
 
-class Commands(object):
+class Commands(manhole.Manhole):
     '''
     Implementation of all the commands understood by the protocol.
     This is a mixin mixed to Driver class.
     '''
 
-    def cmd_spawn_agency(self):
+    @manhole.expose()
+    def spawn_agency(self):
         '''
         Spawn new agency, returns the reference. Usage:
         > spawn_agency()
@@ -32,20 +33,8 @@ class Commands(object):
         self._agencies.append(ag)
         return ag
 
-    def cmd_start_agent(self, ag, desc):
-        """
-        Start the agent inside the agency. Usage:
-        > start_agent(agency, 'HostAgent', descriptor)
-        """
-        if not isinstance(ag, agency.Agency):
-            raise AttributeError('First argument needs to be an agency')
-        if not isinstance(desc, descriptor.Descriptor):
-            raise AttributeError('Second argument needs to be an Descriptor, '
-                                 'got %r instead', desc)
-
-        return ag.start_agent(desc)
-
-    def cmd_descriptor_factory(self, document_type, shard='lobby'):
+    @manhole.expose()
+    def descriptor_factory(self, document_type, shard='lobby'):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
@@ -56,7 +45,8 @@ class Commands(object):
         desc = factories.build(document_type, shard=shard)
         return self._database_connection.save_document(desc)
 
-    def cmd_breakpoint(self, name):
+    @manhole.expose()
+    def breakpoint(self, name):
         """
         Register the breakpoint of the name. Usage:
         > breakpoint('setup-done')
@@ -82,6 +72,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def __init__(self):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+        Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
         self._database = database.Database()
@@ -147,7 +138,8 @@ class Parser(log.Logger):
             number=re.compile('\A\d+(\.\d+)?\Z'),
             string=re.compile('\A\'([^(?<!\)\']*)\'\Z'),
             call=re.compile('\A(\w+)\((.*)\)\Z'),
-            variable=re.compile('\A([^\(\)\'\"\s\+]+)\Z'))
+            variable=re.compile('\A([^\(\)\'\"\s\+]+)\Z'),
+            method_call=re.compile('\A(\w+)\.(\w+)\((.*)\)\Z'))
 
     def split(self, text):
         s = shlex.shlex(text, posix=False)
@@ -255,10 +247,22 @@ class Parser(log.Logger):
                 continue
 
             m = self.re['call'].search(element)
-            if m:
-                command = m.group(1)
-                method = self.lookup_cmd(command)
-                arguments = yield self.process_array(self.split(m.group(2)))
+            n = self.re['method_call'].search(element)
+            if m or n:
+                if m:
+                    command = m.group(1)
+                    method = self.commands.lookup_cmd(command)
+                    rest = m.group(2)
+                else:
+                    obj = n.group(1)
+                    local = self.get_local(obj)
+                    if not isinstance(local, manhole.Manhole):
+                        raise IllegalCall('Variable %r should be a Manhole '
+                                          'instance to make this work!' % obj)
+                    command = n.group(2)
+                    method = local.lookup_cmd(command)
+                    rest = n.group(3)
+                arguments = yield self.process_array(self.split(rest))
                 d = defer.maybeDeferred(method, *arguments)
                 value = yield d
                 self.debug("Finished processing command: %s", element)
@@ -316,26 +320,12 @@ class Parser(log.Logger):
 
         self.send_output(f.getErrorMessage())
 
-    def lookup_cmd(self, name):
-        '''
-        Check if the protocol includes the message and return it.
-        Raises UnknownCommand otherwise.
-        '''
-        cmd_name = "cmd_%s" % name
-        try:
-            method = getattr(self.commands, cmd_name)
-            if not callable(method):
-                raise UnknownCommand('Unknown command: %s' % name)
-        except AttributeError:
-            raise UnknownCommand('Unknown command: %s' % name)
-        return method
 
-
-class UnknownCommand(Exception):
+class BadSyntax(Exception):
     pass
 
 
-class BadSyntax(Exception):
+class IllegalCall(Exception):
     pass
 
 

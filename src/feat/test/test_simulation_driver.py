@@ -1,13 +1,11 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from zope.interface import classProvides
 from twisted.internet import defer
 
-from feat.common import format_block, log
+from feat.common import format_block, log, manhole
 from feat.test import common
 from feat.simulation import driver
-from feat.agents.base import agent, descriptor
-from feat.interface.agent import IAgentFactory
+from feat.agents.base import descriptor
 
 
 class TestDriver(common.TestCase):
@@ -46,7 +44,7 @@ class TestDriver(common.TestCase):
     def testStartAgent(self):
         test = format_block("""
         agency = spawn_agency()
-        start_agent(agency, descriptor_factory('descriptor'))
+        agency.start_agent(descriptor_factory('descriptor'))
         """)
         d = self.cb_after(None, self.driver, 'finished_processing')
         self.driver.process(test)
@@ -102,28 +100,33 @@ class DummyDriver(log.Logger, log.LogProxy):
         pass
 
 
-class Commands(common.Mock):
+class Commands(common.Mock, manhole.Manhole):
     '''
     Test commands used in parser test.
     '''
 
+    @manhole.expose()
     @common.Mock.stub
-    def cmd_spam(self, arg1, arg2):
+    def spam(self, arg1, arg2):
         pass
 
+    @manhole.expose()
     @common.Mock.stub
-    def cmd_eggs(self, arg1, arg2):
+    def eggs(self, arg1, arg2):
         pass
 
-    def cmd_not_mocked(self, arg1, arg2):
+    @manhole.expose()
+    def not_mocked(self, arg1, arg2):
         '''
         doc string
         '''
 
-    def cmd_return_5(self):
+    @manhole.expose()
+    def return_5(self):
         return 5
 
-    def cmd_echo(self, echo):
+    @manhole.expose()
+    def echo(self, echo):
         return echo
 
 
@@ -145,17 +148,17 @@ class TestParser(common.TestCase):
         eggs(1.1, 'spam')
         """)
         self.log("%r", test)
-        d = self.cb_after(None, self.commands, 'cmd_eggs')
+        d = self.cb_after(None, self.parser, 'on_finish')
         self.parser.dataReceived(test)
         yield d
 
-        self.assertCalled(self.commands, 'cmd_spam')
-        call = self.commands.find_calls('cmd_spam')[0]
+        self.assertCalled(self.commands, 'spam')
+        call = self.commands.find_calls('spam')[0]
         self.assertEqual(2, call.args[0])
         self.assertEqual('text', call.args[-1])
 
-        self.assertCalled(self.commands, 'cmd_eggs')
-        call = self.commands.find_calls('cmd_eggs')[0]
+        self.assertCalled(self.commands, 'eggs')
+        call = self.commands.find_calls('eggs')[0]
         self.assertEqual(1.1, call.args[0])
         self.assertEqual('spam', call.args[-1])
 
@@ -181,7 +184,7 @@ class TestParser(common.TestCase):
         self.parser.dataReceived(test)
         yield d
 
-        self.assertEqual('Unknown command: something_odd\n',
+        self.assertEqual('Unknown command: Commands.something_odd\n',
                          self.output.getvalue())
 
     @defer.inlineCallbacks
@@ -289,6 +292,9 @@ class TestParser(common.TestCase):
         m = self.parser.re['assignment'].search('variable = ')
         self.assertFalse(m)
 
+        m = self.parser.re['assignment'].search('object.variable = 1')
+        self.assertFalse(m)
+
         # number
         m = self.parser.re['number'].search('1')
         self.assertTrue(m)
@@ -327,7 +333,7 @@ class TestParser(common.TestCase):
         m = self.parser.re['variable'].search("this and.that")
         self.assertFalse(m)
 
-        # calls
+        # simple calls
         m = self.parser.re['call'].search("this()")
         self.assertTrue(m)
         self.assertEqual('this', m.group(1))
@@ -341,10 +347,22 @@ class TestParser(common.TestCase):
         m = self.parser.re['call'].search("this(some more args")
         self.assertFalse(m)
 
+        m = self.parser.re['call'].search("someobj.this(some more args)")
+        self.assertFalse(m)
+
         m = self.parser.re['call'].search("this(that())")
         self.assertTrue(m)
         self.assertEqual('this', m.group(1))
         self.assertEqual('that()', m.group(2))
+
+        # method calls on stored objects
+
+        m = self.parser.re['method_call'].search(
+            "someobj.this(some more args)")
+        self.assertTrue(m)
+        self.assertEqual('someobj', m.group(1))
+        self.assertEqual('this', m.group(2))
+        self.assertEqual('some more args', m.group(3))
 
         # splitter
         m = self.parser.split("this, and, that")

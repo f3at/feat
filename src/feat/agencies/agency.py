@@ -8,7 +8,7 @@ import copy
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, manhole
 from feat.agents.base import recipient
 from feat.agents.base.agent import registry_lookup
 from feat.interface import agency, agent, protocols
@@ -20,7 +20,7 @@ from . import requests
 from . import contracts
 
 
-class Agency(object):
+class Agency(manhole.Manhole):
     implements(agency.IAgency)
 
     def __init__(self, messaging, database):
@@ -31,6 +31,7 @@ class Agency(object):
         self._messaging = IConnectionFactory(messaging)
         self._database = IConnectionFactory(database)
 
+    @manhole.expose()
     def start_agent(self, descriptor):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
