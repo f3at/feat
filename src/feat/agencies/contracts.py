@@ -362,6 +362,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_session_id(self):
         return self.session_id
 
+    def get_agent_side(self):
+        return self.manager
+
 
 class AgencyContractorFactory(object):
     implements(IAgencyInterestedFactory)
@@ -595,6 +598,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def get_session_id(self):
         return self.session_id
+
+    def get_agent_side(self):
+        return self.contractor
 
     # Used by ExpirationCallsMixin
 

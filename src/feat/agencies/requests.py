@@ -108,6 +108,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_session_id(self):
         return self.session_id
 
+    def get_agent_side(self):
+        return self.requester
+
 
 class AgencyReplierFactory(object):
     implements(IAgencyInterestedFactory)
@@ -174,3 +177,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def get_session_id(self):
         return self.session_id
+
+    def get_agent_side(self):
+        return self.replier

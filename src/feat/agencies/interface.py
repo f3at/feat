@@ -13,8 +13,13 @@ class IListener(Interface):
 
     def get_session_id():
         '''
-        @return: session_id to bound to
+        @returns: session_id to bound to
         @rtype: string
+        '''
+
+    def get_agent_side():
+        '''
+        @returns: the instance of agent-side protocol
         '''
 
 

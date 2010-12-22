@@ -35,7 +35,6 @@ class TreeGrowthSimulation(common.SimulationTest):
         self.assertEqual(2, len(agency._agents))
         self.assertIsInstance(agency._agents[0].agent, shard_agent.ShardAgent)
         self.assertIsInstance(agency._agents[1].agent, host_agent.HostAgent)
-
         self.assert_all_agents_in_shard(agency, 'root')
 
     @defer.inlineCallbacks

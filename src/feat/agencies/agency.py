@@ -8,10 +8,10 @@ import copy
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log, manhole, journal
+from feat.common import log, manhole, journal, fiber
 from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
-from feat.interface import agency, agent, protocols
+from feat.interface import agency, agent, protocols, serialization
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory
@@ -19,11 +19,9 @@ from interface import IListener, IAgencyInitiatorFactory,\
 from . import contracts, requests
 
 
-class Agency(manhole.Manhole, journal.RecorderRoot,
-             log.FluLogKeeper, log.Logger):
+class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
 
     __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
-                                        type(journal.RecorderRoot),
                                         type(log.FluLogKeeper)), {})
 
     implements(agency.IAgency)
@@ -31,7 +29,6 @@ class Agency(manhole.Manhole, journal.RecorderRoot,
     def __init__(self, messaging, database):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
-        journal.RecorderRoot.__init__(self, journal.InMemoryJournalKeeper())
 
         self._agents = []
         # shard -> [ agents ]
@@ -39,6 +36,7 @@ class Agency(manhole.Manhole, journal.RecorderRoot,
 
         self._messaging = IConnectionFactory(messaging)
         self._database = IConnectionFactory(database)
+        self._journal_entries = list()
 
     @manhole.expose()
     def start_agent(self, descriptor):
@@ -56,6 +54,7 @@ class Agency(manhole.Manhole, journal.RecorderRoot,
     # def unregisterAgent(self, agent):
     #     self._agents.remove(agent)
     #     agent._messaging.disconnect()
+    #     self.journal_agent_deleted(agent.doc_id, agent)
 
     def joined_shard(self, agent, shard):
         shard_list = self._shards.get(shard, [])
@@ -75,20 +74,65 @@ class Agency(manhole.Manhole, journal.RecorderRoot,
     def get_time(self):
         return time.time()
 
+    # journal specific stuff
 
-class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
-    implements(agent.IAgencyAgent)
+    def journal_write_entry(self, agent_id, instance_id, entry_id,
+                    fiber_id, fiber_depth, input, side_effects, output):
+        record = (agent_id, instance_id, entry_id, fiber_id, fiber_depth,
+                  serialization.ISnapshotable(input).snapshot(),
+                  serialization.ISnapshotable(side_effects).snapshot(),
+                  serialization.ISnapshotable(output).snapshot())
+        self._journal_entries.append(record)
+
+    def journal_agency_entry(self, agent_id, entry_id, input):
+        section = fiber.WovenSection()
+        section.enter()
+        self.journal_write_entry(
+            agent_id=agent_id,
+            instance_id='agency',
+            entry_id=entry_id,
+            fiber_id=section.descriptor.fiber_id,
+            fiber_depth=section.descriptor.fiber_depth,
+            input=input,
+            side_effects=None,
+            output=None)
+        section.abort()
+
+    def journal_protocol_created(self, agent_id, protocol_factory,
+                                 medium_factory, args=None, kwargs=None):
+        input = (protocol_factory, medium_factory, args, kwargs, )
+        self.journal_agency_entry(agent_id, 'protocol_created', input)
+
+    def journal_protocol_deleted(self, agent_id, protocol_instance):
+        input = (protocol_instance.journal_id, )
+        self.journal_agency_entry(agent_id, 'protocol_deleted', input)
+
+    def journal_agent_created(self, agent_id, agent_factory):
+        input = (agent_factory, )
+        self.journal_agency_entry(agent_id, 'agent_created', input)
+
+    def journal_agent_deleted(self, agent_id, agent_instance):
+        input = (agent_instance.journal_id, )
+        self.journal_agency_entry(agent_id, 'agent_deleted', input)
+
+
+class AgencyAgent(log.LogProxy, log.Logger):
+    implements(agent.IAgencyAgent, journal.IRecorderNode,
+               journal.IJournalKeeper)
 
     log_category = "agency-agent"
+    journal_parent = None
 
     def __init__(self, aagency, factory, descriptor):
         log.LogProxy.__init__(self, aagency)
         log.Logger.__init__(self, self)
-        journal.Recorder.__init__(self, aagency)
+
+        self.journal_keeper = self
 
         self.agency = agency.IAgency(aagency)
         self._descriptor = descriptor
         self.agent = factory(self)
+        self.agency.journal_agent_created(descriptor.doc_id, factory)
         self.log_name = self.agent.__class__.__name__
         self.log('Instantiated the %r instance', self.agent)
 
@@ -153,6 +197,8 @@ class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
                                      [message.protocol_id].factory
             medium_factory = IAgencyInterestedFactory(factory)
             medium = medium_factory(self, message)
+            self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                                 factory, medium_factory)
             interested = factory(self.agent, medium)
             medium.initiate(interested)
             listener = self.register_listener(medium)
@@ -173,6 +219,8 @@ class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
 
+        self.agency.journal_protocol_created(
+            self._descriptor.doc_id, factory, medium_factory, args, kwargs)
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(medium)
         medium.initiate(initiator)
@@ -218,6 +266,9 @@ class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
     def unregister_listener(self, session_id):
         if session_id in self._listeners:
             self.debug('Unregistering listener session_id: %r', session_id)
+            listener = self._listeners[session_id]
+            self.agency.journal_protocol_deleted(
+                self._descriptor.doc_id, listener.get_agent_side())
             del(self._listeners[session_id])
         else:
             self.error('Tried to unregister listener with session_id: %r, '
@@ -253,6 +304,22 @@ class AgencyAgent(log.LogProxy, log.Logger, journal.Recorder):
 
     def get_document(self, document_id):
         return self._database.get_document(document_id)
+
+    # IRecorderNone
+
+    def generate_identifier(self, recorder):
+        assert not getattr(self, 'indentifier_generated', False)
+        self._identifier_generated = True
+        return (self._descriptor.doc_id, )
+
+    # IJournalKeeper
+
+    def register(self, recorder):
+        pass
+
+    def write_entry(self, *args, **kwargs):
+        self.agency.journal_write_entry(self._descriptor.doc_id,
+                                        *args, **kwargs)
 
 
 class Interest(object):
