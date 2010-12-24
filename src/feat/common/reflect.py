@@ -18,6 +18,23 @@ def canonical_name(obj):
     return _canonical_type(obj.__class__)
 
 
+def named_module(name):
+    """Returns a module given its name."""
+    module = __import__(name)
+    packages = name.split(".")[1:]
+    m = module
+    for p in packages:
+        m = getattr(m, p)
+    return m
+
+
+def named_object(name):
+    """Gets a fully named module-global object."""
+    name_parts = name.split('.')
+    module = named_module('.'.join(name_parts[:-1]))
+    return getattr(module, name_parts[-1])
+
+
 def class_locals(depth, tag=None):
     frame = sys._getframe(depth)
     locals = frame.f_locals
