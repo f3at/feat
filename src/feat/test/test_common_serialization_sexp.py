@@ -6,13 +6,17 @@ import itertools
 import types
 
 from twisted.spread import jelly
-from twisted.python.reflect import qual
 
 from feat.common import reflect, serialization
 from feat.common.serialization import sexp
 from feat.interface.serialization import *
 
 from . import common_serialization
+
+
+@serialization.register
+class Dummy(serialization.Serializable):
+    pass
 
 
 class ListSerializableDummy(serialization.Serializable, jelly.Jellyable):
@@ -40,39 +44,53 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         self.unserializer = sexp.Unserializer()
 
     def testJellyUnjelly(self):
-        self.checkSymmetry(jelly.jelly, jelly.unjelly)
+        # jelly do not support meta types
+        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        self.checkSymmetry(jelly.jelly, jelly.unjelly, capabilities=caps)
 
     def testUnjellyCompatibility(self):
-        self.checkSymmetry(self.serializer.convert, jelly.unjelly)
+        # jelly do not support meta types
+        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        self.checkSymmetry(self.serializer.convert, jelly.unjelly,
+                           capabilities=caps)
 
     def testJellyCompatibility(self):
-        self.checkSymmetry(jelly.jelly, self.unserializer.convert)
+        # jelly do not support meta types
+        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        self.checkSymmetry(jelly.jelly, self.unserializer.convert,
+                           capabilities=caps)
 
     def testInstancesSerialization(self):
+        # Because dictionaries item order is not guaranteed we cannot
+        # compare directly directlly the result
         obj = common_serialization.SerializableDummy()
         name = reflect.canonical_name(common_serialization.SerializableDummy)
-        self.assertEqual(self.serialize(obj),
-                         [name,
-                          ['dictionary',
-                           ['none', ['None']],
-                           ['set', ['set', 1, 2, 3]],
-                           ['str', 'dummy'],
-                           ['tuple', ['tuple', 1, 2, 3]],
-                           ['int', 42],
-                           ['float', 3.1415926],
-                           ['list', ['list', 1, 2, 3]],
-                           ['long', 2**66],
-                           ['bool', ['boolean', 'true']],
-                           ['unicode', ['unicode', 'dummy']],
-                           ['dict', ['dictionary', [1, 2], [3, 4]]],
-                           ['ref', ['None']]]])
+        data = self.serialize(obj)
+        self.assertTrue(isinstance(data, list))
+        self.assertEqual(data[0], name)
+        self.assertTrue(isinstance(data[1], list))
+        self.assertEqual(data[1][0], "dictionary")
+        dict_vals = data[1][1:]
+        self.assertEqual(len(dict_vals), 12)
+        self.assertTrue(['none', ['None']] in dict_vals)
+        self.assertTrue(['set', ['set', 1, 2, 3]] in dict_vals)
+        self.assertTrue(['str', 'dummy'] in dict_vals)
+        self.assertTrue(['tuple', ['tuple', 1, 2, 3]] in dict_vals)
+        self.assertTrue(['int', 42] in dict_vals)
+        self.assertTrue(['float', 3.1415926] in dict_vals)
+        self.assertTrue(['list', ['list', 1, 2, 3]] in dict_vals)
+        self.assertTrue(['long', 2**66] in dict_vals)
+        self.assertTrue(['bool', ['boolean', 'true']] in dict_vals)
+        self.assertTrue(['unicode', ['unicode', 'dummy']] in dict_vals)
+        self.assertTrue(['dict', ['dictionary', [1, 2], [3, 4]]] in dict_vals)
+        self.assertTrue(['ref', ['None']] in dict_vals)
 
         obj = ListSerializableDummy([1, 2, 3])
         name = reflect.canonical_name(ListSerializableDummy)
         self.assertEqual(self.serialize(obj),
                          [name, ['list', 1, 2, 3]])
 
-    def convertion_table(self):
+    def convertion_table(self, capabilities):
         ### Basic immutable types ###
         yield str, [""], str, [""], False
         yield str, ["dummy"], str, ["dummy"], False
@@ -93,6 +111,14 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         yield bool, [True], list, [["boolean", "true"]], True
         yield bool, [False], list, [["boolean", "false"]], True
         yield types.NoneType, [None], list, [["None"]], True
+
+        ### Types ###
+        from datetime import datetime
+        yield type, [int], list, [["class", "__builtin__.int"]], False
+        yield type, [datetime], list, [["class", "datetime.datetime"]], False
+        name = reflect.canonical_name(common_serialization.SerializableDummy)
+        yield (type, [common_serialization.SerializableDummy],
+               list, [["class", name]], False)
 
         ### Basic containers ###
         yield tuple, [()], list, [["tuple"]], False # Exception for empty tuple
@@ -317,10 +343,10 @@ class SExpConvertersTest(common_serialization.ConverterTest):
                  Ref(7, ['tuple', Deref(2), Deref(3), Deref(6)]),
                  ['list', Deref(4), Deref(5), Deref(7)]]], True)
 
-        Dummy = common_serialization.SerializableDummy
+        Klass = common_serialization.SerializableDummy
 
         # Object instances
-        o = Dummy()
+        o = Klass()
         # Update the instance to have only one attribute
         del o.set
         del o.dict
@@ -334,6 +360,39 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         del o.tuple
         del o.ref
         o.int = 101
-        yield (Dummy, [o], list,
-               [[reflect.canonical_name(Dummy),
+        yield (Klass, [o], list,
+               [[reflect.canonical_name(Klass),
                  ["dictionary", ["int", 101]]]], True)
+
+        Klass = Dummy
+        name = reflect.canonical_name(Klass)
+        Inst = lambda v: [name, v]
+
+        a = Klass()
+        b = Klass()
+        c = Klass()
+
+        a.ref = b
+        b.ref = a
+        c.ref = c
+
+        yield (Klass, [a], list,
+               [Ref(1, Inst(["dictionary",
+                    ["ref", Inst(["dictionary", ["ref", Deref(1)]])]]))], True)
+
+        yield (Klass, [b], list,
+               [Ref(1, Inst(["dictionary",
+                    ["ref", Inst(["dictionary", ["ref", Deref(1)]])]]))], True)
+
+        yield (Klass, [c], list,
+               [Ref(1, Inst(["dictionary", ["ref", Deref(1)]]))], True)
+
+        yield (list, [[a, b]], list,
+               [["list", Ref(1, Inst(["dictionary", ["ref",
+                    Ref(2, Inst(["dictionary",
+                                 ["ref", Deref(1)]]))]])), Deref(2)]], True)
+
+        yield (list, [[a, c]], list,
+               [["list", Ref(1, Inst(["dictionary", ["ref",
+                    Inst(["dictionary", ["ref", Deref(1)]])]])),
+                    Ref(2, Inst(["dictionary", ["ref", Deref(2)]]))]], True)

@@ -2,16 +2,18 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import itertools
-import types
-
 from twisted.python.reflect import qual
-from twisted.spread import jelly
 
-from feat.common.serialization import base, pytree
+from feat.common import serialization, reflect
+from feat.common.serialization import pytree
 from feat.interface.serialization import *
 
 from . import common_serialization
+
+
+@serialization.register
+class Dummy(serialization.Serializable):
+    pass
 
 
 class PyTreeConvertersTest(common_serialization.ConverterTest):
@@ -20,7 +22,7 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         self.serializer = pytree.Serializer()
         self.unserializer = pytree.Unserializer()
 
-    def convertion_table(self):
+    def convertion_table(self, capabilities):
         ### Basic immutable types ###
 
         yield str, [""], str, [""], False
@@ -41,6 +43,13 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         yield bool, [True], bool, [True], False
         yield bool, [False], bool, [False], False
         yield type(None), [None], type(None), [None], False
+
+        ### Types ###
+        from datetime import datetime
+        yield type, [int], type, [int], False
+        yield type, [datetime], type, [datetime], False
+        yield (type, [common_serialization.SerializableDummy],
+               type, [common_serialization.SerializableDummy], False)
 
         #### Basic mutable types plus tuples ###
 
@@ -186,14 +195,14 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
                                     Ref(7, (Deref(2), Deref(3), Deref(6))),
                                     [Deref(4), Deref(5), Deref(7)])], True)
 
-        Inst = pytree.Instance
-        Dummy = common_serialization.SerializableDummy
+        Klass = common_serialization.SerializableDummy
+        name = reflect.canonical_name(Klass)
+        Inst = lambda v: pytree.Instance(name, v)
 
         # Default instance
-        o = Dummy()
-        yield (Dummy, [o], Inst,
-               [Inst(qual(Dummy),
-                     {"str": "dummy",
+        o = Klass()
+        yield (Klass, [o], pytree.Instance,
+               [Inst({"str": "dummy",
                       "unicode": u"dummy",
                       "int": 42,
                       "long": 2**66,
@@ -205,3 +214,43 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
                       "set": set([1, 2, 3]),
                       "dict": {1: 2, 3: 4},
                       "ref": None})], True)
+
+        Klass = Dummy
+        name = reflect.canonical_name(Klass)
+        Inst = lambda v: pytree.Instance(name, v)
+
+        a = Klass()
+        b = Klass()
+        c = Klass()
+
+        a.ref = b
+        b.ref = a
+        c.ref = c
+
+        yield (Klass, [a], Ref,
+               [Ref(1, Inst({"ref":
+                    Inst({"ref": Deref(1)})}))], True)
+
+        yield (Klass, [b], Ref,
+               [Ref(1, Inst({"ref":
+                    Inst({"ref": Deref(1)})}))], True)
+
+        yield (Klass, [c], Ref,
+               [Ref(1, Inst({"ref": Deref(1)}))], True)
+
+        yield (list, [[a, b]], list,
+               [[Ref(1, Inst({"ref":
+                    Ref(2, Inst({"ref": Deref(1)}))})), Deref(2)]], True)
+
+        yield (list, [[a, c]], list,
+               [[Ref(1, Inst({"ref":
+                    Inst({"ref": Deref(1)})})),
+                    Ref(2, Inst({"ref": Deref(2)}))]], True)
+
+        yield (list, [[a, [a, [a, [a]]]]], list,
+               [[Ref(1, Inst({'ref': Inst({'ref': Deref(1)})})),
+                 [Deref(1), [Deref(1), [Deref(1)]]]]], True)
+
+        yield (tuple, [(a, (a, (a, (a, ))))], tuple,
+               [(Ref(1, Inst({'ref': Inst({'ref': Deref(1)})})),
+                 (Deref(1), (Deref(1), (Deref(1), ))))], True)

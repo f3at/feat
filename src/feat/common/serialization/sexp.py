@@ -1,3 +1,5 @@
+from feat.common import reflect
+
 from . import base
 
 UNICODE_ATOM = "unicode"
@@ -12,6 +14,8 @@ TUPLE_ATOM = "tuple"
 LIST_ATOM = "list"
 SET_ATOM = "set"
 DICT_ATOM = "dictionary"
+
+CLASS_ATOM = "class"
 
 REFERENCE_ATOM = "reference"
 DEREFERENCE_ATOM = "dereference"
@@ -47,6 +51,9 @@ class Serializer(base.Serializer):
 
     def pack_dereference(self, value):
         return [DEREFERENCE_ATOM, value]
+
+    def pack_type(self, value):
+        return [CLASS_ATOM, reflect.canonical_name(value)]
 
 
 class Unserializer(base.Unserializer):
@@ -89,6 +96,10 @@ class Unserializer(base.Unserializer):
         _, = data
         return None
 
+    def unpack_type(self, data):
+        _, type_name, = data
+        return self.restore_type(type_name)
+
     def unpack_instance(self, data):
         type_name, value = data
         return self.restore_instance(type_name, value)
@@ -118,6 +129,7 @@ class Unserializer(base.Unserializer):
                   BOOL_ATOM: (None, unpack_bool),
                   NONE_ATOM: (None, unpack_none),
                   TUPLE_ATOM: (None, unpack_tuple),
+                  CLASS_ATOM: (None, unpack_type),
                   REFERENCE_ATOM: (None, unpack_reference),
                   DEREFERENCE_ATOM: (None, unpack_dereference),
                   LIST_ATOM: (list, unpack_list),

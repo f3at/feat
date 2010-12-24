@@ -2,8 +2,33 @@ import copy
 
 from zope.interface import implements
 
-from feat.common import decorator, adapter
+from feat.common import decorator, adapter, reflect
 from feat.interface.serialization import *
+
+DEFAULT_CAPABILITIES = set([Capabilities.int_values,
+                            Capabilities.long_values,
+                            Capabilities.float_values,
+                            Capabilities.str_values,
+                            Capabilities.unicode_values,
+                            Capabilities.bool_values,
+                            Capabilities.none_values,
+                            Capabilities.tuple_values,
+                            Capabilities.list_values,
+                            Capabilities.set_values,
+                            Capabilities.dict_values,
+                            Capabilities.instance_values,
+                            Capabilities.type_values,
+                            Capabilities.int_keys,
+                            Capabilities.long_keys,
+                            Capabilities.float_keys,
+                            Capabilities.str_keys,
+                            Capabilities.unicode_keys,
+                            Capabilities.bool_keys,
+                            Capabilities.none_keys,
+                            Capabilities.tuple_keys,
+                            Capabilities.type_keys,
+                            Capabilities.circular_references,
+                            Capabilities.meta_types])
 
 
 @decorator.simple_class
@@ -39,9 +64,9 @@ class MetaSnapshotable(type):
 
 
 class Snapshotable(object):
-    '''Simple L{ISnapshotable} that snapshot the full instance dictionary.
-    If the class attribute type_name is not defined, the canonical
-    name of the class is used.'''
+    '''Simple L{ISnapshotable} that snapshot the instance attributes
+    not starting by an underscore. If the class attribute type_name
+    is not defined, the canonical name of the class is used.'''
 
     __metaclass__ = MetaSnapshotable
 
@@ -50,7 +75,9 @@ class Snapshotable(object):
     ### ISnapshotable Methods ###
 
     def snapshot(self):
-        return self.__dict__
+        return dict([(k, v)
+                     for k, v in self.__dict__.iteritems()
+                     if isinstance(k, str) and not k.startswith('_')])
 
 
 class MetaSerializable(MetaSnapshotable):
@@ -65,7 +92,6 @@ class Serializable(Snapshotable):
 
     __metaclass__ = MetaSerializable
 
-    #classProvides(IRestorator)
     implements(ISerializable)
 
     type_name = None
@@ -169,8 +195,11 @@ class Serializer(object):
     Sub classes can override the packing functions used for each types.
 
     NOTE: because the flatten methods lookup table is done at class
-    declaration time, overriding any flatpassten_* method will not work.
-    In case it would be needed in the future, the lookup table initialization
+    declaration time, overriding most of flatten_* method will not work.
+    Only flatten_value, flatten_key, flatten_item, flatten_unknown,
+    flatten_instance and flatten_frozen_instance can be overridden
+    safely by subclasses. In case overriding other flatten_* method
+    would be needed in the future, the lookup table initialization
     should be moved to the constructor and self should not be passed anymore
     as the first parameter because the function would be then bound.
 
@@ -191,16 +220,17 @@ class Serializer(object):
     pack_list = None
     pack_item = None
     pack_dict = None
-    pack_type_name = None
     pack_type = None
+    pack_type_name = None
     pack_instance = None
     pack_reference = None
     pack_dereference = None
     pack_frozen_instance = None
 
-    def __init__(self, post_converter=None):
+    def __init__(self, capabilities=None, post_converter=None):
+        self.capabilities = capabilities or DEFAULT_CAPABILITIES
         self._post_converter = post_converter and IConverter(post_converter)
-        self._reset()
+        self.reset()
 
     ### IFreezer Methods ###
 
@@ -218,26 +248,222 @@ class Serializer(object):
         self._freezing = False
         return self._convert(data)
 
-    ### Private Methods ###
+    ### Protected Methods ###
 
-    def _reset(self):
+    def check_capabilities(self, cap, *args):
+        assert len(args) <= 1, "maximum of 1 extra parameter"
+        if args:
+            extra = ": %r" % args
+        else:
+            extra = ""
+
+        if cap not in self.capabilities:
+            raise ValueError("Serializer %s do not support %s%s"
+                             % (reflect.canonical_name(self), cap.name, extra))
+
+    def pack_value(self, data):
+        if not isinstance(data, (list, tuple)):
+            return data
+        packer, value = data
+        if isinstance(value, list):
+            value = [self.pack_value(d) for d in value]
+        if packer is not None:
+            return packer(value)
+        return value
+
+    def flatten_value(self, value):
+        vtype = type(value)
+        default = Serializer.flatten_unknown_value
+        return self._value_lookup.get(vtype, default)(self, value)
+
+    def flatten_key(self, value):
+        vtype = type(value)
+        default = Serializer.flatten_unknown_key
+        return self._key_lookup.get(vtype, default)(self, value)
+
+    def post_convertion(self, data):
+        if self._post_converter:
+            return self._post_converter.convert(data)
+        return data
+
+    def reset(self):
         self._freezing = False # If we are freezing or serializing
         self._preserved = {} # {OBJ_ID: FLATTENED_STRUCTURE}
         self._refids = {} # {OBJ_ID: REFERENCE_ID}
         self._references = {} # {OBJ_ID: REFERENCE_CONTAINER}
+        self._memory = []
         self._refid = 0
+
+    def flatten_unknown_value(self, value):
+        # Flatten types
+        if isinstance(value, type):
+            return self.flatten_type_value(value)
+
+        # Checks if value support the current required protocol
+        # Could be ISnapshotable or ISerializable
+        if self._freezing:
+            if ISnapshotable.providedBy(value):
+                return self.flatten_frozen_instance(ISnapshotable(value))
+        else:
+            if ISerializable.providedBy(value):
+                return self.flatten_instance(ISerializable(value))
+
+        raise TypeError("Type %s values not supported by serializer %s"
+                        % (type(value).__name__,
+                           reflect.canonical_name(self)))
+
+    def flatten_unknown_key(self, value):
+        # Flatten types
+        if isinstance(value, type):
+            return self.flatten_type_key(value)
+
+        # Instances are not supported in keys
+        raise TypeError("Type %s keys not supported by serializer %s"
+                        % (type(value).__name__,
+                           reflect.canonical_name(self)))
+
+    def flatten_item(self, value):
+        key, value = value
+        return self.pack_item, [self.flatten_key(key),
+                                self.flatten_value(value)]
+
+    def flatten_str_value(self, value):
+        self.check_capabilities(Capabilities.str_values, value)
+        return self.pack_str, value
+
+    def flatten_unicode_value(self, value):
+        self.check_capabilities(Capabilities.unicode_values, value)
+        return self.pack_unicode, value
+
+    def flatten_int_value(self, value):
+        self.check_capabilities(Capabilities.int_values, value)
+        return self.pack_int, value
+
+    def flatten_long_value(self, value):
+        self.check_capabilities(Capabilities.long_values, value)
+        return self.pack_long, value
+
+    def flatten_float_value(self, value):
+        self.check_capabilities(Capabilities.float_values, value)
+        return self.pack_float, value
+
+    def flatten_none_value(self, value):
+        self.check_capabilities(Capabilities.none_values, value)
+        return self.pack_none, value
+
+    def flatten_bool_value(self, value):
+        self.check_capabilities(Capabilities.bool_values, value)
+        return self.pack_bool, value
+
+    def flatten_type_value(self, value):
+        self.check_capabilities(Capabilities.type_values, value)
+        return self.pack_type, value
+
+    @referenceable
+    def flatten_tuple_value(self, value):
+        self.check_capabilities(Capabilities.tuple_values, value)
+        return self.pack_tuple, [self.flatten_value(v) for v in value]
+
+    @referenceable
+    def flatten_list_value(self, value):
+        self.check_capabilities(Capabilities.list_values, value)
+        return self.pack_list, [self.flatten_value(v) for v in value]
+
+    @referenceable
+    def flatten_set_value(self, value):
+        self.check_capabilities(Capabilities.set_values, value)
+        return self.pack_set, [self.flatten_value(v) for v in value]
+
+    @referenceable
+    def flatten_dict_value(self, value):
+        self.check_capabilities(Capabilities.dict_values, value)
+        return self.pack_dict, [self.flatten_item(i)
+                                for i in value.iteritems()]
+
+    def flatten_str_key(self, value):
+        self.check_capabilities(Capabilities.str_keys, value)
+        return self.pack_str, value
+
+    def flatten_unicode_key(self, value):
+        self.check_capabilities(Capabilities.unicode_keys, value)
+        return self.pack_unicode, value
+
+    def flatten_int_key(self, value):
+        self.check_capabilities(Capabilities.int_keys, value)
+        return self.pack_int, value
+
+    def flatten_long_key(self, value):
+        self.check_capabilities(Capabilities.long_keys, value)
+        return self.pack_long, value
+
+    def flatten_float_key(self, value):
+        self.check_capabilities(Capabilities.float_keys, value)
+        return self.pack_float, value
+
+    def flatten_none_key(self, value):
+        self.check_capabilities(Capabilities.none_keys, value)
+        return self.pack_none, value
+
+    def flatten_bool_key(self, value):
+        self.check_capabilities(Capabilities.bool_keys, value)
+        return self.pack_bool, value
+
+    def flatten_type_key(self, value):
+        self.check_capabilities(Capabilities.type_keys, value)
+        return self.pack_type, value
+
+    @referenceable
+    def flatten_tuple_key(self, value):
+        self.check_capabilities(Capabilities.tuple_keys, value)
+        return self.pack_tuple, [self.flatten_value(v) for v in value]
+
+    @referenceable
+    def flatten_frozen_instance(self, value):
+        self.check_capabilities(Capabilities.instance_values, value)
+        return self.pack_frozen_instance, self.flatten_value(value.snapshot())
+
+    @referenceable
+    def flatten_instance(self, value):
+        self.check_capabilities(Capabilities.instance_values, value)
+        return self.pack_instance, [[self.pack_type_name, value.type_name],
+                                     self.flatten_value(value.snapshot())]
+
+    ### Setup lookup tables ###
+
+    _value_lookup = {tuple: flatten_tuple_value,
+                     list: flatten_list_value,
+                     set: flatten_set_value,
+                     dict: flatten_dict_value,
+                     str: flatten_str_value,
+                     unicode: flatten_unicode_value,
+                     int: flatten_int_value,
+                     long: flatten_long_value,
+                     float: flatten_float_value,
+                     bool: flatten_bool_value,
+                     type(None): flatten_none_value}
+
+    _key_lookup = {tuple: flatten_tuple_key,
+                   str: flatten_str_key,
+                   unicode: flatten_unicode_key,
+                   int: flatten_int_key,
+                   long: flatten_long_key,
+                   float: flatten_float_key,
+                   bool: flatten_bool_key,
+                   type(None): flatten_none_key}
+
+    ### Private Methods ###
 
     def _convert(self, data):
         try:
             # Flatten the value to the list-only format with packer function
             flattened = self.flatten_value(data)
             # Pack all the value with there own packer functions
-            packed = self._pack_value(flattened)
+            packed = self.pack_value(flattened)
             # Post-convert the data if a convert was specified
-            return self._post_convertion(packed)
+            return self.post_convertion(packed)
         finally:
             # Reset the state to cleanup all references
-            self._reset()
+            self.reset()
 
     def _next_refid(self):
         self._refid += 1
@@ -279,6 +505,10 @@ class Serializer(object):
 
     def _preserve(self, value, packer, data):
         ident = id(value)
+        # Keep a reference to the value to prevent it to be garbage-collected.
+        # If it was, a different value with the same id could appear
+        # and the reference system would be corrupted.
+        self._memory.append(value)
         # Retrieve the value container
         container = self._preserved[ident]
         # Set the value in place, even if it has been referenced
@@ -288,109 +518,6 @@ class Serializer(object):
             return self._references[ident]
         # Otherwise return the value itself
         return container
-
-    def _pack_value(self, data):
-        if not isinstance(data, (list, tuple)):
-            return data
-        packer, value = data
-        if isinstance(value, list):
-            value = [self._pack_value(d) for d in value]
-        if packer is not None:
-            return packer(value)
-        return value
-
-    def _post_convertion(self, data):
-        if self._post_converter:
-            return self._post_converter.convert(data)
-        return data
-
-    def flatten_value(self, value):
-        vtype = type(value)
-        default = Serializer.flatten_unknown
-        return self._lookup.get(vtype, default)(self, value)
-
-    def flatten_unknown(self, value):
-        # Checks if value support the current required protocol
-        # Could be ISnapshotable or ISerializable
-        if self._freezing:
-            if ISnapshotable.providedBy(value):
-                return self.flatten_frozen_instance(ISnapshotable(value))
-        else:
-            if ISerializable.providedBy(value):
-                return self.flatten_instance(ISerializable(value))
-
-        raise TypeError("Type %s not supported by serializer %s"
-                        % (type(value).__name__, type(self).__name__))
-
-    def flatten_str(self, value):
-        return self.pack_str, value
-
-    def flatten_unicode(self, value):
-        return self.pack_unicode, value
-
-    def flatten_int(self, value):
-        return self.pack_int, value
-
-    def flatten_long(self, value):
-        return self.pack_long, value
-
-    def flatten_float(self, value):
-        return self.pack_float, value
-
-    def flatten_none(self, value):
-        return self.pack_none, value
-
-    def flatten_bool(self, value):
-        return self.pack_bool, value
-
-    def flatten_item(self, value):
-        key, value = value
-        return self.pack_item, [self.flatten_value(key),
-                                self.flatten_value(value)]
-
-    def flatten_type(self, value):
-        return self.pack_type, reflect.canonical_name(value)
-
-    @referenceable
-    def flatten_tuple(self, value):
-        return self.pack_tuple, [self.flatten_value(v) for v in value]
-
-    @referenceable
-    def flatten_list(self, value):
-        return self.pack_list, [self.flatten_value(v) for v in value]
-
-    @referenceable
-    def flatten_set(self, value):
-        return self.pack_set, [self.flatten_value(v) for v in value]
-
-    @referenceable
-    def flatten_dict(self, value):
-        return self.pack_dict, [self.flatten_item(i)
-                                for i in value.iteritems()]
-
-    @referenceable
-    def flatten_frozen_instance(self, value):
-        return self.pack_frozen_instance, self.flatten_value(value.snapshot())
-
-    @referenceable
-    def flatten_instance(self, value):
-        return self.pack_instance, [[self.pack_type_name, value.type_name],
-                                     self.flatten_value(value.snapshot())]
-
-    ### Setup lookup table ###
-
-    _lookup = {tuple: flatten_tuple,
-               list: flatten_list,
-               set: flatten_set,
-               dict: flatten_dict,
-               str: flatten_str,
-               unicode: flatten_unicode,
-               int: flatten_int,
-               long: flatten_long,
-               float: flatten_float,
-               bool: flatten_bool,
-               type: flatten_type,
-               type(None): flatten_none}
 
 
 class DelayPacking(Exception):
@@ -415,42 +542,55 @@ class Unserializer(object):
 
     pass_through_types = ()
 
-    def __init__(self, pre_converter=None, registry=None):
+    def __init__(self, capabilities=None, pre_converter=None, registry=None):
         global _global_registry
+        self.capabilities = capabilities or DEFAULT_CAPABILITIES
         self._pre_converter = pre_converter and IConverter(pre_converter)
         self._registry = IRegistry(registry) if registry else _global_registry
-        self._reset()
+        self.reset()
 
     ### IConverter Methods ###
 
     def convert(self, data):
         try:
             # Pre-convert the data if a convertor was specified
-            converted = self._pre_convertion(data)
+            converted = self.pre_convertion(data)
             # Unpack the first level of values
             unpacked = self.unpack_data(converted)
             # Continue unpacking level by level
-            self._finish_unpacking()
+            self.finish_unpacking()
             # Should be finished by now
             return unpacked
         finally:
             # Reset the state to cleanup all references
-            self._reset()
+            self.reset()
 
     ### Protected Methods ###
 
-    def unpack_data(self, data):
-        vtype = type(data)
+    def pre_convertion(self, data):
+        if self._pre_converter is not None:
+            return self._pre_converter.convert(data)
+        return data
 
-        # Just return pass-through types
-        if vtype in self.pass_through_types:
+    def reset(self):
+        self._references = {} # {REFERENCE_ID: (DATA_ID, OBJECT)}
+        self._pending = [] # Pendings unpacking
+        self._instances = [] # [(INSTANCE, SNAPSHOT)]
+        self._delayed = 0 # If we are in a delayable unpacking
+
+    def unpack_data(self, data):
+
+        # Just return pass-through types,
+        # support sub-classed base types and metaclasses
+        if set(type(data).__mro__) & self.pass_through_types:
             return data
 
         analysis = self.analyse_data(data)
 
         if analysis is None:
             raise TypeError("Type %s not supported by unserializer %s"
-                            % (type(data).__name__, type(self).__name__))
+                            % (type(data).__name__,
+                               reflect.canonical_name(self)))
 
         constructor, unpacker = analysis
 
@@ -479,9 +619,35 @@ class Unserializer(object):
         finally:
             self._delayed -= 1
 
+    def finish_unpacking(self):
+        while self._pending:
+            fun, args, kwargs = self._pending.pop(0)
+            fun(*args, **kwargs)
+
+        # Initialize the instance in creation order
+        for instance, snapshot in self._instances:
+            instance.recover(snapshot)
+
+        # Calls the instances post restoration callback in reversed order
+        # in an intent to reduce the possibilities of instances relying
+        # on there references being fully restored when called.
+        # This should not be relied on anyway.
+        for instance, _ in reversed(self._instances):
+            instance.restored()
+
+    def restore_type(self, type_name):
+        value = reflect.named_object(type_name)
+        if issubclass(value, type):
+            raise ValueError("type %r unserialized to something that "
+                             "isn't a type: %r" % (type_name, value))
+        return value
+
     def restore_instance(self, type_name, snapshot):
         # Lookup the registry for a IRestorator
         restorator = self._registry.lookup(type_name)
+        if restorator is None:
+            raise TypeError("Type %s not supported by unserializer %s"
+                            % (type_name, reflect.canonical_name(self)))
         # Prepare the instance for recovery
         instance = restorator.prepare()
         # Delay the instance restoration for later to handle circular refs
@@ -491,10 +657,15 @@ class Unserializer(object):
 
     def restore_reference(self, refid, data):
         if refid in self._references:
+            # This is because of DelayUnpacking exception, reference
+            # can be registered multiple times
+            data_id, value = self._references[refid]
+            if data_id == id(data):
+                return value
             raise ValueError("Multiple references found with "
                              "the same identifier: %s" % refid)
         value = self.unpack_data(data)
-        self._references[refid] = value
+        self._references[refid] = (id(data), value)
         return value
 
     def restore_dereference(self, refid):
@@ -506,7 +677,8 @@ class Unserializer(object):
                 raise DelayPacking()
             raise ValueError("Dereferencing of yet unknown reference: %s"
                              % refid)
-        return self._references[refid]
+        _data_id, value = self._references[refid]
+        return value
 
     def unpack_unordered_values(self, values):
         '''Unpack an unordered list of values taking DelayPacking
@@ -598,39 +770,12 @@ class Unserializer(object):
 
     ### Private Methods ###
 
-    def _reset(self):
-        self._references = {} # {REFERENCE_ID: OBJECT}
-        self._pending = [] # Pendings unpacking
-        self._instances = [] # [(INSTANCE, SNAPSHOT)]
-        self._delayed = 0 # If we are in a delayable unpacking
-
-    def _pre_convertion(self, data):
-        if self._pre_converter is not None:
-            return self._pre_converter.convert(data)
-        return data
-
     def _continue_restoring_instance(self, instance, data):
         snapshot = self.unpack_data(data)
         # Delay instance initialization to the end to be sure
         # all snapshots circular references have been resolved
         self._instances.append((instance, snapshot))
         return instance
-
-    def _finish_unpacking(self):
-        while self._pending:
-            fun, args, kwargs = self._pending.pop(0)
-            fun(*args, **kwargs)
-
-        # Initialize the instance in creation order
-        for instance, snapshot in self._instances:
-            instance.recover(snapshot)
-
-        # Calls the instances post restoration callback in reversed order
-        # in an intent to reduce the possibilities of instances relying
-        # on there references being fully restored when called.
-        # This should not be relied on anyway.
-        for instance, _ in reversed(self._instances):
-            instance.restored()
 
 
 ### Module Private ###

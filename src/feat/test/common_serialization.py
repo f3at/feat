@@ -2,6 +2,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import itertools
 import types
 
 from twisted.python.reflect import qual
@@ -9,6 +10,7 @@ from twisted.spread import jelly
 from twisted.trial.unittest import SkipTest
 
 from feat.common import serialization
+from feat.common.serialization import base
 from feat.interface.serialization import *
 
 from . import common
@@ -31,6 +33,7 @@ class SerializableDummy(serialization.Serializable, jelly.Jellyable):
         self.set = set([1, 2, 3])
         self.dict = {1: 2, 3: 4}
         self.ref = None
+        pass
 
     def getStateFor(self, jellyer):
         return self.snapshot()
@@ -64,6 +67,18 @@ class SerializableDummy(serialization.Serializable, jelly.Jellyable):
 
 jelly.setUnjellyableForClass(qual(SerializableDummy),
                              SerializableDummy)
+
+
+class TestTypeSerializationDummy(object):
+    pass
+
+
+class MetaTestTypeSerializationDummy(type):
+    pass
+
+
+class TestTypeSerializationDummyWithMeta(object):
+    __metaclass__ = MetaTestTypeSerializationDummy
 
 
 class ConverterTest(common.TestCase):
@@ -105,21 +120,22 @@ class ConverterTest(common.TestCase):
                     t1, v1, a1, t2, v2, a2, c = record
                     yield t2, v2, a2, t1, v1, a1, c
                 else:
-                    print ">"*40, len(record)
                     self.fail("Unexpected conversion table record:\nRECORD: %r"
                               % (record, ))
 
         if self.unserializer is None:
             raise SkipTest("No unserializer, cannot test convertion")
 
-        self.checkConvertion(inverter(self.convertion_table()),
+        capabilities = self.unserializer.capabilities
+        self.checkConvertion(inverter(self.convertion_table(capabilities)),
                              self.unserializer.convert)
 
     def testSerialization(self):
         if self.serializer is None:
             raise SkipTest("No serializer, cannot test convertion")
 
-        self.checkConvertion(self.convertion_table(),
+        capabilities = self.serializer.capabilities
+        self.checkConvertion(self.convertion_table(capabilities),
                              self.serializer.convert)
 
     def testSymmetry(self):
@@ -129,8 +145,12 @@ class ConverterTest(common.TestCase):
         if self.serializer is None:
             raise SkipTest("No serializer, cannot test for symmetry")
 
+        cap1 = self.unserializer.capabilities
+        cap2 = self.serializer.capabilities
+        capabilities = cap1.intersection(cap2)
         self.checkSymmetry(self.serializer.convert,
-                           self.unserializer.convert)
+                           self.unserializer.convert,
+                           capabilities=capabilities)
 
     def serialize(self, data):
         return self.serializer.convert(data)
@@ -147,6 +167,8 @@ class ConverterTest(common.TestCase):
         self._assertEqualButDifferent(value, expected, 0, {}, {})
 
     def checkConvertion(self, table, converter):
+        if table is None:
+            raise SkipTest("No convertion table")
         for record in table:
             if len(record) == 5:
                 _t1, v1, t2, v2, c = record
@@ -174,7 +196,7 @@ class ConverterTest(common.TestCase):
                 result = converter(value)
 
                 # Check type
-                self.assertEqual(type(result), exp_type,
+                self.assertTrue(isinstance(result, exp_type),
                                  "Converted value with type %s instead "
                                  "of %s:\nVALUE: %r"
                                  % (type(result).__name__,
@@ -199,20 +221,38 @@ class ConverterTest(common.TestCase):
                                  "\n".join(["EXPECTED: " + repr(v)
                                             for v in exp_values])))
 
-    def checkSymmetry(self, serializer, deserializer):
-        for exp_type, values, must_change in self.symmetry_table():
+    def checkSymmetry(self, serializer, deserializer, capabilities=None):
+        if capabilities is None:
+            capabilities = base.DEFAULT_CAPABILITIES
+
+        for exp_type, values, must_change in self.symmetry_table(capabilities):
             for value in values:
                 self.log("Checking symmetry for %r (%s)",
                          value, exp_type.__name__)
-                self.assertEqual(type(value), exp_type)
+                self.assertTrue(issubclass(type(value), exp_type),
+                                "Expecting value %r to have type %s, not %s"
+                                % (value, exp_type, type(value)))
                 data = serializer(value)
                 result = deserializer(data)
-                self.assertEqual(type(result), exp_type)
+                self.assertTrue(issubclass(type(result), exp_type),
+                                "Expecting result %r to have type %s, not %s"
+                                % (result, exp_type, type(result)))
                 for v in values:
                     if self.safe_equal(v, result):
                         expected = v
                         break
                 else:
+                    print "="*80, "VALUE"
+                    import pprint
+                    pprint.pprint(value)
+                    print "-"*80, "DATA"
+                    pprint.pprint(data)
+                    print "-"*80, "RESULT"
+                    pprint.pprint(result)
+                    for v in values:
+                        print "-"*80, "EXPECTED"
+                        pprint.pprint(result)
+                    print "="*80
                     self.fail("Value not one of the expected values:\n"
                               "VALUE:    %r\nRESULT:   %r\n%s"
                               % (value, result,
@@ -221,193 +261,271 @@ class ConverterTest(common.TestCase):
                 if must_change:
                     self.assertEqualButDifferent(result, expected)
 
-    def convertion_table(self):
+    def convertion_table(self, capabilities):
         raise NotImplementedError()
 
-    def symmetry_table(self):
-        # Basic types
-        yield int, [0], False
-        yield int, [42], False
-        yield int, [-42], False
-        yield str, [""], False
-        yield str, ["spam"], False
-        yield unicode, [u""], False
-        yield unicode, [u"hétérogénéité"], False
-        yield float, [0.0], False
-        yield float, [3.14159], False
-        yield float, [-3.14159], False
-        yield float, [1.231456789e23], False
-        yield float, [1.231456789e-23], False
-        yield long, [0L], False
-        yield long, [2**66], False
-        yield long, [-2**66], False
-        yield bool, [True], False
-        yield bool, [False], False
-        yield types.NoneType, [None], False
+    def symmetry_table(self, capabilities):
 
-        # Tuple
-        yield tuple, [()], False # Exception for empty tuple singleton
-        yield tuple, [(1, 2, 3)], True
-        yield tuple, [("a", "b", "c")], True
-        yield tuple, [(u"â", u"ê", u"î")], True
-        yield tuple, [(0.1, 0.2, 0.3)], True
-        yield tuple, [(2**42, 2**43, 2**44)], True
-        yield tuple, [(True, False)], True
-        yield tuple, [(None, None)], True
-        yield tuple, [((), [], set([]), {})], True
-        yield tuple, [((1, 2), [3, 4], set([5, 6]), {7: 8})], True
+        from datetime import datetime
 
-        # List
-        yield list, [[]], True
-        yield list, [[1, 2, 3]], True
-        yield list, [["a", "b", "c"]], True
-        yield list, [[u"â", u"ê", u"î"]], True
-        yield list, [[0.1, 0.2, 0.3]], True
-        yield list, [[2**42, 2**43, 2**44]], True
-        yield list, [[True, False]], True
-        yield list, [[None, None]], True
-        yield list, [[(), [], set([]), {}]], True
-        yield list, [[(1, 2), [3, 4], set([5, 6]), {7: 8}]], True
+        valdesc = [(Capabilities.int_values, Capabilities.int_keys,
+                    int, [0, -42, 42]),
+                   (Capabilities.long_values, Capabilities.int_values,
+                    long, [0L, -2**66, 2**66]),
+                   (Capabilities.float_values, Capabilities.float_keys,
+                   float, [0.0, 3.14159, -3.14159, 1.23145e23, 1.23145e-23]),
+                   (Capabilities.str_values, Capabilities.str_keys,
+                    str, ["", "spam", "\x00", "\n"]),
+                   (Capabilities.unicode_values, Capabilities.unicode_keys,
+                    unicode, [u"", u"hétérogénéité", u"\x00\n"]),
+                   (Capabilities.bool_values, Capabilities.bool_keys,
+                    bool, [True, False]),
+                   (Capabilities.none_values, Capabilities.none_keys,
+                    type(None), [None])]
 
-        # Set
-        yield set, [set([])], True
-        yield set, [set([1, 2, 3])], True
-        yield set, [set(["a", "b", "c"])], True
-        yield set, [set([u"â", u"ê", u"î"])], True
-        yield set, [set([0.1, 0.2, 0.3])], True
-        yield set, [set([2**42, 2**43, 2**44])], True
-        yield set, [set([True, False])], True
-        yield set, [set([None, None])], True
-        yield set, [set([()])], True
-        yield set, [set([(1, 2)])], True
+        if Capabilities.meta_types in capabilities:
+            valdesc.append((Capabilities.type_values, Capabilities.type_keys,
+                            type, [int, dict, datetime,
+                                   TestTypeSerializationDummy,
+                                   TestTypeSerializationDummyWithMeta,
+                                   SerializableDummy]))
+        else:
+            valdesc.append((Capabilities.type_values, Capabilities.type_keys,
+                            type, [int, dict, datetime,
+                                   TestTypeSerializationDummy]))
 
-        # Dictionary
-        yield dict, [{}], True
-        yield dict, [{1: 2, 3: 4}], True
-        yield dict, [{"a": "b", "c": "d"}], True
-        yield dict, [{u"â": u"ê", u"î": u"ô"}], True
-        yield dict, [{0.1: 0.2, 0.3: 0.4}], True
-        yield dict, [{2**42: 2**43, 2**44: 2**45}], True
-        yield dict, [{True: False}], True
-        yield dict, [{None: None}], True
-        yield dict, [{(): ()}], True
-        yield dict, [{(1, 2): (3, 4)}], True
-        yield dict, [{1: [], 2: set([]), 3: {}}], True
-        yield dict, [{1: [2, 3], 4: set([5, 6]), 7: {8: 9}}], True
+        def iter_values(desc):
+            for cap, _, value_type, values in valdesc:
+                if cap in capabilities:
+                    for value in values:
+                        yield value_type, value, False
 
-        # Instances
-        yield SerializableDummy, [SerializableDummy()], True
+        def iter_keys(desc):
+            for _, cap, value_type, values in valdesc:
+                if cap in capabilities:
+                    for value in values:
+                        yield value_type, value, False
 
-        # Modified instance
-        o = SerializableDummy()
-        o.str = "spam"
-        o.unicode = "fúúúú"
-        o.int = 18
-        o.long = 2**44
-        o.float = 2.7182818284
-        o.bool = False
-        o.list = ['a', 'b', 'c']
-        o.tuple = ('d', 'e', 'f')
-        o.set = set(['g', 'h', 'i'])
-        o.dict = {'j': 1, 'k': 2, 'l': 3}
-        yield SerializableDummy, [o], True
+        def iter_instances(desc):
+            # Default instance
+            yield SerializableDummy, SerializableDummy(), True
+            # Modified instance
+            o = SerializableDummy()
 
-        # Combined test without references
-        yield list, [["a", u"b", 2**66, True, False, None,
-                     SerializableDummy(),
-                     (1, (2, 3), [4, 5], set([6, 7]), {8: 9}),
-                     [1, (2, 3), [4, 5], set([6, 7]), {8: 9}],
-                     set([1, (2, 3)]),
-                     {1: (2, 3), 4: [5, 6], 7: set([8, 9]),
-                      10: {11: 12}, (13, 14): 15}]], True
+            del o.int
+            del o.none
 
-        # Reference in list
-        a = ["a", "b"]
-        yield list, [[a, a]], True
+            o.str = "spam"
+            o.unicode = "fúúúú"
+            o.long = 2**44
+            o.float = 2.7182818284
+            o.bool = False
+            o.list = ['a', 'b', 'c']
+            o.tuple = ('d', 'e', 'f')
+            o.set = set(['g', 'h', 'i'])
+            o.dict = {'j': 1, 'k': 2, 'l': 3}
 
-        # Reference in tuple
-        a = (4, 5, 6)
-        yield tuple, [(a, a)], True
+            yield SerializableDummy, o, True
 
-        # Reference in dictionary value
-        a = ("a", )
-        yield dict, [{1: a, 2: a}], True
+        def iter_all_values(desc, stop=False, immutable=False):
+            values = [v for _, v, _ in iter_values(desc)]
+            if not immutable:
+                values += [v for _, v, _ in iter_instances(desc)]
+            if not stop:
+                values += [v for _, v, _ in iter_tuples(desc, True, immutable)]
+                if not immutable:
+                    values += [v for _, v, _ in iter_lists(desc, True)]
+                    values += [v for _, v, _ in iter_sets(desc, True)]
+                    values += [v for _, v, _ in iter_dicts(desc, True)]
+            return values
 
-        # Dereference in dictionary keys.
-        a = (("x"), )
-        yield list, [[a, {a: 1}]], True
+        def iter_all_keys(desc, stop=False):
+            values = [v for _, v, _ in iter_values(desc)]
+            if not stop:
+                values += [v for _, v, _ in iter_tuples(desc, True, True)]
+            return values
 
-        # Reference in dictionary keys.
-        a = (66, 42, 18)
-        yield list, [[{a: 1}, a]], True
+        def iter_tuples(desc, stop=False, immutable=False):
+            yield tuple, (), False # Exception for empty tuple singleton
+            # A tuple for each possible values
+            for v in iter_all_values(desc, stop, immutable):
+                yield tuple, tuple([v]), True
+            # One big tuple with everything supported in it
+            yield tuple, tuple(iter_all_values(desc, stop, immutable)), True
 
-        a = ((), )
-        b = {1: a, 2: a, 3: a}
-        yield dict, [b], True
+        def iter_lists(desc, stop=False):
+            yield list, [], True
+            # A list for each possible values
+            for v in iter_all_values(desc, stop):
+                yield list, [v], True
+            # One big list with everything supported in it
+            yield list, iter_all_values(desc, stop), True
 
-        # Multiple reference in dictionary keys
-        a = (u"a", )
-        b = {(1, a): 1, (2, a): 2, (3, a): 3}
-        yield dict, [b], True
+        def iter_sets(desc, stop=False):
+            yield set, set([]), True
+            # A set for each possible values
+            for v in iter_all_values(desc, stop, True):
+                yield set, set([v]), True
+            # One big list with everything supported in it
+            yield set, set(iter_all_values(desc, stop, True)), True
 
-        # Dereference in set.
-        a = ('x', )
-        yield list, [[a, set([a])]], True
+        def iter_dicts(desc, stop=False):
+            yield dict, {}, True
+            # One a big dict for every supported values with all supported keys
+            for v in iter_all_values(desc, stop):
+                d = {}
+                for k in iter_all_keys(desc, stop):
+                    d[k] = v
+                yield dict, d, True
 
-        # Reference in set.
-        a = (18, )
-        yield list, [[set([a]), a]], True
+        def iter_all(desc):
+            return itertools.chain(iter_values(desc),
+                                   iter_instances(desc),
+                                   iter_tuples(desc),
+                                   iter_lists(desc),
+                                   iter_sets(desc),
+                                   iter_dicts(desc))
 
-        # Multiple reference in set
-        a = (1, False)
-        b = set([(1, a), (2, a), (3, a)])
-        yield set, [b], True
+        for record in iter_all(valdesc):
+            value_type, value, should_mutate = record
+            yield value_type, [value], should_mutate
 
-        # List self-reference
-        a = []
-        a.append(a)
-        yield list, [a], True
+        if Capabilities.circular_references in capabilities:
+            # get supported values, keys and referencable
+            values = iter_values(valdesc)
+            _, X, _ = values.next()
+            _, Y, _ = values.next()
 
-        # Dictionary self-reference
-        a = {}
-        a[1] = a
-        yield dict, [a], True
+            keys = iter_keys(valdesc)
+            _, K, _ = keys.next()
+            _, L, _ = keys.next()
 
-        # Multiple references
-        a = ["mumu", "mama", "momo"]
-        b = [a]
-        c = [a, b]
-        yield list, [[a, b, c]], True
+            if Capabilities.list_values in capabilities:
+                Z = [X, Y]
+            elif Capabilities.tuple_values in capabilities:
+                Z = (X, Y)
+            elif Capabilities.set_values in capabilities:
+                Z = set([X, Y])
+            elif Capabilities.dict_values in capabilities:
+                Z = dict([X, Y])
+            else:
+                self.fail("Converter support circular references but do not "
+                          "supporte any referencable types")
 
-        # Complex structure
-        a = (42, )
-        b = (a, )
-        b2 = set(b)
-        c = (a, b)
-        c2 = {a: b2, b: c}
-        d = (a, b, c)
-        d2 = [a, b2, c2]
-        e = (b, c, d)
-        e2 = [b2, c2, e]
-        c2[e] = e2 # Make a cycle
-        yield dict, [{b: b2, c: c2, d: d2, e: e2}], True
+            if Capabilities.list_values in capabilities:
+                # Reference in list
+                yield list, [[Z, Z]], True
+                yield list, [[Z, [Z, [Z], Z], Z]], True
 
-        # complex references in instances
-        o1 = SerializableDummy()
-        o2 = SerializableDummy()
-        o3 = SerializableDummy()
-        o1.ref = o2
-        o2.ref = o1
-        o3.ref = o3
-        o1.list = o3.list
-        o2.dict = o1.dict
-        o3.tuple = o2.tuple
+                # List self-references
+                a = []
+                a.append(a)
+                yield list, [a], True
 
-        yield SerializableDummy, [o1], True
-        yield SerializableDummy, [o2], True
-        yield SerializableDummy, [o3], True
-        yield list, [[o1, o3]], True
-        yield list, [[o1, o2, o3]], True
+                a = []
+                b = [a]
+                a.append(b)
+                yield list, [b], True
+
+            if Capabilities.tuple_values in capabilities:
+                # Reference in tuple
+                yield tuple, [(Z, Z)], True
+                yield tuple, [(Z, (Z, (Z, ), Z), Z)], True
+
+            if Capabilities.dict_values in capabilities:
+                # Reference in dictionary value
+                yield dict, [{K: Z, L: Z}], True
+                yield dict, [{K: Z, L: {L: Z, K: {K: Z}}}], True
+
+                # Dictionary self-references
+                a = {}
+                a[1] = a
+                yield dict, [a], True
+
+                a = {}
+                b = {K: a}
+                a[K] = b
+                yield dict, [a], True
+
+                if (Capabilities.tuple_keys in capabilities
+                    and Capabilities.list_values in capabilities):
+                        a = (K, L)
+
+                        # Dereference in dictionary keys.
+                        yield list, [[a, {a: X}]], True
+
+                        # Reference in dictionary keys.
+                        yield list, [[{a: Y}, a]], True
+
+                        # Multiple reference in dictionary keys
+                        a = (K, L)
+                        yield dict, [{(K, a): X, (L, a): Y}], True
+
+            if (Capabilities.set_values in capabilities
+                and Capabilities.tuple_keys in capabilities
+                and Capabilities.list_values in capabilities):
+
+                a = (K, L)
+                # Dereference in set.
+                yield list, [[a, set([a])]], True
+
+                # Reference in set.
+                yield list, [[set([a]), a]], True
+
+                # Multiple reference in set
+                b = set([(K, a), (L, a)])
+                yield set, [b], True
+
+
+            if (Capabilities.tuple_values in capabilities
+                and Capabilities.list_values in capabilities
+                and Capabilities.dict_values in capabilities
+                and Capabilities.tuple_keys in capabilities
+                and Capabilities.list_values in capabilities):
+
+                # Complex structure
+                a = (K, L)
+                b = (a, )
+                b2 = set(b)
+                c = (a, b)
+                c2 = {a: b2, b: c}
+                d = (a, b, c)
+                d2 = [a, b2, c2]
+                e = (b, c, d)
+                e2 = [b2, c2, e]
+                c2[e] = e2 # Make a cycle
+                yield dict, [{b: b2, c: c2, d: d2, e: e2}], True
+
+            if Capabilities.instance_values in capabilities:
+                # complex references in instances
+                o1 = SerializableDummy()
+                o2 = SerializableDummy()
+                o3 = SerializableDummy()
+
+                o1.dict = {1: 1}
+                o2.tuple = (2, )
+                o3.list = [3]
+
+                o1.ref = o2
+                o2.ref = o1
+                o3.ref = o3
+                o1.list = o3.list
+                o2.dict = o1.dict
+                o3.tuple = o2.tuple
+
+                yield SerializableDummy, [o1], True
+                yield SerializableDummy, [o2], True
+                yield SerializableDummy, [o3], True
+
+                if Capabilities.list_values in capabilities:
+                    yield list, [[o1, o2]], True
+                    yield list, [[o2, o1]], True
+                    yield list, [[o1, o3]], True
+                    yield list, [[o3, o1]], True
+                    yield list, [[o2, o3]], True
+                    yield list, [[o3, o2]], True
+                    yield list, [[o1, o2, o3]], True
+                    yield list, [[o3, o1, o2]], True
 
     def safe_equal(self, a, b):
         '''Circular references safe comparator.
@@ -478,7 +596,7 @@ class ConverterTest(common.TestCase):
                 idx += 1
             return True
 
-        if isinstance(a, dict):
+        if isinstance(a, (dict, types.DictProxyType)):
             if len(a) != len(b):
                 return False
             for k1, v1 in a.iteritems():
@@ -547,6 +665,7 @@ class ConverterTest(common.TestCase):
         elif isinstance(expected, (list, tuple)):
             if expected != (): # Special case for tuple singleton
                 self.assertIsNot(expected, value)
+
             self.assertEqual(len(expected), len(value))
             for exp, val in zip(expected, value):
                 idx = self._assertEqualButDifferent(val, exp, idx + 1,
@@ -570,7 +689,7 @@ class ConverterTest(common.TestCase):
                                                     valids, expids)
         elif isinstance(value, float):
             self.assertAlmostEqual(value, expected)
-        elif isinstance(value, (int, long, bool, str, unicode)):
+        elif isinstance(value, (int, long, bool, str, unicode, type)):
             self.assertEqual(value, expected)
         else:
             self.assertIsNot(expected, value)

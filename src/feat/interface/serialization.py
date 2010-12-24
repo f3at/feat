@@ -1,8 +1,37 @@
 from zope.interface import Interface, Attribute
 
+from feat.common import enum
+
 __all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
            "IInstance", "IReference", "IDereference",
-           "IFreezer", "IConverter"]
+           "Capabilities", "IFreezer", "IConverter"]
+
+
+class Capabilities(enum.Enum):
+    (int_values,
+     long_values,
+     float_values,
+     str_values,
+     unicode_values,
+     bool_values,
+     none_values,
+     tuple_values,
+     list_values,
+     set_values,
+     dict_values,
+     instance_values,
+     type_values,
+     int_keys,
+     long_keys,
+     float_keys,
+     str_keys,
+     unicode_keys,
+     bool_keys,
+     none_keys,
+     type_keys,
+     tuple_keys,
+     circular_references,
+     meta_types) = range(24)
 
 
 class IRegistry(Interface):
@@ -97,6 +126,8 @@ class IFreezer(Interface):
     The only guarantee is that multiple call to freeze() will
     have always the same result.'''
 
+    capabilities = Attribute("Set of L{Capabilities} value.")
+
     def freeze(data):
         '''One-way converts a format to another format.
         Only work with python basic types and instances implementing
@@ -111,6 +142,8 @@ class IConverter(Interface):
     L{ISerializable} for which a L{IRestorator} must be registered.
     Converters are normally bidirectional with a serializer and
     an unserializer.'''
+
+    capabilities = Attribute("Capabilities expresed by L{ICapabilities}")
 
     def convert(data):
         '''Converts a format to another format, usually the output

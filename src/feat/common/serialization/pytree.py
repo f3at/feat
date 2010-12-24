@@ -136,7 +136,7 @@ class Unserializer(base.Unserializer):
     reference got dereferenced, so unpacking '''
 
     pass_through_types = set([str, unicode, int, long,
-                              float, bool, type(None)])
+                              float, bool, type(None), type])
 
     ### Overridden Methods ###
 
