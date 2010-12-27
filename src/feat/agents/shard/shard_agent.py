@@ -4,7 +4,7 @@ import copy
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               descriptor, document, replay)
-from feat.common import enum, fiber
+from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
 from feat.agents.host import host_agent
@@ -21,7 +21,6 @@ class ShardAgent(agent.BaseAgent):
         state.resources.define('children', 2)
 
         desc = state.medium.get_descriptor()
-        self.info(id(state))
         assert(isinstance(desc, Descriptor))
         for x in range(len(desc.children)):
             state.resource.allocate(children=1)
@@ -93,9 +92,8 @@ class JoinShardContractor(contractor.BaseContractor):
                            announcement)
         f.add_callback(self._pick_best_bid, bid)
         f.add_callback(self._bid_refuse_or_handover, bid)
-        f.add_callback(self._terminate_nested_manager)
-        f.succeed(None)
-        return f
+        f.add_callback(fiber.drop_result, self._terminate_nested_manager)
+        return f.succeed()
 
     @replay.mutable
     def _fetch_children_bids(self, state, announcement):
@@ -116,7 +114,7 @@ class JoinShardContractor(contractor.BaseContractor):
         return f.succeed()
 
     @replay.immutable
-    def _terminate_nested_manager(self, state, _):
+    def _terminate_nested_manager(self, state):
         if state.nested_manager:
             state.nested_manager.terminate()
 
@@ -206,7 +204,7 @@ class JoinShardContractor(contractor.BaseContractor):
     def _get_our_id(self, state, *_):
         return (state.agent.get_descriptor()).doc_id
 
-    @replay.mutable
+    @replay.immutable
     def _finalize(self, state, shard):
         report = message.FinalReport()
         report.payload['shard'] = shard
@@ -259,7 +257,7 @@ class NestedJoinShardManager(manager.BaseManager):
 
     @replay.journaled
     def terminate(self, state):
-        return state.medium._terminate()
+        state.medium.terminate()
 
 
 class ActionType(enum.Enum):
@@ -272,6 +270,7 @@ class ActionType(enum.Enum):
     (join, create) = range(2)
 
 
+@serialization.register
 @document.register
 class Descriptor(descriptor.Descriptor):
 

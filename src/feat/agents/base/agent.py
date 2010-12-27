@@ -3,7 +3,7 @@
 
 from zope.interface import implements
 
-from feat.common import log, decorator
+from feat.common import log, decorator, serialization
 from feat.interface import agent
 from feat.agents.base import resource, recipient, replay
 
@@ -14,6 +14,7 @@ registry = dict()
 def register(klass, name):
     global registry
     registry[name] = klass
+    serialization.register(klass)
     return klass
 
 
@@ -82,8 +83,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
         return state.medium.initiate_protocol(*args, **kwargs)
 
     @replay.mutable
-    def preallocate_resource(self, state, expiration_time=None, **params):
-        return state.resources.preallocate(expiration_time, **params)
+    def preallocate_resource(self, state, **params):
+        return state.resources.preallocate(**params)
 
     @replay.mutable
     def allocate_resource(self, state, **params):

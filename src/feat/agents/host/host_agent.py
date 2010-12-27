@@ -2,8 +2,8 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, recipient, manager, message, replay,
-                              replier, requester, document, descriptor)
-from feat.common import fiber
+                              replier, requester, document, descriptor, )
+from feat.common import fiber, serialization
 from feat.agencies import agency
 
 
@@ -112,6 +112,7 @@ class JoinShardManager(manager.BaseManager):
         return f
 
 
+@serialization.register
 @document.register
 class Descriptor(descriptor.Descriptor):
 

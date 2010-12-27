@@ -36,6 +36,7 @@ class DummyRequester(requester.BaseRequester):
 
     @replay.immutable
     def _get_medium(self, state):
+        self.log(state)
         return state.medium
 
     @replay.immutable
@@ -155,22 +156,22 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
             self.assertEqual(requests.RequestState.requested,\
                                  self.medium.state)
-            return session_id
+            return session_id, message
 
         d.addCallback(assertsOnMessage)
 
-        def assertsOnAgency(session_id):
+        def assertsOnAgency((session_id, msg, )):
             self.log('%r', self.agent._listeners.keys())
             self.assertTrue(session_id in self.agent._listeners.keys())
             listener = self.agent._listeners[session_id]
             self.assertEqual('AgencyRequester', listener.__class__.__name__)
-            return session_id
+            return session_id, msg
 
         d.addCallback(assertsOnAgency)
 
-        def mimicReceivingResponse(session_id):
+        def mimicReceivingResponse((session_id, msg, )):
             response = message.ResponseMessage()
-            self.reply(response, self.endpoint, self.requester.request)
+            self.reply(response, self.endpoint, msg)
 
             return session_id
 
@@ -185,13 +186,14 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @defer.inlineCallbacks
     def testRequestTimeout(self):
         delay.time_scale = 0.01
 
         d = self.queue.get()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester,
+            yield self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
         self.medium = self.requester._get_medium()
         self.finished = self.requester.notify_finish()
@@ -210,7 +212,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         d.addCallback(assertTerminatedWithNoResponse)
         d.addCallback(lambda _: self.finished)
 
-        return d
+        yield d
 
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)

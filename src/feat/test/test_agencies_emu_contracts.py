@@ -551,10 +551,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             medium = contractor._get_medium()
             self.assertEqual(contracts.ContractState.announced,
                              medium.state)
-            self.assertNotEqual(None, medium.announce)
-            self.assertEqual(announce, medium.announce)
-            self.assertTrue(isinstance(medium.announce,\
-                                       message.Announcement))
 
         d.addCallback(asserts_on_contractor)
 
@@ -585,7 +581,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
-            self.assertEqual(self.contractor._get_medium().bid, msg)
+            self.assertEqual(self.contractor._get_medium().own_bid, msg)
 
         d.addCallback(asserts_on_bid)
 
@@ -616,6 +612,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(self.endpoint, msg.reply_to)
 
         d.addCallback(asserts_on_bid)
+        d.addCallback(self.cb_after, obj=self.agent,
+                                    method='unregister_listener')
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.delegated)
 

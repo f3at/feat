@@ -2,7 +2,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.internet import reactor, defer
+from twisted.internet import defer
 from twisted.python import failure
 
 from feat.common import fiber
@@ -163,61 +163,56 @@ class TestFiber(common.TestCase):
 
         f.add_callback(o.spam, 42, parrot="dead")
         self.assertEqual((None, None,
-                          [(("feat.test.test_common_fiber.Dummy.spam",
+                          [((o.spam,
                             (42, ), {"parrot": "dead"}), None)]),
                          f.snapshot())
 
         f.add_errback(beans, 18, slug="mute")
         self.assertEqual((None, None,
-                          [(("feat.test.test_common_fiber.Dummy.spam",
+                          [((o.spam,
                              (42, ), {"parrot": "dead"}),
                             None),
                            (None,
-                            ("feat.test.test_common_fiber.beans",
+                            (beans,
                              (18, ), {"slug": "mute"}))]),
                          f.snapshot())
 
         f.add_callbacks(o.bacon, eggs)
         self.assertEqual((None, None,
-                          [(("feat.test.test_common_fiber.Dummy.spam",
+                          [((o.spam,
                              (42, ), {"parrot": "dead"}),
                             None),
                            (None,
-                            ("feat.test.test_common_fiber.beans",
+                            (beans,
                              (18, ), {"slug": "mute"})),
-                           (("feat.test.test_common_fiber.Dummy.bacon",
+                           ((o.bacon,
                              None, None),
-                            ("feat.test.test_common_fiber.eggs",
+                            (eggs,
                              None, None))]),
                          f.snapshot())
 
         f.succeed("shop")
         self.assertEqual((TriggerType.succeed, "shop",
-                          [(("feat.test.test_common_fiber.Dummy.spam",
+                          [((o.spam,
                              (42, ), {"parrot": "dead"}),
                             None),
                            (None,
-                            ("feat.test.test_common_fiber.beans",
+                            (beans,
                              (18, ), {"slug": "mute"})),
-                           (("feat.test.test_common_fiber.Dummy.bacon",
+                           ((o.bacon,
                              None, None),
-                            ("feat.test.test_common_fiber.eggs",
+                            (eggs,
                              None, None))]),
                          f.snapshot())
 
     def testChainedSnapshot(self):
         o = Dummy()
 
-        spam_id = "feat.test.test_common_fiber.Dummy.spam"
-        bacon_id = "feat.test.test_common_fiber.Dummy.bacon"
-        eggs_id = "feat.test.test_common_fiber.eggs"
-        beans_id = "feat.test.test_common_fiber.beans"
-
         f1 = fiber.Fiber()
         self.assertEqual((None, None, []), f1.snapshot())
         f1.add_callback(o.spam, 1, 2, 3, accompaniment="beans")
         self.assertEqual((None, None,
-                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                          [((o.spam, (1, 2, 3), {"accompaniment": "beans"}),
                             None)]),
                          f1.snapshot())
 
@@ -226,7 +221,7 @@ class TestFiber(common.TestCase):
         f2.add_errback(o.bacon, accompaniment="eggs", extra="spam")
         self.assertEqual((None, None,
                           [(None,
-                            (bacon_id, None,
+                            (o.bacon, None,
                              {"accompaniment": "eggs", "extra": "spam"}))]),
                          f2.snapshot())
 
@@ -234,47 +229,47 @@ class TestFiber(common.TestCase):
         self.assertEqual((None, None, []), f3.snapshot())
         f3.add_both(o.spam)
         self.assertEqual((None, None,
-                          [((spam_id, None, None), (spam_id, None, None))]),
+                          [((o.spam, None, None), (o.spam, None, None))]),
                          f3.snapshot())
 
         f2.chain(f3)
         self.assertEqual((None, None,
                           [(None,
-                            (bacon_id, None,
+                            (o.bacon, None,
                              {"accompaniment": "eggs", "extra": "spam"})),
-                           ((spam_id, None, None), (spam_id, None, None))]),
+                           ((o.spam, None, None), (o.spam, None, None))]),
                          f2.snapshot())
 
         f2.add_callback(eggs)
         self.assertEqual((None, None,
                           [(None,
-                            (bacon_id, None,
+                            (o.bacon, None,
                              {"accompaniment": "eggs", "extra": "spam"})),
-                           ((spam_id, None, None), (spam_id, None, None)),
-                           ((eggs_id, None, None), None)]),
+                           ((o.spam, None, None), (o.spam, None, None)),
+                           ((eggs, None, None), None)]),
                          f2.snapshot())
 
         f1.chain(f2)
         self.assertEqual((None, None,
-                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                          [((o.spam, (1, 2, 3), {"accompaniment": "beans"}),
                             None),
                             (None,
-                            (bacon_id, None,
+                            (o.bacon, None,
                              {"accompaniment": "eggs", "extra": "spam"})),
-                           ((spam_id, None, None), (spam_id, None, None)),
-                           ((eggs_id, None, None), None)]),
+                           ((o.spam, None, None), (o.spam, None, None)),
+                           ((eggs, None, None), None)]),
                          f1.snapshot())
 
         f1.add_errback(beans)
         self.assertEqual((None, None,
-                          [((spam_id, (1, 2, 3), {"accompaniment": "beans"}),
+                          [((o.spam, (1, 2, 3), {"accompaniment": "beans"}),
                             None),
                             (None,
-                            (bacon_id, None,
+                            (o.bacon, None,
                              {"accompaniment": "eggs", "extra": "spam"})),
-                           ((spam_id, None, None), (spam_id, None, None)),
-                           ((eggs_id, None, None), None),
-                           (None, (beans_id, None, None))]),
+                           ((o.spam, None, None), (o.spam, None, None)),
+                           ((eggs, None, None), None),
+                           (None, (beans, None, None))]),
                          f1.snapshot())
 
     def testFiberState(self):
@@ -1265,11 +1260,11 @@ class TestFiber(common.TestCase):
         f1.add_callback(o.spam, 42, parrot="dead")
         f1.add_errback(beans, 18, slug="mute")
         self.assertEqual((None, None,
-                          [(("feat.test.test_common_fiber.Dummy.spam",
+                          [((o.spam,
                              (42, ), {"parrot": "dead"}),
                             None),
                            (None,
-                            ("feat.test.test_common_fiber.beans",
+                            (beans,
                              (18, ), {"slug": "mute"}))]),
                          f1.snapshot())
 
@@ -1278,25 +1273,25 @@ class TestFiber(common.TestCase):
         f2.add_callbacks(o.bacon, eggs)
         f2.succeed("shop")
         self.assertEqual((TriggerType.succeed, "shop",
-                          [(("feat.test.test_common_fiber.Dummy.bacon",
+                          [((o.bacon,
                              None, None),
-                            ("feat.test.test_common_fiber.eggs",
+                            (eggs,
                              None, None))]),
                          f2.snapshot())
 
         f3 = fiber.FiberList([f1, f2])
         self.assertEqual((None, None,
                           [(None, None,
-                            [(("feat.test.test_common_fiber.Dummy.spam",
+                            [((o.spam,
                                (42, ), {"parrot": "dead"}),
                                None),
                               (None,
-                               ("feat.test.test_common_fiber.beans",
+                               (beans,
                                 (18, ), {"slug": "mute"}))]),
                            (TriggerType.succeed, "shop",
-                            [(("feat.test.test_common_fiber.Dummy.bacon",
+                            [((o.bacon,
                                None, None),
-                              ("feat.test.test_common_fiber.eggs",
+                              (eggs,
                                None, None))])]),
                          f3.snapshot())
         try:
@@ -1308,16 +1303,16 @@ class TestFiber(common.TestCase):
 
         self.assertEqual((TriggerType.fail, error,
                           [(None, None,
-                            [(("feat.test.test_common_fiber.Dummy.spam",
+                            [((o.spam,
                                (42, ), {"parrot": "dead"}),
                                None),
                               (None,
-                               ("feat.test.test_common_fiber.beans",
+                               (beans,
                                 (18, ), {"slug": "mute"}))]),
                            (TriggerType.succeed, "shop",
-                            [(("feat.test.test_common_fiber.Dummy.bacon",
+                            [((o.bacon,
                                None, None),
-                              ("feat.test.test_common_fiber.eggs",
+                              (eggs,
                                None, None))])]),
                          f3.snapshot())
 

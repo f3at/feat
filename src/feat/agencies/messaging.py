@@ -33,7 +33,10 @@ class Connection(log.Logger):
             reactor.callLater(0, bind)
 
         def stop(reason):
-            self.log('Error handler: exiting, reason %r' % reason)
+            if reason.check(FinishConnection):
+                self.log('Error handler: exiting, reason %r' % reason)
+            else:
+                reason.raiseException()
 
         def bind():
             d = self._consumeQueue(queue)

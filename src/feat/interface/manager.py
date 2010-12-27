@@ -47,6 +47,15 @@ class IAgencyManager(contracts.IContractPeer):
         @type reason: str
         '''
 
+    def terminate():
+        '''
+        Unregister the listener from the agency. This method is meant to be
+        used in nested contracts in case when the whole purpose of the managers
+        implemenetation is fetching the bids from nested contractors.
+        Before this methods gets called the agent-side code should
+        take care to reject/handover all the bids received by the manager.
+        '''
+
 
 class IAgentManager(protocols.IInitiator):
     '''Agent part of the contract manager. Use the L{IAgencyManager} given

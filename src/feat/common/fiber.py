@@ -421,9 +421,9 @@ class Fiber(object):
         cbd = None
         ebd = None
         if cb is not None:
-            cbd = (reflect.canonical_name(cb), cba or None, cbk or None)
+            cbd = (cb, cba or None, cbk or None)
         if eb is not None:
-            ebd = (reflect.canonical_name(eb), eba or None, ebk or None)
+            ebd = (eb, eba or None, ebk or None)
         return (cbd, ebd)
 
     def _on_chain_cb(self, parent_param, trigger, param, d, default_trigger):

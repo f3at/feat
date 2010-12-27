@@ -117,15 +117,14 @@ class DirectReplayDummy(journal.Recorder):
 
     @journal.recorded()
     def baz(self, value):
-
-        def async_add(v):
-            self.some_baz += v
-            return self.some_baz
-
         f = fiber.Fiber()
-        f.add_callback(async_add)
+        f.add_callback(self.async_add)
         f.succeed(value)
         return f
+
+    def async_add(v):
+        self.some_baz += v
+        return self.some_baz
 
     @journal.recorded()
     def bazz(self, value):
@@ -440,7 +439,7 @@ class TestJournaling(common.TestCase):
             spam_id = "feat.test.test_common_journal.BasicRecordingDummy.spam"
             bacon_id = "bacon"
 
-            break_call = (('feat.test.common.break_chain', None, None), None)
+            break_call = ((common.break_chain, None, None), None)
 
             expected = [(iid, spam_id, (("beans", ), None),
                          None, "spam and beans"),
@@ -625,25 +624,25 @@ class TestJournaling(common.TestCase):
 
         # Test that fibers are not executed
         self.assertEqual((None, (TriggerType.succeed, 5,
-                                 [(("feat.test.test_common_journal.async_add",
+                                 [((o.async_add,
                                     None, None),
                                    None)])),
                          snapshot(o.replay(baz_id, ((5, ), None))))
         self.assertEqual(0, o.some_baz)
         self.assertEqual((None, (TriggerType.succeed, 8,
-                                 [(("feat.test.test_common_journal.async_add",
+                                 [((o.async_add,
                                     None, None),
                                    None)])),
                          snapshot(o.replay(baz_id, ((8, ), None))))
         self.assertEqual(0, o.some_baz)
         self.assertEqual((None, (TriggerType.succeed, 5,
-                                 [(("feat.test.test_common_journal.async_add",
+                                 [((o.async_add,
                                     None, None),
                                    None)])),
                          snapshot(o.replay(bazz_id, ((5, ), None))))
         self.assertEqual(0, o.some_baz)
         self.assertEqual((None, (TriggerType.succeed, 8,
-                                 [(("feat.test.test_common_journal.async_add",
+                                 [((o.async_add,
                                     None, None),
                                    None)])),
                          snapshot(o.replay(bazz_id, ((8, ), None))))

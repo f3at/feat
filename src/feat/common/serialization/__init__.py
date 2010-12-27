@@ -1,2 +1,3 @@
 from .base import (register, Registry, Snapshotable, Serializable,
-                   MetaSerializable, )
+                   MetaSerializable, get_registry, freeze_tag, )
+from feat.interface.serialization import *

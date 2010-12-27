@@ -16,6 +16,37 @@ SIDE_EFFECTS_TAG = "__SIDE_EFFECTS__"
 INSIDE_EFFECT_TAG = "__INSIDE_EFFECT__"
 
 
+def replay(method, args=None, kwargs=None, expected_side_effects=[]):
+    '''
+    Calls method in replay context so that no journal entries are created,
+    expected_side_effects are checked, and no asynchronous task is started.
+    '''
+    # Starts the fiber section
+    section = fiber.WovenSection()
+    section.enter()
+    side_effects = None
+
+    # Check if this is the first recording in the fiber section
+    journal_mode = section.state.get(RECORDED_TAG, None)
+    is_first = journal_mode is None
+
+    if is_first:
+        section.state[RECORDED_TAG] = JournalMode.replay
+        side_effects = expected_side_effects
+        section.state[SIDE_EFFECTS_TAG] = side_effects
+
+    args = args or tuple()
+    kwargs = kwargs or {}
+    result = method(*args, **kwargs)
+
+    # We don't want anything asynchronous to be called,
+    # so we abort the fiber section
+    section.abort(result)
+    # side effects are returned in sake of making sure that
+    # all the side effects expected have been consumed (called)
+    return (side_effects or None, result, )
+
+
 @decorator.parametrized_function
 def recorded(function, custom_id=None, reentrant=True):
     '''MUST only be used only with method from child
@@ -33,6 +64,16 @@ def recorded(function, custom_id=None, reentrant=True):
 
 @decorator.simple_callable
 def side_effect(original):
+
+    def wrapper(callable, *args, **kwargs):
+        name = reflect.canonical_name(callable)
+        return wrapper_internal(callable, args, kwargs, name)
+
+    return wrapper
+
+
+@decorator.parametrized_callable
+def named_side_effect(original, name):
     """Decorator for function or method that do not modify the recorder state
     but have some side effects that can't be replayed.
     What it does in recording mode is keep the function name, arguments,
@@ -43,67 +84,72 @@ def side_effect(original):
     or keywords were to be different than the expected ones, it would raise
     L{ReplayError}. Should work for any function or method."""
 
-    def check_result(result, info):
-        if isinstance(result, defer.Deferred):
-            raise SideEffectResultError("Side-effect functions %s "
-                                        "cannot return Deferred" % info)
-        if IFiber.providedBy(result):
-            raise SideEffectResultError("Side-effect functions %s "
-                                        "cannot return IFiber" % info)
-        return result
-
     def wrapper(callable, *args, **kwargs):
-        name = reflect.canonical_name(callable)
+        return wrapper_internal(callable, args, kwargs, name)
 
-        section = fiber.WovenSection()
-        section.enter()
+    return wrapper
 
-        journal_mode = section.state.get(RECORDED_TAG, None)
-        inside_flag = section.state.get(INSIDE_EFFECT_TAG, False)
 
-        if inside_flag:
-            # Already inside a side-effect call, so just abort and call
-            section.abort()
-            return check_result(callable(*args, **kwargs), name)
+def check_result(result, info):
+    if isinstance(result, defer.Deferred):
+        raise SideEffectResultError("Side-effect functions %s "
+                                    "cannot return Deferred" % info)
+    if IFiber.providedBy(result):
+        raise SideEffectResultError("Side-effect functions %s "
+                                    "cannot return IFiber" % info)
+    return result
 
-        if journal_mode == JournalMode.recording:
-            # Recording mode, execute and record the side-effect
-            side_effects = section.state[SIDE_EFFECTS_TAG]
 
-            section.state[INSIDE_EFFECT_TAG] = True
-            try:
-                result = check_result(callable(*args, **kwargs), name)
-            finally:
-                section.state[INSIDE_EFFECT_TAG] = False
+def wrapper_internal(callable, args, kwargs, name):
+    section = fiber.WovenSection()
+    section.enter()
 
-            side_effects.append((name, args or None, kwargs or None, result))
-            return section.exit(result)
+    journal_mode = section.state.get(RECORDED_TAG, None)
+    inside_flag = section.state.get(INSIDE_EFFECT_TAG, False)
 
-        if journal_mode == JournalMode.replay:
-            # Replay mode, pop a side effect, verify the function name
-            # and the arguments, and return the canned result without
-            # executing the real code.
-            side_effects = section.state[SIDE_EFFECTS_TAG]
-            if not side_effects:
-                raise ReplayError("Unexpected side-effect function '%s'"
-                                  % name)
-            exp_name, exp_args, exp_kwargs, result = side_effects.pop(0)
-            if exp_name != name:
-                raise ReplayError("Unexpected side-effect function '%s' "
-                                  "instead of '%s'" % (name, exp_name))
-            if exp_args != (args or None):
-                raise ReplayError("Unexpected side-effect arguments %r "
-                                  "instead of %r" % (args or None, exp_args))
-            if exp_kwargs != (kwargs or None):
-                raise ReplayError("Unexpected side-effect keywords %r instead "
-                                  "of %r" % (kwargs or None, exp_kwargs))
-            return section.exit(result)
-
-        # We are not inside a recorded section, abort and execute
+    if inside_flag:
+        # Already inside a side-effect call, so just abort and call
         section.abort()
         return check_result(callable(*args, **kwargs), name)
 
-    return wrapper
+    if journal_mode == JournalMode.recording:
+        # Recording mode, execute and record the side-effect
+        side_effects = section.state[SIDE_EFFECTS_TAG]
+
+        section.state[INSIDE_EFFECT_TAG] = True
+        try:
+            result = check_result(callable(*args, **kwargs), name)
+        finally:
+            section.state[INSIDE_EFFECT_TAG] = False
+
+        side_effects.append((name, args or None, kwargs or None, result))
+        return section.exit(result)
+
+    if journal_mode == JournalMode.replay:
+        # Replay mode, pop a side effect, verify the function name
+        # and the arguments, and return the canned result without
+        # executing the real code.
+        side_effects = section.state[SIDE_EFFECTS_TAG]
+        if not side_effects:
+            raise ReplayError("Unexpected side-effect function '%s'"
+                              % name)
+        exp_name, exp_args, exp_kwargs, result = side_effects.pop(0)
+        if exp_name != name:
+            raise ReplayError("Unexpected side-effect function '%s' "
+                              "instead of '%s'" % (name, exp_name))
+        if exp_args != (args or None):
+            raise ReplayError("Unexpected side-effect arguments of function %r"
+                              ", args: %r instead of %r" %\
+                              (name, args or None, exp_args))
+        if exp_kwargs != (kwargs or None):
+            raise ReplayError("Unexpected side-effect keywords of function %r"
+                              ", kwargs: %r instead of %r" %\
+                              (name, kwargs or None, exp_kwargs))
+        return section.exit(result)
+
+    # We are not inside a recorded section, abort and execute
+    section.abort()
+    return check_result(callable(*args, **kwargs), name)
 
 
 class RecorderRoot(serialization.Serializable):
@@ -198,6 +244,11 @@ class Recorder(RecorderNode, annotate.Annotable):
         RecorderNode.__init__(self, parent)
         self.journal_keeper.register(self)
 
+    ### ISerializable ###
+
+    def restored(self):
+        self.journal_keeper.register(self)
+
     ### IRecorder Methods ###
 
     def record(self, fun_id, args=None, kwargs=None, reentrant=True):
@@ -208,9 +259,10 @@ class Recorder(RecorderNode, annotate.Annotable):
         return self._record(None, function, args or (), kwargs or {},
                             reentrant=reentrant)
 
-    def replay(self, fun_id, input):
+    def replay(self, fun_id, input, expected_side_effects=[]):
         args, kwargs = input
-        return self._replay(fun_id, None, args or (), kwargs or {})
+        return self._replay(fun_id, None, args or (), kwargs or {},
+                            expected_side_effects)
 
     ### Private Methods ###
 
@@ -247,29 +299,15 @@ class Recorder(RecorderNode, annotate.Annotable):
 
         return section.exit(result)
 
-    def _replay(self, fun_id, function, args, kwargs):
-        # Starts the fiber section
-        section = fiber.WovenSection()
-        section.enter()
-        side_effects = None
+    def _replay(self, fun_id, function, args, kwargs,
+                expected_side_effects=[]):
 
-        # Check if this is the first recording in the fiber section
-        journal_mode = section.state.get(RECORDED_TAG, None)
-        is_first = journal_mode is None
+        def extract(fun_id, function, args, kwargs):
+            _, _, result = self._call_fun(fun_id, function, args, kwargs)
+            return result
 
-        if is_first:
-            section.state[RECORDED_TAG] = JournalMode.replay
-            side_effects = []
-            section.state[SIDE_EFFECTS_TAG] = side_effects
-
-        _, _, result = self._call_fun(fun_id, function, args, kwargs)
-
-        # We don't want anything asynchronous to be called,
-        # so we abort the fiber section
-        section.abort(result)
-
-        # We return the side effects and the result
-        return side_effects or None, result
+        return replay(extract, (fun_id, function, args, kwargs, ),
+                      None, expected_side_effects)
 
     def _call_fun(self, fun_id, function, args, kwargs):
         global _registry, _reverse

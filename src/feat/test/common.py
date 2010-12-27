@@ -153,7 +153,8 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         def new_method(*args, **kwargs):
             obj.__setattr__(method, old_method)
             ret = old_method(*args, **kwargs)
-            reactor.callLater(0, d.callback, arg or ret)
+            cb_arg = arg or (not isinstance(ret, defer.Deferred) and ret)
+            reactor.callLater(0, d.callback, cb_arg)
             return ret
 
         obj.__setattr__(method, new_method)

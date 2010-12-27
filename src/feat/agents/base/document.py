@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from feat.common import serialization
 
 documents = dict()
 
@@ -13,19 +14,12 @@ def register(klass):
     return klass
 
 
-class Document(object):
+@serialization.register
+class Document(serialization.Serializable):
 
     def __init__(self, _id=None, _rev=None, **kwargs):
-        self._doc_id = self._decode(_id)
-        self._rev = self._decode(_rev)
-
-    @property
-    def doc_id(self):
-        return self._doc_id
-
-    @property
-    def rev(self):
-        return self._rev
+        self.doc_id = self._decode(_id)
+        self.rev = self._decode(_rev)
 
     def get_content(self):
         raise NotImplementedError("'get_content' method should be overloaded")
@@ -41,9 +35,9 @@ class Document(object):
         doc_id = self._decode(response.get('id', None))
         rev = self._decode(response.get('rev', None))
         if doc_id:
-            self._doc_id = doc_id
+            self.doc_id = doc_id
         if rev:
-            self._rev = rev
+            self.rev = rev
 
         return self
 

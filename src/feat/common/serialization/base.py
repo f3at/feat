@@ -38,6 +38,21 @@ FREEZING_CAPABILITIES = DEFAULT_CAPABILITIES \
                         | set([Capabilities.function_values,
                                Capabilities.method_values])
 
+FREEZING_TAG_ATTRIBUTE = '__freezing_tag__'
+
+
+def freeze_tag(name):
+    '''
+    This is not using decorator.py because we need to access original function
+    not the wrapper.
+    '''
+
+    def decorator(func):
+        setattr(func, FREEZING_TAG_ATTRIBUTE, name)
+        return func
+
+    return decorator
+
 
 @decorator.simple_class
 def register(restorator):
@@ -45,6 +60,11 @@ def register(restorator):
     global _global_registry
     _global_registry.register(restorator)
     return restorator
+
+
+def get_registry():
+    global _global_registry
+    return _global_registry
 
 
 @adapter.register(object, ISnapshotable)
@@ -435,6 +455,9 @@ class Serializer(object):
         self.check_capabilities(Capabilities.method_values, value,
                                 caps, freezing)
         if freezing:
+            if hasattr(value.__func__, FREEZING_TAG_ATTRIBUTE):
+                tag = getattr(value.__func__, FREEZING_TAG_ATTRIBUTE)
+                return self.flatten_value(tag, caps, freezing)
             return self.pack_frozen_method, value
         return self.pack_method, value
 

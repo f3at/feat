@@ -4,7 +4,7 @@ import uuid
 import traceback
 
 from twisted.internet import defer
-from feat.common import delay
+from feat.common import delay, serialization
 
 
 class StateAssertationError(RuntimeError):
@@ -17,6 +17,7 @@ class StateMachineMixin(object):
         self.state = state
         self._changes_notifications = dict()
 
+    @serialization.freeze_tag('StateMachineMixin.wait_for_state')
     def wait_for_state(self, state):
         if self.state == state:
             return defer.succeed(None)

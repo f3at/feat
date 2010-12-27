@@ -17,6 +17,10 @@ class DummyClass(serialization.Serializable):
     def dummy_method(self):
         pass
 
+    @serialization.freeze_tag('dummy_tag')
+    def dummer_method(self):
+        pass
+
 
 def dummy_function():
         pass
@@ -29,6 +33,11 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         ext = self.externalizer
         self.serializer = pytree.Serializer(externalizer = ext)
         self.unserializer = pytree.Unserializer(externalizer = ext)
+
+    def testFreezingTags(self):
+        instance = DummyClass()
+        frozen = self.serializer.freeze(instance.dummer_method)
+        self.assertEqual('dummy_tag', frozen)
 
     def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###

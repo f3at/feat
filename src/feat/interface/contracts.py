@@ -16,6 +16,7 @@ class ContractState(enum.Enum):
      - closed:       The contract has been closed because the announce expired
                       or a response has been received from all involved
                       contractors.
+     - terminated:   The manager has been terminated by agent-side code.
      - granted:      The contract has been granted to one or multiple
                       contractor.
      - expired:      Contract expire without granting any bid.
@@ -53,8 +54,8 @@ class ContractState(enum.Enum):
      - wtf:          What a Terrible Failure
     '''
     (initiated, announced, closed, bid, refused, delegated, rejected, granted,
-     expired, completed, defected, cancelled, acknowledged, aborted, wtf) =\
-     range(15)
+     expired, completed, terminated, defected, cancelled, acknowledged,
+     aborted, wtf) = range(16)
 
 
 class IContractPeer(Interface):
