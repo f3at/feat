@@ -1,4 +1,5 @@
 import copy
+import types
 
 from zope.interface import implements
 
@@ -311,6 +312,8 @@ class Serializer(object):
         if self._freezing:
             if ISnapshotable.providedBy(value):
                 return self.flatten_frozen_instance(ISnapshotable(value))
+            if isinstance(value, (types.FunctionType, types.MethodType)):
+                return self.flatten_frozen_callable(value)
         else:
             if ISerializable.providedBy(value):
                 return self.flatten_instance(ISerializable(value))
@@ -446,6 +449,9 @@ class Serializer(object):
         self.check_capabilities(Capabilities.instance_values, value)
         return self.pack_instance, [[self.pack_type_name, value.type_name],
                                      self.flatten_value(value.snapshot())]
+
+    def flatten_frozen_callable(self, value):
+        return self.pack_callable, value
 
     ### Setup lookup tables ###
 
