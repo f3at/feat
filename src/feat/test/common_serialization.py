@@ -9,11 +9,15 @@ from twisted.python.reflect import qual
 from twisted.spread import jelly
 from twisted.trial.unittest import SkipTest
 
-from feat.common import serialization
+from feat.common import serialization, enum
 from feat.common.serialization import base
 from feat.interface.serialization import *
 
 from . import common
+
+
+class DummyEnum(enum.Enum):
+    a, b, c = range(3)
 
 
 @serialization.register
@@ -242,17 +246,6 @@ class ConverterTest(common.TestCase):
                         expected = v
                         break
                 else:
-                    print "="*80, "VALUE"
-                    import pprint
-                    pprint.pprint(value)
-                    print "-"*80, "DATA"
-                    pprint.pprint(data)
-                    print "-"*80, "RESULT"
-                    pprint.pprint(result)
-                    for v in values:
-                        print "-"*80, "EXPECTED"
-                        pprint.pprint(result)
-                    print "="*80
                     self.fail("Value not one of the expected values:\n"
                               "VALUE:    %r\nRESULT:   %r\n%s"
                               % (value, result,
@@ -330,20 +323,37 @@ class ConverterTest(common.TestCase):
         def iter_all_values(desc, stop=False, immutable=False):
             values = [v for _, v, _ in iter_values(desc)]
             if not immutable:
-                values += [v for _, v, _ in iter_instances(desc)]
+                if Capabilities.instance_values in capabilities:
+                    values += [v for _, v, _ in iter_instances(desc)]
+                if Capabilities.enum_values in capabilities:
+                    values += [v for _, v, _ in iter_enums(desc)]
             if not stop:
-                values += [v for _, v, _ in iter_tuples(desc, True, immutable)]
+                if Capabilities.tuple_values in capabilities:
+                    values += [v for _, v, _ in
+                               iter_tuples(desc, True, immutable)]
                 if not immutable:
-                    values += [v for _, v, _ in iter_lists(desc, True)]
-                    values += [v for _, v, _ in iter_sets(desc, True)]
-                    values += [v for _, v, _ in iter_dicts(desc, True)]
+                    if Capabilities.list_values in capabilities:
+                        values += [v for _, v, _ in iter_lists(desc, True)]
+                    if Capabilities.set_values in capabilities:
+                        values += [v for _, v, _ in iter_sets(desc, True)]
+                    if Capabilities.dict_values in capabilities:
+                        values += [v for _, v, _ in iter_dicts(desc, True)]
             return values
 
         def iter_all_keys(desc, stop=False):
             values = [v for _, v, _ in iter_values(desc)]
+            if Capabilities.enum_keys in capabilities:
+                values += [v for _, v, _ in iter_enums(desc)]
             if not stop:
-                values += [v for _, v, _ in iter_tuples(desc, True, True)]
+                if Capabilities.tuple_keys in capabilities:
+                    values += [v for _, v, _ in iter_tuples(desc, True, True)]
             return values
+
+        def iter_enums(desc):
+            # Because enums cannot be compared with anything else
+            # we can't put it in the description table
+            yield DummyEnum, DummyEnum.a, False
+            yield DummyEnum, DummyEnum.c, False
 
         def iter_tuples(desc, stop=False, immutable=False):
             yield tuple, (), False # Exception for empty tuple singleton
@@ -364,27 +374,55 @@ class ConverterTest(common.TestCase):
         def iter_sets(desc, stop=False):
             yield set, set([]), True
             # A set for each possible values
-            for v in iter_all_values(desc, stop, True):
+            for v in iter_all_keys(desc, stop):
                 yield set, set([v]), True
-            # One big list with everything supported in it
-            yield set, set(iter_all_values(desc, stop, True)), True
+            # Enums cannot be mixed with other values
+            yield (set, set([v for v in iter_all_keys(desc, stop)
+                            if isinstance(v, enum.Enum)]), True)
+            # One big set with everything supported in it
+            yield (set, set([v for v in iter_all_keys(desc, stop)
+                            if not isinstance(v, enum.Enum)]), True)
 
         def iter_dicts(desc, stop=False):
             yield dict, {}, True
-            # One a big dict for every supported values with all supported keys
-            for v in iter_all_values(desc, stop):
+            # Enums cannot be mixed with other values
+            d = {}
+            for k in iter_all_keys(desc, stop):
+                if isinstance(k, enum.Enum):
+                    d[k] = None
+            yield dict, d, True
+            # Big dicts for every supported values and keys
+            values = iter(iter_all_values(desc, stop))
+            done = False
+            while not done:
                 d = {}
                 for k in iter_all_keys(desc, stop):
-                    d[k] = v
+                    if not isinstance(k, enum.Enum):
+                        try:
+                            v = values.next()
+                        except StopIteration:
+                            # Loop back to the first value
+                            values = iter(iter_all_values(desc, stop))
+                            v = values.next() # At least there is one value
+                            done = True
+                        d[k] = v
                 yield dict, d, True
 
         def iter_all(desc):
-            return itertools.chain(iter_values(desc),
-                                   iter_instances(desc),
-                                   iter_tuples(desc),
-                                   iter_lists(desc),
-                                   iter_sets(desc),
-                                   iter_dicts(desc))
+            iterators = [iter_values(desc)]
+            if Capabilities.enum_values in capabilities:
+                iterators.append(iter_enums(desc))
+            if Capabilities.instance_values in capabilities:
+                iterators.append(iter_instances(desc))
+            if Capabilities.tuple_values in capabilities:
+                iterators.append(iter_tuples(desc))
+            if Capabilities.list_values in capabilities:
+                iterators.append(iter_lists(desc))
+            if Capabilities.set_values in capabilities:
+                iterators.append(iter_sets(desc))
+            if Capabilities.dict_values in capabilities:
+                iterators.append(iter_dicts(desc))
+            return itertools.chain(*iterators)
 
         for record in iter_all(valdesc):
             value_type, value, should_mutate = record

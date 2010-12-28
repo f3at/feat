@@ -4,7 +4,7 @@
 
 from twisted.python.reflect import qual
 
-from feat.common import serialization, reflect
+from feat.common import serialization, reflect, enum
 from feat.common.serialization import pytree
 from feat.interface.serialization import *
 
@@ -12,7 +12,7 @@ from . import common_serialization
 
 
 @serialization.register
-class Dummy(serialization.Serializable):
+class DummyClass(serialization.Serializable):
     pass
 
 
@@ -33,6 +33,9 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         yield int, [0], int, [0], False
         yield int, [42], int, [42], False
         yield int, [-42], int, [-42], False
+        yield int, [0], int, [0], False
+        yield int, [42], int, [42], False
+        yield int, [-42], int, [-42], False
         yield long, [0L], long, [0L], False
         yield long, [2**66], long, [2**66], False
         yield long, [-2**66], long, [-2**66], False
@@ -50,6 +53,13 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         yield type, [datetime], type, [datetime], False
         yield (type, [common_serialization.SerializableDummy],
                type, [common_serialization.SerializableDummy], False)
+
+        ### Enums ###
+
+        DummyEnum = common_serialization.DummyEnum
+
+        yield DummyEnum, [DummyEnum.a], DummyEnum, [DummyEnum.a], False
+        yield DummyEnum, [DummyEnum.c], DummyEnum, [DummyEnum.c], False
 
         #### Basic mutable types plus tuples ###
 
@@ -215,7 +225,7 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
                       "dict": {1: 2, 3: 4},
                       "ref": None})], True)
 
-        Klass = Dummy
+        Klass = DummyClass
         name = reflect.canonical_name(Klass)
         Inst = lambda v: pytree.Instance(name, v)
 

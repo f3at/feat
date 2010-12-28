@@ -16,6 +16,7 @@ SET_ATOM = "set"
 DICT_ATOM = "dictionary"
 
 CLASS_ATOM = "class"
+ENUM_ATOM = "enum"
 
 REFERENCE_ATOM = "reference"
 DEREFERENCE_ATOM = "dereference"
@@ -33,6 +34,9 @@ class Serializer(base.Serializer):
 
     def pack_none(self, value):
         return [NONE_ATOM]
+
+    def pack_enum(self, value):
+        return [ENUM_ATOM, reflect.canonical_name(value), int(value)]
 
     def pack_tuple(self, values):
         return [TUPLE_ATOM] + values
@@ -96,6 +100,11 @@ class Unserializer(base.Unserializer):
         _, = data
         return None
 
+    def unpack_enum(self, data):
+        _, enum_name, enum_value = data
+        enum_class = self.restore_type(enum_name)
+        return enum_class.get(enum_value)
+
     def unpack_type(self, data):
         _, type_name, = data
         return self.restore_type(type_name)
@@ -130,6 +139,7 @@ class Unserializer(base.Unserializer):
                   NONE_ATOM: (None, unpack_none),
                   TUPLE_ATOM: (None, unpack_tuple),
                   CLASS_ATOM: (None, unpack_type),
+                  ENUM_ATOM: (None, unpack_enum),
                   REFERENCE_ATOM: (None, unpack_reference),
                   DEREFERENCE_ATOM: (None, unpack_dereference),
                   LIST_ATOM: (list, unpack_list),

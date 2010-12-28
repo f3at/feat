@@ -44,19 +44,28 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         self.unserializer = sexp.Unserializer()
 
     def testJellyUnjelly(self):
-        # jelly do not support meta types
-        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        # jelly do not support meta types and enums
+        caps = set(self.serializer.capabilities)
+        caps -= set([Capabilities.meta_types,
+                     Capabilities.enum_values,
+                     Capabilities.enum_keys])
         self.checkSymmetry(jelly.jelly, jelly.unjelly, capabilities=caps)
 
     def testUnjellyCompatibility(self):
-        # jelly do not support meta types
-        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        # jelly do not support meta types and enums
+        caps = set(self.serializer.capabilities)
+        caps -= set([Capabilities.meta_types,
+                     Capabilities.enum_values,
+                     Capabilities.enum_keys])
         self.checkSymmetry(self.serializer.convert, jelly.unjelly,
                            capabilities=caps)
 
     def testJellyCompatibility(self):
         # jelly do not support meta types
-        caps = self.serializer.capabilities - set([Capabilities.meta_types])
+        caps = set(self.serializer.capabilities)
+        caps -= set([Capabilities.meta_types,
+                     Capabilities.enum_values,
+                     Capabilities.enum_keys])
         self.checkSymmetry(jelly.jelly, self.unserializer.convert,
                            capabilities=caps)
 
@@ -119,6 +128,17 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         name = reflect.canonical_name(common_serialization.SerializableDummy)
         yield (type, [common_serialization.SerializableDummy],
                list, [["class", name]], False)
+
+        ### Enums ###
+
+        DummyEnum = common_serialization.DummyEnum
+        name = reflect.canonical_name(DummyEnum)
+
+        if Capabilities.enum_values in Capabilities:
+            yield (DummyEnum, [DummyEnum.a],
+                   list, [["enum", name, int(DummyEnum.a)]], False)
+            yield (DummyEnum, [DummyEnum.c],
+                   list, [["enum", name, int(DummyEnum.c)]], False)
 
         ### Basic containers ###
         yield tuple, [()], list, [["tuple"]], False # Exception for empty tuple

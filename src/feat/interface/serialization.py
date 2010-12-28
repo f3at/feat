@@ -9,6 +9,7 @@ __all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
 
 class Capabilities(enum.Enum):
     (int_values,
+     enum_values,
      long_values,
      float_values,
      str_values,
@@ -22,6 +23,7 @@ class Capabilities(enum.Enum):
      instance_values,
      type_values,
      int_keys,
+     enum_keys,
      long_keys,
      float_keys,
      str_keys,
@@ -31,7 +33,7 @@ class Capabilities(enum.Enum):
      type_keys,
      tuple_keys,
      circular_references,
-     meta_types) = range(24)
+     meta_types) = range(26)
 
 
 class IRegistry(Interface):
@@ -52,15 +54,17 @@ class IRestorator(Interface):
     type_name = Attribute('')
 
     def prepare():
-        '''Creates and prepares an instance for being recovered.
+        '''For mutable types, creates and prepares an instance for
+        being recovered. For immutable types returns None, and restore()
+        should be used instead.
         It returns an empty instance implementing L{ISerializable}.
         The returned instance's method recover() should be called
         with a snapshot to finish the restoration.
         This methods will create an instance without calling __init__().'''
 
     def restore(snapshot):
-        '''Equivalent of calling prepare() and then the instance
-        recover() method with the specified snapshot.'''
+        '''For mutable types, equivalent of calling prepare() and then
+        the instance recover() method with the specified snapshot.'''
 
 
 class ISnapshotable(Interface):
@@ -94,6 +98,7 @@ class ISerializable(ISnapshotable):
 
     def restored():
         '''Called when all unserialized items have been restored.
+        Only MUTABLE types are called.
         WARNING: It doesn't mean all restored() functions have been called.'''
 
 

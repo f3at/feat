@@ -1,5 +1,6 @@
 from zope.interface import implements
 
+from feat.common import enum
 from feat.interface.serialization import *
 
 from . import base
@@ -136,7 +137,8 @@ class Unserializer(base.Unserializer):
     reference got dereferenced, so unpacking '''
 
     pass_through_types = set([str, unicode, int, long,
-                              float, bool, type(None), type])
+                              float, bool, type(None),
+                              enum.MetaEnum, type])
 
     ### Overridden Methods ###
 

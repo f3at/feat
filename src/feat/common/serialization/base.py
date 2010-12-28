@@ -2,10 +2,11 @@ import copy
 
 from zope.interface import implements
 
-from feat.common import decorator, adapter, reflect
+from feat.common import decorator, enum, adapter, reflect
 from feat.interface.serialization import *
 
 DEFAULT_CAPABILITIES = set([Capabilities.int_values,
+                            Capabilities.enum_values,
                             Capabilities.long_values,
                             Capabilities.float_values,
                             Capabilities.str_values,
@@ -19,6 +20,7 @@ DEFAULT_CAPABILITIES = set([Capabilities.int_values,
                             Capabilities.instance_values,
                             Capabilities.type_values,
                             Capabilities.int_keys,
+                            Capabilities.enum_keys,
                             Capabilities.long_keys,
                             Capabilities.float_keys,
                             Capabilities.str_keys,
@@ -212,6 +214,7 @@ class Serializer(object):
     pack_str = None
     pack_unicode = None
     pack_int = None
+    pack_enum = None
     pack_long = None
     pack_float = None
     pack_bool = None
@@ -295,6 +298,10 @@ class Serializer(object):
         self._refid = 0
 
     def flatten_unknown_value(self, value):
+        # Flatten enums
+        if isinstance(value, enum.Enum):
+            return self.flatten_enum_value(value)
+
         # Flatten types
         if isinstance(value, type):
             return self.flatten_type_value(value)
@@ -313,6 +320,10 @@ class Serializer(object):
                            reflect.canonical_name(self)))
 
     def flatten_unknown_key(self, value):
+        # Flatten enums
+        if isinstance(value, enum.Enum):
+            return self.flatten_enum_key(value)
+
         # Flatten types
         if isinstance(value, type):
             return self.flatten_type_key(value)
@@ -354,6 +365,10 @@ class Serializer(object):
     def flatten_bool_value(self, value):
         self.check_capabilities(Capabilities.bool_values, value)
         return self.pack_bool, value
+
+    def flatten_enum_value(self, value):
+        self.check_capabilities(Capabilities.enum_values, value)
+        return self.pack_enum, value
 
     def flatten_type_value(self, value):
         self.check_capabilities(Capabilities.type_values, value)
@@ -407,6 +422,10 @@ class Serializer(object):
     def flatten_bool_key(self, value):
         self.check_capabilities(Capabilities.bool_keys, value)
         return self.pack_bool, value
+
+    def flatten_enum_key(self, value):
+        self.check_capabilities(Capabilities.enum_keys, value)
+        return self.pack_enum, value
 
     def flatten_type_key(self, value):
         self.check_capabilities(Capabilities.type_keys, value)
@@ -642,7 +661,7 @@ class Unserializer(object):
                              "isn't a type: %r" % (type_name, value))
         return value
 
-    def restore_instance(self, type_name, snapshot):
+    def restore_instance(self, type_name, data):
         # Lookup the registry for a IRestorator
         restorator = self._registry.lookup(type_name)
         if restorator is None:
@@ -650,10 +669,15 @@ class Unserializer(object):
                             % (type_name, reflect.canonical_name(self)))
         # Prepare the instance for recovery
         instance = restorator.prepare()
+        if instance is None:
+            # Immutable type, we can't delay restoration
+            snapshot = self.unpack_data(data)
+            return restorator.restore(snapshot)
+
         # Delay the instance restoration for later to handle circular refs
         return self.delayed_unpacking(instance,
                                       self._continue_restoring_instance,
-                                      instance, snapshot)
+                                      instance, data)
 
     def restore_reference(self, refid, data):
         if refid in self._references:
