@@ -230,6 +230,7 @@ class Serializer(object):
     pack_reference = None
     pack_dereference = None
     pack_frozen_instance = None
+    pack_frozen_callable = None
 
     def __init__(self, capabilities=None, post_converter=None):
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
@@ -451,7 +452,7 @@ class Serializer(object):
                                      self.flatten_value(value.snapshot())]
 
     def flatten_frozen_callable(self, value):
-        return self.pack_callable, value
+        return self.pack_frozen_callable, value
 
     ### Setup lookup tables ###
 
