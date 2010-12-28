@@ -33,6 +33,10 @@ DEFAULT_CAPABILITIES = set([Capabilities.int_values,
                             Capabilities.circular_references,
                             Capabilities.meta_types])
 
+FREEZING_CAPABILITIES = DEFAULT_CAPABILITIES \
+                        | set([Capabilities.function_values,
+                               Capabilities.method_values])
+
 
 @decorator.simple_class
 def register(restorator):
@@ -142,11 +146,11 @@ def referenceable(method):
     For example, to make strings referenceable in a sub-class only use
     this decorator with decorate flatten_str().'''
 
-    def wrapper(self, value):
+    def wrapper(self, value, *args):
         deref = self._prepare(value)
         if deref is not None:
             return deref
-        packer, data = method(self, value)
+        packer, data = method(self, value, *args)
         return self._preserve(value, packer, data)
 
     return wrapper
@@ -227,44 +231,38 @@ class Serializer(object):
     pack_type = None
     pack_type_name = None
     pack_instance = None
+    pack_function = None
+    pack_method = None
     pack_reference = None
     pack_dereference = None
     pack_frozen_instance = None
-    pack_frozen_callable = None
+    pack_frozen_function = None
+    pack_frozen_method = None
 
-    def __init__(self, capabilities=None, post_converter=None):
-        self.capabilities = capabilities or DEFAULT_CAPABILITIES
+    def __init__(self, caps=None, freezing_caps=None, post_converter=None):
+        self.capabilities = caps or DEFAULT_CAPABILITIES
+        self.freezing_capabilities = freezing_caps or FREEZING_CAPABILITIES
         self._post_converter = post_converter and IConverter(post_converter)
         self.reset()
 
     ### IFreezer Methods ###
 
     def freeze(self, data):
-        # Set the instance type requirements to ISnapshotable
-        # because we don't need unserialization guarantee
-        self._freezing = True
-        return self._convert(data)
+        return self._convert(data, self.freezing_capabilities, True)
 
     ### IConverter Methods ###
 
     def convert(self, data):
-        # Set the instance type requirements to ISerializable
-        # because we don't want to enforce the result to be unserializable
-        self._freezing = False
-        return self._convert(data)
+        return self._convert(data, self.capabilities, False)
 
     ### Protected Methods ###
 
-    def check_capabilities(self, cap, *args):
-        assert len(args) <= 1, "maximum of 1 extra parameter"
-        if args:
-            extra = ": %r" % args
-        else:
-            extra = ""
-
-        if cap not in self.capabilities:
-            raise ValueError("Serializer %s do not support %s%s"
-                             % (reflect.canonical_name(self), cap.name, extra))
+    def check_capabilities(self, cap, value, caps, freezing):
+        if cap not in caps:
+            kind = "Freezer" if freezing else "Serializer"
+            raise ValueError("%s %s do not support %s: %r"
+                             % (kind, reflect.canonical_name(self),
+                                cap.name, value))
 
     def pack_value(self, data):
         if not isinstance(data, (list, tuple)):
@@ -276,15 +274,17 @@ class Serializer(object):
             return packer(value)
         return value
 
-    def flatten_value(self, value):
+    def flatten_value(self, value, caps, freezing):
         vtype = type(value)
         default = Serializer.flatten_unknown_value
-        return self._value_lookup.get(vtype, default)(self, value)
+        flattener = self._value_lookup.get(vtype, default)
+        return flattener(self, value, caps, freezing)
 
-    def flatten_key(self, value):
+    def flatten_key(self, value, caps, freezing):
         vtype = type(value)
         default = Serializer.flatten_unknown_key
-        return self._key_lookup.get(vtype, default)(self, value)
+        flattener = self._key_lookup.get(vtype, default)
+        return flattener(self, value, caps, freezing)
 
     def post_convertion(self, data):
         if self._post_converter:
@@ -299,160 +299,192 @@ class Serializer(object):
         self._memory = []
         self._refid = 0
 
-    def flatten_unknown_value(self, value):
+    def flatten_unknown_value(self, value, caps, freezing):
         # Flatten enums
         if isinstance(value, enum.Enum):
-            return self.flatten_enum_value(value)
+            return self.flatten_enum_value(value, caps, freezing)
 
         # Flatten types
         if isinstance(value, type):
-            return self.flatten_type_value(value)
+            return self.flatten_type_value(value, caps, freezing)
 
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
-        if self._freezing:
-            if ISnapshotable.providedBy(value):
-                return self.flatten_frozen_instance(ISnapshotable(value))
-            if isinstance(value, (types.FunctionType, types.MethodType)):
-                return self.flatten_frozen_callable(value)
-        else:
-            if ISerializable.providedBy(value):
-                return self.flatten_instance(ISerializable(value))
+        if ((freezing and ISnapshotable.providedBy(value))
+            or (not freezing and ISerializable.providedBy(value))):
+            return self.flatten_instance(ISnapshotable(value), caps, freezing)
 
         raise TypeError("Type %s values not supported by serializer %s"
                         % (type(value).__name__,
                            reflect.canonical_name(self)))
 
-    def flatten_unknown_key(self, value):
+    def flatten_unknown_key(self, value, caps, freezing):
         # Flatten enums
         if isinstance(value, enum.Enum):
-            return self.flatten_enum_key(value)
+            return self.flatten_enum_key(value, caps, freezing)
 
         # Flatten types
         if isinstance(value, type):
-            return self.flatten_type_key(value)
+            return self.flatten_type_key(value, caps, freezing)
 
         # Instances are not supported in keys
         raise TypeError("Type %s keys not supported by serializer %s"
                         % (type(value).__name__,
                            reflect.canonical_name(self)))
 
-    def flatten_item(self, value):
+    def flatten_item(self, value, caps, freezing):
         key, value = value
-        return self.pack_item, [self.flatten_key(key),
-                                self.flatten_value(value)]
+        return self.pack_item, [self.flatten_key(key, caps, freezing),
+                                self.flatten_value(value, caps, freezing)]
 
-    def flatten_str_value(self, value):
-        self.check_capabilities(Capabilities.str_values, value)
+    def flatten_str_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.str_values, value,
+                                caps, freezing)
         return self.pack_str, value
 
-    def flatten_unicode_value(self, value):
-        self.check_capabilities(Capabilities.unicode_values, value)
+    def flatten_unicode_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.unicode_values, value,
+                                caps, freezing)
         return self.pack_unicode, value
 
-    def flatten_int_value(self, value):
-        self.check_capabilities(Capabilities.int_values, value)
+    def flatten_int_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.int_values, value,
+                                caps, freezing, )
         return self.pack_int, value
 
-    def flatten_long_value(self, value):
-        self.check_capabilities(Capabilities.long_values, value)
+    def flatten_long_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.long_values, value,
+                                caps, freezing)
         return self.pack_long, value
 
-    def flatten_float_value(self, value):
-        self.check_capabilities(Capabilities.float_values, value)
+    def flatten_float_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.float_values, value,
+                                caps, freezing)
         return self.pack_float, value
 
-    def flatten_none_value(self, value):
-        self.check_capabilities(Capabilities.none_values, value)
+    def flatten_none_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.none_values, value,
+                                caps, freezing)
         return self.pack_none, value
 
-    def flatten_bool_value(self, value):
-        self.check_capabilities(Capabilities.bool_values, value)
+    def flatten_bool_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.bool_values, value,
+                                caps, freezing)
         return self.pack_bool, value
 
-    def flatten_enum_value(self, value):
-        self.check_capabilities(Capabilities.enum_values, value)
+    def flatten_enum_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.enum_values, value,
+                                caps, freezing)
         return self.pack_enum, value
 
-    def flatten_type_value(self, value):
-        self.check_capabilities(Capabilities.type_values, value)
+    def flatten_type_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.type_values, value,
+                                caps, freezing)
         return self.pack_type, value
 
-    @referenceable
-    def flatten_tuple_value(self, value):
-        self.check_capabilities(Capabilities.tuple_values, value)
-        return self.pack_tuple, [self.flatten_value(v) for v in value]
+    def flatten_function_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.function_values, value,
+                                caps, freezing)
+        if freezing:
+            return self.pack_frozen_function, value
+        return self.pack_function, value
+
+    def flatten_method_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.method_values, value,
+                                caps, freezing)
+        if freezing:
+            return self.pack_frozen_method, value
+        return self.pack_method, value
 
     @referenceable
-    def flatten_list_value(self, value):
-        self.check_capabilities(Capabilities.list_values, value)
-        return self.pack_list, [self.flatten_value(v) for v in value]
+    def flatten_tuple_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.tuple_values, value,
+                                caps, freezing)
+        return self.pack_tuple, [self.flatten_value(v, caps, freezing)
+                                 for v in value]
 
     @referenceable
-    def flatten_set_value(self, value):
-        self.check_capabilities(Capabilities.set_values, value)
-        return self.pack_set, [self.flatten_value(v) for v in value]
+    def flatten_list_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.list_values, value,
+                                caps, freezing)
+        return self.pack_list, [self.flatten_value(v, caps, freezing)
+                                for v in value]
 
     @referenceable
-    def flatten_dict_value(self, value):
-        self.check_capabilities(Capabilities.dict_values, value)
-        return self.pack_dict, [self.flatten_item(i)
+    def flatten_set_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.set_values, value,
+                                caps, freezing)
+        return self.pack_set, [self.flatten_value(v, caps, freezing)
+                               for v in value]
+
+    @referenceable
+    def flatten_dict_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.dict_values, value,
+                                caps, freezing)
+        return self.pack_dict, [self.flatten_item(i, caps, freezing)
                                 for i in value.iteritems()]
 
-    def flatten_str_key(self, value):
-        self.check_capabilities(Capabilities.str_keys, value)
+    def flatten_str_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.str_keys, value,
+                                caps, freezing)
         return self.pack_str, value
 
-    def flatten_unicode_key(self, value):
-        self.check_capabilities(Capabilities.unicode_keys, value)
+    def flatten_unicode_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.unicode_keys, value,
+                                caps, freezing)
         return self.pack_unicode, value
 
-    def flatten_int_key(self, value):
-        self.check_capabilities(Capabilities.int_keys, value)
+    def flatten_int_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.int_keys, value,
+                                caps, freezing)
         return self.pack_int, value
 
-    def flatten_long_key(self, value):
-        self.check_capabilities(Capabilities.long_keys, value)
+    def flatten_long_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.long_keys, value,
+                                caps, freezing)
         return self.pack_long, value
 
-    def flatten_float_key(self, value):
-        self.check_capabilities(Capabilities.float_keys, value)
+    def flatten_float_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.float_keys, value,
+                                caps, freezing)
         return self.pack_float, value
 
-    def flatten_none_key(self, value):
-        self.check_capabilities(Capabilities.none_keys, value)
+    def flatten_none_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.none_keys, value,
+                                caps, freezing)
         return self.pack_none, value
 
-    def flatten_bool_key(self, value):
-        self.check_capabilities(Capabilities.bool_keys, value)
+    def flatten_bool_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.bool_keys, value,
+                                caps, freezing)
         return self.pack_bool, value
 
-    def flatten_enum_key(self, value):
-        self.check_capabilities(Capabilities.enum_keys, value)
+    def flatten_enum_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.enum_keys, value,
+                                caps, freezing)
         return self.pack_enum, value
 
-    def flatten_type_key(self, value):
-        self.check_capabilities(Capabilities.type_keys, value)
+    def flatten_type_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.type_keys, value,
+                                caps, freezing)
         return self.pack_type, value
 
     @referenceable
-    def flatten_tuple_key(self, value):
-        self.check_capabilities(Capabilities.tuple_keys, value)
-        return self.pack_tuple, [self.flatten_value(v) for v in value]
+    def flatten_tuple_key(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.tuple_keys, value,
+                                caps, freezing)
+        return self.pack_tuple, [self.flatten_value(v, caps, freezing)
+                                 for v in value]
 
     @referenceable
-    def flatten_frozen_instance(self, value):
-        self.check_capabilities(Capabilities.instance_values, value)
-        return self.pack_frozen_instance, self.flatten_value(value.snapshot())
-
-    @referenceable
-    def flatten_instance(self, value):
-        self.check_capabilities(Capabilities.instance_values, value)
+    def flatten_instance(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.instance_values, value,
+                                caps, freezing)
+        dump = self.flatten_value(value.snapshot(), caps, freezing)
+        if freezing:
+            return self.pack_frozen_instance, [dump]
         return self.pack_instance, [[self.pack_type_name, value.type_name],
-                                     self.flatten_value(value.snapshot())]
-
-    def flatten_frozen_callable(self, value):
-        return self.pack_frozen_callable, value
+                                    dump]
 
     ### Setup lookup tables ###
 
@@ -466,7 +498,9 @@ class Serializer(object):
                      long: flatten_long_value,
                      float: flatten_float_value,
                      bool: flatten_bool_value,
-                     type(None): flatten_none_value}
+                     type(None): flatten_none_value,
+                     types.FunctionType: flatten_function_value,
+                     types.MethodType: flatten_method_value}
 
     _key_lookup = {tuple: flatten_tuple_key,
                    str: flatten_str_key,
@@ -479,10 +513,10 @@ class Serializer(object):
 
     ### Private Methods ###
 
-    def _convert(self, data):
+    def _convert(self, data, caps, freezing):
         try:
             # Flatten the value to the list-only format with packer function
-            flattened = self.flatten_value(data)
+            flattened = self.flatten_value(data, caps, freezing)
             # Pack all the value with there own packer functions
             packed = self.pack_value(flattened)
             # Post-convert the data if a convert was specified

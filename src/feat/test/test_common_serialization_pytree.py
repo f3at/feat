@@ -2,9 +2,9 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.python.reflect import qual
+import types
 
-from feat.common import serialization, reflect, enum
+from feat.common import serialization, reflect
 from feat.common.serialization import pytree
 from feat.interface.serialization import *
 
@@ -13,7 +13,13 @@ from . import common_serialization
 
 @serialization.register
 class DummyClass(serialization.Serializable):
-    pass
+
+    def dummy_method(self):
+        pass
+
+
+def dummy_function():
+        pass
 
 
 class PyTreeConvertersTest(common_serialization.ConverterTest):
@@ -22,7 +28,7 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         self.serializer = pytree.Serializer()
         self.unserializer = pytree.Unserializer()
 
-    def convertion_table(self, capabilities):
+    def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###
 
         yield str, [""], str, [""], False
@@ -60,6 +66,21 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
 
         yield DummyEnum, [DummyEnum.a], DummyEnum, [DummyEnum.a], False
         yield DummyEnum, [DummyEnum.c], DummyEnum, [DummyEnum.c], False
+
+        ### Freezing-Only Types ###
+
+        if freezing:
+            mod_name = "feat.test.test_common_serialization_pytree"
+            fun_name = mod_name + ".dummy_function"
+            meth_name = mod_name + ".DummyClass.dummy_method"
+
+            yield types.FunctionType, [dummy_function], str, [fun_name], True
+
+            yield (types.FunctionType, [DummyClass.dummy_method],
+                   str, [meth_name], True)
+
+            o = DummyClass()
+            yield types.FunctionType, [o.dummy_method], str, [meth_name], True
 
         #### Basic mutable types plus tuples ###
 
@@ -207,11 +228,17 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
 
         Klass = common_serialization.SerializableDummy
         name = reflect.canonical_name(Klass)
-        Inst = lambda v: pytree.Instance(name, v)
+
+        if freezing:
+            Inst = lambda v: v
+            InstType = dict
+        else:
+            Inst = lambda v: pytree.Instance(name, v)
+            InstType = pytree.Instance
 
         # Default instance
         o = Klass()
-        yield (Klass, [o], pytree.Instance,
+        yield (Klass, [o], InstType,
                [Inst({"str": "dummy",
                       "unicode": u"dummy",
                       "int": 42,
@@ -227,7 +254,13 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
 
         Klass = DummyClass
         name = reflect.canonical_name(Klass)
-        Inst = lambda v: pytree.Instance(name, v)
+
+        if freezing:
+            Inst = lambda v: v
+            InstType = dict
+        else:
+            Inst = lambda v: pytree.Instance(name, v)
+            InstType = pytree.Instance
 
         a = Klass()
         b = Klass()

@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import enum
+from feat.common import enum, reflect
 from feat.interface.serialization import *
 
 from . import base
@@ -126,6 +126,16 @@ class Serializer(base.Serializer):
     pack_instance = Instance._build
     pack_reference = Reference._build
     pack_dereference = Dereference
+
+    def pack_frozen_instance(self, value):
+        content, = value
+        return content
+
+    def pack_frozen_function(self, value):
+        return reflect.canonical_name(value)
+
+    def pack_frozen_method(self, value):
+        return reflect.canonical_name(value)
 
 
 class Unserializer(base.Unserializer):

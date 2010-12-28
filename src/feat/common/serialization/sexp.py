@@ -21,8 +21,6 @@ ENUM_ATOM = "enum"
 REFERENCE_ATOM = "reference"
 DEREFERENCE_ATOM = "dereference"
 
-CALLABLE_ATOM = "call"
-
 
 class Serializer(base.Serializer):
     '''Serialize any python structure into s-expression compatible
@@ -61,8 +59,15 @@ class Serializer(base.Serializer):
     def pack_type(self, value):
         return [CLASS_ATOM, reflect.canonical_name(value)]
 
-    def pack_frozen_callable(self, value):
-        return [CALLABLE_ATOM, reflect.canonical_name(value)]
+    def pack_frozen_instance(self, value):
+        content, = value
+        return content
+
+    def pack_frozen_function(self, value):
+        return reflect.canonical_name(value)
+
+    def pack_frozen_method(self, value):
+        return reflect.canonical_name(value)
 
 
 class Unserializer(base.Unserializer):

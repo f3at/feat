@@ -131,7 +131,8 @@ class ConverterTest(common.TestCase):
             raise SkipTest("No unserializer, cannot test convertion")
 
         capabilities = self.unserializer.capabilities
-        self.checkConvertion(inverter(self.convertion_table(capabilities)),
+        table = self.convertion_table(capabilities, False)
+        self.checkConvertion(inverter(table),
                              self.unserializer.convert)
 
     def testSerialization(self):
@@ -139,8 +140,16 @@ class ConverterTest(common.TestCase):
             raise SkipTest("No serializer, cannot test convertion")
 
         capabilities = self.serializer.capabilities
-        self.checkConvertion(self.convertion_table(capabilities),
-                             self.serializer.convert)
+        table = self.convertion_table(capabilities, False)
+        self.checkConvertion(table, self.serializer.convert)
+
+    def testFreezing(self):
+        if self.serializer is None:
+            raise SkipTest("No serializer, cannot test convertion")
+
+        capabilities = self.serializer.freezing_capabilities
+        table = self.convertion_table(capabilities, True)
+        self.checkConvertion(table, self.serializer.freeze)
 
     def testSymmetry(self):
         if self.unserializer is None:

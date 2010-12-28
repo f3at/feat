@@ -22,6 +22,8 @@ class Capabilities(enum.Enum):
      dict_values,
      instance_values,
      type_values,
+     function_values,
+     method_values,
      int_keys,
      enum_keys,
      long_keys,
@@ -33,7 +35,7 @@ class Capabilities(enum.Enum):
      type_keys,
      tuple_keys,
      circular_references,
-     meta_types) = range(26)
+     meta_types) = range(28)
 
 
 class IRegistry(Interface):
@@ -131,7 +133,7 @@ class IFreezer(Interface):
     The only guarantee is that multiple call to freeze() will
     have always the same result.'''
 
-    capabilities = Attribute("Set of L{Capabilities} value.")
+    freezing_capabilities = Attribute("Set of L{Capabilities} value.")
 
     def freeze(data):
         '''One-way converts a format to another format.

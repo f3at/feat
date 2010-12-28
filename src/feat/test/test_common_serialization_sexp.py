@@ -15,8 +15,14 @@ from . import common_serialization
 
 
 @serialization.register
-class Dummy(serialization.Serializable):
-    pass
+class DummyClass(serialization.Serializable):
+
+    def dummy_method(self):
+        pass
+
+
+def dummy_function():
+        pass
 
 
 class ListSerializableDummy(serialization.Serializable, jelly.Jellyable):
@@ -99,7 +105,7 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         self.assertEqual(self.serialize(obj),
                          [name, ['list', 1, 2, 3]])
 
-    def convertion_table(self, capabilities):
+    def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###
         yield str, [""], str, [""], False
         yield str, ["dummy"], str, ["dummy"], False
@@ -139,6 +145,21 @@ class SExpConvertersTest(common_serialization.ConverterTest):
                    list, [["enum", name, int(DummyEnum.a)]], False)
             yield (DummyEnum, [DummyEnum.c],
                    list, [["enum", name, int(DummyEnum.c)]], False)
+
+        ### Freezing-Only Types ###
+
+        if freezing:
+            mod_name = "feat.test.test_common_serialization_sexp"
+            fun_name = mod_name + ".dummy_function"
+            meth_name = mod_name + ".DummyClass.dummy_method"
+
+            yield types.FunctionType, [dummy_function], str, [fun_name], True
+
+            yield (types.FunctionType, [DummyClass.dummy_method],
+                   str, [meth_name], True)
+
+            o = DummyClass()
+            yield types.FunctionType, [o.dummy_method], str, [meth_name], True
 
         ### Basic containers ###
         yield tuple, [()], list, [["tuple"]], False # Exception for empty tuple
@@ -380,13 +401,21 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         del o.tuple
         del o.ref
         o.int = 101
-        yield (Klass, [o], list,
-               [[reflect.canonical_name(Klass),
-                 ["dictionary", ["int", 101]]]], True)
 
-        Klass = Dummy
+        if freezing:
+            yield (Klass, [o], list,
+                   [["dictionary", ["int", 101]]], True)
+        else:
+            yield (Klass, [o], list,
+                   [[reflect.canonical_name(Klass),
+                     ["dictionary", ["int", 101]]]], True)
+
+        Klass = DummyClass
         name = reflect.canonical_name(Klass)
-        Inst = lambda v: [name, v]
+        if freezing:
+            Inst = lambda v: v
+        else:
+            Inst = lambda v: [name, v]
 
         a = Klass()
         b = Klass()
