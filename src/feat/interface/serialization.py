@@ -3,8 +3,8 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 __all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
-           "IInstance", "IReference", "IDereference",
-           "Capabilities", "IFreezer", "IConverter"]
+           "IExternal", "IInstance", "IReference", "IDereference",
+           "IExternalizer", "Capabilities", "IFreezer", "IConverter"]
 
 
 class Capabilities(enum.Enum):
@@ -21,6 +21,7 @@ class Capabilities(enum.Enum):
      set_values,
      dict_values,
      instance_values,
+     external_values,
      type_values,
      function_values,
      method_values,
@@ -35,7 +36,7 @@ class Capabilities(enum.Enum):
      type_keys,
      tuple_keys,
      circular_references,
-     meta_types) = range(28)
+     meta_types) = range(29)
 
 
 class IRegistry(Interface):
@@ -47,6 +48,17 @@ class IRegistry(Interface):
     def lookup(type_name):
         '''Gives a L{IRestorer} for specified type name
         or None if not found.'''
+
+
+class IExternalizer(Interface):
+    '''Used with converters to substitute instances by references
+    externally managed.'''
+
+    def identify(self, instance):
+        '''Returns the external identifier for the instance or None.'''
+
+    def lookup(self, identifier):
+        '''Returns the instance with specified identifier or None.'''
 
 
 class IRestorator(Interface):
@@ -102,6 +114,12 @@ class ISerializable(ISnapshotable):
         '''Called when all unserialized items have been restored.
         Only MUTABLE types are called.
         WARNING: It doesn't mean all restored() functions have been called.'''
+
+
+class IExternal(Interface):
+    '''Used by some converter to represent an external reference.'''
+
+    identifier = Attribute("External reference identifier")
 
 
 class IInstance(Interface):

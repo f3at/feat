@@ -6,6 +6,33 @@ from feat.interface.serialization import *
 from . import base
 
 
+class External(object):
+    '''Used by TreeSerializer to encapsulate external references.'''
+
+    implements(IExternal)
+
+    __slots__ = ("identifier", )
+
+    @classmethod
+    def _build(cls, data):
+        identifier, = data
+        return cls(identifier)
+
+    def __init__(self, identifier):
+        self.identifier = identifier
+
+    def __repr__(self):
+        return "<External %s>" % (self.identifier, )
+
+    def __eq__(self, other):
+        if not isinstance(other, External):
+            return NotImplemented
+        return self.identifier == other.identifier
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 class Instance(object):
     '''Used by TreeSerializer to encapsulate ISerializable instances.
     Implements L{IInstance} and can be compared for equality.'''
@@ -126,6 +153,7 @@ class Serializer(base.Serializer):
     pack_instance = Instance._build
     pack_reference = Reference._build
     pack_dereference = Dereference
+    pack_external = External._build
 
     def pack_frozen_instance(self, value):
         content, = value
@@ -172,7 +200,13 @@ class Unserializer(base.Unserializer):
         if IReference.providedBy(data):
             return None, Unserializer.unpack_reference
 
+        if IExternal.providedBy(data):
+            return None, Unserializer.unpack_external
+
     ### Private Methods ###
+
+    def unpack_external(self, data):
+        return self.restore_external(data.identifier)
 
     def unpack_instance(self, data):
         return self.restore_instance(data.type_name, data.snapshot)

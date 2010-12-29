@@ -19,6 +19,7 @@ DEFAULT_CAPABILITIES = set([Capabilities.int_values,
                             Capabilities.set_values,
                             Capabilities.dict_values,
                             Capabilities.instance_values,
+                            Capabilities.external_values,
                             Capabilities.type_values,
                             Capabilities.int_keys,
                             Capabilities.enum_keys,
@@ -139,6 +140,38 @@ class Registry(object):
         return self._registry.get(type_name)
 
 
+class Externalizer(object):
+    '''Simplistic implementation of L{IExternalizer}.
+    WARNING, by default it uses id() for identifying instances.'''
+
+    implements(IExternalizer)
+
+    def __init__(self):
+        self._registry = {} # {INSTANCE_ID: ISNTANCE}
+
+    def add(self, instance):
+        identifier = self.get_identifier(instance)
+        self._registry[identifier] = ISerializable(instance)
+
+    def remove(self, instance):
+        identifier = self.get_identifier(instance)
+        del self._registry[identifier]
+
+    def get_identifier(self, instance):
+        return instance.type_name, id(instance)
+
+    ### IExternalizer Methods ###
+
+    def identify(self, instance):
+        identifier = self.get_identifier(instance)
+        if identifier in self._registry:
+            return identifier
+        return None
+
+    def lookup(self, identifier):
+        return self._registry.get(identifier, None)
+
+
 @decorator.simple_function
 def referenceable(method):
     '''Used in BaseSerializer and its sub-classes to flatten referenceable
@@ -231,6 +264,7 @@ class Serializer(object):
     pack_type = None
     pack_type_name = None
     pack_instance = None
+    pack_external = None
     pack_function = None
     pack_method = None
     pack_reference = None
@@ -239,10 +273,12 @@ class Serializer(object):
     pack_frozen_function = None
     pack_frozen_method = None
 
-    def __init__(self, caps=None, freezing_caps=None, post_converter=None):
+    def __init__(self, caps=None, freezing_caps=None,
+                 post_converter=None, externalizer=None):
         self.capabilities = caps or DEFAULT_CAPABILITIES
         self.freezing_capabilities = freezing_caps or FREEZING_CAPABILITIES
         self._post_converter = post_converter and IConverter(post_converter)
+        self._externalizer = externalizer and IExternalizer(externalizer)
         self.reset()
 
     ### IFreezer Methods ###
@@ -310,9 +346,15 @@ class Serializer(object):
 
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
-        if ((freezing and ISnapshotable.providedBy(value))
-            or (not freezing and ISerializable.providedBy(value))):
-            return self.flatten_instance(ISnapshotable(value), caps, freezing)
+        if freezing:
+            if ISnapshotable.providedBy(value):
+                return self.flatten_instance(value, caps, freezing)
+        elif ISerializable.providedBy(value):
+            if self._externalizer:
+                extid = self._externalizer.identify(value)
+                if extid is not None:
+                    return self.flatten_external(extid, caps, freezing)
+            return self.flatten_instance(value, caps, freezing)
 
         raise TypeError("Type %s values not supported by serializer %s"
                         % (type(value).__name__,
@@ -486,6 +528,11 @@ class Serializer(object):
         return self.pack_instance, [[self.pack_type_name, value.type_name],
                                     dump]
 
+    def flatten_external(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.external_values, value,
+                                caps, freezing)
+        return self.pack_external, [self.flatten_value(value, caps, freezing)]
+
     ### Setup lookup tables ###
 
     _value_lookup = {tuple: flatten_tuple_value,
@@ -602,11 +649,13 @@ class Unserializer(object):
 
     pass_through_types = ()
 
-    def __init__(self, capabilities=None, pre_converter=None, registry=None):
+    def __init__(self, capabilities=None, pre_converter=None,
+                 registry=None, externalizer=None):
         global _global_registry
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
         self._pre_converter = pre_converter and IConverter(pre_converter)
         self._registry = IRegistry(registry) if registry else _global_registry
+        self._externalizer = externalizer and IExternalizer(externalizer)
         self.reset()
 
     ### IConverter Methods ###
@@ -701,6 +750,17 @@ class Unserializer(object):
             raise ValueError("type %r unserialized to something that "
                              "isn't a type: %r" % (type_name, value))
         return value
+
+    def restore_external(self, data):
+        if self._externalizer is None:
+            raise ValueError("Got external reference %r but unserializer "
+                             "do not have any IExternalizer")
+        identifier = self.unpack_data(data)
+        instance = self._externalizer.lookup(identifier)
+        if instance is None:
+            raise ValueError("No external reference found with identifier %r"
+                             % (identifier, ))
+        return instance
 
     def restore_instance(self, type_name, data):
         # Lookup the registry for a IRestorator

@@ -112,6 +112,15 @@ class ConverterTest(common.TestCase):
     See test_common_serialization_pytree.py for examples.
     '''
 
+    def setUp(self):
+        self.ext_val = SerializableDummy()
+        self.ext_val.str = "externalized" # Just for it be different
+        self.externalizer = base.Externalizer()
+        self.externalizer.add(self.ext_val)
+
+    def tearDown(self):
+        self.externalizer.remove(self.ext_val)
+
     def testUnserialization(self):
 
         def inverter(gen):
@@ -329,6 +338,9 @@ class ConverterTest(common.TestCase):
 
             yield SerializableDummy, o, True
 
+        def iter_externals(desc):
+            yield SerializableDummy, self.ext_val, False
+
         def iter_all_values(desc, stop=False, immutable=False):
             values = [v for _, v, _ in iter_values(desc)]
             if not immutable:
@@ -431,6 +443,8 @@ class ConverterTest(common.TestCase):
                 iterators.append(iter_sets(desc))
             if Capabilities.dict_values in capabilities:
                 iterators.append(iter_dicts(desc))
+            if Capabilities.external_values in capabilities:
+                iterators.append(iter_externals(desc))
             return itertools.chain(*iterators)
 
         for record in iter_all(valdesc):

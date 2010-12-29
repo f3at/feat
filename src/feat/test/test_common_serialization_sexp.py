@@ -46,30 +46,35 @@ class ListSerializableDummy(serialization.Serializable, jelly.Jellyable):
 class SExpConvertersTest(common_serialization.ConverterTest):
 
     def setUp(self):
-        self.serializer = sexp.Serializer()
-        self.unserializer = sexp.Unserializer()
+        common_serialization.ConverterTest.setUp(self)
+        ext = self.externalizer
+        self.serializer = sexp.Serializer(externalizer = ext)
+        self.unserializer = sexp.Unserializer(externalizer = ext)
 
     def testJellyUnjelly(self):
-        # jelly do not support meta types and enums
+        # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])
         self.checkSymmetry(jelly.jelly, jelly.unjelly, capabilities=caps)
 
     def testUnjellyCompatibility(self):
-        # jelly do not support meta types and enums
+        # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])
         self.checkSymmetry(self.serializer.convert, jelly.unjelly,
                            capabilities=caps)
 
     def testJellyCompatibility(self):
-        # jelly do not support meta types
+        # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])
         self.checkSymmetry(jelly.jelly, self.unserializer.convert,
@@ -145,6 +150,13 @@ class SExpConvertersTest(common_serialization.ConverterTest):
                    list, [["enum", name, int(DummyEnum.a)]], False)
             yield (DummyEnum, [DummyEnum.c],
                    list, [["enum", name, int(DummyEnum.c)]], False)
+
+        ### External References ###
+
+        if not freezing:
+            identifier = ["tuple", self.ext_val.type_name, id(self.ext_val)]
+            yield (common_serialization.SerializableDummy, [self.ext_val],
+                   list, [["external", identifier]], False)
 
         ### Freezing-Only Types ###
 

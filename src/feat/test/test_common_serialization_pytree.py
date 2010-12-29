@@ -25,8 +25,10 @@ def dummy_function():
 class PyTreeConvertersTest(common_serialization.ConverterTest):
 
     def setUp(self):
-        self.serializer = pytree.Serializer()
-        self.unserializer = pytree.Unserializer()
+        common_serialization.ConverterTest.setUp(self)
+        ext = self.externalizer
+        self.serializer = pytree.Serializer(externalizer = ext)
+        self.unserializer = pytree.Unserializer(externalizer = ext)
 
     def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###
@@ -66,6 +68,13 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
 
         yield DummyEnum, [DummyEnum.a], DummyEnum, [DummyEnum.a], False
         yield DummyEnum, [DummyEnum.c], DummyEnum, [DummyEnum.c], False
+
+        ### External References ###
+
+        if not freezing:
+            identifier = (self.ext_val.type_name, id(self.ext_val))
+            yield (common_serialization.SerializableDummy, [self.ext_val],
+                   pytree.External, [pytree.External(identifier)], False)
 
         ### Freezing-Only Types ###
 

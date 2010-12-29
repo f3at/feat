@@ -17,6 +17,7 @@ DICT_ATOM = "dictionary"
 
 CLASS_ATOM = "class"
 ENUM_ATOM = "enum"
+EXTERNAL_ATOM = "external"
 
 REFERENCE_ATOM = "reference"
 DEREFERENCE_ATOM = "dereference"
@@ -58,6 +59,9 @@ class Serializer(base.Serializer):
 
     def pack_type(self, value):
         return [CLASS_ATOM, reflect.canonical_name(value)]
+
+    def pack_external(self, value):
+        return [EXTERNAL_ATOM] + value
 
     def pack_frozen_instance(self, value):
         content, = value
@@ -115,6 +119,10 @@ class Unserializer(base.Unserializer):
         enum_class = self.restore_type(enum_name)
         return enum_class.get(enum_value)
 
+    def unpack_external(self, data):
+        _, ext_id = data
+        return self.restore_external(ext_id)
+
     def unpack_type(self, data):
         _, type_name, = data
         return self.restore_type(type_name)
@@ -150,6 +158,7 @@ class Unserializer(base.Unserializer):
                   TUPLE_ATOM: (None, unpack_tuple),
                   CLASS_ATOM: (None, unpack_type),
                   ENUM_ATOM: (None, unpack_enum),
+                  EXTERNAL_ATOM: (None, unpack_external),
                   REFERENCE_ATOM: (None, unpack_reference),
                   DEREFERENCE_ATOM: (None, unpack_dereference),
                   LIST_ATOM: (list, unpack_list),
