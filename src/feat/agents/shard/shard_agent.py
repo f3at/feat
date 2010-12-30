@@ -4,7 +4,7 @@ import copy
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               descriptor, document, replay)
-from feat.common import enum, fiber, serialization
+from feat.common import enum, fiber
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
 from feat.agents.host import host_agent
@@ -23,9 +23,9 @@ class ShardAgent(agent.BaseAgent):
         desc = state.medium.get_descriptor()
         assert(isinstance(desc, Descriptor))
         for x in range(len(desc.children)):
-            state.resource.allocate(children=1)
+            state.resources.allocate(children=1)
         for x in range(len(desc.hosts)):
-            state.resource.allocate(hosts=1)
+            state.resources.allocate(hosts=1)
 
         interest = state.medium.register_interest(JoinShardContractor)
         if desc.parent is None:
@@ -270,21 +270,27 @@ class ActionType(enum.Enum):
     (join, create) = range(2)
 
 
-@serialization.register
 @document.register
 class Descriptor(descriptor.Descriptor):
 
     document_type = 'shard_agent'
 
-    def __init__(self, parent=None, children=[], hosts=[], **kwargs):
-        descriptor.Descriptor.__init__(self, **kwargs)
-        self.parent = parent
-        self.children = list()
-        self.hosts = list()
+    def __init__(self, **fields):
+        descriptor.Descriptor.__init__(self, **fields)
+        valid_fields = ('parent', 'hosts', 'children', )
+        self._set_fields(valid_fields, fields)
+        self.children = self.children or list()
+        self.hosts = self.hosts or list()
 
-    def get_content(self):
-        c = descriptor.Descriptor.get_content(self)
+    def snapshot(self):
+        c = descriptor.Descriptor.snapshot(self)
         c['parent'] = self.parent
         c['hosts'] = self.hosts
         c['children'] = self.children
         return c
+
+    def recover(self, snapshot):
+        descriptor.Descriptor.recover(self, snapshot)
+        self.parent = snapshot.get('parent', None)
+        self.hosts = snapshot.get('hosts', list())
+        self.children = snapshot.get('children', list())

@@ -8,19 +8,19 @@ from feat.interface.serialization import *
 from . import base
 
 
-TUPLE_ATOM = "_tuple"
-BYTES_ATOM = "_bytes"
+TUPLE_ATOM = u".tuple"
+BYTES_ATOM = u".bytes"
 BYTES_ENCODING = "BASE64"
-ENCODED_ATOM = "_enc"
-SET_ATOM = "_set"
-ENUM_ATOM = "_enum"
-TYPE_ATOM = "_type"
-EXTERNAL_ATOM = "_ext"
-REFERENCE_ATOM = "_ref"
-DEREFERENCE_ATOM = "_deref"
+ENCODED_ATOM = u".enc"
+SET_ATOM = u".set"
+ENUM_ATOM = u".enum"
+TYPE_ATOM = u".type"
+EXTERNAL_ATOM = u".ext"
+REFERENCE_ATOM = u".ref"
+DEREFERENCE_ATOM = u".deref"
 
-INSTANCE_TYPE_ATOM = "_type"
-INSTANCE_STATE_ATOM = "_state"
+INSTANCE_TYPE_ATOM = u".type"
+INSTANCE_STATE_ATOM = u".state"
 
 DEFAULT_ENCODING = "UTF8"
 ALLOWED_CODECS = set(["UTF8", "UTF-8", "utf8"])
@@ -217,15 +217,15 @@ class Unserializer(base.Unserializer):
         items = [(k.encode(DEFAULT_ENCODING), v)for k, v in data.iteritems()]
         container.update(self.unpack_unordered_pairs(items))
 
-    _list_unpackers = {u"_bytes": (None, unpack_bytes),
-                       u"_enc": (None, unpack_encoded),
-                       u"_enum": (None, unpack_enum),
-                       u"_type": (None, unpack_type),
-                       u"_tuple": (None, unpack_tuple),
-                       u"_set": (set, unpack_set),
-                       u"_ext": (None, unpack_external),
-                       u"_ref": (None, unpack_reference),
-                       u"_deref": (None, unpack_dereference)}
+    _list_unpackers = {BYTES_ATOM: (None, unpack_bytes),
+                       ENCODED_ATOM: (None, unpack_encoded),
+                       ENUM_ATOM: (None, unpack_enum),
+                       TYPE_ATOM: (None, unpack_type),
+                       TUPLE_ATOM: (None, unpack_tuple),
+                       SET_ATOM: (set, unpack_set),
+                       EXTERNAL_ATOM: (None, unpack_external),
+                       REFERENCE_ATOM: (None, unpack_reference),
+                       DEREFERENCE_ATOM: (None, unpack_dereference)}
 
 
 class PaisleyUnserializer(Unserializer):

@@ -34,7 +34,7 @@ class Commands(manhole.Manhole):
         return ag
 
     @manhole.expose()
-    def descriptor_factory(self, document_type, shard='lobby'):
+    def descriptor_factory(self, document_type, shard=u'lobby'):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
@@ -42,7 +42,7 @@ class Commands(manhole.Manhole):
         Second parameter is optional (default lobby). Usage:
         > descriptor_factory('shard_descriptor', 'some shard')
         """
-        desc = factories.build(document_type, shard=shard)
+        desc = factories.build(document_type, shard=unicode(shard))
         return self._database_connection.save_document(desc)
 
     @manhole.expose()

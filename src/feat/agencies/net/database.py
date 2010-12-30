@@ -53,6 +53,7 @@ class Database(feat_paisley.CouchDB, log.FluLogKeeper, log.Logger):
             elif status == 404:
                 raise NotFoundError(msg)
             else:
+                self.info(exception.response)
                 raise NotImplementedError(
                     'Behaviour for response code %d not define yet, FIXME!' %
                     status)

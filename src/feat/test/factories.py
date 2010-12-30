@@ -25,7 +25,7 @@ def build(document_type, **options):
 
 
 def descriptor_factory(**options):
-    options['shard'] = options.get('shard', 'lobby')
+    options['shard'] = options.get('shard', u'lobby')
     return options
 
 

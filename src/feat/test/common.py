@@ -455,7 +455,7 @@ class StubAgent(object):
 
     def __init__(self):
         self.descriptor = descriptor.Descriptor(shard='lobby',
-                                                _id=str(uuid.uuid1()))
+                                                doc_id=str(uuid.uuid1()))
         self.messages = []
 
     def on_message(self, msg):

@@ -2,6 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.common import serialization
 
+
 documents = dict()
 
 
@@ -11,43 +12,29 @@ def register(klass):
         raise ValueError('document_type %s already registered!' %
                          klass.document_type)
     documents[klass.document_type] = klass
+    serialization.register(klass)
     return klass
 
 
 @serialization.register
 class Document(serialization.Serializable):
 
-    def __init__(self, _id=None, _rev=None, **kwargs):
-        self.doc_id = self._decode(_id)
-        self.rev = self._decode(_rev)
+    def __init__(self, **fields):
+        valid_fields = ('doc_id', 'rev', )
+        self._set_fields(valid_fields, fields)
 
-    def get_content(self):
-        raise NotImplementedError("'get_content' method should be overloaded")
+    def _set_fields(self, fields, dictionary):
+        for field in fields:
+            setattr(self, field, dictionary.get(field, None))
 
-    def update(self, response):
-        '''
-        Updates id and rev basing on response from database.
+    def snapshot(self):
+        res = dict()
+        if self.doc_id:
+            res['_id'] = self.doc_id
+        if self.rev:
+            res['_rev'] = self.rev
+        return res
 
-        @param response: dict with keys id and rev
-        @type response: dict
-        @returns: updated document
-        '''
-        doc_id = self._decode(response.get('id', None))
-        rev = self._decode(response.get('rev', None))
-        if doc_id:
-            self.doc_id = doc_id
-        if rev:
-            self.rev = rev
-
-        return self
-
-    def _decode(self, var):
-        '''
-        Decodes unicode to string if necessary. This is important for some
-        fields, escescially doc_id which is used by CouchDB to generate URLs
-        '''
-
-        if isinstance(var, unicode):
-            return var.encode('utf-8')
-        else:
-            return var
+    def recover(self, snapshot):
+        self.doc_id = snapshot.get('_id', None)
+        self.rev = snapshot.get('_rev', None)

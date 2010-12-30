@@ -15,44 +15,50 @@ from feat.agents.base import document
 from feat.agencies.interface import ConflictError, NotFoundError
 from feat.process import couchdb
 from feat.process.base import DependencyError
+from feat.common import serialization
 
 from . import common
 from feat.test.common import attr
 
 
-@document.register
+@serialization.register
 class DummyDocument(document.Document):
 
-    document_type = "dummy"
+    def __init__(self, **fields):
+        document.Document.__init__(self, **fields)
+        valid_fields = ('field', )
+        self._set_fields(valid_fields, fields)
 
-    def __init__(self, field=None, **kwargs):
-        document.Document.__init__(self, **kwargs)
-        self.field = field
+    def snapshot(self):
+        res = document.Document.snapshot(self)
+        res['field'] = self.field
+        return res
 
-    def get_content(self):
-        return dict(field=self.field)
+    def recover(self, snapshot):
+        document.Document.recover(self, snapshot)
+        self.field = snapshot.get('field', None)
 
 
 class TestCase(object):
 
     @defer.inlineCallbacks
     def testSavingAndGettingTheDocument(self):
-        doc = DummyDocument(field='something')
+        doc = DummyDocument(field=u'something')
         doc = yield self.connection.save_document(doc)
 
         fetched_doc = yield self.connection.get_document(doc.doc_id)
         self.assertTrue(isinstance(fetched_doc, DummyDocument))
-        self.assertEqual('something', fetched_doc.field)
+        self.assertEqual(u'something', fetched_doc.field)
         self.assertEqual(doc.rev, fetched_doc.rev)
         self.assertEqual(doc.doc_id, fetched_doc.doc_id)
 
     @defer.inlineCallbacks
     def testCreatingAndUpdatingTheDocument(self):
-        doc = DummyDocument(field='something')
+        doc = DummyDocument(field=u'something')
         doc = yield self.connection.save_document(doc)
         rev1 = doc.rev
 
-        doc.field = 'something else'
+        doc.field = u'something else'
         doc = yield self.connection.save_document(doc)
         rev2 = doc.rev
 
@@ -91,26 +97,26 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testSavingTheDocumentWithConflict(self):
-        doc = DummyDocument(field="blah blah")
+        doc = DummyDocument(field=u"blah blah")
         doc = yield self.connection.save_document(doc)
 
         second_checkout = yield self.connection.get_document(doc.doc_id)
-        second_checkout.field = "changed field"
+        second_checkout.field = u"changed field"
         yield self.connection.save_document(second_checkout)
 
-        doc.field = "this will fail"
+        doc.field = u"this will fail"
         d = self.connection.save_document(doc)
         self.assertFailure(d, ConflictError)
         yield d
 
     @defer.inlineCallbacks
     def testGettingDocumentUpdatingDeleting(self):
-        id = 'test id'
+        id = u'test id'
         d = self.connection.get_document(id)
         self.assertFailure(d, NotFoundError)
         yield d
 
-        doc = DummyDocument(_id=id, field='value')
+        doc = DummyDocument(doc_id=id, field=u'value')
         yield self.connection.save_document(doc)
 
         fetched = yield self.connection.get_document(id)

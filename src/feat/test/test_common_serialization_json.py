@@ -34,11 +34,11 @@ class JSONConvertersTest(common_serialization.ConverterTest):
     def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###
 
-        yield str, [""], str, ['["_enc", "UTF8", ""]',
-                               '["_bytes", ""]'], False
-        yield str, ["dummy"], str, ['["_enc", "UTF8", "dummy"]',
-                                    '["_bytes", "ZHVtbXk="]'], False
-        yield str, ["\xFF"], str, ['["_bytes", "/w=="]'], False
+        yield str, [""], str, ['[".enc", "UTF8", ""]',
+                               '[".bytes", ""]'], False
+        yield str, ["dummy"], str, ['[".enc", "UTF8", "dummy"]',
+                                    '[".bytes", "ZHVtbXk="]'], False
+        yield str, ["\xFF"], str, ['[".bytes", "/w=="]'], False
         yield unicode, [u""], str, ['""'], False
         yield unicode, [u"dummy"], str, ['"dummy"'], False
         yield unicode, [u"áéí"], str, ['"\\u00e1\\u00e9\\u00ed"'], False
@@ -56,11 +56,11 @@ class JSONConvertersTest(common_serialization.ConverterTest):
 
         ### Types ###
         from datetime import datetime
-        yield type, [int], str, ['["_type", "__builtin__.int"]'], False
+        yield type, [int], str, ['[".type", "__builtin__.int"]'], False
         yield (type, [datetime],
-               str, ['["_type", "datetime.datetime"]'], False)
+               str, ['[".type", "datetime.datetime"]'], False)
         yield (type, [common_serialization.SerializableDummy],
-               str, ['["_type", "feat.test.common_serialization.'
+               str, ['[".type", "feat.test.common_serialization.'
                      'SerializableDummy"]'], False)
 
         ### Enums ###
@@ -68,19 +68,19 @@ class JSONConvertersTest(common_serialization.ConverterTest):
         DummyEnum = common_serialization.DummyEnum
 
         yield (DummyEnum, [DummyEnum.a],
-               str, ['["_enum", "feat.test.common_serialization.'
+               str, ['[".enum", "feat.test.common_serialization.'
                      'DummyEnum.a"]'], False)
         yield (DummyEnum, [DummyEnum.c],
-               str, ['["_enum", "feat.test.common_serialization.'
+               str, ['[".enum", "feat.test.common_serialization.'
                      'DummyEnum.c"]'], False)
 
         ### External References ###
 
         if not freezing:
-            name = '["_enc", "UTF8", "%s"]' % self.ext_val.type_name
-            identifier = '["_tuple", %s, %d]' % (name, id(self.ext_val))
+            name = '[".enc", "UTF8", "%s"]' % self.ext_val.type_name
+            identifier = '[".tuple", %s, %d]' % (name, id(self.ext_val))
             yield (common_serialization.SerializableDummy, [self.ext_val],
-                   str, ['["_ext", %s]' % identifier], False)
+                   str, ['[".ext", %s]' % identifier], False)
 
         ### Freezing-Only Types ###
 
@@ -100,101 +100,101 @@ class JSONConvertersTest(common_serialization.ConverterTest):
         #### Basic mutable types plus tuples ###
 
         # Exception for empty tuple singleton
-        yield tuple, [()], str, ['["_tuple"]'], False
-        yield tuple, [(1, 2, 3)], str, ['["_tuple", 1, 2, 3]'], True
+        yield tuple, [()], str, ['[".tuple"]'], False
+        yield tuple, [(1, 2, 3)], str, ['[".tuple", 1, 2, 3]'], True
         yield list, [[]], str, ['[]'], True
         yield list, [[1, 2, 3]], str, ['[1, 2, 3]'], True
-        yield set, [set([])], str, ['["_set"]'], True
-        yield set, [set([1, 3])], str, ['["_set", 1, 3]'], True
+        yield set, [set([])], str, ['[".set"]'], True
+        yield set, [set([1, 3])], str, ['[".set", 1, 3]'], True
         yield dict, [{}], str, ['{}'], True
         yield dict, [{"1": 2, "3": 4}], str, ['{"1": 2, "3": 4}'], True
 
         # Container with different types
         yield (tuple, [(0.11, "a", u"z", False, None,
                         (1, ), [2], set([3]), {"4": 5})],
-               str, ['["_tuple", 0.11, ["_enc", "UTF8", "a"], "z", false, '
-                     'null, ["_tuple", 1], [2], ["_set", 3], {"4": 5}]'], True)
+               str, ['[".tuple", 0.11, [".enc", "UTF8", "a"], "z", false, '
+                     'null, [".tuple", 1], [2], [".set", 3], {"4": 5}]'], True)
         yield (list, [[0.11, "a", u"z", False, None,
                        (1, ), [2], set([3]), {"4": 5}]],
-               str, ['[0.11, ["_enc", "UTF8", "a"], "z", false, null, '
-                     '["_tuple", 1], [2], ["_set", 3], {"4": 5}]'], True)
+               str, ['[0.11, [".enc", "UTF8", "a"], "z", false, null, '
+                     '[".tuple", 1], [2], [".set", 3], {"4": 5}]'], True)
 
         ### References and Dereferences ###
 
         # Simple reference in list
         a = []
         b = [a, a]
-        yield list, [b], str, ['[["_ref", 1, []], ["_deref", 1]]'], True
+        yield list, [b], str, ['[[".ref", 1, []], [".deref", 1]]'], True
 
         # Simple reference in tuple
         a = ()
         b = (a, a)
-        yield tuple, [b], str, ['["_tuple", ["_ref", 1, ["_tuple"]], '
-                                '["_deref", 1]]'], True
+        yield tuple, [b], str, ['[".tuple", [".ref", 1, [".tuple"]], '
+                                '[".deref", 1]]'], True
 
         # Simple dereference in dict value.
         a = []
         b = [a, {"1": a}]
-        yield list, [b], str, ['[["_ref", 1, []], {"1": ["_deref", 1]}]'], True
+        yield list, [b], str, ['[[".ref", 1, []], {"1": [".deref", 1]}]'], True
 
         # Simple reference in dict value.
         a = []
         b = [{"1": a}, a]
-        yield list, [b], str, ['[{"1": ["_ref", 1, []]}, ["_deref", 1]]'], True
+        yield list, [b], str, ['[{"1": [".ref", 1, []]}, [".deref", 1]]'], True
 
         # Multiple reference in dictionary values, because dictionary order
         # is not predictable all possibilities have to be tested
         a = {}
         b = {"1": a, "2": a, "3": a}
         yield (dict, [b], str,
-            ['{"1": ["_ref", 1, {}], "2": ["_deref", 1], "3": ["_deref", 1]}',
-             '{"1": ["_ref", 1, {}], "3": ["_deref", 1], "2": ["_deref", 1]}',
-             '{"2": ["_ref", 1, {}], "1": ["_deref", 1], "3": ["_deref", 1]}',
-             '{"2": ["_ref", 1, {}], "3": ["_deref", 1], "1": ["_deref", 1]}',
-             '{"3": ["_ref", 1, {}], "1": ["_deref", 1], "2": ["_deref", 1]}',
-             '{"3": ["_ref", 1, {}], "2": ["_deref", 1], "1": ["_deref", 1]}'],
+            ['{"1": [".ref", 1, {}], "2": [".deref", 1], "3": [".deref", 1]}',
+             '{"1": [".ref", 1, {}], "3": [".deref", 1], "2": [".deref", 1]}',
+             '{"2": [".ref", 1, {}], "1": [".deref", 1], "3": [".deref", 1]}',
+             '{"2": [".ref", 1, {}], "3": [".deref", 1], "1": [".deref", 1]}',
+             '{"3": [".ref", 1, {}], "1": [".deref", 1], "2": [".deref", 1]}',
+             '{"3": [".ref", 1, {}], "2": [".deref", 1], "1": [".deref", 1]}'],
                True)
 
         # Simple dereference in set.
         a = ()
         b = [a, set([a])]
-        yield list, [b], str, ['[["_ref", 1, ["_tuple"]], '
-                               '["_set", ["_deref", 1]]]'], True
+        yield list, [b], str, ['[[".ref", 1, [".tuple"]], '
+                               '[".set", [".deref", 1]]]'], True
 
         # Simple reference in set.
         a = ()
         b = [set([a]), a]
-        yield list, [b], str, ['[["_set", ["_ref", 1, ["_tuple"]]], '
-                               '["_deref", 1]]'], True
+        yield list, [b], str, ['[[".set", [".ref", 1, [".tuple"]]], '
+                               '[".deref", 1]]'], True
 
         # Multiple reference in set, because set values order
         # is not predictable all possibilities have to be tested
         a = ()
         b = set([(1, a), (2, a)])
         yield (set, [b], str,
-               ['["_set", ["_tuple", 1, ["_ref", 1, ["_tuple"]]], '
-                '["_tuple", 2, ["_deref", 1]]]',
-                '["_set", ["_tuple", 2, ["_ref", 1, ["_tuple"]]], '
-                '["_tuple", 1, ["_deref", 1]]]'], True)
+               ['[".set", [".tuple", 1, [".ref", 1, [".tuple"]]], '
+                '[".tuple", 2, [".deref", 1]]]',
+                '[".set", [".tuple", 2, [".ref", 1, [".tuple"]]], '
+                '[".tuple", 1, [".deref", 1]]]'], True)
 
         # List self-reference
         a = []
         a.append(a)
-        yield list, [a], str, ['["_ref", 1, [["_deref", 1]]]'], True
+        yield list, [a], str, ['[".ref", 1, [[".deref", 1]]]'], True
 
         # Dict self-reference
         a = {}
         a["1"] = a
-        yield dict, [a], str, ['["_ref", 1, {"1": ["_deref", 1]}]'], True
+        yield dict, [a], str, ['[".ref", 1, {"1": [".deref", 1]}]'], True
 
         # Multiple references
         a = []
         b = [a]
         c = [a, b]
         d = [a, b, c]
-        yield list, [d], str, ['[["_ref", 1, []], '
-                               '["_ref", 2, [["_deref", 1]]], '
-                               '[["_deref", 1], ["_deref", 2]]]'], True
+        yield list, [d], str, ['[[".ref", 1, []], '
+                               '[".ref", 2, [[".deref", 1]]], '
+                               '[[".deref", 1], [".deref", 2]]]'], True
 
         # Default instance
         o = DummyClass()
@@ -205,8 +205,8 @@ class JSONConvertersTest(common_serialization.ConverterTest):
         else:
             name = reflect.canonical_name(o)
             yield (DummyClass, [o], str,
-                   ['{"_type": "%s", "value": 42}' % name,
-                    '{"value": 42, "_type": "%s"}' % name], True)
+                   ['{".type": "%s", "value": 42}' % name,
+                    '{"value": 42, ".type": "%s"}' % name], True)
 
         Klass = DummyClass
         name = reflect.canonical_name(Klass)
@@ -221,18 +221,18 @@ class JSONConvertersTest(common_serialization.ConverterTest):
 
         if freezing:
             yield (Klass, [a], str,
-                   ['["_ref", 1, {"ref": {"ref": ["_deref", 1]}}]'], True)
+                   ['[".ref", 1, {"ref": {"ref": [".deref", 1]}}]'], True)
             yield (Klass, [b], str,
-                   ['["_ref", 1, {"ref": {"ref": ["_deref", 1]}}]'], True)
+                   ['[".ref", 1, {"ref": {"ref": [".deref", 1]}}]'], True)
             yield (Klass, [c], str,
-                   ['["_ref", 1, {"ref": ["_deref", 1]}]'], True)
+                   ['[".ref", 1, {"ref": [".deref", 1]}]'], True)
 
         else:
             yield (Klass, [a], str,
-                   [('["_ref", 1, {"_type": "%s", "ref": {"_type": "%s", '
-                     '"ref": ["_deref", 1]}}]') % (name, name)], True)
+                   [('[".ref", 1, {".type": "%s", "ref": {".type": "%s", '
+                     '"ref": [".deref", 1]}}]') % (name, name)], True)
             yield (Klass, [b], str,
-                   [('["_ref", 1, {"_type": "%s", "ref": {"_type": "%s", '
-                     '"ref": ["_deref", 1]}}]') % (name, name)], True)
-            yield (Klass, [c], str, [('["_ref", 1, {"_type": "%s", "ref": '
-                                      '["_deref", 1]}]') % (name, )], True)
+                   [('[".ref", 1, {".type": "%s", "ref": {".type": "%s", '
+                     '"ref": [".deref", 1]}}]') % (name, name)], True)
+            yield (Klass, [c], str, [('[".ref", 1, {".type": "%s", "ref": '
+                                      '[".deref", 1]}]') % (name, )], True)

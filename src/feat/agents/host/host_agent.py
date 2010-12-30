@@ -112,7 +112,6 @@ class JoinShardManager(manager.BaseManager):
         return f
 
 
-@serialization.register
 @document.register
 class Descriptor(descriptor.Descriptor):
 
