@@ -36,7 +36,8 @@ class Capabilities(enum.Enum):
      type_keys,
      tuple_keys,
      circular_references,
-     meta_types) = range(29)
+     new_style_types,
+     meta_types) = range(30)
 
 
 class IRegistry(Interface):

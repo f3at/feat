@@ -55,6 +55,7 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.converter_capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.new_style_types,
                      Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])
@@ -64,6 +65,7 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.converter_capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.new_style_types,
                      Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])
@@ -74,6 +76,7 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         # jelly do not support meta types, enums and external references.
         caps = set(self.serializer.converter_capabilities)
         caps -= set([Capabilities.meta_types,
+                     Capabilities.new_style_types,
                      Capabilities.external_values,
                      Capabilities.enum_values,
                      Capabilities.enum_keys])

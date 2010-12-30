@@ -278,8 +278,6 @@ class ConverterTest(common.TestCase):
 
     def symmetry_table(self, capabilities):
 
-        from datetime import datetime
-
         valdesc = [(Capabilities.int_values, Capabilities.int_keys,
                     int, [0, -42, 42]),
                    (Capabilities.long_values, Capabilities.long_keys,
@@ -297,16 +295,18 @@ class ConverterTest(common.TestCase):
                    (Capabilities.none_values, Capabilities.none_keys,
                     type(None), [None])]
 
+        type_values = []
         if Capabilities.meta_types in capabilities:
+            type_values.append(TestTypeSerializationDummyWithMeta)
+            type_values.append(SerializableDummy)
+        if Capabilities.new_style_types in capabilities:
+            type_values.append(int)
+            from datetime import datetime
+            type_values.append(datetime)
+            type_values.append(TestTypeSerializationDummy)
+        if type_values:
             valdesc.append((Capabilities.type_values, Capabilities.type_keys,
-                            type, [int, dict, datetime,
-                                   TestTypeSerializationDummy,
-                                   TestTypeSerializationDummyWithMeta,
-                                   SerializableDummy]))
-        else:
-            valdesc.append((Capabilities.type_values, Capabilities.type_keys,
-                            type, [int, dict, datetime,
-                                   TestTypeSerializationDummy]))
+                            type, type_values))
 
         def iter_values(desc):
             for cap, _, value_type, values in valdesc:

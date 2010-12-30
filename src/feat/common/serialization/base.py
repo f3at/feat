@@ -32,6 +32,7 @@ DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
                               Capabilities.tuple_keys,
                               Capabilities.type_keys,
                               Capabilities.circular_references,
+                              Capabilities.new_style_types,
                               Capabilities.meta_types])
 
 DEFAULT_FREEZER_CAPS = DEFAULT_CONVERTER_CAPS \

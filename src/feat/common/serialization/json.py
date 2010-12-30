@@ -41,6 +41,7 @@ JSON_CONVERTER_CAPS = set([Capabilities.int_values,
                            Capabilities.external_values,
                            Capabilities.str_keys,
                            Capabilities.circular_references,
+                           Capabilities.new_style_types,
                            Capabilities.meta_types])
 
 JSON_FREEZER_CAPS = JSON_CONVERTER_CAPS \
