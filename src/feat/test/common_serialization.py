@@ -139,7 +139,7 @@ class ConverterTest(common.TestCase):
         if self.unserializer is None:
             raise SkipTest("No unserializer, cannot test convertion")
 
-        capabilities = self.unserializer.capabilities
+        capabilities = self.unserializer.converter_capabilities
         table = self.convertion_table(capabilities, False)
         self.checkConvertion(inverter(table),
                              self.unserializer.convert)
@@ -148,7 +148,7 @@ class ConverterTest(common.TestCase):
         if self.serializer is None:
             raise SkipTest("No serializer, cannot test convertion")
 
-        capabilities = self.serializer.capabilities
+        capabilities = self.serializer.converter_capabilities
         table = self.convertion_table(capabilities, False)
         self.checkConvertion(table, self.serializer.convert)
 
@@ -156,7 +156,7 @@ class ConverterTest(common.TestCase):
         if self.serializer is None:
             raise SkipTest("No serializer, cannot test convertion")
 
-        capabilities = self.serializer.freezing_capabilities
+        capabilities = self.serializer.freezer_capabilities
         table = self.convertion_table(capabilities, True)
         self.checkConvertion(table, self.serializer.freeze)
 
@@ -167,8 +167,8 @@ class ConverterTest(common.TestCase):
         if self.serializer is None:
             raise SkipTest("No serializer, cannot test for symmetry")
 
-        cap1 = self.unserializer.capabilities
-        cap2 = self.serializer.capabilities
+        cap1 = self.unserializer.converter_capabilities
+        cap2 = self.serializer.converter_capabilities
         capabilities = cap1.intersection(cap2)
         self.checkSymmetry(self.serializer.convert,
                            self.unserializer.convert,
@@ -237,6 +237,7 @@ class ConverterTest(common.TestCase):
                     if self.safe_equal(expected, result):
                         break
                 else:
+                    print ">"*20, value, result
                     self.fail("Value not converted to one of the expected "
                               "values:\nVALUE:    %r\nRESULT:   %r\n%s"
                               % (value, result,
@@ -281,14 +282,16 @@ class ConverterTest(common.TestCase):
 
         valdesc = [(Capabilities.int_values, Capabilities.int_keys,
                     int, [0, -42, 42]),
-                   (Capabilities.long_values, Capabilities.int_values,
+                   (Capabilities.long_values, Capabilities.long_keys,
                     long, [0L, -2**66, 2**66]),
                    (Capabilities.float_values, Capabilities.float_keys,
                    float, [0.0, 3.14159, -3.14159, 1.23145e23, 1.23145e-23]),
                    (Capabilities.str_values, Capabilities.str_keys,
-                    str, ["", "spam", "\x00", "\n"]),
+                    str, ["", "spam"]),
+                   (Capabilities.str_values, None, # May not be valid for keys
+                    str, ["\x00", "\n", "\xFF"]),
                    (Capabilities.unicode_values, Capabilities.unicode_keys,
-                    unicode, [u"", u"hétérogénéité", u"\x00\n"]),
+                    unicode, [u"", u"hétérogénéité", u"\x00\xFF\n"]),
                    (Capabilities.bool_values, Capabilities.bool_keys,
                     bool, [True, False]),
                    (Capabilities.none_values, Capabilities.none_keys,
@@ -317,9 +320,37 @@ class ConverterTest(common.TestCase):
                     for value in values:
                         yield value_type, value, False
 
+        def cleanup_dummy_instance(o):
+            if Capabilities.int_values not in capabilities:
+                del o.int
+            if Capabilities.long_values not in capabilities:
+                del o.long
+            if Capabilities.float_values not in capabilities:
+                del o.float
+            if Capabilities.str_values not in capabilities:
+                del o.str
+            if Capabilities.unicode_values not in capabilities:
+                del o.unicode
+            if Capabilities.bool_values not in capabilities:
+                del o.bool
+            if Capabilities.none_values not in capabilities:
+                del o.none
+            if Capabilities.tuple_values not in capabilities:
+                del o.tuple
+            if Capabilities.list_values not in capabilities:
+                del o.list
+            if (Capabilities.set_values not in capabilities
+                or Capabilities.int_keys not in capabilities):
+                del o.set
+            if (Capabilities.dict_values not in capabilities
+                or Capabilities.int_keys not in capabilities):
+                del o.dict
+            return o
+
         def iter_instances(desc):
             # Default instance
-            yield SerializableDummy, SerializableDummy(), True
+            o = SerializableDummy()
+            yield SerializableDummy, cleanup_dummy_instance(o), True
             # Modified instance
             o = SerializableDummy()
 
@@ -336,7 +367,7 @@ class ConverterTest(common.TestCase):
             o.set = set(['g', 'h', 'i'])
             o.dict = {'j': 1, 'k': 2, 'l': 3}
 
-            yield SerializableDummy, o, True
+            yield SerializableDummy, cleanup_dummy_instance(o), True
 
         def iter_externals(desc):
             yield SerializableDummy, self.ext_val, False
@@ -362,7 +393,7 @@ class ConverterTest(common.TestCase):
             return values
 
         def iter_all_keys(desc, stop=False):
-            values = [v for _, v, _ in iter_values(desc)]
+            values = [v for _, v, _ in iter_keys(desc)]
             if Capabilities.enum_keys in capabilities:
                 values += [v for _, v, _ in iter_enums(desc)]
             if not stop:
@@ -500,7 +531,7 @@ class ConverterTest(common.TestCase):
 
                 # Dictionary self-references
                 a = {}
-                a[1] = a
+                a[K] = a
                 yield dict, [a], True
 
                 a = {}
@@ -563,9 +594,14 @@ class ConverterTest(common.TestCase):
                 o2 = SerializableDummy()
                 o3 = SerializableDummy()
 
-                o1.dict = {1: 1}
-                o2.tuple = (2, )
-                o3.list = [3]
+                # remove unsupported attributes
+                o1 = cleanup_dummy_instance(o1)
+                o2 = cleanup_dummy_instance(o2)
+                o3 = cleanup_dummy_instance(o3)
+
+                o1.dict = {K: X}
+                o2.tuple = (X, )
+                o3.list = [Y]
 
                 o1.ref = o2
                 o2.ref = o1

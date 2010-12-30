@@ -27,6 +27,10 @@ class Serializer(base.Serializer):
     '''Serialize any python structure into s-expression compatible
     with twisted.spread.jelly.'''
 
+    def __init__(self, post_converter=None, externalizer=None):
+        base.Serializer.__init__(self, post_converter=post_converter,
+                                 externalizer=externalizer)
+
     def pack_unicode(self, value):
         return [UNICODE_ATOM, value.encode(UNICODE_FORMAT_ATOM)]
 
@@ -78,6 +82,11 @@ class Unserializer(base.Unserializer):
     '''Unserialize a structure serialized with L{sexp.Serializer}.'''
 
     pass_through_types = set([str, int, long, float])
+
+    def __init__(self, pre_converter=None, registry=None, externalizer=None):
+        base.Unserializer.__init__(self, pre_converter=pre_converter,
+                                   registry=registry,
+                                   externalizer=externalizer)
 
     ### Overridden Methods ###
 

@@ -6,37 +6,37 @@ from zope.interface import implements
 from feat.common import decorator, enum, adapter, reflect
 from feat.interface.serialization import *
 
-DEFAULT_CAPABILITIES = set([Capabilities.int_values,
-                            Capabilities.enum_values,
-                            Capabilities.long_values,
-                            Capabilities.float_values,
-                            Capabilities.str_values,
-                            Capabilities.unicode_values,
-                            Capabilities.bool_values,
-                            Capabilities.none_values,
-                            Capabilities.tuple_values,
-                            Capabilities.list_values,
-                            Capabilities.set_values,
-                            Capabilities.dict_values,
-                            Capabilities.instance_values,
-                            Capabilities.external_values,
-                            Capabilities.type_values,
-                            Capabilities.int_keys,
-                            Capabilities.enum_keys,
-                            Capabilities.long_keys,
-                            Capabilities.float_keys,
-                            Capabilities.str_keys,
-                            Capabilities.unicode_keys,
-                            Capabilities.bool_keys,
-                            Capabilities.none_keys,
-                            Capabilities.tuple_keys,
-                            Capabilities.type_keys,
-                            Capabilities.circular_references,
-                            Capabilities.meta_types])
+DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
+                              Capabilities.enum_values,
+                              Capabilities.long_values,
+                              Capabilities.float_values,
+                              Capabilities.str_values,
+                              Capabilities.unicode_values,
+                              Capabilities.bool_values,
+                              Capabilities.none_values,
+                              Capabilities.tuple_values,
+                              Capabilities.list_values,
+                              Capabilities.set_values,
+                              Capabilities.dict_values,
+                              Capabilities.instance_values,
+                              Capabilities.external_values,
+                              Capabilities.type_values,
+                              Capabilities.int_keys,
+                              Capabilities.enum_keys,
+                              Capabilities.long_keys,
+                              Capabilities.float_keys,
+                              Capabilities.str_keys,
+                              Capabilities.unicode_keys,
+                              Capabilities.bool_keys,
+                              Capabilities.none_keys,
+                              Capabilities.tuple_keys,
+                              Capabilities.type_keys,
+                              Capabilities.circular_references,
+                              Capabilities.meta_types])
 
-FREEZING_CAPABILITIES = DEFAULT_CAPABILITIES \
-                        | set([Capabilities.function_values,
-                               Capabilities.method_values])
+DEFAULT_FREEZER_CAPS = DEFAULT_CONVERTER_CAPS \
+                       | set([Capabilities.function_values,
+                              Capabilities.method_values])
 
 FREEZING_TAG_ATTRIBUTE = '__freezing_tag__'
 
@@ -293,10 +293,10 @@ class Serializer(object):
     pack_frozen_function = None
     pack_frozen_method = None
 
-    def __init__(self, caps=None, freezing_caps=None,
+    def __init__(self, converter_caps=None, freezer_caps=None,
                  post_converter=None, externalizer=None):
-        self.capabilities = caps or DEFAULT_CAPABILITIES
-        self.freezing_capabilities = freezing_caps or FREEZING_CAPABILITIES
+        self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
+        self.freezer_capabilities = freezer_caps or DEFAULT_FREEZER_CAPS
         self._post_converter = post_converter and IConverter(post_converter)
         self._externalizer = externalizer and IExternalizer(externalizer)
         self.reset()
@@ -304,12 +304,12 @@ class Serializer(object):
     ### IFreezer Methods ###
 
     def freeze(self, data):
-        return self._convert(data, self.freezing_capabilities, True)
+        return self._convert(data, self.freezer_capabilities, True)
 
     ### IConverter Methods ###
 
     def convert(self, data):
-        return self._convert(data, self.capabilities, False)
+        return self._convert(data, self.converter_capabilities, False)
 
     ### Protected Methods ###
 
@@ -336,11 +336,11 @@ class Serializer(object):
         flattener = self._value_lookup.get(vtype, default)
         return flattener(self, value, caps, freezing)
 
-    def flatten_key(self, value, caps, freezing):
-        vtype = type(value)
+    def flatten_key(self, key, caps, freezing):
+        vtype = type(key)
         default = Serializer.flatten_unknown_key
         flattener = self._key_lookup.get(vtype, default)
-        return flattener(self, value, caps, freezing)
+        return flattener(self, key, caps, freezing)
 
     def post_convertion(self, data):
         if self._post_converter:
@@ -672,10 +672,10 @@ class Unserializer(object):
 
     pass_through_types = ()
 
-    def __init__(self, capabilities=None, pre_converter=None,
+    def __init__(self, converter_caps=None, pre_converter=None,
                  registry=None, externalizer=None):
         global _global_registry
-        self.capabilities = capabilities or DEFAULT_CAPABILITIES
+        self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self._pre_converter = pre_converter and IConverter(pre_converter)
         self._registry = IRegistry(registry) if registry else _global_registry
         self._externalizer = externalizer and IExternalizer(externalizer)

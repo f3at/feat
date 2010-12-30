@@ -155,6 +155,10 @@ class Serializer(base.Serializer):
     pack_dereference = Dereference
     pack_external = External._build
 
+    def __init__(self, post_converter=None, externalizer=None):
+        base.Serializer.__init__(self, post_converter=post_converter,
+                                 externalizer=externalizer)
+
     def pack_frozen_instance(self, value):
         content, = value
         return content
@@ -174,9 +178,13 @@ class Unserializer(base.Unserializer):
     The base class raises DelayUnpacking exception when an unknown
     reference got dereferenced, so unpacking '''
 
-    pass_through_types = set([str, unicode, int, long,
-                              float, bool, type(None),
-                              enum.MetaEnum, type])
+    pass_through_types = set([str, unicode, int, long, float, bool,
+                              type(None), type])
+
+    def __init__(self, pre_converter=None, registry=None, externalizer=None):
+        base.Unserializer.__init__(self, pre_converter=pre_converter,
+                                   registry=registry,
+                                   externalizer=externalizer)
 
     ### Overridden Methods ###
 

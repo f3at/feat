@@ -151,7 +151,7 @@ class IFreezer(Interface):
     The only guarantee is that multiple call to freeze() will
     have always the same result.'''
 
-    freezing_capabilities = Attribute("Set of L{Capabilities} value.")
+    freezer_capabilities = Attribute("Set of L{Capabilities} value.")
 
     def freeze(data):
         '''One-way converts a format to another format.
@@ -168,7 +168,7 @@ class IConverter(Interface):
     Converters are normally bidirectional with a serializer and
     an unserializer.'''
 
-    capabilities = Attribute("Capabilities expresed by L{ICapabilities}")
+    converter_capabilities = Attribute("Set of L{Capabilities} value.")
 
     def convert(data):
         '''Converts a format to another format, usually the output

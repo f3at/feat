@@ -50,9 +50,6 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         yield int, [0], int, [0], False
         yield int, [42], int, [42], False
         yield int, [-42], int, [-42], False
-        yield int, [0], int, [0], False
-        yield int, [42], int, [42], False
-        yield int, [-42], int, [-42], False
         yield long, [0L], long, [0L], False
         yield long, [2**66], long, [2**66], False
         yield long, [-2**66], long, [-2**66], False
