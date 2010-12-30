@@ -273,8 +273,8 @@ class ConverterTest(common.TestCase):
                 if must_change:
                     self.assertEqualButDifferent(result, expected)
 
-    def convertion_table(self, capabilities):
-        raise NotImplementedError()
+    def convertion_table(self, capabilities, freezing):
+        raise SkipTest("No convertion table")
 
     def symmetry_table(self, capabilities):
 
