@@ -11,9 +11,11 @@ from zope.interface import implements
 from twisted.internet import defer
 
 from feat.common import log, enum
+from feat.common.serialization import banana
 from feat.agencies.interface import IConnectionFactory
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.common import StateMachineMixin
+from feat.agents.base.message import BaseMessage
 
 
 class MessagingClient(AMQClient, log.Logger):
@@ -223,6 +225,9 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self._queues = []
         self._processing_chain = []
 
+        self.serializer = banana.Serializer()
+        self.unserializer = banana.Unserializer()
+
         client_defer.addCallback(self._setup_with_client)
 
     def _setup_with_client(self, client):
@@ -326,8 +331,9 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
     @wait_for_channel
     def publish(self, key, shard, message):
-        assert isinstance(message, str)
-        content = Content(message)
+        assert isinstance(message, BaseMessage)
+        serialized = self.serializer.convert(message)
+        content = Content(serialized)
         content.properties['delivery mode'] = 1  # non-persistent
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
@@ -368,8 +374,13 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return self.channel.tx_commit()
 
     def parseMessage(self, msg):
+
+        def unwrap(_, msg):
+            body = msg.content.body
+            return self.unserializer.convert(body)
+
         d = self.ack(msg)
-        d.addCallback(lambda _: msg.content.body)
+        d.addCallback(unwrap, msg)
         return d
 
 

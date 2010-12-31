@@ -4,6 +4,7 @@
 from twisted.internet import defer, reactor
 from feat.common import log
 from feat.interface.agent import IAgencyAgent
+from feat.agents.base.message import BaseMessage
 
 
 class FinishConnection(Exception):
@@ -73,6 +74,10 @@ class Connection(log.Logger):
         return PersonalBinding(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
+        if not isinstance(message, BaseMessage):
+            raise ValueError(
+                'Expected third argument to be f.a.b.BaseMessage, '
+                'got %r instead' % type(message))
         return self._messaging.publish(key, shard, message)
 
     def get_bindings(self, shard=None):
