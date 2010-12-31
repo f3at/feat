@@ -75,16 +75,24 @@ class TestParser(common.TestCase):
                          self.output.getvalue())
 
     @defer.inlineCallbacks
-    def testBadSyntax2(self):
+    def testBadSyntax(self):
         test = format_block("""
-        echo(3 + 2)
+        var = 3 2
         """)
         d = self.cb_after(None, self.output, 'write')
         self.parser.dataReceived(test)
         yield d
 
-        self.assertTrue('Could not detect type of element: +' in\
+        self.assertEqual('Syntax error processing line: var = 3 2\n',
                          self.output.getvalue())
+
+    @defer.inlineCallbacks
+    def testAssignNone(self):
+        test = "var = None\n"
+        d = self.cb_after(None, self.parser, 'on_finish')
+        self.parser.dataReceived(test)
+        yield d
+        self.assertEqual(None, self.parser._locals['var'])
 
     @defer.inlineCallbacks
     def testUnknownVariable(self):
@@ -195,6 +203,10 @@ class TestParser(common.TestCase):
 
         m = self.parser.re['string'].search("'this is string''")
         self.assertFalse(m)
+
+        # none
+        m = self.parser.re['none'].search("None")
+        self.assertTrue(m)
 
         # variable
         m = self.parser.re['variable'].search("this")

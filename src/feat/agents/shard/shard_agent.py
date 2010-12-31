@@ -1,7 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import copy
-
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               descriptor, document, replay)
 from feat.common import enum, fiber
@@ -37,8 +35,10 @@ class ShardAgent(agent.BaseAgent):
         return child
 
     @agent.update_descriptor
-    def add_agent(self, state, descriptor, agent):
-        descriptor.hosts.append(agent)
+    def add_agent(self, state, descriptor, agent_id):
+        recp = recipient.Agent(agent_id, descriptor.shard)
+        descriptor.hosts.append(recp)
+        return recp
 
     @replay.journaled
     def generate_descriptor(self, state, **options):
@@ -54,6 +54,14 @@ class ShardAgent(agent.BaseAgent):
         f.add_callback(state.medium.save_document)
         f.succeed(desc)
         return f
+
+    @replay.immutable
+    def append_child_to_descriptor(self, state, desc, joining_host_id):
+        new_address = recipient.Agent(joining_host_id, desc.shard)
+        desc.hosts.append(new_address)
+        f = fiber.Fiber()
+        f.add_callback(state.medium.save_document)
+        return f.succeed(desc)
 
 
 class JoinShardContractor(contractor.BaseContractor):
@@ -98,16 +106,14 @@ class JoinShardContractor(contractor.BaseContractor):
     @replay.mutable
     def _fetch_children_bids(self, state, announcement):
         desc = state.agent.get_descriptor()
-        recipients = map(lambda shard: recipient.Agent(shard, shard),
-                         desc.children)
-        if len(recipients) == 0:
+        if len(desc.children) == 0:
             return list()
 
-        new_announcement = copy.deepcopy(announcement)
+        new_announcement = announcement.clone()
         new_announcement.payload['level'] += 1
 
         state.nested_manager = state.agent.initiate_protocol(
-            NestedJoinShardManager, recipients, new_announcement)
+            NestedJoinShardManager, desc.children, new_announcement)
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result,
                        state.nested_manager.wait_for_bids)
@@ -181,7 +187,7 @@ class JoinShardContractor(contractor.BaseContractor):
             f = fiber.Fiber()
             f.add_callback(self._prepare_child_descriptor)
             f.add_callback(self._request_start_agent)
-            f.add_callback(self._extract_shard)
+            f.add_callback(self._extract_agent)
             f.add_callback(state.agent.add_children_shard)
             f.add_callback(self._finalize)
             f.succeed(joining_agent_id)
@@ -189,32 +195,23 @@ class JoinShardContractor(contractor.BaseContractor):
         else: # ActionType.join
             f = fiber.Fiber()
             f.add_callback(state.agent.add_agent)
-            f.add_callback(self._get_our_shard)
             f.add_callback(self._finalize)
             f.succeed(joining_agent_id)
             return f
 
-    #FIXME: probably method get_shard() in base agent class would be better
-
     @replay.immutable
-    def _get_our_shard(self, state, *_):
-        return (state.agent.get_descriptor()).shard
-
-    @replay.immutable
-    def _get_our_id(self, state, *_):
-        return (state.agent.get_descriptor()).doc_id
-
-    @replay.immutable
-    def _finalize(self, state, shard):
+    def _finalize(self, state, recp):
         report = message.FinalReport()
-        report.payload['shard'] = shard
+        report.payload['shard'] = recp.shard
         state.medium.finalize(report)
 
     @replay.mutable
-    def _prepare_child_descriptor(self, state, host_agent_id):
+    def _prepare_child_descriptor(self, state, joining_host_id):
         f = fiber.Fiber()
+        our_address = state.agent.get_own_address()
         f.add_callback(fiber.drop_result, state.agent.generate_descriptor,
-                       hosts=[host_agent_id], parent=self._get_our_id())
+                       parent=our_address)
+        f.add_callback(state.agent.append_child_to_descriptor, joining_host_id)
         return f.succeed()
 
     @replay.immutable
@@ -226,8 +223,8 @@ class JoinShardContractor(contractor.BaseContractor):
         f.succeed(host_agent.StartAgentRequester)
         return f
 
-    def _extract_shard(self, reply):
-        return reply.payload['shard']
+    def _extract_agent(self, reply):
+        return reply.payload['agent']
 
 
 class NestedJoinShardManager(manager.BaseManager):

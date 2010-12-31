@@ -39,6 +39,9 @@ class BaseRecipient(serialization.Serializable):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __repr__(self):
+        return "<Recipient: key=%r, shard=%r>" % (self.key, self.shard, )
+
 
 @serialization.register
 class Agent(BaseRecipient):
@@ -96,6 +99,10 @@ class RecipientsFromList(BaseRecipient):
         for el1, el2 in zip(self.array, other.array):
             if el1 != el2:
                 return False
+
+    def __repr__(self):
+        cont = ["k=%r,s=%r" % (recp.key, recp.shard, ) for recp in self.array]
+        return "<RecipientsList: %s>" % "; ".join(cont)
 
 components.registerAdapter(RecipientsFromList, list, IRecipients)
 

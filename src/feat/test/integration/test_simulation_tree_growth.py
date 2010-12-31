@@ -7,6 +7,7 @@ from feat.test.integration import common
 from feat.test.common import attr
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
+from feat.agents.base import recipient
 
 
 class TreeGrowthSimulation(common.SimulationTest):
@@ -65,10 +66,10 @@ class TreeGrowthSimulation(common.SimulationTest):
         shard = (host.get_descriptor()).shard
         self.assert_all_agents_in_shard(last_agency, shard)
 
-    @attr(skip="to be done when the serialization to json is there")
     @defer.inlineCallbacks
     def testStartLevel2(self):
-        # fill all the places in root shard, on shard lvl 1 + 1 hosts on lvl2
+        # fill all the places in root shard, on shard lvl 1
+        # and create the first hosts on lvl 2
         number_of_hosts_to_start =\
             ((self.children_per_shard + 1) * self.hosts_per_shard)
 
@@ -79,14 +80,50 @@ class TreeGrowthSimulation(common.SimulationTest):
         for agency in root_shard_agencies:
             self.assert_all_agents_in_shard(agency, 'root')
 
-        for lvl1child in range(self.children_per_shard):
-            first_agency_in_shard = self.driver._agencies[
-                self.hosts_per_shard * (lvl1child + 1)]
-            desc = (first_agency_in_shard._agents[1].agent.\
-                     medium.get_descriptor())
-            self.info(desc)
-#            self.assertEqual('root', desc.parent)
-#            self.assert_all_agents_in_shard(agency, desc.shard)
+        # validate root shard
+        root_shard_desc = yield self.driver.reload_document(
+            self.get_local('shard_desc'))
+        self.assertEqual(self.children_per_shard,
+                         len(root_shard_desc.children))
+        self.assertEqual(self.hosts_per_shard, len(root_shard_desc.hosts))
+        self.assertIsInstance(root_shard_desc.hosts[0],
+                              recipient.BaseRecipient)
+
+        # validate lvl 1
+        for child in root_shard_desc.children:
+            self.assertIsInstance(child, recipient.BaseRecipient)
+            desc = yield self.driver.get_document(child.key)
+            self.assertEqual(self.hosts_per_shard, len(root_shard_desc.hosts))
+            self.assertEqual(desc.parent.key, root_shard_desc.doc_id)
+            self.assertEqual(desc.parent.shard, root_shard_desc.shard)
+            for host in desc.hosts:
+                self.assertIsInstance(host, recipient.BaseRecipient)
+                host_desc = yield self.driver.get_document(host.key)
+                self.assertEqual(host_desc.shard, child.shard)
+                self.assertEqual(host.shard, child.shard)
+
+                yield self.process(format_block("""
+                host_agency = None
+                host_agency = find_agency('%s')
+                """) % str(host.key))
+                host_agency = self.get_local('host_agency')
+                self.assertTrue(host_agency is not None)
+                self.assert_all_agents_in_shard(host_agency, host.shard)
+
+        #validate last agency (on lvl 2)
+        parent = root_shard_desc.children[0]
+        agency = self.driver._agencies[-1]
+        self.assertEqual(2, len(agency._agents))
+        self.assertIsInstance(agency._agents[0].agent,
+                              host_agent.HostAgent)
+        self.assertIsInstance(agency._agents[1].agent,
+                              shard_agent.ShardAgent)
+        desc = yield self.driver.get_document(
+            agency._agents[1]._descriptor.doc_id)
+        # FIXME: for some reason we receive dict not Recipient here!!!
+        self.assertEqual(parent.key, desc.parent['key'])
+        self.assertEqual(1, len(desc.hosts))
+        self.assertEqual(0, len(desc.children))
 
     @defer.inlineCallbacks
     def testFillupTwoShards(self):
@@ -111,7 +148,7 @@ class TreeGrowthSimulation(common.SimulationTest):
 
         for agent in agency._agents:
             desc = agent.get_descriptor()
-            self.assertEqual(shard, desc.shard)
+            self.assertEqual(shard, desc.shard, str(type(agent.agent)))
             m = agent._messaging
             agent_type = agent.agent.__class__
 

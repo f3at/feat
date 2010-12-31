@@ -75,6 +75,7 @@ class Parser(log.Logger):
         self.re = dict(
             assignment=re.compile('\A(\w+)\s*=\s*(\S.*)'),
             number=re.compile('\A\d+(\.\d+)?\Z'),
+            none=re.compile('\ANone\Z'),
             string=re.compile('\A\'([^(?<!\)\']*)\'\Z'),
             call=re.compile('\A(\w+)\((.*)\)\Z'),
             variable=re.compile('\A([^\(\)\'\"\s\+]+)\Z'),
@@ -178,6 +179,11 @@ class Parser(log.Logger):
             m = self.re['string'].search(element)
             if m:
                 result.append(m.group(1))
+                continue
+
+            m = self.re['none'].search(element)
+            if m:
+                result.append(None)
                 continue
 
             m = self.re['variable'].search(element)

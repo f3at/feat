@@ -10,6 +10,7 @@ from feat.agencies import agency
 from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
 from feat.test import factories
+from feat.agents.base import document
 
 
 class Commands(manhole.Manhole):
@@ -57,6 +58,24 @@ class Commands(manhole.Manhole):
         cb = self._breakpoints[name]
         cb.callback(None)
         return cb
+
+    @manhole.expose()
+    def find_agency(self, agent_id):
+        """
+        Returns the agency running the agent with agent_id or None.
+        """
+
+        def has_agent(agency):
+            for agent in agency._agents:
+                if agent._descriptor.doc_id == agent_id:
+                    return True
+            return False
+
+        matching = filter(has_agent, self._agencies)
+        if len(matching) > 0:
+            self.debug('Find agency returns %dth agency.',
+                       self._agencies.index(matching[0]))
+            return matching[0]
 
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
@@ -113,6 +132,15 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def get_descriptor(self):
         return self._descriptor
+
+    # Delegation of IDatabase methods for tests
+
+    def reload_document(self, doc):
+        assert isinstance(doc, document.Document)
+        return self._database_connection.reload_document(doc)
+
+    def get_document(self, doc_id):
+        return self._database_connection.get_document(doc_id)
 
 
 class Output(StringIO.StringIO, object):

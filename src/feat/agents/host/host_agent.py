@@ -32,7 +32,12 @@ class HostAgent(agent.BaseAgent):
     def start_agent(self, state, desc):
         f = fiber.Fiber()
         f.add_callback(state.medium.agency.start_agent)
-        f.add_callback(agency.AgencyAgent.get_descriptor)
+        # transform the reference to IRecipient.
+        # agents should not keep the direct references
+        # to the other agent. It is harmfull for replayability
+        # which replays one agent and time, and breaks the rule
+        # that agent comunicate only through messages
+        f.add_callback(recipient.IRecipient)
         f.succeed(desc)
         return f
 
@@ -70,10 +75,9 @@ class StartAgentReplier(replier.BaseReplier):
         return f
 
     @replay.mutable
-    def _send_reply(self, state, descriptor):
+    def _send_reply(self, state, new_agent):
         msg = message.ResponseMessage()
-        msg.payload['shard'] = descriptor.shard
-        msg.payload['doc_id'] = descriptor.doc_id
+        msg.payload['agent'] = recipient.IRecipient(new_agent)
         state.medium.reply(msg)
 
 

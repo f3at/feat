@@ -61,8 +61,13 @@ class Replay(log.FluLogKeeper, log.Logger):
         entry = self.journal.next()
         (agent_id, instance_id, entry_id, fiber_id, fiber_depth,
         input, side_effects, output, ) = entry
-        input = self.unserializer.convert(input)
-        side_effects = self.unserializer.convert(side_effects)
+        try:
+            input = self.unserializer.convert(input)
+            side_effects = self.unserializer.convert(side_effects)
+        except:
+            self.error("Failed trying to apply entry: %r, input: %r, "
+                       "side_effects: %r.", entry_id, input, side_effects)
+            raise
 
         assert agent_id == self.agent_id
         if instance_id == 'agency':

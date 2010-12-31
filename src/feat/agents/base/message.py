@@ -27,7 +27,7 @@ class BaseMessage(serialization.Serializable):
             raise AttributeError('Unknown message field: %r', kwargs.keys())
 
     def clone(self):
-        return copy.copy(self)
+        return copy.deepcopy(self)
 
     def iter_fields(self):
         for key in dir(type(self)):
