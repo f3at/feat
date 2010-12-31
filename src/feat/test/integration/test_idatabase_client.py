@@ -24,19 +24,7 @@ from feat.test.common import attr
 @serialization.register
 class DummyDocument(document.Document):
 
-    def __init__(self, **fields):
-        document.Document.__init__(self, **fields)
-        valid_fields = ('field', )
-        self._set_fields(valid_fields, fields)
-
-    def snapshot(self):
-        res = document.Document.snapshot(self)
-        res['field'] = self.field
-        return res
-
-    def recover(self, snapshot):
-        document.Document.recover(self, snapshot)
-        self.field = snapshot.get('field', None)
+    document.field('field', None)
 
 
 class TestCase(object):

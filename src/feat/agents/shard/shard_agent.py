@@ -274,23 +274,6 @@ class ActionType(enum.Enum):
 class Descriptor(descriptor.Descriptor):
 
     document_type = 'shard_agent'
-
-    def __init__(self, **fields):
-        descriptor.Descriptor.__init__(self, **fields)
-        valid_fields = ('parent', 'hosts', 'children', )
-        self._set_fields(valid_fields, fields)
-        self.children = self.children or list()
-        self.hosts = self.hosts or list()
-
-    def snapshot(self):
-        c = descriptor.Descriptor.snapshot(self)
-        c['parent'] = self.parent
-        c['hosts'] = self.hosts
-        c['children'] = self.children
-        return c
-
-    def recover(self, snapshot):
-        descriptor.Descriptor.recover(self, snapshot)
-        self.parent = snapshot.get('parent', None)
-        self.hosts = snapshot.get('hosts', list())
-        self.children = snapshot.get('children', list())
+    document.field('parent', None)
+    document.field('hosts', list())
+    document.field('children', list())
