@@ -12,7 +12,9 @@ from feat.agents.base import recipient
 
 class TreeGrowthSimulation(common.SimulationTest):
 
-    timeout = 10
+    # Timeout is intentionaly set to high. Some of theese tests take a lot
+    # of time running with --coverage on buildbot (virtualized machine)
+    timeout = 40
     hosts_per_shard = 10
     children_per_shard = 2
 
