@@ -1,30 +1,35 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
 import time
 import uuid
 import copy
 
 from twisted.internet import reactor
+from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, manhole
 from feat.agents.base import recipient
+from feat.agents.base.agent import registry_lookup
 from feat.interface import agency, agent, protocols
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory
 
-from . import requests
-from . import contracts
+from . import contracts, requests
 
 
-class Agency(object):
+class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
+
+    __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
+                                        type(log.FluLogKeeper)), {})
+
     implements(agency.IAgency)
 
-    time_scale = 1
-
     def __init__(self, messaging, database):
+        log.FluLogKeeper.__init__(self)
+        log.Logger.__init__(self, self)
+
         self._agents = []
         # shard -> [ agents ]
         self._shards = {}
@@ -32,11 +37,16 @@ class Agency(object):
         self._messaging = IConnectionFactory(messaging)
         self._database = IConnectionFactory(database)
 
-    def start_agent(self, factory, descriptor):
-        factory = agent.IAgentFactory(factory)
+    @manhole.expose()
+    def start_agent(self, descriptor):
+        factory = agent.IAgentFactory(
+            registry_lookup(descriptor.document_type))
+        self.log('I will start: %r agent', factory)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
-        return medium
+        d = defer.maybeDeferred(medium.agent.initiate)
+        d.addCallback(lambda _: medium)
+        return d
 
     # TODO: Implement this, but first discuss what this really
     # means to unregister agent
@@ -85,7 +95,6 @@ class AgencyAgent(log.FluLogKeeper, log.Logger):
         self._interests = {}
 
         self.join_shard(descriptor.shard)
-        self.agent.initiate()
 
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)

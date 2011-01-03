@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import implements, classProvides
+from zope.interface import implements
 
 from feat.common import log, decorator
 from feat.interface import agent
@@ -24,16 +24,20 @@ def registry_lookup(name):
     return None
 
 
-class BaseAgent(log.Logger):
+class MetaAgent(type):
+    implements(agent.IAgentFactory)
 
-    log_category="agent"
 
-    classProvides(agent.IAgentFactory)
+class BaseAgent(log.Logger, log.LogProxy):
+
+    __metaclass__ = MetaAgent
+
     implements(agent.IAgent)
 
     def __init__(self, medium):
         log.Logger.__init__(self, medium)
         self.medium = agent.IAgencyAgent(medium)
+        log.LogProxy.__init__(self, medium)
 
     ## IAgent Methods ##
 

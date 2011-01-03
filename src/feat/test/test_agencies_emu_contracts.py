@@ -116,7 +116,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.log("Descriptor: %r", desc)
-        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+        self.agent = yield self.agency.start_agent(desc)
 
         self.contractors = []
         for x in range(3):
@@ -498,7 +498,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
     def setUp(self):
         common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
-        self.agent = self.agency.start_agent(agent.BaseAgent, desc)
+        self.agent = yield self.agency.start_agent(desc)
         self.agent.register_interest(DummyContractor)
 
         self.contractor = None
