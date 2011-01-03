@@ -1,14 +1,10 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-import uuid
-
-from zope.interface import implements
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 from feat.test.common import attr, delay, StubAgent
-from feat.interface import agent
+
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents.base import descriptor
 from feat.process import rabbitmq

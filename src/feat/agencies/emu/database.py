@@ -124,7 +124,7 @@ class Database(log.Logger, log.FluLogKeeper):
         return doc
 
     def _generate_id(self):
-        return str(uuid.uuid1())
+        return unicode(uuid.uuid1())
 
 
 class Response(dict):

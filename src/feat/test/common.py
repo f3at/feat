@@ -9,10 +9,11 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
-from feat.agents.base import message, recipient, descriptor
-from feat.common import log
+from feat.agents.base import message, recipient, descriptor, agent
+from feat.common import log, decorator
 from feat.common import delay as delay_module
-from feat.interface import agent
+from feat.interface.agent import IAgencyAgent
+
 
 from . import factories
 
@@ -153,7 +154,8 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         def new_method(*args, **kwargs):
             obj.__setattr__(method, old_method)
             ret = old_method(*args, **kwargs)
-            reactor.callLater(0, d.callback, arg or ret)
+            cb_arg = arg or (not isinstance(ret, defer.Deferred) and ret)
+            reactor.callLater(0, d.callback, cb_arg)
             return ret
 
         obj.__setattr__(method, new_method)
@@ -305,6 +307,7 @@ class Mock(object):
         return filter(lambda x: x.name == name, self._called)
 
     @staticmethod
+    @decorator.simple_function
     def stub(method):
 
         def decorated(self, *args, **kwargs):
@@ -355,7 +358,7 @@ class AgencyTestHelper(object):
         @returns: Document with id and revision set
         @return_type: subclass of feat.agents.document.Document
         '''
-        document = factories.build(doc_class, **options)
+        document = factories.build(doc_class.document_type, **options)
         return self.agency._database.connection.save_document(document)
 
     # methods for sending and receiving custom messages
@@ -447,11 +450,11 @@ class AgencyTestHelper(object):
 
 
 class StubAgent(object):
-    implements(agent.IAgencyAgent)
+    implements(IAgencyAgent)
 
     def __init__(self):
         self.descriptor = descriptor.Descriptor(shard='lobby',
-                                                _id=str(uuid.uuid1()))
+                                                doc_id=str(uuid.uuid1()))
         self.messages = []
 
     def on_message(self, msg):
@@ -459,3 +462,15 @@ class StubAgent(object):
 
     def get_descriptor(self):
         return self.descriptor
+
+
+@agent.register('descriptor')
+class DummyAgent(agent.BaseAgent, Mock):
+
+    def __init__(self, medium):
+        agent.BaseAgent.__init__(self, medium)
+        Mock.__init__(self)
+
+    @Mock.stub
+    def initiate(self):
+        pass

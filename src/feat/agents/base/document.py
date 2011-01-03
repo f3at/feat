@@ -1,56 +1,75 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
+
+from feat.common import serialization, annotate
+
 
 documents = dict()
 
 
 def register(klass):
     global documents
+    if klass.document_type in documents:
+        raise ValueError('document_type %s already registered!' %
+                         klass.document_type)
     documents[klass.document_type] = klass
+    serialization.register(klass)
     return klass
 
 
-class Document(object):
+class Field(object):
 
-    def __init__(self, _id=None, _rev=None, **kwargs):
-        self._doc_id = self._decode(_id)
-        self._rev = self._decode(_rev)
+    def __init__(self, name, default, json_name=None):
+        self.name = name
+        self.default = default
+        self.json_name = json_name or name
 
-    @property
-    def doc_id(self):
-        return self._doc_id
 
-    @property
-    def rev(self):
-        return self._rev
+def field(name, default, json_name=None):
+    f = Field(name, default, json_name)
+    annotate.injectClassCallback("field", 3, "_register_field", f)
 
-    def get_content(self):
-        raise NotImplementedError("'get_content' method should be overloaded")
 
-    def update(self, response):
-        '''
-        Updates id and rev basing on response from database.
+@serialization.register
+class Document(serialization.Serializable, annotate.Annotable):
 
-        @param response: dict with keys id and rev
-        @type response: dict
-        @returns: updated document
-        '''
-        doc_id = self._decode(response.get('id', None))
-        rev = self._decode(response.get('rev', None))
-        if doc_id:
-            self._doc_id = doc_id
-        if rev:
-            self._rev = rev
+    __metaclass__ = type('MetaDocument', (type(serialization.Serializable),
+                                          type(annotate.Annotable), ), {})
 
-        return self
+    _fields = None
+    field('doc_id', None, '_id')
+    field('rev', None, '_rev')
 
-    def _decode(self, var):
-        '''
-        Decodes unicode to string if necessary. This is important for some
-        fields, escescially doc_id which is used by CouchDB to generate URLs
-        '''
+    @classmethod
+    def _register_field(cls, field):
+        if cls._fields is None:
+            cls._fields = list()
+        cls._fields.append(field)
 
-        if isinstance(var, unicode):
-            return var.encode('utf-8')
-        else:
-            return var
+    def __init__(self, **fields):
+        self._set_fields(fields)
+
+    def _set_fields(self, dictionary):
+        for field in self._fields:
+            # lazy coping of default value, don't touch!
+            value = dictionary.get(field.name, None) or\
+                    copy.copy(field.default)
+            setattr(self, field.name, value)
+
+    # ISerializable
+
+    def snapshot(self):
+        res = dict()
+        for field in self._fields:
+            value = getattr(self, field.name)
+            if value is not None:
+                res[field.json_name] = value
+        return res
+
+    def recover(self, snapshot):
+        for field in self._fields:
+            # lazy coping of default value, don't touch!
+            value = snapshot.get(field.json_name, None) or\
+                    copy.copy(field.default)
+            setattr(self, field.name, value)
