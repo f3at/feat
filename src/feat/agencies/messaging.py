@@ -4,6 +4,7 @@
 from twisted.internet import defer, reactor
 from feat.common import log
 from feat.interface.agent import IAgencyAgent
+from feat.agents.base.message import BaseMessage
 
 
 class FinishConnection(Exception):
@@ -33,7 +34,10 @@ class Connection(log.Logger):
             reactor.callLater(0, bind)
 
         def stop(reason):
-            self.log('Error handler: exiting, reason %r' % reason)
+            if reason.check(FinishConnection):
+                self.log('Error handler: exiting, reason %r' % reason)
+            else:
+                reason.raiseException()
 
         def bind():
             d = self._consumeQueue(queue)
@@ -46,7 +50,6 @@ class Connection(log.Logger):
         def get_and_call_on_message(message):
             # it is important to always lookup the current message handler
             # maybe someone bound callback to it ?
-            self.log('Received message: %r', message)
             on_message = self._agent.on_message
             return on_message(message)
 
@@ -71,6 +74,10 @@ class Connection(log.Logger):
         return PersonalBinding(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
+        if not isinstance(message, BaseMessage):
+            raise ValueError(
+                'Expected third argument to be f.a.b.BaseMessage, '
+                'got %r instead' % type(message))
         return self._messaging.publish(key, shard, message)
 
     def get_bindings(self, shard=None):

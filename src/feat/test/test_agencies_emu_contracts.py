@@ -525,10 +525,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             announce = args[0]
             self.assertEqual(contracts.ContractState.announced,
                              contractor.medium.state)
-            self.assertNotEqual(None, contractor.medium.announce)
-            self.assertEqual(announce, contractor.medium.announce)
-            self.assertTrue(isinstance(contractor.medium.announce,\
-                                       message.Announcement))
 
         d.addCallback(asserts_on_contractor)
 

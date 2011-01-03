@@ -4,9 +4,8 @@ from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 from feat.test.common import attr, delay, StubAgent
-
 from feat.agencies.emu import messaging as emu_messaging
-from feat.agents.base import descriptor
+from feat.agents.base import message
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
 
@@ -18,6 +17,21 @@ except ImportError as e:
     import_error = e
 
 from . import common
+
+
+def m(payload):
+    '''
+    Wraps the payload into BaseMessage.
+    '''
+    return message.BaseMessage(payload=payload)
+
+
+def unwrap(msg):
+    '''
+    Perform the reverse operation to m().
+    '''
+    assert isinstance(msg, message.BaseMessage)
+    return msg.payload
 
 
 class TestCase(object):
@@ -44,16 +58,16 @@ class TestCase(object):
     def testTwoAgentsTalking(self):
         d = self.cb_after(None, self.agents[1], 'on_message')
         d2 = self.cb_after(None, self.agents[0], 'on_message')
-        self.connections[0].publish(message="you stupid!", **self._agent(1))
+        self.connections[0].publish(message=m("you stupid!"), **self._agent(1))
         yield d
         self.assertEqual(1, len(self.agents[1].messages))
-        self.assertEqual('you stupid!', self.agents[1].messages[0])
+        self.assertEqual('you stupid!', unwrap(self.agents[1].messages[0]))
 
-        self.connections[0].publish(message="buzz off", **self._agent(0))
+        self.connections[0].publish(message=m("buzz off"), **self._agent(0))
 
         yield d2
         self.assertEqual(1, len(self.agents[0].messages))
-        self.assertEqual('buzz off', self.agents[0].messages[0])
+        self.assertEqual('buzz off', unwrap(self.agents[0].messages[0]))
 
     @defer.inlineCallbacks
     def testMultipleAgentsWithSameBinding(self):
@@ -61,7 +75,7 @@ class TestCase(object):
         bindings = map(lambda x: x.personal_binding(key), self.connections)
         yield defer.DeferredList(map(lambda x: x.created, bindings))
 
-        self.connections[0].publish(message='some message',
+        self.connections[0].publish(message=m('some message'),
                                     key=key, shard='lobby')
         yield defer.DeferredList(map(
             lambda x: self.cb_after(None, method='on_message', obj=x),
@@ -74,7 +88,7 @@ class TestCase(object):
     def testTellsDiffrenceBeetweenShards(self):
         shard = 'some shard'
         key = 'some key'
-        msg = "only for connection 0"
+        msg = m("only for connection 0")
 
         bindings = [self.connections[0].personal_binding(key, shard),
                     self.connections[1].personal_binding(key)]
@@ -92,7 +106,7 @@ class TestCase(object):
     def testRevokedBindingsDontBind(self):
         shard = 'some shard'
         key = 'some key'
-        msg = "only for connection 0"
+        msg = m("only for connection 0")
 
         bindings = [self.connections[0].personal_binding(key, shard),
                     self.connections[1].personal_binding(key)]
@@ -121,19 +135,19 @@ class RabbitSpecific(object):
     @defer.inlineCallbacks
     def testReconnect(self):
         d1 = self.cb_after(None, self.agents[0], "on_message")
-        yield self.connections[1].publish(message="first message",
+        yield self.connections[1].publish(message=m("first message"),
                                           **self._agent(0))
         yield d1
         yield self.disconnect_client()
 
         d2 = self.cb_after(None, self.agents[0], "on_message")
-        yield self.connections[1].publish(message="second message",
+        yield self.connections[1].publish(message=m("second message"),
                                           **self._agent(0))
         yield d2
 
         self.assertEqual(2, len(self.agents[0].messages))
-        self.assertEqual("first message", self.agents[0].messages[0])
-        self.assertEqual("second message", self.agents[0].messages[1])
+        self.assertEqual("first message", unwrap(self.agents[0].messages[0]))
+        self.assertEqual("second message", unwrap(self.agents[0].messages[1]))
 
     @attr(number_of_agents=3, timeout=20)
     @defer.inlineCallbacks
@@ -150,14 +164,15 @@ class RabbitSpecific(object):
             for conn, i in zip(self.connections, range(total)):
                 target = (i + 1) % total
                 msg = "%s,%s" % (attempt, target, )
-                d = conn.publish(message=msg, **self._agent(target))
+                d = conn.publish(message=m(msg), **self._agent(target))
                 deferrs.append(d)
             return defer.DeferredList(deferrs)
 
         def asserts(attempt):
             for agent in self.agents:
                 self.assertEqual(attempt, len(agent.messages))
-                self.assertTrue(agent.messages[-1].startswith("%s," % attempt))
+                self.assertTrue(
+                    unwrap(agent.messages[-1]).startswith("%s," % attempt))
 
         number_of_reconnections = 5
 
@@ -201,7 +216,7 @@ class RabbitSpecific(object):
         yield binding.created
 
         d = self.cb_after(None, agent, 'on_message')
-        connection.publish(message='something', **self._agent(0))
+        connection.publish(message=m('something'), **self._agent(0))
         yield d
 
         self.assertEqual(1, len(agent.messages))

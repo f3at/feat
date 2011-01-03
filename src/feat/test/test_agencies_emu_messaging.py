@@ -7,7 +7,7 @@ from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.agencies.emu import messaging
-from feat.agents.base import descriptor
+from feat.agents.base import descriptor, message
 from feat.interface import agent
 
 from . import common
@@ -203,13 +203,14 @@ class TestMessaging(common.TestCase):
 
     def testPublishingByAgent(self):
         key = (self.agent.get_descriptor()).doc_id
+        msg = message.BaseMessage(payload='some message')
         self.connection.personal_binding(key)
-        self.connection.publish(key, self.agent.descriptor.shard,\
-                                   'some message')
+        self.connection.publish(key, self.agent.descriptor.shard, msg)
         d = defer.Deferred()
 
         def asserts(d):
-            self.assertEqual(['some message'], self.agent.messages)
+            self.assertEqual(1, len(self.agent.messages))
+            self.assertEqual('some message', self.agent.messages[0].payload)
             d.callback(None)
 
         reactor.callLater(0.1, asserts, d)
