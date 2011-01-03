@@ -3,6 +3,7 @@ import uuid
 import time
 
 from twisted.internet import defer, reactor
+from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
 
@@ -178,6 +179,16 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
              "Expected instance of %r, got %r instead" % (klass, _.__class__))
         return _
 
+    def assertIs(self, expr1, expr2, msg=None):
+        self.assertEqual(id(expr1), id(expr2),
+                         msg or ("Expected same instances and got %r and %r"
+                                 % (expr1, expr2)))
+
+    def assertIsNot(self, expr1, expr2, msg=None):
+        self.assertNotEqual(id(expr1), id(expr2),
+                            msg or ("Expected different instances and got "
+                                    "two %r" % (expr1, )))
+
     def assertAsyncEqual(self, chain, expected, value, *args, **kwargs):
         '''Adds an asynchronous assertion for equality to the specified
         deferred chain.
@@ -265,12 +276,14 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return obj
 
     def tearDown(self):
-        delay.time_scale = 1
-
+        delay_module.time_scale = 1
 
     ### Private Methods ###
 
     def _assertAsync(self, param, check, value, *args, **kwargs):
+        if isinstance(param, failure.Failure):
+            if param.check(AssertionError):
+                param.raiseException()
         if isinstance(value, defer.Deferred):
             value.addBoth(check)
             return value

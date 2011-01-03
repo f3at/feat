@@ -1,7 +1,43 @@
 from zope.interface import Interface, Attribute
 
+from feat.common import enum
+
 __all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
-           "ISerializer", "IUnserializer", "IFormater", "IParser"]
+           "IExternal", "IInstance", "IReference", "IDereference",
+           "IExternalizer", "Capabilities", "IFreezer", "IConverter"]
+
+
+class Capabilities(enum.Enum):
+    (int_values,
+     enum_values,
+     long_values,
+     float_values,
+     str_values,
+     unicode_values,
+     bool_values,
+     none_values,
+     tuple_values,
+     list_values,
+     set_values,
+     dict_values,
+     instance_values,
+     external_values,
+     type_values,
+     function_values,
+     method_values,
+     int_keys,
+     enum_keys,
+     long_keys,
+     float_keys,
+     str_keys,
+     unicode_keys,
+     bool_keys,
+     none_keys,
+     type_keys,
+     tuple_keys,
+     circular_references,
+     new_style_types,
+     meta_types) = range(30)
 
 
 class IRegistry(Interface):
@@ -10,6 +46,21 @@ class IRegistry(Interface):
     def register(restorator):
         '''Register L{IRestorer}'''
 
+    def lookup(type_name):
+        '''Gives a L{IRestorer} for specified type name
+        or None if not found.'''
+
+
+class IExternalizer(Interface):
+    '''Used with converters to substitute instances by references
+    externally managed.'''
+
+    def identify(self, instance):
+        '''Returns the external identifier for the instance or None.'''
+
+    def lookup(self, identifier):
+        '''Returns the instance with specified identifier or None.'''
+
 
 class IRestorator(Interface):
     '''Knows how to restore a snapshot for a type name.
@@ -17,8 +68,18 @@ class IRestorator(Interface):
 
     type_name = Attribute('')
 
+    def prepare():
+        '''For mutable types, creates and prepares an instance for
+        being recovered. For immutable types returns None, and restore()
+        should be used instead.
+        It returns an empty instance implementing L{ISerializable}.
+        The returned instance's method recover() should be called
+        with a snapshot to finish the restoration.
+        This methods will create an instance without calling __init__().'''
+
     def restore(snapshot):
-        pass
+        '''For mutable types, equivalent of calling prepare() and then
+        the instance recover() method with the specified snapshot.'''
 
 
 class ISnapshotable(Interface):
@@ -41,39 +102,78 @@ class ISerializable(ISnapshotable):
     type_name = Attribute('')
 
     def recover(snapshot):
-        pass
+        '''Called for the instance to recover its state from a snapshot.
+        The mutable values of the snapshot should not be used because
+        they may not be initialized yet because of circular references.
+        To perform initialization relying on snapshot items being restored
+        restored() should be used.
+        NOTE: when this method is called __init__() has not been called
+        and will never be called, restoration of parent class should be done
+        there or in the later call to restored().'''
+
+    def restored():
+        '''Called when all unserialized items have been restored.
+        Only MUTABLE types are called.
+        WARNING: It doesn't mean all restored() functions have been called.'''
 
 
-class ISerializer(Interface):
-    '''Knows how to convert an object to bytes.'''
+class IExternal(Interface):
+    '''Used by some converter to represent an external reference.'''
 
-    def snapshot(obj):
-        pass
-
-    def serialize(obj):
-        '''Same has snapshot but enforce all instances
-        support L{ISerializable}'''
+    identifier = Attribute("External reference identifier")
 
 
-class IUnserializer(Interface):
-    '''Knows how to convert bytes to object.
-    A L{IRestorator} must be registered for any types other
-    than python basic types.
-    '''
+class IInstance(Interface):
+    '''Used by some converter to represent ISerializable instances.'''
 
-    def unserialize(data):
-        pass
+    type_name = Attribute('Name of the instance type')
+    snapshot = Attribute('Snapshot of the instance')
 
 
-class IFormater(Interface):
-    '''Knows how to convert s-expression to bytes'''
+class IReference(Interface):
+    '''Used by some converter to represent a reference on a value.'''
 
-    def format(data):
-        pass
+    refid = Attribute('Reference identifier')
+    value = Attribute('Reference value')
 
 
-class IParser(Interface):
-    '''Knows how to convert bytes to s-expression'''
+class IDereference(Interface):
+    '''Used by some converter to represent a dereference
+    of a referenced value.'''
 
-    def parse(data):
-        pass
+    refid = Attribute('Reference identifier')
+
+
+class IFreezer(Interface):
+    '''Knows how to convert something from a format to another.
+    Only knows about basic python types and instances implementing
+    L{ISnapshot}. The result of calling freeze() is most probably
+    not unserializable. Used for one-way conversion.
+    The only guarantee is that multiple call to freeze() will
+    have always the same result.'''
+
+    freezer_capabilities = Attribute("Set of L{Capabilities} value.")
+
+    def freeze(data):
+        '''One-way converts a format to another format.
+        Only work with python basic types and instances implementing
+        L{ISnapshotable}. Even if one-way, the result is consistent
+        over multiple calls, it gives always the same output for
+        the same input.'''
+
+
+class IConverter(Interface):
+    '''Knows how to convert something from a format to another.
+    Only knows about basic python types and instances implementing
+    L{ISerializable} for which a L{IRestorator} must be registered.
+    Converters are normally bidirectional with a serializer and
+    an unserializer.'''
+
+    converter_capabilities = Attribute("Set of L{Capabilities} value.")
+
+    def convert(data):
+        '''Converts a format to another format, usually the output
+        can be converted back to the original value.
+        Only work with python basic types and instances implementing
+        L{ISerializable}. The result is consistent over multiple calls,
+        it gives always the same output for the same input.'''

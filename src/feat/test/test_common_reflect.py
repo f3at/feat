@@ -79,6 +79,14 @@ def bacon():
     pass
 
 
+class Meta(type):
+    pass
+
+
+class MetaDummy(object):
+    __metaclass__ = Meta
+
+
 class TestIntrospection(common.TestCase):
 
     def testMetaErrors(self):
@@ -99,6 +107,10 @@ class TestIntrospection(common.TestCase):
                          reflect.canonical_name(int))
         self.assertEqual("__builtin__.str",
                          reflect.canonical_name("some string"))
+
+    def testClassMithMeta(self):
+        self.assertEqual("feat.test.test_common_reflect.MetaDummy",
+                         reflect.canonical_name(MetaDummy))
 
     def testMethod(self):
         self.assertEqual("feat.test.test_common_reflect.Dummy.spam",
