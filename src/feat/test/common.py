@@ -279,7 +279,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return obj
 
     def tearDown(self):
-        delay.time_scale = 1
+        delay_module.time_scale = 1
 
     ### Private Methods ###
 

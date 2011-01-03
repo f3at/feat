@@ -5,6 +5,7 @@ import traceback
 
 from twisted.internet import defer
 from feat.common import delay, serialization
+from feat.interface.protocols import InitiatorFailed
 
 
 class StateAssertationError(RuntimeError):
@@ -213,3 +214,9 @@ class InitiatorMediumBase(object):
 
     def _finish_errback(self, x):
         map(lambda d: d.errback(x), self._finished_cbs)
+
+    def _terminate(self):
+        if not self.finish_deferred.called:
+            self.log("Firing errback of finish_deferred")
+            ex = InitiatorFailed(self.state)
+            self.finish_deferred.errback(ex)

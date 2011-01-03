@@ -85,14 +85,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _terminate(self):
         common.ExpirationCallsMixin._terminate(self)
-
         self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
-
-        if not self.finish_deferred.called:
-            self.log("Firing errback of finish_deferred")
-            ex = protocols.InitiatorFailed(self.state)
-            self.finish_deferred.errback(ex)
+        common.InitiatorMediumBase._terminate(self)
 
     def _on_reply(self, msg):
         self.log('on_reply')
