@@ -216,7 +216,6 @@ class _NormalMetaDecorator(object):
         self.kwargs = kwargs
 
     def __call__(self, callable):
-
         wrapper = self.decorator(callable, *self.args, **self.kwargs)
 
         def meta_wrapper(*args, **kwargs):
@@ -235,7 +234,6 @@ class _ConsistentMetaDecorator(object):
         self.kwargs = kwargs
 
     def __call__(self, callable):
-
         wrapper = self.decorator(callable, *self.args, **self.kwargs)
 
         if reflect.inside_class_definition(depth=2):

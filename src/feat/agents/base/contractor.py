@@ -1,10 +1,14 @@
-from zope.interface import implements, classProvides
+from zope.interface import implements
 from feat.interface import contractor
 from feat.common import log
-from feat.agents.base import message
+from feat.agents.base import message, replay
 
 
-class BaseContractor(log.Logger):
+class Meta(type(replay.Replayable)):
+    implements(contractor.IContractorFactory)
+
+
+class BaseContractor(log.Logger, replay.Replayable):
     """
     I am a base class for contractors of contracts.
 
@@ -13,15 +17,11 @@ class BaseContractor(log.Logger):
                          see L{feat.agents.manager.BaseManager}
     @type protocol_type: str
     """
-    classProvides(contractor.IContractorFactory)
+    __metaclass__ = Meta
+
     implements(contractor.IAgentContractor)
 
     initiator = message.Announcement
-
-    announce = None
-    grant = None
-    report = None
-    agent = None
 
     log_category = "contractor"
     protocol_type = "Contract"
@@ -32,9 +32,11 @@ class BaseContractor(log.Logger):
 
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
+        replay.Replayable.__init__(self, agent, medium)
 
-        self.agent = agent
-        self.medium = medium
+    def init_state(self, state, agent, medium):
+        state.agent = agent
+        state.medium = medium
 
     def announced(self, announcement):
         '''@see: L{contractor.IAgentContractor}'''

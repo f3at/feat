@@ -1,9 +1,15 @@
-from zope.interface import implements, classProvides
+from zope.interface import implements
 from feat.interface import manager
 from feat.common import log
+from feat.agencies import agency
+from feat.agents.base import protocol, replay
 
 
-class BaseManager(log.Logger):
+class Meta(type(replay.Replayable)):
+    implements(manager.IManagerFactory)
+
+
+class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     """
     I am a base class for managers of contracts.
 
@@ -12,7 +18,8 @@ class BaseManager(log.Logger):
                          contract; see L{feat.agents.contractor.BaseContractor}
     @type protocol_type: str
     """
-    classProvides(manager.IManagerFactory)
+    __metaclass__ = Meta
+
     implements(manager.IAgentManager)
 
     announce = None
@@ -28,16 +35,15 @@ class BaseManager(log.Logger):
     announce_timeout = 10
     grant_timeout = 10
 
-    def __init__(self, agent, medium):
+    def __init__(self, agent, medium, *args, **kwargs):
         log.Logger.__init__(self, medium)
+        replay.Replayable.__init__(self, agent, medium, *args, **kwargs)
 
-        self.agent = agent
-        self.medium = medium
+    def init_state(self, state, agent, medium):
+        state.agent = agent
+        state.medium = medium
 
     def initiate(self):
-        '''@see: L{manager.IAgentManager}'''
-
-    def refused(self, refusal):
         '''@see: L{manager.IAgentManager}'''
 
     def bid(self, bid):

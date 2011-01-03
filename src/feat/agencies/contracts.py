@@ -3,9 +3,10 @@
 from twisted.python import components, failure
 from zope.interface import implements
 
-from feat.agents.base import message, recipient
+from feat.agents.base import message, recipient, replay
 from feat.common import log, enum, delay
-from feat.interface import contracts, contractor, manager
+from feat.interface import (contracts, contractor, manager,
+                            protocols, serialization, )
 from feat.interface.recipient import RecipientType
 
 from interface import (IListener, IAgencyInitiatorFactory,
@@ -14,7 +15,10 @@ from . import common
 
 
 class AgencyManagerFactory(object):
-    implements(IAgencyInitiatorFactory)
+    # TODO: ask Sebastien why this needs to be serializable
+    implements(IAgencyInitiatorFactory, serialization.ISerializable)
+
+    type_name = 'manager-medium-factory'
 
     def __init__(self, factory):
         self._factory = factory
@@ -22,6 +26,10 @@ class AgencyManagerFactory(object):
     def __call__(self, agent, recipients, *args, **kwargs):
         return AgencyManager(agent, recipients, *args, **kwargs)
 
+    # ISerializable
+
+    def snapshot(self):
+        return None
 
 components.registerAdapter(AgencyManagerFactory,
                            manager.IManagerFactory,
@@ -118,10 +126,14 @@ class ManagerContractors(dict):
 
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.ExpirationCallsMixin, common.AgencyMiddleMixin):
-    implements(manager.IAgencyManager, IListener)
+                    common.ExpirationCallsMixin, common.AgencyMiddleMixin,
+                    common.InitiatorMediumBase):
+    implements(manager.IAgencyManager, IListener,
+               serialization.ISerializable)
 
-    log_category = 'agency-contractor'
+    log_category = 'agency-manager'
+
+    type_name = 'manager-medium'
 
     error_state = contracts.ContractState.wtf
 
@@ -131,6 +143,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
+        common.InitiatorMediumBase.__init__(self)
 
         self.agent = agent
         self.recipients = recipients
@@ -148,16 +161,18 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_protocol_id(manager.protocol_id)
 
         self._set_state(contracts.ContractState.initiated)
-        self._call(manager.initiate, *self.args, **self.kwargs)
-
         timeout = self.agent.get_time() + self.manager.initiate_timeout
         error = RuntimeError('Timeout exceeded waiting for manager.initate() '
                              'to send the announcement')
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
+
+        self._call(manager.initiate)
         return manager
 
+    @replay.named_side_effect('AgencyManager.announce')
     def announce(self, announce):
+        announce = announce.clone()
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
 
@@ -165,28 +180,35 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.announced)
 
         expiration_time = self.agent.get_time() + self.manager.announce_timeout
-        self.bid = self._send_message(announce, expiration_time)
+        bid = self._send_message(announce, expiration_time)
 
         self._cancel_expiration_call()
         self._setup_expiration_call(expiration_time,
                                     self._on_announce_expire)
 
-        return self.bid
+        return bid
 
+    @replay.named_side_effect('AgencyManager.reject')
     def reject(self, bid, rejection=None):
-        self._ensure_state(contracts.ContractState.announced)
+        self._ensure_state([contracts.ContractState.announced,
+                            contracts.ContractState.granted,
+                            contracts.ContractState.closed])
 
         contractor = self.contractors[bid]
         if not rejection:
             rejection = message.Rejection()
+        else:
+            rejection = rejection.clone()
         contractor.on_event(rejection)
 
+    @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
         self._ensure_state([contracts.ContractState.closed,
                             contracts.ContractState.announced])
 
         if not isinstance(grants, list):
             grants = [grants]
+        grants = [(bid, grant.clone(), ) for bid, grant in grants]
 
         self._cancel_expiration_call()
         self._set_state(contracts.ContractState.granted)
@@ -203,6 +225,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
+    @replay.named_side_effect('AgencyManager.cancel')
     def cancel(self, reason=None):
         self._ensure_state([contracts.ContractState.granted,
                             contracts.ContractState.cancelled])
@@ -215,6 +238,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             contractor.on_event(cancellation)
 
         self._run_and_terminate(self.manager.cancelled)
+
+    @replay.named_side_effect('AgencyManager.terminate')
+    def terminate(self):
+        self._set_state(contracts.ContractState.terminated)
+        delay.callLater(0, self._terminate)
 
     # hooks for events (timeout and messages comming in)
 
@@ -285,16 +313,23 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             contractor.on_event(ack)
 
         reports = map(lambda x: x.report, contractors)
-        self._run_and_terminate(self.manager.completed, reports)
+        d = self._call(self.manager.completed, reports)
+        d.addCallback(self.finish_deferred.callback)
+        d.addCallback(lambda _: self._terminate())
+
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self.agent.get_time()
 
     # private
 
     def _close_announce_period(self):
-        self._set_state(contracts.ContractState.closed)
         expiration_time = max(map(lambda bid: bid.expiration_time,
                                   self.contractors))
         self._expire_at(expiration_time, self.manager.expired,
                         contracts.ContractState.expired)
+        self._set_state(contracts.ContractState.closed)
         self._call(self.manager.closed)
 
     def _terminate(self):
@@ -302,6 +337,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
+
+        common.InitiatorMediumBase._terminate(self)
 
     def _count_expected_bids(self, recipients):
         '''
@@ -343,15 +380,30 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_session_id(self):
         return self.session_id
 
+    def get_agent_side(self):
+        return self.manager
+
+    # ISerializable
+
+    def snapshot(self):
+        return id(self)
+
 
 class AgencyContractorFactory(object):
-    implements(IAgencyInterestedFactory)
+    implements(IAgencyInterestedFactory, serialization.ISerializable)
+
+    type_name = "contractor-medium-factory"
 
     def __init__(self, factory):
         self._factory = factory
 
     def __call__(self, agent, recipients, *args, **kwargs):
         return AgencyContractor(agent, recipients, *args, **kwargs)
+
+    # ISerializable
+
+    def snapshot(self):
+        return None
 
 
 components.registerAdapter(AgencyContractorFactory,
@@ -361,9 +413,12 @@ components.registerAdapter(AgencyContractorFactory,
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        common.ExpirationCallsMixin, common.AgencyMiddleMixin):
-    implements(contractor.IAgencyContractor, IListener)
+    implements(contractor.IAgencyContractor, IListener,
+               serialization.ISerializable)
 
     log_category = 'agency-contractor'
+
+    type_name = 'contractor-medium'
 
     error_state = contracts.ContractState.wtf
 
@@ -381,18 +436,19 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.announce = announcement
         self.recipients = announcement.reply_to
 
-        self.log_name = self.session_id
-
         self._reporter_call = None
 
     def initiate(self, contractor):
         self.contractor = contractor
+        self.log_name = self.contractor.__class__.__name__
         self._set_state(contracts.ContractState.initiated)
         return contractor
 
     # contractor.IAgencyContractor stuff
 
+    @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
+        bid = bid.clone()
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
         assert isinstance(bid.bids, list)
@@ -401,15 +457,17 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.bid)
 
         expiration_time = self.agent.get_time() + self.contractor.bid_timeout
-        self.bid = self._send_message(bid, expiration_time)
+        self.own_bid = self._send_message(bid, expiration_time)
 
         self._cancel_expiration_call()
         self._expire_at(expiration_time, self.contractor.bid_expired,
                         contracts.ContractState.expired)
 
-        return self.bid
+        return self.own_bid
 
+    @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
+        bid = bid.clone()
         self.debug('Sending bid of the nested contractor: %r.', bid)
         assert isinstance(bid, message.Bid)
 
@@ -417,10 +475,12 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.delegated)
 
         self.bid = self._handover_message(bid)
-        self._terminate()
+        delay.callLater(0, self._terminate)
         return self.bid
 
+    @replay.named_side_effect('AgencyContractor.refuse')
     def refuse(self, refusal):
+        refusal = refusal.clone()
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
 
@@ -431,7 +491,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return refusal
 
+    @replay.named_side_effect('AgencyContractor.defect')
     def defect(self, cancellation):
+        cancellation = cancellation.clone()
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
 
@@ -442,7 +504,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._terminate()
         return cancellation
 
+    @replay.named_side_effect('AgencyContractor.finalize')
     def finalize(self, report):
+        report = report.clone()
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
 
@@ -509,9 +573,14 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         actual bid we put. Than calls granted and sets up reporter
         if necessary.
         '''
-        is_ok = grant.bid_index < len(self.bid.bids)
+        is_ok = grant.bid_index < len(self.own_bid.bids)
         if is_ok:
             self.grant = grant
+            # this is necessary for nested contracts to work with handing
+            # the messages over
+            self._set_remote_id(grant.sender_id)
+            self.recipients = grant.reply_to
+
             self._call(self.contractor.granted, grant)
             if grant.update_report:
                 self._setup_reporter()
@@ -567,3 +636,16 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def get_session_id(self):
         return self.session_id
+
+    def get_agent_side(self):
+        return self.contractor
+
+    # Used by ExpirationCallsMixin
+
+    def _get_time(self):
+        return self.agent.get_time()
+
+    # ISerializable
+
+    def snapshot(self):
+        return id(self)

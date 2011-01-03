@@ -4,48 +4,54 @@
 import uuid
 import time
 
-from zope.interface import classProvides, implements
 from twisted.internet import defer
 
-from feat.agents.base import agent, descriptor, requester, message, replier
-from feat.interface import requests
-from feat.interface.requester import IRequesterFactory
-from feat.interface.replier import IReplierFactory, IAgentReplier
+from feat.agents.base import descriptor, requester, message, replier, replay
+from feat.interface import requests, protocols
 from feat.common import delay
 
 from . import common
 
 
 class DummyRequester(requester.BaseRequester):
-    classProvides(IRequesterFactory)
 
     protocol_id = 'dummy-request'
     timeout = 2
 
-    def __init__(self, agent, medium, argument):
-        requester.BaseRequester.__init__(self, agent, medium, argument)
-        self.payload = argument
-        self.got_response = False
+    def init_state(self, state, agent, medium, argument):
+        requester.BaseRequester.init_state(
+            self, state, agent, medium, argument)
+        state.payload = argument
+        state._got_response = False
 
-    def initiate(self):
+    @replay.immutable
+    def initiate(self, state):
         msg = message.RequestMessage()
-        msg.payload = self.payload
-        self.medium.request(msg)
+        msg.payload = state.payload
+        state.medium.request(msg)
 
-    def got_reply(self, message):
-        self.got_response = True
-        self.medium.terminate()
+    @replay.immutable
+    def got_reply(self, state, message):
+        state._got_response = True
+
+    @replay.immutable
+    def _get_medium(self, state):
+        self.log(state)
+        return state.medium
+
+    @replay.immutable
+    def got_response(self, state):
+        return state._got_response
 
 
 class DummyReplier(replier.BaseReplier):
-    classProvides(IReplierFactory)
-    implements(IAgentReplier)
 
     protocol_id = 'dummy-request'
 
-    def requested(self, request):
-        self.agent.got_payload = request.payload
-        self.medium.reply(message.ResponseMessage())
+    @replay.immutable
+    def requested(self, state, request):
+        state.agent.got_payload = request.payload
+        state.medium.reply(message.ResponseMessage())
 
 
 class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
@@ -78,7 +84,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertIsInstance(desc, descriptor.Descriptor)
 
         desc.shard = 'changed'
-        d = yield self.agent.update_descriptor(desc)
+        yield self.agent.update_descriptor(desc)
         self.assertEqual('changed', self.agent._descriptor.shard)
 
     def testRegisterTwice(self):
@@ -98,7 +104,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         req = self.agent.revoke_interest(DummyReplier)
         self.assertFalse(req)
 
-    def testGetingRequestWithoutInterest(self):
+    def tesGetingRequestWithoutInterest(self):
         '''Current implementation just ignores such events. Update this test
         in case we decide to do sth else'''
         key = (self.agent.get_descriptor()).doc_id
@@ -130,6 +136,9 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.requester =\
             self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.medium = self.requester._get_medium()
+        self.finished = self.requester.notify_finish()
+        self.assertIsInstance(self.finished, defer.Deferred)
 
         def assertsOnMessage(message):
             desc = self.agent.get_descriptor()
@@ -146,29 +155,28 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(session_id, str(session_id))
 
             self.assertEqual(requests.RequestState.requested,\
-                                 self.requester.medium.state)
-            return session_id
+                                 self.medium.state)
+            return session_id, message
 
         d.addCallback(assertsOnMessage)
 
-        def assertsOnAgency(session_id):
+        def assertsOnAgency((session_id, msg, )):
             self.log('%r', self.agent._listeners.keys())
             self.assertTrue(session_id in self.agent._listeners.keys())
             listener = self.agent._listeners[session_id]
             self.assertEqual('AgencyRequester', listener.__class__.__name__)
-            return session_id
+            return session_id, msg
 
         d.addCallback(assertsOnAgency)
 
-        def mimicReceivingResponse(session_id):
+        def mimicReceivingResponse((session_id, msg, )):
             response = message.ResponseMessage()
-            self.reply(response, self.endpoint, self.requester.request)
+            self.reply(response, self.endpoint, msg)
 
             return session_id
 
         d.addCallback(mimicReceivingResponse)
-        d.addCallback(self.cb_after, \
-                      obj=self.agent, method='unregister_listener')
+        d.addCallback(lambda _: self.finished)
 
         def assertGotResponseAndTerminated(session_id):
             self.assertFalse(session_id in self.agent._listeners.keys())
@@ -178,28 +186,33 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @defer.inlineCallbacks
     def testRequestTimeout(self):
         delay.time_scale = 0.01
 
         d = self.queue.get()
         payload = 5
         self.requester =\
-            self.agent.initiate_protocol(DummyRequester,
+            yield self.agent.initiate_protocol(DummyRequester,
                                          self.endpoint, payload)
+        self.medium = self.requester._get_medium()
+        self.finished = self.requester.notify_finish()
+        self.assertFailure(self.finished, protocols.InitiatorFailed)
 
         d.addCallback(self.cb_after, obj=self.agent,
                       method='unregister_listener')
 
         def assertTerminatedWithNoResponse(_):
-            session_id = self.requester.medium.session_id
+            session_id = self.medium.session_id
             self.assertFalse(session_id in self.agent._listeners.keys())
-            self.assertFalse(self.requester.got_response)
+            self.assertFalse(self.requester.got_response())
             self.assertEqual(requests.RequestState.closed,
-                             self.requester.medium.state)
+                             self.medium.state)
 
         d.addCallback(assertTerminatedWithNoResponse)
+        d.addCallback(lambda _: self.finished)
 
-        return d
+        yield d
 
     def testReplierReplies(self):
         self.agent.register_interest(DummyReplier)
@@ -243,10 +256,13 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(descriptor.Descriptor)
         sender = yield self.agency.start_agent(desc)
         receiver.register_interest(DummyReplier)
-        requester = sender.initiate_protocol(DummyRequester, receiver, 1)
+        self.finished =\
+            sender.initiate_protocol(DummyRequester,
+                                         receiver, 1)
+        requester = (sender._listeners.values()[0]).requester
 
-        requester = yield self.cb_after(arg=requester,
-                          obj=requester.medium, method='terminate')
+        yield self.cb_after(arg=requester,
+                          obj=requester._get_medium(), method='_terminate')
 
         self.assertTrue(requester.got_response)
         self.assertEqual(0, len(sender._listeners))

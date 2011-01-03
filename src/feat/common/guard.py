@@ -41,8 +41,32 @@ def immutable(function):
     return wrapper
 
 
+@serialization.register
 class MutableState(serialization.Serializable):
     '''Object representing a mutable state.'''
+
+    def __repr__(self):
+        return "<MutableState: %s>" % str(self.__dict__)
+
+    def __eq__(self, other):
+        """
+        Comparison of two states is used during replay to say whether we
+        obtained the same result. Reference to 'medium' needs to be handled
+        in special way, because during replay we use special dummy
+        implementations.
+        """
+        ignored_keys = ['medium']
+        for key in self.__dict__:
+            if key in ignored_keys:
+                continue
+            if key not in other.__dict__:
+                return False
+            if self.__dict__[key] != other.__dict__[key]:
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class Guarded(serialization.Serializable):
@@ -53,8 +77,12 @@ class Guarded(serialization.Serializable):
         self.init_state(state, *args, **kwargs)
 
     def init_state(self, state, *args, **kwargs):
-        '''Override to initialize the state. The extra arguments
-        and keywords are the one passed to the constructor.'''
+        '''
+        Override to initialize the state. The extra arguments
+        and keywords are the one passed to the constructor.
+
+        THIS METHOD SHOULD NOT BE DECORATED WITH @mutable
+        '''
 
     def recover(self, snapshot):
         setattr(self, STATE_TAG, snapshot)
@@ -66,3 +94,11 @@ class Guarded(serialization.Serializable):
 
     def _get_state(self):
         return getattr(self, STATE_TAG, None)
+
+    def __eq__(self, other):
+        if type(other) != type(self):
+            return NotImplemented
+        return self._get_state() == other._get_state()
+
+    def __ne__(self, other):
+        return not self.__eq__(other)

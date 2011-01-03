@@ -4,7 +4,8 @@ import uuid
 import traceback
 
 from twisted.internet import defer
-from feat.common import delay
+from feat.common import delay, serialization
+from feat.interface.protocols import InitiatorFailed
 
 
 class StateAssertationError(RuntimeError):
@@ -17,6 +18,7 @@ class StateMachineMixin(object):
         self.state = state
         self._changes_notifications = dict()
 
+    @serialization.freeze_tag('StateMachineMixin.wait_for_state')
     def wait_for_state(self, state):
         if self.state == state:
             return defer.succeed(None)
@@ -92,8 +94,14 @@ class AgencyMiddleMixin(object):
 
     def __init__(self, remote_id=None, protocol_id=None):
         self.session_id = str(uuid.uuid1())
-        self.remote_id = remote_id
+        self._set_remote_id(remote_id)
         self._set_protocol_id(protocol_id)
+
+    def _set_remote_id(self, remote_id):
+        if self.remote_id is not None:
+            self.debug('Changing id of remote peer. This usually means the '
+                       'message has been handed over.')
+        self.remote_id = remote_id
 
     def _set_protocol_id(self, protocol_id):
         self.protocol_id = protocol_id
@@ -113,7 +121,8 @@ class AgencyMiddleMixin(object):
 
         return self.agent.send_msg(recipients, msg)
 
-    def _handover_message(self, msg):
+    def _handover_message(self, msg, remote_id=None):
+        msg.receiver_id = remote_id or self.remote_id
         return self.agent.send_msg(self.recipients, msg, handover=True)
 
     def _call(self, method, *args, **kwargs):
@@ -140,10 +149,15 @@ class ExpirationCallsMixin(object):
     def __init__(self):
         self._expiration_call = None
 
+    def _get_time(self):
+        raise NotImplemented('Should be define in the class using the mixin')
+
     def _setup_expiration_call(self, expire_time, method, state=None,
                                   *args, **kwargs):
-        time_left = expire_time - self.agent.get_time()
+        self.log('Seting expiration call of method: %r.%r',
+                 self.__class__.__name__, method.__name__)
 
+        time_left = expire_time - self._get_time()
         if time_left < 0:
             raise RuntimeError('Tried to call method in the past!')
 
@@ -179,3 +193,30 @@ class ExpirationCallsMixin(object):
 
     def _terminate(self):
         self._cancel_expiration_call()
+
+
+class InitiatorMediumBase(object):
+
+    def __init__(self):
+        self._finished_cbs = list()
+        self.finish_deferred = defer.Deferred()
+        self.finish_deferred.addCallbacks(self._finish_callback,
+                                           self._finish_errback)
+
+    def notify_finish(self):
+        d = defer.Deferred()
+        self._finished_cbs.append(d)
+        return d
+
+    def _finish_callback(self, x):
+        map(lambda d: d.callback(x), self._finished_cbs)
+        return x
+
+    def _finish_errback(self, x):
+        map(lambda d: d.errback(x), self._finished_cbs)
+
+    def _terminate(self):
+        if not self.finish_deferred.called:
+            self.log("Firing errback of finish_deferred")
+            ex = InitiatorFailed(self.state)
+            self.finish_deferred.errback(ex)

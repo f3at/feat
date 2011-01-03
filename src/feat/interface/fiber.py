@@ -32,6 +32,7 @@ class FiberTriggerError(FiberError):
 class WovenSection(Interface):
 
     state = Attribute("Fiber section state")
+    descriptor = Attribute("L{IFiberDescriptor}")
 
     def enter():
         '''Initializes a woven section that will allow all functions

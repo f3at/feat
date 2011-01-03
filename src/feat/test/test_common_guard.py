@@ -69,7 +69,7 @@ class TestStateGuard(common.TestCase):
         self.assertEqual(obj.get_value(), 7)
         state = ISerializable(obj).snapshot()
         obj2 = Dummy.restore(state)
-        self.assertNotEqual(obj, obj2)
+        self.assertIsNot(obj, obj2)
         self.assertEqual(obj2.get_value(), 7)
         self.assertEqual(obj.double(2, minus=3), 1)
         self.assertEqual(obj2.get_value(), 8)

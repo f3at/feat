@@ -52,6 +52,12 @@ class IInitiator(Interface):
         pass
 
 
+class InitiatorFailed(Exception):
+    '''
+    The intiating side of the dialog did not finish with successful status
+    '''
+
+
 class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 

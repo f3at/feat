@@ -1,5 +1,4 @@
-
-from feat.common import decorator, annotate, serialization, guard, journal
+from feat.common import (decorator, annotate, guard, journal, )
 
 from feat.interface.journal import *
 
@@ -20,14 +19,15 @@ def mutable(function):
           pass
     '''
 
+    guard_wrapper = guard.mutable(function)
+
     # Register the function
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call", function)
+                                 "_register_recorded_call", guard_wrapper)
 
     def wrapper(self, *args, **kwargs):
-        state = self._get_state()
         recorder = IRecorder(self)
-        return recorder.call(function, (state, ) + args, kwargs)
+        return recorder.call(guard_wrapper, args, kwargs)
 
     return wrapper
 
@@ -66,6 +66,13 @@ def entry_point(function):
 
 # Copy immutable decorator as-is from guarded module
 immutable = guard.immutable
+journaled = mutable
+side_effect = journal.side_effect
+named_side_effect = journal.named_side_effect
+
+
+# Copy the replay function for calling methods in replay context
+replay = journal.replay
 
 
 class Replayable(journal.Recorder, guard.Guarded):
@@ -73,3 +80,11 @@ class Replayable(journal.Recorder, guard.Guarded):
     def __init__(self, parent, *args, **kwargs):
         journal.Recorder.__init__(self, parent)
         guard.Guarded.__init__(self, parent, *args, **kwargs)
+
+    def snapshot(self):
+        return journal.Recorder.snapshot(self), guard.Guarded.snapshot(self)
+
+    def recover(self, snapshot):
+        s1, s2 = snapshot
+        journal.Recorder.recover(self, s1)
+        guard.Guarded.recover(self, s2)
