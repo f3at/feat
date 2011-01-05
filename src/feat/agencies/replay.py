@@ -176,6 +176,8 @@ class Factory(serialization.Serializable):
 
 class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
 
+    type_name = 'agent-medium'
+
     implements(agent.IAgencyAgent, journal.IRecorderNode,
                journal.IJournalKeeper, ISerializable)
 
@@ -240,6 +242,12 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
         assert not getattr(self, 'indentifier_generated', False)
         self._identifier_generated = True
         return (self.replay.agent_id, )
+
+
+    # ISerializable
+
+    def snapshot(self):
+        return self(id)
 
 
 class AgencyReplier(log.LogProxy, log.Logger,

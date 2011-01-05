@@ -216,7 +216,10 @@ class RecorderNode(serialization.Serializable):
 class Recorder(RecorderNode, annotate.Annotable):
 
     # Fix the metaclass inheritance
-    __metaclass__ = type("MetaRecorder", (MetaAnnotable, MetaSerializable), {})
+    # TODO: Changing order of superclasses below makes the MetaSerializer take
+    # wrong type_name (the class name is substituted with '.recorded'.
+    # This needs to be investigated, as it might show problem in MetaAnnotable
+    __metaclass__ = type("MetaRecorder", (MetaSerializable, MetaAnnotable), {})
 
     implements(IRecorder)
 
