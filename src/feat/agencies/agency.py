@@ -59,20 +59,6 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
     #     agent._messaging.disconnect()
     #     self.journal_agent_deleted(agent.doc_id, agent)
 
-    def joined_shard(self, agent, shard):
-        shard_list = self._shards.get(shard, [])
-        shard_list.append(agent)
-        self._shards[shard] = shard_list
-
-    def left_shard(self, agent, shard):
-        shard_list = self._shards.get(shard, [])
-        if agent in shard_list:
-            shard_list.remove(agent)
-        else:
-            self.error('Was supposed to leave shard %r, '
-                       'but it was not there!' % shard)
-        self._shards[shard] = shard_list
-
     def get_time(self):
         return time.time()
 
@@ -193,14 +179,11 @@ class AgencyAgent(log.LogProxy, log.Logger):
     @replay.named_side_effect('AgencyAgent.join_shard')
     def join_shard(self, shard):
         self.log("Join shard called. Shard: %r", shard)
-
         self.create_binding(self._descriptor.doc_id, shard)
-        self.agency.joined_shard(self, shard)
 
     def leave_shard(self, shard):
         bindings = self._messaging.get_bindings(shard)
         map(lambda binding: binding.revoke(), bindings)
-        self.agency.left_shard(self, shard)
 
     def on_message(self, message):
         self.log('Received message: %r', message)

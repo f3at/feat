@@ -70,13 +70,10 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.queue, self.endpoint = self.setup_endpoint()
 
     def testJoinShard(self):
-        self.assertEqual(1, len(self.agency._shards))
-        self.assertEqual('lobby', self.agency._shards.keys()[0])
-        self.assertEqual(1, len(self.agency._shards['lobby']))
+        self.assertEqual(1, len(self.agent._messaging.get_bindings('lobby')))
 
         self.agent.leave_shard('lobby')
-        self.assertEqual(1, len(self.agency._shards))
-        self.assertEqual(0, len(self.agency._shards['lobby']))
+        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks
     def testUpdateDocument(self):
