@@ -4,7 +4,6 @@
 import time
 import uuid
 
-from zope.interface import classProvides
 from twisted.internet import defer
 
 from feat.agencies.contracts import ContractorState
@@ -19,7 +18,6 @@ from . import common
 
 
 class DummyContractor(contractor.BaseContractor, common.Mock):
-    classProvides(IContractorFactory)
 
     protocol_id = 'dummy-contract'
     interest_type = protocols.InterestType.public
@@ -66,7 +64,6 @@ class DummyContractor(contractor.BaseContractor, common.Mock):
 
 
 class DummyManager(manager.BaseManager, common.Mock):
-    classProvides(IManagerFactory)
 
     protocol_id = 'dummy-contract'
 
