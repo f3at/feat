@@ -1,12 +1,18 @@
 from zope.interface import implements
 from feat.interface import manager
-from feat.common import log
+from feat.common import log, serialization, reflect
 from feat.agencies import agency
 from feat.agents.base import protocol, replay
 
 
 class Meta(type(replay.Replayable)):
+
     implements(manager.IManagerFactory)
+
+    def __init__(cls, name, bases, dct):
+        cls.type_name = reflect.canonical_name(cls)
+        serialization.register(cls)
+        super(Meta, cls).__init__(name, bases, dct)
 
 
 class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):

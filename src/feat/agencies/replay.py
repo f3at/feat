@@ -195,12 +195,22 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def get_descriptor(self):
         pass
 
+    def update_descriptor(self, desc):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_time')
     def get_time(self):
         pass
 
     @replay.named_side_effect('AgencyAgent.join_shard')
     def join_shard(self, shard):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.leave_shard')
+    def leave_shard(self, shard):
+        pass
+
+    def start_agent(self, desc):
         pass
 
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
@@ -342,4 +352,8 @@ class AgencyManager(log.LogProxy, log.Logger,
 
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self):
+        pass
+
+    @replay.named_side_effect('AgencyManager.get_bids')
+    def get_bids(self):
         pass

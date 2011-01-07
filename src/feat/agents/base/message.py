@@ -114,6 +114,16 @@ class Bid(ContractMessage):
     # list of bids (usual single element)
     bids = []
 
+    @staticmethod
+    def pick_best(bids):
+        assert len(bids) > 0
+        for bid in bids:
+            assert isinstance(bid, Bid)
+
+        costs = map(lambda x: x.bids[0], bids)
+        best = min(costs)
+        return filter(lambda x: x.bids[0] == best, bids)[0]
+
 
 @serialization.register
 class Refusal(ContractMessage):

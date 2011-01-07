@@ -1,12 +1,17 @@
 from zope.interface import implements, classProvides
 
 from feat.interface import replier, protocols
-from feat.common import log
+from feat.common import log, reflect, serialization
 from feat.agents.base import message, replay
 
 
 class Meta(type(replay.Replayable)):
     implements(replier.IReplierFactory)
+
+    def __init__(cls, name, bases, dct):
+        cls.type_name = reflect.canonical_name(cls)
+        serialization.register(cls)
+        super(Meta, cls).__init__(name, bases, dct)
 
 
 class BaseReplier(log.Logger, replay.Replayable):

@@ -6,7 +6,7 @@ from twisted.trial.unittest import FailTest
 from feat.test import common
 from feat.agents.base import (resource, testsuite, agent, recipient,
                               replay, manager, message, )
-from feat.common import guard, fiber, serialization
+from feat.common import guard, fiber
 from feat.agencies.replay import AgencyManager
 
 
@@ -43,7 +43,6 @@ class DummyAgent(common.DummyAgent):
         return f.succeed('var')
 
 
-@serialization.register
 class DummyManager(manager.BaseManager):
 
     protocol_id = 'dummy-contract'

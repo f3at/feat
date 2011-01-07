@@ -1,11 +1,16 @@
 from zope.interface import implements
 from feat.interface import contractor
-from feat.common import log
+from feat.common import log, reflect, serialization
 from feat.agents.base import message, replay
 
 
 class Meta(type(replay.Replayable)):
     implements(contractor.IContractorFactory)
+
+    def __init__(cls, name, bases, dct):
+        cls.type_name = reflect.canonical_name(cls)
+        serialization.register(cls)
+        super(Meta, cls).__init__(name, bases, dct)
 
 
 class BaseContractor(log.Logger, replay.Replayable):

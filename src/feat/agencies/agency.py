@@ -181,9 +181,13 @@ class AgencyAgent(log.LogProxy, log.Logger):
         self.log("Join shard called. Shard: %r", shard)
         self.create_binding(self._descriptor.doc_id, shard)
 
+    @replay.named_side_effect('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
         bindings = self._messaging.get_bindings(shard)
         map(lambda binding: binding.revoke(), bindings)
+
+    def start_agent(self, desc):
+        return self.agency.start_agent(desc)
 
     def on_message(self, message):
         self.log('Received message: %r', message)

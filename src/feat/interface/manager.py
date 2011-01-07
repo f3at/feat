@@ -56,6 +56,11 @@ class IAgencyManager(contracts.IContractPeer):
         take care to reject/handover all the bids received by the manager.
         '''
 
+    def get_bids():
+        '''
+        Return list of bids received by the manager from the contractors.
+        '''
+
 
 class IAgentManager(protocols.IInitiator):
     '''Agent part of the contract manager. Use the L{IAgencyManager} given

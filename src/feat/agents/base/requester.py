@@ -1,6 +1,6 @@
 from zope.interface import implements, classProvides
 
-from feat.common import log
+from feat.common import log, reflect, serialization
 from feat.interface import requester
 from feat.agencies import agency
 from feat.agents.base import replay, protocol
@@ -8,6 +8,11 @@ from feat.agents.base import replay, protocol
 
 class Meta(type(replay.Replayable)):
     implements(requester.IRequesterFactory)
+
+    def __init__(cls, name, bases, dct):
+        cls.type_name = reflect.canonical_name(cls)
+        serialization.register(cls)
+        super(Meta, cls).__init__(name, bases, dct)
 
 
 class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):

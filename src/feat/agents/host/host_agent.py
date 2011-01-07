@@ -31,7 +31,7 @@ class HostAgent(agent.BaseAgent):
     @replay.immutable
     def start_agent(self, state, desc):
         f = fiber.Fiber()
-        f.add_callback(state.medium.agency.start_agent)
+        f.add_callback(state.medium.start_agent)
         # transform the reference to IRecipient.
         # agents should not keep the direct references
         # to the other agent. It is harmfull for replayability
@@ -94,10 +94,8 @@ class JoinShardManager(manager.BaseManager):
 
     @replay.immutable
     def closed(self, state):
-        bids = map(lambda x: x.bids[0], state.medium.contractors)
-        best = min(bids)
-        best_bid = filter(
-            lambda x: x.bids[0] == best, state.medium.contractors)[0]
+        bids = state.medium.get_bids()
+        best_bid = message.Bid.pick_best(bids)
         params = (best_bid, message.Grant(bid_index=0), )
         state.medium.grant(params)
 

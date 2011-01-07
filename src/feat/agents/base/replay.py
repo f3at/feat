@@ -77,6 +77,9 @@ replay = journal.replay
 
 class Replayable(journal.Recorder, guard.Guarded):
 
+    __metaclass__ = type('MetaReplayable', (type(journal.Recorder),
+                                            type(guard.Guarded), ), {})
+
     def __init__(self, parent, *args, **kwargs):
         journal.Recorder.__init__(self, parent)
         guard.Guarded.__init__(self, parent, *args, **kwargs)

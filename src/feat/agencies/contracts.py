@@ -244,6 +244,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.terminated)
         delay.callLater(0, self._terminate)
 
+    @replay.named_side_effect('AgencyManager.get_bids')
+    def get_bids(self):
+        contractors = self.contractors.with_state(ContractorState.bid)
+        return [x.bid for x in contractors]
+
     # hooks for events (timeout and messages comming in)
 
     def _on_grant_expire(self):

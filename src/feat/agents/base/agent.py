@@ -3,7 +3,7 @@
 
 from zope.interface import implements
 
-from feat.common import log, decorator, serialization
+from feat.common import log, decorator, serialization, fiber
 from feat.interface import agent
 from feat.agents.base import resource, recipient, replay
 
@@ -33,10 +33,11 @@ def update_descriptor(method):
     def decorated(self, state, *args, **kwargs):
         desc = state.medium.get_descriptor()
         resp = method(self, state, desc, *args, **kwargs)
-        d = state.medium.update_descriptor(desc)
+        f = fiber.Fiber()
+        f.add_callback(state.medium.update_descriptor)
         if resp:
-            d.addCallback(lambda _: resp)
-        return d
+            f.add_callback(lambda _: resp)
+        return f.succeed(desc)
 
     return decorated
 

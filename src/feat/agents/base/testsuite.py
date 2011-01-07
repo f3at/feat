@@ -44,6 +44,10 @@ class CompareObject(object):
         return not self.__eq__(other)
 
 
+# instance matching everything
+whatever = CompareObject(object)
+
+
 class Hamsterball(replay.Replay):
 
     implements(journal.IRecorderNode, serialization.ISerializable)
@@ -199,7 +203,7 @@ class TestCase(common.TestCase):
     def setUp(self):
         self.ball = Hamsterball()
 
-    def assertFiberTriggered(self, f, t_type, value):
+    def assertFiberTriggered(self, f, t_type, value=None):
         tt, vv = f.snapshot()[0:2]
         self.assertEqual(t_type, tt)
         self.assertEqual(value, vv)
