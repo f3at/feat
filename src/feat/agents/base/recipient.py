@@ -30,8 +30,6 @@ class BaseRecipient(serialization.Serializable):
         return self.array.__iter__()
 
     def __eq__(self, other):
-        if type(self) != type(other):
-            return False
         return self.type == other.type and\
                self.shard == other.shard and\
                self.key == other.key

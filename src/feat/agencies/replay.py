@@ -45,8 +45,8 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     def register(self, recorder):
         j_id = recorder.journal_id
-        self.log('Registering recorder: %r, id: %r',
-                 recorder.__class__.__name__, j_id)
+        self.log('Registering recorder: %r, id: %r, id(recorder): %r',
+                 recorder.__class__.__name__, j_id, id(recorder))
         assert j_id not in self.registry
         self.registry[j_id] = recorder
 
@@ -247,7 +247,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     # ISerializable
 
     def snapshot(self):
-        return self(id)
+        return id(self)
 
 
 class AgencyReplier(log.LogProxy, log.Logger,

@@ -4,8 +4,10 @@ from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
-from feat.agents.base import resource, testsuite, agent, replay
-from feat.common import guard, fiber
+from feat.agents.base import (resource, testsuite, agent, recipient,
+                              replay, manager, message, )
+from feat.common import guard, fiber, serialization
+from feat.agencies.replay import AgencyManager
 
 
 @agent.register('descriptor')
@@ -39,6 +41,19 @@ class DummyAgent(common.DummyAgent):
         f = fiber.Fiber()
         f.add_callback(self.define_in_state, t)
         return f.succeed('var')
+
+
+@serialization.register
+class DummyManager(manager.BaseManager):
+
+    protocol_id = 'dummy-contract'
+
+    @replay.immutable
+    def initiate(self, state):
+        msg = message.Announcement()
+        msg.payload['level'] = 0
+        msg.payload['joining_agent'] = state.agent.get_own_address()
+        state.medium.announce(msg)
 
 
 class TestHamsterball(testsuite.TestCase):
@@ -105,3 +120,23 @@ class TestHamsterball(testsuite.TestCase):
         self.assertFalse('var' in state.__dict__)
         self.assertFiberTriggered(output, fiber.TriggerType.succeed, 'var')
         self.assertFiberCalls(output, agent.define_in_state, args=('result', ))
+
+    def testContstructingManager(self):
+        m = self.ball.generate_manager(self.instance, DummyManager)
+        self.manager = self.ball.load(m)
+        s = self.manager._get_state()
+        self.assertIsInstance(s.agent, DummyAgent)
+        self.assertIsInstance(s.medium, AgencyManager)
+
+    def testManangerMethod(self):
+        m = self.ball.generate_manager(self.instance, DummyManager)
+        manager = self.ball.load(m)
+        address = recipient.Agent(agent_id=self.ball.descriptor.doc_id,
+                                  shard=self.ball.descriptor.shard)
+        args = (
+            testsuite.message(payload=dict(level=0, joining_agent=address)), )
+        expected = [
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                  self.ball.descriptor),
+            testsuite.side_effect('AgencyManager.announce', args=args)]
+        output, state = self.ball.call(expected, manager.initiate)

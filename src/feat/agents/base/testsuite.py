@@ -5,10 +5,11 @@ import types
 from zope.interface import implements
 from twisted.trial.unittest import FailTest
 
-from feat.agencies import replay, agency
+from feat.agencies import replay, agency, contracts, requests
 from feat.common import serialization, guard, journal, reflect, fiber
-from feat.agents.base import resource
-from feat.test import common
+from feat.agents.base import resource, agent
+from feat.agents.base.message import BaseMessage
+from feat.test import common, factories
 
 
 def side_effect(fun_or_name, result=None, args=None, kwargs=None):
@@ -17,6 +18,30 @@ def side_effect(fun_or_name, result=None, args=None, kwargs=None):
     else:
         name = fun_or_name
     return (name, args or None, kwargs or None, result)
+
+
+def message(**params):
+    return CompareObject(BaseMessage, **params)
+
+
+class CompareObject(object):
+
+    def __init__(self, type, **params):
+        self.params = params
+        self.type = type
+
+    def __eq__(self, other):
+        if not isinstance(other, self.type):
+            return False
+        for key in self.params:
+            v = getattr(other, key)
+            if self.params[key] != v:
+                print self.params[key], v
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class Hamsterball(replay.Replay):
@@ -31,9 +56,23 @@ class Hamsterball(replay.Replay):
         SingletonFactory(self)
         replay.Replay.__init__(self, ListIterator(), u'agent-under-test')
 
+    def reset(self):
+        replay.Replay.reset(self)
+        self.descriptor = None
+
     def load(self, instance):
         snapshot = self.serializer.convert(instance)
-        return self.unserializer.convert(snapshot)
+        result = self.unserializer.convert(snapshot)
+
+        # search agent in the registry and generate the descriptor for it
+        search_agent = [x for x in self.registry.values()\
+                        if isinstance(x, agent.BaseAgent)]
+        if len(search_agent) == 1:
+            self.agent = search_agent[0]
+            self.descriptor = factories.build(type(self.agent).descriptor_type,
+                                              doc_id=self.agent_id)
+
+        return result
 
     def call(self, side_effects, method, *args, **kwargs):
         recorder = method.__self__
@@ -50,7 +89,6 @@ class Hamsterball(replay.Replay):
             raise FailTest(msg)
         return output, recorder._get_state()
 
-
     # generating instances for tests
 
     def generate_resources(self, agent):
@@ -60,6 +98,27 @@ class Hamsterball(replay.Replay):
     def generate_agent(self, factory):
         instance = self.generate_instance(factory)
         instance.state.medium = agency.AgencyAgent.__new__(agency.AgencyAgent)
+        return instance
+
+    def generate_manager(self, agent, factory):
+        medium = contracts.AgencyManager.__new__(contracts.AgencyManager)
+        return self.generate_listener(agent, factory, medium)
+
+    def generate_contractor(self, agent, factory):
+        medium = contracts.AgencyContractor.__new__(contracts.AgencyContractor)
+        return self.generate_listener(agent, factory, medium)
+
+    def generate_requester(self, agent, factory):
+        medium = requests.AgencyRequester.__new__(requests.AgencyRequester)
+        return self.generate_listener(agent, factory, medium)
+
+    def generate_replier(self, agent, factory):
+        medium = requests.AgencyReplier.__new__(requests.AgencyReplier)
+        return self.generate_listener(agent, factory, medium)
+
+    def generate_listener(self, agent, factory, medium):
+        instance = self.generate_instance(factory)
+        instance.init_state(instance.state, agent, medium)
         return instance
 
     def generate_instance(self, factory):
@@ -97,8 +156,10 @@ class Hamsterball(replay.Replay):
 
     # IExternalizer
 
-    def identify(self, _):
-        return None
+    def identify(self, instance):
+        if (journal.IRecorder.providedBy(instance) and
+            instance.journal_id in self.registry):
+            return instance.journal_id
 
 
 class SingletonFactory(object):

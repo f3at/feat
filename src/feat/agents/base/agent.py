@@ -14,6 +14,7 @@ registry = dict()
 def register(klass, name):
     global registry
     registry[name] = klass
+    klass.descriptor_type = name
     serialization.register(klass)
     return klass
 
