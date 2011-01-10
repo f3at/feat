@@ -72,7 +72,6 @@ class JoinShardContractor(contractor.BaseContractor):
     @replay.mutable
     def announced(self, state, announcement):
         state.preallocation = state.agent.preallocate_resource(hosts=1)
-        state.announce = announcement
         state.nested_manager = None
         action_type = None
 
@@ -124,7 +123,7 @@ class JoinShardContractor(contractor.BaseContractor):
         if state.nested_manager:
             state.nested_manager.terminate()
 
-    @replay.journaled
+    @replay.immutable
     def _pick_best_bid(self, state, nested_bids, own_bid):
         # prepare the list of bids
         bids = list()
@@ -142,10 +141,7 @@ class JoinShardContractor(contractor.BaseContractor):
             return None
 
         # elect best bid
-        best = bids[0]
-        for bid in bids:
-            if bid.payload['cost'] < best.payload['cost']:
-                best = bid
+        best = message.Bid.pick_best(bids)
 
         # Send refusals to contractors of nested manager which we already
         # know will not receive the grant.
@@ -181,7 +177,7 @@ class JoinShardContractor(contractor.BaseContractor):
     def granted(self, state, grant):
         state.preallocation.confirm()
 
-        joining_agent_id = state.announce.payload['joining_agent'].key
+        joining_agent_id = grant.payload['joining_agent'].key
 
         if state.bid.payload['action_type'] == ActionType.create:
             f = fiber.Fiber()
@@ -230,7 +226,7 @@ class NestedJoinShardManager(manager.BaseManager):
     def initiate(self, state):
         state.medium.announce(state._announcement)
 
-    @replay.journaled
+    @replay.immutable
     def wait_for_bids(self, state):
         f = fiber.Fiber()
         f.add_callback(state.medium.wait_for_state)

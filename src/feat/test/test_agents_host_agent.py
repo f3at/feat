@@ -75,6 +75,8 @@ class TestJoinShardManager(testsuite.TestCase):
             message.Bid(payload=dict(idd="worse", cost=10))]
         sfx = [
             testsuite.side_effect('AgencyManager.get_bids', bids),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                  self.ball.descriptor),
             testsuite.side_effect('AgencyManager.grant',
                                   args=((bids[0], testsuite.whatever, ), ))]
         self.ball.call(sfx, self.manager.closed)

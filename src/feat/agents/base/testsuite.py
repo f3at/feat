@@ -36,7 +36,6 @@ class CompareObject(object):
         for key in self.params:
             v = getattr(other, key)
             if self.params[key] != v:
-                print self.params[key], v
                 return False
         return True
 
@@ -127,7 +126,8 @@ class Hamsterball(replay.Replay):
 
     def generate_listener(self, agent, factory, medium):
         instance = self.generate_instance(factory)
-        instance.init_state(instance.state, agent, medium)
+        instance.state.medium = medium
+        instance.state.agent = agent
         return instance
 
     def generate_instance(self, factory):
@@ -205,8 +205,18 @@ class TestCase(common.TestCase):
         self.assertEqual(value, vv)
 
     def assertFiberCalls(self, f, expected, args=None, kwargs=None):
+        if self.fiber_find_call(f, expected, args, kwargs) is None:
+            raise FailTest("Call %r not found in the fiber" % expected)
+
+    def assertFiberDoesntCall(self, f, expected, args=None, kwargs=None):
+        if self.fiber_find_call(f, expected, args, kwargs) is not None:
+            raise FailTest("Found call %r in the fiber." % expected)
+
+    def fiber_find_call(self, f, expected, args=None, kwargs=None):
         calllist = f.snapshot()[2]
+        index = -1
         for cb, err in calllist:
+            index += 1
             call, cargs, ckwargs = cb
             if call == fiber.drop_result:
                 call, cargs = cargs[0], cargs[1:]
@@ -218,5 +228,5 @@ class TestCase(common.TestCase):
                 if kwargs is not None and kwargs != ckwargs:
                     self.info("Kwargs didn't match %r != %r", kwargs, ckwargs)
                     continue
-                return True
-        raise FailTest("Call %r not found in the fiber" % expected)
+                return index
+        return None

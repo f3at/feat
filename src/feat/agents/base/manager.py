@@ -49,6 +49,11 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
         state.agent = agent
         state.medium = medium
 
+    @replay.immutable
+    def restored(self, state):
+        replay.Replayable.restored(self)
+        log.Logger.__init__(self, state.medium)
+
     def initiate(self):
         '''@see: L{manager.IAgentManager}'''
 

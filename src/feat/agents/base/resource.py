@@ -114,6 +114,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def __eq__(self, state, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
         os = other._get_state()
         return os.totals == state.totals and\
                os.allocations == state.allocations
@@ -165,6 +167,10 @@ class Allocation(log.Logger, replay.Replayable):
     @replay.mutable
     def _set_state(self, state, status):
         state.state = status
+
+    @replay.immutable
+    def get_state(self, state):
+        return state.state
 
     @replay.immutable
     def _ensure_state(self, state, states):
@@ -230,6 +236,8 @@ class Allocation(log.Logger, replay.Replayable):
 
     @replay.immutable
     def __eq__(self, state, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
         os = other._get_state()
         return state.state == os.state and state.resources == os.resources
 
