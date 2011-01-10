@@ -7,11 +7,9 @@ import uuid
 from twisted.internet import defer
 
 from feat.agencies.contracts import ContractorState
-from feat.agents.base import (agent, descriptor, contractor, replay,
+from feat.agents.base import (descriptor, contractor, replay,
                               message, manager, recipient)
 from feat.interface import contracts, protocols
-from feat.interface.contractor import IContractorFactory
-from feat.interface.manager import IManagerFactory
 from feat.common import delay
 
 from . import common
@@ -544,7 +542,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             self.assertCalled(contractor, 'announced', times=1)
             args = contractor.find_calls('announced')[0].args
             self.assertEqual(1, len(args))
-            announce = args[0]
             medium = contractor._get_medium()
             self.assertEqual(contracts.ContractState.announced,
                              medium.state)
