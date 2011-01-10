@@ -164,7 +164,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                 bid = message.Refusal()
             else:
                 bid = message.Bid()
-                bid.bids = [cost]
+                bid.payload['cost'] = cost
 
             self.log('Puting bid')
             defers.append(self.reply(bid, sender, msg))
@@ -236,13 +236,13 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         @replay.immutable
         def bid_handler(s, state, bid):
-            s.log('Received bid: %r', bid.bids)
-            if bid.bids[0] == 3:
+            s.log('Received bid: %r', bid.payload['cost'])
+            if bid.payload['cost'] == 3:
                 state.medium.reject(bid)
-            elif bid.bids[0] == 2:
+            elif bid.payload['cost'] == 2:
                 pass
-            elif bid.bids[0] == 1:
-                grant = message.Grant(bid_index=0)
+            elif bid.payload['cost'] == 1:
+                grant = message.Grant()
                 state.medium.grant((bid, grant, ))
 
         self.start_manager()
@@ -279,9 +279,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, sending grants')
-            to_grant = filter(lambda x: x.bids[0] < 3,
+            to_grant = filter(lambda x: x.payload['cost'] < 3,
                               state.medium.contractors)
-            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
+            params = map(lambda bid: (bid, message.Grant(), ),
                          to_grant)
             state.medium.grant(params)
 
@@ -350,7 +350,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         @replay.immutable
         def bid_handler(s, state, bid):
-            state.medium.grant((bid, message.Grant(bid_index=0), ))
+            state.medium.grant((bid, message.Grant(), ))
 
         self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
@@ -374,7 +374,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
+            params = map(lambda bid: (bid, message.Grant(), ),
                          state.medium.contractors.keys())
             state.medium.grant(params)
 
@@ -431,7 +431,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(bid_index=0), ),
+            params = map(lambda bid: (bid, message.Grant(), ),
                          state.medium.contractors.keys())
             state.medium.grant(params)
 
@@ -647,7 +647,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid, 1)
-        d.addCallback(self.recv_grant, bid_index=0)
+        d.addCallback(self.recv_grant)
 
         def asserts(_):
             self.assertEqual(contracts.ContractState.granted,\
@@ -656,19 +656,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             call = self.contractor.find_calls('granted')[0]
             self.assertEqual(1, len(call.args))
             self.assertEqual(message.Grant, call.args[0].__class__)
-            self.assertEqual(0, call.args[0].bid_index)
 
         d.addCallback(asserts)
-
-        return d
-
-    def testGrantWithBidWeHaventSent(self):
-        d = self.recv_announce()
-        d.addCallback(self._get_contractor)
-        d.addCallback(self.send_bid, 1)
-        d.addCallback(self.recv_grant, bid_index=1)
-
-        d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
 
         return d
 
@@ -678,7 +667,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid, 1)
-        d.addCallback(self.recv_grant, bid_index=0, update_report=1)
+        d.addCallback(self.recv_grant, update_report=1)
 
         d.addCallback(self.queue.get) # this is a bid
 

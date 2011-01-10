@@ -90,7 +90,6 @@ class Rejection(ContractMessage):
 @serialization.register
 class Grant(ContractMessage):
 
-    bid_index = None # index of the bid we are granting
     update_report = None # set it to number to receive frequent reports
 
 
@@ -111,18 +110,15 @@ class Acknowledgement(ContractMessage):
 @serialization.register
 class Bid(ContractMessage):
 
-    # list of bids (usual single element)
-    bids = []
-
     @staticmethod
     def pick_best(bids):
         assert len(bids) > 0
         for bid in bids:
             assert isinstance(bid, Bid)
 
-        costs = map(lambda x: x.bids[0], bids)
+        costs = map(lambda x: x.payload['cost'], bids)
         best = min(costs)
-        return filter(lambda x: x.bids[0] == best, bids)[0]
+        return filter(lambda x: x.payload['cost'] == best, bids)[0]
 
 
 @serialization.register

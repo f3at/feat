@@ -96,7 +96,7 @@ class JoinShardManager(manager.BaseManager):
     def closed(self, state):
         bids = state.medium.get_bids()
         best_bid = message.Bid.pick_best(bids)
-        params = (best_bid, message.Grant(bid_index=0), )
+        params = (best_bid, message.Grant(), )
         state.medium.grant(params)
 
     def restart_contract(self):

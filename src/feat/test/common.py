@@ -396,9 +396,8 @@ class AgencyTestHelper(object):
         msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
-    def recv_grant(self, _, bid_index=0, update_report=None):
+    def recv_grant(self, _, update_report=None):
         msg = message.Grant()
-        msg.bid_index = bid_index
         msg.update_report = update_report
         msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)

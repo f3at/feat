@@ -92,7 +92,7 @@ class JoinShardContractor(contractor.BaseContractor):
             bid = message.Bid()
             bid.payload['action_type'] = action_type
             cost += announcement.payload['level'] * 15
-            bid.bids = [cost]
+            bid.payload['cost'] = cost
 
         f = fiber.Fiber()
         if action_type != ActionType.join:
@@ -144,7 +144,7 @@ class JoinShardContractor(contractor.BaseContractor):
         # elect best bid
         best = bids[0]
         for bid in bids:
-            if bid.bids[0] < best.bids[0]:
+            if bid.payload['cost'] < best.payload['cost']:
                 best = bid
 
         # Send refusals to contractors of nested manager which we already

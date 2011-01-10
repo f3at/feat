@@ -208,6 +208,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         if not isinstance(grants, list):
             grants = [grants]
+        # clone the grant messages, not to mess with the
+        # state on the agent side
         grants = [(bid, grant.clone(), ) for bid, grant in grants]
 
         self._cancel_expiration_call()
@@ -217,11 +219,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(expiration_time, self._on_grant_expire,
                         contracts.ContractState.aborted)
 
+        # send a grant event to the contractors
         for bid, grant in grants:
             grant.expiration_time = expiration_time
             contractor = self.contractors[bid]
             contractor.on_event(grant)
 
+        # send the rejections to all the contractors we are not granting
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
@@ -456,7 +460,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         bid = bid.clone()
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
-        assert isinstance(bid.bids, list)
 
         self._ensure_state(contracts.ContractState.announced)
         self._set_state(contracts.ContractState.bid)
@@ -574,28 +577,18 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _on_grant(self, grant):
         '''
-        Called upon receiving the grant. Check that grants bid includes
-        actual bid we put. Than calls granted and sets up reporter
-        if necessary.
+        Called upon receiving the grant. Than calls granted and sets
+        up reporter if necessary.
         '''
-        is_ok = grant.bid_index < len(self.own_bid.bids)
-        if is_ok:
-            self.grant = grant
-            # this is necessary for nested contracts to work with handing
-            # the messages over
-            self._set_remote_id(grant.sender_id)
-            self.recipients = grant.reply_to
+        self.grant = grant
+        # this is necessary for nested contracts to work with handing
+        # the messages over
+        self._set_remote_id(grant.sender_id)
+        self.recipients = grant.reply_to
 
-            self._call(self.contractor.granted, grant)
-            if grant.update_report:
-                self._setup_reporter()
-        else:
-            self.error("The bid granted doesn't match the one put upon! "
-                       "Terminating!")
-            self.error("Bid index: %r, bids: %r", grant.bid_index,
-                                                  self.bid.bids)
-            self._set_state(contracts.ContractState.wtf)
-            self._terminate()
+        self._call(self.contractor.granted, grant)
+        if grant.update_report:
+            self._setup_reporter()
 
     def _on_ack(self, msg):
         self._run_and_terminate(self.contractor.acknowledged, msg)
