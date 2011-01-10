@@ -1,5 +1,6 @@
 import shutil
 import os
+import uuid
 
 from feat.process import base
 
@@ -10,6 +11,7 @@ class Process(base.Base):
         self.config = dict()
         workspace = self.get_tmp_dir()
         self.config['port'] = self.get_free_port()
+        self.config['node_name'] = str(uuid.uuid1())
         self.config['workspace'] = workspace
         self.config['mnesia_dir'] =\
              os.path.join(workspace, 'rabbitmq-rabbit-mnesia')
@@ -25,6 +27,7 @@ class Process(base.Base):
 
         self.env['HOME'] = os.environ['HOME']
         self.env['RABBITMQ_NODE_PORT'] = str(self.config['port'])
+        self.env['RABBITMQ_NODENAME'] = str(self.config['node_name'])
         self.env['RABBITMQ_MNESIA_DIR'] = self.config['mnesia_dir']
         self.env['RABBITMQ_NODE_IP_ADDRESS'] = '127.0.0.1'
         self.env['RABBITMQ_LOG_BASE'] = self.config['workspace']
