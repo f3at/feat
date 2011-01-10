@@ -55,6 +55,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
                 result[resource] += ar[resource]
         return result
 
+    @replay.immutable
+    def get_totals(self, state):
+        return copy.copy(state.totals)
+
     @replay.mutable
     def append_allocation(self, state, allocation):
         if not isinstance(allocation, Allocation):

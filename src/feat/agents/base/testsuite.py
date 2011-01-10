@@ -58,7 +58,7 @@ class Hamsterball(replay.Replay):
         self.journal_keeper = self
         self._recorder_count = 0
         SingletonFactory(self)
-        replay.Replay.__init__(self, ListIterator(), u'agent-under-test')
+        replay.Replay.__init__(self, None, u'agent-under-test')
 
     def reset(self):
         replay.Replay.reset(self)
@@ -73,10 +73,12 @@ class Hamsterball(replay.Replay):
                         if isinstance(x, agent.BaseAgent)]
         if len(search_agent) == 1:
             self.agent = search_agent[0]
-            self.descriptor = factories.build(type(self.agent).descriptor_type,
-                                              doc_id=self.agent_id)
-
+            self.reset_descriptor()
         return result
+
+    def reset_descriptor(self):
+        self.descriptor = factories.build(type(self.agent).descriptor_type,
+                                          doc_id=self.agent_id)
 
     def call(self, side_effects, method, *args, **kwargs):
         recorder = method.__self__
@@ -103,6 +105,9 @@ class Hamsterball(replay.Replay):
         instance = self.generate_instance(factory)
         instance.state.medium = agency.AgencyAgent.__new__(agency.AgencyAgent)
         return instance
+
+    def generate_interest(self):
+        return agency.Interest.__new__(agency.Interest)
 
     def generate_manager(self, agent, factory):
         medium = contracts.AgencyManager.__new__(contracts.AgencyManager)
@@ -187,15 +192,6 @@ class SingletonFactory(object):
 
     def prepare(self):
         return None
-
-
-class ListIterator(list):
-
-    def next(self):
-        if len(self) > 0:
-            return self.pop(0)
-        else:
-            raise StopIteration()
 
 
 class TestCase(common.TestCase):

@@ -41,27 +41,27 @@ class ShardAgent(agent.BaseAgent):
         return recp
 
     @replay.journaled
-    def generate_descriptor(self, state, **options):
-        desc = Descriptor(**options)
+    def prepare_child_descriptor(self, state, joining_host_id=None):
+        us = self.get_own_address()
+        desc = Descriptor(parent=us)
 
         def set_shard(desc):
             desc.shard = desc.doc_id
             return desc
 
+        def append_child(desc, joining_host_id):
+            new_address = recipient.Agent(joining_host_id, desc.shard)
+            desc.hosts.append(new_address)
+            return desc
+
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         f.add_callback(set_shard)
+        if joining_host_id is not None:
+            f.add_callback(append_child, joining_host_id)
         f.add_callback(state.medium.save_document)
         f.succeed(desc)
         return f
-
-    @replay.immutable
-    def append_child_to_descriptor(self, state, desc, joining_host_id):
-        new_address = recipient.Agent(joining_host_id, desc.shard)
-        desc.hosts.append(new_address)
-        f = fiber.Fiber()
-        f.add_callback(state.medium.save_document)
-        return f.succeed(desc)
 
 
 class JoinShardContractor(contractor.BaseContractor):
@@ -185,7 +185,7 @@ class JoinShardContractor(contractor.BaseContractor):
 
         if state.bid.payload['action_type'] == ActionType.create:
             f = fiber.Fiber()
-            f.add_callback(self._prepare_child_descriptor)
+            f.add_callback(state.agent.prepare_child_descriptor)
             f.add_callback(self._request_start_agent)
             f.add_callback(self._extract_agent)
             f.add_callback(state.agent.add_children_shard)
@@ -204,15 +204,6 @@ class JoinShardContractor(contractor.BaseContractor):
         report = message.FinalReport()
         report.payload['shard'] = recp.shard
         state.medium.finalize(report)
-
-    @replay.mutable
-    def _prepare_child_descriptor(self, state, joining_host_id):
-        f = fiber.Fiber()
-        our_address = state.agent.get_own_address()
-        f.add_callback(fiber.drop_result, state.agent.generate_descriptor,
-                       parent=our_address)
-        f.add_callback(state.agent.append_child_to_descriptor, joining_host_id)
-        return f.succeed()
 
     @replay.immutable
     def _request_start_agent(self, state, desc):
