@@ -32,6 +32,7 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'contractor-medium', AgencyContractor)
         Factory(self, 'manager-medium', AgencyManager)
         Factory(self, 'agency-interest', Interest)
+        Factory(self, 'retrying-protocol', RetryingProtocol)
 
         self.reset()
 
@@ -253,6 +254,11 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         pass
 
+    @replay.named_side_effect('AgencyAgent.retrying_protocol')
+    def retrying_protocol(self, factory, recipients, max_retries=None,
+                         initial_delay=1, max_delay=None, *args, **kwargs):
+        pass
+
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
         pass
@@ -360,6 +366,22 @@ class AgencyContractor(log.LogProxy, log.Logger,
 
     @replay.named_side_effect('AgencyContractor.finalize')
     def finalize(self, report):
+        pass
+
+
+class RetryingProtocol(BaseReplayDummy, log.Logger):
+
+    implements(serialization.ISerializable)
+
+    def __init__(self, replay):
+        log.Logger.__init__(self, replay)
+
+    @serialization.freeze_tag('RetryingProtocol.notify_finish')
+    def notify_finish(self):
+        raise RuntimeError('This should never get called')
+
+    @replay.named_side_effect('RetryingProtocol.give_up')
+    def give_up(self):
         pass
 
 

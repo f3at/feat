@@ -18,7 +18,7 @@ class TestHostAgent(testsuite.TestCase):
         expected = [
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(host_agent.StartAgentReplier, )),
-            testsuite.side_effect('AgencyAgent.initiate_protocol',
+            testsuite.side_effect('AgencyAgent.retrying_protocol',
                                   args=(host_agent.JoinShardManager, recp),
                                   result=manager)]
         f, state = self.ball.call(expected, self.agent.initiate)

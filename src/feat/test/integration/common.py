@@ -17,7 +17,7 @@ class SimulationTest(common.TestCase):
         return self.prolog()
 
     def process(self, script):
-        d = self.cb_after(None, self.driver, 'finished_processing')
+        d = self.cb_after(None, self.driver._parser, 'on_finish')
         self.driver.process(script)
         return d
 

@@ -17,13 +17,14 @@ class HostAgent(agent.BaseAgent):
         state.medium.register_interest(StartAgentReplier)
 
         recp = recipient.Agent('join-shard', 'lobby')
-        join_manager = state.medium.initiate_protocol(JoinShardManager, recp)
+        retrier = state.medium.retrying_protocol(JoinShardManager, recp)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, join_manager.notify_finish)
+        f.add_callback(fiber.drop_result, retrier.notify_finish)
         return f.succeed()
 
     @agent.update_descriptor
     def switch_shard(self, state, desc, shard):
+        self.debug('Switching shard to %r', shard)
         state.medium.leave_shard(desc.shard)
         desc.shard = shard
         state.medium.join_shard(shard)
@@ -100,12 +101,6 @@ class JoinShardManager(manager.BaseManager):
         msg.payload['joining_agent'] = state.agent.get_own_address()
         params = (best_bid, msg)
         state.medium.grant(params)
-
-    def restart_contract(self):
-        raise NotImplemented('TO BE DONE')
-
-    expired=restart_contract
-    aborted=restart_contract
 
     @replay.mutable
     def completed(self, state, reports):

@@ -213,7 +213,8 @@ class InitiatorMediumBase(object):
         return x
 
     def _finish_errback(self, x):
-        map(lambda d: d.errback(x), self._finished_cbs)
+        for d in self._finished_cbs:
+            d.errback(x)
 
     def _terminate(self):
         if not self.finish_deferred.called:

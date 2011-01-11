@@ -63,10 +63,10 @@ class Parser(log.Logger):
 
     log_category = 'command-parser'
 
-    def __init__(self, driver, output, commands):
+    def __init__(self, driver, output, commands, cb_on_finish=None):
         log.Logger.__init__(self, driver)
 
-        self.driver = driver
+        self.cb_on_finish = cb_on_finish
         self.commands = commands
         self.buffer = ""
         self.output = output
@@ -237,7 +237,8 @@ class Parser(log.Logger):
         '''
         Called when there is no more messages to be processed in the buffer.
         '''
-        self.driver.finished_processing()
+        if callable(self.cb_on_finish):
+            self.cb_on_finish()
 
     def set_local(self, value, variable_name):
         '''

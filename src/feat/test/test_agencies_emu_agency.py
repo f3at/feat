@@ -8,7 +8,8 @@ from twisted.internet import defer
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
-from feat.common import delay
+from feat.common import delay, log
+from feat.agencies import agency
 
 from . import common
 
@@ -272,3 +273,78 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         r.session_id = str(uuid.uuid1())
         r.payload = 10
         return r
+
+
+class DummyMedium(common.Mock, log.Logger, log.LogProxy):
+
+    def __init__(self, testcase, success_at_try=None):
+        log.Logger.__init__(self, testcase)
+        log.LogProxy.__init__(self, testcase)
+
+        self.number_called = 0
+        self.success_at_try = success_at_try
+
+    def initiate_protocol(self, factory, *args, **kwargs):
+        self.number_called += 1
+        self.info('called %d time', self.number_called)
+        if self.success_at_try is not None and\
+            self.success_at_try < self.number_called:
+            return factory(True)
+        else:
+            return factory(False)
+
+
+class DummyInitiator(common.Mock):
+
+    def __init__(self, should_work):
+        self.should_work = should_work
+
+    def notify_finish(self):
+        if self.should_work:
+            return defer.succeed(None)
+        else:
+            return defer.fail(RuntimeError())
+
+
+class TestRetryingProtocol(common.TestCase):
+
+    timeout = 3
+
+    def setUp(self):
+        self.medium = DummyMedium(self)
+        delay.time_scale = 0.01
+
+    @defer.inlineCallbacks
+    def testRetriesForever(self):
+        d = self.cb_after(None, self.medium, 'initiate_protocol')
+        instance = self._start_instance(None, 1, None)
+        yield d
+        yield self.cb_after(None, self.medium, 'initiate_protocol')
+        yield self.cb_after(None, self.medium, 'initiate_protocol')
+        yield self.cb_after(None, self.medium, 'initiate_protocol')
+        yield self.cb_after(None, self.medium, 'initiate_protocol')
+        instance.give_up()
+        self.assertEqual(5, self.medium.number_called)
+
+    @defer.inlineCallbacks
+    def testMaximumNumberOfRetries(self):
+        instance = self._start_instance(3, 1, None)
+        d = instance.notify_finish()
+        self.assertFailure(d, RuntimeError)
+        yield d
+        self.assertEqual(4, self.medium.number_called)
+        self.assertEqual(8, instance.delay)
+
+    @defer.inlineCallbacks
+    def testMaximumDelay(self):
+        instance = self._start_instance(3, 1, 2)
+        d = instance.notify_finish()
+        self.assertFailure(d, RuntimeError)
+        yield d
+        self.assertEqual(4, self.medium.number_called)
+        self.assertEqual(2, instance.delay)
+
+    def _start_instance(self, max_retries, initial_delay, max_delay):
+        return agency.RetryingProtocol(
+            self.medium, DummyInitiator, None, tuple(), dict(),
+            max_retries, initial_delay, max_delay)

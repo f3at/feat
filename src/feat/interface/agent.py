@@ -46,7 +46,21 @@ class IAgencyAgent(Interface):
 
         @type recipients: L{IRecipients}
         @rtype: L{IInitiator}
-        @return: Instance of protocols initiator
+        @returns: Instance of protocols initiator
+        '''
+
+    def retrying_protocol(self, factory, recipients, max_retries,
+                         initial_delay, max_delay, *args, **kwargs):
+        '''
+        Initiates the protocol which will get restart if it fails.
+        The restart will be delayed with exponential growth.
+
+        Extra params comparing to L{IAgencyAgent.initiate_protocol}:
+
+        @param max_retries: After how many retries to give up. Def. None: never
+        @param initial_delay: Delay before the first retry.
+        @param max_delay: Miximum delay to wait (above it it will not grow).
+        @returns: L{RetryingProtocol}
         '''
 
     def get_time():

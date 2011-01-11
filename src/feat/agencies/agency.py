@@ -8,9 +8,10 @@ import copy
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log, manhole, journal, fiber, serialization
+from feat.common import log, manhole, journal, fiber, serialization, delay
 from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
+from feat.agencies import common
 from feat.interface import agency, agent, protocols
 from feat.common.serialization import pytree, Serializable
 
@@ -263,6 +264,13 @@ class AgencyAgent(log.LogProxy, log.Logger):
         medium.initiate(initiator)
         return initiator
 
+    @replay.named_side_effect('AgencyAgent.retrying_protocol')
+    def retrying_protocol(self, factory, recipients, max_retries=None,
+                         initial_delay=1, max_delay=None, *args, **kwargs):
+
+        return RetryingProtocol(self, factory, recipients, args, kwargs,
+                                max_retries, initial_delay)
+
     @replay.named_side_effect('AgencyAgent.register_interest')
     def register_interest(self, factory):
         factory = protocols.IInterest(factory)
@@ -395,6 +403,85 @@ class Interest(Serializable):
     def bind_to_lobby(self):
         self.medium._messaging.personal_binding(self.factory.protocol_id,
                                                 'lobby')
+
+    def snapshot(self):
+        return id(self)
+
+
+class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
+
+    implements(serialization.ISerializable)
+
+    log_category="retrying-protocol"
+    type_name="retrying-protocol"
+
+    def __init__(self, medium, factory, recipients, args, kwargs,
+                 max_retries=None, initial_delay=1, max_delay=None):
+        common.InitiatorMediumBase.__init__(self)
+        log.Logger.__init__(self, medium)
+
+        self.medium = medium
+        self.factory = factory
+        self.recipients = recipients
+        self.args = args
+        self.kwargs = kwargs
+
+        self.max_retries = max_retries
+        self.max_delay = max_delay
+        self.attempt = 0
+        self.delay = initial_delay
+
+        self._delayed_call = None
+
+        self._bind()
+
+    # public interface
+
+    @serialization.freeze_tag('RetryingProtocol.notify_finish')
+    def notify_finish(self):
+        return common.InitiatorMediumBase.notify_finish(self)
+
+    @replay.named_side_effect('RetryingProtocol.give_up')
+    def give_up(self):
+        self.max_retries = self.attempt - 1
+        if self._delayed_call and not self._delayed_call.called:
+            self._delayed_call.cancel()
+
+    # private section
+
+    def _bind(self):
+        d = self._fire()
+        d.addCallbacks(self._finalize, self._wait_and_retry)
+
+    def _fire(self):
+        self.attempt += 1
+        initiator = self.medium.initiate_protocol(
+            self.factory, self.recipients, *self.args, **self.kwargs)
+        d = initiator.notify_finish()
+        return d
+
+    def _finalize(self, result):
+        self.finish_deferred.callback(result)
+
+    def _wait_and_retry(self, failure):
+        self.info('Retrying protocol for factory: %r failed for the %d time. ',
+                  self.factory, self.attempt)
+
+        # check if we are done
+        if self.max_retries is not None and self.attempt > self.max_retries:
+            return self.finish_deferred.errback(failure)
+
+        # do retry
+        self.info('Will retry in %d seconds', self.delay)
+        self._delayed_call = delay.callLater(self.delay, self._bind)
+
+        # adjust the delay
+        if self.max_delay is None:
+            self.delay *= 2
+        elif self.delay < self.max_delay:
+            self.delay = min((2 * self.delay, self.max_delay, ))
+
+    # ISerializable
 
     def snapshot(self):
         return id(self)

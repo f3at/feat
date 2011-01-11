@@ -18,7 +18,7 @@ class TestDriver(common.TestCase):
     @defer.inlineCallbacks
     def testSpawnAgency(self):
         test = 'agency = spawn_agency()\n'
-        d = self.cb_after(None, self.driver, 'finished_processing')
+        d = self.cb_after(None, self.driver._parser, 'on_finish')
         self.driver.process(test)
         yield d
 
@@ -29,7 +29,7 @@ class TestDriver(common.TestCase):
     @defer.inlineCallbacks
     def testCreateDescriptor(self):
         test = "desc = descriptor_factory('descriptor')\n"
-        d = self.cb_after(None, self.driver, 'finished_processing')
+        d = self.cb_after(None, self.driver._parser, 'on_finish')
         self.driver.process(test)
         yield d
 
@@ -46,7 +46,7 @@ class TestDriver(common.TestCase):
         agency = spawn_agency()
         agency.start_agent(descriptor_factory('descriptor'))
         """)
-        d = self.cb_after(None, self.driver, 'finished_processing')
+        d = self.cb_after(None, self.driver._parser, 'on_finish')
         self.driver.process(test)
         yield d
 
@@ -73,7 +73,7 @@ class TestDriver(common.TestCase):
 
         d1 = self.driver.register_breakpoint('break')
         d1.addCallback(asserts1)
-        d2 = self.cb_after(None, self.driver, 'finished_processing')
+        d2 = self.cb_after(None, self.driver._parser, 'on_finish')
         d2.addCallback(asserts2)
 
         self.driver.process(test)

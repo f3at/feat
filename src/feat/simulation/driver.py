@@ -92,7 +92,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._database = database.Database()
 
         self._output = Output()
-        self._parser = manhole.Parser(self, self._output, self)
+        self._parser = manhole.Parser(self, self._output, self,
+                                      self.finished_processing)
 
         self._agencies = list()
         self._breakpoints = dict()
@@ -118,6 +119,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         d = defer.Deferred()
         self._breakpoints[name] = d
         return d
+
+    def get_additional_parser(self, cb=None):
+        return manhole.Parser(self, self._output, self, cb)
 
     def process(self, script):
         self._parser.dataReceived(script)

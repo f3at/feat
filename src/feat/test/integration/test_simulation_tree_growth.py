@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat.common import format_block
+from feat.common import format_block, delay
 from feat.test.integration import common
 from feat.test.common import attr
 from feat.agents.host import host_agent
@@ -10,7 +10,42 @@ from feat.agents.shard import shard_agent
 from feat.agents.base import recipient
 
 
-class TreeGrowthSimulation(common.SimulationTest):
+class Common(object):
+
+    def assert_all_agents_in_shard(self, agency, shard):
+        expected_bindings_to_shard = {
+            host_agent.HostAgent: 1,
+            shard_agent.ShardAgent: 2}
+        expected_bindings_to_lobby = {
+            host_agent.HostAgent: 0,
+            shard_agent.ShardAgent:\
+                lambda desc: (desc.parent is None and 1) or 0}
+
+        for agent in agency._agents:
+            desc = agent.get_descriptor()
+            self.assertEqual(shard, desc.shard, str(type(agent.agent)))
+            m = agent._messaging
+            agent_type = agent.agent.__class__
+
+            expected = expected_bindings_to_shard[agent_type]
+            if callable(expected):
+                expected = expected(agent.get_descriptor())
+            got = len(m.get_bindings(shard))
+            self.assertEqual(expected, got,
+                        '%r should have %d bindings to shard: %s but had %d' %\
+                        (agent_type.__name__, expected, shard, got, ))
+
+            expected = expected_bindings_to_lobby[agent_type]
+            if callable(expected):
+                expected = expected(agent.get_descriptor())
+            got = len(m.get_bindings('lobby'))
+            self.assertEqual(expected, got,
+                            '%r living in shard: %r should have %d '
+                             'bindings to "lobby" but had %d' %\
+                            (agent_type.__name__, shard, expected, got, ))
+
+
+class TreeGrowthSimulation(common.SimulationTest, Common):
 
     # Timeout is intentionaly set to high. Some of theese tests take a lot
     # of time running with --coverage on buildbot (virtualized machine)
@@ -140,34 +175,45 @@ class TreeGrowthSimulation(common.SimulationTest):
         for agency in agency_for_second_shard:
             self.assert_all_agents_in_shard(agency, shard)
 
-    def assert_all_agents_in_shard(self, agency, shard):
-        expected_bindings_to_shard = {
-            host_agent.HostAgent: 1,
-            shard_agent.ShardAgent: 2}
-        expected_bindings_to_lobby = {
-            host_agent.HostAgent: 0,
-            shard_agent.ShardAgent:\
-                lambda desc: (desc.parent is None and 1) or 0}
 
-        for agent in agency._agents:
-            desc = agent.get_descriptor()
-            self.assertEqual(shard, desc.shard, str(type(agent.agent)))
-            m = agent._messaging
-            agent_type = agent.agent.__class__
+class SimulationHostBeforeShard(common.SimulationTest, Common):
 
-            expected = expected_bindings_to_shard[agent_type]
-            if callable(expected):
-                expected = expected(agent.get_descriptor())
-            got = len(m.get_bindings(shard))
-            self.assertEqual(expected, got,
-                        '%r should have %d bindings to shard: %s but had %d' %\
-                        (agent_type.__name__, expected, shard, got, ))
+    def prolog(self):
+        pass
 
-            expected = expected_bindings_to_lobby[agent_type]
-            if callable(expected):
-                expected = expected(agent.get_descriptor())
-            got = len(m.get_bindings('lobby'))
-            self.assertEqual(expected, got,
-                            '%r living in shard: %r should have %d '
-                             'bindings to "lobby" but had %d' %\
-                            (agent_type.__name__, shard, expected, got, ))
+    @defer.inlineCallbacks
+    def testHAKeepsTillShardAgentAppears(self):
+        delay.time_scale = 0.01
+
+        setup = format_block("""
+        agency = spawn_agency()
+        host_desc = descriptor_factory('host_agent')
+        ha = agency.start_agent(host_desc)
+        """)
+        d = self.process(setup)
+        agency = self.get_local('agency')
+        ha = agency._agents[0]
+
+        # check the retries 3 times
+        yield self.cb_after(None, ha, 'initiate_protocol')
+        self.info('First contract failed.')
+        yield self.cb_after(None, ha, 'initiate_protocol')
+        yield self.cb_after(None, ha, 'initiate_protocol')
+
+        script = format_block("""
+        shard_desc = descriptor_factory('shard_agent', 'root')
+        agency = spawn_agency()
+        agency.start_agent(shard_desc)
+        """)
+        # get additional parser - the original is locked in initiated
+        # host agent
+        parser = self.driver.get_additional_parser()
+        parser.dataReceived(script)
+
+        # after shard agent has appeared it is possible to finish
+        # initializing the host agent
+        yield d
+
+        self.assertEqual(1, len(agency._agents))
+        self.assertIsInstance(agency._agents[0].agent, host_agent.HostAgent)
+        self.assert_all_agents_in_shard(agency, 'root')
