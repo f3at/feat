@@ -30,6 +30,7 @@ class TreeGrowthSimulation(common.SimulationTest):
         host_desc = descriptor_factory('host_agent')
         agency.start_agent(shard_desc)
         agency.start_agent(host_desc)
+        agency.snapshot_agents()
         """)
         return self.process(setup)
 

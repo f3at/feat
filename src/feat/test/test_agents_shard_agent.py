@@ -11,7 +11,7 @@ class TestShardAgent(testsuite.TestCase):
     def setUp(self):
         testsuite.TestCase.setUp(self)
         instance = self.ball.generate_agent(shard_agent.ShardAgent)
-        instance.state.resource = self.ball.generate_resources(instance)
+        instance.state.resources = self.ball.generate_resources(instance)
         self.agent = self.ball.load(instance)
 
     def testInitiateEmptyDescriptor(self):

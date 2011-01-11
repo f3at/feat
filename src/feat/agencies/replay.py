@@ -38,10 +38,14 @@ class Replay(log.FluLogKeeper, log.Logger):
     def reset(self):
         # registry of Recorders: journal_id -> IRecorderNode
         self.registry = dict()
+        # refrence to the agent medium instance (IAgencyAgent)
         self.medium = None
+        # refrence to the agent instance being replayed (IAgent)
         self.agent = None
         # registry of dummy medium classes: id(instance) -> medium
         self.dummies = dict()
+        # list of all the protocols
+        self.protocols = list()
 
     def register(self, recorder):
         j_id = recorder.journal_id
@@ -61,22 +65,22 @@ class Replay(log.FluLogKeeper, log.Logger):
         entry = self.journal.next()
         (agent_id, instance_id, entry_id, fiber_id, fiber_depth,
         input, side_effects, output, ) = entry
-        try:
-            input = self.unserializer.convert(input)
-            side_effects = self.unserializer.convert(side_effects)
-        except:
-            self.error("Failed trying to apply entry: %r, input: %r, "
-                       "side_effects: %r.", entry_id, input, side_effects)
-            raise
-
         assert agent_id == self.agent_id
         if instance_id == 'agency':
             self.log("<----------------- Applying entry:\n  Entry_id: %r.\n  "
                      "Input: %r", entry_id, input)
             method = getattr(self, "entry_%s" % entry_id)
-            replay.replay(method, input)
+            replay.replay(method, (input, ))
             return self.next()
         else:
+            try:
+                input = self.unserializer.convert(input)
+                side_effects = self.unserializer.convert(side_effects)
+            except:
+                self.error("Failed trying to apply entry: %r, input: %r, "
+                           "side_effects: %r.", entry_id, input, side_effects)
+                raise
+
             instance = self.registry.get(instance_id, None)
             if instance is None:
                 raise ValueError("Instance_id %r not found in the registry. "
@@ -90,28 +94,60 @@ class Replay(log.FluLogKeeper, log.Logger):
             self.log("State after the entry: %r", self.agent._get_state())
             return r_se, result, output
 
-    def entry_agent_created(self, agent_factory, dummy_id):
+    def entry_agent_created(self, input):
+        agent_factory, dummy_id = self.unserializer.convert(input)
+
         assert self.medium is None
         self.medium = AgencyAgent(self)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
 
-    def entry_agent_deleted(self):
+    def entry_agent_deleted(self, input):
         raise NotImplemented('TODO')
 
-    def entry_protocol_created(self, protocol_factory, medium, args, kwargs):
+    def entry_protocol_created(self, input):
+        protocol_factory, medium, args, kwargs =\
+                          self.unserializer.convert(input)
+
         assert self.agent is not None
         args = args or tuple()
         kwargs = kwargs or dict()
-        protocol_factory(self.agent, medium, *args, **kwargs)
+        instance = protocol_factory(self.agent, medium, *args, **kwargs)
+        self.protocols.append(instance)
 
-    def entry_protocol_deleted(self, journal_id, dummy_id):
+    def entry_protocol_deleted(self, input):
+        journal_id, dummy_id = self.unserializer.convert(input)
+        instance = self.registry[journal_id]
+        self.protocols.remove(instance)
         del(self.registry[journal_id])
         self.unregister_dummy(dummy_id)
 
-    def entry_snapshot(self, snapshot):
+    def entry_snapshot(self, input):
+        snapshot = input[0]
+        old_agent, old_protocols = self.agent, self.protocols
         self.reset()
         self.agent, self.protocols = self.unserializer.convert(snapshot)
+        current_registry_snapshot = [recorder.snapshot() for recorder in\
+                                     self.registry.values()]
+
+        # check that the state so far matches the snapshop
+        # if old_agent is None, it means that the snapshot is first entry
+        # we are replaynig - hence we have no state to compare to
+        if old_agent is not None:
+            if self.agent != old_agent:
+                raise journal.ReplayError(
+                    'States of current agent mismatch the old agent'
+                    'Old: %r, Loaded: %r' % (old_agent, self.agent, ))
+            if len(self.protocols) != len(old_protocols):
+                raise journal.ReplayError(
+                    'The number of protocols mismatch. '
+                    'Old: %r, Loaded: %r' % (old_protocols, self.protocols, ))
+            else:
+                for protocol in self.protocols:
+                    if protocol not in old_protocols:
+                        raise journal.ReplayError(
+                            'One of the protocols was not found. Old: %r, '
+                            'Loaded: %r' % (old_protocols, self.protocols, ))
 
     # Managing the dummy registry:
 

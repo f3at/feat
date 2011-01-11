@@ -21,9 +21,7 @@ def register(klass, name):
 
 def registry_lookup(name):
     global registry
-    if name in registry:
-        return registry[name]
-    return None
+    return registry.get(name, None)
 
 
 @decorator.simple_function
@@ -61,7 +59,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     def restored(self, state):
         log.Logger.__init__(self, state.medium)
         log.LogProxy.__init__(self, state.medium)
-        replay.Replayable.__init__(self, state.medium)
+        replay.Replayable.restored(self)
 
     def init_state(self, state, medium):
         state.medium = agent.IAgencyAgent(medium)

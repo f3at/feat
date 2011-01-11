@@ -99,6 +99,7 @@ class Hamsterball(replay.Replay):
     def generate_resources(self, agent):
         instance = self.generate_instance(resource.Resources)
         instance.init_state(instance.state, agent)
+        return instance
 
     def generate_agent(self, factory):
         instance = self.generate_instance(factory)

@@ -60,6 +60,7 @@ class TestHamsterball(testsuite.TestCase):
     def setUp(self):
         testsuite.TestCase.setUp(self)
         instance = self.ball.generate_agent(DummyAgent)
+        instance.state.value = 5
         instance.state.resources = self.ball.generate_resources(instance)
         self.instance = instance
 
@@ -69,6 +70,7 @@ class TestHamsterball(testsuite.TestCase):
         self.assertTrue(self.ball.medium is not None)
         state = agent._get_state()
         self.assertIsInstance(state, guard.MutableState)
+        self.assertEqual(5, state.value)
         self.assertIsInstance(state.resources, resource.Resources)
 
     def testMakeAllocation(self):

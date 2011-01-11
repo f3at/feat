@@ -105,6 +105,10 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         input = (agent_instance.journal_id, dummy_id, )
         self.journal_agency_entry(agent_id, 'agent_deleted', input)
 
+    def journal_agent_snapshot(self, agent_id, snapshot):
+        input = (snapshot, )
+        self.journal_agency_entry(agent_id, 'snapshot', input)
+
     # registry
 
     def register(self, recorder):
@@ -122,7 +126,18 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
             return instance.journal_id
 
     def lookup(self, _):
-        raise RuntimeError("OOPS, this should not be used in production code")
+        raise RuntimeError("OOPS, this should never be called "
+                           "in production code!!")
+
+    # Snapshot the agents
+
+    @manhole.expose()
+    def snapshot_agents(self):
+        # reset the registry, so that snapshot contains full objects not just
+        # the references
+        self.registry = weakref.WeakValueDictionary()
+        for agent in self._agents:
+            agent.journal_snapshot()
 
 
 class AgencyAgent(log.LogProxy, log.Logger):
@@ -158,9 +173,13 @@ class AgencyAgent(log.LogProxy, log.Logger):
         self.join_shard(descriptor.shard)
 
     def snapshot_agent(self):
-        '''Gives snapshot of everything realted to the agent'''
+        '''Gives snapshot of everything related to the agent'''
         listeners = [i.get_agent_side() for i in self._listeners.values()]
         return (self.agent, listeners, )
+
+    def journal_snapshot(self):
+        self.agency.journal_agent_snapshot(self._descriptor.doc_id,
+                                           self.snapshot_agent())
 
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):

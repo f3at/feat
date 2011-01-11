@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               descriptor, document, replay)
-from feat.common import enum, fiber
+from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
 from feat.agents.host import host_agent
@@ -64,6 +64,7 @@ class ShardAgent(agent.BaseAgent):
         return f
 
 
+@serialization.register
 class JoinShardContractor(contractor.BaseContractor):
 
     protocol_id = 'join-shard'
@@ -214,6 +215,7 @@ class JoinShardContractor(contractor.BaseContractor):
         return reply.payload['agent']
 
 
+@serialization.register
 class NestedJoinShardManager(manager.BaseManager):
 
     protocol_id = 'join-shard'
