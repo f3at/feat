@@ -25,6 +25,7 @@ class SimulationTest(common.TestCase):
         return self.driver._parser.get_local(name)
 
     def tearDown(self):
+        common.TestCase.tearDown(self)
         self.log("Test finished, now validating replayability.")
         for agency in self.driver._agencies:
             self._validate_replay_on_agency(agency)
