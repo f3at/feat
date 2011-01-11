@@ -4,7 +4,6 @@ from twisted.internet import defer
 
 from feat.common import format_block, delay
 from feat.test.integration import common
-from feat.test.common import attr
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
 from feat.agents.base import recipient
@@ -49,7 +48,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
 
     # Timeout is intentionaly set to high. Some of theese tests take a lot
     # of time running with --coverage on buildbot (virtualized machine)
-    timeout = 40
+    timeout = 100
     hosts_per_shard = 10
     children_per_shard = 2
 
@@ -177,6 +176,8 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
 
 
 class SimulationHostBeforeShard(common.SimulationTest, Common):
+
+    timeout = 100
 
     def prolog(self):
         pass
