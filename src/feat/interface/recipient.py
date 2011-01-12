@@ -2,6 +2,9 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
+__all__ = ["RecipientType", "IRecipients", "IRecipient"]
+
+
 '''
 Provides interfaces for specifing the recipients of messages.
 Types that can be passed as destination includes:

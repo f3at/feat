@@ -4,9 +4,8 @@ from twisted.python import components, failure
 from zope.interface import implements
 
 from feat.agents.base import message, recipient, replay
-from feat.common import log, enum, delay
-from feat.interface import (contracts, contractor, manager,
-                            protocols, serialization, )
+from feat.common import log, enum, delay, serialization
+from feat.interface import contracts, contractor, manager, protocols
 from feat.interface.recipient import RecipientType
 
 from interface import (IListener, IAgencyInitiatorFactory,
@@ -421,7 +420,8 @@ components.registerAdapter(AgencyContractorFactory,
 
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
-                       common.ExpirationCallsMixin, common.AgencyMiddleMixin):
+                       common.ExpirationCallsMixin, common.AgencyMiddleMixin,
+                       common.InterestedMediumBase):
     implements(contractor.IAgencyContractor, IListener,
                serialization.ISerializable)
 
@@ -438,6 +438,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self, announcement.sender_id,
                                           announcement.protocol_id)
+        common.InterestedMediumBase.__init__(self)
 
         assert isinstance(announcement, message.Announcement)
 
@@ -529,6 +530,15 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                         contracts.ContractState.aborted)
         return self.report
 
+    @serialization.freeze_tag('AgencyContractor.update_manager_address')
+    @replay.named_side_effect('AgencyContractor.update_manager_address')
+    def update_manager_address(self, recp):
+        recp = recipient.IRecipient(recp)
+        if recp != self.recipients:
+            self.debug('Updating manager address %r -> %r',
+                       self.recipients, recp)
+            self.recipients = recp
+
     # private section
 
     def _terminate(self):
@@ -537,6 +547,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log("Unregistering contractor")
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
+        common.InterestedMediumBase._terminate(self)
 
     # update reporter stuff
 
@@ -584,7 +595,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         # this is necessary for nested contracts to work with handing
         # the messages over
         self._set_remote_id(grant.sender_id)
-        self.recipients = grant.reply_to
+        self.update_manager_address(grant.reply_to)
 
         self._call(self.contractor.granted, grant)
         if grant.update_report:

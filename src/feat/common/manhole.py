@@ -78,6 +78,8 @@ class Parser(log.Logger):
         self._last_line = None
         self.re = dict(
             assignment=re.compile('\A(\w+)\s*=\s*(\S.*)'),
+            async=re.compile('\Aasync\s+(.+)'),
+            yielding=re.compile('\Ayield\s+(\w+)\s*\Z'),
             number=re.compile('\A\d+(\.\d+)?\Z'),
             none=re.compile('\ANone\Z'),
             string=re.compile('\A\'([^(?<!\)\']*)\'\Z'),
@@ -146,9 +148,22 @@ class Parser(log.Logger):
                 variable_name = assignment.group(1)
                 line = assignment.group(2)
 
-            d = defer.maybeDeferred(self.split, line)
-            d.addCallback(self.process_array)
-            d.addCallback(self.validate_result)
+            async = self.re['async'].search(line)
+            if async:
+                line = async.group(1)
+                async = True
+
+            yielding = self.re['yielding'].search(line)
+            if yielding:
+                varname = yielding.group(1)
+                d = defer.succeed(varname)
+                d.addCallback(self.get_local)
+                d.addCallback(WrappedDeferred.get_defer)
+            else: #normal processing
+                d = defer.maybeDeferred(self.split, line)
+                d.addCallback(self.process_array, async)
+                d.addCallback(self.validate_result)
+
             if assignment:
                 d.addCallback(self.set_local, variable_name)
             d.addCallback(self.send_output)
@@ -157,7 +172,7 @@ class Parser(log.Logger):
             self.on_finish()
 
     @defer.inlineCallbacks
-    def process_array(self, array):
+    def process_array(self, array, async=False):
         """
         Main part of the protocol handling. Whan comes in as the parameter is
         a array of expresions, for example:
@@ -171,6 +186,9 @@ class Parser(log.Logger):
         The result of the function is list with elements subsituted by the
         values they stand for (for variables: values, for method calls: the
         result of deferred returned).
+
+        The async parametr (default False) tells whether to yield the Deferred
+        returned. If False, the Deferreds are substitued with None.
         """
         result = list()
         for element in array:
@@ -214,8 +232,14 @@ class Parser(log.Logger):
                     method = local.lookup_cmd(command)
                     rest = n.group(3)
                 arguments = yield self.process_array(self.split(rest))
-                d = defer.maybeDeferred(method, *arguments)
-                value = yield d
+                output = method(*arguments)
+                if isinstance(output, defer.Deferred):
+                    if not async:
+                        value = yield output
+                    else:
+                        value = WrappedDeferred(output)
+                else:
+                    value = output
                 self.debug("Finished processing command: %s", element)
                 result.append(value)
 
@@ -267,6 +291,7 @@ class Parser(log.Logger):
     def _error_handler(self, f):
         error_handler(self, f)
         self.send_output(f.getErrorMessage())
+        self.on_finish()
 
 
 class BadSyntax(Exception):
@@ -283,3 +308,12 @@ class UnknownVariable(Exception):
 
 class UnknownCommand(Exception):
     pass
+
+
+class WrappedDeferred(object):
+
+    def __init__(self, d):
+        self.d = d
+
+    def get_defer(self):
+        return self.d

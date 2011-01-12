@@ -1,9 +1,14 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from twisted.trial.unittest import SkipTest
 
 from feat.test import common
+from feat.common import delay
 from feat.simulation import driver
 from feat.agencies import replay
+
+
+attr = common.attr
 
 
 class IntegrationTest(common.TestCase):
@@ -12,7 +17,11 @@ class IntegrationTest(common.TestCase):
 
 class SimulationTest(common.TestCase):
 
+    configurable_attributes = ['skip_replayability']
+    skip_replayability = False
+
     def setUp(self):
+        delay.time_scale = 1
         self.driver = driver.Driver()
         return self.prolog()
 
@@ -26,9 +35,13 @@ class SimulationTest(common.TestCase):
 
     def tearDown(self):
         common.TestCase.tearDown(self)
-        self.log("Test finished, now validating replayability.")
-        for agency in self.driver._agencies:
-            self._validate_replay_on_agency(agency)
+        if not self.skip_replayability:
+            self.log("Test finished, now validating replayability.")
+            for agency in self.driver._agencies:
+                self._validate_replay_on_agency(agency)
+        else:
+            print "\n\033[91mFIXME: \033[0mReplayability test skipped: %s\n" %\
+                  self.skip_replayability
 
     def _validate_replay_on_agency(self, agency):
         for agent in agency._agents:
@@ -56,8 +69,7 @@ class SimulationTest(common.TestCase):
 
         listeners_from_replay = [obj for obj in r.registry.values()\
                                  if obj.type_name.endswith('-medium')]
-        if len(listeners) > 0:
-            self.info(listeners[0])
+
         self.assertEqual(len(listeners_from_replay), len(listeners))
         for from_snapshot, from_replay in zip(listeners,
                                               listeners_from_replay):

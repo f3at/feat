@@ -7,7 +7,7 @@ from twisted.trial.unittest import FailTest
 
 from feat.agencies import replay, agency, contracts, requests
 from feat.common import serialization, guard, journal, reflect, fiber
-from feat.agents.base import resource, agent
+from feat.agents.base import resource, agent, partners
 from feat.agents.base.message import BaseMessage
 from feat.test import common, factories
 
@@ -101,9 +101,19 @@ class Hamsterball(replay.Replay):
         instance.init_state(instance.state, agent)
         return instance
 
+    def generate_partners(self, agent):
+        instance = self.generate_instance(partners.Partners)
+        instance.init_state(instance.state, agent)
+        return instance
+
     def generate_agent(self, factory):
         instance = self.generate_instance(factory)
         instance.state.medium = agency.AgencyAgent.__new__(agency.AgencyAgent)
+
+        def return_agent_id():
+            return self.agent_id
+
+        setattr(instance.state.medium, 'snapshot', return_agent_id)
         return instance
 
     def generate_interest(self):
@@ -150,6 +160,7 @@ class Hamsterball(replay.Replay):
 
         setattr(magic_instance, 'snapshot', return_value(full))
         setattr(magic_instance, 'state', state)
+        setattr(magic_instance, '_get_state', return_value(state))
 
         return magic_instance
 
@@ -158,6 +169,9 @@ class Hamsterball(replay.Replay):
     def generate_identifier(self, recorder):
         self._recorder_count += 1
         return (self._recorder_count, )
+
+    def write_entry(self, *_):
+        pass
 
     # ISerializable
 

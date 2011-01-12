@@ -31,7 +31,6 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'requester-medium', AgencyRequester)
         Factory(self, 'contractor-medium', AgencyContractor)
         Factory(self, 'manager-medium', AgencyManager)
-        Factory(self, 'agency-interest', Interest)
         Factory(self, 'retrying-protocol', RetryingProtocol)
 
         self.reset()
@@ -221,7 +220,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def __init__(self, replay):
         log.LogProxy.__init__(self, replay)
         log.Logger.__init__(self, replay)
-        self.journal_keeper = replay
+        self.journal_keeper = self
         self.replay = replay
         self.replay.set_aa(self)
 
@@ -299,7 +298,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     # ISerializable
 
     def snapshot(self):
-        return id(self)
+        return self.replay.agent_id
 
 
 class AgencyReplier(log.LogProxy, log.Logger,
@@ -309,6 +308,7 @@ class AgencyReplier(log.LogProxy, log.Logger,
         log.Logger.__init__(self, replay)
         log.LogProxy.__init__(self, replay)
 
+    @serialization.freeze_tag('AgencyReplier.reply')
     @replay.named_side_effect('AgencyReplier.reply')
     def reply(self, reply):
         pass
@@ -323,21 +323,6 @@ class AgencyRequester(log.LogProxy, log.Logger,
 
     @replay.named_side_effect('AgencyRequester.request')
     def request(self, request):
-        pass
-
-
-class Interest(log.LogProxy, log.Logger, BaseReplayDummy):
-
-    def __init__(self, replay):
-        log.Logger.__init__(self, replay)
-        log.LogProxy.__init__(self, replay)
-
-    @replay.named_side_effect('Interest.revoke')
-    def revoke(self):
-        pass
-
-    @replay.named_side_effect('Interest.bind_to_lobby')
-    def bind_to_lobby(self):
         pass
 
 
@@ -366,6 +351,11 @@ class AgencyContractor(log.LogProxy, log.Logger,
 
     @replay.named_side_effect('AgencyContractor.finalize')
     def finalize(self, report):
+        pass
+
+    @serialization.freeze_tag('AgencyContractor.update_manager_address')
+    @replay.named_side_effect('AgencyContractor.update_manager_address')
+    def update_manager_address(self, recp):
         pass
 
 

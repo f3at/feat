@@ -230,6 +230,8 @@ class ExpirationCallsMixin(object):
 
 class InitiatorMediumBase(object):
 
+    error_factory = InitiatorFailed
+
     def __init__(self):
         self._finished_cbs = list()
         self.finish_deferred = defer.Deferred()
@@ -252,5 +254,12 @@ class InitiatorMediumBase(object):
     def _terminate(self):
         if not self.finish_deferred.called:
             self.log("Firing errback of finish_deferred")
-            ex = InitiatorFailed(self.state)
+            ex = self.error_factory(self.state)
             self.finish_deferred.errback(ex)
+
+
+class InterestedMediumBase(InitiatorMediumBase):
+
+    def _terminate(self):
+        if not self.finish_deferred.called:
+            self.finish_deferred.callback(None)

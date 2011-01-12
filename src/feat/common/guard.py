@@ -55,13 +55,13 @@ class MutableState(serialization.Serializable):
         in special way, because during replay we use special dummy
         implementations.
         """
-        ignored_keys = ['medium']
+        ignored_keys = ['medium', 'agent']
         for key in self.__dict__:
             if key in ignored_keys:
                 continue
             if key not in other.__dict__:
                 return False
-            if self.__dict__[key] != other.__dict__[key]:
+            if not self.__dict__[key] == other.__dict__[key]:
                 return False
         return True
 

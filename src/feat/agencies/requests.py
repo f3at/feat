@@ -4,9 +4,8 @@ from twisted.python import components
 from zope.interface import implements
 from twisted.internet import defer
 
-from feat.common import log, delay
-from feat.interface import (requests, replier, requester,
-                            protocols, serialization, )
+from feat.common import log, delay, serialization
+from feat.interface import requests, replier, requester, protocols
 from feat.agents.base import message, replay
 
 from interface import IListener, IAgencyInitiatorFactory,\
@@ -146,7 +145,7 @@ components.registerAdapter(AgencyReplierFactory,
 
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.AgencyMiddleMixin):
+                    common.AgencyMiddleMixin, common.InterestedMediumBase):
     implements(replier.IAgencyReplier, IListener,
                serialization.ISerializable)
 
@@ -162,30 +161,33 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self, message.sender_id,
                                           message.protocol_id)
+        common.InterestedMediumBase.__init__(self)
 
         self.agent = agent
         self.request = message
         self.recipients = message.reply_to
         self._set_state(requests.RequestState.none)
 
-        self.log_name = self.session_id
         self.message_count = 0
 
     def initiate(self, replier):
         self.replier = replier
+        self.log_name = replier.__class__.__name__
         self._set_state(requests.RequestState.requested)
         return replier
 
+    @serialization.freeze_tag('AgencyReplier.reply')
     @replay.named_side_effect('AgencyReplier.reply')
     def reply(self, reply):
         reply = reply.clone()
-        self.debug("Sending reply")
+        self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
         delay.callLater(0, self._terminate)
 
     def _terminate(self):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
+        common.InterestedMediumBase._terminate(self)
 
     # IListener stuff
 

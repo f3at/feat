@@ -37,3 +37,8 @@ def shard_agent_factory(**options):
 def host_agent_factory(**options):
     options = descriptor_factory(**options)
     return options
+
+
+def base_agent_factory(**options):
+    options = descriptor_factory(**options)
+    return options

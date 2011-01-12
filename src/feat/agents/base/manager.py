@@ -1,7 +1,6 @@
 from zope.interface import implements
 from feat.interface import manager
 from feat.common import log, serialization, reflect
-from feat.agencies import agency
 from feat.agents.base import protocol, replay
 
 
@@ -72,5 +71,5 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     def completed(self, grant, report):
         '''@see: L{manager.IAgentManager}'''
 
-    def aborted(self, grant):
+    def aborted(self):
         '''@see: L{manager.IAgentManager}'''

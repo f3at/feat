@@ -1,7 +1,7 @@
-from zope.interface import implements, classProvides
+from zope.interface import implements
 
 from feat.interface import replier, protocols
-from feat.common import log, reflect, serialization
+from feat.common import log, reflect, serialization, fiber
 from feat.agents.base import message, replay
 
 
@@ -42,3 +42,35 @@ class BaseReplier(log.Logger, replay.Replayable):
 
     def requested(self, request):
         '''@see: L{replier.IAgentReplier}'''
+
+
+class GoodBye(BaseReplier):
+
+    protocol_id = 'goodbye'
+
+    @replay.journaled
+    def requested(self, state, request):
+        f = fiber.Fiber()
+        f.add_callback(state.agent.partner_said_goodbye)
+        f.add_callback(self._send_reply)
+        return f.succeed(request.reply_to)
+
+    @replay.immutable
+    def _send_reply(self, state, payload):
+        msg = message.ResponseMessage(payload=payload)
+        state.medium.reply(msg)
+
+
+class ProposalReceiver(BaseReplier):
+
+    protocol_id = 'lets-pair-up'
+
+    @replay.journaled
+    def requested(self, state, request):
+        msg = message.ResponseMessage(
+            payload=state.agent.descriptor_type)
+        f = fiber.Fiber()
+        f.add_callback(state.agent.create_partner, request.reply_to,
+                       role=request.payload['role'])
+        f.add_callback(fiber.drop_result, state.medium.reply, msg)
+        return f.succeed(request.payload['partner_class'])

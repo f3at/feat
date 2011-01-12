@@ -66,7 +66,13 @@ class Connection(log.Logger):
     # IMessagingClient implementation
 
     def disconnect(self):
-        self._consumeDeferred.errback(FinishConnection("Disconnecting"))
+        ex = FinishConnection("Disconnecting")
+        if self._consumeDeferred.called:
+            # this means we are called from inside the
+            # get_and_call_on_message() message as a part of message processing
+            pass
+        else:
+            self._consumeDeferred.errback(ex)
 
     def personal_binding(self, key, shard=None):
         if not shard:

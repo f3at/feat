@@ -51,6 +51,8 @@ class Agent(BaseRecipient):
 
     implements(IRecipient, IRecipients)
 
+    type_name = 'recp'
+
     def __init__(self, agent_id, shard=None):
         BaseRecipient.__init__(self)
         self.shard = shard
@@ -66,6 +68,8 @@ class Broadcast(BaseRecipient):
 
     implements(IRecipient, IRecipients)
 
+    type_name = 'broadcast'
+
     def __init__(self, protocol_id=None, shard=None):
         BaseRecipient.__init__(self)
         self.shard = shard
@@ -80,6 +84,8 @@ class Broadcast(BaseRecipient):
 class RecipientFromAgent(BaseRecipient):
 
     implements(IRecipient, IRecipients)
+
+    type_name = 'recp_a'
 
     def __init__(self, agent):
         BaseRecipient.__init__(self)
@@ -100,6 +106,8 @@ components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
 class RecipientsFromList(serialization.Serializable):
 
     implements(IRecipients)
+
+    type_name = 'recp_list'
 
     def __init__(self, llist):
         self.list = []
@@ -128,6 +136,8 @@ components.registerAdapter(RecipientsFromList, list, IRecipients)
 @serialization.register
 class RecipientFromMessage(BaseRecipient):
     implements(IRecipient, IRecipients)
+
+    type_name = 'recp_m'
 
     def __init__(self, message):
         BaseRecipient.__init__(self)

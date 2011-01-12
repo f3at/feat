@@ -191,6 +191,19 @@ class TestParser(common.TestCase):
         m = self.parser.re['assignment'].search('object.variable = 1')
         self.assertFalse(m)
 
+        # async calls
+        m = self.parser.re['async'].search('async agent.start_agent(aaa)')
+        self.assertTrue(m)
+        self.assertEqual('agent.start_agent(aaa)', m.group(1))
+
+        # async yielding
+        m = self.parser.re['yielding'].search('yield defer')
+        self.assertTrue(m)
+        self.assertEqual('defer', m.group(1))
+
+        m = self.parser.re['yielding'].search('yield defer sthelse')
+        self.assertFalse(m)
+
         # number
         m = self.parser.re['number'].search('1')
         self.assertTrue(m)

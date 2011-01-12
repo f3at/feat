@@ -1,4 +1,4 @@
-from feat.agents.base import testsuite, recipient, message
+from feat.agents.base import testsuite, recipient, message, replier
 from feat.agents.host import host_agent
 from feat.common import fiber
 from feat.test import factories
@@ -10,6 +10,7 @@ class TestHostAgent(testsuite.TestCase):
         testsuite.TestCase.setUp(self)
         instance = self.ball.generate_agent(host_agent.HostAgent)
         instance.state.resources = self.ball.generate_resources(instance)
+        instance.state.partners = self.ball.generate_partners(instance)
         self.agent = self.ball.load(instance)
 
     def testInitiate(self):
@@ -19,6 +20,10 @@ class TestHostAgent(testsuite.TestCase):
         expected = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
+            testsuite.side_effect('AgencyAgent.register_interest',
+                                  args=(replier.GoodBye, )),
+            testsuite.side_effect('AgencyAgent.register_interest',
+                                  args=(replier.ProposalReceiver, )),
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(host_agent.StartAgentReplier, )),
             testsuite.side_effect('AgencyAgent.retrying_protocol',
@@ -47,8 +52,8 @@ class TestHostAgent(testsuite.TestCase):
 
     def testStartAgent(self):
         desc = factories.build('descriptor')
-        f, state = self.ball.call(None, self.agent.start_agent, desc)
-        self.assertFiberTriggered(f, fiber.TriggerType.succeed, desc)
+        f, state = self.ball.call(None, self.agent.start_agent, desc.doc_id)
+        self.assertFiberTriggered(f, fiber.TriggerType.succeed, desc.doc_id)
         self.assertFiberCalls(f, state.medium.start_agent)
 
 
@@ -83,9 +88,3 @@ class TestJoinShardManager(testsuite.TestCase):
             testsuite.side_effect('AgencyManager.grant',
                                   args=((bids[0], testsuite.whatever, ), ))]
         self.ball.call(sfx, self.manager.closed)
-
-    def testCompleted(self):
-        report = message.FinalReport(payload=dict(shard='new shard'))
-        f, s = self.ball.call(None, self.manager.completed, (report, ))
-        self.assertFiberTriggered(f, fiber.TriggerType.succeed, 'new shard')
-        self.assertFiberCalls(f, s.agent.switch_shard)

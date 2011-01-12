@@ -2,9 +2,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, recipient, manager, message, replay,
-                              replier, requester, document, descriptor, )
+                              replier, requester, document, descriptor,
+                              partners)
 from feat.common import fiber, serialization
-from feat.agencies import agency
 
 
 @agent.register('host_agent')
@@ -13,6 +13,8 @@ class HostAgent(agent.BaseAgent):
     @replay.mutable
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
+
+        state.partners.define_handler("shard_agent", ShardPartner)
 
         state.medium.register_interest(StartAgentReplier)
 
@@ -30,17 +32,22 @@ class HostAgent(agent.BaseAgent):
         state.medium.join_shard(shard)
 
     @replay.immutable
-    def start_agent(self, state, desc):
+    def start_agent(self, state, doc_id):
         f = fiber.Fiber()
+        f.add_callback(self.get_document)
+        f.add_callback(self._update_host_field)
         f.add_callback(state.medium.start_agent)
-        # transform the reference to IRecipient.
-        # agents should not keep the direct references
-        # to the other agent. It is harmfull for replayability
-        # which replays one agent and time, and breaks the rule
-        # that agent comunicate only through messages
         f.add_callback(recipient.IRecipient)
-        f.succeed(desc)
+        f.add_callback(self.establish_partnership)
+        f.succeed(doc_id)
         return f
+
+    @replay.immutable
+    def _update_host_field(self, state, desc):
+        desc.host = self.get_own_address()
+        f = fiber.Fiber()
+        f.add_callback(state.medium.save_document)
+        return f.succeed(desc)
 
 
 class StartAgentRequester(requester.BaseRequester):
@@ -69,7 +76,6 @@ class StartAgentReplier(replier.BaseReplier):
     @replay.entry_point
     def requested(self, state, request):
         f = fiber.Fiber()
-        f.add_callback(state.agent.get_document)
         f.add_callback(state.agent.start_agent)
         f.add_callback(self._send_reply)
         f.succeed(request.payload['doc_id'])
@@ -104,11 +110,16 @@ class JoinShardManager(manager.BaseManager):
 
     @replay.mutable
     def completed(self, state, reports):
-        report = reports[0]
-        f = fiber.Fiber()
-        f.add_callback(state.agent.switch_shard)
-        f.succeed(report.payload['shard'])
-        return f
+        pass
+
+
+@serialization.register
+class ShardPartner(partners.BasePartner):
+
+    type_name = 'host->shard'
+
+    def initiate(self, agent):
+        return agent.switch_shard(self.recipient.shard)
 
 
 @document.register

@@ -77,6 +77,17 @@ class Commands(manhole.Manhole):
                        self._agencies.index(matching[0]))
             return matching[0]
 
+    @manhole.expose()
+    def find_agent(self, agent_id):
+        """
+        Return the medium class of the agent with agent_id if the one is
+        running in simulation.
+        """
+        agency = self.find_agency(agent_id)
+        if agency:
+            return next(x.agent for x in agency._agents\
+                        if x._descriptor.doc_id == agent_id)
+
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
     implements(IAgencyAgent)

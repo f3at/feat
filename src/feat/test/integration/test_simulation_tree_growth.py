@@ -13,38 +13,12 @@ from feat.agents.base import recipient
 class Common(object):
 
     def assert_all_agents_in_shard(self, agency, shard):
-        expected_bindings_to_shard = {
-            host_agent.HostAgent: 1,
-            shard_agent.ShardAgent: 2}
-        expected_bindings_to_lobby = {
-            host_agent.HostAgent: 0,
-            shard_agent.ShardAgent:\
-                lambda desc: (desc.parent is None and 1) or 0}
-
         for agent in agency._agents:
             desc = agent.get_descriptor()
             self.assertEqual(shard, desc.shard, str(type(agent.agent)))
-            m = agent._messaging
-            agent_type = agent.agent.__class__
-
-            expected = expected_bindings_to_shard[agent_type]
-            if callable(expected):
-                expected = expected(agent.get_descriptor())
-            got = len(m.get_bindings(shard))
-            self.assertEqual(expected, got,
-                        '%r should have %d bindings to shard: %s but had %d' %\
-                        (agent_type.__name__, expected, shard, got, ))
-
-            expected = expected_bindings_to_lobby[agent_type]
-            if callable(expected):
-                expected = expected(agent.get_descriptor())
-            got = len(m.get_bindings('lobby'))
-            self.assertEqual(expected, got,
-                            '%r living in shard: %r should have %d '
-                             'bindings to "lobby" but had %d' %\
-                            (agent_type.__name__, shard, expected, got, ))
 
 
+@common.attr(skip_replayability="requires changes in freezeing Allocation")
 class TreeGrowthSimulation(common.SimulationTest, Common):
 
     # Timeout is intentionaly set to high. Some of theese tests take a lot
@@ -54,17 +28,19 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
     children_per_shard = 2
 
     start_host_agent = format_block("""
-        agency = spawn_agency()
-        agency.start_agent(descriptor_factory('host_agent'))
+        a = spawn_agency()
+        a.start_agent(descriptor_factory('host_agent'))
         """)
 
     def prolog(self):
+        delay.time_scale = 0.5
         setup = format_block("""
         agency = spawn_agency()
         shard_desc = descriptor_factory('shard_agent', 'root')
         host_desc = descriptor_factory('host_agent')
+        d = async agency.start_agent(host_desc)
         agency.start_agent(shard_desc)
-        agency.start_agent(host_desc)
+        yield d
         agency.snapshot_agents()
         """)
         return self.process(setup)
@@ -72,21 +48,24 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
     def testValidateProlog(self):
         agency = self.get_local('agency')
         self.assertEqual(2, len(agency._agents))
-        self.assertIsInstance(agency._agents[0].agent, shard_agent.ShardAgent)
-        self.assertIsInstance(agency._agents[1].agent, host_agent.HostAgent)
+        shard = self._get_root_shard()
+        self.assertIsInstance(agency._agents[0].agent, host_agent.HostAgent)
         self.assert_all_agents_in_shard(agency, 'root')
+        self._assert_allocated(shard, 'hosts', 1)
 
     @defer.inlineCallbacks
     def testFillUpTheRootShard(self):
-        shard_agent = self.get_local('agency')._agents[0].agent
+        shard_a = self._get_root_shard()
         for i in range(2, self.hosts_per_shard + 1):
             yield self.process(self.start_host_agent)
             self.assertEqual(i,
-                    shard_agent._get_state().resources.allocated()['hosts'])
+                    shard_a._get_state().resources.allocated()['hosts'])
 
         self.assertEqual(self.hosts_per_shard, len(self.driver._agencies))
         for agency in self.driver._agencies[1:]:
             self.assert_all_agents_in_shard(agency, 'root')
+        self.assertEqual(10,
+                         shard_a._get_state().resources.allocated()['hosts'])
 
     @defer.inlineCallbacks
     def testStartNewShard(self):
@@ -101,8 +80,14 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         self.assertIsInstance(last_agency._agents[1].agent,
                               shard_agent.ShardAgent)
         host = last_agency._agents[0]
+        shard_a = last_agency._agents[1].agent
         shard = (host.get_descriptor()).shard
         self.assert_all_agents_in_shard(last_agency, shard)
+        self._assert_allocated(shard_a, 'hosts', 1)
+        self._assert_allocated(shard_a, 'children', 0)
+
+        root_shard = self.driver._agencies[0]._agents[1].agent
+        self._assert_allocated(root_shard, 'children', 1)
 
     @defer.inlineCallbacks
     def testStartLevel2(self):
@@ -119,57 +104,49 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
             self.assert_all_agents_in_shard(agency, 'root')
 
         # validate root shard
-        root_shard_desc = yield self.driver.reload_document(
-            self.get_local('shard_desc'))
-        self.assertEqual(self.children_per_shard,
-                         len(root_shard_desc.children))
-        self.assertEqual(self.hosts_per_shard, len(root_shard_desc.hosts))
-        self.assertIsInstance(root_shard_desc.hosts[0],
-                              recipient.BaseRecipient)
+        root_shard = self._get_root_shard()
+        root_shard_desc = root_shard.get_descriptor()
+        self._assert_allocated(root_shard, 'hosts', 10)
+        self._assert_allocated(root_shard, 'children', 2)
+
+        lvl1_shards = root_shard.query_partners('children')
+        self.assertEqual(2, len(lvl1_shards))
 
         # validate lvl 1
-        for child in root_shard_desc.children:
-            self.assertIsInstance(child, recipient.BaseRecipient)
-            desc = yield self.driver.get_document(child.key)
-            self.assertEqual(self.hosts_per_shard, len(root_shard_desc.hosts))
-            self.assertEqual(desc.parent.key, root_shard_desc.doc_id)
-            self.assertEqual(desc.parent.shard, root_shard_desc.shard)
-            for host in desc.hosts:
-                self.assertIsInstance(host, recipient.BaseRecipient)
-                host_desc = yield self.driver.get_document(host.key)
-                self.assertEqual(host_desc.shard, child.shard)
-                self.assertEqual(host.shard, child.shard)
+        for child in lvl1_shards:
+            self.assertIsInstance(child, shard_agent.ChildShardPartner)
+            shard_desc = yield self.driver.get_document(child.recipient.key)
+            shard_a = self.driver.find_agent(shard_desc.doc_id)
+            self._assert_allocated(shard_a, 'hosts', 10)
 
-                yield self.process(format_block("""
-                host_agency = None
-                host_agency = find_agency('%s')
-                """) % str(host.key))
-                host_agency = self.get_local('host_agency')
+            parent = shard_a.query_partners('parent')
+            self.assertIsInstance(parent, shard_agent.ParentShardPartner)
+            self.assertEqual(parent.recipient.key, root_shard_desc.doc_id)
+            self.assertEqual(parent.recipient.shard, root_shard_desc.shard)
+
+            for host in shard_a.query_partners('hosts'):
+                self.assertIsInstance(host, shard_agent.HostPartner)
+                host_desc = yield self.driver.get_document(host.recipient.key)
+                self.assertEqual(host_desc.shard, shard_desc.shard)
+                self.assertEqual(host.recipient.shard, shard_desc.shard)
+
+                host_agency = self.driver.find_agency(host.recipient.key)
                 self.assertTrue(host_agency is not None)
-                self.assert_all_agents_in_shard(host_agency, host.shard)
+                self.assert_all_agents_in_shard(host_agency,
+                                                host.recipient.shard)
 
         #validate last agency (on lvl 2)
         agency = self.driver._agencies[-1]
         self.assertEqual(2, len(agency._agents))
         self.assertIsInstance(agency._agents[0].agent,
                               host_agent.HostAgent)
-        self.assertIsInstance(agency._agents[1].agent,
-                              shard_agent.ShardAgent)
-        desc_id = agency._agents[1]._descriptor.doc_id
-        desc = yield self.driver.get_document(desc_id)
-        self.assertIsInstance(desc.parent, (recipient.RecipientFromAgent,
-                                            recipient.Agent, ))
+        shard_a = agency._agents[1].agent
+        self.assertIsInstance(shard_a, shard_agent.ShardAgent)
+        self._assert_allocated(shard_a, 'hosts', 1)
+        self._assert_allocated(shard_a, 'children', 0)
 
-        def find_parent(array, key):
-            try:
-                return next(x for x in array if x.key == key)
-            except StopIteration:
-                raise FailTest('Not found %r!' % key)
-
-        parent = find_parent(root_shard_desc.children, desc.parent.key)
-        self.assertIsNot(parent, None)
-        self.assertEqual(1, len(desc.hosts))
-        self.assertEqual(0, len(desc.children))
+        parent = shard_a.query_partners('parent')
+        self.assertIsInstance(parent, shard_agent.ParentShardPartner)
 
     @defer.inlineCallbacks
     def testFillupTwoShards(self):
@@ -177,11 +154,35 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
                             (2 * self.hosts_per_shard - 1)
         yield self.process(fillup_two_shards)
 
-        last_agency = self.driver._agencies[-1]
-        shard = (last_agency._agents[0].get_descriptor()).shard
-        agency_for_second_shard = self.driver._agencies[-self.hosts_per_shard:]
-        for agency in agency_for_second_shard:
+        root_shard = self._get_root_shard()
+        self._assert_allocated(root_shard, 'hosts', 10)
+        self._assert_allocated(root_shard, 'children', 1)
+
+        agencies_for_second_shard = \
+            self.driver._agencies[self.hosts_per_shard:]
+        shard_a = agencies_for_second_shard[0]._agents[1].agent
+        self.assertIsInstance(shard_a, shard_agent.ShardAgent)
+        shard = shard_a.get_descriptor().shard
+        for agency in agencies_for_second_shard:
             self.assert_all_agents_in_shard(agency, shard)
+
+        self._assert_allocated(shard_a, 'hosts', 10)
+        self._assert_allocated(shard_a, 'children', 0)
+
+    def _get_root_shard(self):
+        a = self.get_local('agency')._agents[1].agent
+        self.assertIsInstance(a, shard_agent.ShardAgent)
+        return a
+
+    def _assert_allocated(self, agent, resource, expected):
+        resources = agent._get_state().resources
+        self.assertEqual(expected,
+                         resources.allocated()[resource],
+                         resources._get_state().allocations)
+        from_desc = agent.get_descriptor().allocations
+        self.assertEqual(expected,
+                         resources.allocated(None, from_desc)[resource],
+                         "Allocations in desc: %r" % from_desc)
 
 
 class SimulationHostBeforeShard(common.SimulationTest, Common):
@@ -191,9 +192,10 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
     def prolog(self):
         pass
 
+    @common.attr(skip_replayability="todo")
     @defer.inlineCallbacks
     def testHAKeepsTillShardAgentAppears(self):
-        delay.time_scale = 0.01
+        delay.time_scale = 0.1
 
         setup = format_block("""
         agency = spawn_agency()

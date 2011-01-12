@@ -1,11 +1,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, document, replay, resource)
+                              descriptor, document, replay, resource,
+                              partners)
+from feat.agents.host.host_agent import StartAgentRequester
 from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
-from feat.agents.host import host_agent
 
 
 @agent.register('shard_agent')
@@ -18,46 +19,37 @@ class ShardAgent(agent.BaseAgent):
         state.resources.define('hosts', 10)
         state.resources.define('children', 2)
 
-        desc = self.get_descriptor()
-        interest = state.medium.register_interest(JoinShardContractor)
-        if desc.parent is None:
-            interest.bind_to_lobby()
+        state.partners.define_handler("host_agent", HostPartner)
+        state.partners.define_handler("shard_agent", ParentShardPartner,
+                                      'parent')
+        state.partners.define_handler("shard_agent", ChildShardPartner,
+                                      'child')
+        state.partners.has_many('hosts', HostPartner)
+        state.partners.has_many('children', ChildShardPartner)
+        state.partners.has_one('parent', ParentShardPartner)
 
-    @agent.update_descriptor
-    def add_children_shard(self, state, descriptor, child):
-        descriptor.children.append(child)
-        return child
-
-    @agent.update_descriptor
-    def add_agent(self, state, descriptor, agent_id):
-        recp = recipient.Agent(agent_id, descriptor.shard)
-        descriptor.hosts.append(recp)
-        return recp
+        state.join_interest =\
+            state.medium.register_interest(JoinShardContractor)
+        state.join_interest.bind_to_lobby()
 
     @replay.journaled
-    def prepare_child_descriptor(self, state, joining_host_id=None):
-        us = self.get_own_address()
-        desc = Descriptor(parent=us)
+    def prepare_child_descriptor(self, state):
+        desc = Descriptor()
 
         def set_shard(desc):
             desc.shard = desc.doc_id
             return desc
 
-        def append_child(desc, joining_host_id):
-            new_address = recipient.Agent(joining_host_id, desc.shard)
-            desc.hosts.append(new_address)
-            desc.allocations.append(
-                resource.Allocation(hosts=1, allocated=True))
-            return desc
-
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         f.add_callback(set_shard)
-        if joining_host_id is not None:
-            f.add_callback(append_child, joining_host_id)
         f.add_callback(state.medium.save_document)
         f.succeed(desc)
         return f
+
+    @replay.mutable
+    def unbind_join_interest_from_lobby(self, state):
+        state.join_interest.unbind_from_lobby()
 
 
 @serialization.register
@@ -101,15 +93,15 @@ class JoinShardContractor(contractor.BaseContractor):
 
     @replay.mutable
     def _fetch_children_bids(self, state, announcement):
-        desc = state.agent.get_descriptor()
-        if len(desc.children) == 0:
+        children = state.agent.query_partners('children')
+        if len(children) == 0:
             return list()
 
         new_announcement = announcement.clone()
         new_announcement.payload['level'] += 1
 
         state.nested_manager = state.agent.initiate_protocol(
-            NestedJoinShardManager, desc.children, new_announcement)
+            NestedJoinShardManager, children, new_announcement)
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result,
                        state.nested_manager.wait_for_bids)
@@ -158,13 +150,15 @@ class JoinShardContractor(contractor.BaseContractor):
             state.bid = bid
             return state.medium.bid(bid)
         else:
-            self.release_preallocation()
-            return state.medium.handover(bid)
+            f = fiber.Fiber()
+            f.add_callback(self.release_preallocation)
+            f.add_callback(fiber.drop_result, state.medium.handover, bid)
+            return f.succeed()
 
     @replay.mutable
     def release_preallocation(self, state, *_):
         if state.preallocation is not None:
-            state.agent.release_resource(state.preallocation)
+            return state.agent.release_resource(state.preallocation)
 
     announce_expired = release_preallocation
     rejected = release_preallocation
@@ -172,30 +166,34 @@ class JoinShardContractor(contractor.BaseContractor):
 
     @replay.mutable
     def granted(self, state, grant):
-        state.preallocation.confirm()
-
         joining_agent_id = grant.payload['joining_agent'].key
 
         if state.bid.payload['action_type'] == ActionType.create:
             f = fiber.Fiber()
-            f.add_callback(state.agent.prepare_child_descriptor)
+            f.add_callback(state.agent.confirm_allocation)
+            f.add_callback(fiber.drop_result,
+                           state.agent.prepare_child_descriptor)
             f.add_callback(self._request_start_agent)
             f.add_callback(self._extract_agent)
-            f.add_callback(state.agent.add_children_shard)
+            f.add_callback(state.agent.establish_partnership,
+                           state.preallocation, 'child', 'parent')
+            f.add_callback(self._generate_new_address, joining_agent_id)
+            f.add_callback(state.medium.update_manager_address)
             f.add_callback(self._finalize)
-            f.succeed(joining_agent_id)
-            return f
+            return f.succeed(state.preallocation)
         else: # ActionType.join
             f = fiber.Fiber()
-            f.add_callback(state.agent.add_agent)
+            f.add_callback(state.agent.confirm_allocation)
+            f.add_callback(fiber.drop_result,
+                           state.agent.establish_partnership,
+                           grant.payload['joining_agent'], state.preallocation)
+            f.add_callback(state.medium.update_manager_address)
             f.add_callback(self._finalize)
-            f.succeed(joining_agent_id)
-            return f
+            return f.succeed(state.preallocation)
 
     @replay.immutable
-    def _finalize(self, state, recp):
+    def _finalize(self, state, _):
         report = message.FinalReport()
-        report.payload['shard'] = recp.shard
         state.medium.finalize(report)
 
     @replay.immutable
@@ -203,12 +201,15 @@ class JoinShardContractor(contractor.BaseContractor):
         recp = state.medium.announce.payload['joining_agent']
         f = fiber.Fiber()
         f.add_callback(state.agent.initiate_protocol, recp, desc)
-        f.add_callback(host_agent.StartAgentRequester.notify_finish)
-        f.succeed(host_agent.StartAgentRequester)
+        f.add_callback(StartAgentRequester.notify_finish)
+        f.succeed(StartAgentRequester)
         return f
 
     def _extract_agent(self, reply):
         return reply.payload['agent']
+
+    def _generate_new_address(self, shard_partner, agent_id):
+        return recipient.Agent(agent_id, shard_partner.recipient.shard)
 
 
 @serialization.register
@@ -256,6 +257,39 @@ class ActionType(enum.Enum):
 class Descriptor(descriptor.Descriptor):
 
     document_type = 'shard_agent'
-    document.field('parent', None)
-    document.field('hosts', list())
-    document.field('children', list())
+
+
+@serialization.register
+class HostPartner(partners.BasePartner):
+
+    type_name = 'shard->host'
+
+    def initiate(self, agent):
+        # Host Agent on the other end is about to join our shard,
+        # his address will change.
+        shard = agent.get_own_address().shard
+        self.recipient = recipient.Agent(self.recipient.key, shard)
+
+        if self.allocation is None:
+            self.allocation = agent.preallocate_resource(hosts=1)
+            return agent.confirm_allocation(self.allocation)
+
+
+@serialization.register
+class ParentShardPartner(partners.BasePartner):
+
+    type_name = 'shard->parent'
+
+    def initiate(self, agent):
+        return agent.unbind_join_interest_from_lobby()
+
+
+@serialization.register
+class ChildShardPartner(partners.BasePartner):
+
+    type_name = 'shard->child'
+
+    def initiate(self, agent):
+        if self.allocation is None:
+            self.allocation = agent.preallocate_resource(children=1)
+            return agent.confirm_allocation(self.allocation)

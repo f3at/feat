@@ -38,6 +38,10 @@ class IAgencyContractor(contracts.IContractPeer):
     def finalize(report):
         '''Reports a completed job'''
 
+    def update_manager_address(recipient):
+        '''Call it to notify the agency that manager is available now
+        at different address.'''
+
 
 class IAgentContractor(protocols.IInterested):
     '''This is agent part of a contractor. It use a reference to a

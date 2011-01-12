@@ -8,6 +8,9 @@ from . import document
 class Descriptor(document.Document):
 
     document_type = 'descriptor'
+    # Shard identifier (unicode)
     document.field('shard', None)
     # List of allocations
     document.field('allocations', list())
+    # List of partners
+    document.field('partners', list())

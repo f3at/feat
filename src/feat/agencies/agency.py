@@ -11,6 +11,7 @@ from zope.interface import implements
 from feat.common import log, manhole, journal, fiber, serialization, delay
 from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
+from feat.agents.host import host_agent
 from feat.agencies import common
 from feat.interface import agency, agent, protocols
 from feat.common.serialization import pytree, Serializable
@@ -22,6 +23,8 @@ from . import contracts, requests
 
 
 class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
+
+    log_category = 'agency'
 
     __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
                                         type(log.FluLogKeeper)), {})
@@ -138,7 +141,7 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
             agent.journal_snapshot()
 
 
-class AgencyAgent(log.LogProxy, log.Logger):
+class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
     implements(agent.IAgencyAgent, journal.IRecorderNode,
                journal.IJournalKeeper, serialization.ISerializable)
 
@@ -289,7 +292,7 @@ class AgencyAgent(log.LogProxy, log.Logger):
             return False
         i = Interest(self, factory)
         self._interests[p_type][p_id] = i
-        self.debug('Registered intereset in %s.%s protocol.', p_type, p_id)
+        self.debug('Registered interest in %s.%s protocol.', p_type, p_id)
         return i
 
     @replay.named_side_effect('AgencyAgent.revoke_interest')
@@ -369,7 +372,8 @@ class AgencyAgent(log.LogProxy, log.Logger):
 
         # revoke all interests
         for i_type in self._interests:
-            [self.revoke_interest(x) for x in self._interests[i_type].values()]
+            [self.revoke_interest(x.factory) \
+             for x in self._interests[i_type].values()]
 
         # kill all retrying protocols
         d = defer.DeferredList([x.give_up() for x in self._retrying_protocols])
@@ -394,15 +398,19 @@ class AgencyAgent(log.LogProxy, log.Logger):
         Run a agent-side method and wait for all the listeners
         to finish processing.
         '''
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addBoth(self.wait_for_listeners_finish)
+        return d
 
-        def wait_for_finish(listener):
+    def wait_for_listeners_finish(self):
+
+        def wait_for_listener(listener):
             d = listener.notify_finish()
             d.addErrback(self._ignore_initiator_failed)
             return d
 
-        d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addBoth(defer.DeferredList(
-            [wait_for_finish(x) for x in self._listeners.values()]))
+        d = defer.DeferredList(
+            [wait_for_listener(x) for x in self._listeners.values()])
         return d
 
     def _kill_all_listeners(self, *_):
@@ -418,7 +426,7 @@ class AgencyAgent(log.LogProxy, log.Logger):
 
     def _ignore_initiator_failed(self, fail):
         if fail.check(protocols.InitiatorFailed):
-            self.log('Swallowing InitiatorFailed expection.')
+            self.log('Swallowing %r expection.', fail.value)
             return None
         else:
             self.log('Reraising exception %r', fail)
@@ -442,9 +450,16 @@ class AgencyAgent(log.LogProxy, log.Logger):
     # ISerializable
 
     def snapshot(self):
-        return id(self)
+        return self._descriptor.doc_id
+
+    # For manhole purpose:
+
+    @manhole.expose()
+    def get_agent(self):
+        return self.agent
 
 
+@serialization.register
 class Interest(Serializable):
     '''Represents the interest from the point of view of agency.
     Manages the binding and stores factory reference'''
@@ -457,6 +472,7 @@ class Interest(Serializable):
     def __init__(self, medium, factory):
         self.factory = factory
         self.medium = medium
+        self._lobby_binding = None
 
         if factory.interest_type == protocols.InterestType.public:
             self.binding = self.medium.create_binding(self.factory.protocol_id)
@@ -468,11 +484,19 @@ class Interest(Serializable):
 
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
-        self.medium._messaging.personal_binding(self.factory.protocol_id,
-                                                'lobby')
+        assert self._lobby_binding is None
+        self._lobby_binding = self.medium._messaging.personal_binding(
+            self.factory.protocol_id, 'lobby')
+
+    @replay.named_side_effect('Interest.unbind_from_lobby')
+    def unbind_from_lobby(self):
+        self._lobby_binding.revoke()
+        self._lobby_binding = None
+
+    # ISerializable
 
     def snapshot(self):
-        return id(self)
+        return dict(factory=self.factory)
 
 
 class RetryingProtocol(common.InitiatorMediumBase, log.Logger):

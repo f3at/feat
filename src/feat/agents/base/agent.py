@@ -3,9 +3,10 @@
 
 from zope.interface import implements
 
-from feat.common import log, decorator, serialization, fiber
+from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import agent
-from feat.agents.base import resource, recipient, replay
+from feat.agents.base import (resource, recipient, replay, requester,
+                              replier, partners, )
 
 registry = dict()
 
@@ -33,24 +34,24 @@ def update_descriptor(method):
         resp = method(self, state, desc, *args, **kwargs)
         f = fiber.Fiber()
         f.add_callback(state.medium.update_descriptor)
-        if resp:
-            f.add_callback(lambda _: resp)
+        f.add_callback(lambda _: resp)
         return f.succeed(desc)
 
     return decorated
 
 
-class MetaAgent(type(replay.Replayable)):
+class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
+class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
 
     __metaclass__ = MetaAgent
 
     implements(agent.IAgent)
 
     def __init__(self, medium):
+        manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
         log.LogProxy.__init__(self, medium)
         replay.Replayable.__init__(self, medium)
@@ -64,17 +65,61 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     def init_state(self, state, medium):
         state.medium = agent.IAgencyAgent(medium)
         state.resources = resource.Resources(self)
+        state.partners = partners.Partners(self)
 
     ## IAgent Methods ##
 
-    def initiate(self):
+    @replay.immutable
+    def initiate(self, state):
         self._load_allocations()
+        state.medium.register_interest(replier.GoodBye)
+        state.medium.register_interest(replier.ProposalReceiver)
 
-    def shutdown(self):
-        pass
+    @replay.journaled
+    def shutdown(self, state):
+        desc = self.get_descriptor()
+        self.info('Agent shutdown, partners: %r', desc.partners)
+        results = [x.on_shutdown(self) for x in desc.partners]
+        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        f = fiber.FiberList(fibers)
+        return f.succeed()
 
     def unregister(self):
         pass
+
+    ## end of IAgent ##
+
+    @manhole.expose()
+    def propose_to(self, recp):
+        return self.establish_partnership(recipient.IRecipient(recp))
+
+    @replay.journaled
+    def establish_partnership(self, state, recp, allocation=None,
+                              partner_role=None, our_role=None):
+        found = state.partners.find(recp)
+        if found:
+            self.debug('establish_partnership() called for %r which is already'
+                       'our partner with the class %r, ignoring',
+                       recp, type(found))
+            return found
+        f = fiber.Fiber()
+        f.add_callback(self.initiate_protocol, recp, allocation,
+                       partner_role, our_role)
+        f.add_callback(requester.Propose.notify_finish)
+        return f.succeed(requester.Propose)
+
+    @replay.immutable
+    def create_partner(self, state, partner_class, recp, allocation=None,
+                       role=None):
+        return state.partners.create(partner_class, recp, allocation, role)
+
+    @replay.mutable
+    def partner_said_goodbye(self, state, recp):
+        return state.partners.on_goodbye(recp)
+
+    @replay.immutable
+    def query_partners(self, state, name):
+        return state.partners.query(name)
 
     @replay.immutable
     def get_own_address(self, state):
@@ -93,8 +138,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
         return state.resources.preallocate(**params)
 
     @replay.mutable
-    def allocate_resource(self, state, **params):
+    def allocate_preallocation(self, state, **params):
         return state.resources.allocate(**params)
+
+    @replay.mutable
+    def confirm_allocation(self, state, allocation):
+        return state.resources.confirm(allocation)
 
     @replay.mutable
     def release_resource(self, state, allocation):

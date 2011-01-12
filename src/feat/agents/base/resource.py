@@ -64,8 +64,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def confirm(self, state, allocation):
         allocation.confirm()
         f = fiber.Fiber()
-        f.add_callback(state.agent.update_descriptor, allocation)
-        return f.succeed(self._append_allocation_to_descriptor)
+        f.add_callback(self._append_allocation_to_descriptor)
+        return f.succeed(allocation)
 
     @replay.mutable
     def allocate(self, state, **params):
@@ -74,8 +74,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         self._append_allocation(allocation)
         allocation._set_state(AllocationState.allocated)
         f = fiber.Fiber()
-        f.add_callback(state.agent.update_descriptor, allocation)
-        return f.succeed(self._append_allocation_to_descriptor)
+        f.add_callback(self._append_allocation_to_descriptor)
+        return f.succeed(allocation)
 
     @replay.mutable
     def release(self, state, allocation):
@@ -85,8 +85,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         self._remove_allocation(allocation)
         if was_allocated:
             f = fiber.Fiber()
-            f.add_callback(state.agent.update_descriptor, allocation)
-            return f.succeed(self._remove_allocation_from_descriptor)
+            f.add_callback(self._remove_allocation_from_descriptor)
+            return f.succeed(allocation)
 
     @replay.mutable
     def define(self, state, name, value):
@@ -107,7 +107,6 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         result = dict()
         for name in totals:
             result[name] = 0
-        self.log(allocations)
         for allocation in allocations:
             ar = allocation.resources
             for resource in ar:
@@ -118,13 +117,33 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     # handling allocation list in descriptor
 
-    def _append_allocation_to_descriptor(self, desc, allocation):
-        desc.allocations.append(allocation)
-        return allocation
+    @replay.journaled
+    def _append_allocation_to_descriptor(self, state, allocation):
 
-    def _remove_allocation_from_descriptor(self, desc, allocation):
-        desc.allocations.remove(allocation)
-        return allocation
+        def do_append(desc, allocation):
+            desc.allocations.append(allocation)
+            return allocation
+
+        f = fiber.Fiber()
+        f.add_callback(state.agent.update_descriptor, allocation)
+        return f.succeed(do_append)
+
+    @replay.journaled
+    def _remove_allocation_from_descriptor(self, state, allocation):
+
+        def do_remove(desc, allocation):
+            if allocation not in desc.allocations:
+                self.warning('Tried to remove allocation %r from descriptor, '
+                             'but the allocation are: %r',
+                             allocation, desc.allocations)
+                return
+
+            desc.allocations.remove(allocation)
+            return allocation
+
+        f = fiber.Fiber()
+        f.add_callback(state.agent.update_descriptor, allocation)
+        return f.succeed(do_remove)
 
     # Methods for maintaining the allocations inside
 
@@ -224,6 +243,8 @@ class AllocationState(enum.Enum):
 @serialization.register
 class Allocation(StateMachineMixin, serialization.Serializable):
 
+    type_name = 'alloc'
+
     default_timeout = 10
     _error_handler=error_handler
 
@@ -251,6 +272,7 @@ class Allocation(StateMachineMixin, serialization.Serializable):
         self._ensure_state(AllocationState.preallocated)
         self.cancel_expiration_call()
         self._set_state(AllocationState.allocated)
+        return self
 
     def release(self):
         self._set_state(AllocationState.released)
