@@ -204,6 +204,7 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
         agency = self.get_local('agency')
         ha = agency._agents[0]
 
+        self.assertEqual(1, len(ha._retrying_protocols))
         # check the retries 3 times
         yield self.cb_after(None, ha, 'initiate_protocol')
         self.info('First contract failed.')
@@ -224,6 +225,7 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
         # initializing the host agent
         yield d
 
+        self.assertEqual(0, len(ha._retrying_protocols))
         self.assertEqual(1, len(agency._agents))
         self.assertIsInstance(agency._agents[0].agent, host_agent.HostAgent)
         self.assert_all_agents_in_shard(agency, 'root')

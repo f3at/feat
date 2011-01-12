@@ -70,6 +70,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     def initiate(self):
         self._load_allocations()
 
+    def shutdown(self):
+        pass
+
+    def unregister(self):
+        pass
+
     @replay.immutable
     def get_own_address(self, state):
         return recipient.IRecipient(state.medium)

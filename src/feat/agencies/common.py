@@ -217,6 +217,16 @@ class ExpirationCallsMixin(object):
     def _terminate(self):
         self._cancel_expiration_call()
 
+    def expire_now(self):
+        if self._expiration_call and not (self._expiration_call.called or\
+                                          self._expiration_call.cancelled):
+            self._expiration_call.reset(0)
+            d = self.notify_finish()
+            return d
+        else:
+            self.error('Expiration call %r is None or was already called or'
+                       'cancelled', self._expiration_call)
+
 
 class InitiatorMediumBase(object):
 

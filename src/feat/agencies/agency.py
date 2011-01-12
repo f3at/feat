@@ -53,12 +53,9 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         d.addCallback(lambda _: medium)
         return d
 
-    # TODO: Implement this, but first discuss what this really
-    # means to unregister agent
-    # def unregisterAgent(self, agent):
-    #     self._agents.remove(agent)
-    #     agent._messaging.disconnect()
-    #     self.journal_agent_deleted(agent.doc_id, agent)
+    def unregister_agent(self, medium, agent_id):
+        self._agents.remove(medium)
+        self.journal_agent_deleted(agent_id)
 
     def get_time(self):
         return time.time()
@@ -102,8 +99,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         input = (agent_factory, dummy_id, )
         self.journal_agency_entry(agent_id, 'agent_created', input)
 
-    def journal_agent_deleted(self, agent_id, agent_instance, dummy_id):
-        input = (agent_instance.journal_id, dummy_id, )
+    def journal_agent_deleted(self, agent_id):
+        input = tuple()
         self.journal_agency_entry(agent_id, 'agent_deleted', input)
 
     def journal_agent_snapshot(self, agent_id, snapshot):
@@ -134,8 +131,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
 
     @manhole.expose()
     def snapshot_agents(self):
-        # reset the registry, so that snapshot contains full objects not just
-        # the references
+        # reset the registry, so that snapshot contains
+        # full objects not just the references
         self.registry = weakref.WeakValueDictionary()
         for agent in self._agents:
             agent.journal_snapshot()
@@ -170,6 +167,8 @@ class AgencyAgent(log.LogProxy, log.Logger):
         self._listeners = {}
         # protocol_type -> protocol_id -> protocols.IInterest
         self._interests = {}
+        # retrying protocols
+        self._retrying_protocols = list()
 
         self.join_shard(descriptor.shard)
 
@@ -266,10 +265,17 @@ class AgencyAgent(log.LogProxy, log.Logger):
 
     @replay.named_side_effect('AgencyAgent.retrying_protocol')
     def retrying_protocol(self, factory, recipients, max_retries=None,
-                         initial_delay=1, max_delay=None, *args, **kwargs):
+                          initial_delay=1, max_delay=None,
+                          args=None, kwargs=None):
 
-        return RetryingProtocol(self, factory, recipients, args, kwargs,
-                                max_retries, initial_delay)
+        args = args or tuple()
+        kwargs = kwargs or dict()
+        r = RetryingProtocol(self, factory, recipients, args, kwargs,
+                             max_retries, initial_delay)
+        self._retrying_protocols.append(r)
+        r.notify_finish().addBoth(
+            lambda _: self._retrying_protocols.remove(r))
+        return r
 
     @replay.named_side_effect('AgencyAgent.register_interest')
     def register_interest(self, factory):
@@ -357,6 +363,67 @@ class AgencyAgent(log.LogProxy, log.Logger):
     def get_document(self, document_id):
         return self._database.get_document(document_id)
 
+    @serialization.freeze_tag('AgencyAgency.terminate')
+    def terminate(self):
+        self.log("terminate() called")
+
+        # revoke all interests
+        for i_type in self._interests:
+            [self.revoke_interest(x) for x in self._interests[i_type].values()]
+
+        # kill all retrying protocols
+        d = defer.DeferredList([x.give_up() for x in self._retrying_protocols])
+        # kill all listeners
+        d.addBoth(self._kill_all_listeners)
+        # run IAgent.shutdown() and wait for the listeners to finish the job
+        d.addBoth(self._run_and_wait, self.agent.shutdown)
+        # run IAgent.unregister() and wait for the listeners to finish the job
+        d.addBoth(self._run_and_wait, self.agent.unregister)
+        # delete the descriptor
+        d.addBoth(lambda _: self.delete_document(self._descriptor))
+        # TODO: delete the queue
+
+        # tell the agency we are no more
+        d.addBoth(lambda doc: self.agency.unregister_agent(self, doc.doc_id))
+        # close the messaging connection
+        d.addBoth(lambda _: self._messaging.disconnect())
+        return d
+
+    def _run_and_wait(self, _, method, *args, **kwargs):
+        '''
+        Run a agent-side method and wait for all the listeners
+        to finish processing.
+        '''
+
+        def wait_for_finish(listener):
+            d = listener.notify_finish()
+            d.addErrback(self._ignore_initiator_failed)
+            return d
+
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addBoth(defer.DeferredList(
+            [wait_for_finish(x) for x in self._listeners.values()]))
+        return d
+
+    def _kill_all_listeners(self, *_):
+
+        def expire_one(listener):
+            d = listener.expire_now()
+            d.addErrback(self._ignore_initiator_failed)
+            return d
+
+        d = defer.DeferredList(
+            [expire_one(x) for x in self._listeners.values()])
+        return d
+
+    def _ignore_initiator_failed(self, fail):
+        if fail.check(protocols.InitiatorFailed):
+            self.log('Swallowing InitiatorFailed expection.')
+            return None
+        else:
+            self.log('Reraising exception %r', fail)
+            fail.raiseException()
+
     # IRecorderNone
 
     def generate_identifier(self, recorder):
@@ -432,6 +499,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         self.delay = initial_delay
 
         self._delayed_call = None
+        self._initiator = None
 
         self._bind()
 
@@ -441,11 +509,16 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
     def notify_finish(self):
         return common.InitiatorMediumBase.notify_finish(self)
 
-    @replay.named_side_effect('RetryingProtocol.give_up')
+    @serialization.freeze_tag('RetryingProtocol.give_up')
     def give_up(self):
         self.max_retries = self.attempt - 1
         if self._delayed_call and not self._delayed_call.called:
             self._delayed_call.cancel()
+            return defer.succeed(None)
+        if self._initiator:
+            d = self._initiator._get_state().medium.expire_now()
+            d.addErrback(self.medium._ignore_initiator_failed)
+            return d
 
     # private section
 
@@ -455,9 +528,9 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 
     def _fire(self):
         self.attempt += 1
-        initiator = self.medium.initiate_protocol(
+        self._initiator = self.medium.initiate_protocol(
             self.factory, self.recipients, *self.args, **self.kwargs)
-        d = initiator.notify_finish()
+        d = self._initiator.notify_finish()
         return d
 
     def _finalize(self, result):
@@ -467,8 +540,11 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         self.info('Retrying protocol for factory: %r failed for the %d time. ',
                   self.factory, self.attempt)
 
+        self._initiator = None
+
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
+            self.info("Will not try to restart.")
             return self.finish_deferred.errback(failure)
 
         # do retry

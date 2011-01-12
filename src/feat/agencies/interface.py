@@ -22,6 +22,12 @@ class IListener(Interface):
         @returns: the instance of agent-side protocol
         '''
 
+    def notify_finish():
+        '''
+        @returns: Deferred which will be run
+                  after the protocol has finished
+        '''
+
 
 class IAgencyInitiatorFactory(Interface):
     '''Factory constructing L{IAgencyInitiator} instance'''

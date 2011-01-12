@@ -10,6 +10,7 @@ from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.common import delay, log
 from feat.agencies import agency
+from feat.agencies.interface import NotFoundError
 
 from . import common
 
@@ -68,7 +69,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
 
-        self.queue, self.endpoint = self.setup_endpoint()
+        self.endpoint, self.queue = self.setup_endpoint()
 
     def testJoinShard(self):
         self.assertEqual(1, len(self.agent._messaging.get_bindings('lobby')))
@@ -109,6 +110,26 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         msg = message.RequestMessage()
         msg.session_id = str(uuid.uuid1())
         return self.recv_msg(msg, self.endpoint, key)
+
+    @defer.inlineCallbacks
+    def testTerminatingTheAgent(self):
+        # make him have running retrying request (covers all the hard cases)
+        d = self.cb_after(None, self.agent, 'initiate_protocol')
+        self.agent.retrying_protocol(DummyRequester, self.endpoint,
+                                     args=(None, ))
+        yield d
+
+        self.assertEqual(1, len(self.agent._listeners))
+        yield self.agent.terminate()
+
+        self.assertCalled(self.agent.agent, 'shutdown')
+        self.assertCalled(self.agent.agent, 'unregister')
+
+        doc_id = self.agent._descriptor.doc_id
+        d = self.agency._database.openDoc(doc_id)
+        self.assertFailure(d, NotFoundError)
+        yield d
+        self.assertEqual(0, len(self.agency._agents))
 
 
 class TestRequests(common.TestCase, common.AgencyTestHelper):

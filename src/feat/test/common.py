@@ -486,6 +486,14 @@ class DummyAgent(agent.BaseAgent, Mock):
     def initiate(self):
         pass
 
+    @Mock.stub
+    def shutdown(self):
+        pass
+
+    @Mock.stub
+    def unregister(self):
+        pass
+
 
 class DummyRecordNode(log.LogProxy):
 

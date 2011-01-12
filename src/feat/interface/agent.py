@@ -50,7 +50,7 @@ class IAgencyAgent(Interface):
         '''
 
     def retrying_protocol(self, factory, recipients, max_retries,
-                         initial_delay, max_delay, *args, **kwargs):
+                         initial_delay, max_delay, args, kwargs):
         '''
         Initiates the protocol which will get restart if it fails.
         The restart will be delayed with exponential growth.
@@ -68,15 +68,6 @@ class IAgencyAgent(Interface):
         Use this to get current time. Should fetch the time from NTP server
 
         @returns: Number of seconds since epoch
-        '''
-
-    def send_msg(recipient, message):
-        '''
-        Sends message to the recipients.
-
-        @param recipient: Message destination
-        @type recipient: L{IRecipient}
-        @return: Message that was sent
         '''
 
     def save_document(document):
@@ -125,10 +116,36 @@ class IAgencyAgent(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
+    def terminate():
+        '''
+        Performs all the necessary steps to end the life of the agent in a
+        gentle way. The termination process consits of following steps:
+
+        1. Revoke all interests.
+        2. Terminate all retrying protocols.
+        3. Kill all listeners (with making them expire instantly).
+        4. Run the IAgent.shutdown() and wait for it to finish.
+        5. Run the IAgent.unregister() - responsibility of this method to
+           perform agent-side shutdown part common to all agents.
+        6. Remove agents descriptor from the database.
+        7. Delete the agents queue.
+
+        @returns: Deferred.
+        '''
+
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''
 
     def initiate():
-        '''Called after the agent is registered to an agency.'''
+        '''
+        Called after the agent is registered to an agency.
+        '''
+
+    def shutdown():
+        """
+        Called after agency decides to terminate the agent.
+        Agent code should take care to notify all it's his contractors
+        that the collaboration is over.
+        """

@@ -104,7 +104,7 @@ class Replay(log.FluLogKeeper, log.Logger):
         self.agent = agent_factory(self.medium)
 
     def entry_agent_deleted(self, input):
-        raise NotImplemented('TODO')
+        self.reset()
 
     def entry_protocol_created(self, input):
         protocol_factory, medium, args, kwargs =\
@@ -380,7 +380,7 @@ class RetryingProtocol(BaseReplayDummy, log.Logger):
     def notify_finish(self):
         raise RuntimeError('This should never get called')
 
-    @replay.named_side_effect('RetryingProtocol.give_up')
+    @serialization.freeze_tag('RetryingProtocol.give_up')
     def give_up(self):
         pass
 
