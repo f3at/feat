@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
+import copy
 import uuid
 import json
 
@@ -72,6 +72,7 @@ class Database(log.Logger, log.FluLogKeeper):
 
         try:
             doc = self._get_doc(docId)
+            doc = copy.deepcopy(doc)
             if doc.get('_deleted', None):
                 raise NotFoundError('deleted')
             d.callback(Response(doc))

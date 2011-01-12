@@ -155,10 +155,13 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
                               host_agent.HostAgent)
         self.assertIsInstance(agency._agents[1].agent,
                               shard_agent.ShardAgent)
-        desc = yield self.driver.get_document(
-            agency._agents[1]._descriptor.doc_id)
-        # FIXME: for some reason we receive dict not Recipient here!!!
-        self.assertEqual(parent.key, desc.parent['key'])
+        desc_id = agency._agents[1]._descriptor.doc_id
+        self.info(agency._database._get_doc(desc_id))
+        desc = yield self.driver.get_document(desc_id)
+        self.info(desc_id)
+        self.assertIsInstance(desc.parent, (recipient.RecipientFromAgent,
+                                            recipient.Agent, ))
+        self.assertEqual(parent.key, desc.parent.key)
         self.assertEqual(1, len(desc.hosts))
         self.assertEqual(0, len(desc.children))
 

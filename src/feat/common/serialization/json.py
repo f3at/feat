@@ -168,6 +168,7 @@ class Unserializer(base.Unserializer):
         return self.restore_external(identifier)
 
     def unpack_instance(self, data):
+        data = dict(data)
         type_name = data.pop(INSTANCE_TYPE_ATOM)
         if INSTANCE_STATE_ATOM in data:
             snapshot = data.pop(INSTANCE_STATE_ATOM)
