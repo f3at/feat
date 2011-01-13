@@ -24,10 +24,13 @@ Types that can be passed as destination includes:
 class BaseRecipient(serialization.Serializable):
 
     def __init__(self):
-        self.array = [self]
+        self._array = [self]
+
+    def restored(self):
+        self._array = [self]
 
     def __iter__(self):
-        return self.array.__iter__()
+        return self._array.__iter__()
 
     def __eq__(self, other):
         return self.type == other.type and\
@@ -83,24 +86,30 @@ components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
 
 
 @serialization.register
-class RecipientsFromList(BaseRecipient):
+class RecipientsFromList(serialization.Serializable):
 
     implements(IRecipients)
 
     def __init__(self, llist):
-        BaseRecipient.__init__(self)
-        self.array = []
+        self.list = []
         for item in llist:
-            self.array.append(IRecipient(item))
+            self.list.append(IRecipient(item))
 
     def __eq__(self, other):
-        for el1, el2 in zip(self.array, other.array):
+        for el1, el2 in zip(self.list, other.list):
             if el1 != el2:
                 return False
 
     def __repr__(self):
-        cont = ["k=%r,s=%r" % (recp.key, recp.shard, ) for recp in self.array]
+        cont = ["k=%r,s=%r" % (recp.key, recp.shard, ) for recp in self.list]
         return "<RecipientsList: %s>" % "; ".join(cont)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __iter__(self):
+        return self.list.__iter__()
+
 
 components.registerAdapter(RecipientsFromList, list, IRecipients)
 
