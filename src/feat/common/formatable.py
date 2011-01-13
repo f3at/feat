@@ -12,6 +12,9 @@ class Field(object):
         self.default = default
         self.serialize_as = serialize_as or name
 
+    def __repr__(self):
+        return "%r default %r" % (self.name, self.default, )
+
 
 def field(name, default, serialize_as=None):
     f = Field(name, default, serialize_as)
@@ -23,18 +26,34 @@ class Formatable(serialization.Serializable, annotate.Annotable):
     __metaclass__ = type('MetaFormatable', (type(serialization.Serializable),
                                             type(annotate.Annotable), ), {})
 
-    _fields = None
+    _fields = list()
+
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        find = [x for x in bases if getattr(cls, '_fields', False)]
+
+        if len(find) == 1:
+            cls._fields = copy.deepcopy(bases[0]._fields)
 
     @classmethod
     def _register_field(cls, field):
-        if cls._fields is None:
-            cls._fields = list()
+        # remove field with this name if already present (overriding defaults)
+        find = [cls._fields.remove(x) \
+                for x in cls._fields if x.name == field.name]
+
         cls._fields.append(field)
 
     def __init__(self, **fields):
         self._set_fields(fields)
 
     def _set_fields(self, dictionary):
+        for key in dictionary:
+            find = [x for x in self._fields if x.name == key]
+            if len(find) != 1:
+                raise AttributeError(
+                    "Class %r doesn't have the %r attribute." %\
+                    (type(self), key, ))
+
         for field in self._fields:
             # lazy coping of default value, don't touch!
             value = dictionary.get(field.name, None) or\

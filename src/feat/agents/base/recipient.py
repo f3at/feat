@@ -33,6 +33,8 @@ class BaseRecipient(serialization.Serializable):
         return self._array.__iter__()
 
     def __eq__(self, other):
+        if not isinstance(other, BaseRecipient):
+            return NotImplemented
         return self.type == other.type and\
                self.shard == other.shard and\
                self.key == other.key

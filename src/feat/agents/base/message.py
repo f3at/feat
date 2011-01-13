@@ -1,48 +1,30 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
-import types
 
-from feat.common import serialization
+from feat.common import serialization, formatable
 
 
 @serialization.register
-class BaseMessage(serialization.Serializable):
+class BaseMessage(formatable.Formatable):
 
-    reply_to = None
-    message_id = None
-    protocol_id = None
-    protocol_type = None
-    expiration_time = None
-    sender_id = None
-    receiver_id = None
-    payload = {}
-
-    def __init__(self, **kwargs):
-        for key, default in self.iter_fields():
-            value = kwargs.pop(key, default)
-            setattr(self, key, value)
-
-        if len(kwargs) > 0:
-            raise AttributeError('Unknown message field: %r', kwargs.keys())
+    formatable.field('reply_to', None)
+    formatable.field('message_id', None)
+    formatable.field('protocol_id', None)
+    formatable.field('protocol_type', None)
+    formatable.field('expiration_time', None)
+    formatable.field('sender_id', None)
+    formatable.field('receiver_id', None)
+    formatable.field('payload', dict())
 
     def clone(self):
         return copy.deepcopy(self)
 
-    def iter_fields(self):
-        for key in dir(type(self)):
-            if key.startswith('_'):
-                continue
-            default = getattr(type(self), key)
-            if isinstance(default, (types.FunctionType, types.MethodType, )):
-                continue
-            yield key, copy.copy(default)
-
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
-        for key, default in self.iter_fields():
-            if getattr(self, key) != getattr(other, key):
+        for field in self._fields:
+            if getattr(self, field.name) != getattr(other, field.name):
                 return False
         return True
 
@@ -51,27 +33,27 @@ class BaseMessage(serialization.Serializable):
 
     def __repr__(self):
         d = dict()
-        for key, default in self.iter_fields():
-            d[key] = getattr(self, key)
+        for field in self._fields:
+            d[field.name] = getattr(self, field.name)
         return "<%r, %r>" % (type(self), d)
 
 
 @serialization.register
 class ContractMessage(BaseMessage):
 
-    protocol_type = 'Contract'
+    formatable.field('protocol_type', 'Contract')
 
 
 @serialization.register
 class RequestMessage(BaseMessage):
 
-    protocol_type = 'Request'
+    formatable.field('protocol_type', 'Request')
 
 
 @serialization.register
 class ResponseMessage(BaseMessage):
 
-    protocol_type = 'Request'
+    formatable.field('protocol_type', 'Request')
 
 
 # messages send by menager to contractor
@@ -90,13 +72,15 @@ class Rejection(ContractMessage):
 @serialization.register
 class Grant(ContractMessage):
 
-    update_report = None # set it to number to receive frequent reports
+     # set it to number to receive frequent reports
+    formatable.field('update_report', None)
 
 
 @serialization.register
 class Cancellation(ContractMessage):
 
-    reason = None # why do we cancel?
+    # why do we cancel?
+    formatable.field('reason', None)
 
 
 @serialization.register
