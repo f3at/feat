@@ -1,4 +1,3 @@
-import traceback
 import os
 
 from feat.extern.txamqp import spec
@@ -10,7 +9,7 @@ from twisted.internet import reactor, protocol
 from zope.interface import implements
 from twisted.internet import defer
 
-from feat.common import log, enum
+from feat.common import log, enum, error_handler
 from feat.common.serialization import banana
 from feat.agencies.interface import IConnectionFactory
 from feat.agencies.messaging import Connection, Queue
@@ -21,6 +20,8 @@ from feat.agents.base.message import BaseMessage
 class MessagingClient(AMQClient, log.Logger):
 
     log_category = 'messaging-client'
+
+    _error_handler=error_handler
 
     def __init__(self, factory, delegate, vhost, spec, user, password):
         self._factory = factory
@@ -41,13 +42,6 @@ class MessagingClient(AMQClient, log.Logger):
     def connectionLost(self, reason):
         self.log("Connection lost. Reason: %s.", reason)
         AMQClient.connectionLost(self, reason)
-
-    def _error_handler(self, e):
-        self.error('Failure: %r', e.getErrorMessage())
-
-        frames = traceback.extract_tb(e.getTracebackObject())
-        if len(frames) > 0:
-            self.error('Last traceback frame: %r', frames[-1])
 
     def get_free_channel(self):
         while self._channel_counter in self.channels:

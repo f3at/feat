@@ -90,6 +90,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     def allocate_resource(self, state, **params):
         return state.resources.allocate(**params)
 
+    @replay.mutable
+    def release_resource(self, state, allocation):
+        return state.resources.release(allocation)
+
     @replay.immutable
     def get_time(self, state):
         return state.medium.get_time()

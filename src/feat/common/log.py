@@ -16,7 +16,10 @@ class Logger(object):
     log_category = "feat"
 
     def __init__(self, logger):
-        self._logger = ILogKeeper(logger)
+        if logger:
+            self._logger = ILogKeeper(logger)
+        else:
+            self._logger = VoidLogKeeper()
 
     ### ILoggable Methods ###
 
@@ -53,6 +56,14 @@ class LogProxy(object):
                depth=1, file_path=None, line_num=None):
         self._logkeeper.do_log(level, object, category, format, args,
                depth=depth+1, file_path=file_path, line_num=line_num)
+
+
+class VoidLogKeeper(object):
+
+    implements(ILogKeeper)
+
+    def do_log(self, *args):
+        pass
 
 
 class FluLogKeeper(object):

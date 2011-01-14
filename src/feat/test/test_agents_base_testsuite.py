@@ -75,7 +75,9 @@ class TestHamsterball(testsuite.TestCase):
 
     def testMakeAllocation(self):
         agent = self.ball.load(self.instance)
-        expectations = [testsuite.side_effect(resource.Allocation.initiate)]
+        expectations = [
+            testsuite.side_effect(resource.Allocation._initiate),
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call)]
         output, state = self.ball.call(expectations, agent.do_an_allocation)
         self.assertEqual(1, state.resources.allocated()['glass'])
 

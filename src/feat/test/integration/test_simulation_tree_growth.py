@@ -156,9 +156,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         self.assertIsInstance(agency._agents[1].agent,
                               shard_agent.ShardAgent)
         desc_id = agency._agents[1]._descriptor.doc_id
-        self.info(agency._database._get_doc(desc_id))
         desc = yield self.driver.get_document(desc_id)
-        self.info(desc_id)
         self.assertIsInstance(desc.parent, (recipient.RecipientFromAgent,
                                             recipient.Agent, ))
         self.assertEqual(parent.key, desc.parent.key)

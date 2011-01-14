@@ -2,8 +2,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.common import log, enum, delay, fiber, serialization
+from feat.common import log, enum, serialization, error_handler
 from feat.agents.base import replay
+from feat.agencies.common import StateMachineMixin, ExpirationCallsMixin
 
 
 @serialization.register
@@ -18,6 +19,12 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         state.agent = agent
         state.totals = dict()
         state.allocations = list()
+
+    @replay.immutable
+    def restored(self, state):
+        log.Logger.__init__(self, state.agent)
+        log.LogProxy.__init__(self, state.agent)
+        replay.Replayable.restored(self)
 
     @replay.mutable
     def define(self, state, name, value):
@@ -50,10 +57,16 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         for name in totals:
             result[name] = 0
         for allocation in allocations:
-            ar = allocation.get_resources()
+            ar = allocation.resources
             for resource in ar:
                 result[resource] += ar[resource]
         return result
+
+    @replay.journaled
+    def set_allocation_state(self, state, allocation, m_state):
+        # we consider state of allocation part a state of the resources object
+        # for this reason they need to be changed by the journaled method
+        StateMachineMixin._set_state(allocation, m_state)
 
     @replay.immutable
     def get_totals(self, state):
@@ -75,7 +88,6 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def preallocate(self, state, **params):
         try:
             allocation = Allocation(self, **params)
-            allocation.initiate()
             return allocation
         except NotEnoughResources:
             return None
@@ -83,16 +95,13 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     @replay.journaled
     def allocate(self, state, **params):
         allocation = Allocation(self, **params)
-        allocation.initiate()
         allocation.confirm()
         return allocation
 
-    @replay.immutable
-    def get_time(self, state):
-        '''
-        Used by Allocation class to setup expiration call.
-        '''
-        return state.agent.get_time()
+    @replay.journaled
+    def release(self, state, allocation):
+        assert allocation in state.allocations
+        allocation.release()
 
     @replay.immutable
     def _unpack_defaults(self, state, totals, allocations):
@@ -108,6 +117,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             raise UnknownResource('Unknown resource name: %r.' % name)
 
     @replay.immutable
+    def get_time(self, state):
+        return state.agent.get_time()
+
+    @replay.immutable
     def __repr__(self, state):
         return "<Resources. Totals: %r, Allocations: %r>" %\
                (state.totals, state.allocations)
@@ -117,8 +130,14 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         if not isinstance(other, type(self)):
             return NotImplemented
         os = other._get_state()
-        return os.totals == state.totals and\
-               os.allocations == state.allocations
+        if os.totals != state.totals:
+            return False
+        if state.allocations != os.allocations:
+            return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class AllocationState(enum.Enum):
@@ -134,18 +153,19 @@ class AllocationState(enum.Enum):
 
 
 @serialization.register
-class Allocation(log.Logger, replay.Replayable):
+class Allocation(log.Logger, ExpirationCallsMixin, StateMachineMixin,
+                 serialization.Serializable):
 
     default_timeout = 10
+    _error_handler=error_handler
 
     def __init__(self, parent, **resources):
         log.Logger.__init__(self, parent)
-        replay.Replayable.__init__(self, parent, **resources)
+        ExpirationCallsMixin.__init__(self)
+        StateMachineMixin.__init__(self, AllocationState.initiated)
 
         self._expiration_call = None
 
-    def init_state(self, state, parent, **resources):
-        state.parent = parent
         for name in resources:
             parent.check_name_exists(name)
             if not isinstance(resources[name], int):
@@ -153,56 +173,23 @@ class Allocation(log.Logger, replay.Replayable):
                     'Resource value should be int, got %r instead.' %\
                     resources[name].__class__)
 
-        state.resources = resources
-        state.parent.append_allocation(self)
+        self._parent = parent
+
+        self.resources = resources
+        self._parent.append_allocation(self)
         self._set_state(AllocationState.preallocated)
 
+        self._initiate()
+
+    def restored(self):
+        # unless the Allocation is binded to Resource object it cannot log
+        # lines
+        log.Logger.__init__(self, None)
+
     @replay.side_effect
-    def initiate(self):
-        expiration_time = self._get_time() + self.default_timeout
+    def _initiate(self):
+        expiration_time = self.default_timeout + self._get_time()
         self._setup_expiration_call(expiration_time, self._on_timeout)
-
-    # StateMachine implementation consitent with replayability
-
-    @replay.mutable
-    def _set_state(self, state, status):
-        state.state = status
-
-    @replay.immutable
-    def get_state(self, state):
-        return state.state
-
-    @replay.immutable
-    def _ensure_state(self, state, states):
-        if self._cmp_state(states):
-            return True
-        raise RuntimeError("Expected state in: %r, was: %r instead" %\
-                           (states, state.state))
-
-    @replay.immutable
-    def _cmp_state(self, state, states):
-        if not isinstance(states, list):
-            states = [states]
-        if state.state in states:
-            return True
-        return False
-
-    # ExpirationCalls implementations using replayability
-
-    def _cancel_expiration_call(self):
-        ec = self._expiration_call
-        if ec and not (ec.called or ec.cancelled):
-            ec.cancel()
-            self._expiration_call = None
-
-    def _setup_expiration_call(self, expiration_time, method):
-        assert callable(method)
-        time_left = expiration_time - self._get_time()
-        self._expiration_call = delay.callLater(time_left, method)
-
-    @replay.immutable
-    def _get_time(self, state):
-        return state.parent.get_time()
 
     # public API
 
@@ -216,30 +203,30 @@ class Allocation(log.Logger, replay.Replayable):
         self._cancel_expiration_call()
         self._cleanup()
 
+    # private section
+
+    def _get_time(self):
+        return self._parent.get_time()
+
+    def _set_state(self, state):
+        self._parent.set_allocation_state(self, state)
+
     def _on_timeout(self):
         self.info('Preallocation of %r has reached its timeout.', self)
         self._set_state(AllocationState.expired)
         self._cleanup()
 
-    @replay.immutable
-    def get_resources(self, state):
-        return state.resources
+    def _cleanup(self):
+        self._parent.remove_allocation(self)
 
-    @replay.immutable
-    def _cleanup(self, state):
-        state.parent.remove_allocation(self)
-
-    @replay.immutable
-    def __repr__(self, state):
+    def __repr__(self):
         return "<Allocation state: %r, Resource: %r>" %\
-               (state.state.name, state.resources, )
+               (self.state.name, self.resources, )
 
-    @replay.immutable
-    def __eq__(self, state, other):
+    def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        os = other._get_state()
-        return state.state == os.state and state.resources == os.resources
+        return self.state == other.state and self.resources == other.resources
 
     def __ne__(self, other):
         return not self.__eq__(other)

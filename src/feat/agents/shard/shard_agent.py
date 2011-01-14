@@ -168,7 +168,7 @@ class JoinShardContractor(contractor.BaseContractor):
     @replay.mutable
     def release_preallocation(self, state, *_):
         if state.preallocation is not None:
-            state.preallocation.release()
+            state.agent.release_resource(state.preallocation)
 
     announce_expired = release_preallocation
     rejected = release_preallocation

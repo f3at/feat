@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
+import traceback
 import re
 
 
@@ -29,3 +29,10 @@ def format_block(block):
     while lines and not lines[-1]:
         del lines[-1]
     return '\n'.join(lines) + '\n'
+
+
+def error_handler(self, f):
+    self.error("Error processing: %s", f.getErrorMessage())
+    frames = traceback.extract_tb(f.getTracebackObject())
+    if len(frames) > 0:
+        self.error('Last traceback frame: %r', frames[-1])

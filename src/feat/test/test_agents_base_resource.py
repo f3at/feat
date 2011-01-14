@@ -53,7 +53,7 @@ class ResourcesTest(common.TestCase):
 
         self._assert_allocated([0, 0])
         self.assertEqual(resource.AllocationState.expired,
-                         allocation._get_state().state)
+                         allocation.state)
 
     @defer.inlineCallbacks
     def testCannotOverallocate(self):
@@ -79,13 +79,13 @@ class ResourcesTest(common.TestCase):
     def testGettingRealAllocation(self):
         allocation = yield self.resources.allocate(a=3)
         self.assertEqual(resource.AllocationState.allocated,
-                         allocation._get_state().state)
+                         allocation.state)
         self._assert_allocated([3, 0])
 
-        allocation.release()
+        self.resources.release(allocation)
         self._assert_allocated([0, 0])
         self.assertEqual(resource.AllocationState.released,
-                         allocation._get_state().state)
+                         allocation.state)
 
     def testBadDefine(self):
         self.assertRaises(resource.DeclarationError, self.resources.define,

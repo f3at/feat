@@ -4,8 +4,9 @@ import uuid
 import traceback
 
 from twisted.internet import defer
-from feat.common import delay, serialization
+from feat.common import delay, serialization, error_handler
 from feat.interface.protocols import InitiatorFailed
+from feat.agents.base import replay
 
 
 class StateAssertationError(RuntimeError):
@@ -132,14 +133,8 @@ class AgencyMiddleMixin(object):
         d.addErrback(self._error_handler)
         return d
 
-    def _error_handler(self, e):
-        msg = e.getErrorMessage()
-        self.error('Terminating: %s', msg)
-
-        frames = traceback.extract_tb(e.getTracebackObject())
-        if len(frames) > 0:
-            self.error('Last traceback frame: %r', frames[-1])
-
+    def _error_handler(self, f):
+        error_handler(self, f)
         self._set_state(self.error_state)
         self._terminate()
 
@@ -180,6 +175,7 @@ class ExpirationCallsMixin(object):
         d.addCallback(lambda _: self._terminate())
         return d
 
+    @replay.side_effect
     def _cancel_expiration_call(self):
         if self._expiration_call and not (self._expiration_call.called or\
                                           self._expiration_call.cancelled):

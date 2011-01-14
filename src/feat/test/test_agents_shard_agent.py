@@ -1,6 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.test import common
 from feat.agents.base import resource, testsuite, recipient, message
 from feat.agents.shard import shard_agent
 from feat.common.fiber import TriggerType
@@ -53,9 +52,12 @@ class TestShardAgent(testsuite.TestCase):
         sfx = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
-            testsuite.side_effect(resource.Allocation.initiate),
-            testsuite.side_effect(resource.Allocation.initiate),
-            testsuite.side_effect(resource.Allocation.initiate),
+            testsuite.side_effect(resource.Allocation._initiate),
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
+            testsuite.side_effect(resource.Allocation._initiate),
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
+            testsuite.side_effect(resource.Allocation._initiate),
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
             testsuite.side_effect('AgencyAgent.register_interest',
                                  result=interest,
                                  args=(shard_agent.JoinShardContractor, ))]
@@ -106,7 +108,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.ball.call(None, s.resources.define, 'hosts', 1)
         self.ball.call(None, s.resources.define, 'children', 1)
         sfx = [
-            testsuite.side_effect(resource.Allocation.initiate)]
+            testsuite.side_effect(resource.Allocation._initiate)]
         announce = self._generate_announcement()
 
         f, state = self.ball.call(sfx, self.contractor.announced, announce)
@@ -125,7 +127,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.ball.call(None, s.resources.define, 'hosts', 0)
         self.ball.call(None, s.resources.define, 'children', 1)
         sfx = [
-            testsuite.side_effect(resource.Allocation.initiate)]
+            testsuite.side_effect(resource.Allocation._initiate)]
         announce = self._generate_announcement()
         f, state = self.ball.call(sfx, self.contractor.announced, announce)
         self.assertFiberTriggered(f, TriggerType.succeed)
@@ -216,12 +218,14 @@ class TestJoinShardContractor(testsuite.TestCase):
                        own_bid, own_bid)
 
         # handing over
-        sfx = [testsuite.side_effect(
+        sfx = [
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
+            testsuite.side_effect(
             'AgencyContractor.handover', args=(other_bid, ))]
         _, s = self.ball.call(sfx, self.contractor._bid_refuse_or_handover,
                               other_bid, own_bid)
         self.assertEqual(resource.AllocationState.released,
-                         s.preallocation.get_state())
+                         s.preallocation.state)
 
     def testGranted(self):
         self._load_contractor()
@@ -232,13 +236,14 @@ class TestJoinShardContractor(testsuite.TestCase):
         bid = self._generate_bid(0)
         bid.payload['action_type'] = shard_agent.ActionType.join
         self.contractor._get_state().bid = bid
-
-        f, s = self.ball.call(None, self.contractor.granted, grant)
+        sfx = [
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call)]
+        f, s = self.ball.call(sfx, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, 'some id')
         self.assertFiberCalls(f, self.agent.add_agent)
         self.assertFiberCalls(f, self.contractor._finalize)
         self.assertEqual(resource.AllocationState.allocated,
-                         s.preallocation.get_state())
+                         s.preallocation.state)
 
     def testGrantedNewShard(self):
         self._load_contractor()
@@ -249,8 +254,9 @@ class TestJoinShardContractor(testsuite.TestCase):
         bid = self._generate_bid(0)
         bid.payload['action_type'] = shard_agent.ActionType.create
         self.contractor._get_state().bid = bid
-
-        f, s = self.ball.call(None, self.contractor.granted, grant)
+        sfx = [
+            testsuite.side_effect(resource.Allocation._cancel_expiration_call)]
+        f, s = self.ball.call(sfx, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, 'some id')
         self.assertFiberDoesntCall(f, self.agent.add_agent)
         self.assertFiberCalls(f, self.agent.prepare_child_descriptor)
@@ -258,13 +264,14 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.assertFiberCalls(f, self.agent.add_children_shard)
         self.assertFiberCalls(f, self.contractor._finalize)
         self.assertEqual(resource.AllocationState.allocated,
-                         s.preallocation.get_state())
+                         s.preallocation.state)
 
     def _generate_preallocation(self):
         s = self.agent._get_state()
         self.ball.call(None, s.resources.define, 'hosts', 1)
         state = self.contractor._get_state()
-        sfx = [testsuite.side_effect(resource.Allocation.initiate)]
+        sfx = [
+            testsuite.side_effect(resource.Allocation._initiate)]
         result, _ = self.ball.call(
             sfx, self.agent.preallocate_resource, hosts=1)
         self.assertIsInstance(result, resource.Allocation)

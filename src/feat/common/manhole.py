@@ -6,7 +6,7 @@ import shlex
 from functools import partial
 
 from twisted.internet import defer
-from feat.common import decorator, annotate, enum, log
+from feat.common import decorator, annotate, enum, log, error_handler
 
 
 class SecurityLevel(enum.Enum):
@@ -259,11 +259,7 @@ class Parser(log.Logger):
         return self._locals[variable_name]
 
     def _error_handler(self, f):
-        self.error("Error processing: %s", f.getErrorMessage())
-        frames = traceback.extract_tb(f.getTracebackObject())
-        if len(frames) > 0:
-            self.error('Last traceback frame: %r', frames[-1])
-
+        error_handler(self, f)
         self.send_output(f.getErrorMessage())
 
 
