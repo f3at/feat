@@ -18,7 +18,7 @@ from feat.process.base import DependencyError
 from feat.common import serialization
 
 from . import common
-from feat.test.common import attr
+from feat.test.common import attr, DummyRecordNode
 
 
 @serialization.register
@@ -151,13 +151,14 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
                            'dependecies: %r' % import_error)
 
         try:
-            self.process = couchdb.Process()
+            self.process = couchdb.Process(DummyRecordNode(self))
         except DependencyError as e:
             raise SkipTest(str(e))
 
         yield self.process.restart()
 
-        host, port = self.process.config['host'], self.process.config['port']
+        host, port = self.process.get_config()['host'], \
+            self.process.get_config()['port']
         self.database = database.Database(host, port, 'test')
         yield self.database.createDB()
         self.connection = self.database.get_connection(None)
