@@ -3,7 +3,7 @@
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
-from feat.test.common import attr, delay, StubAgent
+from feat.test.common import attr, delay, StubAgent, DummyRecordNode
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents.base import message
 from feat.process import rabbitmq
@@ -244,14 +244,14 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
                            'dependecies: %r' % import_error)
 
         try:
-            self.process = rabbitmq.Process()
+            self.process = rabbitmq.Process(DummyRecordNode(self))
         except DependencyError as e:
             raise SkipTest(str(e))
 
         yield self.process.restart()
 
         self.messaging = messaging.Messaging(
-            '127.0.0.1', self.process.config['port'])
+            '127.0.0.1', self.process.get_config()['port'])
         yield self.init_agents()
         self.log('Setup finished, starting the testcase.')
 

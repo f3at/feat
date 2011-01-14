@@ -10,7 +10,7 @@ from twisted.scripts import trial
 
 from feat.agencies.emu import agency
 from feat.agents.base import message, recipient, descriptor, agent
-from feat.common import log, decorator
+from feat.common import log, decorator, journal
 from feat.common import delay as delay_module
 from feat.interface.agent import IAgencyAgent
 
@@ -473,4 +473,22 @@ class DummyAgent(agent.BaseAgent, Mock):
 
     @Mock.stub
     def initiate(self):
+        pass
+
+
+class DummyRecordNode(log.LogProxy):
+
+    implements(journal.IRecorderNode)
+
+    def __init__(self, test_case):
+        log.LogProxy.__init__(self, test_case)
+        self.journal_keeper = self
+
+    def generate_identifier(self, _):
+        return (None, )
+
+    def register(self, _):
+        pass
+
+    def write_entry(self, *_):
         pass

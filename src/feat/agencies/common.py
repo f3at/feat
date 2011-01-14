@@ -1,9 +1,9 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
-import traceback
 
 from twisted.internet import defer
+
 from feat.common import delay, serialization, error_handler
 from feat.interface.protocols import InitiatorFailed
 from feat.agents.base import replay
