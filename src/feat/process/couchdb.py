@@ -2,22 +2,26 @@ import shutil
 import os
 
 from feat.process import base
+from feat.agents.base import replay
 from feat.common import format_block
 
 
 class Process(base.Base):
 
-    def configure(self):
-        self.config = dict()
+    @replay.mutable
+    def configure(self, state):
+        state.config = dict()
         workspace = self.get_tmp_dir()
-        self.config['workspace'] = workspace
-        self.config['dir'] = os.path.join(workspace, 'couch_db')
-        self.config['port'] = self.get_free_port()
-        self.config['log'] = os.path.join(workspace, 'couch_test.log')
-        self.config['local_ini'] = os.path.join(workspace, 'local.ini')
-        self.config['host'] = '127.0.0.1'
+        state.config['workspace'] = workspace
+        state.config['dir'] = os.path.join(workspace, 'couch_db')
+        state.config['port'] = self.get_free_port()
+        state.config['log'] = os.path.join(workspace, 'couch_test.log')
+        state.config['local_ini'] = os.path.join(workspace, 'local.ini')
+        state.config['host'] = '127.0.0.1'
 
-    def prepare_workspace(self):
+    @replay.side_effect
+    @replay.immutable
+    def prepare_workspace(self, state):
         local_ini_tmpl = format_block("""
         [couchdb]
         database_dir = %(dir)s
@@ -29,25 +33,28 @@ class Process(base.Base):
         [log]
         file = %(log)s
         """)
-        shutil.rmtree(self.config['dir'], ignore_errors=True)
+        shutil.rmtree(state.config['dir'], ignore_errors=True)
 
-        f = file(self.config['local_ini'], 'w')
-        f.write(local_ini_tmpl % self.config)
+        f = file(state.config['local_ini'], 'w')
+        f.write(local_ini_tmpl % state.config)
         f.close()
 
-    def initiate(self):
+    @replay.mutable
+    def initiate(self, state):
         self.configure()
         self.prepare_workspace()
 
-        self.command = '/usr/bin/couchdb'
-        self.env['HOME'] = os.environ['HOME']
-        self.args = ['-a', self.config['local_ini']]
+        state.command = '/usr/bin/couchdb'
+        state.env['HOME'] = os.environ['HOME']
+        state.args = ['-a', state.config['local_ini']]
 
+    @replay.side_effect
     def started_test(self):
         buffer = self.control.out_buffer
         self.log("Checking buffer: %s", buffer)
         return "Apache CouchDB has started on http://127.0.0.1:" in buffer
 
+    @replay.side_effect
     def on_finished(self, e):
-        shutil.rmtree(self.config['workspace'], ignore_errors=True)
+        shutil.rmtree(self.get_config()['workspace'], ignore_errors=True)
         base.Base.on_finished(self, e)

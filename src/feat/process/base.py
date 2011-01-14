@@ -1,15 +1,16 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
 import socket
 import errno
 import os
 import uuid
+import copy
 
-from twisted.internet import error, protocol, defer, reactor
+from twisted.internet import error, protocol, reactor
 
 from feat.common import log, enum
-from feat.agencies.common import StateMachineMixin
+from feat.agents.base.common import ReplayableStateMachine
+from feat.agents.base import replay
 
 
 class ProcessState(enum.Enum):
@@ -26,15 +27,16 @@ class ProcessState(enum.Enum):
 
 class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
-    def __init__(self, owner, success_test):
+    def __init__(self, owner, success_test, ready_cb):
         log.Logger.__init__(self, owner)
 
         assert callable(success_test)
+        assert callable(ready_cb)
 
         self.success_test = success_test
+        self.ready_cb = ready_cb
         self.out_buffer = ""
         self.err_buffer = ""
-        self.ready = defer.Deferred()
         self.owner = owner
 
     def outReceived(self, data):
@@ -42,8 +44,7 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         if self.success_test():
             self.log("Process start successful. "
                      "Process stdout buffer so far:\n%s", self.out_buffer)
-            if not self.ready.called:
-                self.ready.callback(self.out_buffer)
+            self.ready_cb(self.out_buffer)
 
     def errReceived(self, data):
         self.err_buffer += data
@@ -56,36 +57,38 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         self.owner.on_process_exited(status.value)
 
 
-class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
+class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
 
     log_category = 'process'
 
-    def __init__(self):
-        log.FluLogKeeper.__init__(self)
-        log.Logger.__init__(self, self)
-        StateMachineMixin.__init__(self,
-                                   ProcessState.initiated)
+    def __init__(self, agent, *args, **kwargs):
+        log.LogProxy.__init__(self, agent)
+        log.Logger.__init__(self, agent)
+        ReplayableStateMachine.__init__(
+            self, agent, ProcessState.initiated, *args, **kwargs)
 
-        self.config = dict()
-        self.args = list()
-        self.command = None
-        self.env = dict()
-
-        self.control = ControlProtocol(self, self.started_test)
+        self.control = ControlProtocol(self, self.started_test, self.on_ready)
         self.initiate()
         self.validate_setup()
 
-    def restart(self):
+    def init_state(self, state, agent, machine_state):
+        ReplayableStateMachine.init_state(self, state, agent, machine_state)
+        state.config = dict()
+        state.args = list()
+        state.command = None
+        state.env = dict()
+
+    @replay.immutable
+    def restart(self, state):
         self._ensure_state([ProcessState.initiated,
                             ProcessState.finished,
                             ProcessState.failed])
 
         self.process = reactor.spawnProcess(
-            self.control, self.command,
-            args=[self.command] + self.args, env=self.env)
+            self.control, state.command,
+            args=[state.command] + state.args, env=state.env)
 
-        self.control.ready.addCallback(self.on_ready)
-        return self.control.ready
+        return self.wait_for_state(ProcessState.started)
 
     def terminate(self):
         self._ensure_state([ProcessState.initiated,
@@ -98,10 +101,10 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
         self._set_state(ProcessState.started)
 
     def on_finished(self, exception):
-        self._set_state(ProcessState.finished)
+        pass
 
     def on_failed(self, exception):
-        self._set_state(ProcessState.failed)
+        pass
 
     def on_process_exited(self, exception):
         mapping = {
@@ -126,16 +129,18 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
     def initiate(self):
         '''
         This method should set the following variables:
-        self.config - configuration
-        self.args - list of command arguments
-        self.command - command to run
-        self.env - dict environment to run
+        state.config - configuration
+        state.args - list of command arguments
+        state.command - command to run
+        state.env - dict environment to run
         '''
         raise NotImplementedError('This method should be overloaded')
 
-    def validate_setup(self):
-        self.check_installed(self.command)
+    @replay.immutable
+    def validate_setup(self, state):
+        self.check_installed(state.command)
 
+    @replay.side_effect
     def get_free_port(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         port = 0
@@ -154,11 +159,13 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
 
         return port
 
+    @replay.side_effect
     def check_installed(self, component):
         if not os.path.isfile(component):
             raise DependencyError("Required component is not installed, "
                                     "expected %s to be present." % component)
 
+    @replay.side_effect
     def get_tmp_dir(self):
 
         def gen_path():
@@ -171,9 +178,13 @@ class Base(log.Logger, log.FluLogKeeper, StateMachineMixin):
         os.makedirs(path)
         return path
 
+    @replay.immutable
+    def get_config(self, state):
+        return copy.deepcopy(state.config)
+
     def _call(self, method, *args, **kwargs):
         '''
-        Required by StateMachineMixin._event_handler
+        Required by ReplayableStateMachine._event_handler
         '''
         return method(*args, **kwargs)
 
