@@ -142,7 +142,8 @@ class ConverterTest(common.TestCase):
         capabilities = self.unserializer.converter_capabilities
         table = self.convertion_table(capabilities, False)
         self.checkConvertion(inverter(table),
-                             self.unserializer.convert)
+                             self.unserializer.convert,
+                             capabilities=capabilities)
 
     def testSerialization(self):
         if self.serializer is None:
@@ -150,7 +151,8 @@ class ConverterTest(common.TestCase):
 
         capabilities = self.serializer.converter_capabilities
         table = self.convertion_table(capabilities, False)
-        self.checkConvertion(table, self.serializer.convert)
+        self.checkConvertion(table, self.serializer.convert,
+                             capabilities=capabilities)
 
     def testFreezing(self):
         if self.serializer is None:
@@ -158,7 +160,8 @@ class ConverterTest(common.TestCase):
 
         capabilities = self.serializer.freezer_capabilities
         table = self.convertion_table(capabilities, True)
-        self.checkConvertion(table, self.serializer.freeze)
+        self.checkConvertion(table, self.serializer.freeze,
+                             capabilities=capabilities)
 
     def testSymmetry(self):
         if self.unserializer is None:
@@ -188,7 +191,12 @@ class ConverterTest(common.TestCase):
         it ensures the other value contains a references to its own value.'''
         self._assertEqualButDifferent(value, expected, 0, {}, {})
 
-    def checkConvertion(self, table, converter):
+    def checkConvertion(self, table, converter, capabilities=None):
+        # If int and long types are considered equals
+        generic_int = (capabilities is not None
+                       and Capabilities.int_values in capabilities
+                       and Capabilities.long_values in capabilities)
+
         if table is None:
             raise SkipTest("No convertion table")
         for record in table:
@@ -208,21 +216,23 @@ class ConverterTest(common.TestCase):
                 self.fail("Unexpected conversion table record:\nRECORD: %r"
                           % (record, ))
 
+            exp_types, exp_type_names = self._exp_types(exp_type)
+
             for value in values:
                 # For each conversion table entries
                 # Only check the value, not the alternatives
                 self.log("Checking conversion of %r (%s), expecting: %s",
-                         value, exp_type.__name__,
+                         value, exp_type_names,
                          ", ".join([repr(v) for v in exp_values]))
 
                 result = converter(value)
 
                 # Check type
-                self.assertTrue(isinstance(result, exp_type),
+                self.assertTrue(isinstance(result, exp_types),
                                  "Converted value with type %s instead "
                                  "of %s:\nVALUE: %r"
                                  % (type(result).__name__,
-                                    exp_type.__name__, result))
+                                    exp_type_names, result))
 
                 # Check it's a copy, if required
                 if should_be_copied:
@@ -234,10 +244,9 @@ class ConverterTest(common.TestCase):
                 # Look for an expected value
                 for expected in exp_values:
                     # For each possible expected values
-                    if self.safe_equal(expected, result):
+                    if self.safe_equal(expected, result, generic_int):
                         break
                 else:
-                    print ">"*20, value, result
                     self.fail("Value not converted to one of the expected "
                               "values:\nVALUE:    %r\nRESULT:   %r\n%s"
                               % (value, result,
@@ -245,23 +254,31 @@ class ConverterTest(common.TestCase):
                                             for v in exp_values])))
 
     def checkSymmetry(self, serializer, deserializer, capabilities=None):
+
+        # If int and long types are considered equals
+        generic_int = (Capabilities.int_values in capabilities
+                       and Capabilities.long_values in capabilities)
+
         if capabilities is None:
-            capabilities = base.DEFAULT_CAPABILITIES
+            capabilities = base.DEFAULT_CONVERTER_CAPS
 
         for exp_type, values, must_change in self.symmetry_table(capabilities):
+            exp_types, exp_type_names = self._exp_types(exp_type)
             for value in values:
                 self.log("Checking symmetry for %r (%s)",
-                         value, exp_type.__name__)
-                self.assertTrue(issubclass(type(value), exp_type),
+                         value, exp_type_names)
+                self.assertTrue(issubclass(type(value), exp_types),
                                 "Expecting value %r to have type %s, not %s"
-                                % (value, exp_type, type(value)))
+                                % (value, exp_type_names,
+                                   type(value).__name__))
                 data = serializer(value)
                 result = deserializer(data)
-                self.assertTrue(issubclass(type(result), exp_type),
+                self.assertTrue(issubclass(type(result), exp_types),
                                 "Expecting result %r to have type %s, not %s"
-                                % (result, exp_type, type(result)))
+                                % (result, exp_type_names,
+                                   type(result).__name__))
                 for v in values:
-                    if self.safe_equal(v, result):
+                    if self.safe_equal(v, result, generic_int):
                         expected = v
                         break
                 else:
@@ -279,9 +296,11 @@ class ConverterTest(common.TestCase):
     def symmetry_table(self, capabilities):
 
         valdesc = [(Capabilities.int_values, Capabilities.int_keys,
-                    int, [0, -42, 42]),
+                    [int, long], [0, -42, 42]),
                    (Capabilities.long_values, Capabilities.long_keys,
-                    long, [0L, -2**66, 2**66]),
+                    [int, long], [0L]),
+                   (Capabilities.long_values, Capabilities.long_keys,
+                    long, [-2**66, 2**66]),
                    (Capabilities.float_values, Capabilities.float_keys,
                    float, [0.0, 3.14159, -3.14159, 1.23145e23, 1.23145e-23]),
                    (Capabilities.str_values, Capabilities.str_keys,
@@ -624,23 +643,36 @@ class ConverterTest(common.TestCase):
                     yield list, [[o1, o2, o3]], True
                     yield list, [[o3, o1, o2]], True
 
-    def safe_equal(self, a, b):
+    def safe_equal(self, a, b, generic_int=True):
         '''Circular references safe comparator.
         The two values must have the same internal references,
         meaning if a contains multiple references to the same
         object, b should equivalent values should be references
         too but do not need to be references to the same object,
         the object just have to be equals.'''
-        return self._safe_equal(a, b, 0, {}, {})
+        return self._safe_equal(a, b, 0, {}, {}, generic_int)
 
     ### Private Methods ###
 
-    def _safe_equal(self, a, b, idx, arefs, brefs):
+    def _exp_types(self, val):
+        if isinstance(val, (list, tuple)):
+            assert len(val) > 0
+            names = [t.__name__ for t in val]
+            if len(names) == 1:
+                type_names = names[0]
+            else:
+                type_names = " or ".join([", ".join(names[:-1]), names[-1]])
+            return tuple(val), type_names
+        return (val, ), val.__name__
+
+    def _safe_equal(self, a, b, idx, arefs, brefs, gint):
         if a is b:
             return True
 
         if type(a) != type(b):
-            return False
+            if not (gint and isinstance(a, (int, long))
+                    and isinstance(b, (int, long))):
+                return False
 
         if isinstance(a, float):
             return abs(a - b) < 0.000001
@@ -668,7 +700,7 @@ class ConverterTest(common.TestCase):
             if len(a) != len(b):
                 return False
             for v1, v2 in zip(a, b):
-                if not self._safe_equal(v1, v2, idx + 1, arefs, brefs):
+                if not self._safe_equal(v1, v2, idx + 1, arefs, brefs, gint):
                     return False
                 idx += 1
             return True
@@ -683,7 +715,7 @@ class ConverterTest(common.TestCase):
                     # them with invalid references
                     acopy = dict(arefs)
                     bcopy = dict(brefs)
-                    if self._safe_equal(k1, k2, idx + 1, acopy, bcopy):
+                    if self._safe_equal(k1, k2, idx + 1, acopy, bcopy, gint):
                         arefs.update(acopy)
                         brefs.update(bcopy)
                         break
@@ -703,8 +735,9 @@ class ConverterTest(common.TestCase):
                     # them with invalid references
                     acopy = dict(arefs)
                     bcopy = dict(brefs)
-                    if self._safe_equal(k1, k2, idx + 1, acopy, bcopy):
-                        if not self._safe_equal(v1, v2, idx + 2, arefs, brefs):
+                    if self._safe_equal(k1, k2, idx + 1, acopy, bcopy, gint):
+                        if not self._safe_equal(v1, v2, idx + 2,
+                                                arefs, brefs, gint):
                             return False
                         arefs.update(acopy)
                         brefs.update(bcopy)
@@ -717,13 +750,13 @@ class ConverterTest(common.TestCase):
 
         if hasattr(a, "__dict__"):
             return self._safe_equal(a.__dict__, b.__dict__,
-                                    idx + 1, arefs, brefs)
+                                    idx + 1, arefs, brefs, gint)
 
         if hasattr(a, "__slots__"):
             for attr in a.__slots__:
                 v1 = getattr(a, attr)
                 v2 = getattr(b, attr)
-                if not self._safe_equal(v1, v2, idx + 1, arefs, brefs):
+                if not self._safe_equal(v1, v2, idx + 1, arefs, brefs, gint):
                     return False
             return True
 

@@ -20,6 +20,3 @@ class BananaConvertersTest(common_serialization.ConverterTest):
         ext = self.externalizer
         self.serializer = banana.Serializer(externalizer = ext)
         self.unserializer = banana.Unserializer(externalizer = ext)
-
-BananaConvertersTest.skip = "FIXME: Banana do not differentiate between " \
-                            "int and long (like JSON)"

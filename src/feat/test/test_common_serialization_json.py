@@ -42,9 +42,12 @@ class JSONConvertersTest(common_serialization.ConverterTest):
         yield unicode, [u""], str, ['""'], False
         yield unicode, [u"dummy"], str, ['"dummy"'], False
         yield unicode, [u"áéí"], str, ['"\\u00e1\\u00e9\\u00ed"'], False
-        yield int, [0], str, ["0"], False
-        yield int, [42], str, ["42"], False
-        yield int, [-42], str, ["-42"], False
+        yield [int, long], [0], str, ["0"], False
+        yield [int, long], [42], str, ["42"], False
+        yield [int, long], [-42], str, ["-42"], False
+        yield [int, long], [0L], str, ["0"], False
+        yield long, [2**72], str, ["4722366482869645213696"], False
+        yield long, [-2**72], str, ["-4722366482869645213696"], False
         yield float, [0.0], str, ["0.0"], False
         yield float, [3.141], str, ["3.141"], False
         yield float, [-3.141], str, ["-3.141"], False

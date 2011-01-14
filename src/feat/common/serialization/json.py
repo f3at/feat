@@ -26,6 +26,7 @@ DEFAULT_ENCODING = "UTF8"
 ALLOWED_CODECS = set(["UTF8", "UTF-8", "utf8"])
 
 JSON_CONVERTER_CAPS = set([Capabilities.int_values,
+                           Capabilities.long_values,
                            Capabilities.enum_values,
                            Capabilities.float_values,
                            Capabilities.str_values,
@@ -132,7 +133,8 @@ class Serializer(base.Serializer):
 
 class Unserializer(base.Unserializer):
 
-    pass_through_types = set([str, unicode, int, float, bool, type(None)])
+    pass_through_types = set([str, unicode, int, long,
+                              float, bool, type(None)])
 
     def __init__(self, registry=None, externalizer=None):
         base.Unserializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
