@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
+from twisted.trial.unittest import FailTest
 
 from feat.common import format_block, delay
 from feat.test.integration import common
@@ -148,7 +149,6 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
                 self.assert_all_agents_in_shard(host_agency, host.shard)
 
         #validate last agency (on lvl 2)
-        parent = root_shard_desc.children[0]
         agency = self.driver._agencies[-1]
         self.assertEqual(2, len(agency._agents))
         self.assertIsInstance(agency._agents[0].agent,
@@ -159,7 +159,15 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         desc = yield self.driver.get_document(desc_id)
         self.assertIsInstance(desc.parent, (recipient.RecipientFromAgent,
                                             recipient.Agent, ))
-        self.assertEqual(parent.key, desc.parent.key)
+
+        def find_parent(array, key):
+            try:
+                return next(x for x in array if x.key == key)
+            except StopIteration:
+                raise FailTest('Not found %r!' % key)
+
+        parent = find_parent(root_shard_desc.children, desc.parent.key)
+        self.assertIsNot(parent, None)
         self.assertEqual(1, len(desc.hosts))
         self.assertEqual(0, len(desc.children))
 
