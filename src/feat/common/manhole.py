@@ -31,32 +31,36 @@ def expose(function, security_level=SecurityLevel.safe):
 
 class Manhole(annotate.Annotable):
 
-    _exposed = None
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        cls._exposed = dict()
+        for base in bases:
+            base_exposed = getattr(base, '_exposed', dict())
+            cls._exposed.update(base_exposed)
 
     @classmethod
     def _register_exposed(cls, function, security_level):
-        if cls._exposed is None:
-            cls._exposed = dict()
         for lvl in SecurityLevel:
             if lvl > security_level:
                 continue
             fun_id = function.__name__
             if lvl not in cls._exposed:
+
                 cls._exposed[lvl] = dict()
             cls._exposed[lvl][fun_id] = function
 
     def get_exposed_cmds(self, lvl=SecurityLevel.safe):
         if self._exposed is None or lvl not in self._exposed:
-            return list()
+            return dict()
         else:
-            return self._exposed[lvl].values()
+            return self._exposed[lvl]
 
     def lookup_cmd(self, name, lvl=SecurityLevel.safe):
-        if self._exposed is None or lvl not in self._exposed or\
-                                            name not in self._exposed[lvl]:
+        commands = self.get_exposed_cmds(lvl)
+        if name not in commands:
             raise UnknownCommand('Unknown command: %s.%s' %\
                                  (self.__class__.__name__, name, ))
-        return partial(self._exposed[lvl][name], self)
+        return partial(commands[name], self)
 
 
 class Parser(log.Logger):
@@ -203,7 +207,9 @@ class Parser(log.Logger):
                     local = self.get_local(obj)
                     if not isinstance(local, Manhole):
                         raise IllegalCall('Variable %r should be a Manhole '
-                                          'instance to make this work!' % obj)
+                                          'instance to make this work! '
+                                          'Got %r instead.' %\
+                                          (obj, type(local)))
                     command = n.group(2)
                     method = local.lookup_cmd(command)
                     rest = n.group(3)

@@ -5,6 +5,31 @@ from feat.common import manhole, format_block, log
 from feat.test import common
 
 
+class TestInheritance(common.TestCase):
+
+    timeout = 2
+
+    def setUp(self):
+        self.output = driver.Output()
+        self.commands = InheritingManhole()
+        self.parser = manhole.Parser(DummyDriver(self),
+                                    self.output, self.commands)
+
+    @defer.inlineCallbacks
+    def testWorksCorrectly(self):
+        test = format_block("""
+        echo('from super-class')
+        sth('from children-class')
+        """)
+
+        d = self.cb_after(None, self.parser, 'on_finish')
+        self.parser.dataReceived(test)
+        yield d
+
+        self.assertEqual('from super-class\nfrom children-class\n',
+                         self.output.getvalue())
+
+
 class TestParser(common.TestCase):
 
     timeout = 2
@@ -60,18 +85,6 @@ class TestParser(common.TestCase):
         yield d
 
         self.assertEqual('Unknown command: Commands.something_odd\n',
-                         self.output.getvalue())
-
-    @defer.inlineCallbacks
-    def testBadSyntax(self):
-        test = format_block("""
-        var = 3 2
-        """)
-        d = self.cb_after(None, self.output, 'write')
-        self.parser.dataReceived(test)
-        yield d
-
-        self.assertEqual('Syntax error processing line: var = 3 2\n',
                          self.output.getvalue())
 
     @defer.inlineCallbacks
@@ -302,6 +315,13 @@ class Commands(common.Mock, manhole.Manhole):
 
     @manhole.expose()
     def echo(self, echo):
+        return echo
+
+
+class InheritingManhole(Commands):
+
+    @manhole.expose()
+    def sth(self, echo):
         return echo
 
 
