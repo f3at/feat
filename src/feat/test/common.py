@@ -315,6 +315,17 @@ class Mock(object):
 
         return decorated
 
+    @staticmethod
+    @decorator.simple_function
+    def record(method):
+
+        def decorated(self, *args, **kwargs):
+            call = MockCall(method.__name__, args, kwargs)
+            self._called.append(call)
+            return method(self, *args, **kwargs)
+
+        return decorated
+
 
 class MockCall(object):
 

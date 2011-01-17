@@ -101,3 +101,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     @replay.immutable
     def get_document(self, state, doc_id):
         return state.medium.get_document(doc_id)
+
+    @update_descriptor
+    def update_descriptor(self, state, desc, method, *args, **kwargs):
+        return method(desc, *args, **kwargs)

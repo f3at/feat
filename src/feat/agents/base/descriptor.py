@@ -9,3 +9,5 @@ class Descriptor(document.Document):
 
     document_type = 'descriptor'
     document.field('shard', None)
+    # List of allocations
+    document.field('allocations', list())

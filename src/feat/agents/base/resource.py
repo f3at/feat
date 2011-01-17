@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.common import log, enum, serialization, error_handler, delay
+from feat.common import log, enum, serialization, error_handler, delay, fiber
 from feat.agents.base import replay
 from feat.agencies.common import StateMachineMixin, ExpirationCallsMixin
 
@@ -47,6 +47,9 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     @replay.mutable
     def confirm(self, state, allocation):
         allocation.confirm()
+        f = fiber.Fiber()
+        f.add_callback(state.agent.update_descriptor, allocation)
+        return f.succeed(self._append_allocation_to_descriptor)
 
     @replay.mutable
     def allocate(self, state, **params):
@@ -54,13 +57,20 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         allocation = Allocation(**params)
         self._append_allocation(allocation)
         allocation._set_state(AllocationState.allocated)
-        return allocation
+        f = fiber.Fiber()
+        f.add_callback(state.agent.update_descriptor, allocation)
+        return f.succeed(self._append_allocation_to_descriptor)
 
     @replay.mutable
     def release(self, state, allocation):
         assert allocation in state.allocations
+        was_allocated = allocation._cmp_state(AllocationState.allocated)
         allocation.release()
         self._remove_allocation(allocation)
+        if was_allocated:
+            f = fiber.Fiber()
+            f.add_callback(state.agent.update_descriptor, allocation)
+            return f.succeed(self._remove_allocation_from_descriptor)
 
     @replay.mutable
     def define(self, state, name, value):
@@ -87,6 +97,16 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         return result
 
     # ENDOF Public API
+
+    # handling allocation list in descriptor
+
+    def _append_allocation_to_descriptor(self, desc, allocation):
+        desc.allocations.append(allocation)
+        return allocation
+
+    def _remove_allocation_from_descriptor(self, desc, allocation):
+        desc.allocations.remove(allocation)
+        return allocation
 
     # Methods for maintaining the allocations inside
 
