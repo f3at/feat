@@ -35,16 +35,18 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
         self.success_test = success_test
         self.ready_cb = ready_cb
+        self.ready = False
         self.out_buffer = ""
         self.err_buffer = ""
         self.owner = owner
 
     def outReceived(self, data):
         self.out_buffer += data
-        if self.success_test():
+        if self.success_test() and not self.ready:
             self.log("Process start successful. "
                      "Process stdout buffer so far:\n%s", self.out_buffer)
             self.ready_cb(self.out_buffer)
+            self.ready = True
 
     def errReceived(self, data):
         self.err_buffer += data
