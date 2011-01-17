@@ -52,12 +52,6 @@ class TestShardAgent(testsuite.TestCase):
         sfx = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
-            testsuite.side_effect(resource.Allocation._initiate),
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
-            testsuite.side_effect(resource.Allocation._initiate),
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
-            testsuite.side_effect(resource.Allocation._initiate),
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
             testsuite.side_effect('AgencyAgent.register_interest',
                                  result=interest,
                                  args=(shard_agent.JoinShardContractor, ))]
@@ -108,7 +102,9 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.ball.call(None, s.resources.define, 'hosts', 1)
         self.ball.call(None, s.resources.define, 'children', 1)
         sfx = [
-            testsuite.side_effect(resource.Allocation._initiate)]
+            testsuite.side_effect(
+                resource.Resources._setup_allocation_expiration,
+                args=testsuite.whatever)]
         announce = self._generate_announcement()
 
         f, state = self.ball.call(sfx, self.contractor.announced, announce)
@@ -127,7 +123,9 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.ball.call(None, s.resources.define, 'hosts', 0)
         self.ball.call(None, s.resources.define, 'children', 1)
         sfx = [
-            testsuite.side_effect(resource.Allocation._initiate)]
+            testsuite.side_effect(
+                resource.Resources._setup_allocation_expiration,
+                args=testsuite.whatever)]
         announce = self._generate_announcement()
         f, state = self.ball.call(sfx, self.contractor.announced, announce)
         self.assertFiberTriggered(f, TriggerType.succeed)
@@ -219,7 +217,7 @@ class TestJoinShardContractor(testsuite.TestCase):
 
         # handing over
         sfx = [
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call),
+            testsuite.side_effect(resource.Allocation.cancel_expiration_call),
             testsuite.side_effect(
             'AgencyContractor.handover', args=(other_bid, ))]
         _, s = self.ball.call(sfx, self.contractor._bid_refuse_or_handover,
@@ -237,7 +235,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         bid.payload['action_type'] = shard_agent.ActionType.join
         self.contractor._get_state().bid = bid
         sfx = [
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call)]
+            testsuite.side_effect(resource.Allocation.cancel_expiration_call)]
         f, s = self.ball.call(sfx, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, 'some id')
         self.assertFiberCalls(f, self.agent.add_agent)
@@ -255,7 +253,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         bid.payload['action_type'] = shard_agent.ActionType.create
         self.contractor._get_state().bid = bid
         sfx = [
-            testsuite.side_effect(resource.Allocation._cancel_expiration_call)]
+            testsuite.side_effect(resource.Allocation.cancel_expiration_call)]
         f, s = self.ball.call(sfx, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, 'some id')
         self.assertFiberDoesntCall(f, self.agent.add_agent)
@@ -271,7 +269,9 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.ball.call(None, s.resources.define, 'hosts', 1)
         state = self.contractor._get_state()
         sfx = [
-            testsuite.side_effect(resource.Allocation._initiate)]
+            testsuite.side_effect(
+                resource.Resources._setup_allocation_expiration,
+                args=testsuite.whatever)]
         result, _ = self.ball.call(
             sfx, self.agent.preallocate_resource, hosts=1)
         self.assertIsInstance(result, resource.Allocation)

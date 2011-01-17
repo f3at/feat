@@ -4,7 +4,7 @@ import uuid
 
 from twisted.internet import defer
 
-from feat.common import delay, serialization, error_handler
+from feat.common import delay, serialization, error_handler, log
 from feat.interface.protocols import InitiatorFailed
 from feat.agents.base import replay
 
@@ -82,6 +82,28 @@ class StateMachineMixin(object):
         self._set_state(state_after)
 
         self._call(decision['method'], event)
+
+    # Make it possible to use mixin without the logging submodule
+
+    def log(self, *args):
+        if isinstance(self, log.Logger):
+            log.Logger.log(self, *args)
+
+    def debug(self, *args):
+        if isinstance(self, log.Logger):
+            log.Logger.debug(self, *args)
+
+    def info(self, *args):
+        if isinstance(self, log.Logger):
+            log.Logger.info(self, *args)
+
+    def warning(self, *args):
+        if isinstance(self, log.Logger):
+            log.Logger.warning(self, *args)
+
+    def error(self, *args):
+        if isinstance(self, log.Logger):
+            log.Logger.error(self, *args)
 
 
 class AgencyMiddleMixin(object):

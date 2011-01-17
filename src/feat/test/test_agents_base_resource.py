@@ -44,11 +44,12 @@ class ResourcesTest(common.TestCase):
 
     @defer.inlineCallbacks
     def testPreallocationExpires(self):
+        d = self.cb_after(None, self.resources, '_remove_allocation')
+
         allocation = yield self.resources.preallocate(a=3, b=4)
         self.assertIsInstance(allocation, resource.Allocation)
         self._assert_allocated([3, 4])
 
-        d = self.cb_after(None, self.resources, 'remove_allocation')
         yield d
 
         self._assert_allocated([0, 0])
