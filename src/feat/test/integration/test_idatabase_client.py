@@ -157,8 +157,8 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
         yield self.process.restart()
 
-        host, port = self.process.get_config()['host'], \
-            self.process.get_config()['port']
+        config = self.process.get_config()
+        host, port = config['host'], config['port']
         self.database = database.Database(host, port, 'test')
         yield self.database.createDB()
         self.connection = self.database.get_connection(None)
