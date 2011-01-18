@@ -1,13 +1,14 @@
 from twisted.internet import defer
 
 from feat.agents.base import replay
+from feat.agencies import common
 
 
 class StateAssertationError(RuntimeError):
     pass
 
 
-class ReplayableStateMachine(replay.Replayable):
+class ReplayableStateMachine(replay.Replayable, common.StateMachineMixin):
     # StateMachine implementation consistent with replayability
 
     def __init__(self, agent, machine_state, *args, **kwargs):

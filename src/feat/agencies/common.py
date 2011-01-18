@@ -52,6 +52,9 @@ class StateMachineMixin(object):
         raise StateAssertationError("Expected state in: %r, was: %r instead" %\
                            (states, self.state))
 
+    def _get_machine_state(self):
+        return self.state
+
     def _event_handler(self, mapping, event):
         klass = event.__class__
         decision = mapping.get(klass, None)
@@ -64,7 +67,8 @@ class StateMachineMixin(object):
                 lambda x: self._cmp_state(x['state_before']), decision)
             if len(match) != 1:
                 self.warning("Expected to find excatly one handler for %r in "
-                             "state %r, found %r handlers", event, self.state,
+                             "state %r, found %r handlers", event,
+                             self.get_machine_state(),
                              len(match))
                 return False
             decision = match[0]
@@ -75,7 +79,8 @@ class StateMachineMixin(object):
         except StateAssertationError:
             self.warning("Received event: %r in state: %r, expected state "
                          "for this method is: %r",
-                         klass, self.state, decision['state_before'])
+                         klass, self._get_machine_state(),
+                         decision['state_before'])
             return False
 
         state_after = decision['state_after']
