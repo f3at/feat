@@ -63,36 +63,3 @@ class ReplayableStateMachine(replay.Replayable, common.StateMachineMixin):
         if self._get_machine_state() in states:
             return True
         return False
-
-    def _event_handler(self, mapping, event):
-        klass = event.__class__
-        decision = mapping.get(klass, None)
-        if not decision:
-            self.warning("Unknown event received %r. Ignoring", event)
-            return False
-
-        if isinstance(decision, list):
-            match = filter(
-                lambda x: self._cmp_state(x['state_before']), decision)
-            if len(match) != 1:
-                self.warning("Expected to find excatly one handler for %r in "
-                             "state %r, found %r handlers", event,
-                             self.get_machine_state(),
-                             len(match))
-                return False
-            decision = match[0]
-
-        state_before = decision['state_before']
-        try:
-            self._ensure_state(state_before)
-        except StateAssertationError:
-            self.warning("Received event: %r in state: %r, expected state "
-                         "for this method is: %r",
-                         klass, self._get_machine_state(),
-                         decision['state_before'])
-            return False
-
-        state_after = decision['state_after']
-        self._set_state(state_after)
-
-        self._call(decision['method'], event)
