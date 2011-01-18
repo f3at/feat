@@ -9,6 +9,7 @@ class TestHostAgent(testsuite.TestCase):
     def setUp(self):
         testsuite.TestCase.setUp(self)
         instance = self.ball.generate_agent(host_agent.HostAgent)
+        instance.state.resources = self.ball.generate_resources(instance)
         self.agent = self.ball.load(instance)
 
     def testInitiate(self):
@@ -16,6 +17,8 @@ class TestHostAgent(testsuite.TestCase):
         manager = self.ball.generate_manager(
             self.agent, host_agent.JoinShardManager)
         expected = [
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor),
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(host_agent.StartAgentReplier, )),
             testsuite.side_effect('AgencyAgent.retrying_protocol',

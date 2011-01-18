@@ -28,6 +28,22 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     # Public API
 
+    @replay.mutable
+    def load(self, state, allocations):
+        '''
+        Loads the list of allocations. Meant to be used during agent
+        initialization for restoring allocations stored in descriptor.
+        '''
+        assert isinstance(allocations, list)
+        for allocation in allocations:
+            assert allocation.state == AllocationState.allocated
+            for name in allocation.resources:
+                try:
+                    self._check_resource_exists(name)
+                except UnknownResource:
+                    self.define(name, 0)
+            self._append_allocation(allocation, force=True)
+
     @replay.immutable
     def get_totals(self, state):
         return copy.copy(state.totals)
@@ -79,8 +95,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
                                    'got %r instead.' % value.__class__)
 
         new_totals = copy.copy(state.totals)
+        is_decreasing = name in new_totals and new_totals[name] > value
         new_totals[name] = value
-        self._validate(new_totals)
+        if is_decreasing:
+            self._validate(new_totals)
         state.totals = new_totals
 
     def allocated(self, totals=None, allocations=None):
@@ -124,11 +142,12 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             raise NotEnoughResources(' '.join(errors))
 
     @replay.mutable
-    def _append_allocation(self, state, allocation):
+    def _append_allocation(self, state, allocation, force=False):
         if not isinstance(allocation, Allocation):
             raise ValueError('Expected Allocation class, got %r instead!' %\
                              allocation.__class__)
-        self._validate(state.totals, state.allocations + [allocation])
+        if not force:
+            self._validate(state.totals, state.allocations + [allocation])
         state.allocations.append(allocation)
 
     @replay.side_effect
@@ -208,8 +227,10 @@ class Allocation(StateMachineMixin, serialization.Serializable):
     default_timeout = 10
     _error_handler=error_handler
 
-    def __init__(self, **resources):
-        StateMachineMixin.__init__(self, AllocationState.initiated)
+    def __init__(self, allocated=False, **resources):
+        init_state = allocated and AllocationState.allocated or \
+                     AllocationState.initiated
+        StateMachineMixin.__init__(self, init_state)
 
         self._expiration_call = None
 

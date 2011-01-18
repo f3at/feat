@@ -23,6 +23,8 @@ class TestShardAgent(testsuite.TestCase):
         sfx = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor),
             testsuite.side_effect('AgencyAgent.register_interest',
                                  result=interest,
                                  args=(shard_agent.JoinShardContractor, )),
@@ -42,14 +44,21 @@ class TestShardAgent(testsuite.TestCase):
         '''
         shard = self.ball.descriptor.shard
         self.ball.descriptor.parent = recipient.Agent('parent', 'root')
-        self.ball.descriptor.hosts = [
-            recipient.Agent('agent1', shard),
-            recipient.Agent('agent2', shard)]
-        self.ball.descriptor.children = [
-            recipient.Agent('children', 'other shard')]
+        # TODO: correct when the partnership protocol is ready
+        # self.ball.descriptor.hosts = [
+        #     recipient.Agent('agent1', shard),
+        #     recipient.Agent('agent2', shard)]
+        # self.ball.descriptor.children = [
+        #     recipient.Agent('children', 'other shard')]
+        self.ball.descriptor.allocations = [
+            resource.Allocation(hosts=1, allocated=True),
+            resource.Allocation(hosts=1, allocated=True),
+            resource.Allocation(children=1, allocated=True)]
 
         interest = self.ball.generate_interest()
         sfx = [
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor),
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
             testsuite.side_effect('AgencyAgent.register_interest',

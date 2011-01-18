@@ -68,7 +68,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     ## IAgent Methods ##
 
     def initiate(self):
-        pass
+        self._load_allocations()
 
     @replay.immutable
     def get_own_address(self, state):
@@ -105,3 +105,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable):
     @update_descriptor
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
+
+    # private
+
+    @replay.mutable
+    def _load_allocations(self, state):
+        desc = self.get_descriptor()
+        state.resources.load(desc.allocations)

@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, document, replay)
+                              descriptor, document, replay, resource)
 from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
@@ -18,13 +18,7 @@ class ShardAgent(agent.BaseAgent):
         state.resources.define('hosts', 10)
         state.resources.define('children', 2)
 
-        desc = state.medium.get_descriptor()
-        assert(isinstance(desc, Descriptor))
-        for x in range(len(desc.children)):
-            state.resources.allocate(children=1)
-        for x in range(len(desc.hosts)):
-            state.resources.allocate(hosts=1)
-
+        desc = self.get_descriptor()
         interest = state.medium.register_interest(JoinShardContractor)
         if desc.parent is None:
             interest.bind_to_lobby()
@@ -52,6 +46,8 @@ class ShardAgent(agent.BaseAgent):
         def append_child(desc, joining_host_id):
             new_address = recipient.Agent(joining_host_id, desc.shard)
             desc.hosts.append(new_address)
+            desc.allocations.append(
+                resource.Allocation(hosts=1, allocated=True))
             return desc
 
         f = fiber.Fiber()

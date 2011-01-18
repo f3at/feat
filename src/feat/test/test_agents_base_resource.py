@@ -1,7 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import time
-
 from twisted.internet import defer
 from zope.interface import implements
 
@@ -9,6 +7,13 @@ from feat.test import common
 from feat.agents.base import resource
 from feat.common import delay
 from feat.interface import journal
+
+
+class Common(object):
+
+    def _assert_allocated(self, expected):
+        al = self.resources.allocated()
+        self.assertEqual(expected, al.values())
 
 
 class DummyAgent(common.DummyRecordNode, common.Mock):
@@ -24,19 +29,59 @@ class DummyAgent(common.DummyRecordNode, common.Mock):
         return defer.succeed(allocation)
 
 
-class ResourcesTest(common.TestCase):
+class LoadingAndOverallocationTests(common.TestCase, Common):
+
+    def setUp(self):
+        self.agent = DummyAgent(self)
+        self.resources = resource.Resources(self.agent)
+
+        self.allocations = [
+            resource.Allocation(a=1, b=4),
+            resource.Allocation(c=5, a=2)]
+        [x._set_state(resource.AllocationState.allocated) \
+         for x in self.allocations]
+
+    @defer.inlineCallbacks
+    def testLoadingAfterDefining(self):
+        self.resources.define('a', 5)
+        self.resources.define('b', 5)
+        self.resources.define('c', 5)
+
+        yield self.resources.load(self.allocations)
+
+        self._assert_allocated([3, 5, 4])
+
+    @defer.inlineCallbacks
+    def testLoadingWithoutDefiningThanDefining(self):
+        yield self.resources.load(self.allocations)
+
+        self._assert_allocated([3, 5, 4])
+
+        self.resources.define('a', 5)
+        self.resources.define('b', 5)
+        self.resources.define('c', 5)
+
+        self.assertEqual([5, 5, 5], self.resources.get_totals().values())
+
+    @defer.inlineCallbacks
+    def testLoadingThanReleasing(self):
+        yield self.resources.load(self.allocations)
+        yield self.resources.release(self.allocations[1])
+
+        self._assert_allocated([1, 0, 4])
+
+
+class ResourcesTest(common.TestCase, Common):
 
     implements(journal.IRecorderNode)
 
     timeout = 1
 
     def setUp(self):
-
         delay.time_scale = 0.01
 
         self.agent = DummyAgent(self)
         self.resources = resource.Resources(self.agent)
-        setattr(self.resources, 'get_time', self._get_time)
 
         self.resources.define('a', 5)
         self.resources.define('b', 6)
@@ -114,10 +159,3 @@ class ResourcesTest(common.TestCase):
     def testBadDefine(self):
         self.assertRaises(resource.DeclarationError, self.resources.define,
                           'c', 'not int')
-
-    def _assert_allocated(self, expected):
-        al = self.resources.allocated()
-        self.assertEqual(expected, al.values())
-
-    def _get_time(self):
-        return time.time()
