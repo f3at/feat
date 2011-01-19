@@ -53,9 +53,12 @@ class Agent(BaseRecipient):
 
     def __init__(self, agent_id, shard=None):
         BaseRecipient.__init__(self)
-        self.type = RecipientType.agent
         self.shard = shard
         self.key = agent_id
+
+    @property
+    def type(self):
+        return RecipientType.agent
 
 
 @serialization.register
@@ -65,9 +68,12 @@ class Broadcast(BaseRecipient):
 
     def __init__(self, protocol_id=None, shard=None):
         BaseRecipient.__init__(self)
-        self.type = RecipientType.broadcast
         self.shard = shard
         self.key = protocol_id
+
+    @property
+    def type(self):
+        return RecipientType.broadcast
 
 
 @serialization.register
@@ -78,9 +84,12 @@ class RecipientFromAgent(BaseRecipient):
     def __init__(self, agent):
         BaseRecipient.__init__(self)
         desc = agent.get_descriptor()
-        self.type = RecipientType.agent
         self.shard = desc.shard
         self.key = desc.doc_id
+
+    @property
+    def type(self):
+        return RecipientType.agent
 
 
 components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipient)
@@ -124,6 +133,10 @@ class RecipientFromMessage(BaseRecipient):
         BaseRecipient.__init__(self)
         self.shard = message.reply_to.shard
         self.key = message.reply_to.key
+
+    @property
+    def type(self):
+        return RecipientType.agent
 
 
 components.registerAdapter(RecipientFromMessage, message.BaseMessage,
