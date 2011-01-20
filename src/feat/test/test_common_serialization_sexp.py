@@ -83,6 +83,23 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         self.checkSymmetry(jelly.jelly, self.unserializer.convert,
                            capabilities=caps)
 
+    def testNotReferenceable(self):
+        Klass = common_serialization.NotReferenceableDummy
+        name = reflect.canonical_name(Klass)
+
+        obj = Klass()
+        data = self.serializer.convert([obj, obj])
+
+        self.assertEqual(data, ["list",
+                                [name, ["dictionary", ["value", 42]]],
+                                [name, ["dictionary", ["value", 42]]]])
+
+        data = self.serializer.freeze([obj, obj])
+
+        self.assertEqual(data, ["list",
+                                ["dictionary", ["value", 42]],
+                                ["dictionary", ["value", 42]]])
+
     def testInstancesSerialization(self):
         # Because dictionaries item order is not guaranteed we cannot
         # compare directly directlly the result

@@ -39,6 +39,21 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         frozen = self.serializer.freeze(instance.dummer_method)
         self.assertEqual('dummy_tag', frozen)
 
+    def testNotReferenceable(self):
+        Klass = common_serialization.NotReferenceableDummy
+        Inst = pytree.Instance
+        name = reflect.canonical_name(Klass)
+
+        obj = Klass()
+        data = self.serializer.convert([obj, obj])
+
+        self.assertEqual(data, [Inst(name, {"value": 42}),
+                                Inst(name, {"value": 42})])
+
+        data = self.serializer.freeze([obj, obj])
+
+        self.assertEqual(data, [{"value": 42}, {"value": 42}])
+
     def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###
 

@@ -86,6 +86,10 @@ class ISnapshotable(Interface):
     '''Only know how to extract a snapshot of its state,
     there is no guarantee of recoverability.'''
 
+    referenceable = Attribute("If reference should be tracked. WARNING: "
+                              "instance not referenceable should not contain "
+                              "any circular references.")
+
     def snapshot():
         '''Called to retrieve the current state of an object.
         It should return only structures of basic python types

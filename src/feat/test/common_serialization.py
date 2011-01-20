@@ -73,6 +73,36 @@ jelly.setUnjellyableForClass(qual(SerializableDummy),
                              SerializableDummy)
 
 
+@serialization.register
+class NotReferenceableDummy(serialization.Serializable, jelly.Jellyable):
+
+    referenceable = False
+
+    def __init__(self, value=42):
+        self.value = value
+
+    def getStateFor(self, jellyer):
+        return self.snapshot()
+
+    def unjellyFor(self, unjellyer, data):
+        # The way to handle circular references in spread
+        unjellyer.unjellyInto(self, "__dict__", data[1])
+        return self
+
+    def __setitem__(self, name, value):
+        # Needed by twisted spread to handle circular references
+        setattr(self, name, value)
+
+    def __repr__(self):
+        return "<%s: %s>" % (type(self).__name__, repr(self.__dict__))
+
+    def __eq__(self, value):
+        return (value is self or (self.value == value.value))
+
+jelly.setUnjellyableForClass(qual(NotReferenceableDummy),
+                             NotReferenceableDummy)
+
+
 class TestTypeSerializationDummy(object):
     pass
 
@@ -387,6 +417,8 @@ class ConverterTest(common.TestCase):
             o.dict = {'j': 1, 'k': 2, 'l': 3}
 
             yield SerializableDummy, cleanup_dummy_instance(o), True
+
+            yield NotReferenceableDummy, NotReferenceableDummy(), True
 
         def iter_externals(desc):
             yield SerializableDummy, self.ext_val, False

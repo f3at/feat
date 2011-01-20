@@ -101,6 +101,8 @@ class Snapshotable(object):
 
     implements(ISnapshotable)
 
+    referenceable = True
+
     ### ISnapshotable Methods ###
 
     def snapshot(self):
@@ -542,15 +544,29 @@ class Serializer(object):
         return self.pack_tuple, [self.flatten_value(v, caps, freezing)
                                  for v in value]
 
-    @referenceable
     def flatten_instance(self, value, caps, freezing):
         self.check_capabilities(Capabilities.instance_values, value,
                                 caps, freezing)
+
+        referenceable = getattr(value, "referenceable", True)
+
+        if referenceable:
+            deref = self._prepare(value)
+            if deref is not None:
+                return deref
+
         dump = self.flatten_value(value.snapshot(), caps, freezing)
+
         if freezing:
-            return self.pack_frozen_instance, [dump]
-        return self.pack_instance, [[self.pack_type_name, value.type_name],
-                                    dump]
+            packer, data = self.pack_frozen_instance, [dump]
+        else:
+            packer, data = (self.pack_instance,
+                            [[self.pack_type_name, value.type_name], dump])
+
+        if referenceable:
+            return self._preserve(value, packer, data)
+        else:
+            return packer, data
 
     def flatten_external(self, value, caps, freezing):
         self.check_capabilities(Capabilities.external_values, value,
