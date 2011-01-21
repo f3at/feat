@@ -148,7 +148,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
         return state.resources.preallocate(**params)
 
     @replay.mutable
-    def allocate_preallocation(self, state, **params):
+    def allocate_resource(self, state, **params):
         return state.resources.allocate(**params)
 
     @replay.mutable

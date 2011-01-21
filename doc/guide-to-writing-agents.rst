@@ -374,13 +374,102 @@ Most of the agents needs to handle some kind of resources. The resource is a qua
 
 	       # this one will expire after timeout if not confirmed
 	       allocation = state.resource.preallocate(memory=30,cpu=20)
-	       allocation.confirm() # or allocation.release()
+	       state.resource.confirm(allocation)
+	       # or state.resource.release(allocation)
 
 	       # this will return None as we don't have enough resource
 	       state.resource.preallocate(cpu=200)
 
 	       # be carefull! this will throw NotEnoughResources
    	       state.resource.allocate(cpu=200)
+
+Important thing to point out here is that confirmed allocations are stored in the descriptor in order to survive the agents restart. For this reason .allocate(), .confirm() and .release() methods return a Fiber instance which you should chain or return. Note that this is not done in the example above in order to keep it simple.
+
+
+Defining and using partners
+```````````````````````````
+
+No man is an island. Same applies to agents. If your task at hand can be performed by a single agent it means you are wasting time reading this guide.
+
+Framework comes with a handy utility class (feat.agents.base.partners.Partners) which is here to help you manage relations between agents. Lets take a look at the following code: ::
+
+    class JohnPartner(partners.BasePartner):
+        pass
+
+
+    class DogPartner(partners.BasePartner):
+        pass
+
+
+    class CatPartner(partners.BasePartner):
+        pass
+
+
+    class DefaultPartner(partners.BasePartner):
+        pass
+
+
+    class Partners(partners.Partners):
+
+        default_handler = DefaultPartner
+        partners.has_one("john", "john_agent", JohnPartner)
+        partners.has_many("dogs", insulter_agent", DogPartner, "dog")
+        partners.has_many("cats", "insulter_agent", CatPartner, "cat")
+
+
+    class InsulterAgent(...):
+
+    	partners_class = Partners
+
+	def initiate(...):
+	    BaseAgent.initiate(self)
+	    .......
+	    .......
+	    return self.initiate_partners()
+
+	@replay.mutable
+	def do_sth_with_partners(self, state):
+	    # this is how we query
+	    john = self.partners.john
+
+	    f = fiber.Fiber()
+	    # make an allocation (lets say we can partner
+	    # limited number of dogs)
+	    f.add_callback(fiber.drop_result, self.allocate_resource,
+	                   dog=1)
+	    # establish partnership
+	    f.add_callback(self.bind_with_a_dog)
+	    return f.succeed()
+
+	@replay.journaled
+	def bind_with_a_dog(self, state, allocation):
+	    dog_recp = recipient.Agent('dog_that_we_no_about',
+				       'some shard')
+	    f = fiber.Fiber()
+ 	    # this will create a correct Partner
+	    # instances in both agents
+	    f.add_callback(self.establish_partnership, allocation,
+	                   partner_role="dog", our_role="cat")
+	    return f.succeed(dog_recp)
+
+
+A lot of code! Lets explain in points:
+
+- JohnPartner, DogPartner, CatPartner and DefaultPartner are subclassing the partners.BasePartner class. This class contains two important piece of information: the resource allocation reflecting our side of partnership and the IRecipient address of the partner. It comes with 3 methods which you might or might not overload. All of them receive an agent instance as a parameter:
+
+  - *.initiate(agent)* is called when the partnership is being established. Here you should perform our part of the job triggered by the agent. So, if we are speaking about HostAgent code and initiate() method of ShardPartner we should change a shard. MonitorPartner (of any agent) should initiate the heartbeat signals, JournalPartner would setup sending the journal pages and so on, so on.
+
+  - *.on_goodbye(agent)* is called when the partner on the other side sends us a goodbye message. Possibly someone terminated him.. how sad. But life goes on! Usually this method should be responsible for running a  contract to find a substitute. Superclass implementation just removes the partner from the descriptor, so don't forget to call it when your custom code is finished.
+
+  - *.on_shutdown(agent)* is called when our agent has been requested to terminate. Superclass implementation sends the goodbye message to the partner. Overload it if you need to do anything more here.
+
+- Partners subclasses the partners.Partners and uses annotations to define what type of agents we subclass and what Partner classes should be used to represent them. You should always define a Partner class for an agent you are writing. Then it is bind together by *partner\_class* class attribute in agent class definition.
+
+  - *default\_handler* attribute defines what factory should be used if we end up in a couple with the stranger (for which we don't have matching  *has\_one*\/*has\_many* definition)
+
+  - *has\_one(name, identifier, factory, role=None)* tells us that we might want are relating ourselves to one agent using *identifier* (this is a string you put to *@agent.register()* decorator). For this agent partner class *factory* should be used. Optionally you might also pass a *role*. This is useful if you need to form couples with the same type of agent taking different roles. This happens for example for the Shard Agent which relates to other Shard Agents as the parent or a child. This statement defines the *name* attribute on the Partners class which will return the interesting partner (of None if we don't have one).
+
+  - *has\_many(name, identifier, factory, role=None)* if very much alike, but represent the one-to-many relation. The only difference is that now the *name* attribute on the Partners class will return a list() (which might be empty of course).
 
 
 Taking parts in contracts and requests
