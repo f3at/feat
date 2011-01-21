@@ -32,11 +32,20 @@ class HostAgent(agent.BaseAgent):
 
         state.medium.register_interest(StartAgentReplier)
 
-        recp = recipient.Agent('join-shard', 'lobby')
-        retrier = state.medium.retrying_protocol(JoinShardManager, recp)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, retrier.notify_finish)
+        f.add_callback(fiber.drop_result, self.initiate_partners)
+        f.add_callback(fiber.drop_result, self.start_join_shard_manager)
         return f.succeed()
+
+    @replay.journaled
+    def start_join_shard_manager(self, state):
+        if state.partners.shard_a is None:
+            recp = recipient.Agent('join-shard', 'lobby')
+            retrier = state.medium.retrying_protocol(JoinShardManager, recp)
+
+            f = fiber.Fiber()
+            f.add_callback(fiber.drop_result, retrier.notify_finish)
+            return f.succeed()
 
     @agent.update_descriptor
     def switch_shard(self, state, desc, shard):

@@ -25,13 +25,12 @@ class TestHostAgent(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(replier.ProposalReceiver, )),
             testsuite.side_effect('AgencyAgent.register_interest',
-                                  args=(host_agent.StartAgentReplier, )),
-            testsuite.side_effect('AgencyAgent.retrying_protocol',
-                                  args=(host_agent.JoinShardManager, recp),
-                                  result=manager)]
+                                  args=(host_agent.StartAgentReplier, ))]
+
         f, state = self.ball.call(expected, self.agent.initiate)
         self.assertFiberTriggered(f, fiber.TriggerType.succeed)
-        self.assertFiberCalls(f, manager.notify_finish)
+        self.assertFiberCalls(f, self.agent.initiate_partners)
+        self.assertFiberCalls(f, self.agent.start_join_shard_manager)
 
     def testSwithShard(self):
         old_shard = self.ball.descriptor.shard

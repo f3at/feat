@@ -1,3 +1,5 @@
+import uuid
+
 from twisted.python import components
 from zope.interface import implements
 
@@ -153,3 +155,11 @@ components.registerAdapter(RecipientFromMessage, message.BaseMessage,
                            IRecipient)
 components.registerAdapter(RecipientFromMessage, message.BaseMessage,
                            IRecipients)
+
+
+def dummy_agent():
+    '''
+    For usage in tests only. Easy way of getting a unique but valid
+    recipient.
+    '''
+    return Agent(str(uuid.uuid1()), 'shard')

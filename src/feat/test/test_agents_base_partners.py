@@ -1,5 +1,3 @@
-import uuid
-
 from feat.test import common
 from feat.agents.base import partners, recipient
 
@@ -96,5 +94,5 @@ class TestPartners(common.TestCase):
         setattr(self.agent, 'get_descriptor', get_descriptor)
 
     def _generate_partner(self, factory):
-        recp = recipient.Agent(str(uuid.uuid1()), 'b')
+        recp = recipient.dummy_agent()
         return factory(recp)

@@ -91,6 +91,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
 
     ## end of IAgent ##
 
+    @replay.journaled
+    def initiate_partners(self, state):
+        desc = self.get_descriptor()
+        results = [x.initiate(self) for x in desc.partners]
+        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        f = fiber.FiberList(fibers)
+        return f.succeed()
+
     @manhole.expose()
     def propose_to(self, recp):
         return self.establish_partnership(recipient.IRecipient(recp))

@@ -67,6 +67,7 @@ class ShardAgent(agent.BaseAgent):
         state.join_interest =\
             state.medium.register_interest(JoinShardContractor)
         state.join_interest.bind_to_lobby()
+        return self.initiate_partners()
 
     @replay.journaled
     def prepare_child_descriptor(self, state):

@@ -33,7 +33,9 @@ class TestShardAgent(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.register_interest',
                                  result=interest,
                                  args=(shard_agent.JoinShardContractor, )),
-            testsuite.side_effect('Interest.bind_to_lobby')]
+            testsuite.side_effect('Interest.bind_to_lobby'),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor)]
         result, state = self.ball.call(sfx, self.agent.initiate)
         alloc = state.resources.allocated()
         self.assertEqual(0, alloc.get('hosts', None))
@@ -47,17 +49,17 @@ class TestShardAgent(testsuite.TestCase):
         Check that information about children and members is recovered.
         Also check that if we have a parent we will not get bound to lobby.
         '''
-        self.ball.descriptor.parent = recipient.Agent('parent', 'root')
-        # TODO: correct when the partnership protocol is ready
-        # self.ball.descriptor.hosts = [
-        #     recipient.Agent('agent1', shard),
-        #     recipient.Agent('agent2', shard)]
-        # self.ball.descriptor.children = [
-        #     recipient.Agent('children', 'other shard')]
-        self.ball.descriptor.allocations = [
+        a = [
             resource.Allocation(hosts=1, allocated=True),
             resource.Allocation(hosts=1, allocated=True),
             resource.Allocation(children=1, allocated=True)]
+        self.ball.descriptor.allocations = a
+
+        self.ball.descriptor.partners = [
+            shard_agent.ParentShardPartner(recipient.dummy_agent()),
+            shard_agent.HostPartner(recipient.dummy_agent(), a[0]),
+            shard_agent.HostPartner(recipient.dummy_agent(), a[1]),
+            shard_agent.ChildShardPartner(recipient.dummy_agent(), a[2])]
 
         interest = self.ball.generate_interest()
         sfx = [
@@ -70,7 +72,14 @@ class TestShardAgent(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.register_interest',
                                  result=interest,
                                  args=(shard_agent.JoinShardContractor, )),
-            testsuite.side_effect('Interest.bind_to_lobby')]
+            testsuite.side_effect('Interest.bind_to_lobby'),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor),
+            testsuite.side_effect('Interest.unbind_from_lobby'),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor)]
         result, state = self.ball.call(sfx, self.agent.initiate)
         alloc = state.resources.allocated()
         self.assertEqual(2, alloc.get('hosts', None))

@@ -187,6 +187,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
 
 
 @common.attr('slow')
+@common.attr(skip_replayability="requires changes in freezeing Allocation")
 class SimulationHostBeforeShard(common.SimulationTest, Common):
 
     timeout = 100
@@ -194,7 +195,26 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
     def prolog(self):
         pass
 
-    @common.attr(skip_replayability="todo")
+    @defer.inlineCallbacks
+    def testHATakesShardAgentFromPartnersNotContract(self):
+        '''
+        In this test case no contract is actually run. This tests the
+        scenarion of HA after restart.
+        '''
+
+        yield self.driver.process(format_block("""
+        agency = spawn_agency()
+        desc = descriptor_factory('host_agent')
+        """))
+        agency = self.get_local('agency')
+        desc = self.get_local('desc')
+        shard_recp = recipient.Agent('some shard', 'some shard')
+        desc.partners = [
+            host_agent.ShardPartner(shard_recp)]
+
+        yield self.driver.process("agent = agency.start_agent(desc)\n")
+        self.assert_all_agents_in_shard(agency, 'some shard')
+
     @defer.inlineCallbacks
     def testHAKeepsTillShardAgentAppears(self):
         delay.time_scale = 0.1
