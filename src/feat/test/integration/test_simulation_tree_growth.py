@@ -18,6 +18,7 @@ class Common(object):
             self.assertEqual(shard, desc.shard, str(type(agent.agent)))
 
 
+@common.attr('slow')
 @common.attr(skip_replayability="requires changes in freezeing Allocation")
 class TreeGrowthSimulation(common.SimulationTest, Common):
 
@@ -185,6 +186,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
                          "Allocations in desc: %r" % from_desc)
 
 
+@common.attr('slow')
 class SimulationHostBeforeShard(common.SimulationTest, Common):
 
     timeout = 100

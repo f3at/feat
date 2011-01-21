@@ -128,7 +128,6 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.assertFiberCalls(f, self.contractor._pick_best_bid,
                               args=(expected_bid, ))
 
-    @attr(skip="correct this after refactoring partners to use anotables")
     def testFetchChildrenBids(self):
         self._load_contractor()
         announce = self._generate_announcement()
@@ -136,8 +135,9 @@ class TestJoinShardContractor(testsuite.TestCase):
             payload=dict(level=1,
                          joining_agent=announce.payload['joining_agent']))
 
-        self.ball.descriptor.children = [
-            recipient.Agent('child-id', 'other shard')]
+        self.ball.descriptor.partners = [
+            shard_agent.ChildShardPartner(
+                recipient.Agent('child-id', 'other shard'))]
 
         nested_manager = self.ball.generate_manager(
             self.agent, shard_agent.NestedJoinShardManager)
@@ -147,7 +147,7 @@ class TestJoinShardContractor(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.initiate_protocol',
                                   result=nested_manager,
                                   args=(shard_agent.NestedJoinShardManager,
-                                        self.ball.descriptor.children,
+                                        self.ball.descriptor.partners,
                                         expected_announce))]
         f, state = self.ball.call(sfx, self.contractor._fetch_children_bids,
                                   announce)

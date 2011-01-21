@@ -97,12 +97,13 @@ class Hamsterball(replay.Replay):
     # generating instances for tests
 
     def generate_resources(self, agent):
-        instance = self.generate_instance(resource.Resources)
-        instance.init_state(instance.state, agent)
-        return instance
+        return self.generate_utility_class(agent, resource.Resources)
 
     def generate_partners(self, agent):
-        instance = self.generate_instance(partners.Partners)
+        return self.generate_utility_class(agent, agent.partners_class)
+
+    def generate_utility_class(self, agent, factory):
+        instance = self.generate_instance(factory)
         instance.init_state(instance.state, agent)
         return instance
 
