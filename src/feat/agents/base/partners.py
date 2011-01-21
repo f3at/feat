@@ -7,7 +7,7 @@ from feat.common import log, serialization, fiber, annotate
 from feat.agents.base import replay, recipient, requester
 
 
-class Relation(serialization.Serializable):
+class Relation(object):
 
     def __init__(self, name, factory):
         self.name = name
@@ -16,77 +16,136 @@ class Relation(serialization.Serializable):
     def query(self, partners):
         return [x for x in partners if isinstance(x, self.factory)]
 
-    def snapshot(self):
-        return None
 
-
-@serialization.register
 class ManyRelation(Relation):
     pass
 
 
-@serialization.register
 class OneRelation(Relation):
 
     def query(self, partners):
         match = Relation.query(self, partners)
         if len(match) > 1:
-            raise RuntimeError(
-                'Expected excatly one partner of the class %r' % self.factory)
+            raise RuntimeError('Expected excatly one partner of the class %r'
+                               ', found %d in %r' %\
+                               (self.factory, len(partners), partners))
         elif len(match) == 1:
             return match[0]
 
 
+def has_many(name, descriptor_type, factory, role=None):
+    relation = ManyRelation(name, factory)
+    _inject_definition(relation, descriptor_type, factory, role)
+
+
+def has_one(name, descriptor_type, factory, role=None):
+    relation = OneRelation(name, factory)
+    _inject_definition(relation, descriptor_type, factory, role)
+
+
+def _inject_definition(relation, descriptor_type, factory, role):
+    annotate.injectClassCallback("handler", 4, "_define_handler",
+                                 descriptor_type, factory, role)
+    annotate.injectClassCallback("relation", 4, "_append_relation",
+                                 relation)
+
+    @property
+    def getter(self):
+        return self.query(relation.name)
+
+    annotate.injectAttribute("relation_getter", 4, relation.name, getter)
+
+
 @serialization.register
+class BasePartner(serialization.Serializable):
+
+    type_name = 'partner'
+
+    def __init__(self, recp, allocation=None):
+        self.recipient = recipient.IRecipient(recp)
+        self.allocation = allocation
+
+    def initiate(self, agent):
+        pass
+
+    def on_shutdown(self, agent):
+        f = fiber.Fiber()
+        f.add_callback(agent.initiate_protocol, self.recipient)
+        f.add_callback(requester.GoodBye.notify_finish)
+        return f.succeed(requester.GoodBye)
+
+    def on_goodbye(self, agent):
+        if self.allocation:
+            agent.release_resource(self.allocation)
+
+    def __eq__(self, other):
+        return self.recipient == other.recipient and\
+               self.allocation == other.allocation
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     log_category = "partners"
+
+    default_handler = BasePartner
 
     def __init__(self, agent):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
         replay.Replayable.__init__(self, agent)
-        self.log_name = agent.descriptor_type
+        self.log_name = type(self).__name__
 
     def init_state(self, state, agent):
         state.agent = agent
-        # agent.descriptor_type -> HandlerFactory
-        state.handlers = dict()
-        state.relations = dict()
-        self.define_default_handler(BasePartner)
 
     # managing the handlers
 
-    @replay.mutable
-    def has_many(self, state, name, factory):
-        state.relations[name] = ManyRelation(name, factory)
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        # agent.descriptor_type -> HandlerFactory
+        cls._handlers = dict()
+        # name -> Relation
+        cls._relations = dict()
+        cls._define_default_handler(cls.default_handler)
+        serialization.register(cls)
 
-    @replay.mutable
-    def has_one(self, state, name, factory):
-        state.relations[name] = OneRelation(name, factory)
-
-    @replay.mutable
-    def define_handler(self, state, agent_class, factory, role=None):
-        key = self._key_for(agent_class, role)
-        state.handlers[key] = factory
-
-    @replay.immutable
-    def query_handler(self, state, partner_class, role=None):
-        key = self._key_for(partner_class, role)
-        resp = state.handlers.get(key, state.handlers['_default'])
-        self.log("query_handler for key %r return %r", key, resp)
+    @classmethod
+    def query_handler(cls, identifier, role=None):
+        '''
+        Lookup the handler for the giving idetifier (descriptor_type) and role.
+        In case it was not found return the default.
+        '''
+        key = cls._key_for(identifier, role)
+        resp = cls._handlers.get(key, cls._handlers['_default'])
         return resp
 
-    @replay.mutable
-    def define_default_handler(self, state, factory):
-        state.handlers['_default'] = factory
+    @classmethod
+    def _define_default_handler(cls, factory):
+        cls._handlers['_default'] = factory
+
+    @classmethod
+    def _append_relation(cls, relation):
+        assert isinstance(relation, Relation)
+        cls._relations[relation.name] = relation
+
+    @classmethod
+    def _define_handler(cls, agent_class, factory, role=None):
+        key = cls._key_for(agent_class, role)
+        cls._handlers[key] = factory
+
+    @classmethod
+    def _key_for(cls, factory, role):
+        return (factory, role, )
 
     # quering and updating
 
     @replay.immutable
     def query(self, state, name):
         partners = state.agent.get_descriptor().partners
-        return state.relations[name].query(partners)
+        return self._relations[name].query(partners)
 
     @replay.immutable
     def find(self, state, recp):
@@ -147,9 +206,6 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return
         desc.partners.remove(partner)
 
-    def _key_for(self, factory, role):
-        return (factory, role, )
-
     @replay.immutable
     def __repr__(self, state):
         desc = state.agent.get_descriptor()
@@ -158,36 +214,6 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             p = ["%r (%r)" % (type(x).name, x.allocation, ) \
                  for x in desc.partners]
         return "<Partners: [%s]>" % ', '.join(p)
-
-
-@serialization.register
-class BasePartner(serialization.Serializable):
-
-    type_name = 'partner'
-
-    def __init__(self, recp, allocation=None):
-        self.recipient = recipient.IRecipient(recp)
-        self.allocation = allocation
-
-    def initiate(self, agent):
-        pass
-
-    def on_shutdown(self, agent):
-        f = fiber.Fiber()
-        f.add_callback(agent.initiate_protocol, self.recipient)
-        f.add_callback(requester.GoodBye.notify_finish)
-        return f.succeed(requester.GoodBye)
-
-    def on_goodbye(self, agent):
-        if self.allocation:
-            agent.release_resource(self.allocation)
-
-    def __eq__(self, other):
-        return self.recipient == other.recipient and\
-               self.allocation == other.allocation
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
 
 @serialization.register

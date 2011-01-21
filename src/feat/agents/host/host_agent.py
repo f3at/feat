@@ -7,14 +7,28 @@ from feat.agents.base import (agent, recipient, manager, message, replay,
 from feat.common import fiber, serialization
 
 
+@serialization.register
+class ShardPartner(partners.BasePartner):
+
+    type_name = 'host->shard'
+
+    def initiate(self, agent):
+        return agent.switch_shard(self.recipient.shard)
+
+
+class Partners(partners.Partners):
+
+    partners.has_one('shard_a', 'shard_agent', ShardPartner)
+
+
 @agent.register('host_agent')
 class HostAgent(agent.BaseAgent):
+
+    partners_class = Partners
 
     @replay.mutable
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
-
-        state.partners.define_handler("shard_agent", ShardPartner)
 
         state.medium.register_interest(StartAgentReplier)
 
@@ -111,15 +125,6 @@ class JoinShardManager(manager.BaseManager):
     @replay.mutable
     def completed(self, state, reports):
         pass
-
-
-@serialization.register
-class ShardPartner(partners.BasePartner):
-
-    type_name = 'host->shard'
-
-    def initiate(self, agent):
-        return agent.switch_shard(self.recipient.shard)
 
 
 @document.register

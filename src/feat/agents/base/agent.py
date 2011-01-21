@@ -50,6 +50,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
 
     implements(agent.IAgent)
 
+    partners_class = partners.Partners
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
@@ -65,7 +67,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
     def init_state(self, state, medium):
         state.medium = agent.IAgencyAgent(medium)
         state.resources = resource.Resources(self)
-        state.partners = partners.Partners(self)
+        state.partners = self.partners_class(self)
 
     ## IAgent Methods ##
 

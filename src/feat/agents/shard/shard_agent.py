@@ -9,8 +9,53 @@ from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
 
 
+@serialization.register
+class HostPartner(partners.BasePartner):
+
+    type_name = 'shard->host'
+
+    def initiate(self, agent):
+        # Host Agent on the other end is about to join our shard,
+        # his address will change.
+        shard = agent.get_own_address().shard
+        self.recipient = recipient.Agent(self.recipient.key, shard)
+
+        if self.allocation is None:
+            self.allocation = agent.preallocate_resource(hosts=1)
+            return agent.confirm_allocation(self.allocation)
+
+
+@serialization.register
+class ParentShardPartner(partners.BasePartner):
+
+    type_name = 'shard->parent'
+
+    def initiate(self, agent):
+        return agent.unbind_join_interest_from_lobby()
+
+
+@serialization.register
+class ChildShardPartner(partners.BasePartner):
+
+    type_name = 'shard->child'
+
+    def initiate(self, agent):
+        if self.allocation is None:
+            self.allocation = agent.preallocate_resource(children=1)
+            return agent.confirm_allocation(self.allocation)
+
+
+class Partners(partners.Partners):
+
+    partners.has_many('hosts', 'host_agent', HostPartner)
+    partners.has_many('children', 'shard_agent', ChildShardPartner, 'child')
+    partners.has_one('parent', 'shard_agent', ParentShardPartner, 'parent')
+
+
 @agent.register('shard_agent')
 class ShardAgent(agent.BaseAgent):
+
+    partners_class = Partners
 
     @replay.mutable
     def initiate(self, state):
@@ -18,15 +63,6 @@ class ShardAgent(agent.BaseAgent):
 
         state.resources.define('hosts', 10)
         state.resources.define('children', 2)
-
-        state.partners.define_handler("host_agent", HostPartner)
-        state.partners.define_handler("shard_agent", ParentShardPartner,
-                                      'parent')
-        state.partners.define_handler("shard_agent", ChildShardPartner,
-                                      'child')
-        state.partners.has_many('hosts', HostPartner)
-        state.partners.has_many('children', ChildShardPartner)
-        state.partners.has_one('parent', ParentShardPartner)
 
         state.join_interest =\
             state.medium.register_interest(JoinShardContractor)
@@ -257,39 +293,3 @@ class ActionType(enum.Enum):
 class Descriptor(descriptor.Descriptor):
 
     document_type = 'shard_agent'
-
-
-@serialization.register
-class HostPartner(partners.BasePartner):
-
-    type_name = 'shard->host'
-
-    def initiate(self, agent):
-        # Host Agent on the other end is about to join our shard,
-        # his address will change.
-        shard = agent.get_own_address().shard
-        self.recipient = recipient.Agent(self.recipient.key, shard)
-
-        if self.allocation is None:
-            self.allocation = agent.preallocate_resource(hosts=1)
-            return agent.confirm_allocation(self.allocation)
-
-
-@serialization.register
-class ParentShardPartner(partners.BasePartner):
-
-    type_name = 'shard->parent'
-
-    def initiate(self, agent):
-        return agent.unbind_join_interest_from_lobby()
-
-
-@serialization.register
-class ChildShardPartner(partners.BasePartner):
-
-    type_name = 'shard->child'
-
-    def initiate(self, agent):
-        if self.allocation is None:
-            self.allocation = agent.preallocate_resource(children=1)
-            return agent.confirm_allocation(self.allocation)
