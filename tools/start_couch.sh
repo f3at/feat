@@ -9,6 +9,7 @@ database_dir = /tmp/couchdb/db
 view_index_dir = /tmp/couchdb/db
 
 [httpd]
+bind_address = ${HOST:-127.0.0.1}
 port = ${PORT:-5984}
 
 [log]
