@@ -142,7 +142,6 @@ class Messaging(log.Logger, log.FluLogKeeper):
         self._factory = AMQFactory(self, TwistedDelegate(),
                                    self._user, self._password)
 
-        self.log("Connecting to messaging on %s:%d.", self._host, self._port)
         self._connector = reactor.connectTCP(self._host, self._port,
                                              self._factory)
 

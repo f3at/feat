@@ -39,13 +39,48 @@ class Options(optparse.OptionParser):
                         help="host of database server to connect to",
                         metavar="NAME", default="feat")
 
-parser = Options()
-(opts, args) = parser.parse_args()
+        # manhole specific
+        self.add_option('-k', '--pubkey', dest='pub_key',
+                        help="public key used by the manhole",
+                        default='public.key')
+        self.add_option('-K', '--privkey', dest='priv_key',
+                        help="private key used by the manhole",
+                        default='private.key')
+        self.add_option('-A', '--authorized', dest='authorized_keys',
+                        help="file with authorized keys to be used by manhole",
+                        default="authorized_keys")
+        self.add_option('-M', '--manhole', type="int", dest='manhole_port',
+                        help="port for the manhole to listen", metavar="PORT")
 
-log.FluLogKeeper.init()
 
-a = agency.Agency(msg_host=opts.msg_host, msg_port=opts.msg_port,
-                  msg_user=opts.msg_user, msg_password=opts.msg_password,
-                  db_host=opts.db_host, db_port=opts.db_port,
-                  db_name=opts.db_name)
-reactor.run()
+def run_agency(opts):
+    a = agency.Agency(msg_host=opts.msg_host, msg_port=opts.msg_port,
+                      msg_user=opts.msg_user, msg_password=opts.msg_password,
+                      db_host=opts.db_host, db_port=opts.db_port,
+                      db_name=opts.db_name,
+                      public_key=opts.pub_key, private_key=opts.priv_key,
+                      authorized_keys=opts.authorized_keys,
+                      manhole_port=opts.manhole_port)
+    return a
+
+
+def parse_opts():
+    parser = Options()
+    (opts, args) = parser.parse_args()
+    return opts
+
+
+def run():
+    reactor.run()
+
+
+def get_db_connection(agency):
+    return agency._database.get_connection(None)
+
+
+if __name__ == '__main__':
+    log.FluLogKeeper.init()
+    opts = parse_opts()
+
+    run_agency(opts)
+    run()

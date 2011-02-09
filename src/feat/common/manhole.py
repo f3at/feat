@@ -1,8 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import re
-import traceback
 import shlex
+import copy
 from functools import partial
 
 from twisted.internet import defer
@@ -36,7 +36,7 @@ class Manhole(annotate.Annotable):
         cls._exposed = dict()
         for base in bases:
             base_exposed = getattr(base, '_exposed', dict())
-            cls._exposed.update(base_exposed)
+            cls._exposed.update(copy.deepcopy(base_exposed))
 
     @classmethod
     def _register_exposed(cls, function, security_level):
@@ -48,6 +48,15 @@ class Manhole(annotate.Annotable):
 
                 cls._exposed[lvl] = dict()
             cls._exposed[lvl][fun_id] = function
+
+    @expose()
+    def help(self):
+        '''Prints exposed methods and their docstrings.'''
+        cmds = self.get_exposed_cmds()
+        return "\n".join([self._format_help(x) for x in cmds.values()])
+
+    def _format_help(self, method):
+        return "%s %s" % (method.__name__.ljust(15), method.__doc__)
 
     def get_exposed_cmds(self, lvl=SecurityLevel.safe):
         if self._exposed is None or lvl not in self._exposed:

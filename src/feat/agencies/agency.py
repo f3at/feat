@@ -366,6 +366,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
     def get_document(self, document_id):
         return self._database.get_document(document_id)
 
+    @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):
         self.log("terminate() called")
