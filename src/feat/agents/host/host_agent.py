@@ -58,7 +58,7 @@ class HostAgent(agent.BaseAgent):
     def start_agent(self, state, doc_id):
         f = fiber.Fiber()
         f.add_callback(self.get_document)
-        f.add_callback(self._update_host_field)
+        f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self.establish_partnership)
@@ -66,8 +66,9 @@ class HostAgent(agent.BaseAgent):
         return f
 
     @replay.immutable
-    def _update_host_field(self, state, desc):
-        desc.host = self.get_own_address()
+    def _update_shard_field(self, state, desc):
+        '''Makes sure that the newly started agent is in the same shard.'''
+        desc.shard = self.get_own_address().shard
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         return f.succeed(desc)
