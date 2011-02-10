@@ -104,7 +104,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
         return self.establish_partnership(recipient.IRecipient(recp))
 
     @replay.journaled
-    def establish_partnership(self, state, recp, allocation=None,
+    def establish_partnership(self, state, recp, allocation_id=None,
                               partner_role=None, our_role=None):
         found = state.partners.find(recp)
         if found:
@@ -113,15 +113,15 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
                        recp, type(found))
             return found
         f = fiber.Fiber()
-        f.add_callback(self.initiate_protocol, recp, allocation,
+        f.add_callback(self.initiate_protocol, recp, allocation_id,
                        partner_role, our_role)
         f.add_callback(requester.Propose.notify_finish)
         return f.succeed(requester.Propose)
 
     @replay.immutable
-    def create_partner(self, state, partner_class, recp, allocation=None,
+    def create_partner(self, state, partner_class, recp, allocation_id=None,
                        role=None):
-        return state.partners.create(partner_class, recp, allocation, role)
+        return state.partners.create(partner_class, recp, allocation_id, role)
 
     @replay.mutable
     def partner_said_goodbye(self, state, recp):
@@ -152,12 +152,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
         return state.resources.allocate(**params)
 
     @replay.mutable
-    def confirm_allocation(self, state, allocation):
-        return state.resources.confirm(allocation)
+    def confirm_allocation(self, state, allocation_id):
+        return state.resources.confirm(allocation_id)
 
     @replay.mutable
-    def release_resource(self, state, allocation):
-        return state.resources.release(allocation)
+    def release_resource(self, state, allocation_id):
+        return state.resources.release(allocation_id)
 
     @replay.immutable
     def get_time(self, state):

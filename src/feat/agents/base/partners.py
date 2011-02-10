@@ -61,9 +61,9 @@ class BasePartner(serialization.Serializable):
 
     type_name = 'partner'
 
-    def __init__(self, recp, allocation=None):
+    def __init__(self, recp, allocation_id=None):
         self.recipient = recipient.IRecipient(recp)
-        self.allocation = allocation
+        self.allocation_id = allocation_id
 
     def initiate(self, agent):
         pass
@@ -72,15 +72,16 @@ class BasePartner(serialization.Serializable):
         f = fiber.Fiber()
         f.add_callback(agent.initiate_protocol, self.recipient)
         f.add_callback(requester.GoodBye.notify_finish)
+
         return f.succeed(requester.GoodBye)
 
     def on_goodbye(self, agent):
-        if self.allocation:
-            agent.release_resource(self.allocation)
+        if self.allocation_id:
+            agent.release_resource(self.allocation_id)
 
     def __eq__(self, other):
         return self.recipient == other.recipient and\
-               self.allocation == other.allocation
+               self.allocation_id == other.allocation_id
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -160,7 +161,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return match[0]
 
     @replay.mutable
-    def create(self, state, partner_class, recp, allocation=None, role=None):
+    def create(self, state, partner_class, recp,
+               allocation_id=None, role=None):
         f = self.find(recp)
         if f:
             self.info('We already are in partnership with recipient '
@@ -168,7 +170,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return
 
         factory = self.query_handler(partner_class, role)
-        partner = factory(recp, allocation)
+        partner = factory(recp, allocation_id)
         self.debug(
             'Registering partner %r (lookup (%r, %r)) for recipient: %r',
             factory, partner_class, role, recp)
@@ -211,7 +213,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         desc = state.agent.get_descriptor()
         p = []
         if desc:
-            p = ["%r (%r)" % (type(x).name, x.allocation, ) \
+            p = ["%r (%r)" % (type(x).name, x.allocation_id, ) \
                  for x in desc.partners]
         return "<Partners: [%s]>" % ', '.join(p)
 

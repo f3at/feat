@@ -50,16 +50,16 @@ class TestShardAgent(testsuite.TestCase):
         Also check that if we have a parent we will not get bound to lobby.
         '''
         a = [
-            resource.Allocation(hosts=1, allocated=True),
-            resource.Allocation(hosts=1, allocated=True),
-            resource.Allocation(children=1, allocated=True)]
+            resource.Allocation(id=1, hosts=1, allocated=True),
+            resource.Allocation(id=2, hosts=1, allocated=True),
+            resource.Allocation(id=3, children=1, allocated=True)]
         self.ball.descriptor.allocations = a
 
         self.ball.descriptor.partners = [
             shard_agent.ParentShardPartner(recipient.dummy_agent()),
-            shard_agent.HostPartner(recipient.dummy_agent(), a[0]),
-            shard_agent.HostPartner(recipient.dummy_agent(), a[1]),
-            shard_agent.ChildShardPartner(recipient.dummy_agent(), a[2])]
+            shard_agent.HostPartner(recipient.dummy_agent(), a[0].id),
+            shard_agent.HostPartner(recipient.dummy_agent(), a[1].id),
+            shard_agent.ChildShardPartner(recipient.dummy_agent(), a[2].id)]
 
         interest = self.ball.generate_interest()
         sfx = [
@@ -262,7 +262,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         result, _ = self.ball.call(
             sfx, self.agent.preallocate_resource, hosts=1)
         self.assertIsInstance(result, resource.Allocation)
-        state.preallocation = result
+        state.preallocation_id = result.id
 
     def _generate_bid(self, cost):
         return message.Bid(payload=dict(cost=cost))

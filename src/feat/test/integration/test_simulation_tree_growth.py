@@ -179,7 +179,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         resources = agent._get_state().resources
         self.assertEqual(expected,
                          resources.allocated()[resource],
-                         resources._get_state().allocations)
+                         resources._get_state().allocations.values())
         from_desc = agent.get_descriptor().allocations
         self.assertEqual(expected,
                          resources.allocated(None, from_desc)[resource],

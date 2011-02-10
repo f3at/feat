@@ -20,9 +20,10 @@ class HostPartner(partners.BasePartner):
         shard = agent.get_own_address().shard
         self.recipient = recipient.Agent(self.recipient.key, shard)
 
-        if self.allocation is None:
-            self.allocation = agent.preallocate_resource(hosts=1)
-            return agent.confirm_allocation(self.allocation)
+        if self.allocation_id is None:
+            allocation = agent.preallocate_resource(hosts=1)
+            self.allocation_id = allocation.id
+            return agent.confirm_allocation(self.allocation_id)
 
 
 @serialization.register
@@ -40,9 +41,9 @@ class ChildShardPartner(partners.BasePartner):
     type_name = 'shard->child'
 
     def initiate(self, agent):
-        if self.allocation is None:
-            self.allocation = agent.preallocate_resource(children=1)
-            return agent.confirm_allocation(self.allocation)
+        if self.allocation_id is None:
+            self.allocation_id = agent.preallocate_resource(children=1)
+            return agent.confirm_allocation(self.allocation_id)
 
 
 class Partners(partners.Partners):
@@ -97,19 +98,20 @@ class JoinShardContractor(contractor.BaseContractor):
 
     @replay.mutable
     def announced(self, state, announcement):
-        state.preallocation = state.agent.preallocate_resource(hosts=1)
+        allocation = state.agent.preallocate_resource(hosts=1)
         state.nested_manager = None
         action_type = None
 
         # check if we can serve the request on our own
-        if state.preallocation:
+        if allocation:
             action_type = ActionType.join
             cost = 0
         else:
-            state.preallocation = state.agent.preallocate_resource(children=1)
-            if state.preallocation:
+            allocation = state.agent.preallocate_resource(children=1)
+            if allocation:
                 action_type = ActionType.create
                 cost = 20
+        state.preallocation_id = allocation and allocation.id
 
         # create a bid for our own action
         bid = None
@@ -194,8 +196,8 @@ class JoinShardContractor(contractor.BaseContractor):
 
     @replay.mutable
     def release_preallocation(self, state, *_):
-        if state.preallocation is not None:
-            return state.agent.release_resource(state.preallocation)
+        if state.preallocation_id is not None:
+            return state.agent.release_resource(state.preallocation_id)
 
     announce_expired = release_preallocation
     rejected = release_preallocation
@@ -213,20 +215,20 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(self._request_start_agent)
             f.add_callback(self._extract_agent)
             f.add_callback(state.agent.establish_partnership,
-                           state.preallocation, 'child', 'parent')
+                           state.preallocation_id, 'child', 'parent')
             f.add_callback(self._generate_new_address, joining_agent_id)
             f.add_callback(state.medium.update_manager_address)
             f.add_callback(self._finalize)
-            return f.succeed(state.preallocation)
+            return f.succeed(state.preallocation_id)
         else: # ActionType.join
             f = fiber.Fiber()
             f.add_callback(state.agent.confirm_allocation)
-            f.add_callback(fiber.drop_result,
-                           state.agent.establish_partnership,
-                           grant.payload['joining_agent'], state.preallocation)
+            f.add_callback(
+                fiber.drop_result, state.agent.establish_partnership,
+                grant.payload['joining_agent'], state.preallocation_id)
             f.add_callback(state.medium.update_manager_address)
             f.add_callback(self._finalize)
-            return f.succeed(state.preallocation)
+            return f.succeed(state.preallocation_id)
 
     @replay.immutable
     def _finalize(self, state, _):

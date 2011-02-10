@@ -36,8 +36,8 @@ class LoadingAndOverallocationTests(common.TestCase, Common):
         self.resources = resource.Resources(self.agent)
 
         self.allocations = [
-            resource.Allocation(a=1, b=4),
-            resource.Allocation(c=5, a=2)]
+            resource.Allocation(id=1, a=1, b=4),
+            resource.Allocation(id=2, c=5, a=2)]
         [x._set_state(resource.AllocationState.allocated) \
          for x in self.allocations]
 
@@ -48,7 +48,7 @@ class LoadingAndOverallocationTests(common.TestCase, Common):
         self.resources.define('c', 5)
 
         yield self.resources.load(self.allocations)
-
+        self.assertEqual(3, self.resources._get_state().id_autoincrement)
         self._assert_allocated([3, 5, 4])
 
     @defer.inlineCallbacks
@@ -61,12 +61,13 @@ class LoadingAndOverallocationTests(common.TestCase, Common):
         self.resources.define('b', 5)
         self.resources.define('c', 5)
 
+        self.assertEqual(3, self.resources._get_state().id_autoincrement)
         self.assertEqual([5, 5, 5], self.resources.get_totals().values())
 
     @defer.inlineCallbacks
     def testLoadingThanReleasing(self):
         yield self.resources.load(self.allocations)
-        yield self.resources.release(self.allocations[1])
+        yield self.resources.release(self.allocations[1].id)
 
         self._assert_allocated([1, 0, 4])
 
@@ -133,11 +134,13 @@ class ResourcesTest(common.TestCase, Common):
         allocation = yield self.resources.allocate(a=3)
         self.assertEqual(resource.AllocationState.allocated,
                          allocation.state)
+        self.assertEqual(1, allocation.id)
         self._assert_allocated([3, 0])
+        self.assertEqual(2, self.resources._get_state().id_autoincrement)
 
         self.assertCalled(self.agent, 'update_descriptor')
 
-        yield self.resources.release(allocation)
+        yield self.resources.release(allocation.id)
 
         self.assertCalled(self.agent, 'update_descriptor', times=2)
 
@@ -150,10 +153,12 @@ class ResourcesTest(common.TestCase, Common):
         allocation = yield self.resources.preallocate(a=3)
         self.assertEqual(resource.AllocationState.preallocated,
                          allocation.state)
+        self.assertEqual(1, allocation.id)
         self._assert_allocated([3, 0])
+        self.assertEqual(2, self.resources._get_state().id_autoincrement)
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
-        yield self.resources.confirm(allocation)
+        yield self.resources.confirm(allocation.id)
         self.assertCalled(self.agent, 'update_descriptor', times=1)
 
     def testBadDefine(self):
