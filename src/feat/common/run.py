@@ -61,9 +61,12 @@ class bootstrap(object):
     def __enter__(self):
         log.FluLogKeeper.init()
         opts = self.parse_opts()
-        return self.run_agency(opts)
+        self.agency = self.run_agency(opts)
+        return self.agency
 
     def __exit__(self, type, value, traceback):
+        reactor.addSystemEventTrigger('before', 'shutdown',
+                                      self.agency.shutdown)
         reactor.run()
 
     def parse_opts(self):

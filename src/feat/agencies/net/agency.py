@@ -27,6 +27,7 @@ class Agency(agency.Agency):
         mesg = messaging.Messaging(msg_host, msg_port, msg_user, msg_password)
         db = database.Database(db_host, db_port, db_name)
         agency.Agency.__init__(self, mesg, db)
+        self._manhole_listener = None
 
         if manhole_port:
             public_key_str = file(public_key).read()
@@ -41,7 +42,14 @@ class Agency(agency.Agency):
             sshFactory.privateKeys = {
                 'ssh-rsa': keys.Key.fromString(data=private_key_str)}
 
-            reactor.listenTCP(manhole_port, sshFactory)
+            self._manhole_listener = reactor.listenTCP(
+                manhole_port, sshFactory)
+
+    def shutdown(self):
+        d = agency.Agency.shutdown(self)
+        if self._manhole_listener:
+            d.addCallback(lambda _: self._manhole_listener.stopListening())
+        return d
 
 
 class KeyChecker(checkers.SSHPublicKeyDatabase):
