@@ -2,6 +2,7 @@ import copy
 import types
 
 from zope.interface import implements
+from zope.interface.interface import InterfaceClass
 
 from feat.common import decorator, enum, adapter, reflect
 from feat.interface.serialization import *
@@ -363,8 +364,8 @@ class Serializer(object):
         if isinstance(value, enum.Enum):
             return self.flatten_enum_value(value, caps, freezing)
 
-        # Flatten types
-        if isinstance(value, type):
+        # Flatten types and interfaces
+        if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
         # Checks if value support the current required protocol
@@ -388,8 +389,8 @@ class Serializer(object):
         if isinstance(value, enum.Enum):
             return self.flatten_enum_key(value, caps, freezing)
 
-        # Flatten types
-        if isinstance(value, type):
+        # Flatten types and interfaces
+        if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_key(value, caps, freezing)
 
         # Instances are not supported in keys

@@ -1,4 +1,5 @@
 from zope.interface import implements
+from zope.interface.interface import InterfaceClass
 
 from feat.common import enum, reflect
 from feat.interface.serialization import *
@@ -179,7 +180,7 @@ class Unserializer(base.Unserializer):
     reference got dereferenced, so unpacking '''
 
     pass_through_types = set([str, unicode, int, long, float, bool,
-                              type(None), type])
+                              type(None), type, InterfaceClass])
 
     def __init__(self, pre_converter=None, registry=None, externalizer=None):
         base.Unserializer.__init__(self, pre_converter=pre_converter,

@@ -4,6 +4,9 @@
 
 import types
 
+from zope.interface import Interface
+from zope.interface.interface import InterfaceClass
+
 from feat.common import serialization, reflect
 from feat.common.serialization import pytree
 from feat.interface.serialization import *
@@ -24,6 +27,10 @@ class DummyClass(serialization.Serializable):
 
 def dummy_function():
         pass
+
+
+class DummyInterface(Interface):
+    pass
 
 
 class PyTreeConvertersTest(common_serialization.ConverterTest):
@@ -82,6 +89,8 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         yield type, [datetime], type, [datetime], False
         yield (type, [common_serialization.SerializableDummy],
                type, [common_serialization.SerializableDummy], False)
+        yield (InterfaceClass, [DummyInterface],
+               InterfaceClass, [DummyInterface], False)
 
         ### Enums ###
 

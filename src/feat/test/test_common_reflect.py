@@ -4,7 +4,13 @@
 
 from feat.common import reflect
 
+from zope.interface import Interface
+
 from . import common
+
+
+class DummyInterface(Interface):
+    pass
 
 
 def test_depth2(depth=2):
@@ -97,6 +103,10 @@ class TestIntrospection(common.TestCase):
         self.assertFalse(MetaError3.bad1)
         self.assertTrue(MetaError3.good)
         self.assertFalse(MetaError3.bad2)
+
+    def testInterface(self):
+        self.assertEqual("feat.test.test_common_reflect.DummyInterface",
+                         reflect.canonical_name(DummyInterface))
 
     def testClass(self):
         self.assertEqual("feat.test.test_common_reflect.Dummy",

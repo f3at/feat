@@ -5,6 +5,9 @@
 import itertools
 import types
 
+from zope.interface import Interface
+from zope.interface.interface import InterfaceClass
+
 from feat.common import reflect, serialization
 from feat.common.serialization import base, json
 from feat.interface.serialization import *
@@ -20,6 +23,10 @@ class DummyClass(serialization.Serializable):
 
 
 def dummy_function():
+    pass
+
+
+class DummyInterface(Interface):
     pass
 
 
@@ -65,6 +72,9 @@ class JSONConvertersTest(common_serialization.ConverterTest):
         yield (type, [common_serialization.SerializableDummy],
                str, ['[".type", "feat.test.common_serialization.'
                      'SerializableDummy"]'], False)
+        yield (InterfaceClass, [DummyInterface],
+               str, ['[".type", "feat.test.test_common_serialization_json.'
+                     'DummyInterface"]'], False)
 
         ### Enums ###
 

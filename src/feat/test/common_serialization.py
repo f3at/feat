@@ -5,6 +5,9 @@
 import itertools
 import types
 
+from zope.interface import Interface
+from zope.interface.interface import InterfaceClass
+
 from twisted.python.reflect import qual
 from twisted.spread import jelly
 from twisted.trial.unittest import SkipTest
@@ -18,6 +21,10 @@ from . import common
 
 class DummyEnum(enum.Enum):
     a, b, c = range(3)
+
+
+class DummyInterface(Interface):
+    pass
 
 
 @serialization.register
@@ -353,9 +360,12 @@ class ConverterTest(common.TestCase):
             from datetime import datetime
             type_values.append(datetime)
             type_values.append(TestTypeSerializationDummy)
+
         if type_values:
             valdesc.append((Capabilities.type_values, Capabilities.type_keys,
                             type, type_values))
+            valdesc.append((Capabilities.type_values, Capabilities.type_keys,
+                            InterfaceClass, [DummyInterface]))
 
         def iter_values(desc):
             for cap, _, value_type, values in valdesc:
@@ -797,7 +807,8 @@ class ConverterTest(common.TestCase):
     def _assertEqualButDifferent(self, value, expected, idx, valids, expids):
         '''idx is used to identify every values uniquely to be able to verify
         references are made to the same value, valids and expids are
-        dictionaries with instance id() for key and idx for value.'''
+        dictionaries with instance id() for key and idx for value.
+        Types and interfaces are assumed to be immutable atoms.'''
 
         # Only check references for type that can be referenced.
         # Let the immutable type do what they want, sometime strings
@@ -851,7 +862,8 @@ class ConverterTest(common.TestCase):
                                                     valids, expids)
         elif isinstance(value, float):
             self.assertAlmostEqual(value, expected)
-        elif isinstance(value, (int, long, bool, str, unicode, type)):
+        elif isinstance(value, (int, long, bool, str, unicode,
+                                type, InterfaceClass)):
             self.assertEqual(value, expected)
         else:
             self.assertIsNot(expected, value)

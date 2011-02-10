@@ -1,12 +1,14 @@
 import sys
 import types
 
+from zope.interface.interface import InterfaceClass
+
 
 def canonical_name(obj):
     if isinstance(obj, types.MethodType):
         return _canonical_method(obj)
 
-    if isinstance(obj, (type, types.FunctionType)):
+    if isinstance(obj, (type, types.FunctionType, InterfaceClass)):
         return _canonical_type(obj)
 
     if isinstance(obj, types.NoneType):

@@ -5,6 +5,9 @@
 import itertools
 import types
 
+from zope.interface import Interface
+from zope.interface.interface import InterfaceClass
+
 from twisted.spread import jelly
 
 from feat.common import reflect, serialization
@@ -19,6 +22,10 @@ class DummyClass(serialization.Serializable):
 
     def dummy_method(self):
         pass
+
+
+class DummyInterface(Interface):
+    pass
 
 
 def dummy_function():
@@ -158,6 +165,9 @@ class SExpConvertersTest(common_serialization.ConverterTest):
         yield type, [datetime], list, [["class", "datetime.datetime"]], False
         name = reflect.canonical_name(common_serialization.SerializableDummy)
         yield (type, [common_serialization.SerializableDummy],
+               list, [["class", name]], False)
+        name = reflect.canonical_name(DummyInterface)
+        yield (InterfaceClass, [DummyInterface],
                list, [["class", name]], False)
 
         ### Enums ###
