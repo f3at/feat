@@ -93,15 +93,21 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
 
     @manhole.expose()
     def locals(self):
-        '''Print defined locals names.'''
+        '''locals() -> Print defined locals names.'''
         return "\n".join(self._locals.keys())
 
     @manhole.expose()
     def exit(self):
-        '''Close connection.'''
+        '''exit() -> Close connection.'''
         self.terminal.write("Happy hacking!")
         self.terminal.nextLine()
         self.terminal.loseConnection()
+
+    @manhole.expose()
+    def get_document(self, doc_id):
+        '''get_document(doc_id) -> Download the document given the id.'''
+        conn = self.agency._database.get_connection(None)
+        return conn.get_document(doc_id)
 
 
 class SSHAvatar(avatar.ConchUser):

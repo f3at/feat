@@ -51,12 +51,12 @@ class Manhole(annotate.Annotable):
 
     @expose()
     def help(self):
-        '''Prints exposed methods and their docstrings.'''
+        '''help() -> Prints exposed methods and their docstrings.'''
         cmds = self.get_exposed_cmds()
         return "\n".join([self._format_help(x) for x in cmds.values()])
 
     def _format_help(self, method):
-        return "%s %s" % (method.__name__.ljust(15), method.__doc__)
+        return "%s %s" % (method.__name__.ljust(25), method.__doc__)
 
     def get_exposed_cmds(self, lvl=SecurityLevel.safe):
         if self._exposed is None or lvl not in self._exposed:
