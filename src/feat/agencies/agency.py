@@ -506,6 +506,12 @@ class Interest(Serializable):
     def snapshot(self):
         return dict(factory=self.factory)
 
+    def __eq__(self, other):
+        return self.factory == other.factory
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 

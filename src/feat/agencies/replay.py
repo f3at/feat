@@ -137,7 +137,8 @@ class Replay(log.FluLogKeeper, log.Logger):
             if self.agent != old_agent:
                 raise journal.ReplayError(
                     'States of current agent mismatch the old agent'
-                    'Old: %r, Loaded: %r' % (old_agent, self.agent, ))
+                    '\nOld: %r, \nLoaded: %r.' %\
+                    (old_agent._get_state(), self.agent._get_state(), ))
             if len(self.protocols) != len(old_protocols):
                 raise journal.ReplayError(
                     'The number of protocols mismatch. '
@@ -337,6 +338,7 @@ class AgencyContractor(log.LogProxy, log.Logger,
     def bid(self, bid):
         pass
 
+    @serialization.freeze_tag('AgencyContractor.handover')
     @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
         pass

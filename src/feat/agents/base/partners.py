@@ -99,6 +99,12 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         replay.Replayable.__init__(self, agent)
         self.log_name = type(self).__name__
 
+    @replay.immutable
+    def restored(self, state):
+        log.Logger.__init__(self, state.agent)
+        log.LogProxy.__init__(self, state.agent)
+        replay.Replayable.restored(self)
+
     def init_state(self, state, agent):
         state.agent = agent
 
@@ -210,12 +216,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def __repr__(self, state):
-        desc = state.agent.get_descriptor()
-        p = []
-        if desc:
-            p = ["%r (%r)" % (type(x).name, x.allocation_id, ) \
-                 for x in desc.partners]
-        return "<Partners: [%s]>" % ', '.join(p)
+        return "<Partners>"
 
 
 @serialization.register

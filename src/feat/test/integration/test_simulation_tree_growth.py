@@ -19,7 +19,6 @@ class Common(object):
 
 
 @common.attr('slow')
-@common.attr(skip_replayability="requires changes in freezeing Allocation")
 class TreeGrowthSimulation(common.SimulationTest, Common):
 
     # Timeout is intentionaly set to high. Some of theese tests take a lot
@@ -187,7 +186,6 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
 
 
 @common.attr('slow')
-@common.attr(skip_replayability="requires changes in freezeing Allocation")
 class SimulationHostBeforeShard(common.SimulationTest, Common):
 
     timeout = 100
@@ -195,6 +193,8 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
     def prolog(self):
         pass
 
+    @common.attr(skip_replayability=
+        "to be unskipped when changes in mutable parameters are commited")
     @defer.inlineCallbacks
     def testHATakesShardAgentFromPartnersNotContract(self):
         '''

@@ -474,6 +474,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return self.own_bid
 
+    @serialization.freeze_tag('AgencyContractor.handover')
     @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
         bid = bid.clone()

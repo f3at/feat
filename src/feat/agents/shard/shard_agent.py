@@ -21,9 +21,12 @@ class HostPartner(partners.BasePartner):
         self.recipient = recipient.Agent(self.recipient.key, shard)
 
         if self.allocation_id is None:
-            allocation = agent.preallocate_resource(hosts=1)
-            self.allocation_id = allocation.id
-            return agent.confirm_allocation(self.allocation_id)
+            f = agent.allocate_resource(hosts=1)
+            f.add_callback(self.set_allocation_id)
+            return f
+
+    def set_allocation_id(self, allocation):
+        self.allocation_id = allocation.id
 
 
 @serialization.register
