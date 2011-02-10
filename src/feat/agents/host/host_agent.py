@@ -67,8 +67,11 @@ class HostAgent(agent.BaseAgent):
 
     @replay.immutable
     def _update_shard_field(self, state, desc):
-        '''Makes sure that the newly started agent is in the same shard.'''
-        desc.shard = self.get_own_address().shard
+        '''Sometime creating the descriptor for new agent we cannot know in
+        which shard it will endup. If it is None or set to lobby, the HA
+        will update the field to match his own'''
+        if desc.shard is None or desc.shard == 'lobby':
+            desc.shard = self.get_own_address().shard
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         return f.succeed(desc)
