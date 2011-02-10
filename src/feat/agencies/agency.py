@@ -8,7 +8,8 @@ import copy
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log, manhole, journal, fiber, serialization, delay
+from feat.common import (log, manhole, journal, fiber, serialization, delay,
+                         error_handler, )
 from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
 from feat.agents.host import host_agent
@@ -30,6 +31,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
                                         type(log.FluLogKeeper)), {})
 
     implements(agency.IAgency, serialization.IExternalizer)
+
+    _error_handler = error_handler
 
     def __init__(self, messaging, database):
         log.FluLogKeeper.__init__(self)
