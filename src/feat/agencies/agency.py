@@ -36,8 +36,6 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         log.Logger.__init__(self, self)
 
         self._agents = []
-        # shard -> [ agents ]
-        self._shards = {}
 
         self._messaging = IConnectionFactory(messaging)
         self._database = IConnectionFactory(database)
