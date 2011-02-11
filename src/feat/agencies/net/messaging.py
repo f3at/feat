@@ -156,7 +156,8 @@ class Messaging(log.Logger, log.FluLogKeeper):
         d = self._factory.get_client()
         channel_wrapped = Channel(self, d, self._factory)
 
-        return Connection(channel_wrapped, agent)
+        c = Connection(channel_wrapped, agent)
+        return c.initiate()
 
 
 def wait_for_channel(method):

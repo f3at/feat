@@ -25,7 +25,8 @@ class Messaging(log.Logger, log.FluLogKeeper):
     # IConnectionFactory implementation
 
     def get_connection(self, agent):
-        return Connection(self, agent)
+        c = Connection(self, agent)
+        return c.initiate()
 
     # end of IConnectionFactory
 

@@ -135,10 +135,11 @@ class TestMessaging(common.TestCase):
 
     timeout = 1
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = common.StubAgent()
-        self.connection = self.messaging.get_connection(self.agent)
+        self.connection = yield self.messaging.get_connection(self.agent)
 
     def testCreateConnection(self):
         self.assertTrue(isinstance(self.connection, messaging.Connection))
@@ -172,9 +173,10 @@ class TestMessaging(common.TestCase):
 
         return d
 
+    @defer.inlineCallbacks
     def testTwoAgentsWithSameBinding(self):
         second_agent = common.StubAgent()
-        second_connection = self.messaging.get_connection(second_agent)
+        second_connection = yield self.messaging.get_connection(second_agent)
         agents = [self.agent, second_agent]
         connections = [self.connection, second_connection]
 
@@ -199,7 +201,7 @@ class TestMessaging(common.TestCase):
 
         d.addCallback(revoke_bindings)
 
-        return d
+        yield d
 
     def testPublishingByAgent(self):
         key = (self.agent.get_descriptor()).doc_id

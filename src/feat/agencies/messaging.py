@@ -22,10 +22,13 @@ class Connection(log.Logger):
 
         self._bindings = []
         self._queue_name = (self._agent.get_descriptor()).doc_id
+
+    def initiate(self):
         d = defer.maybeDeferred(self._messaging.defineQueue,
             self._queue_name)
-
         d.addCallback(self._mainLoop)
+        d.addCallback(lambda _: self)
+        return d
 
     def _mainLoop(self, queue):
         self._queue = queue

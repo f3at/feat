@@ -53,7 +53,9 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         self.log('I will start: %r agent', factory)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
-        d = defer.maybeDeferred(medium.agent.initiate)
+
+        d = defer.maybeDeferred(medium.initiate)
+        d.addCallback(lambda _: medium.agent.initiate())
         d.addCallback(lambda _: medium)
         return d
 
@@ -188,9 +190,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         self.log_name = self.agent.__class__.__name__
         self.log('Instantiated the %r instance', self.agent)
 
-        self._messaging = self.agency._messaging.get_connection(self)
-        self._database = self.agency._database.get_connection(self)
-
         # instance_id -> IListener
         self._listeners = {}
         # protocol_type -> protocol_id -> protocols.IInterest
@@ -198,7 +197,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         # retrying protocols
         self._retrying_protocols = list()
 
-        self.join_shard(descriptor.shard)
+        self._messaging = None
+        self._database = None
+
+    def initiate(self):
+        '''Establishes the connections to database and messaging platform,
+        taking into account that it might meen performing asynchronous job.'''
+
+        def setter(value, name):
+            setattr(self, name, value)
+
+        d = defer.maybeDeferred(self.agency._messaging.get_connection, self)
+        d.addCallback(setter, '_messaging')
+        d.addCallback(lambda _: self.agency._database.get_connection(self))
+        d.addCallback(setter, '_database')
+        d.addCallback(lambda _: self.join_shard(self._descriptor.shard))
+        return d
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''

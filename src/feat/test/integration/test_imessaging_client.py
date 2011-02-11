@@ -42,16 +42,17 @@ class TestCase(object):
         return dict(key=self.agents[n].descriptor.doc_id,
                     shard=self.agents[n].descriptor.shard)
 
+    @defer.inlineCallbacks
     def init_agents(self):
         self.agents = [StubAgent() for x in range(self.number_of_agents)]
         self.connections = list()
         bindings = list()
         for agent in self.agents:
-            connection = self.messaging.get_connection(agent)
+            connection = yield self.messaging.get_connection(agent)
             self.connections.append(connection)
             pb = connection.personal_binding(agent.descriptor.doc_id)
             bindings.append(pb)
-        return defer.DeferredList(map(lambda b: b.created, bindings))
+        yield defer.DeferredList(map(lambda b: b.created, bindings))
 
     @attr(number_of_agents=2)
     @defer.inlineCallbacks
@@ -206,7 +207,7 @@ class RabbitSpecific(object):
         '''
         agent = StubAgent()
         self.agents = [agent]
-        connection = self.messaging.get_connection(agent)
+        connection = yield self.messaging.get_connection(agent)
 
         # wait for connection to be established
         client = yield connection._messaging.factory.add_connection_made_cb()
