@@ -374,8 +374,8 @@ Most of the agents needs to handle some kind of resources. The resource is a qua
 
 	       # this one will expire after timeout if not confirmed
 	       allocation = state.resource.preallocate(memory=30,cpu=20)
-	       state.resource.confirm(allocation)
-	       # or state.resource.release(allocation)
+	       state.resource.confirm(allocation.id)
+	       # or state.resource.release(allocation.id)
 
 	       # this will return None as we don't have enough resource
 	       state.resource.preallocate(cpu=200)
@@ -383,7 +383,7 @@ Most of the agents needs to handle some kind of resources. The resource is a qua
 	       # be carefull! this will throw NotEnoughResources
    	       state.resource.allocate(cpu=200)
 
-Important thing to point out here is that confirmed allocations are stored in the descriptor in order to survive the agents restart. For this reason .allocate(), .confirm() and .release() methods return a Fiber instance which you should chain or return. Note that this is not done in the example above in order to keep it simple.
+Important thing to point out here is that confirmed allocations are stored in the descriptor in order to survive the agents restart. For this reason .allocate(), .confirm() and .release() methods return a Fiber instance which you should chain or returned. The reason for this is that they modify descriptor which requires performing the HTTP request. Note that this is not done in the example above in order to keep it simple.
 
 
 Defining and using partners
@@ -448,14 +448,14 @@ Framework comes with a handy utility class (feat.agents.base.partners.Partners) 
 	    f = fiber.Fiber()
  	    # this will create a correct Partner
 	    # instances in both agents
-	    f.add_callback(self.establish_partnership, allocation,
+	    f.add_callback(self.establish_partnership, allocation.id,
 	                   partner_role="dog", our_role="cat")
 	    return f.succeed(dog_recp)
 
 
 A lot of code! Lets explain in points:
 
-- JohnPartner, DogPartner, CatPartner and DefaultPartner are subclassing the partners.BasePartner class. This class contains two important piece of information: the resource allocation reflecting our side of partnership and the IRecipient address of the partner. It comes with 3 methods which you might or might not overload. All of them receive an agent instance as a parameter:
+- JohnPartner, DogPartner, CatPartner and DefaultPartner are subclassing the partners.BasePartner class. This class contains two important piece of information: the resource allocation's id reflecting our side of partnership and the IRecipient address of the partner. It comes with 3 methods which you might or might not overload. All of them receive an agent instance as a parameter:
 
   - *.initiate(agent)* is called when the partnership is being established. Here you should perform our part of the job triggered by the agent. So, if we are speaking about HostAgent code and initiate() method of ShardPartner we should change a shard. MonitorPartner (of any agent) should initiate the heartbeat signals, JournalPartner would setup sending the journal pages and so on, so on.
 
