@@ -16,6 +16,10 @@ class Relation(object):
     def query(self, partners):
         return [x for x in partners if isinstance(x, self.factory)]
 
+    def query_with_role(self, partners, role):
+        return [x for x in partners \
+                if isinstance(x, self.factory) and x.role == role]
+
 
 class ManyRelation(Relation):
     pass
@@ -25,8 +29,15 @@ class OneRelation(Relation):
 
     def query(self, partners):
         match = Relation.query(self, partners)
+        return self._ensure_one(partners, match)
+
+    def query_with_role(self, partners):
+        match = Relation.query_with_role(self, partners)
+        return self._ensure_one(partners, match)
+
+    def _ensure_one(self, partners, match):
         if len(match) > 1:
-            raise RuntimeError('Expected excatly one partner of the class %r'
+            raise RuntimeError('Expected at most one partner of the class %r'
                                ', found %d in %r' %\
                                (self.factory, len(partners), partners))
         elif len(match) == 1:
@@ -53,7 +64,13 @@ def _inject_definition(relation, descriptor_type, factory, role):
     def getter(self):
         return self.query(relation.name)
 
+    def getter_with_role(self, role):
+        return self.query_with_role(relation.name, role)
+
+
     annotate.injectAttribute("relation_getter", 4, relation.name, getter)
+    annotate.injectAttribute("relation_getter", 4,
+                             relation.name + "_with_role", getter_with_role)
 
 
 @serialization.register
@@ -61,9 +78,10 @@ class BasePartner(serialization.Serializable):
 
     type_name = 'partner'
 
-    def __init__(self, recp, allocation_id=None):
+    def __init__(self, recp, allocation_id=None, role=None):
         self.recipient = recipient.IRecipient(recp)
         self.allocation_id = allocation_id
+        self.role = role
 
     def initiate(self, agent):
         pass
@@ -93,6 +111,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     default_handler = BasePartner
 
+    has_many("all", "whatever", BasePartner)
+
     def __init__(self, agent):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
@@ -116,6 +136,11 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         cls._handlers = dict()
         # name -> Relation
         cls._relations = dict()
+
+        for base in bases:
+            cls._relations.update(getattr(base, '_relations', dict()))
+            cls._handlers.update(getattr(base, '_handlers', dict()))
+
         cls._define_default_handler(cls.default_handler)
         serialization.register(cls)
 
@@ -124,10 +149,19 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         '''
         Lookup the handler for the giving idetifier (descriptor_type) and role.
         In case it was not found return the default.
+
+        Logic goes as follows:
+        - First try to find exact match for identifier and role,
+        - Try to find match for identifier and role=None,
+        - Return default handler.
         '''
         key = cls._key_for(identifier, role)
-        resp = cls._handlers.get(key, cls._handlers['_default'])
-        return resp
+        handler = cls._handlers.get(key, None)
+        if handler is None:
+            default_for_identifier = cls._key_for(identifier, None)
+            handler = cls._handlers.get(default_for_identifier,
+                                        cls._handlers['_default'])
+        return handler
 
     @classmethod
     def _define_default_handler(cls, factory):
@@ -155,6 +189,11 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return self._relations[name].query(partners)
 
     @replay.immutable
+    def query_with_role(self, state, name, role):
+        partners = state.agent.get_descriptor().partners
+        return self._relations[name].query_with_role(partners, role)
+
+    @replay.immutable
     def find(self, state, recp):
         desc = state.agent.get_descriptor()
         match = [x for x in desc.partners if x.recipient == recp]
@@ -176,7 +215,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return
 
         factory = self.query_handler(partner_class, role)
-        partner = factory(recp, allocation_id)
+        partner = factory(recp, allocation_id, role)
         self.debug(
             'Registering partner %r (lookup (%r, %r)) for recipient: %r',
             factory, partner_class, role, recp)

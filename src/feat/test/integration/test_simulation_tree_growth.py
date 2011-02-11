@@ -146,6 +146,9 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         self._assert_allocated(shard_a, 'children', 0)
 
         parent = shard_a.query_partners('parent')
+        host = shard_a.query_partners('hosts')
+        self.assertEqual(1, len(host))
+        self.assertEqual('host', host[0].role)
         self.assertIsInstance(parent, shard_agent.ParentShardPartner)
 
     @defer.inlineCallbacks

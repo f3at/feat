@@ -218,7 +218,7 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(self._request_start_agent)
             f.add_callback(self._extract_agent)
             f.add_callback(state.agent.establish_partnership,
-                           state.preallocation_id, 'child', 'parent')
+                           state.preallocation_id, u'child', u'parent')
             f.add_callback(self._generate_new_address, joining_agent_id)
             f.add_callback(state.medium.update_manager_address)
             f.add_callback(self._finalize)

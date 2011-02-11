@@ -18,7 +18,7 @@ class ShardPartner(partners.BasePartner):
 
 class Partners(partners.Partners):
 
-    partners.has_one('shard_a', 'shard_agent', ShardPartner)
+    partners.has_one('shard', 'shard_agent', ShardPartner)
 
 
 @agent.register('host_agent')
@@ -39,7 +39,7 @@ class HostAgent(agent.BaseAgent):
 
     @replay.journaled
     def start_join_shard_manager(self, state):
-        if state.partners.shard_a is None:
+        if state.partners.shard is None:
             recp = recipient.Agent('join-shard', 'lobby')
             retrier = state.medium.retrying_protocol(JoinShardManager, recp)
 
@@ -61,7 +61,7 @@ class HostAgent(agent.BaseAgent):
         f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent)
         f.add_callback(recipient.IRecipient)
-        f.add_callback(self.establish_partnership)
+        f.add_callback(self.establish_partnership, our_role=u'host')
         f.succeed(doc_id)
         return f
 

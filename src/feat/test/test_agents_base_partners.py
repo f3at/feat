@@ -47,14 +47,15 @@ class TestPartners(common.TestCase):
     def testQueryingHandlers(self):
         self.assertEqual(FirstPartner,
                          self.partners.query_handler("first_agent"))
+        self.assertEqual(FirstPartner,
+                         self.partners.query_handler("first_agent"),
+                         "undefined role")
         self.assertEqual(SpecialPartner,
                          self.partners.query_handler("first_agent", "special"))
         self.assertEqual(SecondPartner,
                          self.partners.query_handler("second_agent"))
-        self.assertEqual(DefaultPartner,
-                         self.partners.query_handler("second_agent", "role"))
 
-        self.assertEqual(partners.BasePartner,
+        self.assertEqual(FirstPartner,
                          OtherPartners.query_handler("second_agent", "role"))
         self.assertEqual(SecondPartner,
                          OtherPartners.query_handler("first_agent"))
@@ -62,14 +63,7 @@ class TestPartners(common.TestCase):
                          OtherPartners.query_handler("second_agent"))
 
     def testQueringPartners(self):
-        partners = [
-            self._generate_partner(FirstPartner),
-            self._generate_partner(SecondPartner),
-            self._generate_partner(SecondPartner),
-            self._generate_partner(SecondPartner),
-            self._generate_partner(SpecialPartner)]
-
-        self._inject_partners(partners)
+        self._generate_partners()
 
         self.assertIsInstance(self.partners.query('first'), FirstPartner)
         self.assertIsInstance(self.partners.first, FirstPartner)
@@ -86,6 +80,22 @@ class TestPartners(common.TestCase):
         self.assertEqual(1, len(specials))
         self.assertIsInstance(specials[0], SpecialPartner)
 
+    def testQueringWithRole(self):
+        self._generate_partners()
+        specials = self.partners.all_with_role("special")
+        self.assertIsInstance(specials, list)
+        self.assertEqual(3, len(specials))
+
+    def _generate_partners(self):
+        partners = [
+            self._generate_partner(FirstPartner),
+            self._generate_partner(SecondPartner, 'special'),
+            self._generate_partner(SecondPartner, 'special'),
+            self._generate_partner(SecondPartner, 'special'),
+            self._generate_partner(SpecialPartner)]
+
+        self._inject_partners(partners)
+
     def _inject_partners(self, partners):
 
         def get_descriptor():
@@ -93,6 +103,6 @@ class TestPartners(common.TestCase):
 
         setattr(self.agent, 'get_descriptor', get_descriptor)
 
-    def _generate_partner(self, factory):
+    def _generate_partner(self, factory, role=None):
         recp = recipient.dummy_agent()
-        return factory(recp)
+        return factory(recp, role=role)
