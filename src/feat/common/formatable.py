@@ -38,13 +38,14 @@ class Formatable(serialization.Serializable, annotate.Annotable):
     @classmethod
     def _register_field(cls, field):
         # remove field with this name if already present (overriding defaults)
-        find = [cls._fields.remove(x) \
-                for x in cls._fields if x.name == field.name]
-
+        [cls._fields.remove(x) for x in cls._fields if x.name == field.name]
         cls._fields.append(field)
 
     def __init__(self, **fields):
         self._set_fields(fields)
+
+    def __repr__(self):
+        return "<%s %r>" % (type(self).__name__, self.snapshot(), )
 
     def _set_fields(self, dictionary):
         for key in dictionary:

@@ -239,6 +239,10 @@ class TestParser(common.TestCase):
         self.assertTrue(m)
         self.assertEqual('this', m.group(0))
 
+        m = self.parser.re['variable'].search("_")
+        self.assertTrue(m)
+        self.assertEqual('_', m.group(0))
+
         m = self.parser.re['variable'].search("this.and.that")
         self.assertTrue(m)
         self.assertEqual('this.and.that', m.group(0))

@@ -127,12 +127,16 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
     def partner_said_goodbye(self, state, recp):
         return state.partners.on_goodbye(recp)
 
+    @manhole.expose()
     @replay.immutable
     def query_partners(self, state, name):
+        '''query_partners(name) -> Query the partners by the relation name.'''
         return state.partners.query(name)
 
+    @manhole.expose()
     @replay.immutable
     def get_own_address(self, state):
+        '''get_own_address() -> Return IRecipient representing the agent.'''
         return recipient.IRecipient(state.medium)
 
     @replay.immutable

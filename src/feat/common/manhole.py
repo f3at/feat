@@ -175,6 +175,7 @@ class Parser(log.Logger):
 
             if assignment:
                 d.addCallback(self.set_local, variable_name)
+            d.addCallback(self.set_local, '_')
             d.addCallback(self.send_output)
             d.addCallbacks(lambda _: self.process_line(), self._error_handler)
         else:

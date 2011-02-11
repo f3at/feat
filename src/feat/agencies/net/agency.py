@@ -1,3 +1,4 @@
+import pprint
 import binascii
 import base64
 
@@ -116,6 +117,16 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
         '''get_document(doc_id) -> Download the document given the id.'''
         conn = self.agency._database.get_connection(None)
         return conn.get_document(doc_id)
+
+    @manhole.expose()
+    def pprint(self, obj):
+        '''pprint(obj) -> Preaty print the object'''
+        return pprint.pformat(obj)
+
+    @manhole.expose()
+    def list_get(self, llist, index):
+        """list_get(list, n) -> Get the n'th element of the list"""
+        return llist[index]
 
 
 class SSHAvatar(avatar.ConchUser):

@@ -147,6 +147,24 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         for agent in self._agents:
             agent.journal_snapshot()
 
+    # Methods exposed for introspection
+
+    @manhole.expose()
+    def list_agents(self):
+        '''list_agents() -> List agents hosted by the agency.'''
+
+        def format_agent(agent):
+            return "%s %s" % (agent._descriptor.doc_id.ljust(25),
+                              agent.log_name, )
+
+        return "\n".join([format_agent(x) for x in self._agents])
+
+    @manhole.expose()
+    def get_nth_agent(self, n):
+        '''get_nth_agent(n) -> Get the agent by his index in the list.'''
+
+        return self._agents[n]
+
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
     implements(agent.IAgencyAgent, journal.IRecorderNode,
@@ -464,7 +482,26 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
 
     @manhole.expose()
     def get_agent(self):
+        '''get_agent() -> Returns the agent side instance.'''
         return self.agent
+
+    @manhole.expose()
+    def list_partners(self):
+        fields = ["Partner", "Id", "Shard", "Role"]
+        lengths = [20, 35, 35, 10]
+        header = "".join(
+            [x.ljust(length) for x, length in zip(fields, lengths)])
+        partners = self.agent.query_partners('all')
+
+        def formated(partner):
+            return "%s%s%s%s" %\
+                   (str(type(partner).__name__).ljust(lengths[0]),
+                    str(partner.recipient.key).ljust(lengths[1]),
+                    str(partner.recipient.shard).ljust(lengths[2]),
+                    str(partner.role).ljust(lengths[3]), )
+
+        return '\n'.join([header, '^' * len(header)] +\
+                         [formated(x) for x in partners])
 
 
 @serialization.register
