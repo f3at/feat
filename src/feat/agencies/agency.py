@@ -47,15 +47,16 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         self.registry = weakref.WeakValueDictionary()
 
     @manhole.expose()
-    def start_agent(self, descriptor):
+    def start_agent(self, descriptor, *args, **kwargs):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
-        self.log('I will start: %r agent', factory)
+        self.log('I will start: %r agent. Args: %r, Kwargs: %r.',
+                 factory, args, kwargs)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
 
         d = defer.maybeDeferred(medium.initiate)
-        d.addCallback(lambda _: medium.agent.initiate())
+        d.addCallback(lambda _: medium.agent.initiate(*args, **kwargs))
         d.addCallback(lambda _: medium)
         return d
 
@@ -248,6 +249,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         bindings = self._messaging.get_bindings(shard)
         return defer.DeferredList([x.revoke() for x in bindings])
 
+    @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc):
         return self.agency.start_agent(desc)
 

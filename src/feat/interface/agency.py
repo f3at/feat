@@ -12,6 +12,7 @@ class IAgency(Interface):
         '''
         Start new agent for the given descriptor.
         The factory is lookuped at in the agents registry.
+        The args and kwargs will be passed to the agents initiate() method.
         @return_type: L{IAgencyAngent}
         '''
 

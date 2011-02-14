@@ -27,14 +27,15 @@ class HostAgent(agent.BaseAgent):
     partners_class = Partners
 
     @replay.mutable
-    def initiate(self, state):
+    def initiate(self, state, bootstrap=False):
         agent.BaseAgent.initiate(self)
 
         state.medium.register_interest(StartAgentReplier)
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self.initiate_partners)
-        f.add_callback(fiber.drop_result, self.start_join_shard_manager)
+        if not bootstrap:
+            f.add_callback(fiber.drop_result, self.start_join_shard_manager)
         return f.succeed()
 
     @replay.journaled
@@ -62,12 +63,12 @@ class HostAgent(agent.BaseAgent):
         f.add_callback(fiber.drop_result, state.medium.join_shard, shard)
         return f.succeed()
 
-    @replay.immutable
-    def start_agent(self, state, doc_id):
+    @replay.journaled
+    def start_agent(self, state, doc_id, *args, **kwargs):
         f = fiber.Fiber()
         f.add_callback(self.get_document)
         f.add_callback(self._update_shard_field)
-        f.add_callback(state.medium.start_agent)
+        f.add_callback(state.medium.start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self.establish_partnership, our_role=u'host')
         f.succeed(doc_id)

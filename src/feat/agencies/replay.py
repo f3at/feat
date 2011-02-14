@@ -247,6 +247,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def leave_shard(self, shard):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc):
         pass
 
