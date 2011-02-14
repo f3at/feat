@@ -7,8 +7,18 @@ class IAgentFactory(Interface):
     '''Create an agent implementing L{IAgent}. Used by the agency when
     starting an agent.'''
 
+    standalone = Attribute("bool. whether to run in standalone process")
+
     def __call__(medium, *args, **kwargs):
         pass
+
+    def get_cmd_line():
+        '''
+        Should be implemeneted for the stand alone agents. Returns the
+        command line which need to be run to start the external process, its
+        arguments and environment.
+        @returns: Tuple of the format: (command, args, env).
+        '''
 
 
 class IAgencyAgent(Interface):
@@ -138,9 +148,10 @@ class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
     time in order to perform its task.'''
 
-    def initiate():
+    def initiate(*args, **kwargs):
         '''
         Called after the agent is registered to an agency.
+        Args and keywords are passed to IAgency.start_agent().
         '''
 
     def shutdown():

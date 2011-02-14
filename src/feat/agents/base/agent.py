@@ -52,6 +52,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
 
     partners_class = partners.Partners
 
+    standalone = False
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
@@ -85,6 +87,9 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
         fibers = [x for x in results if isinstance(x, fiber.Fiber)]
         f = fiber.FiberList(fibers)
         return f.succeed()
+
+    def get_cmd_line(self):
+        raise NotImplemented('To be used for standalone agents!')
 
     def unregister(self):
         pass
