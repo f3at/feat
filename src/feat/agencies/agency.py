@@ -237,15 +237,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         d.addCallback(update)
         return d
 
-    @replay.named_side_effect('AgencyAgent.join_shard')
+    @serialization.freeze_tag('AgencyAgent.join_shard')
     def join_shard(self, shard):
         self.log("Join shard called. Shard: %r", shard)
-        self.create_binding(self._descriptor.doc_id, shard)
+        binding = self.create_binding(self._descriptor.doc_id, shard)
+        return binding.created
 
-    @replay.named_side_effect('AgencyAgent.leave_shard')
+    @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
         bindings = self._messaging.get_bindings(shard)
-        map(lambda binding: binding.revoke(), bindings)
+        return defer.DeferredList([x.revoke() for x in bindings])
 
     def start_agent(self, desc):
         return self.agency.start_agent(desc)

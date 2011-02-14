@@ -339,9 +339,10 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
     @wait_for_channel
     def defineExchange(self, name):
-        return self.channel.exchange_declare(
+        d = self.channel.exchange_declare(
             exchange=name, type="direct", durable=True,
             nowait=False, auto_delete=False)
+        return d
 
     @wait_for_channel
     def createBinding(self, exchange, key, queue):

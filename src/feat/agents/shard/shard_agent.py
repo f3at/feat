@@ -197,7 +197,7 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(fiber.drop_result, state.medium.handover, bid)
             return f.succeed()
 
-    @replay.mutable
+    @replay.immutable
     def release_preallocation(self, state, *_):
         if state.preallocation_id is not None:
             return state.agent.release_resource(state.preallocation_id)
@@ -221,7 +221,7 @@ class JoinShardContractor(contractor.BaseContractor):
                            state.preallocation_id, u'child', u'parent')
             f.add_callback(self._generate_new_address, joining_agent_id)
             f.add_callback(state.medium.update_manager_address)
-            f.add_callback(self._finalize)
+            f.add_callbacks(self._finalize, self._granted_failed)
             return f.succeed(state.preallocation_id)
         else: # ActionType.join
             f = fiber.Fiber()
@@ -230,8 +230,12 @@ class JoinShardContractor(contractor.BaseContractor):
                 fiber.drop_result, state.agent.establish_partnership,
                 grant.payload['joining_agent'], state.preallocation_id)
             f.add_callback(state.medium.update_manager_address)
-            f.add_callback(self._finalize)
+            f.add_callbacks(self._finalize, self._granted_failed)
             return f.succeed(state.preallocation_id)
+
+    def _granted_failed(self, failure):
+        self.release_preallocation()
+        failure.raiseException()
 
     @replay.immutable
     def _finalize(self, state, _):

@@ -379,7 +379,6 @@ class Serializer(object):
                 if extid is not None:
                     return self.flatten_external(extid, caps, freezing)
             return self.flatten_instance(value, caps, freezing)
-
         raise TypeError("Type %s values not supported by serializer %s"
                         % (type(value).__name__,
                            reflect.canonical_name(self)))

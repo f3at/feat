@@ -47,12 +47,20 @@ class HostAgent(agent.BaseAgent):
             f.add_callback(fiber.drop_result, retrier.notify_finish)
             return f.succeed()
 
-    @agent.update_descriptor
-    def switch_shard(self, state, desc, shard):
+    @replay.journaled
+    def switch_shard(self, state, shard):
         self.debug('Switching shard to %r', shard)
-        state.medium.leave_shard(desc.shard)
-        desc.shard = shard
-        state.medium.join_shard(shard)
+        desc = state.medium.get_descriptor()
+
+        def save_change(desc, shard):
+            desc.shard = shard
+
+        f = fiber.Fiber()
+        f.add_callback(fiber.drop_result, state.medium.leave_shard, desc.shard)
+        f.add_callback(fiber.drop_result, self.update_descriptor,
+                       save_change, shard)
+        f.add_callback(fiber.drop_result, state.medium.join_shard, shard)
+        return f.succeed()
 
     @replay.immutable
     def start_agent(self, state, doc_id):

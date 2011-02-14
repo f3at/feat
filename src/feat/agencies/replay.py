@@ -239,11 +239,11 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def get_time(self):
         pass
 
-    @replay.named_side_effect('AgencyAgent.join_shard')
+    @serialization.freeze_tag('AgencyAgent.join_shard')
     def join_shard(self, shard):
         pass
 
-    @replay.named_side_effect('AgencyAgent.leave_shard')
+    @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
         pass
 
