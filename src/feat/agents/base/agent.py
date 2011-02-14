@@ -155,6 +155,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
     def allocate_resource(self, state, **params):
         return state.resources.allocate(**params)
 
+    @replay.immutable
+    def list_resource(self, state):
+        allocated = state.resources.allocated()
+        totals = state.resources.get_totals()
+        return totals, allocated
+
     @replay.mutable
     def confirm_allocation(self, state, allocation_id):
         return state.resources.confirm(allocation_id)

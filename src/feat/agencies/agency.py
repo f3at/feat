@@ -9,7 +9,7 @@ from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import (log, manhole, journal, fiber, serialization, delay,
-                         error_handler, )
+                         error_handler, text_helper)
 from feat.agents.base import recipient, replay
 from feat.agents.base.agent import registry_lookup
 from feat.agents.host import host_agent
@@ -155,11 +155,11 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
     def list_agents(self):
         '''list_agents() -> List agents hosted by the agency.'''
 
-        def format_agent(agent):
-            return "%s %s" % (agent._descriptor.doc_id.ljust(25),
-                              agent.log_name, )
+        t = text_helper.Table(fields=("Agent ID", "Agent class", ),
+                              lengths=(40, 25, ))
 
-        return "\n".join([format_agent(x) for x in self._agents])
+        return t.render((a._descriptor.doc_id, a.log_name, )\
+                        for a in self._agents)
 
     @manhole.expose()
     def get_nth_agent(self, n):
@@ -501,21 +501,25 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
 
     @manhole.expose()
     def list_partners(self):
-        fields = ["Partner", "Id", "Shard", "Role"]
-        lengths = [20, 35, 35, 10]
-        header = "".join(
-            [x.ljust(length) for x, length in zip(fields, lengths)])
+        t = text_helper.Table(fields=["Partner", "Id", "Shard", "Role"],
+                  lengths = [20, 35, 35, 10])
+
         partners = self.agent.query_partners('all')
+        return t.render(
+            (type(p).__name__, p.recipient.key, p.recipient.shard, p.role, )\
+            for p in partners)
 
-        def formated(partner):
-            return "%s%s%s%s" %\
-                   (str(type(partner).__name__).ljust(lengths[0]),
-                    str(partner.recipient.key).ljust(lengths[1]),
-                    str(partner.recipient.shard).ljust(lengths[2]),
-                    str(partner.role).ljust(lengths[3]), )
+    @manhole.expose()
+    def list_resource(self):
+        t = text_helper.Table(fields=["Name", "Totals", "Allocated"],
+                  lengths = [20, 20, 20])
+        totals, allocated = self.agent.list_resource()
 
-        return '\n'.join([header, '^' * len(header)] +\
-                         [formated(x) for x in partners])
+        def iter(totals, allocated):
+            for x in totals:
+                yield x, totals[x], allocated[x]
+
+        return t.render(iter(totals, allocated))
 
 
 @serialization.register
