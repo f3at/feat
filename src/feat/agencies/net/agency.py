@@ -8,26 +8,31 @@ from twisted.cred import portal
 from twisted.conch import (avatar, checkers, recvline,
                            interfaces as conchinterfaces, )
 from twisted.conch.ssh import factory, keys, session
-
+from twisted.internet.error import CannotListenError
 from twisted.conch.insults import insults
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 
 from feat.agents.base.agent import registry_lookup
+from feat.agents.base import recipient
 from feat.agencies import agency
-from feat.common import manhole
+from feat.common import manhole, journal
 from feat.interface import agent
+from feat.process import standalone
 
 from . import messaging
 from . import database
 
 
-class Agency(agency.Agency):
+class Agency(agency.Agency, journal.DummyRecordNode):
+
+    spawns_processes = True
 
     def __init__(self, msg_host='localhost', msg_port=5672, msg_user='guest',
                  msg_password='guest',
                  db_host='localhost', db_port=5984, db_name='feat',
                  public_key=None, private_key=None, authorized_keys=None,
                  manhole_port=None):
+
 
         self.config = dict()
         self.config['msg'] = dict(host=msg_host, port=msg_port,
@@ -42,17 +47,37 @@ class Agency(agency.Agency):
 
     def _init_networking(self):
         mesg = messaging.Messaging(
-            self.config['msg']['host'], self.config['msg']['port'],
+            self.config['msg']['host'], int(self.config['msg']['port']),
             self.config['msg']['user'], self.config['msg']['password'])
         db = database.Database(
-            self.config['db']['host'], self.config['db']['port'],
+            self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
+        journal.DummyRecordNode.__init__(self)
         agency.Agency.__init__(self, mesg, db)
 
+        reactor.addSystemEventTrigger('before', 'shutdown',
+                                      self.shutdown)
         self._setup_manhole()
+        self._processes = list()
+
+    def append_process(self, process):
+        self._processes.append(process)
+
+    def remove_process(self, process):
+        if process in self._processes:
+            self._processes.remove(process)
+
+    def terminate_processes(self):
+        return defer.DeferredList([x.terminate() for x in self._processes])
 
     def _setup_manhole(self):
         self._manhole_listener = None
+        if not (self.config['manhole']['public_key'] and\
+                self.config['manhole']['private_key'] and\
+                self.config['mahhole']['authorized_keys']):
+            self.info('Skipping manhole configuration. You need to specify '
+                      'public and private key files and authorized_keys file.')
+            return
 
         try:
             public_key_str = file(self.config['manhole']['public_key']).read()
@@ -89,20 +114,24 @@ class Agency(agency.Agency):
         d = agency.Agency.shutdown(self)
         if self._manhole_listener:
             d.addCallback(lambda _: self._manhole_listener.stopListening())
+        d.addCallback(lambda _: self.terminate_processes())
         return d
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
-        if not factory.standalone:
-            return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
-        else:
+        if self.spawns_processes and factory.standalone:
             command, args, env = factory.get_cmd_line()
             env = self._store_config(env)
-            env['FEAT_AGENT_ID'] = descriptor.doc_id
+            env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
+            recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
             p = standalone.Process(self, command, args, env)
-            return p.restart()
+            d = p.restart()
+            d.addCallback(lambda _: recp)
+            return d
+        else:
+            return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
 
     def _store_config(self, env):
         '''
@@ -111,7 +140,7 @@ class Agency(agency.Agency):
         for key in self.config:
             for kkey in self.config[key]:
                 var_name = "FEAT_%s_%s" % (key.upper(), kkey.upper(), )
-                env[var_name] = self.config[key][kkey]
+                env[var_name] = str(self.config[key][kkey])
         return env
 
     def _load_config(self, env):
@@ -125,10 +154,13 @@ class Agency(agency.Agency):
             if res:
                 c_key = res.group(1).lower()
                 c_kkey = res.group(2).lower()
+                value = str(env[key])
+                if value == 'None':
+                    value = None
                 if c_key in self.config:
-                    self.config[c_key][c_kkey] = env[key]
+                    self.config[c_key][c_kkey] = value
                 else:
-                    self.config[c_key] = {c_kkey: env[key]}
+                    self.config[c_key] = {c_kkey: value}
 
 
 class KeyChecker(checkers.SSHPublicKeyDatabase):

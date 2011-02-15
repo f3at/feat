@@ -32,12 +32,6 @@ class TestHostAgent(testsuite.TestCase):
         self.assertFiberCalls(f, self.agent.initiate_partners)
         self.assertFiberCalls(f, self.agent.start_join_shard_manager)
 
-    def testStartAgent(self):
-        desc = factories.build('descriptor')
-        f, state = self.ball.call(None, self.agent.start_agent, desc.doc_id)
-        self.assertFiberTriggered(f, fiber.TriggerType.succeed, desc.doc_id)
-        self.assertFiberCalls(f, state.medium.start_agent)
-
 
 class TestJoinShardManager(testsuite.TestCase):
 

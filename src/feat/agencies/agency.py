@@ -63,7 +63,7 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
     def shutdown(self):
         '''Called when the agency process is terminating.'''
         d = defer.DeferredList([x.terminate() for x in self._agents])
-        d.addCallback(lambda _: self._messaging.disconnect)
+        d.addCallback(lambda _: self._messaging.disconnect())
         return d
 
     def unregister_agent(self, medium, agent_id):

@@ -65,8 +65,6 @@ class bootstrap(object):
         return self.agency
 
     def __exit__(self, type, value, traceback):
-        reactor.addSystemEventTrigger('before', 'shutdown',
-                                      self.agency.shutdown)
         reactor.run()
 
     def parse_opts(self):

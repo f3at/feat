@@ -342,6 +342,23 @@ class Recorder(RecorderNode, annotate.Annotable):
         return fun_id, function, result
 
 
+class DummyRecordNode(object):
+
+    implements(IRecorderNode)
+
+    def __init__(self):
+        self.journal_keeper = self
+
+    def generate_identifier(self, _):
+        return (None, )
+
+    def register(self, _):
+        pass
+
+    def write_entry(self, *_):
+        pass
+
+
 class InMemoryJournalKeeper(object):
     '''Dummy in-memory journal keeper, DO NOT USE for serious stuff.'''
 

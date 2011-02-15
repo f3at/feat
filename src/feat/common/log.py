@@ -84,10 +84,10 @@ class FluLogKeeper(object):
     @classmethod
     def init(cls, path=None):
         global flulog
+        if path:
+            sys.stderr = file(path, 'a')
         if not cls._initialized:
             from feat.extern.log import log as flulog
-            if path:
-                sys.stderr = file(path, 'a')
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')
             flulog.logTwisted()

@@ -16,7 +16,6 @@ class ReplayableStateMachine(replay.Replayable, common.StateMachineMixin):
         self._changes_notifications = dict()
 
     def init_state(self, state, agent, machine_state=None):
-        state.agent = agent
         state.machine_state = machine_state
 
     @replay.immutable
@@ -55,7 +54,7 @@ class ReplayableStateMachine(replay.Replayable, common.StateMachineMixin):
         if self._cmp_state(states):
             return True
         raise RuntimeError("Expected state in: %r, was: %r instead" %\
-                           (states, state.state))
+                           (states, state.machine_state))
 
     def _cmp_state(self, states):
         if not isinstance(states, list):

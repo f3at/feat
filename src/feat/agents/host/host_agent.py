@@ -65,6 +65,7 @@ class HostAgent(agent.BaseAgent):
 
     @replay.journaled
     def start_agent(self, state, doc_id, *args, **kwargs):
+        assert isinstance(doc_id, (str, unicode, ))
         f = fiber.Fiber()
         f.add_callback(self.get_document)
         f.add_callback(self._update_shard_field)

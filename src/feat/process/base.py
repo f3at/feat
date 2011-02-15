@@ -27,6 +27,8 @@ class ProcessState(enum.Enum):
 
 class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
+    log_category = "process-protocol"
+
     def __init__(self, owner, success_test, ready_cb):
         log.Logger.__init__(self, owner)
 
@@ -42,7 +44,7 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
     def outReceived(self, data):
         self.out_buffer += data
-        if self.success_test() and not self.ready:
+        if not self.ready and self.success_test():
             self.log("Process start successful. "
                      "Process stdout buffer so far:\n%s", self.out_buffer)
             self.ready_cb(self.out_buffer)
@@ -94,7 +96,8 @@ class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
 
     def terminate(self):
         self._ensure_state([ProcessState.initiated,
-                            ProcessState.started])
+                            ProcessState.started,
+                            ProcessState.terminating])
         self._set_state(ProcessState.terminating)
         self.process.signalProcess("TERM")
         return self.wait_for_state(ProcessState.finished)
@@ -112,7 +115,8 @@ class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
         mapping = {
             error.ProcessDone:\
                 {'state_before': [ProcessState.initiated,
-                                  ProcessState.started],
+                                  ProcessState.started,
+                                  ProcessState.terminating],
                  'state_after': ProcessState.finished,
                  'method': self.on_finished},
             error.ProcessTerminated:\
