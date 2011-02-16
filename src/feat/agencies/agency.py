@@ -241,8 +241,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
     @serialization.freeze_tag('AgencyAgent.join_shard')
     def join_shard(self, shard):
         self.log("Join shard called. Shard: %r", shard)
+        # Rebind agents queue
         binding = self.create_binding(self._descriptor.doc_id, shard)
-        return binding.created
+        # Iterate over interest and create bindings
+        bindings = [x.bind() for x in self._iter_interests()]
+        # Remove None elements (private interests)
+        bindings = [x for x in bindings if x]
+        bindings = [binding] + bindings
+
+        return defer.DeferredList([x.created for x in bindings])
 
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
@@ -414,9 +421,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         self.log("terminate() called")
 
         # revoke all interests
-        for i_type in self._interests:
-            [self.revoke_interest(x.factory) \
-             for x in self._interests[i_type].values()]
+        [self.revoke_interest(x.factory) for x in self._iter_interests()]
 
         # kill all retrying protocols
         d = defer.DeferredList([x.give_up() for x in self._retrying_protocols])
@@ -455,6 +460,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         d = defer.DeferredList(
             [wait_for_listener(x) for x in self._listeners.values()])
         return d
+
+    def _iter_interests(self):
+        for p_type in self._interests:
+            for x in self._interests[p_type].values():
+                yield x
 
     def _kill_all_listeners(self, *_):
 
@@ -540,8 +550,12 @@ class Interest(Serializable):
         self.medium = medium
         self._lobby_binding = None
 
-        if factory.interest_type == protocols.InterestType.public:
+        self.bind()
+
+    def bind(self):
+        if self.factory.interest_type == protocols.InterestType.public:
             self.binding = self.medium.create_binding(self.factory.protocol_id)
+            return self.binding
 
     @replay.named_side_effect('Interest.revoke')
     def revoke(self):
