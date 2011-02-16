@@ -5,6 +5,7 @@ import uuid
 import time
 
 from twisted.internet import defer
+from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
@@ -56,6 +57,16 @@ class DummyReplier(replier.BaseReplier):
         state.medium.reply(message.ResponseMessage())
 
 
+class DummyInterest(object):
+
+    implements(protocols.IInterest)
+
+    def __init__(self):
+        self.protocol_type = "Contract"
+        self.protocol_id = "some-contract"
+        self.interest_type = protocols.InterestType.public
+
+
 class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
@@ -75,6 +86,19 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(1, len(self.agent._messaging.get_bindings('lobby')))
 
         self.agent.leave_shard('lobby')
+        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+
+    @defer.inlineCallbacks
+    def testSwitchingShardRebinding(self):
+        interest = DummyInterest()
+        self.agent.register_interest(interest)
+        self.assertEqual(2, len(self.agent._messaging.get_bindings('lobby')))
+        yield self.agent.leave_shard('lobby')
+        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+
+        yield self.agent.join_shard('new shard')
+        self.assertEqual(2,
+                         len(self.agent._messaging.get_bindings('new shard')))
         self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks

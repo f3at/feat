@@ -244,7 +244,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         # Rebind agents queue
         binding = self.create_binding(self._descriptor.doc_id, shard)
         # Iterate over interest and create bindings
-        bindings = [x.bind() for x in self._iter_interests()]
+        bindings = [x.bind(shard) for x in self._iter_interests()]
         # Remove None elements (private interests)
         bindings = [x for x in bindings if x]
         bindings = [binding] + bindings
@@ -552,9 +552,10 @@ class Interest(Serializable):
 
         self.bind()
 
-    def bind(self):
+    def bind(self, shard=None):
         if self.factory.interest_type == protocols.InterestType.public:
-            self.binding = self.medium.create_binding(self.factory.protocol_id)
+            self.binding = self.medium.create_binding(
+                self.factory.protocol_id, shard)
             return self.binding
 
     @replay.named_side_effect('Interest.revoke')
