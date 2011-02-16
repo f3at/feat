@@ -3,7 +3,7 @@
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
-from feat.test.common import attr, delay, StubAgent, DummyRecordNode
+from feat.test.common import attr, delay, StubAgent, DummyRecorderNode
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents.base import message
 from feat.process import rabbitmq
@@ -245,7 +245,7 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
                            'dependecies: %r' % import_error)
 
         try:
-            self.process = rabbitmq.Process(DummyRecordNode(self))
+            self.process = rabbitmq.Process(DummyRecorderNode(self))
         except DependencyError as e:
             raise SkipTest(str(e))
 

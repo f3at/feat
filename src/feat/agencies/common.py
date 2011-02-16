@@ -15,6 +15,8 @@ class StateAssertationError(RuntimeError):
 
 class StateMachineMixin(object):
 
+    _changes_notifications = None
+
     def __init__(self, state=None):
         self.state = state
         self._changes_notifications = dict()
@@ -34,11 +36,13 @@ class StateMachineMixin(object):
         if not self.state or not (state == self.state):
             self.log('Changing state from %r to %r', self.state, state)
             self.state = state
-        if state in self._changes_notifications:
-            temp = self._changes_notifications[state]
-            del(self._changes_notifications[state])
-            for cb in temp:
-                cb.callback(None)
+
+        if self._changes_notifications:
+            if state in self._changes_notifications:
+                temp = self._changes_notifications[state]
+                del(self._changes_notifications[state])
+                for cb in temp:
+                    cb.callback(None)
 
     def _cmp_state(self, states):
         if not isinstance(states, list):

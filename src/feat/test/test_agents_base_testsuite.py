@@ -9,6 +9,8 @@ from feat.agents.base import (resource, testsuite, agent, recipient,
 from feat.common import guard, fiber
 from feat.agencies.replay import AgencyManager
 
+from feat.interface.journal import *
+
 
 @agent.register('descriptor')
 class DummyAgent(common.DummyAgent):
@@ -93,7 +95,7 @@ class TestHamsterball(testsuite.TestCase):
         expectations = [
             testsuite.side_effect('AgencyAgent.get_time', 'result'),
             testsuite.side_effect('AgencyAgent.get_time', 'result2')]
-        self.assertRaises(FailTest, self.ball.call, expectations,
+        self.assertRaises(ReplayError, self.ball.call, expectations,
                           agent.call_side_effect)
 
     def testAsyncStuff(self):

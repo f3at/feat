@@ -8,6 +8,8 @@ from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
 from feat.agents.base import agent, descriptor
 from feat.common import serialization
+from feat.process.base import DependencyError
+from twisted.trial.unittest import SkipTest
 
 
 class UnitTestCase(common.TestCase):
@@ -67,7 +69,17 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.db_process = couchdb.Process(common.DummyRecordNode(self))
+        try:
+            self.db_process = couchdb.Process(common.DummyRecorderNode(self))
+        except DependencyError:
+            raise SkipTest("No CouchDB server found.")
+
+        try:
+            self.msg_process = rabbitmq.Process(common.DummyRecorderNode(self))
+        except DependencyError:
+            raise SkipTest("No RabbitMQ server found.")
+
+
         yield self.db_process.restart()
         c = self.db_process.get_config()
         db_host, db_port, db_name = c['host'], c['port'], 'test'
@@ -75,7 +87,6 @@ class IntegrationTestCase(common.TestCase):
         self.db = db.get_connection(None)
         yield db.createDB()
 
-        self.msg_process = rabbitmq.Process(common.DummyRecordNode(self))
         yield self.msg_process.restart()
         c = self.msg_process.get_config()
         msg_host, msg_port = '127.0.0.1', c['port']

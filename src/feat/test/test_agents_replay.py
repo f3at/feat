@@ -6,6 +6,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.common import journal, fiber
+from feat.common.serialization import pytree
 
 from feat.interface.serialization import *
 from feat.interface.journal import *
@@ -106,9 +107,14 @@ class Base(replay.Replayable):
 
 class TestCombined(common.TestCase):
 
+    def setUp(self):
+        self.serializer = pytree.Serializer()
+        self.unserializer = pytree.Unserializer()
+        self.keeper = journal.StupidJournalKeeper(self.serializer,
+                                                  self.unserializer)
+
     def testReentranceError(self):
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
         obj = Base(root, 18)
 
         d = self.assertAsyncRaises(None, ReentrantCallError,
@@ -123,8 +129,7 @@ class TestCombined(common.TestCase):
         return d
 
     def testSynchronousCalls(self):
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
 
         base = Base(root, 18)
 
@@ -137,8 +142,7 @@ class TestCombined(common.TestCase):
         return d
 
     def testAsynchronousCalls(self):
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
 
         base = Base(root, 18)
 

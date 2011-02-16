@@ -56,18 +56,16 @@ class SimulationTest(common.TestCase):
                    if entry[0] == aid]
         self.log("Found %d entries of this agent.", len(entries))
 
-        r = replay.Replay(entries.__iter__(), aid)
-        for side_effects, result, output in r:
-            self.assertTrue(side_effects is None,
-                            "Remaining side effects %r" % side_effects)
-            self.assertEqual(result, output)
+        r = replay.Replay(iter(entries), aid)
+        for entry in r:
+            entry.apply()
 
         agent_snapshot, listeners = agent.snapshot_agent()
         self.log("Replay complete. Comparing state of the agent and his "
                  "%d listeners.", len(listeners))
         self.assertEqual(agent_snapshot._get_state(), r.agent._get_state())
 
-        listeners_from_replay = [obj for obj in r.registry.values()\
+        listeners_from_replay = [obj for obj in r.registry.values()
                                  if obj.type_name.endswith('-medium')]
 
         self.assertEqual(len(listeners_from_replay), len(listeners))

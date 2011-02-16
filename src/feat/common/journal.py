@@ -12,19 +12,19 @@ from feat.common.annotate import MetaAnnotable
 from . import decorator, annotate, reflect, fiber, serialization
 
 RECORDED_TAG = "__RECORDED__"
-SIDE_EFFECTS_TAG = "__SIDE_EFFECTS__"
-INSIDE_EFFECT_TAG = "__INSIDE_EFFECT__"
+JOURNAL_ENTRY_TAG = "__JOURNAL_ENTRY__"
+EFFECT_ENTRY_TAG = "__EFFECT_ENTRY__"
 
 
-def replay(method, args=None, kwargs=None, expected_side_effects=[]):
+def replay(journal_entry, function, *args, **kwargs):
     '''
     Calls method in replay context so that no journal entries are created,
     expected_side_effects are checked, and no asynchronous task is started.
+    The journal entry is only used to fetch side-effects results.
     '''
     # Starts the fiber section
     section = fiber.WovenSection()
     section.enter()
-    side_effects = None
 
     # Check if this is the first recording in the fiber section
     journal_mode = section.state.get(RECORDED_TAG, None)
@@ -32,19 +32,16 @@ def replay(method, args=None, kwargs=None, expected_side_effects=[]):
 
     if is_first:
         section.state[RECORDED_TAG] = JournalMode.replay
-        side_effects = expected_side_effects
-        section.state[SIDE_EFFECTS_TAG] = side_effects
+        section.state[JOURNAL_ENTRY_TAG] = IJournalReplayEntry(journal_entry)
 
-    args = args or tuple()
-    kwargs = kwargs or {}
-    result = method(*args, **kwargs)
+    result = function(*args, **kwargs)
 
     # We don't want anything asynchronous to be called,
     # so we abort the fiber section
     section.abort(result)
     # side effects are returned in sake of making sure that
     # all the side effects expected have been consumed (called)
-    return (side_effects or None, result, )
+    return result
 
 
 @decorator.parametrized_function
@@ -67,7 +64,7 @@ def side_effect(original):
 
     def wrapper(callable, *args, **kwargs):
         name = reflect.canonical_name(callable)
-        return wrapper_internal(callable, args, kwargs, name)
+        return _side_effect_wrapper(callable, args, kwargs, name)
 
     return wrapper
 
@@ -85,12 +82,12 @@ def named_side_effect(original, name):
     L{ReplayError}. Should work for any function or method."""
 
     def wrapper(callable, *args, **kwargs):
-        return wrapper_internal(callable, args, kwargs, name)
+        return _side_effect_wrapper(callable, args, kwargs, name)
 
     return wrapper
 
 
-def check_result(result, info):
+def _check_side_effet_result(result, info):
     if isinstance(result, defer.Deferred):
         raise SideEffectResultError("Side-effect functions %s "
                                     "cannot return Deferred" % info)
@@ -100,56 +97,66 @@ def check_result(result, info):
     return result
 
 
-def wrapper_internal(callable, args, kwargs, name):
+def _side_effect_wrapper(callable, args, kwargs, name):
     section = fiber.WovenSection()
     section.enter()
 
-    journal_mode = section.state.get(RECORDED_TAG, None)
-    inside_flag = section.state.get(INSIDE_EFFECT_TAG, False)
+    mode = section.state.get(RECORDED_TAG, None)
+    entry = section.state.get(JOURNAL_ENTRY_TAG, None)
+    effect = section.state.get(EFFECT_ENTRY_TAG, None)
 
-    if inside_flag:
+    if effect is not None:
         # Already inside a side-effect call, so just abort and call
         section.abort()
-        return check_result(callable(*args, **kwargs), name)
+        result = callable(*args, **kwargs)
+        return _check_side_effet_result(result, name)
 
-    if journal_mode == JournalMode.recording:
+    if mode == JournalMode.recording:
         # Recording mode, execute and record the side-effect
-        side_effects = section.state[SIDE_EFFECTS_TAG]
+        effect = entry.new_side_effect(name, *args, **kwargs)
 
-        section.state[INSIDE_EFFECT_TAG] = True
+        section.state[EFFECT_ENTRY_TAG] = effect
+
         try:
-            result = check_result(callable(*args, **kwargs), name)
-        finally:
-            section.state[INSIDE_EFFECT_TAG] = False
 
-        side_effects.append((name, args or None, kwargs or None, result))
+            result = _check_side_effet_result(callable(*args, **kwargs), name)
+            effect.set_result(result)
+            effect.commit()
+
+        finally:
+
+            del section.state[EFFECT_ENTRY_TAG]
+
+
         return section.exit(result)
 
-    if journal_mode == JournalMode.replay:
-        # Replay mode, pop a side effect, verify the function name
-        # and the arguments, and return the canned result without
-        # executing the real code.
-        side_effects = section.state[SIDE_EFFECTS_TAG]
-        if not side_effects:
-            raise ReplayError("Unexpected side-effect function '%s'"
-                              % name)
-        exp_name, exp_args, exp_kwargs, result = side_effects.pop(0)
-        if exp_name != name:
-            raise ReplayError("Unexpected side-effect function '%s' "
-                              "instead of '%s'" % (name, exp_name))
-        if exp_args != (args or None):
-            raise ReplayError("Unexpected side-effect arguments of function %r"
-                              ", args: %r instead of %r" %\
-                              (name, args or None, exp_args))
-        if exp_kwargs != (kwargs or None):
-            raise ReplayError("Unexpected side-effect keywords of function %r"
-                              ", kwargs: %r instead of %r" %\
-                              (name, kwargs or None, exp_kwargs))
+    if mode == JournalMode.replay:
+        result = entry.next_side_effect(name, *args, **kwargs)
         return section.exit(result)
 
     # We are not inside a recorded section, abort and execute
     section.abort()
-    return check_result(callable(*args, **kwargs), name)
+    return _check_side_effet_result(callable(*args, **kwargs), name)
+
+
+def add_effect(effect_id, *args, **kwargs):
+    '''If inside a side-effect, adds an effect to it.'''
+    section = fiber.WovenSection()
+    section.enter()
+
+    try:
+
+        effect = section.state.get(EFFECT_ENTRY_TAG, None)
+
+        if effect is not None:
+            effect.add_effect(effect_id, *args, **kwargs)
+            return True
+
+        return False
+
+    finally:
+
+        section.abort()
 
 
 class RecorderRoot(serialization.Serializable):
@@ -255,64 +262,66 @@ class Recorder(RecorderNode, annotate.Annotable):
     ### IRecorder Methods ###
 
     def record(self, fun_id, args=None, kwargs=None, reentrant=True):
-        return self._record(fun_id, None, args or (), kwargs or {},
-                            reentrant=reentrant)
+        return self._recorded_call(fun_id, None, args or (), kwargs or {},
+                                   reentrant=reentrant)
 
     def call(self, function, args=None, kwargs=None, reentrant=True):
-        return self._record(None, function, args or (), kwargs or {},
-                            reentrant=reentrant)
+        return self._recorded_call(None, function, args or (), kwargs or {},
+                                   reentrant=reentrant)
 
-    def replay(self, fun_id, input, expected_side_effects=[]):
-        args, kwargs = input
-        return self._replay(fun_id, None, args or (), kwargs or {},
-                            expected_side_effects)
+    def replay(self, journal_entry):
+        journal_entry = IJournalReplayEntry(journal_entry)
+        fun_id = journal_entry.function_id
+        args, kwargs = journal_entry.get_arguments()
+        fun_id, function = self._resolve_function(fun_id, None)
+        return replay(journal_entry, self._call_fun,
+                      fun_id, function, args, kwargs)
 
     ### Private Methods ###
 
-    def _record(self, fun_id, function, args, kwargs, reentrant=True):
+    def _recorded_call(self, fun_id, function, args, kwargs, reentrant=True):
         # Starts the fiber section
         section = fiber.WovenSection()
         section.enter()
-        side_effects = None
+        fibdesc = section.descriptor
 
         # Check if this is the first recording in the fiber section
-        journal_mode = section.state.get(RECORDED_TAG, None)
-        section_first = journal_mode is None
-        fiber_first = section_first and section.descriptor.fiber_depth == 0
+        entry = section.state.get(JOURNAL_ENTRY_TAG, None)
+        section_first = entry is None
 
-        if section_first:
-            section.state[RECORDED_TAG] = JournalMode.recording
-            side_effects = []
-            section.state[SIDE_EFFECTS_TAG] = side_effects
+        try:
 
-        if not (fiber_first or reentrant):
-            # If not reentrant and it is not the first, it's BAAAAAD.
-            raise ReentrantCallError("Recorded functions cannot be called "
-                                     "from another recorded function")
+            fiber_first = section_first and section.descriptor.fiber_depth == 0
+            fun_id, function = self._resolve_function(fun_id, function)
 
-        fun_id, fun, result = self._call_fun(fun_id, function, args, kwargs)
+            if section_first:
+                entry = self.journal_keeper.new_entry(self.journal_id, fun_id,
+                                                      *args, **kwargs)
+                entry.set_fiber_context(fibdesc.fiber_id, fibdesc.fiber_depth)
 
-        # If it is the first recording entry in the stack, add a journal entry
-        if section_first:
-            desc = section.descriptor
-            self.journal_keeper.write_entry(self.journal_id, fun_id,
-                                            desc.fiber_id, desc.fiber_depth,
-                                            (args or None, kwargs or None),
-                                            side_effects or None, result)
+                section.state[RECORDED_TAG] = JournalMode.recording
+                section.state[JOURNAL_ENTRY_TAG] = entry
+
+            if not (fiber_first or reentrant):
+                # If not reentrant and it is not the first, it's BAAAAAD.
+                raise ReentrantCallError("Recorded functions cannot be called "
+                                         "from another recorded function")
+
+            result = self._call_fun(fun_id, function, args, kwargs)
+
+            if section_first:
+                entry.set_result(result)
+                entry.commit()
+
+        finally:
+
+            if section_first:
+                section.state[JOURNAL_ENTRY_TAG] = None
+                section.state[RECORDED_TAG] = None
 
         return section.exit(result)
 
-    def _replay(self, fun_id, function, args, kwargs,
-                expected_side_effects=[]):
-
-        def extract(fun_id, function, args, kwargs):
-            _, _, result = self._call_fun(fun_id, function, args, kwargs)
-            return result
-
-        return replay(extract, (fun_id, function, args, kwargs, ),
-                      None, expected_side_effects)
-
-    def _call_fun(self, fun_id, function, args, kwargs):
+    def _resolve_function(self, fun_id, function):
         global _registry, _reverse
 
         if function is None:
@@ -330,6 +339,9 @@ class Recorder(RecorderNode, annotate.Annotable):
                 raise AttributeError("Function not register as recorded %r"
                                      % (function, ))
 
+        return fun_id, function
+
+    def _call_fun(self, fun_id, function, args, kwargs):
         # Call the function
         result = function(self, *args, **kwargs)
 
@@ -339,36 +351,245 @@ class Recorder(RecorderNode, annotate.Annotable):
             raise RecordingResultError("Recorded functions %s "
                                        "cannot return Deferred" % fun_id)
 
-        return fun_id, function, result
+        return result
 
 
-class DummyRecordNode(object):
+class DummySideEffect(object):
 
-    implements(IRecorderNode)
+    implements(IJournalSideEffect)
+
+    ### IJournalSideEffect Methods ###
+
+    def add_effect(self, effect_id, *args, **kwargs):
+        return self
+
+    def set_result(self, result):
+        return self
+
+    def commit(self):
+        return self
+
+
+class DummyJournalEntry(object):
+
+    implements(IJournalEntry)
+
+    def __init__(self):
+        self._dumy_side_effect = DummySideEffect()
+
+    ### IJournalEntry Methods ###
+
+    def set_fiber_context(self, fiber_id, fiber_depth):
+        return self
+
+    def new_side_effect(self, function_id, *args, **kwargs):
+        return self._dumy_side_effect
+
+    def set_result(self, result):
+        return self
+
+    def commit(self):
+        return self
+
+
+class DummyRecorderNode(object):
+
+    implements(IRecorderNode, IJournalKeeper)
 
     def __init__(self):
         self.journal_keeper = self
+        self._dummy_entry = DummyJournalEntry()
+
+    ### IRecorderNode Methods ###
 
     def generate_identifier(self, _):
         return (None, )
 
+    ### IJournalKeeper Methods ###
+
     def register(self, _):
         pass
 
-    def write_entry(self, *_):
-        pass
+    def new_entry(self, journal_id, function_id, *args, **kwargs):
+        return self._dummy_entry
 
 
-class InMemoryJournalKeeper(object):
-    '''Dummy in-memory journal keeper, DO NOT USE for serious stuff.'''
+class StupidJournalSideEffect(object):
 
-    implements(IJournalKeeper)
+    implements(IJournalSideEffect)
 
-    def __init__(self):
+    def __init__(self, keeper, record, function_id, *args, **kwargs):
+        self._keeper = keeper
+        self._record = record
+        self._fun_id = function_id
+        self._args = keeper.serializer.convert(args or None)
+        self._kwargs = keeper.serializer.convert(kwargs or None)
+        self._effects = []
+        self._result = None
+
+    ### IJournalSideEffect Methods ###
+
+    def add_effect(self, effect_id, *args, **kwargs):
+        assert self._record is not None
+        data = (effect_id,
+                self._keeper.serializer.convert(args),
+                self._keeper.serializer.convert(kwargs))
+        self._effects.append(data)
+
+    def set_result(self, result):
+        assert self._record is not None
+        self._result = self._keeper.serializer.convert(result)
+        return self
+
+    def commit(self):
+        assert self._record is not None
+        data = (self._fun_id, self._args, self._kwargs,
+                self._effects, self._result)
+        self._record.extend(data)
+        self._record = None
+        return self
+
+
+class StupidJournalEntry(object):
+    '''Dummy in-memory journal entry, DO NOT USE for serious stuff.
+    Values ARE NOT SERIALIZED so it cannot be used for replayability.'''
+
+    implements(IJournalEntry, IJournalReplayEntry)
+
+    @classmethod
+    def from_record(cls, keeper, record):
+        jid, fun_id, fid, fdepth, args, kwargs, effects, result = record
+        entry = cls.__new__(cls)
+        entry.journal_id = jid
+        entry.function_id = fun_id
+
+        entry._keeper = keeper
+        entry._record = None
+        entry.fiber_id = fid
+        entry.fiber_depth = fdepth
+        entry.frozen_result = result
+        entry._args = args
+        entry._kwargs = kwargs
+
+        entry._side_effects = effects
+        entry._next_effect = 0
+
+        return entry
+
+    def __init__(self, keeper, record, journal_id,
+                 function_id, *args, **kwargs):
+        self.journal_id = journal_id
+        self.function_id = function_id
+
+        self._keeper = keeper
+        self._record = record
+        self.fiber_id = None
+        self.fiber_depth = None
+        self.frozen_result = None
+        self._args = keeper.serializer.convert(args or None)
+        self._kwargs = keeper.serializer.convert(kwargs or None)
+
+        self._side_effects = []
+        self._next_effect = 0
+
+    def add_side_effect(self, function_id, result, *args, **kwargs):
+        effect = self.new_side_effect(function_id, *args, **kwargs)
+        effect.set_result(result)
+        effect.commit()
+        return self
+
+    ### IJournalReplayEntry Methods ###
+
+    def get_arguments(self):
+        return (self._keeper.unserializer.convert(self._args) or (),
+                self._keeper.unserializer.convert(self._kwargs) or {})
+
+    def rewind_side_effects(self):
+        self._next_effect = 0
+
+    def next_side_effect(self, function_id, *args, **kwargs):
+        if self._next_effect >= len(self._side_effects):
+            raise ReplayError("Unexpected side-effect function '%s'"
+                              % function_id)
+
+        expected = self._side_effects[self._next_effect]
+        exp_fun_id, raw_args, raw_kwargs, effects, result = expected
+        self._next_effect += 1
+
+        if exp_fun_id != function_id:
+            raise ReplayError("Unexpected side-effect function '%s' "
+                              "instead of '%s'" % (function_id, exp_fun_id))
+
+        exp_args = self._keeper.unserializer.convert(raw_args)
+        if exp_args != (args or None):
+            raise ReplayError("Unexpected side-effect arguments of function %r"
+                              ", args: %r instead of %r" %\
+                              (function_id, args or None, exp_args))
+
+        exp_kwargs = self._keeper.unserializer.convert(raw_kwargs)
+        if exp_kwargs != (kwargs or None):
+            raise ReplayError("Unexpected side-effect keywords of function %r"
+                              ", kwargs: %r instead of %r" %\
+                              (function_id, kwargs or None, exp_kwargs))
+
+        # Apply effects
+        for effect_id, raw_args, raw_kwargs in effects:
+            effect_args = self._keeper.unserializer.convert(raw_args)
+            effect_kwargs = self._keeper.unserializer.convert(raw_kwargs)
+            self._keeper.apply_effect(effect_id, *effect_args, **effect_kwargs)
+
+        return self._keeper.unserializer.convert(result)
+
+    ### IJournalEntry Methods ###
+
+    def set_fiber_context(self, fiber_id, fiber_depth):
+        assert self._record is not None
+        self.fiber_id = fiber_id
+        self.fiber_depth = fiber_depth
+        return self
+
+    def set_result(self, result):
+        assert self._record is not None
+        self.frozen_result = self._keeper.serializer.freeze(result)
+        return self
+
+    def new_side_effect(self, function_id, *args, **kwargs):
+        assert self._record is not None
+        record = []
+        self._side_effects.append(record)
+        return StupidJournalSideEffect(self._keeper, record,
+                                       function_id, *args, **kwargs)
+
+    def commit(self):
+        data = (self.journal_id, self.function_id,
+                self.fiber_id, self.fiber_depth,
+                self._args, self._kwargs,
+                self._side_effects, self.frozen_result)
+        self._record.extend(data)
+        self._record = None
+        return self
+
+
+class StupidJournalKeeper(object):
+    '''Dummy in-memory journal keeper, DO NOT USE for serious stuff.
+    Values ARE NOT SERIALIZED so it cannot be used for replayability.
+    DO NOT RESPECT new_entry() ordering, entries are ordered by commit()
+    call order.'''
+
+    implements(IJournalKeeper, IEffectHandler)
+
+    def __init__(self, serializer, unserializer, effect_handler=None):
+        self.serializer = serializer
+        self.unserializer = unserializer
+        self._effect_handler = effect_handler
         self.clear()
 
     def get_records(self):
         return self._records
+
+    def iter_entries(self):
+        for record in self._records:
+            yield StupidJournalEntry.from_record(self, record)
 
     def clear(self):
         self._records = []
@@ -380,19 +601,22 @@ class InMemoryJournalKeeper(object):
     def iter_recorders(self):
         return self._registry.itervalues()
 
+    ### IEffectHandler Methods ###
+
+    def apply_effect(self, journal_id, *args, **kwargs):
+        self._effect_handler.apply_effect(journal_id, *args, **kwargs)
+
     ### IJournalKeeper Methods ###
 
     def register(self, recorder):
         recorder = IRecorder(recorder)
         self._registry[recorder.journal_id] = recorder
 
-    def write_entry(self, instance_id, entry_id,
-                    fiber_id, fiber_depth, input, side_effects, output):
-        record = (instance_id, entry_id, fiber_id, fiber_depth,
-                  ISnapshotable(input).snapshot(),
-                  ISnapshotable(side_effects).snapshot(),
-                  ISnapshotable(output).snapshot())
+    def new_entry(self, journal_id, function_id, *args, **kwargs):
+        record = []
         self._records.append(record)
+        return StupidJournalEntry(self, record, journal_id,
+                                  function_id, *args, **kwargs)
 
 
 ### Private Stuff ###

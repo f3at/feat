@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
 import types
 
 from zope.interface import implements
@@ -10,6 +11,8 @@ from feat.common import serialization, guard, journal, reflect, fiber
 from feat.agents.base import resource, agent, partners
 from feat.agents.base.message import BaseMessage
 from feat.test import common, factories
+
+from feat.interface.journal import *
 
 
 def side_effect(fun_or_name, result=None, args=None, kwargs=None):
@@ -47,6 +50,137 @@ class CompareObject(object):
 whatever = CompareObject(object)
 
 
+def _clone(value):
+    return copy.deepcopy(value)
+
+
+class BaseSideEffect(object):
+
+    def _extract_fun_id(self, something):
+        if something is None:
+            return something
+        if isinstance(something, (types.FunctionType, types.MethodType)):
+            return reflect.canonical_name(something)
+        return something
+
+    def _se2str(self, *args):
+        return replay.side_effect_as_string(*args)
+
+    def _error(self, msg, *args):
+        raise ReplayError("%s %s instead of %s"
+                          % (msg, self._se2str(*args), str(self)))
+
+
+class SideEffect(BaseSideEffect):
+
+    def __init__(self, result, fun_id, *args, **kwargs):
+        self._result = _clone(result)
+        self._fun_id = self._extract_fun_id(fun_id)
+        self._args = _clone(args)
+        self._kwargs = _clone(kwargs)
+
+    def __str__(self):
+        return self._se2str(self._fun_id, self._args,
+                            self._kwargs, self._result)
+
+    def __call__(self, fun_id, *args, **kwargs):
+        if self._fun_id != fun_id:
+            self._error("Unexpected side-effect", fun_id, args, kwargs)
+
+        if self._args != args:
+            self._error("Unexpected side-effect arguments",
+                        fun_id, args, kwargs)
+
+        if self._kwargs != kwargs:
+            self._error("Unexpected side-effect keywords",
+                        fun_id, args, kwargs)
+
+        return self._result
+
+
+class AnySideEffect(BaseSideEffect):
+
+    def __init__(self, result=None, fun_id=None):
+        self._result = _clone(result)
+        self._fun_id = self._extract_fun_id(fun_id)
+
+    def __str__(self):
+        return self._se2str(self._fun_id, None, None, self._result)
+
+    def __call__(self, fun_id, *args, **kwargs):
+        if self._fun_id is not None:
+            if fun_id != self._fun_id:
+                self._error("Unexpected side-effect",
+                            (fun_id, args, kwargs),
+                            (self._fun_id, None, None))
+        return self._result
+
+
+class HamsterCall(object):
+
+    implements(IJournalReplayEntry)
+
+    def __init__(self, function):
+        assert hasattr(function, "__self__")
+        assert IRecorder.providedBy(function.__self__)
+        self._recorder = function.__self__
+        self._function = function
+        self._side_effects = []
+        self._next_effect = 0
+
+    def __call__(self, *args, **kwargs):
+        self._next_effect = 0 # Reseeting side-effect index
+        result = journal.replay(self, self._function, *args, **kwargs)
+
+        if self._next_effect < len(self._side_effects):
+            remaining = self._side_effects[self._next_effect:]
+            raise ReplayError("Unconsumed side_effects: %s"
+                              % ", ".join([str(v) for v in remaining]))
+
+        return result
+
+    def get_state(self):
+        return self._recorder._get_state()
+
+    def add_side_effect(self, result, *args, **kwargs):
+        '''There is various was of adding a side-effect:
+            - args is empty and result is a BaseSideEffect sub-class:
+               call.add_side_effect(SideEffect(42, "fun_name", some_arg))
+            - args is empty and result is use as a AnySideEffect result:
+               call.add_side_effect("foo")
+            - args is not empty, the first argument is a function identifier
+              or a function:
+               call.add_side_effect(42, agent.initiate, param, key=word)
+        '''
+        if not args:
+            if isinstance(result, SideEffect):
+                side_effect = result
+            else:
+                side_effect = AnySideEffect(result)
+        else:
+            side_effect = SideEffect(result, *args, **kwargs)
+
+        self._side_effects.append(side_effect)
+        return self
+
+    ### IJournalReplayEntry Methods ###
+
+    def get_arguments(self):
+        raise NotImplementedError()
+
+    def rewind_side_effects(self):
+        raise NotImplementedError()
+
+    def next_side_effect(self, function_id, *args, **kwargs):
+        if self._next_effect >= len(self._side_effects):
+            raise ReplayError("Unexpected side-effect %s"
+                              % self._se2str((function_id, args, kwargs)))
+
+        side_effect = self._side_effects[self._next_effect]
+        self._next_effect += 1
+        return side_effect(function_id, *args, **kwargs)
+
+
 class Hamsterball(replay.Replay):
 
     implements(journal.IRecorderNode, serialization.ISerializable)
@@ -79,22 +213,19 @@ class Hamsterball(replay.Replay):
         self.descriptor = factories.build(type(self.agent).descriptor_type,
                                           doc_id=self.agent_id)
 
-    def call(self, side_effects, method, *args, **kwargs):
-        recorder = method.__self__
-        fun_id = reflect.canonical_name(method)
-
-        assert recorder in self.registry.values()
-        left_se, output =\
-            journal.replay(method, args or tuple(),
-                           kwargs or dict(), side_effects or tuple())
-        if left_se is not None:
-            msg = 'There were unconsumed side_effects: '
-            names = [x[0].__repr__() for x in left_se]
-            msg += ', '.join(names)
-            raise FailTest(msg)
-        return output, recorder._get_state()
+    def call(self, side_effects, function, *args, **kwargs):
+        call = self.generate_call(function)
+        if side_effects:
+            for se_funid, se_args, se_kwargs, se_result in side_effects:
+                call.add_side_effect(se_result, se_funid,
+                                     *(se_args or ()), **(se_kwargs or {}))
+        output = call(*args, **kwargs)
+        return output, call.get_state()
 
     # generating instances for tests
+
+    def generate_call(self, function):
+        return HamsterCall(function)
 
     def generate_resources(self, agent):
         return self.generate_utility_class(agent, resource.Resources)
@@ -171,8 +302,8 @@ class Hamsterball(replay.Replay):
         self._recorder_count += 1
         return (self._recorder_count, )
 
-    def write_entry(self, *_):
-        pass
+    def new_entry(self, *_):
+        raise NotImplementedError()
 
     # ISerializable
 

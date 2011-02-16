@@ -16,10 +16,10 @@ class Common(object):
         self.assertEqual(expected, al.values())
 
 
-class DummyAgent(common.DummyRecordNode, common.Mock):
+class DummyAgent(common.DummyRecorderNode, common.Mock):
 
     def __init__(self, test_case):
-        common.DummyRecordNode.__init__(self, test_case)
+        common.DummyRecorderNode.__init__(self, test_case)
         common.Mock.__init__(self)
 
     @common.Mock.record

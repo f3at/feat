@@ -67,6 +67,17 @@ def set_state(state, depth=0):
     base_frame.f_locals[SECTION_STATE_TAG] = state
 
 
+def del_state(depth=0):
+    base_frame = _get_base_frame(depth)
+    if not base_frame:
+        # Frame not found
+        raise RuntimeError("Base frame not found")
+
+    locals = base_frame.f_locals
+    if SECTION_STATE_TAG in locals:
+        del locals[SECTION_STATE_TAG]
+
+
 def _get_base_frame(depth):
     # Go up the frame stack to the base frame given it's deepness.
     # Go up one level more to account for this function own frame.
@@ -112,14 +123,10 @@ class WovenSection(object):
         self.state = state
 
     def abort(self, result=None):
-        if not self._inside:
-            raise FiberError("Not inside a woven section")
-        self._inside = False
+        self._cleanup()
 
     def exit(self, result=None):
-        if not self._inside:
-            raise FiberError("Not inside a woven section")
-        self._inside = False
+        self._cleanup()
 
         if not self._is_root:
             # If not a root section just return the result as-is
@@ -138,6 +145,16 @@ class WovenSection(object):
             return defer.fail(result)
         else:
             return defer.succeed(result)
+
+    ### Private Methods ###
+
+    def _cleanup(self):
+        if not self._inside:
+            raise FiberError("Not inside a woven section")
+        self._inside = False
+        self.state = None
+        if self._is_root:
+            del_state(depth=1)
 
 
 class RootFiberDescriptor(object):

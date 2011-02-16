@@ -14,7 +14,7 @@ from . import messaging
 from . import database
 
 
-class Agency(agency.Agency, journal.DummyRecordNode):
+class Agency(agency.Agency, journal.DummyRecorderNode):
 
     spawns_processes = True
 
@@ -43,7 +43,7 @@ class Agency(agency.Agency, journal.DummyRecordNode):
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
-        journal.DummyRecordNode.__init__(self)
+        journal.DummyRecorderNode.__init__(self)
         agency.Agency.__init__(self, mesg, db)
 
         reactor.addSystemEventTrigger('before', 'shutdown',

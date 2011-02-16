@@ -4,7 +4,9 @@ from feat.common import enum
 
 __all__ = ["JournalMode", "RecordingResultError", "SideEffectResultError",
            "ReentrantCallError", "ReplayError",
-           "IJournalKeeper", "IRecorderNode", "IRecorder"]
+           "IJournalKeeper", "IJournalEntry", "IJournalReplayEntry",
+           "IJournalSideEffect", "IEffectHandler",
+           "IRecorderNode", "IRecorder"]
 
 
 class JournalMode(enum.Enum):
@@ -27,6 +29,67 @@ class ReplayError(RuntimeError):
     pass
 
 
+class IJournalSideEffect(Interface):
+    '''Represent a side-effect description in a journal entry.'''
+
+    def add_effect(effect_id, *args, **kwargs):
+        pass
+
+    def set_result(result):
+        pass
+
+    def commit():
+        pass
+
+
+class IJournalReplayEntry(Interface):
+
+    journal_id = Attribute("Instance journal identifier. Read only.")
+    function_id = Attribute("Function identifier. Read only.")
+    fiber_id = Attribute("Fiber unique identifier. Read only.")
+    fiber_depth = Attribute("Fiber depth. Read only.")
+    frozen_result = Attribute("Frozen result. Read only.")
+
+    def get_arguments():
+        pass
+
+    def get_result():
+        pass
+
+    def rewind_side_effects():
+        pass
+
+    def next_side_effect(function_id, *args, **kwargs):
+        '''Returns the next side-effect result. Used during replay.
+        If the parameter do not match the expected ones it could fail.'''
+
+
+class IJournalEntry(Interface):
+    '''Represent an entry in the journal. Every set_* method must be called
+    before calling commit().'''
+
+    def set_fiber_context(self, fiber_id, fiber_depth):
+        pass
+
+    def new_side_effect(function_id, *args, **kwargs):
+        '''Returns a L{IJournalSideEffect} on witch the set_result()
+        method should be called, and then commit().'''
+
+    def set_result(result):
+        pass
+
+    def commit():
+        '''Commit the entry to the journal. The order of the entries
+        is not determined by the commit order but by the creation order.'''
+
+
+class IEffectHandler(Interface):
+    '''Used for journal keeper to delegate side-effects effect.'''
+
+    def apply_effect(self, effect_id, *args, **kwargs):
+        pass
+
+
 class IJournalKeeper(Interface):
     '''Store journal entries'''
 
@@ -36,9 +99,11 @@ class IJournalKeeper(Interface):
         Recorder will be automatically unregistered when they are deleted,
         The journal keeper do not keep strong reference to the recorders.'''
 
-    def write_entry(instance_id, entry_id, fiber_id, fiber_depth,
-                    input, side_effects, output):
-        pass
+    def new_entry(journal_id, function_id, *args, **kwargs):
+        '''Creates a new journal entry. Returns a L{IJournalEntry} that should
+        be committed for the entry to be recorded.
+        The order of journal entry is determined when calling new_entry()
+        and the content is determined when committing it.'''
 
 
 class IRecorderNode(Interface):

@@ -196,8 +196,6 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
     def prolog(self):
         pass
 
-    @common.attr(skip_replayability=
-        "to be unskipped when changes in mutable parameters are commited")
     @defer.inlineCallbacks
     def testHATakesShardAgentFromPartnersNotContract(self):
         '''

@@ -41,7 +41,7 @@ class DummyDesc(object):
 class TestPartners(common.TestCase):
 
     def setUp(self):
-        self.agent = common.DummyRecordNode(self)
+        self.agent = common.DummyRecorderNode(self)
         self.partners = Partners(self.agent)
 
     def testQueryingHandlers(self):

@@ -23,6 +23,91 @@ from interface import IListener, IAgencyInitiatorFactory,\
 from . import contracts, requests
 
 
+class AgencyJournalSideEffect(object):
+
+    implements(journal.IJournalSideEffect)
+
+    ### IJournalSideEffect ###
+
+    def __init__(self, serializer, record, function_id, *args, **kwargs):
+        self._serializer = serializer
+        self._record = record
+        self._fun_id = function_id
+        self._args = serializer.convert(args or None)
+        self._kwargs = serializer.convert(kwargs or None)
+        self._effects = []
+        self._result = None
+
+    ### IJournalSideEffect Methods ###
+
+    def add_effect(self, effect_id, *args, **kwargs):
+        assert self._record is not None
+        data = (effect_id,
+                self._serializer.convert(args),
+                self._serializer.convert(kwargs))
+        self._effects.append(data)
+
+    def set_result(self, result):
+        assert self._record is not None
+        self._result = self._serializer.convert(result)
+        return self
+
+    def commit(self):
+        assert self._record is not None
+        data = (self._fun_id, self._args, self._kwargs,
+                self._effects, self._result)
+        self._record.extend(data)
+        self._record = None
+        return self
+
+
+class AgencyJournalEntry(object):
+
+    implements(journal.IJournalEntry)
+
+    def __init__(self, serializer, record, agent_id, journal_id,
+                 function_id, *args, **kwargs):
+        self._serializer = serializer
+        self._record = record
+        self._agent_id = agent_id
+        self._journal_id = journal_id
+        self._function_id = function_id
+        self._args = serializer.convert(args or None)
+        self._kwargs = serializer.convert(kwargs or None)
+        self._fiber_id = None
+        self._fiber_depth = None
+        self._result = None
+        self._side_effects = []
+
+    ### IJournalEntry Methods ###
+
+    def set_fiber_context(self, fiber_id, fiber_depth):
+        assert self._record is not None
+        self._fiber_id = fiber_id
+        self._fiber_depth = fiber_depth
+        return self
+
+    def set_result(self, result):
+        assert self._record is not None
+        self._result = self._serializer.freeze(result)
+        return self
+
+    def new_side_effect(self, function_id, *args, **kwargs):
+        assert self._record is not None
+        record = []
+        self._side_effects.append(record)
+        return AgencyJournalSideEffect(self._serializer, record,
+                                       function_id, *args, **kwargs)
+
+    def commit(self):
+        data = (self._agent_id, self._journal_id, self._function_id,
+                self._fiber_id, self._fiber_depth,
+                self._args, self._kwargs, self._side_effects, self._result)
+        self._record.extend(data)
+        self._record = None
+        return self
+
+
 class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
 
     log_category = 'agency'
@@ -75,50 +160,51 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
 
     # journal specific stuff
 
-    def journal_write_entry(self, agent_id, instance_id, entry_id,
-                    fiber_id, fiber_depth, input, side_effects, output):
-        snapshot_input = self.serializer.convert(input)
-        snapshot_side_effects = self.serializer.convert(side_effects)
-        snapshot_output = self.serializer.freeze(output)
-
-        record = (agent_id, instance_id, entry_id, fiber_id, fiber_depth,
-                  snapshot_input, snapshot_side_effects, snapshot_output)
+    def journal_new_entry(self, agent_id, journal_id,
+                          function_id, *args, **kwargs):
+        record = []
         self._journal_entries.append(record)
+        return AgencyJournalEntry(self.serializer, record, agent_id,
+                                  journal_id, function_id, *args, **kwargs)
 
-    def journal_agency_entry(self, agent_id, entry_id, input):
+    def journal_agency_entry(self, agent_id, function_id, *args, **kwargs):
+        if journal.add_effect(function_id, *args, **kwargs):
+            return
+
         section = fiber.WovenSection()
         section.enter()
-        self.journal_write_entry(
-            agent_id=agent_id,
-            instance_id='agency',
-            entry_id=entry_id,
-            fiber_id=section.descriptor.fiber_id,
-            fiber_depth=section.descriptor.fiber_depth,
-            input=input,
-            side_effects=None,
-            output=None)
-        section.abort()
+
+        try:
+
+            desc = section.descriptor
+            entry = self.journal_new_entry(agent_id, 'agency',
+                                           function_id, *args, **kwargs)
+            entry.set_fiber_context(desc.fiber_id, desc.fiber_depth)
+            entry.set_result(None)
+            entry.commit()
+
+        finally:
+
+            section.abort()
 
     def journal_protocol_created(self, agent_id, protocol_factory,
-                                 medium, args=None, kwargs=None):
-        input = (protocol_factory, medium, args, kwargs, )
-        self.journal_agency_entry(agent_id, 'protocol_created', input)
+                                 medium, *args, **kwargs):
+        self.journal_agency_entry(agent_id, 'protocol_created',
+                                  protocol_factory, medium, *args, **kwargs)
 
     def journal_protocol_deleted(self, agent_id, protocol_instance, dummy_id):
-        input = (protocol_instance.journal_id, dummy_id, )
-        self.journal_agency_entry(agent_id, 'protocol_deleted', input)
+        self.journal_agency_entry(agent_id, 'protocol_deleted',
+                                  protocol_instance.journal_id, dummy_id)
 
     def journal_agent_created(self, agent_id, agent_factory, dummy_id):
-        input = (agent_factory, dummy_id, )
-        self.journal_agency_entry(agent_id, 'agent_created', input)
+        self.journal_agency_entry(agent_id, 'agent_created',
+                                  agent_factory, dummy_id)
 
     def journal_agent_deleted(self, agent_id):
-        input = tuple()
-        self.journal_agency_entry(agent_id, 'agent_deleted', input)
+        self.journal_agency_entry(agent_id, 'agent_deleted')
 
     def journal_agent_snapshot(self, agent_id, snapshot):
-        input = (snapshot, )
-        self.journal_agency_entry(agent_id, 'snapshot', input)
+        self.journal_agency_entry(agent_id, 'snapshot', snapshot)
 
     # registry
 
@@ -309,7 +395,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         medium = medium_factory(self, recipients, *args, **kwargs)
 
         self.agency.journal_protocol_created(
-            self._descriptor.doc_id, factory, medium, args, kwargs)
+            self._descriptor.doc_id, factory, medium, *args, **kwargs)
         initiator = factory(self.agent, medium, *args, **kwargs)
         self.register_listener(medium)
         medium.initiate(initiator)
@@ -483,22 +569,24 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
             self.log('Reraising exception %r', fail)
             fail.raiseException()
 
-    # IRecorderNone
+    ### IRecorderNode Methods ###
 
     def generate_identifier(self, recorder):
         assert not getattr(self, 'indentifier_generated', False)
         self._identifier_generated = True
         return (self._descriptor.doc_id, )
 
-    # IJournalKeeper
+    ### IJournalKeeper Methods ###
 
     def register(self, recorder):
         self.agency.register(recorder)
 
-    def write_entry(self, *args, **kwargs):
-        self.agency.journal_write_entry(self._descriptor.doc_id,
-                                        *args, **kwargs)
-    # ISerializable
+    def new_entry(self, journal_id, function_id, *args, **kwargs):
+        return self.agency.journal_new_entry(self._descriptor.doc_id,
+                                             journal_id, function_id,
+                                             *args, **kwargs)
+
+    ### ISerializable Methods ###
 
     def snapshot(self):
         return self._descriptor.doc_id

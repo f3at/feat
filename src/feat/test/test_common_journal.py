@@ -5,7 +5,8 @@
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import journal, fiber, serialization
+from feat.common import journal, fiber, serialization, reflect
+from feat.common.serialization import pytree
 from feat.interface.journal import *
 from feat.interface.serialization import *
 
@@ -312,10 +313,19 @@ def bad_replay_effect(*args, **kwargs):
     return "ok"
 
 
-class SideEffectsDummy(object):
+@serialization.register
+class SideEffectsDummy(serialization.Serializable):
 
     def __init__(self, name):
         self.name = name
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.name == other.name
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     @journal.side_effect
     def beans_effect(self, accomp, extra=None):
@@ -385,9 +395,20 @@ class C(A):
 
 class TestJournaling(common.TestCase):
 
+    def setUp(self):
+        self.serializer = pytree.Serializer()
+        self.unserializer = pytree.Unserializer()
+        self.keeper = journal.StupidJournalKeeper(self.serializer,
+                                                  self.unserializer)
+
+    def freeze(self, value):
+        return self.serializer.freeze(value)
+
+    def new_entry(self, fun_id, *args, **kwargs):
+        return self.keeper.new_entry(None, fun_id, *args, **kwargs)
+
     def testInheritence(self):
-        K = journal.InMemoryJournalKeeper()
-        R = journal.RecorderRoot(K, base_id="test")
+        R = journal.RecorderRoot(self.keeper, base_id="test")
         a = A(R)
         b = B(R)
         c = C(R)
@@ -405,8 +426,7 @@ class TestJournaling(common.TestCase):
         return d
 
     def testJournalId(self):
-        K = journal.InMemoryJournalKeeper()
-        R = journal.RecorderRoot(K, base_id="test")
+        R = journal.RecorderRoot(self.keeper, base_id="test")
         A = journal.Recorder(R)
         self.assertEqual(A.journal_id, ("test", 1))
         B = journal.Recorder(R)
@@ -420,7 +440,7 @@ class TestJournaling(common.TestCase):
         BA = journal.Recorder(B)
         self.assertEqual(BA.journal_id, ("test", 2, 1))
 
-        R = journal.RecorderRoot(K)
+        R = journal.RecorderRoot(self.keeper)
         A = journal.Recorder(R)
         self.assertEqual(A.journal_id, (1, ))
         B = journal.Recorder(R)
@@ -439,30 +459,29 @@ class TestJournaling(common.TestCase):
             spam_id = "feat.test.test_common_journal.BasicRecordingDummy.spam"
             bacon_id = "bacon"
 
-            break_call = ((common.break_chain, None, None), None)
+            break_call = ((reflect.canonical_name(common.break_chain),
+                           None, None), None)
 
-            expected = [(iid, spam_id, (("beans", ), None),
-                         None, "spam and beans"),
+            expected = [[iid, spam_id, ("beans", ), None,
+                         [], "spam and beans"],
 
-                        (iid, spam_id, (("beans", ), {"extra": "spam"}),
-                         None, "spam and beans with spam"),
+                        [iid, spam_id, ("beans", ), {"extra": "spam"},
+                         [], "spam and beans with spam"],
 
-                        (iid, bacon_id, (("beans", ), None),
-                         None, (TriggerType.succeed,
+                        [iid, bacon_id, ("beans", ), None,
+                         [], (TriggerType.succeed,
                                 "spam and beans",
-                                [break_call])),
-
-                        (iid, bacon_id, (("beans", ), {"extra": "spam"}),
-                         None, (TriggerType.succeed,
+                                [break_call])],
+                        [iid, bacon_id, ("beans", ), {"extra": "spam"},
+                         [], (TriggerType.succeed,
                                 "spam and beans with spam",
-                                [break_call]))]
+                                [break_call])]]
 
             self.assertEqual(expected, records)
 
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
         obj = BasicRecordingDummy(root)
-        self.assertEqual(obj, keeper.lookup(obj.journal_id))
+        self.assertEqual(obj, self.keeper.lookup(obj.journal_id))
         d = self.assertAsyncEqual(None, "spam and beans",
                                   obj.spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
@@ -471,7 +490,7 @@ class TestJournaling(common.TestCase):
                                   obj.async_spam, "beans")
         d = self.assertAsyncEqual(d, "spam and beans with spam",
                                   obj.async_spam, "beans", extra="spam")
-        return d.addCallback(check_records, keeper.get_records())
+        return d.addCallback(check_records, self.keeper.get_records())
 
     def testFiberInfo(self):
 
@@ -537,24 +556,22 @@ class TestJournaling(common.TestCase):
         d = defer.succeed(None)
 
         # Test with "synchronous" fibers where callbacks are called right away
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
         obj = FiberInfoDummy(root, False)
         d.addCallback(obj.fun3)
         d.addCallback(obj.fun2a)
         d.addCallback(obj.fun1a)
         d.addCallback(obj.test)
-        d.addCallback(check_records, keeper.get_records())
+        d.addCallback(check_records, self.keeper.get_records())
 
         # test with "real" asynchronous fibers
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
         obj = FiberInfoDummy(root, True)
         d.addCallback(obj.fun3)
         d.addCallback(obj.fun2a)
         d.addCallback(obj.fun1a)
         d.addCallback(obj.test)
-        d.addCallback(check_records, keeper.get_records())
+        d.addCallback(check_records, self.keeper.get_records())
 
         return d
 
@@ -570,10 +587,9 @@ class TestJournaling(common.TestCase):
                         16, # (3 + 5) + (3 + 5)
                         15, # (3 + 5) + 7
                          8] # 3 + 5
-            self.assertEqual(expected, [r[6] for r in records]),
+            self.assertEqual(expected, [r[7] for r in records]),
 
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper)
+        root = journal.RecorderRoot(self.keeper)
         obj = NestedRecordedDummy(root)
 
         d = defer.succeed(None)
@@ -582,70 +598,59 @@ class TestJournaling(common.TestCase):
         d.addCallback(drop_result, obj.funB, 3, 5)
         d.addCallback(drop_result, obj.funC, 3, 5)
         d.addCallback(drop_result, obj.funD, 3, 5)
-        d.addCallback(check_records, keeper.get_records())
+        d.addCallback(check_records, self.keeper.get_records())
 
         return d
 
     def testDirectReplay(self):
 
-        foo_id = "feat.test.test_common_journal.DirectReplayDummy.foo"
-        bar_id = "feat.test.test_common_journal.DirectReplayDummy.bar"
-        barr_id = "feat.test.test_common_journal.DirectReplayDummy.barr"
-        baz_id = "feat.test.test_common_journal.DirectReplayDummy.baz"
-        bazz_id = "feat.test.test_common_journal.DirectReplayDummy.bazz"
+        base_id = "feat.test.test_common_journal."
+        foo_id = base_id + "DirectReplayDummy.foo"
+        bar_id = base_id + "DirectReplayDummy.bar"
+        barr_id = base_id + "DirectReplayDummy.barr"
+        baz_id = base_id + "DirectReplayDummy.baz"
+        bazz_id = base_id + "DirectReplayDummy.bazz"
 
-        def snapshot(result):
-            side_effects, output = result
-            return (ISnapshotable(side_effects).snapshot(),
-                    ISnapshotable(output).snapshot())
+        async_add_id = base_id + "DirectReplayDummy.async_add"
 
-        k = journal.InMemoryJournalKeeper()
-        r = journal.RecorderRoot(k)
+        r = journal.RecorderRoot(self.keeper)
         o = DirectReplayDummy(r)
         self.assertEqual(o.some_foo, 0)
         self.assertEqual(o.some_bar, 0)
         self.assertEqual(o.some_baz, 0)
 
-        self.assertEqual((None, 3), o.replay(foo_id, ((3, ), {})))
+        self.assertEqual(3, o.replay(self.new_entry(foo_id, 3)))
         self.assertEqual(3, o.some_foo)
-        self.assertEqual((None, 6), o.replay(foo_id, ((3, ), None)))
+        self.assertEqual(6, o.replay(self.new_entry(foo_id, 3)))
         self.assertEqual(6, o.some_foo)
 
-        self.assertEqual((None, 2), o.replay(bar_id, ((2, ), {})))
+        self.assertEqual(2, o.replay(self.new_entry(bar_id, 2)))
         self.assertEqual(2, o.some_bar)
-        self.assertEqual((None, 4), o.replay(bar_id, ((2, ), None)))
+        self.assertEqual(4, o.replay(self.new_entry(bar_id, 2)))
         self.assertEqual(4, o.some_bar)
-        self.assertEqual((None, 5), o.replay(bar_id, ((2, ), {"minus": 1})))
+        self.assertEqual(5, o.replay(self.new_entry(bar_id, 2, minus=1)))
         self.assertEqual(5, o.some_bar)
-        self.assertEqual((None, 3), o.replay(barr_id, ((), {"minus": 2})))
+        self.assertEqual(3, o.replay(self.new_entry(barr_id, minus=2)))
         self.assertEqual(3, o.some_bar)
-        self.assertEqual((None, 2), o.replay(barr_id, (None, {"minus": 1})))
+        self.assertEqual(2, o.replay(self.new_entry(barr_id, minus=1)))
         self.assertEqual(2, o.some_bar)
 
         # Test that fibers are not executed
-        self.assertEqual((None, (TriggerType.succeed, 5,
-                                 [((o.async_add,
-                                    None, None),
-                                   None)])),
-                         snapshot(o.replay(baz_id, ((5, ), None))))
+        self.assertEqual((TriggerType.succeed, 5,
+                          [((async_add_id, None, None), None)]),
+                         self.freeze(o.replay(self.new_entry(baz_id, 5))))
         self.assertEqual(0, o.some_baz)
-        self.assertEqual((None, (TriggerType.succeed, 8,
-                                 [((o.async_add,
-                                    None, None),
-                                   None)])),
-                         snapshot(o.replay(baz_id, ((8, ), None))))
+        self.assertEqual((TriggerType.succeed, 8,
+                          [((async_add_id, None, None), None)]),
+                          self.freeze(o.replay(self.new_entry(baz_id, 8))))
         self.assertEqual(0, o.some_baz)
-        self.assertEqual((None, (TriggerType.succeed, 5,
-                                 [((o.async_add,
-                                    None, None),
-                                   None)])),
-                         snapshot(o.replay(bazz_id, ((5, ), None))))
+        self.assertEqual((TriggerType.succeed, 5,
+                          [((async_add_id, None, None), None)]),
+                          self.freeze(o.replay(self.new_entry(bazz_id, 5))))
         self.assertEqual(0, o.some_baz)
-        self.assertEqual((None, (TriggerType.succeed, 8,
-                                 [((o.async_add,
-                                    None, None),
-                                   None)])),
-                         snapshot(o.replay(bazz_id, ((8, ), None))))
+        self.assertEqual((TriggerType.succeed, 8,
+                          [((async_add_id, None, None), None)]),
+                          self.freeze(o.replay(self.new_entry(bazz_id, 8))))
         self.assertEqual(0, o.some_baz)
 
     def testRecordReplay(self):
@@ -658,22 +663,18 @@ class TestJournaling(common.TestCase):
                 obj.reset()
 
             # Replaying
-            for record in keeper.get_records():
-                jid, fid, _, _, input, exp_side_effects, exp_output = record
-                obj = keeper.lookup(jid)
+            for entry in keeper.iter_entries():
+                obj = keeper.lookup(entry.journal_id)
                 self.assertTrue(obj is not None)
-                side_effects, output = obj.replay(fid, input)
-                self.assertEqual(exp_side_effects,
-                                 ISnapshotable(side_effects).snapshot())
-                self.assertEqual(exp_output,
-                                 ISnapshotable(output).snapshot())
+                output = obj.replay(entry)
+                self.assertRaises(ReplayError, entry.next_side_effect, "dummy")
+                self.assertEqual(entry.frozen_result, self.freeze(output))
 
             # Check the objects state are the same after replay
             for obj in keeper.iter_recorders():
                 self.assertEqual(states[obj.journal_id], obj.snapshot())
 
-        k = journal.InMemoryJournalKeeper()
-        r = journal.RecorderRoot(k)
+        r = journal.RecorderRoot(self.keeper)
         o1 = RecordReplayDummy(r)
         o2 = RecordReplayDummy(r)
 
@@ -701,13 +702,12 @@ class TestJournaling(common.TestCase):
                                       "bacon and spam",
                                       "spam and bacon with spam"],
                                   o2.servings)
-        d.addCallback(replay, k)
+        d.addCallback(replay, self.keeper)
 
         return d
 
     def testNonReentrant(self):
-        k = journal.InMemoryJournalKeeper()
-        r = journal.RecorderRoot(k)
+        r = journal.RecorderRoot(self.keeper)
         o = ReentrantDummy(r)
 
         self.assertRaises(ReentrantCallError, o.good)
@@ -723,8 +723,7 @@ class TestJournaling(common.TestCase):
         self.assertTrue(duplicated_function_error1)
         self.assertTrue(duplicated_function_error2)
 
-        k = journal.InMemoryJournalKeeper()
-        r = journal.RecorderRoot(k)
+        r = journal.RecorderRoot(self.keeper)
         o = ErrorDummy(r)
 
         wrong1_id = "feat.test.test_common_journal.ErrorDummy.spam"
@@ -748,8 +747,10 @@ class TestJournaling(common.TestCase):
         self.assertRaises(AttributeError, o.call, wrong_fun)
 
         # Replaying with wrong function identifier
-        self.assertRaises(AttributeError, o.replay, wrong1_id, (None, None))
-        self.assertRaises(AttributeError, o.replay, wrong2_id, (None, None))
+        self.assertRaises(AttributeError, o.replay,
+                          self.keeper.new_entry(None, wrong1_id))
+        self.assertRaises(AttributeError, o.replay,
+                          self.keeper.new_entry(None, wrong2_id))
 
         self.assertRaises(RecordingResultError, o.bad)
         self.assertRaises(RecordingResultError, o.super_bad)
@@ -761,12 +762,12 @@ class TestJournaling(common.TestCase):
         d = self.assertAsyncEqual(d, "bar", o.record, bar_id)
         d = self.assertAsyncEqual(d, "barr", o.record, barr_id)
 
-        d = self.assertAsyncEqual(d, (None, "foo"),
-                                  o.replay, foo_id, (None, None))
-        d = self.assertAsyncEqual(d, (None, "bar"),
-                                  o.replay, bar_id, (None, None))
-        d = self.assertAsyncEqual(d, (None, "barr"),
-                                  o.replay, barr_id, (None, None))
+        d = self.assertAsyncEqual(d, "foo", o.replay,
+                                  self.keeper.new_entry(None, foo_id))
+        d = self.assertAsyncEqual(d, "bar", o.replay,
+                                  self.keeper.new_entry(None, bar_id))
+        d = self.assertAsyncEqual(d, "barr", o.replay,
+                                  self.keeper.new_entry(None, barr_id))
 
         return d
 
@@ -780,9 +781,9 @@ class TestJournaling(common.TestCase):
         # Setup a recording environment
         section = fiber.WovenSection()
         section.enter()
-        side_effects = []
+        entry = self.new_entry("dummy")
         section.state[journal.RECORDED_TAG] = JournalMode.recording
-        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         self.assertRaises(SideEffectResultError, bad_effect1)
         self.assertRaises(SideEffectResultError, bad_effect2)
@@ -795,12 +796,18 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         funid = "feat.test.test_common_journal.bad_replay_effect"
-        side_effects = ([(funid, (42, 18), None, "ok"),
-                         (funid, None, {"extra": "foo"}, "ok"),
-                         (funid, (42, 18), {"extra": "foo"}, "ok")]
-                        + [(funid, None, None, "ok")] * 4)
+
+        entry = self.new_entry("dummy")
+        entry.add_side_effect(funid, "ok", 42, 18)
+        entry.add_side_effect(funid, "ok", extra="foo")
+        entry.add_side_effect(funid, "ok", 42, 18, extra="foo")
+        entry.add_side_effect(funid, "ok")
+        entry.add_side_effect(funid, "ok")
+        entry.add_side_effect(funid, "ok")
+        entry.add_side_effect(funid, "ok")
+
         section.state[journal.RECORDED_TAG] = JournalMode.replay
-        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         self.assertEqual("ok", bad_replay_effect(42, 18))
         self.assertEqual("ok", bad_replay_effect(extra="foo"))
@@ -834,32 +841,27 @@ class TestJournaling(common.TestCase):
         # Tests inside recording context
         section = fiber.WovenSection()
         section.enter()
-        side_effects = []
-        replay_side_effects = []
+        entry = self.new_entry("dummy")
         section.state[journal.RECORDED_TAG] = JournalMode.recording
-        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         del _effect_calls[:]
-        del side_effects[:]
         self.assertEqual(bacon_effect("spam", extra="eggs"),
                          "bacon and spam with eggs")
         self.assertEqual(_effect_calls, ["bacon_effect"])
-        self.assertEqual(side_effects,
-                         [(bacon_effect_id, ("spam", ), {"extra": "eggs"},
-                           "bacon and spam with eggs")])
-        replay_side_effects.extend(side_effects) # Keep for later replay
+        self.assertEqual(entry.next_side_effect(bacon_effect_id,
+                                                "spam", extra="eggs"),
+                         "bacon and spam with eggs")
 
         del _effect_calls[:]
-        del side_effects[:]
         self.assertEqual(spam_effect("beans", extra="spam"),
                          "spam and beans with spam followed by "
                          "bacon and spam with spam")
         self.assertEqual(_effect_calls, ["spam_effect", "bacon_effect"])
-        self.assertEqual(side_effects,
-                         [(spam_effect_id, ("beans", ), {"extra": "spam"},
+        self.assertEqual(entry.next_side_effect(spam_effect_id,
+                                                "beans", extra="spam"),
                            "spam and beans with spam followed by "
-                           "bacon and spam with spam")])
-        replay_side_effects.extend(side_effects) # Keep for later replay
+                           "bacon and spam with spam")
 
         section.abort()
 
@@ -867,7 +869,9 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         section.state[journal.RECORDED_TAG] = JournalMode.replay
-        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
+
+        entry.rewind_side_effects()
 
         del _effect_calls[:]
         self.assertEqual(bacon_effect("spam", extra="eggs"),
@@ -907,32 +911,27 @@ class TestJournaling(common.TestCase):
         # Tests inside recording context
         section = fiber.WovenSection()
         section.enter()
-        side_effects = []
-        replay_side_effects = []
+        entry = self.new_entry("dummy")
         section.state[journal.RECORDED_TAG] = JournalMode.recording
-        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual(obj.eggs_effect("spam", extra="bacon"),
                          "chef's eggs and spam with bacon")
         self.assertEqual(_effect_calls, ["eggs_effect"])
-        self.assertEqual(side_effects,
-                         [(eggs_effect_id, ("spam", ), {"extra": "bacon"},
-                           "chef's eggs and spam with bacon")])
-        replay_side_effects.extend(side_effects) # Keep for later replay
+        self.assertEqual(entry.next_side_effect(eggs_effect_id,
+                                                "spam", extra="bacon"),
+                           "chef's eggs and spam with bacon")
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual(obj.beans_effect("spam", extra="eggs"),
                          "chef's beans and spam with eggs followed by "
                          "chef's eggs and spam with eggs")
         self.assertEqual(_effect_calls, ["beans_effect", "eggs_effect"])
-        self.assertEqual(side_effects,
-                         [(beans_effect_id, ("spam", ), {"extra": "eggs"},
+        self.assertEqual(entry.next_side_effect(beans_effect_id,
+                                                "spam", extra="eggs"),
                            "chef's beans and spam with eggs followed by "
-                         "chef's eggs and spam with eggs")])
-        replay_side_effects.extend(side_effects) # Keep for later replay
+                           "chef's eggs and spam with eggs")
 
         section.abort()
 
@@ -940,7 +939,9 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         section.state[journal.RECORDED_TAG] = JournalMode.replay
-        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
+
+        entry.rewind_side_effects()
 
         del _effect_calls[:]
         self.assertEqual(obj.eggs_effect("spam", extra="bacon"),
@@ -1000,51 +1001,41 @@ class TestJournaling(common.TestCase):
         # Test from inside a recording context
         section = fiber.WovenSection()
         section.enter()
-        side_effects = []
-        replay_side_effects = []
         section.state[journal.RECORDED_TAG] = JournalMode.recording
-        section.state[journal.SIDE_EFFECTS_TAG] = side_effects
 
-        del side_effects[:]
+        entry = self.new_entry("dummy")
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
+
         del _effect_calls[:]
         self.assertEqual("ok", obj.test_effect())
         self.assertEqual(["test_effect", "fun_without_effect",
                           "fun_with_effect", "meth_without_effect",
                           "meth_with_effect"], _effect_calls)
-        self.assertEqual([(meth_test_id, None, None, "ok")], side_effects)
-        replay_side_effects.extend(side_effects)
+        self.assertEqual(entry.next_side_effect(meth_test_id), "ok")
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual("ok", fun_without_effect(obj))
         self.assertEqual(["fun_without_effect",
                           "fun_with_effect", "meth_without_effect",
                           "meth_with_effect"], _effect_calls)
-        self.assertEqual([(fun_with_id, (obj, ), None, "ok")], side_effects)
-        replay_side_effects.extend(side_effects)
+        self.assertEqual(entry.next_side_effect(fun_with_id, obj), "ok")
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual("ok", fun_with_effect(obj))
         self.assertEqual(["fun_with_effect", "meth_without_effect",
                           "meth_with_effect"], _effect_calls)
-        self.assertEqual([(fun_with_id, (obj, ), None, "ok")], side_effects)
-        replay_side_effects.extend(side_effects)
+        self.assertEqual(entry.next_side_effect(fun_with_id, obj), "ok")
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual("ok", obj.meth_without_effect())
         self.assertEqual(["meth_without_effect",
                           "meth_with_effect"], _effect_calls)
-        self.assertEqual([(meth_with_id, None, None, "ok")], side_effects)
-        replay_side_effects.extend(side_effects)
+        self.assertEqual(entry.next_side_effect(meth_with_id), "ok")
 
-        del side_effects[:]
         del _effect_calls[:]
         self.assertEqual("ok", obj.meth_with_effect())
         self.assertEqual(["meth_with_effect"], _effect_calls)
-        self.assertEqual([(meth_with_id, None, None, "ok")], side_effects)
-        replay_side_effects.extend(side_effects)
+        self.assertEqual(entry.next_side_effect(meth_with_id), "ok")
 
         section.abort()
 
@@ -1053,7 +1044,9 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         section.state[journal.RECORDED_TAG] = JournalMode.replay
-        section.state[journal.SIDE_EFFECTS_TAG] = replay_side_effects
+        section.state[journal.JOURNAL_ENTRY_TAG] = entry
+
+        entry.rewind_side_effects()
 
         del _effect_calls[:]
         self.assertEqual("ok", obj.test_effect())
@@ -1078,8 +1071,7 @@ class TestJournaling(common.TestCase):
         section.abort()
 
     def testSerialization(self):
-        keeper = journal.InMemoryJournalKeeper()
-        root = journal.RecorderRoot(keeper, "dummy")
+        root = journal.RecorderRoot(self.keeper, "dummy")
         obj = BasicRecordingDummy(root)
         sub = BasicRecordingDummy(obj)
 
