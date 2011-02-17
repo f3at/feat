@@ -6,7 +6,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, journal
+from feat.common import manhole, journal, text_helper
 from feat.interface import agent
 from feat.process import standalone
 
@@ -93,6 +93,29 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
         p.restart()
 
         return d
+
+    # Manhole inspection methods
+
+    @manhole.expose()
+    @defer.inlineCallbacks
+    def list_slaves(self):
+        '''list_slaves() -> Print information about the slave agencies.'''
+        num = len(self._broker.slaves)
+        resp = []
+        for slave, i in zip(self._broker.slaves, range(num)):
+            resp += ["#### Slave %d ####" % i]
+            table = yield slave.callRemote('list_agents')
+            resp += [table]
+            resp += []
+        defer.returnValue("\n".join(resp))
+
+    @manhole.expose()
+    def get_nth_slave(self, n):
+        '''get_nth_slave(n) -> Give the reference to the nth slave agency.'''
+        return self._broker.slaves[n]
+
+    # Config manipulation (standalone agencies receive the configuration
+    # in the environment).
 
     def _store_config(self, env):
         '''

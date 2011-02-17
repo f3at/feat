@@ -82,12 +82,37 @@ class Manhole(annotate.Annotable, pb.Referenceable):
         else:
             return self._exposed[lvl]
 
+    def remote_get_exposed_cmds(self, lvl=SecurityLevel.safe):
+        return self.get_exposed_cmds(lvl).keys()
+
     def lookup_cmd(self, name, lvl=SecurityLevel.safe):
         commands = self.get_exposed_cmds(lvl)
         if name not in commands:
             raise UnknownCommand('Unknown command: %s.%s' %\
                                  (self.__class__.__name__, name, ))
         return partial(commands[name], self)
+
+
+class PBRemote(object):
+
+    def __init__(self, obj):
+        self.obj = obj
+        # names of exposed commands
+        self.commands = list()
+
+    def initiate(self):
+        d = self.obj.callRemote('get_exposed_cmds')
+        d.addCallback(self._set_cmds)
+        return d
+
+    def _set_cmds(self, cmds):
+        self.commands = cmds
+
+    def lookup_cmd(self, name, lvl=SecurityLevel.safe):
+        if name not in self.commands:
+            raise UnknownCommand('Unknown command: %s.%s' %\
+                                 (self.__class__.__name__, name, ))
+        return partial(self.obj.callRemote, name)
 
 
 class Parser(log.Logger):
@@ -251,7 +276,7 @@ class Parser(log.Logger):
                 else:
                     obj = n.group(1)
                     local = self.get_local(obj)
-                    if not isinstance(local, Manhole):
+                    if not isinstance(local, (Manhole, PBRemote, )):
                         raise IllegalCall('Variable %r should be a Manhole '
                                           'instance to make this work! '
                                           'Got %r instead.' %\
@@ -263,13 +288,16 @@ class Parser(log.Logger):
                 output = method(*arguments)
                 if isinstance(output, defer.Deferred):
                     if not async:
-                        value = yield output
+                        output = yield output
                     else:
-                        value = WrappedDeferred(output)
-                else:
-                    value = output
+                        output = WrappedDeferred(output)
+
+                if isinstance(output, pb.RemoteReference):
+                    output = PBRemote(output)
+                    yield output.initiate()
+
                 self.debug("Finished processing command: %s", element)
-                result.append(value)
+                result.append(output)
 
                 continue
 
