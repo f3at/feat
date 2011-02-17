@@ -5,6 +5,7 @@ from twisted.python import components
 
 from feat.common import log, serialization, fiber, annotate
 from feat.agents.base import replay, recipient, requester
+from feat.interface.protocols import InitiatorFailed
 
 
 class Relation(object):
@@ -87,10 +88,19 @@ class BasePartner(serialization.Serializable):
         pass
 
     def on_shutdown(self, agent):
+
+        def _ignore_initiator_failed(fail):
+            if fail.check(InitiatorFailed):
+                agent.log('Swallowing %r expection.', fail.value)
+                return None
+            else:
+                agent.log('Reraising exception %r', fail)
+                fail.raiseException()
+
         f = fiber.Fiber()
         f.add_callback(agent.initiate_protocol, self.recipient)
         f.add_callback(requester.GoodBye.notify_finish)
-
+        f.add_errback(_ignore_initiator_failed)
         return f.succeed(requester.GoodBye)
 
     def on_goodbye(self, agent):

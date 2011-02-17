@@ -6,6 +6,8 @@ import copy
 from functools import partial
 
 from twisted.internet import defer
+from twisted.spread import pb
+
 from feat.common import decorator, annotate, enum, log, error_handler
 
 
@@ -29,7 +31,7 @@ def expose(function, security_level=SecurityLevel.safe):
     return function
 
 
-class Manhole(annotate.Annotable):
+class Manhole(annotate.Annotable, pb.Referenceable):
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
@@ -48,6 +50,22 @@ class Manhole(annotate.Annotable):
 
                 cls._exposed[lvl] = dict()
             cls._exposed[lvl][fun_id] = function
+        cls._build_remote_call(function)
+
+    @classmethod
+    def _build_remote_call(cls, function):
+        f_name = "remote_%s" % function.__name__
+
+        def wrapped(*args, **kwargs):
+            res = function(*args, **kwargs)
+            if isinstance(res, pb.Referenceable):
+                return res
+            else:
+                #TODO: Serialize it
+                return res
+
+        wrapped.__name__ = f_name
+        setattr(cls, f_name, wrapped)
 
     @expose()
     def help(self):

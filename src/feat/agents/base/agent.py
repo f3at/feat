@@ -91,9 +91,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
     def get_cmd_line(self):
         raise NotImplemented('To be used for standalone agents!')
 
-    def unregister(self):
-        pass
-
     ## end of IAgent ##
 
     @replay.journaled

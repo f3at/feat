@@ -147,7 +147,6 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         yield self.agent.terminate()
 
         self.assertCalled(self.agent.agent, 'shutdown')
-        self.assertCalled(self.agent.agent, 'unregister')
 
         doc_id = self.agent._descriptor.doc_id
         d = self.agency._database.openDoc(doc_id)

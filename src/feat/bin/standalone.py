@@ -4,7 +4,7 @@ import optparse
 from twisted.internet import reactor
 
 from feat.agencies.net import standalone
-from feat.common import reflect, log
+from feat.common import reflect, log, run
 
 
 # This script is not ment to be run by human hand. It is used by the
@@ -32,7 +32,7 @@ parser = Options()
 options, args = parser.parse_args()
 
 log.FluLogKeeper.init(options.logfile)
-print "Starting standalone agency. Logging to %s." % options.logfile
 
+run.daemonize(stderr=options.logfile, stdout=options.logfile)
 a = standalone.Agency()
 reactor.run()

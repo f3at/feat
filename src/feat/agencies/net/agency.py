@@ -1,20 +1,11 @@
-import pprint
 import re
-import binascii
-import base64
 
-from zope.interface import implements
-from twisted.cred import portal
-from twisted.conch import (avatar, checkers, recvline,
-                           interfaces as conchinterfaces, )
-from twisted.conch.ssh import factory, keys, session
-from twisted.internet.error import CannotListenError
-from twisted.conch.insults import insults
 from twisted.internet import reactor, defer
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency
+from feat.agencies.net import ssh, broker
 from feat.common import manhole, journal
 from feat.interface import agent
 from feat.process import standalone
@@ -57,64 +48,24 @@ class Agency(agency.Agency, journal.DummyRecordNode):
 
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.shutdown)
-        self._setup_manhole()
-        self._processes = list()
 
-    def append_process(self, process):
-        self._processes.append(process)
+        self._ssh = ssh.ListeningPort(self, **self.config['manhole'])
+        self._broker = broker.Broker(self,
+                                on_master_cb=self._ssh.start_listening,
+                                on_slave_cb=self._ssh.stop_listening,
+                                on_disconnected_cb=self._ssh.stop_listening)
+        return self._broker.initiate_broker()
 
-    def remove_process(self, process):
-        if process in self._processes:
-            self._processes.remove(process)
-
-    def terminate_processes(self):
-        return defer.DeferredList([x.terminate() for x in self._processes])
-
-    def _setup_manhole(self):
-        self._manhole_listener = None
-        if not (self.config['manhole']['public_key'] and\
-                self.config['manhole']['private_key'] and\
-                self.config['mahhole']['authorized_keys']):
-            self.info('Skipping manhole configuration. You need to specify '
-                      'public and private key files and authorized_keys file.')
-            return
-
-        try:
-            public_key_str = file(self.config['manhole']['public_key']).read()
-            private_key_str = file(
-                self.config['manhole']['private_key']).read()
-
-            sshFactory = factory.SSHFactory()
-            sshFactory.portal = portal.Portal(SSHRealm(self))
-            sshFactory.portal.registerChecker(KeyChecker(
-                self.config['manhole']['authorized_keys']))
-
-            sshFactory.publicKeys = {
-                'ssh-rsa': keys.Key.fromString(data=public_key_str)}
-            sshFactory.privateKeys = {
-                'ssh-rsa': keys.Key.fromString(data=private_key_str)}
-        except IOError as e:
-            self.error('Failed to setup the manhole. File missing. %r', e)
-            return
-
-        if self.config['manhole']['port'] is None:
-            self.config['manhole']['port'] = 6000
-
-        while True:
-            try:
-                self._manhole_listener = reactor.listenTCP(
-                    self.config['manhole']['port'], sshFactory)
-                self.info('Manhole listening on the port: %d',
-                          self.config['manhole']['port'])
-                break
-            except CannotListenError:
-                self.config['manhole']['port'] += 1
+    def full_shutdown(self):
+        '''Terminate all the slave agencies and shutdown.'''
+        d = self._broker.shutdown_slaves()
+        d.addCallback(lambda _: self.shutdown())
+        return d
 
     def shutdown(self):
         d = agency.Agency.shutdown(self)
-        if self._manhole_listener:
-            d.addCallback(lambda _: self._manhole_listener.stopListening())
-        d.addCallback(lambda _: self.terminate_processes())
+        d.addCallback(lambda _: self._broker.disconnect())
+        d.addCallback(lambda _: self._ssh.stop_listening())
         return d
 
     @manhole.expose()
@@ -122,16 +73,26 @@ class Agency(agency.Agency, journal.DummyRecordNode):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
         if self.spawns_processes and factory.standalone:
-            command, args, env = factory.get_cmd_line()
-            env = self._store_config(env)
-            env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
-            recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
-            p = standalone.Process(self, command, args, env)
-            d = p.restart()
-            d.addCallback(lambda _: recp)
-            return d
+            return self.start_standalone_agent(descriptor, factory)
         else:
-            return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
+            return self.start_agent_locally(descriptor, *args, **kwargs)
+
+    def start_agent_locally(self, descriptor, *args, **kwargs):
+        return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
+
+    def start_standalone_agent(self, descriptor, factory):
+        command, args, env = factory.get_cmd_line()
+        env = self._store_config(env)
+        env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
+        recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
+
+        d = self._broker.wait_event(recp.key, 'started')
+        d.addCallback(lambda _: recp)
+
+        p = standalone.Process(self, command, args, env)
+        p.restart()
+
+        return d
 
     def _store_config(self, env):
         '''
@@ -161,120 +122,3 @@ class Agency(agency.Agency, journal.DummyRecordNode):
                     self.config[c_key][c_kkey] = value
                 else:
                     self.config[c_key] = {c_kkey: value}
-
-
-class KeyChecker(checkers.SSHPublicKeyDatabase):
-
-    def __init__(self, keyfile):
-        self.keys = []
-        f = open(keyfile)
-        for l in f.readlines():
-            l2 = l.split()
-            if len(l2) < 2:
-                continue
-            try:
-                self.keys.append(base64.decodestring(l2[1]))
-            except binascii.Error:
-                continue
-        f.close()
-
-    def check_key(self, key):
-        try:
-            next(x for x in self.keys if x == key.blob)
-            return 1
-        except StopIteration:
-            return 0
-
-
-class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
-
-    def __init__(self, ag):
-        recvline.HistoricRecvLine.__init__(self)
-        self.agency = ag
-        manhole.Parser.__init__(self, ag, None, self)
-
-    def connectionMade(self):
-        recvline.HistoricRecvLine.connectionMade(self)
-        self.output = self.terminal
-        self.set_local(self.agency, 'agency')
-        self.terminal.write("Welcome to the manhole! Type help() for info.")
-        self.terminal.nextLine()
-        self.showPrompt()
-
-    def showPrompt(self):
-        self.terminal.write("> ")
-
-    def lineReceived(self, line):
-        manhole.Parser.dataReceived(self, line+'\n')
-
-    def on_finish(self):
-        self.showPrompt()
-
-    @manhole.expose()
-    def locals(self):
-        '''locals() -> Print defined locals names.'''
-        return "\n".join(self._locals.keys())
-
-    @manhole.expose()
-    def exit(self):
-        '''exit() -> Close connection.'''
-        self.terminal.write("Happy hacking!")
-        self.terminal.nextLine()
-        self.terminal.loseConnection()
-
-    @manhole.expose()
-    def get_document(self, doc_id):
-        '''get_document(doc_id) -> Download the document given the id.'''
-        conn = self.agency._database.get_connection(None)
-        return conn.get_document(doc_id)
-
-    @manhole.expose()
-    def pprint(self, obj):
-        '''pprint(obj) -> Preaty print the object'''
-        return pprint.pformat(obj)
-
-    @manhole.expose()
-    def list_get(self, llist, index):
-        """list_get(list, n) -> Get the n'th element of the list"""
-        return llist[index]
-
-
-class SSHAvatar(avatar.ConchUser):
-    implements(conchinterfaces.ISession)
-
-    def __init__(self, username, ag):
-        avatar.ConchUser.__init__(self)
-        self.username = username
-        self.agency = ag
-        self.channelLookup.update({'session': session.SSHSession})
-
-    def openShell(self, protocol):
-        serverProtocol = insults.ServerProtocol(SSHProtocol, self.agency)
-        serverProtocol.makeConnection(protocol)
-        protocol.makeConnection(session.wrapProtocol(serverProtocol))
-
-    def windowChanged(self, winSize):
-        pass
-
-    def getPty(self, terminal, windowSize, attrs):
-        return None
-
-    def execCommand(self, protocol, cmd):
-        raise NotImplementedError
-
-    def closed(self):
-        pass
-
-
-class SSHRealm(object):
-    implements(portal.IRealm)
-
-    def __init__(self, agency):
-        self.agency = agency
-
-    def requestAvatar(self, avatarId, mind, *interfaces):
-        if conchinterfaces.IConchUser in interfaces:
-            return interfaces[0], SSHAvatar(avatarId, self.agency),\
-                   lambda: None
-        else:
-            raise Exception("No supported interfaces found.")

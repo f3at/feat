@@ -94,6 +94,11 @@ class FluLogKeeper(object):
             cls._initialized = True
 
     @classmethod
+    def redirect_to(cls, stdout, stderr):
+        global flulog
+        flulog.outputToFiles(stdout, stderr)
+
+    @classmethod
     def set_debug(self, string):
         global flulog
         flulog.setDebug(string)

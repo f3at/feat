@@ -429,8 +429,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         d.addBoth(self._kill_all_listeners)
         # run IAgent.shutdown() and wait for the listeners to finish the job
         d.addBoth(self._run_and_wait, self.agent.shutdown)
-        # run IAgent.unregister() and wait for the listeners to finish the job
-        d.addBoth(self._run_and_wait, self.agent.unregister)
         # delete the descriptor
         d.addBoth(lambda _: self.delete_document(self._descriptor))
         # TODO: delete the queue

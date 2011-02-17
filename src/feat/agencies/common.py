@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 
 from feat.common import delay, serialization, error_handler, log
 from feat.interface.protocols import InitiatorFailed
@@ -35,9 +35,10 @@ class StateMachineMixin(object):
             self.log('Changing state from %r to %r', self.state, state)
             self.state = state
         if state in self._changes_notifications:
-            for cb in self._changes_notifications[state]:
-                cb.callback(None)
+            temp = self._changes_notifications[state]
             del(self._changes_notifications[state])
+            for cb in temp:
+                cb.callback(None)
 
     def _cmp_state(self, states):
         if not isinstance(states, list):

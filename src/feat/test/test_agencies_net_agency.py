@@ -101,6 +101,6 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.agency.shutdown()
+        yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()

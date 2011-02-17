@@ -40,6 +40,10 @@ class TestParser(common.TestCase):
         self.parser = manhole.Parser(DummyDriver(self),
                                     self.output, self.commands)
 
+    def testPBRemotes(self):
+        self.assertTrue(callable(self.commands.remote_spam))
+        self.assertTrue(callable(self.commands.remote_eggs))
+
     @defer.inlineCallbacks
     def testSimpleParsing(self):
         test = format_block("""
