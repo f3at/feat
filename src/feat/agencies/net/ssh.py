@@ -17,13 +17,13 @@ from feat.common import log, manhole
 class ListeningPort(log.Logger):
 
     def __init__(self, agency, public_key=None, private_key=None,
-                 authorized_keys=None, port=6000):
+                 authorized_keys=None, port=None):
         log.Logger.__init__(self, agency)
 
         self.agency = agency
         self._listener = None
         self.sshFactory = None
-        self.port = port
+        self.port = port or 6000
 
         if not (public_key and private_key and authorized_keys):
             self.info('Skipping manhole configuration. You need to specify '
