@@ -1,7 +1,8 @@
 from twisted.internet import defer
 
 from feat.simulation import driver
-from feat.common import manhole, format_block, log
+from feat.common import manhole, log
+from feat.common.text_helper import format_block
 from feat.test import common
 
 

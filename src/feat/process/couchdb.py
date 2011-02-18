@@ -3,7 +3,7 @@ import os
 
 from feat.process import base
 from feat.agents.base import replay
-from feat.common import format_block
+from feat.common.text_helper import format_block
 
 
 class Process(base.Base):

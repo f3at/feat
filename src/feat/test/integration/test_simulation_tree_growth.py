@@ -3,7 +3,8 @@
 from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 
-from feat.common import format_block, delay
+from feat.common import delay
+from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent

@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat.common import format_block
+from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.base import agent, descriptor, document
 
