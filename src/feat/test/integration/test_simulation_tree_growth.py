@@ -11,12 +11,131 @@ from feat.agents.shard import shard_agent
 from feat.agents.base import recipient
 
 
+class Shard(object):
+
+    def __init__(self, name):
+        self.name = name
+        self.agents = list()
+        self.children = list()
+
+    # def count_agents(self):
+    #     res = dict()
+    #     for agent in self.agents:
+    #         factory = agent.get_agent().__class__.__name__
+    #         if factory in res:
+    #             res[factory] += 1
+    #         else:
+    #             res[factory] = 1
+    #     return res
+
+    def pick_agent_by_type(self, factory):
+        try:
+            return next(self.iter_agents_by_type(factory))
+        except StopIteration:
+            return None
+
+    def pick_agents_by_type(self, factory):
+        return [x for x in self.iter_agents_by_type(factory)]
+
+    def iter_agents_by_type(self, factory):
+        for x in self.agents:
+            if isinstance(x.get_agent(), factory):
+                yield x
+
+
 class Common(object):
 
     def assert_all_agents_in_shard(self, agency, shard):
         for agent in agency._agents:
             desc = agent.get_descriptor()
             self.assertEqual(shard, desc.shard, str(type(agent.agent)))
+
+    def get_topology(self):
+        return self.scan_shard('root')
+
+    def scan_shard(self, name):
+        res = Shard(name)
+        res.agents = self.find_agents(name)
+        shard_a = res.pick_agent_by_type(shard_agent.ShardAgent)
+        for partner in shard_a.get_agent().query_partners('children'):
+            res.children.append(self.scan_shard(partner.recipient.shard))
+        return res
+
+    def find_agents(self, shard):
+        return [x for x in self.driver.iter_agents() \
+                if x._descriptor.shard == shard]
+
+
+@common.attr('slow')
+class FailureRecoverySimulation(common.SimulationTest, Common):
+
+    start_host_agent = format_block("""
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+        """)
+
+    def prolog(self):
+        setup = format_block("""
+        agency = spawn_agency()
+        shard_desc = descriptor_factory('shard_agent', 'root')
+        agency.start_agent(descriptor_factory('host_agent'), bootstrap=True)
+        agent = _.get_agent()
+        agent.start_agent(shard_desc, children=2, hosts=2)
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        # First 1 lvl child shard
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        # Second 1 lvl child shard
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        # First 2 lvl child shard
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'))
+
+        """)
+        return self.process(setup)
+
+    def testValidateProlog(self):
+        topology = self.get_topology()
+
+        def validate(shard, lvl):
+            self.info('Validating shard %s on lvl %d', shard.name, lvl)
+            self.info('Agents: %r', [x.get_agent() for x in shard.agents])
+            self.assertEqual(3, len(shard.agents))
+            self.assertEqual(
+                1, len(shard.pick_agents_by_type(shard_agent.ShardAgent)))
+            self.assertEqual(
+                2, len(shard.pick_agents_by_type(host_agent.HostAgent)))
+            if lvl == 0:
+                self.assertEqual(2, len(shard.children))
+            elif lvl == 1:
+                self.assertTrue(len(shard.children) in (0, 1))
+            elif lvl == 2:
+                self.assertEqual(0, len(shard.children))
+            else:
+                raise FailTest('third lvl?')
+
+            for child in shard.children:
+                validate(child, lvl+1)
+
+        validate(topology, 0)
 
 
 @common.attr('slow')

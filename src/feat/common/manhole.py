@@ -130,6 +130,7 @@ class Parser(log.Logger):
         self.re = dict(
             assignment=re.compile('\A(\w+)\s*=\s*(\S.*)'),
             async=re.compile('\Aasync\s+(.+)'),
+            comment=re.compile('\A\s*#.*\Z'),
             yielding=re.compile('\Ayield\s+(\w+)\s*\Z'),
             number=re.compile('\A\d+(\.\d+)?\Z'),
             none=re.compile('\ANone\Z'),
@@ -242,8 +243,7 @@ class Parser(log.Logger):
         if line is not None:
             self._last_line = line
             self.debug('Processing line: %s', line)
-            if not re.search('\w', line):
-                self.log('Empty line')
+            if not re.search('\w', line) or self.re['comment'].search(line):
                 return self.process_line()
 
             assignment = self.re['assignment'].search(line)

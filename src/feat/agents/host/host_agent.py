@@ -4,7 +4,7 @@
 from feat.agents.base import (agent, recipient, manager, message, replay,
                               replier, requester, document, descriptor,
                               partners)
-from feat.common import fiber, serialization
+from feat.common import fiber, serialization, manhole
 
 
 @serialization.register
@@ -14,6 +14,16 @@ class ShardPartner(partners.BasePartner):
 
     def initiate(self, agent):
         return agent.switch_shard(self.recipient.shard)
+
+
+    def on_goodbye(self, agent):
+        # TODO: NOT TESTED! Work in progress interupted by more important
+        # task. Should be tested in the class:
+        # f.t.i.test_simulation_tree_growth.FailureRecoverySimulation
+        agent.info('Shard partner said goodbye. Trying to find new shard.')
+        f = fiber.Fiber()
+        f.add_callback(fiber.drop_result, self.start_join_shard_manager)
+        return f.succeed()
 
 
 class Partners(partners.Partners):
@@ -63,8 +73,11 @@ class HostAgent(agent.BaseAgent):
         f.add_callback(fiber.drop_result, state.medium.join_shard, shard)
         return f.succeed()
 
+    @manhole.expose()
     @replay.journaled
     def start_agent(self, state, doc_id, *args, **kwargs):
+        if isinstance(doc_id, descriptor.Descriptor):
+            doc_id = doc_id.doc_id
         assert isinstance(doc_id, (str, unicode, ))
         f = fiber.Fiber()
         f.add_callback(self.get_document)
@@ -92,14 +105,18 @@ class StartAgentRequester(requester.BaseRequester):
     protocol_id = 'start-agent'
     timeout = 10
 
-    def init_state(self, state, agent, medium, descriptor):
+    def init_state(self, state, agent, medium, descriptor, *args, **kwargs):
         requester.BaseRequester.init_state(self, state, agent, medium)
         state.descriptor = descriptor
+        state.args = args
+        state.kwargs = kwargs
 
     @replay.mutable
     def initiate(self, state):
         msg = message.RequestMessage()
         msg.payload['doc_id'] = state.descriptor.doc_id
+        msg.payload['args'] = state.args
+        msg.payload['kwargs'] = state.kwargs
         state.medium.request(msg)
 
     def got_reply(self, reply):
@@ -113,7 +130,9 @@ class StartAgentReplier(replier.BaseReplier):
     @replay.entry_point
     def requested(self, state, request):
         f = fiber.Fiber()
-        f.add_callback(state.agent.start_agent)
+        f.add_callbacks(state.agent.start_agent,
+                        cbargs=request.payload['args'],
+                        cbkws=request.payload['kwargs'])
         f.add_callback(self._send_reply)
         f.succeed(request.payload['doc_id'])
         return f

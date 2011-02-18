@@ -123,6 +123,11 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
         self._messaging_connection = self._messaging.get_connection(self)
 
+    def iter_agents(self):
+        for agency in self._agencies:
+            for agent in agency._agents:
+                yield agent
+
     def register_breakpoint(self, name):
         if name in self._breakpoints:
             raise RuntimeError("Breakpoint with name: %s already registered",

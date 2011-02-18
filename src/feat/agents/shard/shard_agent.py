@@ -62,11 +62,11 @@ class ShardAgent(agent.BaseAgent):
     partners_class = Partners
 
     @replay.mutable
-    def initiate(self, state):
+    def initiate(self, state, hosts=10, children=2):
         agent.BaseAgent.initiate(self)
 
-        state.resources.define('hosts', 10)
-        state.resources.define('children', 2)
+        state.resources.define('hosts', hosts)
+        state.resources.define('children', children)
 
         state.join_interest =\
             state.medium.register_interest(JoinShardContractor)
@@ -245,8 +245,9 @@ class JoinShardContractor(contractor.BaseContractor):
     @replay.immutable
     def _request_start_agent(self, state, desc):
         recp = state.medium.announce.payload['joining_agent']
+        totals, _ = state.agent.list_resource()
         f = fiber.Fiber()
-        f.add_callback(state.agent.initiate_protocol, recp, desc)
+        f.add_callback(state.agent.initiate_protocol, recp, desc, **totals)
         f.add_callback(StartAgentRequester.notify_finish)
         f.succeed(StartAgentRequester)
         return f

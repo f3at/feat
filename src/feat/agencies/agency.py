@@ -345,8 +345,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         return defer.DeferredList([x.revoke() for x in bindings])
 
     @serialization.freeze_tag('AgencyAgent.start_agent')
-    def start_agent(self, desc):
-        return self.agency.start_agent(desc)
+    def start_agent(self, desc, *args, **kwargs):
+        return self.agency.start_agent(desc, *args, **kwargs)
 
     def on_message(self, message):
         self.log('Received message: %r', message)
