@@ -151,21 +151,18 @@ class Parser(log.Logger):
         def reverse(char):
 
             def wrapped():
-                self.debug('Reverse %s', char)
                 counters[char] = not counters[char]
             return wrapped
 
         def increase(char):
 
             def wrapped():
-                self.debug('Increase %s', char)
                 counters[char] += 1
             return wrapped
 
         def decrease(char):
 
             def wrapped():
-                self.debug('Decrease %s', char)
                 counters[char] -= 1
             return wrapped
 
@@ -197,24 +194,19 @@ class Parser(log.Logger):
 
         result = list()
 
-        self.debug("spliting: %s", text)
+        self.log("spliting: %s", text)
 
         for char in text:
-            self.debug('Char: %s. counters: %r', char, counters)
             if char in nesters:
-                self.debug('Nesting: %s', char)
                 nesters[char]()
-                self.info('COunters: %r', counters)
                 temp = append_char(temp, char)
             elif not is_top_level():
-                self.debug('not on top')
                 temp = append_char(temp, char)
             elif char in consume:
                 if len(temp) > 0:
                     eof_flag = True
                 continue
             elif char in split:
-                self.debug('Appending: %s', temp)
                 result.append(temp)
                 temp = ""
                 eof_flag = False
@@ -225,7 +217,7 @@ class Parser(log.Logger):
 
         if not is_top_level():
             fail()
-        self.info('Split returns %r', result)
+        self.log('Split returns %r', result)
         return result
 
     def dataReceived(self, data):
