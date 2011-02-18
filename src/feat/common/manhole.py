@@ -1,7 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import re
-import shlex
 import copy
 from functools import partial
 
@@ -134,40 +133,100 @@ class Parser(log.Logger):
             yielding=re.compile('\Ayield\s+(\w+)\s*\Z'),
             number=re.compile('\A\d+(\.\d+)?\Z'),
             none=re.compile('\ANone\Z'),
+            true=re.compile('\ATrue\Z'),
+            false=re.compile('\AFalse\Z'),
             string=re.compile('\A\'([^(?<!\)\']*)\'\Z'),
             call=re.compile('\A(\w+)\((.*)\)\Z'),
             variable=re.compile('\A([^\(\)\'\"\s\+]+)\Z'),
             method_call=re.compile('\A(\w+)\.(\w+)\((.*)\)\Z'))
 
     def split(self, text):
-        s = shlex.shlex(text, posix=False)
-        s.whitespace += ','
-        s.wordchars += '.'
-        s.whitespace_split = False
-        splitted = list(s)
-        try:
-            while True:
-                index = splitted.index(')')
-                while True:
-                    item = splitted[index]
-                    previous = splitted.pop(index - 1)
-                    if previous == '(':
-                        item = previous + item
-                        command = splitted.pop(index - 2)
-                        splitted[index - 2] = command + item
-                        break
-                    elif item == ')':
-                        item = previous + item
-                    else:
-                        item = previous + ', ' + item
-                    splitted[index - 1] = item
-                    index -= 1
-                    if index < 0:
-                        raise BadSyntax('Syntax error processing line: %s' %\
+        '''
+        Splits the text with function arguments into the array with first
+        class citizens separated. See the unit tests for clarificatin.
+        '''
+        # nesting character -> count
+        counters = {"'": False, '(': 0}
+
+        def reverse(char):
+
+            def wrapped():
+                self.debug('Reverse %s', char)
+                counters[char] = not counters[char]
+            return wrapped
+
+        def increase(char):
+
+            def wrapped():
+                self.debug('Increase %s', char)
+                counters[char] += 1
+            return wrapped
+
+        def decrease(char):
+
+            def wrapped():
+                self.debug('Decrease %s', char)
+                counters[char] -= 1
+            return wrapped
+
+        def is_top_level():
+            return all([not x for x in counters.values()])
+
+        def fail():
+            raise BadSyntax('Syntax error processing line: %s' %\
                             self._last_line)
 
-        except ValueError:
-            return splitted
+
+        temp = ""
+        # end of field flag indicates that we expect next character to be
+        # either whitespace of split
+        eof_flag = False
+
+        def append_char(temp, char):
+            if eof_flag:
+                fail()
+            temp += char
+            return temp
+
+        # dictionary char -> handler
+        nesters = {"'": reverse("'"), "(": increase('('), ")": decrease('(')}
+        # chars to split on
+        split = (',', )
+        # chars to swallow
+        consume = (' ', '\n')
+
+        result = list()
+
+        self.debug("spliting: %s", text)
+
+        for char in text:
+            self.debug('Char: %s. counters: %r', char, counters)
+            if char in nesters:
+                self.debug('Nesting: %s', char)
+                nesters[char]()
+                self.info('COunters: %r', counters)
+                temp = append_char(temp, char)
+            elif not is_top_level():
+                self.debug('not on top')
+                temp = append_char(temp, char)
+            elif char in consume:
+                if len(temp) > 0:
+                    eof_flag = True
+                continue
+            elif char in split:
+                self.debug('Appending: %s', temp)
+                result.append(temp)
+                temp = ""
+                eof_flag = False
+            else:
+                temp = append_char(temp, char)
+        if len(temp) > 0:
+            result.append(temp)
+
+        if not is_top_level():
+            fail()
+        self.info('Split returns %r', result)
+        return result
 
     def dataReceived(self, data):
         self.buffer += data
@@ -243,27 +302,55 @@ class Parser(log.Logger):
         The async parametr (default False) tells whether to yield the Deferred
         returned. If False, the Deferreds are substitued with None.
         """
+
         result = list()
+        kwargs = dict()
+        keyword = None
+
+        def append_result(value):
+            if keyword:
+                kwargs[keyword] = value
+            else:
+                result.append(value)
+
         for element in array:
-            m = self.re['number'].search(element)
             self.log('matching: %s', element)
+
+            # First check for expresion with the form keyword=expresion
+            keyword = None
+            assignment = self.re['assignment'].search(element)
+            if assignment:
+                keyword = assignment.group(1)
+                element = assignment.group(2)
+
+            m = self.re['number'].search(element)
             if m:
-                result.append(eval(m.group(0)))
+                append_result(eval(m.group(0)))
                 continue
 
             m = self.re['string'].search(element)
             if m:
-                result.append(m.group(1))
+                append_result(m.group(1))
                 continue
 
             m = self.re['none'].search(element)
             if m:
-                result.append(None)
+                append_result(None)
+                continue
+
+            m = self.re['true'].search(element)
+            if m:
+                append_result(True)
+                continue
+
+            m = self.re['false'].search(element)
+            if m:
+                append_result(False)
                 continue
 
             m = self.re['variable'].search(element)
             if m:
-                result.append(self.get_local(m.group(1)))
+                append_result(self.get_local(m.group(1)))
                 continue
 
             m = self.re['call'].search(element)
@@ -284,8 +371,9 @@ class Parser(log.Logger):
                     command = n.group(2)
                     method = local.lookup_cmd(command)
                     rest = n.group(3)
-                arguments = yield self.process_array(self.split(rest))
-                output = method(*arguments)
+                arguments, keywords =\
+                           yield self.process_array(self.split(rest))
+                output = method(*arguments, **keywords)
                 if isinstance(output, defer.Deferred):
                     if not async:
                         output = yield output
@@ -296,25 +384,24 @@ class Parser(log.Logger):
                     output = PBRemote(output)
                     yield output.initiate()
 
-                self.debug("Finished processing command: %s", element)
-                result.append(output)
-
+                self.debug("Finished processing command: %s.", element)
+                append_result(output)
                 continue
 
             raise BadSyntax('Syntax error processing line: %s. '
                             'Could not detect type of element: %s' %\
                             (self._last_line, element, ))
 
-        defer.returnValue(result)
+        defer.returnValue((result, kwargs, ))
 
-    def validate_result(self, result_array):
+    def validate_result(self, (result_array, result_keywords, )):
         '''
         Check that the result is a list with a single element, and return it.
         If we had more than one element it would mean that the line processed
         looked somewhat like this:
         call1(), "blah blah blah"
         '''
-        if len(result_array) != 1:
+        if len(result_array) != 1 or len(result_keywords) > 0:
             raise BadSyntax('Syntax error processing line: %s' %\
                             self._last_line)
         return result_array[0]

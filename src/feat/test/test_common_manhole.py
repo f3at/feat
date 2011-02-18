@@ -79,6 +79,16 @@ class TestParser(common.TestCase):
         self.assertEqual('5\n', self.output.getvalue())
 
     @defer.inlineCallbacks
+    def testKeywords(self):
+        test = format_block("""
+        echo(echo='some text')
+        """)
+        d = self.cb_after(None, self.parser, 'on_finish')
+        self.parser.dataReceived(test)
+        yield d
+        self.assertEqual('some text\n', self.output.getvalue())
+
+    @defer.inlineCallbacks
     def testUnknownMethod(self):
         test = format_block("""
         spam('all', 'ok')
@@ -111,6 +121,15 @@ class TestParser(common.TestCase):
         self.parser.dataReceived(test)
         yield d
         self.assertEqual(None, self.parser._locals['var'])
+
+    @defer.inlineCallbacks
+    def testAssignTrueAndFalse(self):
+        test = "var1 = True\nvar2=False\n"
+        d = self.cb_after(None, self.parser, 'on_finish')
+        self.parser.dataReceived(test)
+        yield d
+        self.assertEqual(True, self.parser._locals['var1'])
+        self.assertEqual(False, self.parser._locals['var2'])
 
     @defer.inlineCallbacks
     def testUnknownVariable(self):
@@ -308,6 +327,14 @@ class TestParser(common.TestCase):
         self.assertRaises(manhole.BadSyntax,
                           self.parser.split,
                           "this, func_call(some, argsaaa)), that")
+
+        m = self.parser.split("this, keyword=and, that, keyword2='some text'")
+        self.assertEqual(
+            ['this', 'keyword=and', 'that', "keyword2='some text'"], m)
+
+        m = self.parser.split("this, keyword=and(var)")
+        self.assertEqual(
+            ['this', 'keyword=and(var)'], m)
 
 
 class Commands(common.Mock, manhole.Manhole):
