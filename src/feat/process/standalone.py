@@ -19,10 +19,12 @@ class Process(base.Base):
         pass
 
     def started_test(self):
-        buffer = self.control.out_buffer
-        self.log("Checking buffer: %s", buffer)
-        return "Agency is ready. Agent started." in buffer
+        # Process should deamonize itself.
+        return True
 
     def restart(self):
         d = base.Base.restart(self)
+        # This fakes process output and is needed because it might deamonize
+        # itself without puting anything to stdout.
+        self.control.outReceived("")
         return d
