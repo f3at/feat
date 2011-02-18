@@ -18,6 +18,33 @@ def drop_result(result, method, *args, **kwargs):
     return method(*args, **kwargs)
 
 
+def bridge_result(result, method, *args, **kwargs):
+    assert callable(method)
+    method(*args, **kwargs)
+    return result
+
+
+def override_result(result, new_result):
+    return new_result
+
+
+def maybe_fiber(function, *args, **kwargs):
+
+    try:
+        result = function(*args, **kwargs)
+    except:
+        return defer.fail(failure.Failure())
+    else:
+        if IFiber.providedBy(result):
+            return result.start()
+        if isinstance(result, defer.Deferred):
+            return result
+        elif isinstance(result, failure.Failure):
+            return defer.fail(result)
+        else:
+            return defer.succeed(result)
+
+
 @decorator.simple_function
 def woven(fun):
     '''Decorator that will initialize and eventually start nested fibers.'''

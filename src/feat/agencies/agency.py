@@ -141,8 +141,10 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         self._agents.append(medium)
 
         d = defer.maybeDeferred(medium.initiate)
-        d.addCallback(lambda _: medium.agent.initiate(*args, **kwargs))
-        d.addCallback(lambda _: medium)
+        #FIXME: we shouldn't need maybe_fiber
+        d.addCallback(fiber.drop_result, fiber.maybe_fiber,
+                      medium.agent.initiate, *args, **kwargs)
+        d.addCallback(fiber.override_result, medium)
         return d
 
     def shutdown(self):

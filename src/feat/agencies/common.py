@@ -4,7 +4,7 @@ import uuid
 
 from twisted.internet import defer, reactor
 
-from feat.common import delay, serialization, error_handler, log
+from feat.common import delay, fiber, serialization, error_handler, log
 from feat.interface.protocols import InitiatorFailed
 from feat.agents.base import replay
 
@@ -161,7 +161,8 @@ class AgencyMiddleMixin(object):
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
 
-        d = defer.maybeDeferred(method, *args, **kwargs)
+        #FIXME: we shouldn't need maybe_fiber, mabeDeferred should be enough
+        d = fiber.maybe_fiber(method, *args, **kwargs)
         d.addErrback(self._error_handler)
         return d
 
