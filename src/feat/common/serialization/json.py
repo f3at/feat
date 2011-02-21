@@ -5,7 +5,7 @@ import json as json
 from feat.common import reflect
 from feat.interface.serialization import *
 
-from . import base
+from feat.common.serialization import base
 
 
 TUPLE_ATOM = u".tuple"

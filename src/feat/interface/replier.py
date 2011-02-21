@@ -1,4 +1,4 @@
-from . import protocols, requests
+from feat.interface import protocols, requests
 
 __all__ = ["IReplierFactory", "IAgencyReplier", "IAgentReplier"]
 

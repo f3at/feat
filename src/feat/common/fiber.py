@@ -8,7 +8,7 @@ from zope.interface import implements
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from . import reflect, decorator
+from feat.common import reflect, decorator
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
 

@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-from . import protocols, contracts
+from feat.interface import protocols, contracts
 
 __all__ = ["IManagerFactory", "IAgencyManager", "IAgentManager"]
 

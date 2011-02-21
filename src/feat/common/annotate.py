@@ -1,4 +1,4 @@
-from . import reflect
+from feat.common import reflect
 
 _CLASS_ANNOTATIONS_ATTR = "_class_annotations"
 _ATTRIBUTE_INJECTIONS_ATTR = "_attribute_injections"

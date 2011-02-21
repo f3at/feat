@@ -1,6 +1,6 @@
 import types
 
-from . import reflect
+from feat.common import reflect
 
 """TODO: Better function mimicry."""
 

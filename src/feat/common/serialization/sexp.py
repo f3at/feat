@@ -1,6 +1,6 @@
 from feat.common import reflect
 
-from . import base
+from feat.common.serialization import base
 
 UNICODE_ATOM = "unicode"
 UNICODE_FORMAT_ATOM = "UTF-8"

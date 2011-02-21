@@ -1,7 +1,7 @@
 from feat.agencies import agency
 
-from . import messaging
-from . import database
+from feat.agencies.emu import messaging
+from feat.agencies.emu import database
 
 
 class Agency(agency.Agency):

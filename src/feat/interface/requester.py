@@ -1,6 +1,6 @@
 from zope.interface import Attribute
 
-from . import protocols, requests
+from feat.interface import protocols, requests
 
 __all__ = ["IRequesterFactory", "IAgencyRequester", "IAgentRequester"]
 

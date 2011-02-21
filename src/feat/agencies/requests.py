@@ -10,7 +10,7 @@ from feat.agents.base import message, replay
 
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory
-from . import common
+from feat.agencies import common
 
 
 class AgencyRequesterFactory(object):

@@ -4,7 +4,7 @@ from zope.interface.interface import InterfaceClass
 from feat.common import enum, reflect
 from feat.interface.serialization import *
 
-from . import base
+from feat.common.serialization import base
 
 
 class External(object):

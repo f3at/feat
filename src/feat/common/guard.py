@@ -7,7 +7,7 @@ from zope.interface import implements
 
 from feat.interface.serialization import *
 
-from . import decorator, annotate, serialization
+from feat.common import decorator, annotate, serialization
 
 STATE_TAG = "_GUARDED_STATE_"
 

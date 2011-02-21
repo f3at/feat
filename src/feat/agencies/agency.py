@@ -20,7 +20,7 @@ from feat.common.serialization import pytree, Serializable
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory
 
-from . import contracts, requests
+from feat.agencies import contracts, requests
 
 
 class AgencyJournalSideEffect(object):

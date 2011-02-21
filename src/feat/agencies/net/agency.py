@@ -10,8 +10,8 @@ from feat.common import manhole, journal, text_helper
 from feat.interface import agent
 from feat.process import standalone
 
-from . import messaging
-from . import database
+from feat.agencies.net import messaging
+from feat.agencies.net import database
 
 
 class Agency(agency.Agency, journal.DummyRecorderNode):

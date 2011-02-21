@@ -9,7 +9,7 @@ from feat.interface.serialization import *
 from feat.common.serialization.base import MetaSerializable
 from feat.common.annotate import MetaAnnotable
 
-from . import decorator, annotate, reflect, fiber, serialization
+from feat.common import decorator, annotate, reflect, fiber, serialization
 
 RECORDED_TAG = "__RECORDED__"
 JOURNAL_ENTRY_TAG = "__JOURNAL_ENTRY__"

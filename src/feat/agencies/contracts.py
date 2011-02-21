@@ -8,9 +8,9 @@ from feat.common import log, enum, delay, serialization
 from feat.interface import contracts, contractor, manager, protocols
 from feat.interface.recipient import RecipientType
 
-from interface import (IListener, IAgencyInitiatorFactory,
-                       IAgencyInterestedFactory)
-from . import common
+from feat.agencies.interface import (IListener, IAgencyInitiatorFactory,
+                                     IAgencyInterestedFactory)
+from feat.agencies import common
 
 
 class AgencyManagerFactory(object):

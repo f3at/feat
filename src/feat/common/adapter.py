@@ -1,6 +1,6 @@
 from twisted.python import components
 
-from . import decorator
+from feat.common import decorator
 
 
 @decorator.parametrized_class
