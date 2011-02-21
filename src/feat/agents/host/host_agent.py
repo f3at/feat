@@ -15,7 +15,6 @@ class ShardPartner(partners.BasePartner):
     def initiate(self, agent):
         return agent.switch_shard(self.recipient.shard)
 
-
     def on_goodbye(self, agent):
         # TODO: NOT TESTED! Work in progress interupted by more important
         # task. Should be tested in the class:

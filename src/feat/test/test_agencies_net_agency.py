@@ -22,6 +22,9 @@ class UnitTestCase(common.TestCase):
             'FEAT_AGENT_ID': 'agent_id',
             'FEAT_MSG_PORT': '2000',
             'FEAT_MANHOLE_PUBLIC_KEY': 'file'}
+        self.agency._init_config()
+        # Test extra configuration values
+        self.agency.config["agent"] = {"id": None}
         self.agency._load_config(env)
         self.assertTrue('agent' in self.agency.config)
         self.assertEqual('agent_id', self.agency.config['agent']['id'])

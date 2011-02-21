@@ -6,15 +6,22 @@ from feat.agencies.net import agency
 from feat.common import manhole
 
 
+add_options = agency.add_options
+
+
 class Agency(agency.Agency):
 
     spawns_processes = False
 
-    def __init__(self):
-        self._load_config(os.environ)
-        if 'agent' not in self.config or 'id' not in self.config['agent']:
-            raise RuntimeError(
-                'FEAT_AGENT_ID environment variable is missing!')
+    def __init__(self, options=None):
+        # Initialize default configuration
+        self._init_config()
+        # Add standalone-specific values
+        self.config["agent"] = {"id": None}
+        # Load configuration from environment and options
+        self._load_config(os.environ, options)
+        if self.config['agent']['id'] is None:
+            raise RuntimeError("No agent identifier specified.")
 
         reactor.callWhenRunning(self._run)
 

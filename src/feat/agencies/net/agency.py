@@ -14,25 +14,82 @@ from feat.agencies.net import messaging
 from feat.agencies.net import database
 
 
+DEFAULT_MSG_HOST = "localhost"
+DEFAULT_MSG_PORT = 5672
+DEFAULT_MSG_USER = "guest"
+DEFAULT_MSG_PASSWORD = "guest"
+DEFAULT_DB_HOST = "localhost"
+DEFAULT_DB_PORT = "5984"
+DEFAULT_DB_NAME = "feat"
+
+
+def add_options(parser):
+    parser.add_option('-m', '--msghost', dest="msg_host",
+                      help="host of messaging server to connect to",
+                      metavar="HOST", default="localhost")
+    parser.add_option('-p', '--msgport', dest="msg_port",
+                      help="port of messaging server to connect to",
+                      metavar="PORT", default=5672, type="int")
+    parser.add_option('-u', '--msguser', dest="msg_user",
+                      help="username to loging to messaging server",
+                      metavar="USER", default="guest")
+    parser.add_option('-c', '--msgpass', dest="msg_password",
+                      help="password to messaging server",
+                      metavar="PASSWORD", default="guest")
+
+    # database related options
+    parser.add_option('-H', '--dbhost', dest="db_host",
+                      help="host of database server to connect to",
+                      metavar="HOST", default="localhost")
+    parser.add_option('-P', '--dbport', dest="db_port",
+                      help="port of messaging server to connect to",
+                      metavar="PORT", default=5984, type="int")
+    parser.add_option('-N', '--dbname', dest="db_name",
+                      help="host of database server to connect to",
+                      metavar="NAME", default="feat")
+
+    # manhole specific
+    parser.add_option('-k', '--pubkey', dest='manhole_public_key',
+                      help="public key used by the manhole",
+                      default='public.key')
+    parser.add_option('-K', '--privkey', dest='manhole_private_key',
+                      help="private key used by the manhole",
+                      default='private.key')
+    parser.add_option('-A', '--authorized', dest='manhole_authorized_keys',
+                      help="file with authorized keys to be used by manhole",
+                      default="authorized_keys")
+    parser.add_option('-M', '--manhole', type="int", dest='manhole_port',
+                      help="port for the manhole to listen", metavar="PORT")
+
+
 class Agency(agency.Agency, journal.DummyRecorderNode):
 
     spawns_processes = True
 
-    def __init__(self, msg_host='localhost', msg_port=5672, msg_user='guest',
-                 msg_password='guest',
-                 db_host='localhost', db_port=5984, db_name='feat',
-                 public_key=None, private_key=None, authorized_keys=None,
-                 manhole_port=None):
+    @classmethod
+    def from_config(cls, env, options=None):
+        agency = cls()
+        agency._init_config(env, options)
+        agency._load_config(env, options)
+        agency._init_networking()
+        return agency
 
+    def __init__(self, msg_host=None, msg_port=None,
+                 msg_user=None, msg_password=None,
+                 db_host=None, db_port=None, db_name=None,
+                 public_key=None, private_key=None,
+                 authorized_keys=None, manhole_port=None):
 
-        self.config = dict()
-        self.config['msg'] = dict(host=msg_host, port=msg_port,
-                                  user=msg_user, password = msg_password)
-        self.config['db'] = dict(host=db_host, port=db_port, name=db_name)
-        self.config['manhole'] = dict(public_key=public_key,
-                                      private_key=private_key,
-                                      authorized_keys=authorized_keys,
-                                      port=manhole_port)
+        self._init_config(msg_host=msg_host,
+                          msg_port=msg_port,
+                          msg_password=msg_password,
+                          db_host=db_host,
+                          db_port=db_port,
+                          db_name=db_name,
+                          public_key=public_key,
+                          private_key=private_key,
+                          authorized_keys=authorized_keys,
+                          manhole_port=manhole_port)
 
         self._init_networking()
 
@@ -117,6 +174,36 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
     # Config manipulation (standalone agencies receive the configuration
     # in the environment).
 
+    def _init_config(self, msg_host=None, msg_port=None,
+                     msg_user=None, msg_password=None,
+                     db_host=None, db_port=None, db_name=None,
+                     public_key=None, private_key=None,
+                     authorized_keys=None, manhole_port=None):
+
+        def get(value, default=None):
+            if value is not None:
+                return value
+            return default
+
+        msg_conf = dict(host=get(msg_host, DEFAULT_MSG_HOST),
+                        port=get(msg_port, DEFAULT_MSG_PORT),
+                        user=get(msg_user, DEFAULT_MSG_USER),
+                        password=get(msg_password, DEFAULT_MSG_PASSWORD))
+
+        db_conf = dict(host=get(db_host, DEFAULT_DB_HOST),
+                       port=get(db_port, DEFAULT_DB_PORT),
+                       name=get(db_name, DEFAULT_DB_NAME))
+
+        manhole_conf = dict(public_key=public_key,
+                            private_key=private_key,
+                            authorized_keys=authorized_keys,
+                            port=manhole_port)
+
+        self.config = dict()
+        self.config['msg'] = msg_conf
+        self.config['db'] = db_conf
+        self.config['manhole'] = manhole_conf
+
     def _store_config(self, env):
         '''
         Stores agency config into environment to be read by the
@@ -127,11 +214,12 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
                 env[var_name] = str(self.config[key][kkey])
         return env
 
-    def _load_config(self, env):
+    def _load_config(self, env, options=None):
         '''
         Loads config from environment.
+        Environment values can be overridden by specified options.
         '''
-        self.config = dict()
+        # First load from env
         matcher = re.compile('\AFEAT_([^_]+)_(.+)\Z')
         for key in env:
             res = matcher.search(key)
@@ -143,5 +231,11 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
                     value = None
                 if c_key in self.config:
                     self.config[c_key][c_kkey] = value
-                else:
-                    self.config[c_key] = {c_kkey: value}
+
+        # Then override with options
+        if options:
+            for group_key, conf_group in self.config.items():
+                for conf_key in conf_group:
+                    attr = "%s_%s" % (group_key, conf_key)
+                    if hasattr(options, attr):
+                        conf_group[conf_key] = getattr(options, attr)
