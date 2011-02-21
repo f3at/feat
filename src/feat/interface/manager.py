@@ -95,7 +95,10 @@ class IAgentManager(protocols.IInitiator):
     def completed(reports):
         '''Called when the final report from all the contractors has been
         received. The result of this method will be put into the Deferred
-        obtained with the .notify_finish() method call.'''
+        obtained with the .notify_finish() method call.
+
+        @param reports: List of all the reports received from the contractors
+        '''
 
     def aborted():
         '''Called when the contractor did not report in time.'''
