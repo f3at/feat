@@ -19,47 +19,54 @@ DEFAULT_MSG_PORT = 5672
 DEFAULT_MSG_USER = "guest"
 DEFAULT_MSG_PASSWORD = "guest"
 DEFAULT_DB_HOST = "localhost"
-DEFAULT_DB_PORT = "5984"
+DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
+
+# Only for command-line options
+DEFAULT_MH_PUBKEY = "public.key"
+DEFAULT_MH_PRIVKEY = "private.key"
+DEFAULT_MH_AUTH = "authorized_keys"
+DEFAULT_MH_PORT = 6000
 
 
 def add_options(parser):
     parser.add_option('-m', '--msghost', dest="msg_host",
                       help="host of messaging server to connect to",
-                      metavar="HOST", default="localhost")
+                      metavar="HOST", default=DEFAULT_MSG_HOST)
     parser.add_option('-p', '--msgport', dest="msg_port",
                       help="port of messaging server to connect to",
-                      metavar="PORT", default=5672, type="int")
+                      metavar="PORT", default=DEFAULT_MSG_PORT, type="int")
     parser.add_option('-u', '--msguser', dest="msg_user",
                       help="username to loging to messaging server",
-                      metavar="USER", default="guest")
+                      metavar="USER", default=DEFAULT_MSG_USER)
     parser.add_option('-c', '--msgpass', dest="msg_password",
                       help="password to messaging server",
-                      metavar="PASSWORD", default="guest")
+                      metavar="PASSWORD", default=DEFAULT_MSG_PASSWORD)
 
     # database related options
     parser.add_option('-H', '--dbhost', dest="db_host",
                       help="host of database server to connect to",
-                      metavar="HOST", default="localhost")
+                      metavar="HOST", default=DEFAULT_DB_HOST)
     parser.add_option('-P', '--dbport', dest="db_port",
                       help="port of messaging server to connect to",
-                      metavar="PORT", default=5984, type="int")
+                      metavar="PORT", default=DEFAULT_DB_PORT, type="int")
     parser.add_option('-N', '--dbname', dest="db_name",
                       help="host of database server to connect to",
-                      metavar="NAME", default="feat")
+                      metavar="NAME", default=DEFAULT_DB_NAME)
 
     # manhole specific
     parser.add_option('-k', '--pubkey', dest='manhole_public_key',
                       help="public key used by the manhole",
-                      default='public.key')
+                      default=DEFAULT_MH_PUBKEY)
     parser.add_option('-K', '--privkey', dest='manhole_private_key',
                       help="private key used by the manhole",
-                      default='private.key')
+                      default=DEFAULT_MH_PRIVKEY)
     parser.add_option('-A', '--authorized', dest='manhole_authorized_keys',
                       help="file with authorized keys to be used by manhole",
-                      default="authorized_keys")
+                      default=DEFAULT_MH_AUTH)
     parser.add_option('-M', '--manhole', type="int", dest='manhole_port',
-                      help="port for the manhole to listen", metavar="PORT")
+                      help="port for the manhole to listen", metavar="PORT",
+                      default=DEFAULT_MH_PORT)
 
 
 class Agency(agency.Agency, journal.DummyRecorderNode):
