@@ -93,7 +93,9 @@ class IAgentManager(protocols.IInitiator):
         '''The contractor canceled the task.'''
 
     def completed(reports):
-        pass
+        '''Called when the final report from all the contractors has been
+        received. The result of this method will be put into the Deferred
+        obtained with the .notify_finish() method call.'''
 
     def aborted():
         '''Called when the contractor did not report in time.'''
