@@ -3,7 +3,7 @@ import os
 from twisted.internet import reactor
 
 from feat.agencies.net import agency
-from feat.common import manhole
+from feat.common import manhole, defer
 
 
 add_options = agency.add_options
@@ -23,7 +23,12 @@ class Agency(agency.Agency):
         if self.config['agent']['id'] is None:
             raise RuntimeError("No agent identifier specified.")
 
+        self._notifications = defer.Notifier()
+
         reactor.callWhenRunning(self._run)
+
+    def wait_running(self):
+        return self._notifications.wait("running")
 
     def _run(self):
         d = self._init_networking()
@@ -35,9 +40,11 @@ class Agency(agency.Agency):
         return d
 
     def notify_running(self, *_):
+        self._notifications.callback("running", self)
         return self._broker.push_event(self.config['agent']['id'], 'started')
 
     def notify_failed(self, failure):
+        self._notifications.errback("running", failure)
         self._error_handler(failure)
         return self._broker.fail_event(
             failure, self.config['agent']['id'], 'started')
