@@ -8,6 +8,10 @@ from feat.agents.base import replay, recipient, requester
 from feat.interface.protocols import InitiatorFailed
 
 
+class DefinitionError(Exception):
+    pass
+
+
 class Relation(object):
 
     def __init__(self, name, factory):
@@ -45,17 +49,24 @@ class OneRelation(Relation):
             return match[0]
 
 
-def has_many(name, descriptor_type, factory, role=None):
+def has_many(name, descriptor_type, factory, role=None, force=False):
     relation = ManyRelation(name, factory)
-    _inject_definition(relation, descriptor_type, factory, role)
+    _inject_definition(relation, descriptor_type, factory, role, force)
 
 
-def has_one(name, descriptor_type, factory, role=None):
+def has_one(name, descriptor_type, factory, role=None, force=False):
     relation = OneRelation(name, factory)
-    _inject_definition(relation, descriptor_type, factory, role)
+    _inject_definition(relation, descriptor_type, factory, role, force)
 
 
-def _inject_definition(relation, descriptor_type, factory, role):
+def _inject_definition(relation, descriptor_type, factory, role, force):
+
+    if not force and factory == BasePartner:
+        raise DefinitionError(
+            "BasePartner class cannot be used in has_one or has_many "
+            "definitions. Instead you should create a subclass for each type "
+            "of relation you are defining.")
+
     annotate.injectClassCallback("handler", 4, "_define_handler",
                                  descriptor_type, factory, role)
     annotate.injectClassCallback("relation", 4, "_append_relation",
@@ -121,7 +132,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     default_handler = BasePartner
 
-    has_many("all", "whatever", BasePartner)
+    has_many("all", "whatever", BasePartner, force=True)
 
     def __init__(self, agent):
         log.Logger.__init__(self, agent)
@@ -184,6 +195,17 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @classmethod
     def _define_handler(cls, agent_class, factory, role=None):
+        try:
+            existing = next((cls._handlers[k], k) \
+                            for k in cls._handlers \
+                            if cls._handlers[k] == factory and k != '_default')
+        except StopIteration:
+            existing = None
+        if existing:
+            raise DefinitionError(
+                "Factory %r is already defined for the key %r. Factories "
+                "shouldn't be reused! Create another subclass." % existing)
+
         key = cls._key_for(agent_class, role)
         cls._handlers[key] = factory
 
