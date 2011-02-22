@@ -1,8 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, document, replay, resource,
-                              partners)
+                              descriptor, replay, resource, partners)
 from feat.agents.host.host_agent import StartAgentRequester
 from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
@@ -300,7 +299,6 @@ class ActionType(enum.Enum):
     (join, create) = range(2)
 
 
-@document.register
+@descriptor.register("shard_agent")
 class Descriptor(descriptor.Descriptor):
-
-    document_type = 'shard_agent'
+    pass

@@ -2,8 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, contractor, recipient, manager, message,
-                              replay, replier, requester, document, descriptor,
-                              partners)
+                              replay, replier, requester, descriptor, partners)
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 
@@ -228,7 +227,6 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
         state.medium.finalize(report)
 
 
-@document.register
+@descriptor.register("host_agent")
 class Descriptor(descriptor.Descriptor):
-
-    document_type = 'host_agent'
+    pass
