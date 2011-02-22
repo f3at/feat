@@ -26,14 +26,14 @@ class Formatable(serialization.Serializable, annotate.Annotable):
     __metaclass__ = type('MetaFormatable', (type(serialization.Serializable),
                                             type(annotate.Annotable), ), {})
 
-    _fields = list()
-
     @classmethod
     def __class__init__(cls, name, bases, dct):
         find = [x for x in bases if getattr(cls, '_fields', False)]
 
         if len(find) == 1:
-            cls._fields = copy.deepcopy(bases[0]._fields)
+            cls._fields = copy.deepcopy(find[0]._fields)
+        else:
+            cls._fields = list()
 
     @classmethod
     def _register_field(cls, field):

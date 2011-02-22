@@ -26,6 +26,8 @@ class TestFormatable(common.TestCase):
         self.assertEqual(2, base.field1)
         self.assertEqual(5, base.field2)
 
+        self.assertEquals(2, len(base._fields))
+
         def get_field3(instance):
             return instance.field3
 
