@@ -179,6 +179,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
     def get_document(self, state, doc_id):
         return state.medium.get_document(doc_id)
 
+    @replay.immutable
+    def save_document(self, state, doc):
+        return state.medium.save_document(doc)
+
     @update_descriptor
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)

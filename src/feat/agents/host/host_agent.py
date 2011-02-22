@@ -1,10 +1,11 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from feat.agents.base import (agent, recipient, manager, message, replay,
-                              replier, requester, document, descriptor,
+from feat.agents.base import (agent, contractor, recipient, manager, message,
+                              replay, replier, requester, document, descriptor,
                               partners)
-from feat.common import fiber, serialization, manhole
+from feat.interface.protocols import InterestType
+from feat.common import fiber, manhole, serialization
 
 
 @serialization.register
@@ -40,6 +41,9 @@ class HostAgent(agent.BaseAgent):
         agent.BaseAgent.initiate(self)
 
         state.medium.register_interest(StartAgentReplier)
+        state.medium.register_interest(ResourcesAllocationContractor)
+
+        state.resources.define('host', 1)
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self.initiate_partners)
@@ -86,6 +90,11 @@ class HostAgent(agent.BaseAgent):
         f.add_callback(self.establish_partnership, our_role=u'host')
         f.succeed(doc_id)
         return f
+
+    @manhole.expose()
+    @replay.journaled
+    def start_agent_from_descriptor(self, state, desc):
+        return self.start_agent(desc.doc_id)
 
     @replay.immutable
     def _update_shard_field(self, state, desc):
@@ -166,6 +175,57 @@ class JoinShardManager(manager.BaseManager):
     @replay.mutable
     def completed(self, state, reports):
         pass
+
+
+class ResourcesAllocationContractor(contractor.BaseContractor):
+    protocol_id = 'allocate-resources'
+    interest_type = InterestType.public
+
+    @replay.mutable
+    def announced(self, state, announcement):
+        resources = announcement.payload['resources']
+        preallocation = state.agent.preallocate_resource(**resources)
+
+        if preallocation is None:
+            state.medium.refuse(message.Refusal())
+            return
+
+        state.preallocation_id = preallocation.id
+        # Create a bid
+        bid = message.Bid()
+        bid.payload['allocation_id'] = state.preallocation_id
+
+        f = fiber.Fiber()
+        f.add_callback(self._get_cost)
+        f.add_callback(state.medium.bid)
+        return f.succeed(bid)
+
+    @replay.immutable
+    def _get_cost(self, state, bid):
+        bid.payload['cost'] = 0
+        return bid
+
+    @replay.mutable
+    def release_preallocation(self, state, *_):
+        if state.preallocation_id is not None:
+            return state.agent.release_resource(state.preallocation_id)
+
+    announce_expired = release_preallocation
+    rejected = release_preallocation
+    expired = release_preallocation
+
+    @replay.mutable
+    def granted(self, state, grant):
+        f = fiber.Fiber()
+        f.add_callback(state.agent.confirm_allocation)
+        f.add_callback(self._finalize)
+        return f.succeed(state.preallocation_id)
+
+    @replay.mutable
+    def _finalize(self, state, allocation_id):
+        report = message.FinalReport()
+        report.payload['allocation_id'] = allocation_id
+        state.medium.finalize(report)
 
 
 @document.register

@@ -59,3 +59,8 @@ class TestFormatable(common.TestCase):
         self.assertEqual(5, instance.field1)
         self.assertEqual(4, instance.field2)
         self.assertEqual(1, instance.field3)
+
+    def testNoneValues(self):
+        base = Base(field1=0, field2=[])
+        self.assertEqual(0, base.field1)
+        self.assertEqual([], base.field2)

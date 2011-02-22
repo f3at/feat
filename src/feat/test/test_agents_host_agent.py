@@ -25,7 +25,9 @@ class TestHostAgent(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(replier.ProposalReceiver, )),
             testsuite.side_effect('AgencyAgent.register_interest',
-                                  args=(host_agent.StartAgentReplier, ))]
+                                  args=(host_agent.StartAgentReplier, )),
+            testsuite.side_effect('AgencyAgent.register_interest',
+                            args=(host_agent.ResourcesAllocationContractor, ))]
 
         f, state = self.ball.call(expected, self.agent.initiate)
         self.assertFiberTriggered(f, fiber.TriggerType.succeed)

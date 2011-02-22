@@ -362,26 +362,26 @@ Most of the agents needs to handle some kind of resources. The resource is a qua
 
      	   @replay.mutable
      	   def initiate(self, state):
-	       state.resource.define(cpu=100)
-	       state.resource.define(memory=4000)
+	       state.resources.define('cpu', 100)
+	       state.resources.define('memory', 4000)
 	       self.make_some_allocations()
 
 	   @replay.mutable
 	   def make_some_allocations(self, state):
 	       # this will return a feat.agents.base.resource.Allocation
 	       # instance which will not expire
-	       state.resource.allocate(cpu=20)
+	       state.resources.allocate(cpu=20)
 
 	       # this one will expire after timeout if not confirmed
-	       allocation = state.resource.preallocate(memory=30,cpu=20)
-	       state.resource.confirm(allocation.id)
-	       # or state.resource.release(allocation.id)
+	       allocation = state.resources.preallocate(memory=30,cpu=20)
+	       state.resources.confirm(allocation.id)
+	       # or state.resources.release(allocation.id)
 
 	       # this will return None as we don't have enough resource
-	       state.resource.preallocate(cpu=200)
+	       state.resources.preallocate(cpu=200)
 
 	       # be carefull! this will throw NotEnoughResources
-   	       state.resource.allocate(cpu=200)
+   	       state.resources.allocate(cpu=200)
 
 Important thing to point out here is that confirmed allocations are stored in the descriptor in order to survive the agents restart. For this reason .allocate(), .confirm() and .release() methods return a Fiber instance which you should chain or returned. The reason for this is that they modify descriptor which requires performing the HTTP request. Note that this is not done in the example above in order to keep it simple.
 
@@ -392,6 +392,7 @@ Defining and using partners
 No man is an island. Same applies to agents. If your task at hand can be performed by a single agent it means you are wasting time reading this guide.
 
 Framework comes with a handy utility class (feat.agents.base.partners.Partners) which is here to help you manage relations between agents. Lets take a look at the following code: ::
+B
 
     class JohnPartner(partners.BasePartner):
         pass

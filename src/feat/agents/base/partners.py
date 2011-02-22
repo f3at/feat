@@ -262,7 +262,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         partner = self.find(recp)
         if partner is None:
             self.warning(
-                "Didn't find a partner matching the goodbye sender :r!", recp)
+                "Didn't find a partner matching the goodbye sender :%r!", recp)
             return None
 
         f = fiber.Fiber()

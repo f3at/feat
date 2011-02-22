@@ -236,7 +236,7 @@ class TreeGrowthSimulation(common.SimulationTest, Common):
         for child in lvl1_shards:
             self.assertIsInstance(child, shard_agent.ChildShardPartner)
             shard_desc = yield self.driver.get_document(child.recipient.key)
-            shard_a = self.driver.find_agent(shard_desc.doc_id)
+            shard_a = self.driver.find_agent(shard_desc.doc_id).get_agent()
             self._assert_allocated(shard_a, 'hosts', 10)
 
             parent = shard_a.query_partners('parent')

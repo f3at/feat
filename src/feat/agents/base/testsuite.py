@@ -180,6 +180,9 @@ class HamsterCall(object):
         self._next_effect += 1
         return side_effect(function_id, *args, **kwargs)
 
+    def _se2str(self, *args):
+        return replay.side_effect_as_string(*args)
+
 
 class Hamsterball(replay.Replay):
 

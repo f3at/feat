@@ -10,7 +10,7 @@ from zope.interface import implements
 
 from feat.common import (log, manhole, journal, fiber, serialization, delay,
                          error_handler, text_helper)
-from feat.agents.base import recipient, replay
+from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.agents.host import host_agent
 from feat.agencies import common
@@ -146,6 +146,17 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
                       medium.agent.initiate, *args, **kwargs)
         d.addCallback(fiber.override_result, medium)
         return d
+
+    @manhole.expose()
+    def find_agent(self, desc):
+        agent_id = (isinstance(desc, descriptor.Descriptor) and desc.doc_id
+                    or desc)
+        self.log("I'm trying to find the agent with id: %s", agent_id)
+        try:
+            return next(x for x in self._agents \
+                        if x._descriptor.doc_id == agent_id)
+        except StopIteration:
+            return None
 
     def shutdown(self):
         '''Called when the agency process is terminating.'''
@@ -387,6 +398,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
                    message.__class__.__name__)
         return False
 
+    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         self.log('Initiating protocol for factory: %r, args: %r, kwargs: %r',

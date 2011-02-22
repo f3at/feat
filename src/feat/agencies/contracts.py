@@ -456,6 +456,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # contractor.IAgencyContractor stuff
 
+    @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
         bid = bid.clone()

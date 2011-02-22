@@ -432,6 +432,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def start_agent(self, desc):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
     def initiate_protocol(self, factory, recipients, *args, **kwargs):
         pass
@@ -516,6 +517,7 @@ class AgencyContractor(log.LogProxy, log.Logger,
         log.Logger.__init__(self, replay)
         log.LogProxy.__init__(self, replay)
 
+    @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
         pass

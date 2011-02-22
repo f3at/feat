@@ -57,8 +57,10 @@ class Formatable(serialization.Serializable, annotate.Annotable):
 
         for field in self._fields:
             # lazy coping of default value, don't touch!
-            value = dictionary.get(field.name, None) or\
-                    copy.copy(field.default)
+            if field.name in dictionary:
+                value = dictionary[field.name]
+            else:
+                value = copy.copy(field.default)
             setattr(self, field.name, value)
 
     # ISerializable
@@ -74,6 +76,8 @@ class Formatable(serialization.Serializable, annotate.Annotable):
     def recover(self, snapshot):
         for field in self._fields:
             # lazy coping of default value, don't touch!
-            value = snapshot.get(field.serialize_as, None) or\
-                    copy.copy(field.default)
+            if field.serialize_as in snapshot:
+                value = snapshot[field.serialize_as]
+            else:
+                value = copy.copy(field.default)
             setattr(self, field.name, value)

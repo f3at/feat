@@ -3,7 +3,7 @@ import uuid
 from twisted.python import components
 from zope.interface import implements
 
-from feat.agents.base import message
+from feat.agents.base import message, descriptor
 from feat.interface.agent import *
 from feat.interface.recipient import *
 from feat.common import serialization
@@ -19,6 +19,7 @@ Types that can be passed as destination includes:
                      to the agent
 - message.BaseMessage (and subclasses) - one can say he is responding
                                          to message
+- descriptor.Descriptor (and subclasses)
 - list - the list of any combination of above
 '''
 
@@ -154,6 +155,28 @@ class RecipientFromMessage(BaseRecipient):
 components.registerAdapter(RecipientFromMessage, message.BaseMessage,
                            IRecipient)
 components.registerAdapter(RecipientFromMessage, message.BaseMessage,
+                           IRecipients)
+
+
+@serialization.register
+class RecipientFromDescriptor(BaseRecipient):
+    implements(IRecipient, IRecipients)
+
+    type_name = 'recp_m'
+
+    def __init__(self, desc):
+        BaseRecipient.__init__(self)
+        self.shard = desc.shard
+        self.key = desc.doc_id
+
+    @property
+    def type(self):
+        return RecipientType.agent
+
+
+components.registerAdapter(RecipientFromDescriptor, descriptor.Descriptor,
+                           IRecipient)
+components.registerAdapter(RecipientFromDescriptor, descriptor.Descriptor,
                            IRecipients)
 
 

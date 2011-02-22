@@ -10,7 +10,7 @@ from feat.agencies import agency
 from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
 from feat.test import factories
-from feat.agents.base import document
+from feat.agents.base import document, descriptor
 
 
 class Commands(manhole.Manhole):
@@ -83,10 +83,10 @@ class Commands(manhole.Manhole):
         Return the medium class of the agent with agent_id if the one is
         running in simulation.
         """
+        if isinstance(agent_id, descriptor.Descriptor):
+            agent_id = agent_id.doc_id
         agency = self.find_agency(agent_id)
-        if agency:
-            return next(x.agent for x in agency._agents\
-                        if x._descriptor.doc_id == agent_id)
+        return agency and agency.find_agent(agent_id)
 
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
