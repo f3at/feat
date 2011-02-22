@@ -16,6 +16,7 @@ def register(klass, name):
     global registry
     registry[name] = klass
     klass.descriptor_type = name
+    klass.type_name = name + ":data"
     serialization.register(klass)
     return klass
 

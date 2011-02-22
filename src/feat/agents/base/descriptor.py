@@ -1,7 +1,14 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.common import serialization
+from feat.common import serialization, decorator
 from feat.agents.base import document
+
+
+@decorator.parametrized_class
+def register(klass, name):
+    klass.type_name = name
+    klass.document_type = name
+    return document.register(klass)
 
 
 @document.register
