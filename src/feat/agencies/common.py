@@ -2,9 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.internet import defer, reactor
-
-from feat.common import delay, fiber, serialization, error_handler, log
+from feat.common import delay, fiber, serialization, error_handler, log, defer
 from feat.interface.protocols import InitiatorFailed
 from feat.agents.base import replay
 
@@ -15,34 +13,25 @@ class StateAssertationError(RuntimeError):
 
 class StateMachineMixin(object):
 
-    _changes_notifications = None
+    _notifier = None
 
     def __init__(self, state=None):
         self.state = state
-        self._changes_notifications = dict()
+        self._notifier = defer.Notifier()
 
     @serialization.freeze_tag('StateMachineMixin.wait_for_state')
     def wait_for_state(self, state):
         if self.state == state:
             return defer.succeed(None)
-        d = defer.Deferred()
-        if state not in self._changes_notifications:
-            self._changes_notifications[state] = [d]
-        else:
-            self._changes_notifications[state].append(d)
-        return d
+        return self._notifier.wait(state)
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):
             self.log('Changing state from %r to %r', self.state, state)
             self.state = state
 
-        if self._changes_notifications:
-            if state in self._changes_notifications:
-                temp = self._changes_notifications[state]
-                del(self._changes_notifications[state])
-                for cb in temp:
-                    cb.callback(None)
+        if self._notifier:
+            self._notifier.callback(state, None)
 
     def _cmp_state(self, states):
         if not isinstance(states, list):
