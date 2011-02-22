@@ -2,7 +2,8 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, contractor, recipient, manager, message,
-                              replay, replier, requester, descriptor, partners)
+                              replay, replier, requester, descriptor,
+                              partners, resource, )
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 
@@ -183,10 +184,14 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     @replay.mutable
     def announced(self, state, announcement):
         resources = announcement.payload['resources']
-        preallocation = state.agent.preallocate_resource(**resources)
+        try:
+            preallocation = state.agent.preallocate_resource(**resources)
+        except resource.UnknownResource:
+            self._refuse("Unknown resource! WTF?")
+            return
 
         if preallocation is None:
-            state.medium.refuse(message.Refusal())
+            self._refuse("Not enough resource")
             return
 
         state.preallocation_id = preallocation.id
@@ -198,6 +203,10 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
         f.add_callback(self._get_cost)
         f.add_callback(state.medium.bid)
         return f.succeed(bid)
+
+    @replay.immutable
+    def _refuse(self, state, reason):
+        state.medium.refuse(message.Refusal(payload=reason))
 
     @replay.immutable
     def _get_cost(self, state, bid):

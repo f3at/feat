@@ -415,6 +415,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
         medium.initiate(initiator)
         return initiator
 
+    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
     @replay.named_side_effect('AgencyAgent.retrying_protocol')
     def retrying_protocol(self, factory, recipients, max_retries=None,
                           initial_delay=1, max_delay=None,
