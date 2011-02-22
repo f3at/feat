@@ -1,6 +1,8 @@
 import os
 
+from twisted.spread import pb
 from twisted.internet import defer
+from twisted.python import failure
 
 from feat.test import common
 from feat.agencies.net import broker
@@ -133,6 +135,30 @@ class BrokerTest(common.TestCase):
         yield master.push_event('some', 'event')
         yield d1
         yield d2
+
+    @defer.inlineCallbacks
+    def testFailingEventsMasterToSlaves(self):
+        fail = failure.Failure(RuntimeError('failed'))
+        master, slave1, slave2 = self.brokers
+        for x in self.brokers:
+            yield x.initiate_broker()
+        d1 = slave1.wait_event('some', 'event')
+        self.assertFailure(d1, Exception)
+        yield self._wait_for_events_registered(master, 1, 'some', 'event')
+        yield master.fail_event(fail, 'some', 'event')
+        yield d1
+
+    @defer.inlineCallbacks
+    def testFailingEventsSlaveToMaster(self):
+        fail = failure.Failure(RuntimeError('failed'))
+        master, slave1, slave2 = self.brokers
+        for x in self.brokers:
+            yield x.initiate_broker()
+        d1 = master.wait_event('some', 'event')
+        self.assertFailure(d1, Exception)
+        yield self._wait_for_events_registered(master, 1, 'some', 'event')
+        yield slave1.fail_event(fail, 'some', 'event')
+        yield d1
 
     @defer.inlineCallbacks
     def _wait_for_events_registered(self, broker, num, *args):

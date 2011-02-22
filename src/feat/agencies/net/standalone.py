@@ -31,11 +31,16 @@ class Agency(agency.Agency):
         d.addCallback(lambda conn:
                       conn.get_document(self.config['agent']['id']))
         d.addCallback(self.start_agent_locally)
-        d.addCallbacks(self.notify_running, self._error_handler)
+        d.addCallbacks(self.notify_running, self.notify_failed)
         return d
 
     def notify_running(self, *_):
         return self._broker.push_event(self.config['agent']['id'], 'started')
+
+    def notify_failed(self, failure):
+        self._error_handler(failure)
+        return self._broker.fail_event(
+            failure, self.config['agent']['id'], 'started')
 
     def get_agent(self):
         return self._agents[0]

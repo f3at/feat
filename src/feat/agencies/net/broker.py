@@ -129,9 +129,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     # events
 
     def wait_event(self, *args):
-        if self._cmp_state(BrokerRole.disconnected):
-            raise RuntimeError("Events can only work on connected broker")
-        elif self._cmp_state(BrokerRole.master):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
             key = self._event_key(*args)
             self.debug("Registering new event for key %r", key)
             d = defer.Deferred()
@@ -144,21 +143,36 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             return self._master.callRemote('wait_event', *args)
 
     def push_event(self, *args):
-        if self._cmp_state(BrokerRole.disconnected):
-            raise RuntimeError("Events can only work on connected broker")
-        elif self._cmp_state(BrokerRole.master):
-            key = self._event_key(*args)
-            try:
-                events = self._events[key]
-                del(self._events[key])
-            except KeyError:
-                events = list()
-            self.debug("Triggering events for the key %r, len(events)=%d",
-                       key, len(events))
-            [d.callback(None) for d in events]
-
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            self.debug("Triggering events for the args %r.", args)
+            [d.callback(None) for d in self._iter_events(*args)]
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('push_event', *args)
+
+    def fail_event(self, failure, *args):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            self.debug("Errbacking events for the args %r Failure: %r",
+                       args, failure)
+            failure = pb.Error(failure)
+            [d.errback(failure) for d in self._iter_events(*args)]
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('fail_event', failure, *args)
+
+    def _ensure_connected(self):
+        if self._cmp_state(BrokerRole.disconnected):
+            raise RuntimeError("Events can only work on connected broker")
+
+    def _iter_events(self, *args):
+        key = self._event_key(*args)
+        try:
+            events = self._events[key]
+            del(self._events[key])
+        except KeyError:
+            events = list()
+        for x in events:
+            yield x
 
     def _event_key(self, *args):
         return tuple(args)
@@ -185,6 +199,9 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
     def remote_push_event(self, *args):
         return self.broker.push_event(*args)
+
+    def remote_fail_event(self, failure, *args):
+        return self.broker.fail_event(failure, *args)
 
     def clientConnectionMade(self, broker):
         self.debug('Client connection made to the server: %r', broker)
