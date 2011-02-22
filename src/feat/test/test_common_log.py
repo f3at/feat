@@ -46,6 +46,23 @@ class DummyLogProxy(log.LogProxy):
 
 class TestLogging(common.TestCase):
 
+    def testDefaultLogging(self):
+        keeper = DummyLogKeeper()
+        log.set_default(keeper)
+
+        log.log("foo", "1")
+        log.debug("bar", "2", 42)
+        log.info("spam", "3")
+        log.warning("bacon", "4", 2, 3, 5)
+        log.error("eggs", "4")
+
+        self.assertEqual(keeper.entries,
+                         [(LogLevel.log, None, 'foo', '1', (), 1),
+                          (LogLevel.debug, None, 'bar', '2', (42, ), 1),
+                          (LogLevel.info, None, 'spam', '3', (), 1),
+                          (LogLevel.warning, None, 'bacon', '4', (2, 3, 5), 1),
+                          (LogLevel.error, None, 'eggs', '4', (), 1)])
+
     def testBasicLogging(self):
         keeper = DummyLogKeeper()
         obj = BasicDummyLogger(keeper)

@@ -8,6 +8,41 @@ from zope.interface import implements
 from feat.interface.log import *
 
 
+def set_default(keeper):
+    global _default_keeper
+    _default_keeper = keeper
+
+
+def have_default():
+    global _default_keeper
+    return _default_keeper is not None
+
+
+def log(category, format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.log, None, category, format, args)
+
+
+def debug(category, format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.debug, None, category, format, args)
+
+
+def info(category, format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.info, None, category, format, args)
+
+
+def warning(category, format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.warning, None, category, format, args)
+
+
+def error(category, format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.error, None, category, format, args)
+
+
 class Logger(object):
 
     implements(ILogger)
@@ -91,6 +126,8 @@ class FluLogKeeper(object):
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')
             flulog.logTwisted()
+            if not have_default():
+                set_default(cls())
             cls._initialized = True
 
     @classmethod
@@ -110,3 +147,6 @@ class FluLogKeeper(object):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
                      where=-depth, filePath=file_path, line=line_num)
+
+
+_default_keeper = None
