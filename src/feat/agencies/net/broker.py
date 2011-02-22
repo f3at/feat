@@ -1,11 +1,11 @@
 import os
 import functools
 
-from twisted.internet import reactor, defer
+from twisted.internet import reactor
 from twisted.internet.error import CannotListenError, ConnectionRefusedError
 from twisted.spread import pb
 
-from feat.common import log, enum
+from feat.common import log, enum, defer
 from feat.agencies import common
 
 
@@ -39,9 +39,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.socket_path = socket_path or self.default_socket_path
         self.factory = None
         self.slaves = list()
-
-        # event_key -> list of Deferreds
-        self._events = dict()
+        self.notifier = defer.Notifier()
 
         self.on_master_cb = on_master_cb
         self.on_slave_cb = on_slave_cb
@@ -131,14 +129,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     def wait_event(self, *args):
         self._ensure_connected()
         if self._cmp_state(BrokerRole.master):
+            self.debug('Registering event for args %r', args)
             key = self._event_key(*args)
-            self.debug("Registering new event for key %r", key)
-            d = defer.Deferred()
-            if key in self._events:
-                self._events[key].append(d)
-            else:
-                self._events[key] = [d]
-            return d
+            return self.notifier.wait(key)
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('wait_event', *args)
 
@@ -146,7 +139,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._ensure_connected()
         if self._cmp_state(BrokerRole.master):
             self.debug("Triggering events for the args %r.", args)
-            [d.callback(None) for d in self._iter_events(*args)]
+            key = self._event_key(*args)
+            self.notifier.callback(key, None)
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('push_event', *args)
 
@@ -156,23 +150,14 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             self.debug("Errbacking events for the args %r Failure: %r",
                        args, failure)
             failure = pb.Error(failure)
-            [d.errback(failure) for d in self._iter_events(*args)]
+            key = self._event_key(*args)
+            self.notifier.errback(key, failure)
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('fail_event', failure, *args)
 
     def _ensure_connected(self):
         if self._cmp_state(BrokerRole.disconnected):
             raise RuntimeError("Events can only work on connected broker")
-
-    def _iter_events(self, *args):
-        key = self._event_key(*args)
-        try:
-            events = self._events[key]
-            del(self._events[key])
-        except KeyError:
-            events = list()
-        for x in events:
-            yield x
 
     def _event_key(self, *args):
         return tuple(args)

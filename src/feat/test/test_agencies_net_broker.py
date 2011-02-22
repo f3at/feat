@@ -163,7 +163,7 @@ class BrokerTest(common.TestCase):
     @defer.inlineCallbacks
     def _wait_for_events_registered(self, broker, num, *args):
         key = broker._event_key(*args)
-        while len(broker._events.get(key, list())) < num:
+        while len(broker.notifier._notifications.get(key, list())) < num:
             yield common.delay(None, 0.1)
 
     @defer.inlineCallbacks
