@@ -266,10 +266,10 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return None
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
-                       self._remove_partner, partner)
-        f.add_callback(fiber.drop_result, partner.on_goodbye, state.agent)
-        return f.succeed()
+        f.add_callback(partner.on_goodbye)
+        f.add_both(fiber.drop_result, state.agent.update_descriptor,
+                   self._remove_partner, partner)
+        return f.succeed(state.agent)
 
     # private
 

@@ -148,7 +148,7 @@ class Queue(object):
         while len(self._messages) > 0 and len(self._consumers) > 0:
             message = self._messages.pop(0)
             consumer = self._consumers.pop(0)
-            reactor.callLater(0, consumer.callback, message)
+            consumer.callback(message)
 
     def enqueue(self, message):
         self._messages.append(message)

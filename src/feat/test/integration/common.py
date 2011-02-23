@@ -34,8 +34,6 @@ class SimulationTest(common.TestCase):
         return self.driver._parser.get_local(name)
 
     def tearDown(self):
-        for x in self.driver.iter_agents():
-            yield x.wait_for_listeners_finish()
         common.TestCase.tearDown(self)
         if not self.skip_replayability:
             self.log("Test finished, now validating replayability.")

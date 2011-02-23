@@ -582,8 +582,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testHandingOverTheBid(self):
-        wait = self.cb_after(None, self.agent, 'unregister_listener')
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
 
@@ -608,7 +606,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(self.endpoint, msg.reply_to)
 
         d.addCallback(asserts_on_bid)
-        d.addCallback(lambda _: wait)
+        d.addCallback(self.cb_after, obj=self.agent,
+                                    method='unregister_listener')
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.delegated)
 
