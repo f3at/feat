@@ -33,7 +33,7 @@ def succeed(parma=None):
 
 
 def fail(failure=None):
-    return Fiber().succeed(failure)
+    return Fiber().fail(failure)
 
 
 def maybe_fiber(function, *args, **kwargs):

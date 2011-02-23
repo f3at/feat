@@ -155,6 +155,62 @@ def fiberListFun(trace):
 
 class TestFiber(common.TestCase):
 
+    def testUtils(self):
+
+        def check_callback(param, expected):
+            self.assertEqual(param, expected)
+            return param
+
+        def check_errback(failure, expected):
+            self.assertTrue(failure.check(expected))
+
+        def check_true(value=True):
+            self.assertTrue(value)
+            return value
+
+        def check_false(value=False):
+            self.assertFalse(value)
+            return value
+
+        def unexpected(_param):
+            self.fail("Unexpected")
+
+        deferreds = []
+
+        # Test fiber.succeed()
+
+        f = fiber.succeed(1)
+        f.add_callbacks(check_callback, unexpected, cbargs=(1, ))
+        deferreds.append(f.start())
+
+        # Test fiber.fail()
+
+        f = fiber.fail(ValueError())
+        f.add_callbacks(unexpected, check_errback, ebargs=(ValueError, ))
+        deferreds.append(f.start())
+
+        # Test fiber.drop_result
+
+        f = fiber.succeed(False)
+        f.add_callback(fiber.drop_result, check_true)
+        deferreds.append(f.start())
+
+        # Test fiber.override_result
+
+        f = fiber.succeed(False)
+        f.add_callback(fiber.override_result, True)
+        f.add_callback(check_true)
+        deferreds.append(f.start())
+
+        # Test fiber.bridge_result
+
+        f = fiber.succeed(False)
+        f.add_callback(fiber.bridge_result, check_true)
+        f.add_callback(check_false)
+        deferreds.append(f.start())
+
+        return defer.DeferredList(deferreds)
+
     def testFiberSnapshot(self):
         o = Dummy()
 
