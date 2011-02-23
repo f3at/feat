@@ -306,11 +306,9 @@ With this in mind the minimal implementation would look somewhat like this: ::
 		# do here whatever you need now
 
 
-     @document.register
+     @descriptor.register('insulter_agent')
      class Descriptor(descriptor.Descriptor):
-
-	  document_type = 'insulter_agent'
-
+          pass
 
 And this is it! Now if you create a Descriptor instance, save it to the database and pass it as a parameter to Agency.start\_agent you will have your agent running. Although it doesn't do anything yet.
 
@@ -332,10 +330,9 @@ Lets say our agent whats to store some piece of persistent information. The pers
 
 First lets make our Descriptor a little bit more interesting: ::
 
-     @document.register
+     @descriptor.register('insulter_agent')
      class Descriptor(descriptor.Descriptor):
 
-	  document_type = 'insulter_agent'
 	  document.field('parent', None)
 	  document.field('temperature', 20)
 
