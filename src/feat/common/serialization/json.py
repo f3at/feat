@@ -1,6 +1,6 @@
-from __future__ import absolute_import
+from feat.common import hacks
 
-import json as json
+json = hacks.import_json()
 
 from feat.common import reflect
 from feat.interface.serialization import *
