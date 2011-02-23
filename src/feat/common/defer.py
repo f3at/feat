@@ -1,6 +1,21 @@
 from twisted.internet.defer import *
 
 
+def drop_result(result, method, *args, **kwargs):
+    assert callable(method)
+    return method(*args, **kwargs)
+
+
+def bridge_result(result, method, *args, **kwargs):
+    assert callable(method)
+    method(*args, **kwargs)
+    return result
+
+
+def override_result(result, new_result):
+    return new_result
+
+
 class Notifier(object):
 
     def __init__(self):
