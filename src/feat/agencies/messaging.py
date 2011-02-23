@@ -140,7 +140,7 @@ class Queue(object):
     def get(self, *_):
         d = defer.Deferred()
         self._consumers.append(d)
-        self._sendMessages()
+        reactor.callLater(0, self._sendMessages)
 
         return d
 

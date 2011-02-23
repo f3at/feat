@@ -8,3 +8,15 @@ def error_handler(self, f):
     frames = traceback.extract_tb(f.getTracebackObject())
     if len(frames) > 0:
         self.error('Last traceback frame: %r', frames[-1])
+
+
+def first(iterator):
+    '''
+    Returns first element from the operator or None.
+
+    @param iterator: Iterable.
+    '''
+    try:
+        return next(iterator)
+    except StopIteration:
+        return None

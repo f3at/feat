@@ -6,6 +6,7 @@ from feat.agents.base import (agent, contractor, recipient, manager, message,
                               partners, resource, )
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
+from feat.agencies.agency import RetryingProtocol
 
 
 @serialization.register
@@ -22,7 +23,7 @@ class ShardPartner(partners.BasePartner):
         # f.t.i.test_simulation_tree_growth.FailureRecoverySimulation
         agent.info('Shard partner said goodbye. Trying to find new shard.')
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self.start_join_shard_manager)
+        f.add_callback(fiber.drop_result, agent.start_join_shard_manager)
         return f.succeed()
 
 
@@ -55,11 +56,11 @@ class HostAgent(agent.BaseAgent):
     def start_join_shard_manager(self, state):
         if state.partners.shard is None:
             recp = recipient.Agent('join-shard', 'lobby')
-            retrier = state.medium.retrying_protocol(JoinShardManager, recp)
 
             f = fiber.Fiber()
-            f.add_callback(fiber.drop_result, retrier.notify_finish)
-            return f.succeed()
+            f.add_callback(state.medium.retrying_protocol, recp)
+            f.add_callback(RetryingProtocol.notify_finish)
+            return f.succeed(JoinShardManager)
 
     @replay.journaled
     def switch_shard(self, state, shard):
