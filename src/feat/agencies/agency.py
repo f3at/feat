@@ -12,7 +12,6 @@ from feat.common import (log, manhole, journal, fiber, serialization, delay,
                          error_handler, text_helper)
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
-from feat.agents.host import host_agent
 from feat.agencies import common
 from feat.interface import agency, agent, protocols
 from feat.common.serialization import pytree, Serializable

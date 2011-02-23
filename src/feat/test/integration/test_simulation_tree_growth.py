@@ -3,7 +3,7 @@
 from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 
-from feat.common import delay
+from feat.common import delay, first
 from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.host import host_agent
@@ -18,16 +18,6 @@ class Shard(object):
         self.agents = list()
         self.children = list()
 
-    # def count_agents(self):
-    #     res = dict()
-    #     for agent in self.agents:
-    #         factory = agent.get_agent().__class__.__name__
-    #         if factory in res:
-    #             res[factory] += 1
-    #         else:
-    #             res[factory] = 1
-    #     return res
-
     def pick_agent_by_type(self, factory):
         try:
             return next(self.iter_agents_by_type(factory))
@@ -41,6 +31,18 @@ class Shard(object):
         for x in self.agents:
             if isinstance(x.get_agent(), factory):
                 yield x
+
+    def descend(self, n):
+        '''
+        Return a first shard found n levels below.
+        '''
+        if n == 0:
+            return self
+        child = first(self.children.__iter__())
+        if child is None:
+            raise FailTest('I was ment to descend %d more lvl from shard %s'
+                           ' but I have no children.' % (n, self.name, ))
+        return child.descend(n - 1)
 
 
 class Common(object):
@@ -75,6 +77,7 @@ class FailureRecoverySimulation(common.SimulationTest, Common):
         """)
 
     def prolog(self):
+        delay.time_scale = 0.2
         setup = format_block("""
         agency = spawn_agency()
         shard_desc = descriptor_factory('shard_agent', 'root')
@@ -112,30 +115,83 @@ class FailureRecoverySimulation(common.SimulationTest, Common):
         """)
         return self.process(setup)
 
+    def shard(self, children, hosts):
+        return dict(children=children, hosts=hosts, seen=False)
+
     def testValidateProlog(self):
         topology = self.get_topology()
+        expected = [(self.shard(2, 2), ),
+                    (self.shard(0, 2), self.shard(1, 2), ),
+                    (self.shard(0, 2), )]
+        self.assert_structure(topology, expected)
 
-        def validate(shard, lvl):
-            self.info('Validating shard %s on lvl %d', shard.name, lvl)
-            self.info('Agents: %r', [x.get_agent() for x in shard.agents])
-            self.assertEqual(3, len(shard.agents))
-            self.assertEqual(
-                1, len(shard.pick_agents_by_type(shard_agent.ShardAgent)))
-            self.assertEqual(
-                2, len(shard.pick_agents_by_type(host_agent.HostAgent)))
-            if lvl == 0:
-                self.assertEqual(2, len(shard.children))
-            elif lvl == 1:
-                self.assertTrue(len(shard.children) in (0, 1))
-            elif lvl == 2:
-                self.assertEqual(0, len(shard.children))
-            else:
-                raise FailTest('third lvl?')
+    @defer.inlineCallbacks
+    def testTerminateLeafShardAgent(self):
+        topology = self.get_topology()
+        leaf = topology.descend(2)
+        to_kill = leaf.pick_agent_by_type(shard_agent.ShardAgent)
 
-            for child in shard.children:
-                validate(child, lvl+1)
+        self.assertTrue(to_kill is not None)
 
-        validate(topology, 0)
+        self.info('#' * 50 + ' Killing the shard agent in the leaf shard.')
+        yield to_kill.terminate()
+
+        yield self.wait_for_all()
+        self.info('#' * 50 + ' Test finished, now validating.')
+
+
+        # Host agents should reconnect resulting in new shard beeing created
+        topology = self.get_topology()
+        expected = [(self.shard(2, 2), ),
+                    (self.shard(2, 2), self.shard(0, 2), ),
+                    (self.shard(0, 1), self.shard(0, 1), )]
+        self.assert_structure(topology, expected)
+
+    def assert_structure(self, shard, expected, lvl=0):
+        self.info('Validating shard %s on lvl %d', shard.name, lvl)
+        self.info('Agents: %r', [x.get_agent() for x in shard.agents])
+
+        if lvl > len(expected):
+            raise FailTest("Didn't expect the lvl %d shard!" % lvl)
+
+        def matching(shard, description):
+            self.assertEqual(1 + description['hosts'], len(shard.agents))
+            self.assertEqual(1,
+                len(shard.pick_agents_by_type(shard_agent.ShardAgent)))
+            self.assertEqual(description['hosts'],
+                len(shard.pick_agents_by_type(host_agent.HostAgent)))
+
+            self.assertEqual(len(shard.children), description['children'],
+                            "Expected %r children. Got: %d" %\
+                            (description['children'], len(shard.children), ))
+
+        found = False
+        for exp in expected[lvl]:
+            try:
+                if exp['seen']:
+                    continue
+                matching(shard, exp)
+                found = True
+                exp['seen'] = True
+                break
+            except FailTest as e:
+                self.info('Shard on lvl %d is not matching any of the '
+                          'expectation: %r', lvl, e)
+                if exp == expected[lvl][-1]:
+                    raise
+        if not found:
+            raise FailTest('Non of the expectations matches shard on lvl %d.',
+                           lvl)
+
+        for child in shard.children:
+            self.assert_structure(child, expected, lvl + 1)
+        if len(shard.children) == 0 and len(expected) < lvl + 1:
+            raise FailTest("Didn't find shard on lvl %d, which is expexted "
+                           "by the structure %r" % (lvl + 1, expected, ))
+
+    def wait_for_all(self):
+        return defer.DeferredList(
+            [x.wait_for_listeners_finish() for x in self.driver.iter_agents()])
 
 
 @common.attr('slow')
