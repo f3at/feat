@@ -28,6 +28,14 @@ def override_result(result, new_result):
     return new_result
 
 
+def succeed(parma=None):
+    return Fiber().succeed(parma)
+
+
+def fail(failure=None):
+    return Fiber().succeed(failure)
+
+
 def maybe_fiber(function, *args, **kwargs):
 
     try:
