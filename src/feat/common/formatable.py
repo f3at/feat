@@ -21,19 +21,23 @@ def field(name, default, serialize_as=None):
     annotate.injectClassCallback("field", 3, "_register_field", f)
 
 
+class MetaFormatable(type(serialization.Serializable),
+                     type(annotate.Annotable)):
+    pass
+
+
 class Formatable(serialization.Serializable, annotate.Annotable):
 
-    __metaclass__ = type('MetaFormatable', (type(serialization.Serializable),
-                                            type(annotate.Annotable), ), {})
+    __metaclass__ = MetaFormatable
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
-        find = [x for x in bases if getattr(cls, '_fields', False)]
+        cls._fields = list()
 
-        if len(find) == 1:
-            cls._fields = copy.deepcopy(find[0]._fields)
-        else:
-            cls._fields = list()
+        for base in bases:
+            if not issubclass(type(base), MetaFormatable):
+                continue
+            cls._fields += copy.deepcopy(base._fields)
 
     @classmethod
     def _register_field(cls, field):

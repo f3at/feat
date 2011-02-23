@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from twisted.spread import pb, jelly
+
 from feat.common import serialization, decorator
 from feat.agents.base import document
 
@@ -12,7 +14,7 @@ def register(klass, name):
 
 
 @document.register
-class Descriptor(document.Document):
+class Descriptor(document.Document, pb.Copyable):
 
     document_type = 'descriptor'
     # Shard identifier (unicode)
@@ -21,3 +23,6 @@ class Descriptor(document.Document):
     document.field('allocations', list())
     # List of partners
     document.field('partners', list())
+
+
+jelly.globalSecurity.allowInstancesOf(Descriptor)

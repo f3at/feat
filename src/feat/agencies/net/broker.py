@@ -163,6 +163,17 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         return tuple(args)
 
 
+    #starting agent
+
+    def start_agent(self, desc, *args, **kwargs):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            return self.agency.actually_start_agent(desc, *args, **kwargs)
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote(
+                'start_agent', desc, *args, **kwargs)
+
+
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
     log_category = "pb-master"
@@ -187,6 +198,9 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
     def remote_fail_event(self, failure, *args):
         return self.broker.fail_event(failure, *args)
+
+    def remote_start_agent(self, desc, *args, **kwargs):
+        return self.broker.start_agent(desc, *args, **kwargs)
 
     def clientConnectionMade(self, broker):
         self.debug('Client connection made to the server: %r', broker)

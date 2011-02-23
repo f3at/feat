@@ -1,15 +1,19 @@
 import os
 
 from twisted.internet import defer
+from twisted.spread import jelly
 
 from feat.test import common
 from feat.process import couchdb, rabbitmq
 from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
-from feat.agents.base import agent, descriptor
-from feat.common import serialization
+from feat.agents.base import agent, descriptor, replay
+from feat.common import serialization, fiber
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
+
+
+jelly.globalSecurity.allowModules(__name__)
 
 
 class UnitTestCase(common.TestCase):
@@ -66,6 +70,41 @@ class Descriptor(descriptor.Descriptor):
 
     document_type = 'standalone'
 
+jelly.globalSecurity.allowInstancesOf(Descriptor)
+
+
+@agent.register('standalone-master')
+class MasterAgent(StandaloneAgent):
+    """
+    This agents job is to start another standalone agent from his standalone
+    agency to check that we recreate 3 processes (1 master + 2 standalones).
+    """
+
+    @staticmethod
+    def get_cmd_line():
+        command, args, env = StandaloneAgent.get_cmd_line()
+        src_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..'))
+        logfile = os.path.join(src_path, 'master.log')
+        args = ['-i', 'feat.test.test_agencies_net_agency',
+                '-l', logfile]
+        return command, args, env
+
+    @replay.mutable
+    def initiate(self, state):
+        desc = Descriptor(shard='lobby')
+        f = fiber.Fiber()
+        f.add_callback(state.medium.save_document)
+        f.add_callback(state.medium.start_agent)
+        f.add_callback(self.establish_partnership)
+        return f.succeed(desc)
+
+
+@serialization.register
+class MasterDescriptor(descriptor.Descriptor):
+
+    document_type = 'standalone-master'
+
 
 @common.attr('slow')
 class IntegrationTestCase(common.TestCase):
@@ -112,6 +151,28 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+
+    @common.attr(skip="Requires changes in how processes are run")
+    @defer.inlineCallbacks
+    def testStartAgentFromStandalone(self):
+        desc = host_agent.Descriptor(shard=u'lobby')
+        desc = yield self.db.save_document(desc)
+        yield self.agency.start_agent(desc, bootstrap=True)
+        self.assertEqual(1, len(self.agency._agents))
+        host_a = self.agency._agents[0].get_agent()
+
+        # this will be called in the other process
+        desc = MasterDescriptor()
+        desc = yield self.db.save_document(desc)
+        yield host_a.start_agent(desc.doc_id)
+
+        part = host_a.query_partners('all')
+        self.assertEqual(1, len(part))
+
+        self.assertEqual(2, len(self.agency._broker.slaves))
+        for slave in self.agency._broker.slaves:
+            mediums = slave.callRemote('get_agents')
+            self.assertEqual(1, len(mediums))
 
     @defer.inlineCallbacks
     def tearDown(self):

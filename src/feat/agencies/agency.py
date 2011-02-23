@@ -266,6 +266,12 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
 
         return self._agents[n]
 
+    @manhole.expose()
+    def get_agents(self):
+        '''get_agents() -> Get the list of agents hosted by this agency.'''
+
+        return self._agents
+
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
     implements(agent.IAgencyAgent, journal.IRecorderNode,

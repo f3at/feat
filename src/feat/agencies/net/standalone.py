@@ -11,8 +11,6 @@ add_options = agency.add_options
 
 class Agency(agency.Agency):
 
-    spawns_processes = False
-
     def __init__(self, options=None):
         # Initialize default configuration
         self._init_config()

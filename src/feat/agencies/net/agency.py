@@ -6,7 +6,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, journal, text_helper
+from feat.common import manhole, journal
 from feat.interface import agent
 from feat.process import standalone
 
@@ -71,8 +71,6 @@ def add_options(parser):
 
 class Agency(agency.Agency, journal.DummyRecorderNode):
 
-    spawns_processes = True
-
     @classmethod
     def from_config(cls, env, options=None):
         agency = cls()
@@ -134,9 +132,19 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):
+        """
+        Starting an agent is delegated to the broker, who makes sure that
+        this method will be eventually run on the master agency.
+        """
+        return self._broker.start_agent(descriptor, *args, **kwargs)
+
+    def actually_start_agent(self, descriptor, *args, **kwargs):
+        """
+        This method will be run only on the master agency.
+        """
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
-        if self.spawns_processes and factory.standalone:
+        if factory.standalone:
             return self.start_standalone_agent(descriptor, factory)
         else:
             return self.start_agent_locally(descriptor, *args, **kwargs)
