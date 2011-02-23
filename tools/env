@@ -8,4 +8,4 @@ else
 fi
 
 SRCDIR=`dirname $_my_path`/src
-PYTHONPATH=$SRCDIR:$PYTHONPATH $@
+PYTHONPATH=$SRCDIR:$PYTHONPATH "$@"
