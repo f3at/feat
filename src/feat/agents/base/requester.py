@@ -59,7 +59,7 @@ class GoodBye(BaseRequester):
 
 class Propose(BaseRequester):
 
-    timeout = 1
+    timeout = 3
     protocol_id = 'lets-pair-up'
 
     def init_state(self, state, agent, medium, allocation=None, our_role=None,

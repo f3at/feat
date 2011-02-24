@@ -412,7 +412,7 @@ class SimulationHostBeforeShard(common.SimulationTest, Common):
 
     @defer.inlineCallbacks
     def testHAKeepsTillShardAgentAppears(self):
-        delay.time_scale = 0.1
+        delay.time_scale = 0.5
 
         setup = format_block("""
         agency = spawn_agency()
