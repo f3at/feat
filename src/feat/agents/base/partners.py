@@ -290,21 +290,13 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return "<Partners>"
 
 
-@serialization.register
-class RecipientFromPartner(recipient.BaseRecipient):
+class RecipientFromPartner(recipient.Recipient):
 
-    implements(recipient.IRecipient, recipient.IRecipients)
-
-    type_name = 'recp_p'
+    type_name = 'recipient'
 
     def __init__(self, partner):
-        recipient.BaseRecipient.__init__(self)
-        self.shard = partner.recipient.shard
-        self.key = partner.recipient.key
-
-    @property
-    def type(self):
-        return recipient.RecipientType.agent
+        recipient.Recipient.__init__(self, partner.recipient.key,
+                                     partner.recipient.shard)
 
 
 components.registerAdapter(RecipientFromPartner, BasePartner,

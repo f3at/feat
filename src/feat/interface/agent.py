@@ -1,6 +1,6 @@
 from zope.interface import Interface, Attribute
 
-__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent"]
+__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent"]
 
 
 class IAgentFactory(Interface):

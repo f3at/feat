@@ -7,7 +7,7 @@ from twisted.spread import pb, jelly
 from feat.agents.base import message, descriptor
 from feat.interface.agent import *
 from feat.interface.recipient import *
-from feat.common import serialization
+from feat.common import serialization, adapter
 
 
 '''
@@ -27,11 +27,28 @@ Types that can be passed as destination includes:
 
 class BaseRecipient(serialization.Serializable, pb.Copyable):
 
-    def __init__(self):
+    def __init__(self, key, shard):
         self._array = [self]
+        self._key = key
+        self._shard = shard
+
+    def snapshot(self):
+        return {"key": self._key, "shard": self._shard}
+
+    def recover(self, snapshot):
+        self._key = snapshot["key"]
+        self._shard = snapshot["shard"]
 
     def restored(self):
         self._array = [self]
+
+    @property
+    def key(self):
+        return self._key
+
+    @property
+    def shard(self):
+        return self._shard
 
     def __iter__(self):
         return self._array.__iter__()
@@ -39,9 +56,9 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
     def __eq__(self, other):
         if not isinstance(other, BaseRecipient):
             return NotImplemented
-        return self.type == other.type and\
-               self.shard == other.shard and\
-               self.key == other.key
+        return (self.type == other.type
+                and self.shard == other.shard
+                and self.key == other.key)
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -51,16 +68,14 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
 
 
 @serialization.register
-class Agent(BaseRecipient):
+class Recipient(BaseRecipient):
 
     implements(IRecipient, IRecipients)
 
-    type_name = 'recp'
+    type_name = 'recipient'
 
-    def __init__(self, agent_id, shard=None):
-        BaseRecipient.__init__(self)
-        self.shard = shard
-        self.key = agent_id
+    def __init__(self, key, shard=None):
+        BaseRecipient.__init__(self, key, shard)
 
     @property
     def type(self):
@@ -75,9 +90,7 @@ class Broadcast(BaseRecipient):
     type_name = 'broadcast'
 
     def __init__(self, protocol_id=None, shard=None):
-        BaseRecipient.__init__(self)
-        self.shard = shard
-        self.key = protocol_id
+        BaseRecipient.__init__(self, protocol_id, shard)
 
     @property
     def type(self):
@@ -85,100 +98,82 @@ class Broadcast(BaseRecipient):
 
 
 @serialization.register
-class RecipientFromAgent(BaseRecipient):
-
-    implements(IRecipient, IRecipients)
-
-    type_name = 'recp_a'
-
-    def __init__(self, agent):
-        BaseRecipient.__init__(self)
-        desc = agent.get_descriptor()
-        self.shard = desc.shard
-        self.key = desc.doc_id
-
-    @property
-    def type(self):
-        return RecipientType.agent
-
-
-components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipient)
-components.registerAdapter(RecipientFromAgent, IAgencyAgent, IRecipients)
-
-
-@serialization.register
-class RecipientsFromList(serialization.Serializable):
+class Recipients(serialization.Serializable, pb.Copyable):
 
     implements(IRecipients)
 
-    type_name = 'recp_list'
+    type_name = 'recipients'
 
-    def __init__(self, llist):
-        self.list = []
-        for item in llist:
-            self.list.append(IRecipient(item))
+    def __init__(self, recipients):
+        self._recipients = []
+        for recipient in recipients:
+            self._recipients.append(IRecipient(recipient))
+
+    def snapshot(self):
+        return {"recipients": self._recipients}
+
+    def recover(self, snapshot):
+        self._recipients = snapshot["recipients"]
 
     def __eq__(self, other):
-        for el1, el2 in zip(self.list, other.list):
+        for el1, el2 in zip(self._recipients, other._recipients):
             if el1 != el2:
                 return False
 
     def __repr__(self):
-        cont = ["k=%r,s=%r" % (recp.key, recp.shard, ) for recp in self.list]
+        cont = ["k=%r,s=%r" % (recp.key, recp.shard, )
+                for recp in self._recipients]
         return "<RecipientsList: %s>" % "; ".join(cont)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __iter__(self):
-        return self.list.__iter__()
+        return self._recipients.__iter__()
 
 
-components.registerAdapter(RecipientsFromList, list, IRecipients)
+components.registerAdapter(Recipients, list, IRecipients)
 
 
-@serialization.register
-class RecipientFromMessage(BaseRecipient):
-    implements(IRecipient, IRecipients)
+class Agent(Recipient):
 
-    type_name = 'recp_m'
+    type_name = 'recipient'
+
+    def __init__(self, agent_id, shard=None):
+        Recipient.__init__(self, agent_id, shard)
+
+
+@adapter.register(IAgent, IRecipient)
+@adapter.register(IAgent, IRecipients)
+@adapter.register(IAgencyAgent, IRecipient)
+@adapter.register(IAgencyAgent, IRecipients)
+class RecipientFromAgent(Recipient):
+
+    type_name = 'recipient'
+
+    def __init__(self, agent):
+        desc = agent.get_descriptor()
+        Recipient.__init__(self, desc.doc_id, desc.shard)
+
+
+@adapter.register(message.BaseMessage, IRecipient)
+@adapter.register(message.BaseMessage, IRecipients)
+class RecipientFromMessage(Recipient):
+
+    type_name = 'recipient'
 
     def __init__(self, message):
-        BaseRecipient.__init__(self)
-        self.shard = message.reply_to.shard
-        self.key = message.reply_to.key
-
-    @property
-    def type(self):
-        return RecipientType.agent
+        Recipient.__init__(self, message.reply_to.key, message.reply_to.shard)
 
 
-components.registerAdapter(RecipientFromMessage, message.BaseMessage,
-                           IRecipient)
-components.registerAdapter(RecipientFromMessage, message.BaseMessage,
-                           IRecipients)
+@adapter.register(descriptor.Descriptor, IRecipient)
+@adapter.register(descriptor.Descriptor, IRecipients)
+class RecipientFromDescriptor(Recipient):
 
-
-@serialization.register
-class RecipientFromDescriptor(BaseRecipient):
-    implements(IRecipient, IRecipients)
-
-    type_name = 'recp_m'
+    type_name = 'recipient'
 
     def __init__(self, desc):
-        BaseRecipient.__init__(self)
-        self.shard = desc.shard
-        self.key = desc.doc_id
-
-    @property
-    def type(self):
-        return RecipientType.agent
-
-
-components.registerAdapter(RecipientFromDescriptor, descriptor.Descriptor,
-                           IRecipient)
-components.registerAdapter(RecipientFromDescriptor, descriptor.Descriptor,
-                           IRecipients)
+        BaseRecipient.__init__(self, desc.doc_id, desc.shard)
 
 
 def dummy_agent():
@@ -190,5 +185,5 @@ def dummy_agent():
 
 
 jelly.globalSecurity.allowInstancesOf(
-    Agent, Broadcast, RecipientFromAgent, RecipientsFromList,
-    RecipientFromMessage, RecipientFromDescriptor)
+    Recipient, Recipients, Broadcast, Agent,
+    RecipientFromAgent, RecipientFromMessage, RecipientFromDescriptor)
