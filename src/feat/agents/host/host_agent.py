@@ -1,12 +1,13 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from feat.agents.base import (agent, contractor, recipient, manager, message,
-                              replay, replier, requester, descriptor,
+from feat.agents.base import (agent, contractor, recipient, message,
+                              replay, descriptor,
                               partners, resource, )
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
-from feat.agencies.agency import RetryingProtocol
+from feat.agents.shard.contracts import *
+from feat.agents.host.requests import *
 
 
 @serialization.register
@@ -55,12 +56,8 @@ class HostAgent(agent.BaseAgent):
     @replay.journaled
     def start_join_shard_manager(self, state):
         if state.partners.shard is None:
-            recp = recipient.Agent('join-shard', 'lobby')
-
-            f = fiber.Fiber()
-            f.add_callback(state.medium.retrying_protocol, recp)
-            f.add_callback(RetryingProtocol.notify_finish)
-            return f.succeed(JoinShardManager)
+            return start_join_shard_manager(state.medium,
+                                            ActionType.join, ActionType.create)
 
     @replay.journaled
     def switch_shard(self, state, shard):
@@ -107,75 +104,6 @@ class HostAgent(agent.BaseAgent):
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         return f.succeed(desc)
-
-
-class StartAgentRequester(requester.BaseRequester):
-
-    protocol_id = 'start-agent'
-    timeout = 10
-
-    def init_state(self, state, agent, medium, descriptor, *args, **kwargs):
-        requester.BaseRequester.init_state(self, state, agent, medium)
-        state.descriptor = descriptor
-        state.args = args
-        state.kwargs = kwargs
-
-    @replay.mutable
-    def initiate(self, state):
-        msg = message.RequestMessage()
-        msg.payload['doc_id'] = state.descriptor.doc_id
-        msg.payload['args'] = state.args
-        msg.payload['kwargs'] = state.kwargs
-        state.medium.request(msg)
-
-    def got_reply(self, reply):
-        return reply
-
-
-class StartAgentReplier(replier.BaseReplier):
-
-    protocol_id = 'start-agent'
-
-    @replay.entry_point
-    def requested(self, state, request):
-        f = fiber.Fiber()
-        f.add_callbacks(state.agent.start_agent,
-                        cbargs=request.payload['args'],
-                        cbkws=request.payload['kwargs'])
-        f.add_callback(self._send_reply)
-        f.succeed(request.payload['doc_id'])
-        return f
-
-    @replay.mutable
-    def _send_reply(self, state, new_agent):
-        msg = message.ResponseMessage()
-        msg.payload['agent'] = recipient.IRecipient(new_agent)
-        state.medium.reply(msg)
-
-
-class JoinShardManager(manager.BaseManager):
-
-    protocol_id = 'join-shard'
-
-    @replay.immutable
-    def initiate(self, state):
-        msg = message.Announcement()
-        msg.payload['level'] = 0
-        msg.payload['joining_agent'] = state.agent.get_own_address()
-        state.medium.announce(msg)
-
-    @replay.immutable
-    def closed(self, state):
-        bids = state.medium.get_bids()
-        best_bid = message.Bid.pick_best(bids)
-        msg = message.Grant()
-        msg.payload['joining_agent'] = state.agent.get_own_address()
-        params = (best_bid, msg)
-        state.medium.grant(params)
-
-    @replay.mutable
-    def completed(self, state, reports):
-        pass
 
 
 class ResourcesAllocationContractor(contractor.BaseContractor):

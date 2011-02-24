@@ -21,19 +21,14 @@ class DummyRequester(requester.BaseRequester):
     protocol_id = 'dummy-request'
     timeout = 2
 
-    def init_state(self, state, agent, medium, argument):
-        requester.BaseRequester.init_state(
-            self, state, agent, medium, argument)
-        state.payload = argument
+    @replay.mutable
+    def initiate(self, state, argument):
         state._got_response = False
-
-    @replay.immutable
-    def initiate(self, state):
         msg = message.RequestMessage()
-        msg.payload = state.payload
+        msg.payload = argument
         state.medium.request(msg)
 
-    @replay.immutable
+    @replay.mutable
     def got_reply(self, state, message):
         state._got_response = True
 

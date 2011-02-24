@@ -40,9 +40,9 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     announce_timeout = 10
     grant_timeout = 10
 
-    def __init__(self, agent, medium, *args, **kwargs):
+    def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium, *args, **kwargs)
+        replay.Replayable.__init__(self, agent, medium)
 
     def init_state(self, state, agent, medium):
         state.agent = agent

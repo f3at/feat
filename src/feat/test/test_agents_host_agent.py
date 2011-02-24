@@ -48,12 +48,14 @@ class TestJoinShardManager(testsuite.TestCase):
         address = recipient.Agent(agent_id=self.ball.descriptor.doc_id,
                                   shard=self.ball.descriptor.shard)
         args = (
-            testsuite.message(payload=dict(level=0, joining_agent=address)), )
+            testsuite.message(payload=dict(level=0, joining_agent=address,
+                                           solutions="action")), )
         expected = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                   self.ball.descriptor),
             testsuite.side_effect('AgencyManager.announce', args=args)]
-        output, state = self.ball.call(expected, self.manager.initiate)
+        output, state = self.ball.call(expected, self.manager.initiate,
+                                       "action")
 
     def testClosed(self):
         bids = [

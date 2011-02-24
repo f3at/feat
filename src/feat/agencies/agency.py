@@ -415,7 +415,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
 
         self.agency.journal_protocol_created(
             self._descriptor.doc_id, factory, medium, *args, **kwargs)
-        initiator = factory(self.agent, medium, *args, **kwargs)
+        initiator = factory(self.agent, medium)
         self.register_listener(medium)
         medium.initiate(initiator)
         return initiator

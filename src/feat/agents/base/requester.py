@@ -23,11 +23,11 @@ class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
     timeout = 0
     protocol_id = None
 
-    def __init__(self, agent, medium, *args, **kwargs):
+    def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium, *args, **kwargs)
+        replay.Replayable.__init__(self, agent, medium)
 
-    def init_state(self, state, agent, medium, *args, **kwargs):
+    def init_state(self, state, agent, medium):
         state.agent = agent
         state.medium = medium
 
@@ -62,19 +62,15 @@ class Propose(BaseRequester):
     timeout = 3
     protocol_id = 'lets-pair-up'
 
-    def init_state(self, state, agent, medium, allocation=None, our_role=None,
-                   partner_role=None):
-        BaseRequester.init_state(self, state, agent, medium)
-        state.allocation = allocation
+    @replay.mutable
+    def initiate(self, state, allocation=None, our_role=None,
+                 partner_role=None):
         state.our_role = our_role
-        state.partner_role = partner_role
-
-    @replay.immutable
-    def initiate(self, state):
+        state.allocation = allocation
         msg = message.RequestMessage(
             payload=dict(
                 partner_class=state.agent.descriptor_type,
-                role=state.partner_role))
+                role=partner_role))
         state.medium.request(msg)
 
     @replay.immutable

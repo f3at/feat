@@ -285,7 +285,7 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     def effect_protocol_created(self, factory, medium, *args, **kwargs):
         assert self.agent is not None
-        instance = factory(self.agent, medium, *args, **kwargs)
+        instance = factory(self.agent, medium)
         self.protocols.append(instance)
 
     def effect_protocol_deleted(self, journal_id, dummy_id):

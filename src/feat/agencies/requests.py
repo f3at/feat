@@ -58,6 +58,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent = agent
         self.recipients = recipients
         self.expiration_time = None
+        self.args = args
+        self.kwargs = kwargs
 
     def initiate(self, requester):
         self.requester = requester
@@ -68,7 +70,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.expiration_time = self.agent.get_time() + requester.timeout
         self._expire_at(self.expiration_time, self.requester.closed,
                         requests.RequestState.closed)
-        self._call(requester.initiate)
+        self._call(requester.initiate, *self.args, **self.kwargs)
 
         return requester
 

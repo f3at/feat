@@ -146,7 +146,8 @@ class TestJoinShardContractor(testsuite.TestCase):
         announce = self._generate_announcement()
         expected_announce = testsuite.message(
             payload=dict(level=1,
-                         joining_agent=announce.payload['joining_agent']))
+                         joining_agent=announce.payload['joining_agent'],
+                         solutions=announce.payload['solutions']))
 
         self.ball.descriptor.partners = [
             shard_agent.ChildShardPartner(
@@ -277,6 +278,8 @@ class TestJoinShardContractor(testsuite.TestCase):
         announce.payload['level'] = 0
         announce.payload['joining_agent'] = recipient.Agent(
                 'some host', 'lobby')
+        announce.payload['solutions'] = \
+            (shard_agent.ActionType.create, shard_agent.ActionType.join, )
         return announce
 
     def _load_contractor(self):
