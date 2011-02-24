@@ -13,9 +13,9 @@ def set_default(keeper):
     _default_keeper = keeper
 
 
-def have_default():
+def get_default():
     global _default_keeper
-    return _default_keeper is not None
+    return _default_keeper
 
 
 def log(category, format, *args):
@@ -126,7 +126,7 @@ class FluLogKeeper(object):
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')
             flulog.logTwisted()
-            if not have_default():
+            if get_default() is None:
                 set_default(cls())
             cls._initialized = True
 
@@ -139,6 +139,11 @@ class FluLogKeeper(object):
     def set_debug(self, string):
         global flulog
         flulog.setDebug(string)
+
+    @classmethod
+    def get_debug(self):
+        global flulog
+        flulog.getDebug()
 
     ### ILogger Methods ###
 
