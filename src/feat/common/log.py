@@ -1,11 +1,15 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import os
 import sys
 
 from zope.interface import implements
 
 from feat.interface.log import *
+
+
+verbose = os.environ.get("FEAT_VERBOSE", "NO").upper() in ("YES", "1", "TRUE")
 
 
 def set_default(keeper):
