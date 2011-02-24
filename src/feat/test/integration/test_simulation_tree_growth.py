@@ -77,7 +77,7 @@ class FailureRecoverySimulation(common.SimulationTest, Common):
         """)
 
     def prolog(self):
-        delay.time_scale = 0.2
+        delay.time_scale = 0.5
         setup = format_block("""
         agency = spawn_agency()
         shard_desc = descriptor_factory('shard_agent', 'root')

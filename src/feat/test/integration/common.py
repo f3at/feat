@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.trial.unittest import SkipTest
+from twisted.internet import defer
 
 from feat.test import common
 from feat.common import delay
@@ -33,10 +34,11 @@ class SimulationTest(common.TestCase):
     def get_local(self, name):
         return self.driver._parser.get_local(name)
 
+    @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
             yield x.wait_for_listeners_finish()
-        common.TestCase.tearDown(self)
+        yield common.TestCase.tearDown(self)
         if not self.skip_replayability:
             self.log("Test finished, now validating replayability.")
             for agency in self.driver._agencies:
