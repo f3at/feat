@@ -92,6 +92,8 @@ class MasterAgent(StandaloneAgent):
 
     @replay.mutable
     def initiate(self, state):
+        StandaloneAgent.initiate(self)
+
         desc = Descriptor(shard='lobby')
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
@@ -152,7 +154,6 @@ class IntegrationTestCase(common.TestCase):
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
 
-    @common.attr(skip="Requires changes in how processes are run")
     @defer.inlineCallbacks
     def testStartAgentFromStandalone(self):
         desc = host_agent.Descriptor(shard=u'lobby')
@@ -171,7 +172,7 @@ class IntegrationTestCase(common.TestCase):
 
         self.assertEqual(2, len(self.agency._broker.slaves))
         for slave in self.agency._broker.slaves:
-            mediums = slave.callRemote('get_agents')
+            mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
 
     @defer.inlineCallbacks

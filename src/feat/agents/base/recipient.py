@@ -2,6 +2,7 @@ import uuid
 
 from twisted.python import components
 from zope.interface import implements
+from twisted.spread import pb, jelly
 
 from feat.agents.base import message, descriptor
 from feat.interface.agent import *
@@ -24,7 +25,7 @@ Types that can be passed as destination includes:
 '''
 
 
-class BaseRecipient(serialization.Serializable):
+class BaseRecipient(serialization.Serializable, pb.Copyable):
 
     def __init__(self):
         self._array = [self]
@@ -186,3 +187,8 @@ def dummy_agent():
     recipient.
     '''
     return Agent(str(uuid.uuid1()), 'shard')
+
+
+jelly.globalSecurity.allowInstancesOf(
+    Agent, Broadcast, RecipientFromAgent, RecipientsFromList,
+    RecipientFromMessage, RecipientFromDescriptor)

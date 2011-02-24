@@ -74,4 +74,3 @@ class RabbitMQCtl(base.Base):
         self.command = '/usr/lib/rabbitmq/bin/rabbitmqctl'
         self.env = env
         self.args = arg_line.split()
-

@@ -379,9 +379,10 @@ class Serializer(object):
                 if extid is not None:
                     return self.flatten_external(extid, caps, freezing)
             return self.flatten_instance(value, caps, freezing)
-        raise TypeError("Type %s values not supported by serializer %s"
-                        % (type(value).__name__,
-                           reflect.canonical_name(self)))
+        raise TypeError("Type %s values not supported by serializer %s. "
+                        "Value = %r." % (type(value).__name__,
+                                         reflect.canonical_name(self),
+                                         value, ))
 
     def flatten_unknown_key(self, value, caps, freezing):
         # Flatten enums
