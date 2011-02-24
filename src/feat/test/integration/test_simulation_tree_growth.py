@@ -142,10 +142,28 @@ class FailureRecoverySimulation(common.SimulationTest, Common):
 
         # Host agents should reconnect resulting in new shard beeing created
         topology = self.get_topology()
-        expected = [(self.shard(2, 2), ),
-                    (self.shard(2, 2), self.shard(0, 2), ),
-                    (self.shard(0, 1), self.shard(0, 1), )]
-        self.assert_structure(topology, expected)
+        expected1 = [(self.shard(2, 2), ),
+                     (self.shard(2, 2), self.shard(0, 2), ),
+                     (self.shard(0, 1), self.shard(0, 1), )]
+        expected2 = [(self.shard(2, 2), ),
+                     (self.shard(1, 2), self.shard(1, 2), ),
+                     (self.shard(0, 1), self.shard(0, 1), )]
+        self.assert_structure_one_of(topology, (expected2, expected1, ))
+
+    def assert_structure_one_of(self, topology, posibilities):
+        '''
+        Same as assert structure, but takes multiple expectation.
+        '''
+        for expected in posibilities:
+            try:
+                self.assert_structure(topology, expected)
+                break
+            except FailTest as e:
+                if expected == posibilities[-1]:
+                    raise
+                else:
+                    self.info("Posibility %r didn't match. Error raised: %r",
+                        expected, e)
 
     def assert_structure(self, shard, expected, lvl=0):
         self.info('Validating shard %s on lvl %d', shard.name, lvl)
