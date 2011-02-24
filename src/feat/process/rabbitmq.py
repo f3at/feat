@@ -60,6 +60,8 @@ class Process(base.Base):
         return f
 
     def rabbitmqctl_dump(self, command):
+        # TODO: Once upon a time a line below returns a Fiber instead of
+        # Deferred. This is random and definitely should be investigated
         d = self.rabbitmqctl(command)
         d.addCallback(lambda output:
                       self.log("Output of command 'rabbitmqctl %s':\n%s\n",
