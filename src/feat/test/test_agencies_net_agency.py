@@ -112,12 +112,12 @@ class IntegrationTestCase(common.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         try:
-            self.db_process = couchdb.Process(common.DummyRecorderNode(self))
+            self.db_process = couchdb.Process(self)
         except DependencyError:
             raise SkipTest("No CouchDB server found.")
 
         try:
-            self.msg_process = rabbitmq.Process(common.DummyRecorderNode(self))
+            self.msg_process = rabbitmq.Process(self)
         except DependencyError:
             raise SkipTest("No RabbitMQ server found.")
 

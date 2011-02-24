@@ -18,7 +18,7 @@ from feat.process.base import DependencyError
 from feat.common import serialization
 
 from . import common
-from feat.test.common import attr, DummyRecorderNode
+from feat.test.common import attr
 
 
 @serialization.register
@@ -151,7 +151,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
                            'dependecies: %r' % import_error)
 
         try:
-            self.process = couchdb.Process(DummyRecorderNode(self))
+            self.process = couchdb.Process(self)
         except DependencyError as e:
             raise SkipTest(str(e))
 

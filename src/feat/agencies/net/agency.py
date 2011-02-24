@@ -6,7 +6,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, journal
+from feat.common import manhole
 from feat.interface import agent
 from feat.process import standalone
 
@@ -69,7 +69,7 @@ def add_options(parser):
                       default=DEFAULT_MH_PORT)
 
 
-class Agency(agency.Agency, journal.DummyRecorderNode):
+class Agency(agency.Agency):
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -105,7 +105,6 @@ class Agency(agency.Agency, journal.DummyRecorderNode):
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
-        journal.DummyRecorderNode.__init__(self)
         agency.Agency.__init__(self, mesg, db)
 
         reactor.addSystemEventTrigger('before', 'shutdown',

@@ -8,20 +8,18 @@ from feat.common.text_helper import format_block
 
 class Process(base.Base):
 
-    @replay.mutable
-    def configure(self, state):
-        state.config = dict()
+    def configure(self):
+        self.config = dict()
         workspace = self.get_tmp_dir()
-        state.config['workspace'] = workspace
-        state.config['dir'] = os.path.join(workspace, 'couch_db')
-        state.config['port'] = self.get_free_port()
-        state.config['log'] = os.path.join(workspace, 'couch_test.log')
-        state.config['local_ini'] = os.path.join(workspace, 'local.ini')
-        state.config['host'] = '127.0.0.1'
+        self.config['workspace'] = workspace
+        self.config['dir'] = os.path.join(workspace, 'couch_db')
+        self.config['port'] = self.get_free_port()
+        self.config['log'] = os.path.join(workspace, 'couch_test.log')
+        self.config['local_ini'] = os.path.join(workspace, 'local.ini')
+        self.config['host'] = '127.0.0.1'
 
     @replay.side_effect
-    @replay.immutable
-    def prepare_workspace(self, state):
+    def prepare_workspace(self):
         local_ini_tmpl = format_block("""
         [couchdb]
         database_dir = %(dir)s
@@ -33,24 +31,23 @@ class Process(base.Base):
         [log]
         file = %(log)s
         """)
-        shutil.rmtree(state.config['dir'], ignore_errors=True)
+        shutil.rmtree(self.config['dir'], ignore_errors=True)
 
-        f = file(state.config['local_ini'], 'w')
-        f.write(local_ini_tmpl % state.config)
+        f = file(self.config['local_ini'], 'w')
+        f.write(local_ini_tmpl % self.config)
         f.close()
 
-    @replay.mutable
-    def initiate(self, state):
+    def initiate(self):
         self.configure()
         self.prepare_workspace()
 
-        state.command = '/usr/bin/couchdb'
-        state.env['HOME'] = os.environ['HOME']
-        state.args = ['-a', state.config['local_ini']]
+        self.command = '/usr/bin/couchdb'
+        self.env['HOME'] = os.environ['HOME']
+        self.args = ['-a', self.config['local_ini']]
 
     @replay.side_effect
     def started_test(self):
-        buffer = self.control.out_buffer
+        buffer = self._control.out_buffer
         self.log("Checking buffer: %s", buffer)
         return "Apache CouchDB has started on http://127.0.0.1:" in buffer
 

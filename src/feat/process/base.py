@@ -8,9 +8,9 @@ import copy
 
 from twisted.internet import error, protocol, reactor
 
-from feat.common import log, enum
-from feat.agents.base.common import ReplayableStateMachine
+from feat.common import log, enum, serialization
 from feat.agents.base import replay
+from feat.agencies.common import StateMachineMixin
 
 
 class ProcessState(enum.Enum):
@@ -61,36 +61,33 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         self.owner.on_process_exited(status.value)
 
 
-class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
+class Base(log.Logger, log.LogProxy, StateMachineMixin,
+           serialization.Serializable):
 
     log_category = 'process'
 
-    def __init__(self, agent, *args, **kwargs):
-        log.LogProxy.__init__(self, agent)
-        log.Logger.__init__(self, agent)
-        ReplayableStateMachine.__init__(
-            self, agent, ProcessState.initiated, *args, **kwargs)
+    def __init__(self, logger, *args, **kwargs):
+        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
+        StateMachineMixin.__init__(self, ProcessState.initiated)
 
-        self.control = ControlProtocol(self, self.started_test, self.on_ready)
-        self.initiate()
+        self._control = ControlProtocol(self, self.started_test, self.on_ready)
+        self.config = dict()
+        self.args = list()
+        self.command = None
+        self.env = dict()
+
+        self.initiate(*args, **kwargs)
         self.validate_setup()
 
-    def init_state(self, state, agent, machine_state):
-        ReplayableStateMachine.init_state(self, state, agent, machine_state)
-        state.config = dict()
-        state.args = list()
-        state.command = None
-        state.env = dict()
-
-    @replay.immutable
-    def restart(self, state):
+    def restart(self):
         self._ensure_state([ProcessState.initiated,
                             ProcessState.finished,
                             ProcessState.failed])
 
-        self.process = reactor.spawnProcess(
-            self.control, state.command,
-            args=[state.command] + state.args, env=state.env)
+        self._process = reactor.spawnProcess(
+            self._control, self.command,
+            args=[self.command] + self.args, env=self.env)
 
         return self.wait_for_state(ProcessState.started)
 
@@ -99,7 +96,7 @@ class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
                             ProcessState.started,
                             ProcessState.terminating])
         self._set_state(ProcessState.terminating)
-        self.process.signalProcess("TERM")
+        self._process.signalProcess("TERM")
         return self.wait_for_state(ProcessState.finished)
 
     def on_ready(self, out_buffer):
@@ -142,9 +139,8 @@ class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
         '''
         raise NotImplementedError('This method should be overloaded')
 
-    @replay.immutable
-    def validate_setup(self, state):
-        self.check_installed(state.command)
+    def validate_setup(self):
+        self.check_installed(self.command)
 
     @replay.side_effect
     def get_free_port(self):
@@ -184,13 +180,12 @@ class Base(log.Logger, log.LogProxy, ReplayableStateMachine):
         os.makedirs(path)
         return path
 
-    @replay.immutable
-    def get_config(self, state):
-        return copy.deepcopy(state.config)
+    def get_config(self):
+        return copy.deepcopy(self.config)
 
     def _call(self, method, *args, **kwargs):
         '''
-        Required by ReplayableStateMachine._event_handler
+        Required by StateMachine._event_handler
         '''
         return method(*args, **kwargs)
 
