@@ -69,13 +69,7 @@ class Connection(log.Logger):
     # IMessagingClient implementation
 
     def disconnect(self):
-        ex = FinishConnection("Disconnecting")
-        if self._consumeDeferred.called:
-            # this means we are called from inside the
-            # get_and_call_on_message() message as a part of message processing
-            pass
-        else:
-            self._consumeDeferred.errback(ex)
+        self._queue.stop_consuming()
 
     def personal_binding(self, key, shard=None):
         if not shard:
@@ -136,20 +130,34 @@ class Queue(object):
         self._messages = []
 
         self._consumers = []
+        self._send_task = None
 
     def get(self, *_):
         d = defer.Deferred()
         self._consumers.append(d)
-        reactor.callLater(0, self._sendMessages)
-
+        self._schedule_sending()
+        reactor.callLater(0, self._send_messages)
         return d
 
-    def _sendMessages(self):
+    def stop_consuming(self):
+        ex = FinishConnection("Disconnecting")
+        while len(self._consumers) > 0:
+            d = self._consumers.pop(0)
+            d.errback(ex)
+        if self._send_task:
+            self._send_task.cancel()
+
+    def enqueue(self, message):
+        self._messages.append(message)
+        self._schedule_sending()
+
+    def _send_messages(self):
+        self._send_task = None
         while len(self._messages) > 0 and len(self._consumers) > 0:
             message = self._messages.pop(0)
             consumer = self._consumers.pop(0)
             consumer.callback(message)
 
-    def enqueue(self, message):
-        self._messages.append(message)
-        reactor.callLater(0, self._sendMessages)
+    def _schedule_sending(self):
+        if self._send_task is None:
+            self._send_task = reactor.callLater(0, self._send_messages)
