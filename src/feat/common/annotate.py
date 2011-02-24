@@ -21,7 +21,7 @@ class MetaAnnotable(type):
         if injections is not None:
             for attr, value in injections:
                 setattr(cls, attr, value)
-            delattr(cls, _ATTRIBUTE_INJECTIONS_ATTR)
+            del injections[:]
         # Class Annotations
         annotations = getattr(cls, _CLASS_ANNOTATIONS_ATTR, None)
         if annotations is not None:
@@ -32,7 +32,7 @@ class MetaAnnotable(type):
                                           "method %s not found"
                                           % (name, cls, methodName))
                 method(*args, **kwargs)
-            delattr(cls, _CLASS_ANNOTATIONS_ATTR)
+            del annotations[:]
         super(MetaAnnotable, cls).__init__(name, bases, dct)
 
 
