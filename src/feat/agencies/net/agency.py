@@ -4,10 +4,11 @@ from twisted.internet import reactor, defer
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
-from feat.agencies import agency, dependency
+from feat.agencies import agency
 from feat.agencies.net import ssh, broker
 from feat.common import manhole
 from feat.interface import agent
+from feat.interface.agency import ExecMode
 from feat.process import standalone
 
 from feat.agencies.net import messaging
@@ -107,7 +108,7 @@ class Agency(agency.Agency):
             self.config['db']['name'])
         agency.Agency.__init__(self, mesg, db)
         # this is default mode for the dependency modules
-        self._set_default_mode(dependency.Mode.production)
+        self._set_default_mode(ExecMode.production)
 
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.shutdown)

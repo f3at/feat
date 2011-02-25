@@ -1,10 +1,6 @@
 from feat.common import enum
 from feat.agents.base import replay
-
-
-class Mode(enum.Enum):
-
-    production, test, simulation = range(3)
+from feat.interface.agency import ExecMode
 
 
 class AgencyDependencyMixin(object):
@@ -17,7 +13,7 @@ class AgencyDependencyMixin(object):
         self._dependencies_modes['_default'] = default
 
     def set_mode(self, component, mode):
-        assert isinstance(mode, Mode)
+        assert isinstance(mode, ExecMode)
         self._dependencies_modes[component] = mode
 
     def get_mode(self, component):

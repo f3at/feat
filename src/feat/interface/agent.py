@@ -143,6 +143,11 @@ class IAgencyAgent(Interface):
         @returns: Deferred.
         '''
 
+    def get_mode(component):
+        '''
+        Get the mode to run given component.
+        '''
+
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization

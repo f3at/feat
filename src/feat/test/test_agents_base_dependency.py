@@ -1,3 +1,4 @@
+from feat.interface.agency import ExecMode
 from feat.agents.base import (testsuite, agent, dependency, descriptor, )
 
 
@@ -13,45 +14,45 @@ class TestDependency(testsuite.TestCase):
     def testCallDependency(self):
         expected = [
             testsuite.side_effect('AgencyAgent.get_mode',
-                                  dependency.Mode.test, ('something', ))]
+                                  ExecMode.test, ('something', ))]
         out, _ = self.ball.call(expected, self.agent.dependency, 'something')
-        self.assertEqual(out, dependency.Mode.test)
+        self.assertEqual(out, ExecMode.test)
 
 
         expected = [
             testsuite.side_effect('AgencyAgent.get_mode',
-                                  dependency.Mode.production, ('something', ))]
+                                  ExecMode.production, ('something', ))]
         out, _ = self.ball.call(expected, self.agent.dependency, 'something')
-        self.assertEqual(out, dependency.Mode.production)
+        self.assertEqual(out, ExecMode.production)
 
     def testCallUnknown(self):
         expected = [
             testsuite.side_effect('AgencyAgent.get_mode',
-                                  dependency.Mode.test, ('unknown', ))]
+                                  ExecMode.test, ('unknown', ))]
         self.assertRaises(dependency.UndefinedDependency, self.ball.call,
                           expected, self.agent.dependency, 'unknown')
 
     def testCallUndefined(self):
         expected = [
             testsuite.side_effect('AgencyAgent.get_mode',
-                                  dependency.Mode.simulation, ('something', ))]
+                                  ExecMode.simulation, ('something', ))]
         self.assertRaises(dependency.UndefinedDependency, self.ball.call,
                           expected, self.agent.dependency, 'something')
 
 
 def test():
-    return dependency.Mode.test
+    return ExecMode.test
 
 
 def production():
-    return dependency.Mode.production
+    return ExecMode.production
 
 
 @agent.register('blah_blah')
 class AgentWithDependency(agent.BaseAgent):
 
-    dependency.register('something', test, dependency.Mode.test)
-    dependency.register('something', production, dependency.Mode.production)
+    dependency.register('something', test, ExecMode.test)
+    dependency.register('something', production, ExecMode.production)
 
 
 @descriptor.register('blah_blah')

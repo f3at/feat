@@ -9,6 +9,7 @@ from feat.common import log, manhole
 from feat.agencies import agency, dependency
 from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
+from feat.interface.agency import ExecMode
 from feat.test import factories
 from feat.agents.base import document, descriptor
 
@@ -30,7 +31,7 @@ class Commands(manhole.Manhole):
         ag = agency.Agency(self._messaging, self._database)
         self._agencies.append(ag)
         for comp in components:
-            ag.set_mode(comp, dependency.Mode.production)
+            ag.set_mode(comp, ExecMode.production)
         return ag
 
     @manhole.expose()

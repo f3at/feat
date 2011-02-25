@@ -1,4 +1,6 @@
 from zope.interface import Interface
+from feat.common import enum
+
 
 __all__ = ["IAgency"]
 
@@ -21,3 +23,23 @@ class IAgency(Interface):
         Use this to get current time. Should fetch the time from NTP server
         @returns: Number of seconds since epoch
         '''
+
+    def set_mode(component, mode):
+        '''
+        Tell in which mode should the given componenet operate.
+        @param component: String representing the component.
+        @param mode: L{ExecMode}
+        '''
+
+    def get_mode(component):
+        '''
+        Get the mode to run given component.
+        '''
+
+
+class ExecMode(enum.Enum):
+    '''
+    Used for registering the dependencies.
+    '''
+
+    production, test, simulation = range(3)

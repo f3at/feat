@@ -1,6 +1,5 @@
 from feat.common import annotate
 from feat.agents.base import replay
-from feat.agencies.dependency import Mode
 
 
 def register(component, calable, mode):

@@ -122,7 +122,7 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
     def __init__(self, messaging, database):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
-        dependency.AgencyDependencyMixin.__init__(self, dependency.Mode.test)
+        dependency.AgencyDependencyMixin.__init__(self, agency.ExecMode.test)
 
         self._agents = []
 
