@@ -29,4 +29,4 @@ class AgencyAgentDependencyMixin(object):
 
     @replay.named_side_effect('AgencyAgent.get_mode')
     def get_mode(self, component):
-        return self._agency.get_mode(component)
+        return self.agency.get_mode(component)
