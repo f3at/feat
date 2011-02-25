@@ -12,27 +12,38 @@ class AnnotationError(Exception):
 class MetaAnnotable(type):
 
     def __init__(cls, name, bases, dct):
+        klasses = [cls] + list(cls.mro())
+
         # Class Initialization
         method = getattr(cls, "__class__init__", None)
         if method is not None:
             method(name, bases, dct)
+
         # Attribute Injection
-        injections = getattr(cls, _ATTRIBUTE_INJECTIONS_ATTR, None)
-        if injections is not None:
-            for attr, value in injections:
-                setattr(cls, attr, value)
-            del injections[:]
+        for k in klasses:
+            injections = getattr(k, _ATTRIBUTE_INJECTIONS_ATTR, None)
+            if injections is not None:
+                for attr, value in injections:
+                    setattr(k, attr, value)
+                del injections[:]
+
         # Class Annotations
-        annotations = getattr(cls, _CLASS_ANNOTATIONS_ATTR, None)
-        if annotations is not None:
-            for name, methodName, args, kwargs in annotations:
-                method = getattr(cls, methodName, None)
-                if method is None:
-                    raise AnnotationError("Bad annotation %s set on class %s, "
-                                          "method %s not found"
-                                          % (name, cls, methodName))
-                method(*args, **kwargs)
-            del annotations[:]
+        for k in klasses:
+            annotations = getattr(k, _CLASS_ANNOTATIONS_ATTR, None)
+            if annotations is not None:
+                for name, methodName, args, kwargs in annotations:
+                    method = None
+                    for k2 in klasses:
+                        method = getattr(k2, methodName, None)
+                        if method is not None:
+                            break
+                    if method is None:
+                        raise AnnotationError("Bad annotation %s set on class "
+                                              "%s, method %s not found"
+                                              % (name, k, methodName))
+                    method(*args, **kwargs)
+                del annotations[:]
+
         super(MetaAnnotable, cls).__init__(name, bases, dct)
 
 

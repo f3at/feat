@@ -105,7 +105,57 @@ class Annotated(annotate.Annotable):
         return self.name + " like " + kind + " bacon"
 
 
+def test_mixin(fun):
+    annotate.injectClassCallback("test_mixin", 3, "_register", fun)
+    return fun
+
+
+class MixinTestBase(annotate.Annotable):
+
+    values = []
+
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        values = []
+        for base in bases:
+            parent_values = getattr(base, "values", None)
+            if parent_values:
+                values.extend(parent_values)
+        cls.values = values
+
+    @classmethod
+    def _register(cls, value):
+        cls.values.append(value)
+
+    @test_mixin
+    def first_annotation(self):
+        pass
+
+
+class MixinTestMixin(object):
+
+    @test_mixin
+    def mixin_annotation(self):
+        pass
+
+
+class MixinTestDummy(MixinTestBase, MixinTestMixin):
+
+    @test_mixin
+    def second_annotation(self):
+        pass
+
+
 class TestAnnotation(common.TestCase):
+
+    def testMixin(self):
+        self.assertEqual(MixinTestBase.values,
+                         [MixinTestBase.first_annotation.__func__])
+        self.assertEqual(MixinTestDummy.values,
+                         [MixinTestBase.first_annotation.__func__,
+                          MixinTestDummy.second_annotation.__func__,
+                          MixinTestMixin.mixin_annotation.__func__])
+        self.assertRaises(AttributeError, getattr, MixinTestMixin, "values")
 
     def testMetaErrors(self):
         self.assertTrue(bad_annotation_method_fail)
