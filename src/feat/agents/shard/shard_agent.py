@@ -2,7 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               descriptor, replay, resource, partners)
-from feat.agents.host.requests import StartAgentRequester
+from feat.agents.common import host
 from feat.common import enum, fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
@@ -271,11 +271,7 @@ class JoinShardContractor(contractor.BaseContractor):
     def _request_start_agent(self, state, desc):
         recp = state.medium.announce.payload['joining_agent']
         totals, _ = state.agent.list_resource()
-        f = fiber.Fiber()
-        f.add_callback(state.agent.initiate_protocol, recp, desc, **totals)
-        f.add_callback(StartAgentRequester.notify_finish)
-        f.succeed(StartAgentRequester)
-        return f
+        return host.start_agent(state.agent, recp, desc, **totals)
 
     def _extract_agent(self, reply):
         return reply.payload['agent']

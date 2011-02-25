@@ -2,12 +2,11 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, contractor, recipient, message,
-                              replay, descriptor,
+                              replay, descriptor, replier,
                               partners, resource, )
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agents.shard.contracts import *
-from feat.agents.host.requests import *
 
 
 @serialization.register
@@ -168,3 +167,24 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
 @descriptor.register("host_agent")
 class Descriptor(descriptor.Descriptor):
     pass
+
+
+class StartAgentReplier(replier.BaseReplier):
+
+    protocol_id = 'start-agent'
+
+    @replay.entry_point
+    def requested(self, state, request):
+        f = fiber.Fiber()
+        f.add_callbacks(state.agent.start_agent,
+                        cbargs=request.payload['args'],
+                        cbkws=request.payload['kwargs'])
+        f.add_callback(self._send_reply)
+        f.succeed(request.payload['doc_id'])
+        return f
+
+    @replay.mutable
+    def _send_reply(self, state, new_agent):
+        msg = message.ResponseMessage()
+        msg.payload['agent'] = recipient.IRecipient(new_agent)
+        state.medium.reply(msg)
