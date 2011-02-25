@@ -3,8 +3,11 @@ from feat.agencies.agency import RetryingProtocol
 from feat.common import enum, fiber
 
 
-def start_join_shard_manager(medium, *solutions):
-    recp = recipient.Agent('join-shard', 'lobby')
+__all__ = ['start_manager', 'JoinShardManager', 'ActionType']
+
+
+def start_manager(medium, *solutions):
+    recp = recipient.Agent(JoinShardManager.protocol_id, 'lobby')
 
     f = fiber.Fiber()
     f.add_callback(medium.retrying_protocol, recp, args=(solutions, ))

@@ -1,12 +1,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, replay, resource, partners)
+                              descriptor, replay, partners)
 from feat.agents.common import host
-from feat.common import enum, fiber, serialization
+from feat.common import fiber, serialization
 from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
-from feat.agents.shard.contracts import ActionType
+from feat.agents.common import shard
 
 
 @serialization.register
@@ -80,7 +80,7 @@ class ShardAgent(agent.BaseAgent):
     @replay.journaled
     def start_join_shard_manager(self, state):
         if state.partners.parent is None:
-            return start_join_shard_manager(state.medium, ActionType.adopt)
+            return shard.start_manager(state.medium, shard.ActionType.adopt)
 
     @replay.journaled
     def prepare_child_descriptor(self, state):
@@ -113,20 +113,23 @@ class JoinShardContractor(contractor.BaseContractor):
         state.nested_manager = None
         our_action = None
 
-        wants_join = ActionType.join in announcement.payload['solutions']
-        wants_create = ActionType.create in announcement.payload['solutions']
-        wants_adopt = ActionType.adopt in announcement.payload['solutions']
+        def wants(a_type):
+            return a_type in announcement.payload['solutions']
+
+        wants_join = wants(shard.ActionType.join)
+        wants_create = wants(shard.ActionType.create)
+        wants_adopt = wants(shard.ActionType.adopt)
 
         if wants_join:
             allocation = state.agent.preallocate_resource(hosts=1)
             if allocation:
-                our_action = ActionType.join
+                our_action = shard.ActionType.join
                 cost = 0
         if our_action is None and (wants_adopt or wants_create):
             allocation = state.agent.preallocate_resource(children=1)
             if allocation:
-                our_action = wants_create and ActionType.create or\
-                                              ActionType.adopt
+                our_action = wants_create and shard.ActionType.create or\
+                                              shard.ActionType.adopt
                 cost = 20
         state.preallocation_id = allocation and allocation.id
 
@@ -139,7 +142,7 @@ class JoinShardContractor(contractor.BaseContractor):
             bid.payload['cost'] = cost
 
         f = fiber.Fiber()
-        if our_action in [ActionType.create, None]:
+        if our_action in [shard.ActionType.create, None]:
             # Maybe children shards can just join
             # this poor fellow, lets ask them.
             f.add_callback(fiber.drop_result, self._fetch_children_bids,
@@ -226,7 +229,7 @@ class JoinShardContractor(contractor.BaseContractor):
     def granted(self, state, grant):
         joining_agent_id = grant.payload['joining_agent'].key
 
-        if state.bid.payload['action_type'] == ActionType.create:
+        if state.bid.payload['action_type'] == shard.ActionType.create:
             f = fiber.Fiber()
             f.add_callback(state.agent.confirm_allocation)
             f.add_callback(fiber.drop_result,
@@ -239,7 +242,7 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(state.medium.update_manager_address)
             f.add_callbacks(self._finalize, self._granted_failed)
             return f.succeed(state.preallocation_id)
-        elif state.bid.payload['action_type'] == ActionType.join:
+        elif state.bid.payload['action_type'] == shard.ActionType.join:
             f = fiber.Fiber()
             f.add_callback(state.agent.confirm_allocation)
             f.add_callback(
@@ -248,7 +251,7 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(state.medium.update_manager_address)
             f.add_callbacks(self._finalize, self._granted_failed)
             return f.succeed(state.preallocation_id)
-        elif state.bid.payload['action_type'] == ActionType.adopt:
+        elif state.bid.payload['action_type'] == shard.ActionType.adopt:
             f = fiber.Fiber()
             f.add_callback(state.agent.confirm_allocation)
             f.add_callback(

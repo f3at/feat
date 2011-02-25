@@ -2,6 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import resource, testsuite, recipient, message, replier
 from feat.agents.shard import shard_agent
+from feat.agents.common.shard import ActionType
 from feat.common.fiber import TriggerType
 
 from feat.agents.base.testsuite import AnySideEffect
@@ -116,7 +117,7 @@ class TestJoinShardContractor(testsuite.TestCase):
                          self.contractor._fetch_children_bids)
 
         expected_bid = testsuite.message(
-            payload=dict(action_type=shard_agent.ActionType.join, cost=0))
+            payload=dict(action_type=ActionType.join, cost=0))
         self.assertFiberCalls(result, self.contractor._pick_best_bid,
                               args=(expected_bid, ))
 
@@ -137,7 +138,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         self.assertFiberCalls(result, self.contractor._fetch_children_bids)
 
         expected_bid = testsuite.message(
-            payload=dict(action_type=shard_agent.ActionType.create, cost=20))
+            payload=dict(action_type=ActionType.create, cost=20))
         self.assertFiberCalls(result, self.contractor._pick_best_bid,
                               args=(expected_bid, ))
 
@@ -234,7 +235,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         grant = message.Grant(payload=dict(
             joining_agent=recipient.Agent('some id', 'lobby')))
         bid = self._generate_bid(0)
-        bid.payload['action_type'] = shard_agent.ActionType.join
+        bid.payload['action_type'] = ActionType.join
         self.contractor._get_state().bid = bid
         f, s = self.ball.call(None, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, testsuite.whatever)
@@ -248,7 +249,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         grant = message.Grant(payload=dict(
             joining_agent=recipient.Agent('some id', 'lobby')))
         bid = self._generate_bid(0)
-        bid.payload['action_type'] = shard_agent.ActionType.create
+        bid.payload['action_type'] = ActionType.create
         self.contractor._get_state().bid = bid
         f, s = self.ball.call(None, self.contractor.granted, grant)
         self.assertFiberTriggered(f, TriggerType.succeed, testsuite.whatever)
@@ -279,7 +280,7 @@ class TestJoinShardContractor(testsuite.TestCase):
         announce.payload['joining_agent'] = recipient.Agent(
                 'some host', 'lobby')
         announce.payload['solutions'] = \
-            (shard_agent.ActionType.create, shard_agent.ActionType.join, )
+            (ActionType.create, ActionType.join, )
         return announce
 
     def _load_contractor(self):

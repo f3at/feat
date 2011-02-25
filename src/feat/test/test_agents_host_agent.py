@@ -2,6 +2,7 @@ from feat.agents.base import testsuite, recipient, message, replier
 from feat.agents.host import host_agent
 from feat.common import fiber
 from feat.test import factories
+from feat.agents.common.shard import JoinShardManager
 
 
 class TestHostAgent(testsuite.TestCase):
@@ -16,7 +17,7 @@ class TestHostAgent(testsuite.TestCase):
     def testInitiate(self):
         recp = recipient.Agent('join-shard', 'lobby')
         manager = self.ball.generate_manager(
-            self.agent, host_agent.JoinShardManager)
+            self.agent, JoinShardManager)
         expected = [
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                  self.ball.descriptor),
@@ -40,8 +41,7 @@ class TestJoinShardManager(testsuite.TestCase):
     def setUp(self):
         testsuite.TestCase.setUp(self)
         agent = self.ball.generate_agent(host_agent.HostAgent)
-        instance = self.ball.generate_manager(agent,
-                                              host_agent.JoinShardManager)
+        instance = self.ball.generate_manager(agent, JoinShardManager)
         self.manager = self.ball.load(instance)
 
     def testInitiate(self):

@@ -6,7 +6,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               partners, resource, )
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
-from feat.agents.shard.contracts import *
+from feat.agents.common import shard
 
 
 @serialization.register
@@ -55,8 +55,8 @@ class HostAgent(agent.BaseAgent):
     @replay.journaled
     def start_join_shard_manager(self, state):
         if state.partners.shard is None:
-            return start_join_shard_manager(state.medium,
-                                            ActionType.join, ActionType.create)
+            return shard.start_manager(
+                state.medium, shard.ActionType.join, shard.ActionType.create)
 
     @replay.journaled
     def switch_shard(self, state, shard):
