@@ -10,7 +10,7 @@ from zope.interface import implements
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.common import delay, log
-from feat.agencies import agency
+from feat.agencies import agency, dependency
 from feat.agencies.interface import NotFoundError
 
 from . import common
@@ -60,6 +60,21 @@ class DummyInterest(object):
         self.protocol_type = "Contract"
         self.protocol_id = "some-contract"
         self.interest_type = protocols.InterestType.public
+
+
+class TestDependencies(common.TestCase, common.AgencyTestHelper):
+
+    def setUp(self):
+        common.AgencyTestHelper.setUp(self)
+
+    def testGettingModes(self):
+        self.assertEqual(dependency.Mode.test, self.agency.get_mode('unknown'))
+        self.agency.set_mode('something', dependency.Mode.production)
+        self.assertEqual(dependency.Mode.production,
+                         self.agency.get_mode('something'))
+        self.agency._set_default_mode(dependency.Mode.production)
+        self.assertEqual(dependency.Mode.production,
+                         self.agency.get_mode('unknown'))
 
 
 class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):

@@ -19,7 +19,7 @@ from feat.common.serialization import pytree, Serializable
 from interface import IListener, IAgencyInitiatorFactory,\
                       IAgencyInterestedFactory, IConnectionFactory
 
-from feat.agencies import contracts, requests
+from feat.agencies import contracts, requests, dependency
 
 
 class AgencyJournalSideEffect(object):
@@ -107,7 +107,8 @@ class AgencyJournalEntry(object):
         return self
 
 
-class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
+class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
+             dependency.AgencyDependencyMixin):
 
     log_category = 'agency'
 
@@ -121,6 +122,7 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
     def __init__(self, messaging, database):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+        dependency.AgencyDependencyMixin.__init__(self, dependency.Mode.test)
 
         self._agents = []
 
@@ -273,7 +275,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger):
         return self._agents
 
 
-class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole):
+class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
+                  dependency.AgencyAgentDependencyMixin):
     implements(agent.IAgencyAgent, journal.IRecorderNode,
                journal.IJournalKeeper, serialization.ISerializable)
 

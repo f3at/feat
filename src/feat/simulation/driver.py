@@ -6,7 +6,7 @@ from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import log, manhole
-from feat.agencies import agency
+from feat.agencies import agency, dependency
 from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
 from feat.test import factories
@@ -20,13 +20,17 @@ class Commands(manhole.Manhole):
     '''
 
     @manhole.expose()
-    def spawn_agency(self):
+    def spawn_agency(self, *components):
         '''
         Spawn new agency, returns the reference. Usage:
         > spawn_agency()
+        Also takes a list of components to switch into production mode.
+        By default all the components work in test mode.
         '''
         ag = agency.Agency(self._messaging, self._database)
         self._agencies.append(ag)
+        for comp in components:
+            ag.set_mode(comp, dependency.Mode.production)
         return ag
 
     @manhole.expose()

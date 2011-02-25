@@ -416,6 +416,10 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def update_descriptor(self, desc):
         pass
 
+    @replay.named_side_effect('AgencyAgent.get_mode')
+    def get_mode(self, component):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_time')
     def get_time(self):
         pass

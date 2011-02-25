@@ -6,7 +6,8 @@ from zope.interface import implements
 from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import agent
 from feat.agents.base import (resource, recipient, replay, requester,
-                              replier, partners, )
+                              replier, partners, dependency, )
+
 
 registry = dict()
 
@@ -45,7 +46,8 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole):
+class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
+                dependency.AgentDependencyMixin):
 
     __metaclass__ = MetaAgent
 
