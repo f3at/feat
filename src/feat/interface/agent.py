@@ -154,6 +154,9 @@ class IAgent(Interface):
         Args and keywords are passed to IAgency.start_agent().
         '''
 
+    def get_descriptor():
+        '''Returns a copy of the agent descriptos.'''
+
     def shutdown():
         """
         Called after agency decides to terminate the agent.
