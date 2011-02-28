@@ -465,8 +465,12 @@ class Fiber(object):
     def _callback_wrapper(self, value, fiber, callback, args, kwargs):
         section = WovenSection(descriptor=fiber)
         section.enter()
-        result = callback(value, *args, **kwargs)
-        return section.exit(result)
+        try:
+            result = callback(value, *args, **kwargs)
+            return section.exit(result)
+        except:
+            section.abort()
+            raise
 
     def _serialize_callbacks(self, cb, eb, cba, cbk, eba, ebk):
         # FIXME: Should we deep clone ?
