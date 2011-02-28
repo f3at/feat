@@ -235,7 +235,6 @@ class JoinShardContractor(contractor.BaseContractor):
             f.add_callback(fiber.drop_result,
                            state.agent.prepare_child_descriptor)
             f.add_callback(self._request_start_agent)
-            f.add_callback(self._extract_agent)
             f.add_callback(state.agent.establish_partnership,
                            state.preallocation_id, u'child', u'parent')
             f.add_callback(self._generate_new_address, joining_agent_id)
@@ -275,9 +274,6 @@ class JoinShardContractor(contractor.BaseContractor):
         recp = state.medium.announce.payload['joining_agent']
         totals, _ = state.agent.list_resource()
         return host.start_agent(state.agent, recp, desc, **totals)
-
-    def _extract_agent(self, reply):
-        return reply.payload['agent']
 
     def _generate_new_address(self, shard_partner, agent_id):
         return recipient.Agent(agent_id, shard_partner.recipient.shard)
