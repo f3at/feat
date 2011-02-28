@@ -20,17 +20,6 @@ class BaseMessage(formatable.Formatable):
     def clone(self):
         return copy.deepcopy(self)
 
-    def __eq__(self, other):
-        if type(self) != type(other):
-            return NotImplemented
-        for field in self._fields:
-            if getattr(self, field.name) != getattr(other, field.name):
-                return False
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
     def __repr__(self):
         d = dict()
         for field in self._fields:

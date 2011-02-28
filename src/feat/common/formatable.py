@@ -67,6 +67,17 @@ class Formatable(serialization.Serializable, annotate.Annotable):
                 value = copy.copy(field.default)
             setattr(self, field.name, value)
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
+        for field in self._fields:
+            if getattr(self, field.name) != getattr(other, field.name):
+                return False
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     # ISerializable
 
     def snapshot(self):
