@@ -10,6 +10,7 @@ from feat.common import manhole
 from feat.interface import agent
 from feat.interface.agency import ExecMode
 from feat.process import standalone
+from feat.common.serialization import json
 
 from feat.agencies.net import messaging
 from feat.agencies.net import database
@@ -147,23 +148,26 @@ class Agency(agency.Agency):
         factory = agent.IAgentFactory(
             registry_lookup(descriptor.document_type))
         if factory.standalone:
-            return self.start_standalone_agent(descriptor, factory)
+            return self.start_standalone_agent(descriptor, factory,
+                                               *args, **kwargs)
         else:
             return self.start_agent_locally(descriptor, *args, **kwargs)
 
     def start_agent_locally(self, descriptor, *args, **kwargs):
         return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
 
-    def start_standalone_agent(self, descriptor, factory):
-        command, args, env = factory.get_cmd_line()
-        env = self._store_config(env)
+    def start_standalone_agent(self, descriptor, factory, *args, **kwargs):
+        cmd, cmd_args, cmd_env = factory.get_cmd_line(*args, **kwargs)
+        env = self._store_config(cmd_env)
         env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
+        env['FEAT_AGENT_ARGS'] = json.serialize(args)
+        env['FEAT_AGENT_KWARGS'] = json.serialize(kwargs)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
 
         d = self._broker.wait_event(recp.key, 'started')
         d.addCallback(lambda _: recp)
 
-        p = standalone.Process(self, command, args, env)
+        p = standalone.Process(self, cmd, cmd_args, cmd_env)
         p.restart()
 
         return d

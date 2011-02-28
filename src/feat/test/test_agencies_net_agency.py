@@ -24,14 +24,20 @@ class UnitTestCase(common.TestCase):
     def testLoadConfig(self):
         env = {
             'FEAT_AGENT_ID': 'agent_id',
+            'FEAT_AGENT_ARGS': 'agent_args',
+            'FEAT_AGENT_KWARGS': 'agent_kwargs',
             'FEAT_MSG_PORT': '2000',
             'FEAT_MANHOLE_PUBLIC_KEY': 'file'}
         self.agency._init_config()
         # Test extra configuration values
-        self.agency.config["agent"] = {"id": None}
+        self.agency.config["agent"] = {"id": None,
+                                       "args": None,
+                                       "kwargs": None}
         self.agency._load_config(env)
         self.assertTrue('agent' in self.agency.config)
         self.assertEqual('agent_id', self.agency.config['agent']['id'])
+        self.assertEqual('agent_args', self.agency.config['agent']['args'])
+        self.assertEqual('agent_kwargs', self.agency.config['agent']['kwargs'])
         self.assertTrue('msg' in self.agency.config)
         self.assertEqual('2000', self.agency.config['msg']['port'])
         self.assertTrue('manhole' in self.agency.config)
@@ -65,12 +71,46 @@ class StandaloneAgent(agent.BaseAgent):
         return command, args, env
 
 
-@serialization.register
+@descriptor.register('standalone')
 class Descriptor(descriptor.Descriptor):
+    pass
 
-    document_type = 'standalone'
 
 jelly.globalSecurity.allowInstancesOf(Descriptor)
+
+
+@agent.register('standalone_with_args')
+class StandaloneAgentWithArgs(agent.BaseAgent):
+
+    standalone = True
+
+    @staticmethod
+    def get_cmd_line(*args, **kwargs):
+        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+            raise Exception("Unexpected arguments or keyword in get_cmd_line()"
+                            ": %r %r" % (args, kwargs))
+        src_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..'))
+        command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
+        logfile = os.path.join(src_path, 'standalone.log')
+        args = ['-i', 'feat.test.test_agencies_net_agency',
+                '-l', logfile]
+        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
+        return command, args, env
+
+    def initiate(self, *args, **kwargs):
+        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+            raise Exception("Unexpected arguments or keyword in initiate()"
+                            ": %r %r" % (args, kwargs))
+        agent.BaseAgent.initiate(self)
+
+
+@descriptor.register('standalone_with_args')
+class DescriptorWithArgs(descriptor.Descriptor):
+    pass
+
+
+jelly.globalSecurity.allowInstancesOf(DescriptorWithArgs)
 
 
 @agent.register('standalone-master')
@@ -150,6 +190,22 @@ class IntegrationTestCase(common.TestCase):
         desc = Descriptor()
         desc = yield self.db.save_document(desc)
         yield host_a.start_agent(desc.doc_id)
+
+        part = host_a.query_partners('all')
+        self.assertEqual(1, len(part))
+
+    @defer.inlineCallbacks
+    def testStartStandaloneArguments(self):
+        desc = host_agent.Descriptor(shard=u'lobby')
+        desc = yield self.db.save_document(desc)
+        yield self.agency.start_agent(desc, bootstrap=True)
+        self.assertEqual(1, len(self.agency._agents))
+        host_a = self.agency._agents[0].get_agent()
+
+        # this will be called in the other process
+        desc = DescriptorWithArgs()
+        desc = yield self.db.save_document(desc)
+        yield host_a.start_agent(desc.doc_id, 1, 2, 3, foo=4, bar=5)
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))

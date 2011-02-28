@@ -91,7 +91,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         f = fiber.FiberList(fibers)
         return f.succeed()
 
-    def get_cmd_line(self):
+    def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 
     ## end of IAgent ##

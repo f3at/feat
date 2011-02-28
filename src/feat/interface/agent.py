@@ -12,7 +12,7 @@ class IAgentFactory(Interface):
     def __call__(medium, *args, **kwargs):
         pass
 
-    def get_cmd_line():
+    def get_cmd_line(*args, **kwargs):
         '''
         Should be implemeneted for the stand alone agents. Returns the
         command line which need to be run to start the external process, its

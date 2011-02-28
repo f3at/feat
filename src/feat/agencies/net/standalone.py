@@ -4,6 +4,7 @@ from twisted.internet import reactor
 
 from feat.agencies.net import agency
 from feat.common import manhole, defer
+from feat.common.serialization import json
 
 
 add_options = agency.add_options
@@ -15,7 +16,7 @@ class Agency(agency.Agency):
         # Initialize default configuration
         self._init_config()
         # Add standalone-specific values
-        self.config["agent"] = {"id": None}
+        self.config["agent"] = {"id": None, "args": None, "kwargs": None}
         # Load configuration from environment and options
         self._load_config(os.environ, options)
         if self.config['agent']['id'] is None:
@@ -29,11 +30,18 @@ class Agency(agency.Agency):
         return self._notifications.wait("running")
 
     def _run(self):
+        aid = self.config['agent']['id']
+        args = ()
+        kwargs = {}
+        if self.config['agent']['args']:
+            args = json.unserialize(self.config['agent']['args'])
+        if self.config['agent']['kwargs']:
+            kwargs = json.unserialize(self.config['agent']['kwargs'])
+
         d = self._init_networking()
         d.addCallback(lambda _: self._database.get_connection(None))
-        d.addCallback(lambda conn:
-                      conn.get_document(self.config['agent']['id']))
-        d.addCallback(self.start_agent_locally)
+        d.addCallback(lambda conn: conn.get_document(aid))
+        d.addCallback(self.start_agent_locally, *args, **kwargs)
         d.addCallbacks(self.notify_running, self.notify_failed)
         return d
 
