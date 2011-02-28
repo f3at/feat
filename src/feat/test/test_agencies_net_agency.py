@@ -76,9 +76,6 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
-jelly.globalSecurity.allowInstancesOf(Descriptor)
-
-
 @agent.register('standalone_with_args')
 class StandaloneAgentWithArgs(agent.BaseAgent):
 
@@ -108,9 +105,6 @@ class StandaloneAgentWithArgs(agent.BaseAgent):
 @descriptor.register('standalone_with_args')
 class DescriptorWithArgs(descriptor.Descriptor):
     pass
-
-
-jelly.globalSecurity.allowInstancesOf(DescriptorWithArgs)
 
 
 @agent.register('standalone-master')

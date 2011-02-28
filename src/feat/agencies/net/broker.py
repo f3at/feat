@@ -6,6 +6,7 @@ from twisted.internet.error import CannotListenError, ConnectionRefusedError
 from twisted.spread import pb
 
 from feat.common import log, enum, defer
+from feat.common.serialization import banana
 from feat.agencies import common
 
 
@@ -44,6 +45,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.on_master_cb = on_master_cb
         self.on_slave_cb = on_slave_cb
         self.on_disconnected_cb = on_disconnected_cb
+
+        self._serializer = banana.Serializer()
 
     def initiate_broker(self):
         try:
@@ -170,8 +173,10 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         if self._cmp_state(BrokerRole.master):
             return self.agency.actually_start_agent(desc, *args, **kwargs)
         elif self._cmp_state(BrokerRole.slave):
+            self._unserializer = banana.Unserializer()
+            raw_desc = self._serializer.convert(desc)
             return self._master.callRemote(
-                'start_agent', desc, *args, **kwargs)
+                'start_agent', raw_desc, *args, **kwargs)
 
 
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
@@ -184,6 +189,8 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
         self.broker = broker
         self.slaves = list()
         self.connections = list()
+
+        self._unserializer = banana.Unserializer()
 
     def remote_handshake(self, slave):
         self.debug('Appending slave agency: %r', slave)
@@ -199,7 +206,8 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
     def remote_fail_event(self, failure, *args):
         return self.broker.fail_event(failure, *args)
 
-    def remote_start_agent(self, desc, *args, **kwargs):
+    def remote_start_agent(self, raw_desc, *args, **kwargs):
+        desc = self._unserializer.convert(raw_desc)
         return self.broker.start_agent(desc, *args, **kwargs)
 
     def clientConnectionMade(self, broker):
