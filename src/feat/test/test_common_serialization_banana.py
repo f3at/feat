@@ -20,3 +20,6 @@ class BananaConvertersTest(common_serialization.ConverterTest):
         ext = self.externalizer
         self.serializer = banana.Serializer(externalizer = ext)
         self.unserializer = banana.Unserializer(externalizer = ext)
+
+    def testHelperFunctions(self):
+        self.checkSymmetry(banana.serialize, banana.unserialize)

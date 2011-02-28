@@ -292,12 +292,12 @@ class ConverterTest(common.TestCase):
 
     def checkSymmetry(self, serializer, deserializer, capabilities=None):
 
+        if capabilities is None:
+            capabilities = base.DEFAULT_CONVERTER_CAPS
+
         # If int and long types are considered equals
         generic_int = (Capabilities.int_values in capabilities
                        and Capabilities.long_values in capabilities)
-
-        if capabilities is None:
-            capabilities = base.DEFAULT_CONVERTER_CAPS
 
         for exp_type, values, must_change in self.symmetry_table(capabilities):
             exp_types, exp_type_names = self._exp_types(exp_type)
@@ -331,7 +331,6 @@ class ConverterTest(common.TestCase):
         raise SkipTest("No convertion table")
 
     def symmetry_table(self, capabilities):
-
         valdesc = [(Capabilities.int_values, Capabilities.int_keys,
                     [int, long], [0, -42, 42]),
                    (Capabilities.long_values, Capabilities.long_keys,
