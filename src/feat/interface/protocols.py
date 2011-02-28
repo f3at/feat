@@ -3,7 +3,8 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 __all__ = ["InterestType", "IInitiatorFactory",
-           "IInterest", "IInitiator", "IInterested"]
+           "IInterest", "IInitiator", "IInterested", "InitiatorFailed",
+           "InitiatorExpired"]
 
 
 class InterestType(enum.Enum):
@@ -55,6 +56,12 @@ class IInitiator(Interface):
 class InitiatorFailed(Exception):
     '''
     The intiating side of the dialog did not finish with successful status
+    '''
+
+
+class InitiatorExpired(InitiatorFailed):
+    '''
+    A protocol peer has been terminated by the expiration call.
     '''
 
 

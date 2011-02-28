@@ -754,7 +754,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         return d
 
     def _finalize(self, result):
-        self.finish_deferred.callback(result)
+        common.InitiatorMediumBase._terminate(self, result)
 
     def _wait_and_retry(self, failure):
         self.info('Retrying protocol for factory: %r failed for the %d time. ',
@@ -765,7 +765,8 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
             self.info("Will not try to restart.")
-            return self.finish_deferred.errback(failure)
+            common.InitiatorMediumBase._terminate(self, failure)
+            return
 
         # do retry
         self.info('Will retry in %d seconds', self.delay)

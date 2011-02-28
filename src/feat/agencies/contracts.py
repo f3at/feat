@@ -161,8 +161,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._set_state(contracts.ContractState.initiated)
         timeout = self.agent.get_time() + self.manager.initiate_timeout
-        error = RuntimeError('Timeout exceeded waiting for manager.initate() '
-                             'to send the announcement')
+        error = protocols.InitiatorExpired(
+            'Timeout exceeded waiting for manager.initate() '
+            'to send the announcement')
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
 
@@ -245,7 +246,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self):
         self._set_state(contracts.ContractState.terminated)
-        delay.callLater(0, self._terminate)
+        delay.callLater(0, self._terminate, None)
 
     @replay.named_side_effect('AgencyManager.get_bids')
     def get_bids(self):
@@ -322,8 +323,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         reports = map(lambda x: x.report, contractors)
         d = self._call(self.manager.completed, reports)
-        d.addCallback(self.finish_deferred.callback)
-        d.addCallback(lambda _: self._terminate())
+        d.addCallback(self._terminate)
 
     # Used by ExpirationCallsMixin
 
@@ -340,13 +340,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.closed)
         self._call(self.manager.closed)
 
-    def _terminate(self):
+    def _terminate(self, arg):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
 
-        common.InitiatorMediumBase._terminate(self)
+        common.InitiatorMediumBase._terminate(self, arg)
 
     def _count_expected_bids(self, recipients):
         '''
@@ -486,7 +486,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.delegated)
 
         self.bid = self._handover_message(bid)
-        delay.callLater(0, self._terminate)
+        delay.callLater(0, self._terminate, None)
         return self.bid
 
     @replay.named_side_effect('AgencyContractor.refuse')
@@ -499,7 +499,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.refused)
 
         refusal = self._send_message(refusal)
-        self._terminate()
+        self._terminate(None)
         return refusal
 
     @replay.named_side_effect('AgencyContractor.defect')
@@ -512,7 +512,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(contracts.ContractState.defected)
 
         cancellation = self._send_message(cancellation)
-        self._terminate()
+        self._terminate(None)
         return cancellation
 
     @replay.named_side_effect('AgencyContractor.finalize')
@@ -543,13 +543,13 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # private section
 
-    def _terminate(self):
+    def _terminate(self, arg):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering contractor")
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
-        common.InterestedMediumBase._terminate(self)
+        common.InterestedMediumBase._terminate(self, arg)
 
     # update reporter stuff
 

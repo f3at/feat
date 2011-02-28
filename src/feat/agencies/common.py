@@ -2,8 +2,10 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
+from twisted.python import failure
+
 from feat.common import delay, fiber, serialization, error_handler, log, defer
-from feat.interface.protocols import InitiatorFailed
+from feat.interface.protocols import InitiatorExpired, InitiatorFailed
 from feat.agents.base import replay
 
 
@@ -12,6 +14,10 @@ class StateAssertationError(RuntimeError):
 
 
 class StateMachineMixin(object):
+    '''
+    Mixin used by numerous objects. Defines the state and provides utilities
+    for making decisions based on state.
+    '''
 
     _notifier = None
 
@@ -158,10 +164,14 @@ class AgencyMiddleMixin(object):
     def _error_handler(self, f):
         error_handler(self, f)
         self._set_state(self.error_state)
-        self._terminate()
+        self._terminate(f)
 
 
 class ExpirationCallsMixin(object):
+    '''
+    Mixin class used by protocol peers for protecting execution time with
+    timeout.
+    '''
 
     def __init__(self):
         self._expiration_call = None
@@ -194,7 +204,7 @@ class ExpirationCallsMixin(object):
     def _expire_at(self, expire_time, method, state, *args, **kwargs):
         d = self._setup_expiration_call(expire_time, method,
                                            state, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate())
+        d.addCallback(lambda _: self._terminate(InitiatorExpired('timeout')))
         return d
 
     @replay.side_effect
@@ -206,8 +216,13 @@ class ExpirationCallsMixin(object):
             self._expiration_call = None
 
     def _run_and_terminate(self, method, *args, **kwargs):
+        '''
+        Used by contracts class for getting into failure cases.
+        '''
         d = self._call(method, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate())
+        # Wrap the result in InitiatorFailed instance
+        d.addBoth(InitiatorFailed)
+        d.addCallback(self._terminate)
 
     def _terminate(self):
         self._cancel_expiration_call()
@@ -225,36 +240,22 @@ class ExpirationCallsMixin(object):
 
 class InitiatorMediumBase(object):
 
-    error_factory = InitiatorFailed
-
     def __init__(self):
-        self._finished_cbs = list()
-        self.finish_deferred = defer.Deferred()
-        self.finish_deferred.addCallbacks(self._finish_callback,
-                                           self._finish_errback)
+        self._fnotifier = defer.Notifier()
 
     def notify_finish(self):
-        d = defer.Deferred()
-        self._finished_cbs.append(d)
-        return d
+        return self._fnotifier.wait('finish')
 
-    def _finish_callback(self, x):
-        map(lambda d: d.callback(x), self._finished_cbs)
-        return x
-
-    def _finish_errback(self, x):
-        for d in self._finished_cbs:
-            d.errback(x)
-
-    def _terminate(self):
-        if not self.finish_deferred.called:
-            self.log("Firing errback of finish_deferred")
-            ex = self.error_factory(self.state)
-            self.finish_deferred.errback(ex)
+    def _terminate(self, arg):
+        if isinstance(arg, (failure.Failure, Exception)):
+            self.log("Firing errback of notifier with arg: %r.", arg)
+            self._fnotifier.errback('finish', arg)
+        else:
+            self.log("Firing callback of notifier with arg: %r.", arg)
+            self._fnotifier.callback('finish', arg)
 
 
 class InterestedMediumBase(InitiatorMediumBase):
 
-    def _terminate(self):
-        if not self.finish_deferred.called:
-            self.finish_deferred.callback(None)
+    def _terminate(self, arg):
+        self._fnotifier.callback('finish', arg)

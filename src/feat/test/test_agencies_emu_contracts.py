@@ -126,9 +126,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.recipients = map(lambda x: x['endpoint'], self.contractors)
         self.queues = map(lambda x: x['queue'], self.contractors)
 
-    def tearDown(self):
-        return self.finished
-
     def start_manager(self):
         self.manager =\
                 self.agent.initiate_protocol(DummyManager, self.recipients)
@@ -267,8 +264,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                         ContractorState.rejected)))
 
         d.addCallback(asserts_on_manager)
-
-        d.addCallback(lambda _: self.medium._terminate())
+        ex = protocols.InitiatorExpired('timeout')
+        d.addCallback(lambda _: self.medium._terminate(ex))
         d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
 
         return d
@@ -309,9 +306,9 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(asserts_on_manager)
 
-        d.addCallback(lambda _: self.medium._terminate())
+        d.addCallback(lambda _: self._terminate_manager())
         d.addCallback(self.assertUnregistered,
-                      contracts.ContractState.granted)
+                      contracts.ContractState.aborted)
 
         return d
 
@@ -465,6 +462,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @defer.inlineCallbacks
     def testCountingExpectedBids(self):
         self.start_manager()
 
@@ -476,8 +474,13 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(None,
                self.manager._get_medium()._count_expected_bids(
                              self.recipients + [broadcast]))
-        self.manager._get_medium()._terminate()
-        self.assertUnregistered(None, contracts.ContractState.initiated)
+        yield self._terminate_manager()
+        self.assertUnregistered(None, contracts.ContractState.wtf)
+
+    def _terminate_manager(self):
+        d = self.manager._get_medium().expire_now()
+        self.assertFailure(d, protocols.InitiatorExpired)
+        return d
 
     def testGettingAllBidsGetsToClosed(self):
         self.start_manager()
@@ -501,8 +504,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(asserts_on_manager)
         d.addCallback(self.assertCalled, 'bid', times=3)
 
-        d.addCallback(lambda _: self.medium._terminate())
-        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
+        d.addCallback(lambda _: self._terminate_manager())
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
 
         return d
 
@@ -681,7 +684,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             d.addCallback(assert_msg_is_report)
 
         d.addCallback(self._get_contractor)
-        d.addCallback(lambda contractor: contractor._get_medium()._terminate())
+        d.addCallback(
+            lambda contractor: contractor._get_medium()._terminate(None))
 
         return d
 
@@ -810,11 +814,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     def testSendingMessageFromIncorrectState(self):
 
-        def custom_handler(s, msg):
+        @replay.immutable
+        def custom_handler(s, state, msg):
             s.log("Sending refusal from incorrect state")
             msg = message.Refusal()
-            msg.session_id = s.medium.session_id
-            s.medium.refuse(msg)
+            msg.session_id = state.medium.session_id
+            state.medium.refuse(msg)
 
         d = self.recv_announce()
         d.addCallback(self._get_contractor)

@@ -84,17 +84,16 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # private
 
-    def _terminate(self):
+    def _terminate(self, arg):
         common.ExpirationCallsMixin._terminate(self)
         self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
-        common.InitiatorMediumBase._terminate(self)
+        common.InitiatorMediumBase._terminate(self, arg)
 
     def _on_reply(self, msg):
         self.log('on_reply')
         d = self._call(self.requester.got_reply, msg)
-        d.addCallback(self.finish_deferred.callback)
-        d.addCallback(lambda _: self._terminate())
+        d.addCallback(self._terminate)
         return d
 
     # Used by ExpirationCallsMixin
@@ -184,12 +183,12 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         reply = reply.clone()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
-        delay.callLater(0, self._terminate)
+        delay.callLater(0, self._terminate, None)
 
-    def _terminate(self):
+    def _terminate(self, arg):
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
-        common.InterestedMediumBase._terminate(self)
+        common.InterestedMediumBase._terminate(self, arg)
 
     # IListener stuff
 
