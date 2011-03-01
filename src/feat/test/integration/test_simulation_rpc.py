@@ -77,25 +77,25 @@ class RPCTest(common.SimulationTest):
         self.assertEqual(agent1.get_value(), None)
         self.assertEqual(agent2.get_value(), None)
 
-        result = yield agent1.callRemote(recip2, "set_value", "spam")
+        result = yield agent1.call_remote(recip2, "set_value", "spam")
 
         self.assertEqual(result, None)
         self.assertEqual(agent1.get_value(), None)
         self.assertEqual(agent2.get_value(), "spam")
 
-        result = yield agent1.callRemote(recip2, "set_value", "bacon")
+        result = yield agent1.call_remote(recip2, "set_value", "bacon")
 
         self.assertEqual(result, "spam")
         self.assertEqual(agent1.get_value(), None)
         self.assertEqual(agent2.get_value(), "bacon")
 
-        result = yield agent2.callRemote(recip1, "set_value", "eggs")
+        result = yield agent2.call_remote(recip1, "set_value", "eggs")
 
         self.assertEqual(result, None)
         self.assertEqual(agent1.get_value(), "eggs")
         self.assertEqual(agent2.get_value(), "bacon")
 
-        result = yield agent2.callRemote(recip1, "set_value", "beans")
+        result = yield agent2.call_remote(recip1, "set_value", "beans")
 
         self.assertEqual(result, "eggs")
         self.assertEqual(agent1.get_value(), "beans")
@@ -103,13 +103,13 @@ class RPCTest(common.SimulationTest):
 
         # Calling on itself
 
-        result = yield agent2.callRemote(recip2, "set_value", "ham")
+        result = yield agent2.call_remote(recip2, "set_value", "ham")
 
         self.assertEqual(result, "bacon")
         self.assertEqual(agent1.get_value(), "beans")
         self.assertEqual(agent2.get_value(), "ham")
 
-        result = yield agent1.callRemote(recip1, "set_value", "tomatoes")
+        result = yield agent1.call_remote(recip1, "set_value", "tomatoes")
 
         self.assertEqual(result, "beans")
         self.assertEqual(agent1.get_value(), "tomatoes")
@@ -126,22 +126,22 @@ class RPCTest(common.SimulationTest):
 
         d = defer.succeed(None)
 
-        d = self.assertAsyncFailure(d, (ValueError, ), agent1.callRemote,
+        d = self.assertAsyncFailure(d, (ValueError, ), agent1.call_remote,
                                     recip2, "raise_error", ValueError)
 
-        d = self.assertAsyncFailure(d, (TypeError, ), agent1.callRemote,
+        d = self.assertAsyncFailure(d, (TypeError, ), agent1.call_remote,
                                     recip2, "return_failure", TypeError)
 
-        d = self.assertAsyncFailure(d, (ValueError, ), agent2.callRemote,
+        d = self.assertAsyncFailure(d, (ValueError, ), agent2.call_remote,
                                     recip1, "raise_error", ValueError)
 
-        d = self.assertAsyncFailure(d, (TypeError, ), agent2.callRemote,
+        d = self.assertAsyncFailure(d, (TypeError, ), agent2.call_remote,
                                     recip1, "return_failure", TypeError)
 
-        d = self.assertAsyncFailure(d, (ValueError, ), agent1.callRemote,
+        d = self.assertAsyncFailure(d, (ValueError, ), agent1.call_remote,
                                     recip1, "raise_error", ValueError)
 
-        d = self.assertAsyncFailure(d, (TypeError, ), agent1.callRemote,
+        d = self.assertAsyncFailure(d, (TypeError, ), agent1.call_remote,
                                     recip1, "return_failure", TypeError)
 
         return d
@@ -158,12 +158,15 @@ class RPCTest(common.SimulationTest):
         d = defer.succeed(None)
 
         d = self.assertAsyncFailure(d, (rpc.NotPublishedError, ),
-                                    agent1.callRemote, recip2, "not_published")
+                                    agent1.call_remote, recip2,
+                                    "not_published")
 
         d = self.assertAsyncFailure(d, (rpc.NotPublishedError, ),
-                                    agent2.callRemote, recip1, "not_published")
+                                    agent2.call_remote, recip1,
+                                    "not_published")
 
         d = self.assertAsyncFailure(d, (rpc.NotPublishedError, ),
-                                    agent1.callRemote, recip1, "not_published")
+                                    agent1.call_remote, recip1,
+                                    "not_published")
 
         return d

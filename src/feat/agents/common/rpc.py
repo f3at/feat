@@ -6,13 +6,13 @@ from feat.agents.base import replay, message, requester, replier
 
 class IRPCClient(Interface):
 
-    def callRemote(recipient, fun_id, *args, **kwargs):
+    def call_remote(recipient, fun_id, *args, **kwargs):
         pass
 
 
 class IRPCServer(Interface):
 
-    def callLocal(fun_id, *args, **kwargs):
+    def call_local(fun_id, *args, **kwargs):
         pass
 
 
@@ -44,7 +44,7 @@ class AgentMixin(object):
     ### IRPCClient Methods ###
 
     @replay.journaled
-    def callRemote(self, state, recipient, fun_id, *args, **kwargs):
+    def call_remote(self, state, recipient, fun_id, *args, **kwargs):
         f = fiber.Fiber()
         f.add_callback(self.initiate_protocol,
                        recipient, fun_id, *args, **kwargs)
@@ -53,7 +53,7 @@ class AgentMixin(object):
 
     ### IRPCServer Methods ###
 
-    def callLocal(self, fun_id, *args, **kwargs):
+    def call_local(self, fun_id, *args, **kwargs):
         if not fun_id in self._published:
             raise NotPublishedError("Agent %s do not have any published "
                                     "function named '%s'"
@@ -111,7 +111,7 @@ class RPCReplier(replier.BaseReplier):
         args = request.payload['args']
         kwargs = request.payload['kwargs']
         f = fiber.succeed(fun_id)
-        f.add_callback(state.agent.callLocal, *args, **kwargs)
+        f.add_callback(state.agent.call_local, *args, **kwargs)
         f.add_callbacks(callback=self.got_result, errback=self.got_failure)
         return f
 
