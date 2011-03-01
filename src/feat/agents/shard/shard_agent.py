@@ -273,7 +273,8 @@ class JoinShardContractor(contractor.BaseContractor):
     def _request_start_agent(self, state, desc):
         recp = state.medium.announce.payload['joining_agent']
         totals, _ = state.agent.list_resource()
-        return host.start_agent(state.agent, recp, desc, **totals)
+        return host.start_agent(state.agent, recp, desc, allocation_id=None,
+                                **totals)
 
     def _generate_new_address(self, shard_partner, agent_id):
         return recipient.Agent(agent_id, shard_partner.recipient.shard)

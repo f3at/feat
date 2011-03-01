@@ -75,17 +75,20 @@ class HostAgent(agent.BaseAgent):
 
     @manhole.expose()
     @replay.journaled
-    def start_agent(self, state, doc_id, *args, **kwargs):
+    def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
         if isinstance(doc_id, descriptor.Descriptor):
             doc_id = doc_id.doc_id
         assert isinstance(doc_id, (str, unicode, ))
-        f = fiber.Fiber()
-        f.add_callback(self.get_document)
+        f = fiber.succeed()
+        if allocation_id:
+            f.add_callback(fiber.drop_result,
+                           self.check_allocation_exists, allocation_id)
+        f.add_callback(fiber.drop_result, self.get_document, doc_id)
         f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
-        f.add_callback(self.establish_partnership, our_role=u'host')
-        f.succeed(doc_id)
+        f.add_callback(self.establish_partnership, allocation_id,
+                       our_role=u'host')
         return f
 
     @manhole.expose()
@@ -158,9 +161,9 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
         return f.succeed(state.preallocation_id)
 
     @replay.mutable
-    def _finalize(self, state, allocation_id):
+    def _finalize(self, state, allocation):
         report = message.FinalReport()
-        report.payload['allocation_id'] = allocation_id
+        report.payload['allocation_id'] = allocation.id
         state.medium.finalize(report)
 
 
@@ -175,12 +178,16 @@ class StartAgentReplier(replier.BaseReplier):
 
     @replay.entry_point
     def requested(self, state, request):
+        a_id = request.payload['allocation_id']
+        args = request.payload['args']
+        kwargs = request.payload['kwargs']
+        doc_id = request.payload['doc_id']
+
         f = fiber.Fiber()
-        f.add_callbacks(state.agent.start_agent,
-                        cbargs=request.payload['args'],
-                        cbkws=request.payload['kwargs'])
+        f.add_callback(fiber.drop_result, state.agent.start_agent, doc_id,
+                       a_id, *args, **kwargs)
         f.add_callback(self._send_reply)
-        f.succeed(request.payload['doc_id'])
+        f.succeed(doc_id)
         return f
 
     @replay.mutable

@@ -199,7 +199,7 @@ class IntegrationTestCase(common.TestCase):
         # this will be called in the other process
         desc = DescriptorWithArgs()
         desc = yield self.db.save_document(desc)
-        yield host_a.start_agent(desc.doc_id, 1, 2, 3, foo=4, bar=5)
+        yield host_a.start_agent(desc.doc_id, None, 1, 2, 3, foo=4, bar=5)
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))

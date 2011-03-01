@@ -85,6 +85,14 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         f.add_callback(self._append_allocation_to_descriptor)
         return f.succeed(allocation)
 
+    def exists(self, allocation_id):
+        '''
+        Check that confirmed allocation with given id exists.
+        Raise exception otherwise.
+        '''
+        a = self._find_allocation(allocation_id)
+        a._ensure_state(AllocationState.allocated)
+
     @replay.mutable
     def release(self, state, allocation_id):
         allocation = self._find_allocation(allocation_id)

@@ -161,6 +161,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.resources.allocate(**params)
 
     @replay.immutable
+    def check_allocation_exists(self, state, allocation_id):
+        '''
+        May raise AllocationNotFound.
+        '''
+        state.resources.exists(allocation_id)
+        return True
+
+    @replay.immutable
     def list_resource(self, state):
         allocated = state.resources.allocated()
         totals = state.resources.get_totals()
