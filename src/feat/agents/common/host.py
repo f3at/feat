@@ -1,6 +1,8 @@
 from feat.agents.base import requester, replay, message
 from feat.common import fiber
 
+from feat.interface.recipient import IRecipient
+
 
 __all__ = ['start_agent', 'StartAgentRequester']
 
@@ -11,8 +13,8 @@ def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):
     The result value of the fiber is IRecipient.
     '''
     f = fiber.Fiber()
-    f.add_callback(medium.initiate_protocol, recp, desc, allocation_id,
-                   *args, **kwargs)
+    f.add_callback(medium.initiate_protocol, IRecipient(recp), desc,
+                   allocation_id, *args, **kwargs)
     f.add_callback(StartAgentRequester.notify_finish)
     f.succeed(StartAgentRequester)
     return f
