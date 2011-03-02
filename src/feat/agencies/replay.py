@@ -455,6 +455,10 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def register_interest(self, factory):
         pass
 
+    @serialization.freeze_tag('AgencyAgency.terminate')
+    def terminate(self):
+        raise RuntimeError('This should never be called!')
+
     @serialization.freeze_tag('AgencyAgency.save_document')
     def save_document(self, document):
         raise RuntimeError('This should never be called!')

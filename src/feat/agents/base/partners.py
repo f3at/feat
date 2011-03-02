@@ -108,6 +108,8 @@ class BasePartner(serialization.Serializable):
                 agent.log('Reraising exception %r', fail)
                 fail.raiseException()
 
+        agent.log('Shutdown handler sending goodbye, for '
+                  'agent %r partner %r.', agent, self)
         f = fiber.Fiber()
         f.add_callback(agent.initiate_protocol, self.recipient)
         f.add_callback(requester.GoodBye.notify_finish)

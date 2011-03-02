@@ -26,6 +26,10 @@ class Agency(agency.Agency):
     def initiate(self):
         reactor.callWhenRunning(self._run)
 
+    def unregister_agent(self, medium, agent_id):
+        agency.Agency.unregister_agent(self, medium, agent_id)
+        self.kill()
+
     def wait_running(self):
         return self._notifications.wait("running")
 

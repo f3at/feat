@@ -55,6 +55,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     partners_class = partners.Partners
 
+    log_category = "agent"
+
     standalone = False
 
     def __init__(self, medium):
@@ -62,6 +64,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         log.Logger.__init__(self, medium)
         log.LogProxy.__init__(self, medium)
         replay.Replayable.__init__(self, medium)
+        self.log_name = self.__class__.__name__
 
     @replay.immutable
     def restored(self, state):

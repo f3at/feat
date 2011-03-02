@@ -560,8 +560,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addBoth(lambda _: self._messaging.disconnect())
         return d
 
-    @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
+    @manhole.expose()
     def terminate(self):
         '''terminate() -> Shutdown agent gently removing the descriptor and
         notifying partners.'''
@@ -594,7 +594,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         Run a agent-side method and wait for all the listeners
         to finish processing.
         '''
-        d = defer.maybeDeferred(method, *args, **kwargs)
+        d = fiber.maybe_fiber(method, *args, **kwargs)
         d.addBoth(self.wait_for_listeners_finish)
         return d
 
