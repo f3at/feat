@@ -6,7 +6,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency
 from feat.agencies.net import ssh, broker
-from feat.common import manhole
+from feat.common import log, manhole
 from feat.interface import agent
 from feat.interface.agency import ExecMode
 from feat.process import standalone
@@ -76,9 +76,7 @@ class Agency(agency.Agency):
     @classmethod
     def from_config(cls, env, options=None):
         agency = cls()
-        agency._init_config(env, options)
         agency._load_config(env, options)
-        agency.initiate()
         return agency
 
     def __init__(self, msg_host=None, msg_port=None,
@@ -86,7 +84,6 @@ class Agency(agency.Agency):
                  db_host=None, db_port=None, db_name=None,
                  public_key=None, private_key=None,
                  authorized_keys=None, manhole_port=None):
-
         agency.Agency.__init__(self)
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -271,7 +268,9 @@ class Agency(agency.Agency):
                 if value == 'None':
                     value = None
                 if c_key in self.config:
+                    self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value
+
 
         # Then override with options
         if options:
@@ -279,4 +278,13 @@ class Agency(agency.Agency):
                 for conf_key in conf_group:
                     attr = "%s_%s" % (group_key, conf_key)
                     if hasattr(options, attr):
-                        conf_group[conf_key] = getattr(options, attr)
+                        new_value = getattr(options, attr)
+                        old_value = conf_group[conf_key]
+                        if new_value is not None and (old_value != new_value):
+                            if old_value is None:
+                                self.log("Setting %s.%s to %r",
+                                         group_key, conf_key, new_value)
+                            else:
+                                self.log("Overriding %s.%s to %r",
+                                         group_key, conf_key, new_value)
+                            conf_group[conf_key] = new_value

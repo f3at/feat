@@ -3,7 +3,7 @@ import os
 from twisted.internet import reactor
 
 from feat.agencies.net import agency
-from feat.common import manhole, defer
+from feat.common import log, manhole, defer
 from feat.common.serialization import json
 
 

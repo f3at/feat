@@ -37,7 +37,8 @@ class bootstrap(object):
         return opts
 
     def run_agency(self, opts):
-        a = agency.from_config(os.environ, opts)
+        a = agency.Agency.from_config(os.environ, opts)
+        a.initiate()
         return a
 
 
