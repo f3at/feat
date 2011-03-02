@@ -119,18 +119,27 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
 
     _error_handler = error_handler
 
-    def __init__(self, messaging, database):
+    def __init__(self):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         dependency.AgencyDependencyMixin.__init__(self, agency.ExecMode.test)
 
         self._agents = []
 
-        self._messaging = IConnectionFactory(messaging)
-        self._database = IConnectionFactory(database)
         self._journal_entries = list()
         self.serializer = pytree.Serializer(externalizer=self)
         self.registry = weakref.WeakValueDictionary()
+        self._database = None
+        self._messaging = None
+
+    def initiate(self, messaging, database):
+        '''
+        Asynchronous part of agency initialization. Needs to be called before
+        agency is used for anything.
+        '''
+        self._database = IConnectionFactory(database)
+        self._messaging = IConnectionFactory(messaging)
+        return defer.succeed(None)
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):

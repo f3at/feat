@@ -35,4 +35,5 @@ log.FluLogKeeper.init(options.logfile)
 
 run.daemonize(stderr=options.logfile, stdout=options.logfile)
 a = standalone.Agency()
+a.initiate()
 reactor.run()

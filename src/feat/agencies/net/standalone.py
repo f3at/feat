@@ -13,8 +13,7 @@ add_options = agency.add_options
 class Agency(agency.Agency):
 
     def __init__(self, options=None):
-        # Initialize default configuration
-        self._init_config()
+        agency.Agency.__init__(self)
         # Add standalone-specific values
         self.config["agent"] = {"id": None, "args": None, "kwargs": None}
         # Load configuration from environment and options
@@ -24,6 +23,7 @@ class Agency(agency.Agency):
 
         self._notifications = defer.Notifier()
 
+    def initiate(self):
         reactor.callWhenRunning(self._run)
 
     def wait_running(self):
@@ -38,7 +38,7 @@ class Agency(agency.Agency):
         if self.config['agent']['kwargs']:
             kwargs = json.unserialize(self.config['agent']['kwargs'])
 
-        d = self._init_networking()
+        d = agency.Agency.initiate(self)
         d.addCallback(lambda _: self._database.get_connection(None))
         d.addCallback(lambda conn: conn.get_document(aid))
         d.addCallback(self.start_agent_locally, *args, **kwargs)

@@ -78,7 +78,7 @@ class Agency(agency.Agency):
         agency = cls()
         agency._init_config(env, options)
         agency._load_config(env, options)
-        agency._init_networking()
+        agency.initiate()
         return agency
 
     def __init__(self, msg_host=None, msg_port=None,
@@ -87,6 +87,7 @@ class Agency(agency.Agency):
                  public_key=None, private_key=None,
                  authorized_keys=None, manhole_port=None):
 
+        agency.Agency.__init__(self)
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
                           msg_password=msg_password,
@@ -98,18 +99,21 @@ class Agency(agency.Agency):
                           authorized_keys=authorized_keys,
                           manhole_port=manhole_port)
 
-        self._init_networking()
+        self._ssh = None
+        self._broker = None
 
-    def _init_networking(self):
+        # this is default mode for the dependency modules
+        self._set_default_mode(ExecMode.production)
+
+    def initiate(self):
         mesg = messaging.Messaging(
             self.config['msg']['host'], int(self.config['msg']['port']),
             self.config['msg']['user'], self.config['msg']['password'])
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
-        agency.Agency.__init__(self, mesg, db)
-        # this is default mode for the dependency modules
-        self._set_default_mode(ExecMode.production)
+
+        super_init = agency.Agency.initiate(self, mesg, db)
 
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.shutdown)
@@ -119,7 +123,8 @@ class Agency(agency.Agency):
                                 on_master_cb=self._ssh.start_listening,
                                 on_slave_cb=self._ssh.stop_listening,
                                 on_disconnected_cb=self._ssh.stop_listening)
-        return self._broker.initiate_broker()
+        return defer.DeferredList([super_init,
+                                   self._broker.initiate_broker()])
 
     def full_shutdown(self):
         '''Terminate all the slave agencies and shutdown.'''

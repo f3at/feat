@@ -344,6 +344,7 @@ class AgencyTestHelper(object):
     def setUp(self):
         self.agency = agency.Agency()
         self.session_id = None
+        return self.agency.initiate()
 
     def setup_endpoint(self):
         '''

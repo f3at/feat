@@ -171,6 +171,7 @@ class IntegrationTestCase(common.TestCase):
         self.agency = agency.Agency(
             msg_host=msg_host, msg_port=msg_port,
             db_host=db_host, db_port=db_port, db_name=db_name)
+        yield self.agency.initiate()
 
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):

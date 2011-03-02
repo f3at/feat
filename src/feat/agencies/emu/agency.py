@@ -6,7 +6,7 @@ from feat.agencies.emu import database
 
 class Agency(agency.Agency):
 
-    def __init__(self):
+    def initiate(self):
         mesg = messaging.Messaging()
         db = database.Database()
-        agency.Agency.__init__(self, mesg, db)
+        return agency.Agency.initiate(self, mesg, db)
