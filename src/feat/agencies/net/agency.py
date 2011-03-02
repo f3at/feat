@@ -116,7 +116,7 @@ class Agency(agency.Agency):
         super_init = agency.Agency.initiate(self, mesg, db)
 
         reactor.addSystemEventTrigger('before', 'shutdown',
-                                      self.shutdown)
+                                      self.on_killed)
 
         self._ssh = ssh.ListeningPort(self, **self.config['manhole'])
         self._broker = broker.Broker(self,
@@ -126,14 +126,29 @@ class Agency(agency.Agency):
         return defer.DeferredList([super_init,
                                    self._broker.initiate_broker()])
 
+    def on_killed(self):
+        d = agency.Agency.on_killed(self)
+        d.addCallback(lambda _: self._disconnect)
+        return d
+
+    @manhole.expose()
     def full_shutdown(self):
-        '''Terminate all the slave agencies and shutdown.'''
+        '''full_shutdown() -> Terminate all the slave agencies and shutdowns
+        itself.'''
         d = self._broker.shutdown_slaves()
         d.addCallback(lambda _: self.shutdown())
         return d
 
+    @manhole.expose()
     def shutdown(self):
+        '''shutdown() -> Shutdown the agency in gentel manner (terminating
+        all the agents).'''
         d = agency.Agency.shutdown(self)
+        d.addCallback(lambda _: self._disconnect())
+        return d
+
+    def _disconnect(self):
+        d = defer.succeed(None)
         d.addCallback(lambda _: self._broker.disconnect())
         d.addCallback(lambda _: self._ssh.stop_listening())
         return d

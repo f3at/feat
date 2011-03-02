@@ -169,8 +169,14 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
             return None
 
     def shutdown(self):
-        '''Called when the agency process is terminating.'''
+        '''Called when the agency is ordered to shutdown all the agents..'''
         d = defer.DeferredList([x.terminate() for x in self._agents])
+        d.addCallback(lambda _: self._messaging.disconnect())
+        return d
+
+    def on_killed(self):
+        '''Called when the agency process is terminating. (SIGTERM)'''
+        d = defer.DeferredList([x.on_killed() for x in self._agents])
         d.addCallback(lambda _: self._messaging.disconnect())
         return d
 
@@ -535,8 +541,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
-    def terminate(self):
-        self.log("terminate() called")
+    def _terminate_procedure(self, body):
+        self.log("in _terminate_procedure()")
+        assert callable(body)
 
         # revoke all interests
         [self.revoke_interest(x.factory) for x in self._iter_interests()]
@@ -545,17 +552,42 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.DeferredList([x.give_up() for x in self._retrying_protocols])
         # kill all listeners
         d.addBoth(self._kill_all_listeners)
-        # run IAgent.shutdown() and wait for the listeners to finish the job
-        d.addBoth(self._run_and_wait, self.agent.shutdown)
-        # delete the descriptor
-        d.addBoth(lambda _: self.delete_document(self._descriptor))
-        # TODO: delete the queue
-
+        # Run code specific to the given shutdown
+        d.addBoth(lambda _: body())
         # tell the agency we are no more
         d.addBoth(lambda doc: self.agency.unregister_agent(self, doc.doc_id))
         # close the messaging connection
         d.addBoth(lambda _: self._messaging.disconnect())
         return d
+
+    @manhole.expose()
+    @serialization.freeze_tag('AgencyAgency.terminate')
+    def terminate(self):
+        '''terminate() -> Shutdown agent gently removing the descriptor and
+        notifying partners.'''
+
+        def generate_body():
+            d = defer.succeed(None)
+            # run IAgent.shutdown() and wait for
+            # the listeners to finish the job
+            d.addBoth(self._run_and_wait, self.agent.shutdown)
+            # delete the descriptor
+            d.addBoth(lambda _: self.delete_document(self._descriptor))
+            # TODO: delete the queue
+            return d
+
+        return self._terminate_procedure(generate_body)
+
+    def on_killed(self):
+        '''called as part of SIGTERM handler.'''
+
+        def generate_body():
+            d = defer.succeed(None)
+            # run IAgent.killed() and wait for the listeners to finish the job
+            d.addBoth(self._run_and_wait, self.agent.killed)
+            return d
+
+        return self._terminate_procedure(generate_body)
 
     def _run_and_wait(self, _, method, *args, **kwargs):
         '''

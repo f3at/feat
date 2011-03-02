@@ -136,6 +136,12 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
         """list_get(list, n) -> Get the n'th element of the list"""
         return llist[index]
 
+    @manhole.expose()
+    def shutdown():
+        """shutdown() -> Perfrom full agency shutdown. Cleanup slave agency and
+        agents descriptor."""
+        return self.agency.full_shutdown()
+
 
 class SSHAvatar(avatar.ConchUser):
     implements(conchinterfaces.ISession)

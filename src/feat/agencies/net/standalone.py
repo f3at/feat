@@ -61,4 +61,10 @@ class Agency(agency.Agency):
     @manhole.expose()
     def kill(self):
         '''kill() -> Terminate the process of the standalone.'''
+        self.info('kill() called. Shuting down')
+        d = self.shutdown()
+        d.addCallback(lambda _: self._stop_process())
+        return d
+
+    def _stop_process(self):
         reactor.stop()

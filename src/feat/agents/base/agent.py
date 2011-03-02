@@ -91,6 +91,9 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         f = fiber.FiberList(fibers)
         return f.succeed()
 
+    def on_killed(self):
+        self.info('Agents on_killed called.')
+
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 

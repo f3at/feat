@@ -2,7 +2,8 @@ import os
 import functools
 
 from twisted.internet import reactor
-from twisted.internet.error import CannotListenError, ConnectionRefusedError
+from twisted.internet.error import (CannotListenError, ConnectionRefusedError,
+                                    ConnectionDone, )
 from twisted.spread import pb
 
 from feat.common import log, enum, defer
@@ -89,8 +90,21 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     # Master specific
 
     def shutdown_slaves(self):
+
+        def error_handler(f):
+            if f.check(ConnectionDone, pb.PBConnectionLost):
+                self.log('Swallowing %r - this is expected result.',
+                         f.value.__class__.__name__)
+            else:
+                f.raiseException()
+
+        def kill_slave(slave):
+            d = slave.callRemote('kill')
+            d.addErrback(error_handler)
+            return d
+
         self._ensure_state(BrokerRole.master)
-        return defer.DeferredList([x.callRemote('kill') for x in self.slaves])
+        return defer.DeferredList([kill_slave(x) for x in self.slaves])
 
     def append_slave(self, slave):
         self.slaves.append(slave)

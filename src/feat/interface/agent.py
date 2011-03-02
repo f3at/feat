@@ -168,3 +168,9 @@ class IAgent(Interface):
         Agent code should take care to notify all it's his contractors
         that the collaboration is over.
         """
+
+    def on_killed():
+        '''
+        Called as part of the SIGTERM handler. This type of shutdown assumes
+        that the monitoring agent will restart us somewhere.
+        '''
