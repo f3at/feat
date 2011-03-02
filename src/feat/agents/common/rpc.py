@@ -1,6 +1,6 @@
 from zope.interface import Interface, implements
 
-from feat.common import annotate, decorator, fiber
+from feat.common import annotate, decorator, fiber, error_handler
 from feat.agents.base import replay, message, requester, replier
 
 
@@ -124,6 +124,7 @@ class RPCReplier(replier.BaseReplier):
 
     @replay.immutable
     def got_failure(self, state, failure):
+        error_handler(self, failure)
         msg = message.ResponseMessage()
         msg.payload['succeed'] = False
         msg.payload['exception'] = type(failure.value)
