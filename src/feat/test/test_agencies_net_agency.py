@@ -19,7 +19,7 @@ jelly.globalSecurity.allowModules(__name__)
 class UnitTestCase(common.TestCase):
 
     def setUp(self):
-        self.agency = agency.Agency.__new__(agency.Agency)
+        self.agency = agency.Agency()
 
     def testLoadConfig(self):
         env = {
