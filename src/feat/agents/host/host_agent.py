@@ -1,9 +1,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import socket
+
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, )
+from feat.agents.common import rpc
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agents.common import shard
@@ -33,13 +36,14 @@ class Partners(partners.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent):
+class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
     partners_class = Partners
 
     @replay.mutable
     def initiate(self, state, bootstrap=False):
         agent.BaseAgent.initiate(self)
+        rpc.AgentMixin.initiate(self)
 
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(ResourcesAllocationContractor)
@@ -106,6 +110,10 @@ class HostAgent(agent.BaseAgent):
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         return f.succeed(desc)
+
+    @rpc.publish
+    def get_hostname(self):
+        return socket.gethostbyaddr(socket.gethostname())[0]
 
 
 class ResourcesAllocationContractor(contractor.BaseContractor):

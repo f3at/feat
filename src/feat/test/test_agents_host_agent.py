@@ -1,5 +1,6 @@
 from feat.agents.base import testsuite, recipient, message, replier
 from feat.agents.host import host_agent
+from feat.agents.common import rpc
 from feat.common import fiber
 from feat.test import factories
 from feat.agents.common.shard import JoinShardManager
@@ -25,6 +26,8 @@ class TestHostAgent(testsuite.TestCase):
                                   args=(replier.GoodBye, )),
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(replier.ProposalReceiver, )),
+            testsuite.side_effect('AgencyAgent.register_interest',
+                                  args=(rpc.RPCReplier, )),
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(host_agent.StartAgentReplier, )),
             testsuite.side_effect('AgencyAgent.register_interest',
