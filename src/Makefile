@@ -59,6 +59,6 @@ check-commit:
 
 build-fluflt:
 	cd flumotion-flt;						\
-	$(FLU_PROJECT_PATH)/env ./autogen.sh;				\
+	./autogen.sh;							\
 	make;								\
 	cd ..
