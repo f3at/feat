@@ -273,18 +273,18 @@ class Agency(agency.Agency):
 
 
         # Then override with options
-        if options:
-            for group_key, conf_group in self.config.items():
-                for conf_key in conf_group:
-                    attr = "%s_%s" % (group_key, conf_key)
-                    if hasattr(options, attr):
-                        new_value = getattr(options, attr)
-                        old_value = conf_group[conf_key]
-                        if new_value is not None and (old_value != new_value):
-                            if old_value is None:
-                                self.log("Setting %s.%s to %r",
-                                         group_key, conf_key, new_value)
-                            else:
-                                self.log("Overriding %s.%s to %r",
-                                         group_key, conf_key, new_value)
-                            conf_group[conf_key] = new_value
+        # if options:
+        #     for group_key, conf_group in self.config.items():
+        #         for conf_key in conf_group:
+        #             attr = "%s_%s" % (group_key, conf_key)
+        #             if hasattr(options, attr):
+        #                 new_value = getattr(options, attr)
+        #                 old_value = conf_group[conf_key]
+        #               if new_value is not None and (old_value != new_value):
+        #                     if old_value is None:
+        #                         self.log("Setting %s.%s to %r",
+        #                                  group_key, conf_key, new_value)
+        #                     else:
+        #                         self.log("Overriding %s.%s to %r",
+        #                                  group_key, conf_key, new_value)
+        #                     conf_group[conf_key] = new_value
