@@ -9,7 +9,6 @@ from flumotion.agents.manager import manager_agent
 from flumotion.agents.fsp import fsp_agent
 
 
-
 def start_agent(host_medium, desc, *args, **kwargs):
     agent = host_medium.get_agent()
     d = host_medium.save_document(desc)
@@ -29,4 +28,3 @@ if __name__ == '__main__':
         d.addCallback(start_agent, shard_agent.Descriptor(shard=u'root'))
         d.addCallback(start_agent, raage_agent.Descriptor())
         d.addCallback(start_agent, hapi_agent.Descriptor())
-
