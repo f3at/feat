@@ -1,4 +1,4 @@
-import re
+
 
 from twisted.internet import reactor, defer
 
@@ -134,6 +134,7 @@ class Agency(agency.Agency):
         itself.'''
         d = self._broker.shutdown_slaves()
         d.addCallback(lambda _: self.shutdown())
+#        d.addCallback(lambda _: reactor.stop())
         return d
 
     @manhole.expose()
