@@ -9,3 +9,10 @@ Things needed by Messy to run.
 * Txamqp 0.3
 * Amqp (required by txamqp)
 * Rabbitmq-server >= 2.0
+
+
+Simulator Gui dependences
+
+* pydot
+* pygtk
+* python-configglue
