@@ -95,7 +95,7 @@ class RPCRequester(requester.BaseRequester):
         msg = reply.payload['message']
         if issubclass(exc, RPCException):
             raise exc(msg)
-        raise exc("REMOTE: " + msg)
+        raise exc("REMOTE: " + str(msg))
 
 
 class RPCReplier(replier.BaseReplier):
