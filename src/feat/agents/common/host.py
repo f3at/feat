@@ -23,7 +23,7 @@ def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):
 class StartAgentRequester(requester.BaseRequester):
 
     protocol_id = 'start-agent'
-    timeout = 15
+    timeout = 20
 
     @replay.journaled
     def initiate(self, state, descriptor, allocation_id, *args, **kwargs):
