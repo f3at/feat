@@ -1,6 +1,7 @@
 import pprint
 import binascii
 import base64
+import os
 
 from zope.interface import implements
 from twisted.cred import portal
@@ -64,24 +65,27 @@ class ListeningPort(log.Logger):
 class KeyChecker(checkers.SSHPublicKeyDatabase):
 
     def __init__(self, keyfile):
-        self.keys = []
-        f = open(keyfile)
-        for l in f.readlines():
+        self._keyfile = keyfile
+
+    def checkKey(self, credentials):
+        """
+        Retrieve the keys of the user specified by the credentials, and check
+        if one matches the blob in the credentials.
+        """
+        filename = self._keyfile
+        if not os.path.exists(filename):
+            return 0
+        lines = open(filename).xreadlines()
+        for l in lines:
             l2 = l.split()
             if len(l2) < 2:
                 continue
             try:
-                self.keys.append(base64.decodestring(l2[1]))
+                if base64.decodestring(l2[1]) == credentials.blob:
+                    return 1
             except binascii.Error:
                 continue
-        f.close()
-
-    def check_key(self, key):
-        try:
-            next(x for x in self.keys if x == key.blob)
-            return 1
-        except StopIteration:
-            return 0
+        return 0
 
 
 class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
