@@ -33,14 +33,25 @@ class IAgencyAgent(Interface):
         Return the copy of the descriptor.
         '''
 
-    def update_descriptor(desc):
+    def update_descriptor(callable, *args, **kwargs):
         '''
-        Save the descriptor into the database. This method should be used
-        instead of save_document, because agency side of implementation needs
-        to keep track of the changes.
+        Schedule a descriptor update.
+        The specified callable will be called when all pending descriptor
+        updates are done with the last descriptor value and the specified
+        arguments.
+         - The callable can modify the descriptor and return a result.
+         - The callable must be synchronous.
+         - The callable cannot return a deferred or a fiber.
+         - When the callable returns, the updated descriptor is saved.
+         - The returned deferred is fired with the callable result.
 
-        @param desc: Descriptor to save.
-        @type desc: feat.agents.base.descriptor.Descriptor
+        This method should be used instead of save_document because:
+         - agency queue descriptor updates to be sure only one happen at a time
+           preventing conflicts.
+         - agency side of implementation needs to keep track of the changes.
+
+        @param callable: Synchronous function that update a descriptor.
+        @type callable: function
         @returns: Deferred
         '''
 
