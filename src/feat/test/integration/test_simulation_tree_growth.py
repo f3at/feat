@@ -134,7 +134,7 @@ class FailureRecoverySimulation(common.SimulationTest, Common):
         self.assertTrue(to_kill is not None)
 
         self.info('#' * 50 + ' Killing the shard agent in the leaf shard.')
-        yield to_kill.terminate()
+        yield to_kill._terminate()
 
         yield self.wait_for_all()
         self.info('#' * 50 + ' Test finished, now validating.')

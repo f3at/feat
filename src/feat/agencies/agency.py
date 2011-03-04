@@ -5,11 +5,11 @@ import weakref
 import uuid
 import copy
 
-from twisted.internet import defer
+from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.common import (log, manhole, journal, fiber, serialization, delay,
-                         error_handler, text_helper)
+                         error_handler, text_helper, defer)
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.agencies import common
@@ -170,7 +170,7 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
 
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
-        d = defer.DeferredList([x.terminate() for x in self._agents])
+        d = defer.DeferredList([x._terminate() for x in self._agents])
         d.addCallback(lambda _: self._messaging.disconnect())
         return d
 
@@ -323,6 +323,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._messaging = None
         self._database = None
 
+        self._updating = False
+        self._update_queue = []
+
     def initiate(self):
         '''Establishes the connections to database and messaging platform,
         taking into account that it might meen performing asynchronous job.'''
@@ -350,15 +353,50 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)
 
-    def update_descriptor(self, desc):
+    def update_descriptor(self, function, *args, **kwargs):
+        d = defer.Deferred()
+        self._update_queue.append((d, function, args, kwargs))
+        self._next_update()
+        return d
 
-        def update(desc):
+    def _next_update(self):
+
+        def saved(desc, result, d):
             self.log("Updating descriptor: %r", desc)
             self._descriptor = desc
+            d.callback(result)
 
-        d = self.save_document(desc)
-        d.addCallback(update)
-        return d
+        def error(failure, d):
+            self.error("Failed updating descriptor: %s",
+                       failure.getErrorMessage())
+            d.errback(failure)
+
+        def next_update(any=None):
+            self._updating = False
+            reactor.callLater(0, self._next_update)
+            return any
+
+        if self._updating:
+            # Currently updating descriptor
+            return
+
+        if not self._update_queue:
+            # No more pending updates
+            return
+
+        d, fun, args, kwargs = self._update_queue.pop(0)
+        self._updating = True
+        try:
+            desc = self.get_descriptor()
+            result = fun(desc, *args, **kwargs)
+            assert not isinstance(result, (defer.Deferred, fiber.Fiber))
+            save_d = self.save_document(desc)
+            save_d.addCallbacks(callback=saved, callbackArgs=(result, d),
+                                errback=error, errbackArgs=(d, ))
+            save_d.addBoth(next_update)
+        except:
+            d.errback()
+            next_update()
 
     @serialization.freeze_tag('AgencyAgent.join_shard')
     def join_shard(self, shard):
@@ -416,9 +454,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             listener.on_message(message)
             return True
 
-        self.error("Couldn't find appriopriate listener for message: %s.%s.%s",
-                   message.protocol_type, message.protocol_id,
-                   message.__class__.__name__)
+        self.warning("Couldn't find appropriate listener for message: "
+                     "%s.%s.%s", message.protocol_type, message.protocol_id,
+                     message.__class__.__name__)
         return False
 
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
@@ -539,8 +577,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_document(self, document_id):
         return self._database.get_document(document_id)
 
-    @manhole.expose()
-    @serialization.freeze_tag('AgencyAgency.terminate')
     def _terminate_procedure(self, body):
         self.log("in _terminate_procedure()")
         assert callable(body)
@@ -560,9 +596,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addBoth(lambda _: self._messaging.disconnect())
         return d
 
-    @serialization.freeze_tag('AgencyAgency.terminate')
-    @manhole.expose()
-    def terminate(self):
+    def _terminate(self):
         '''terminate() -> Shutdown agent gently removing the descriptor and
         notifying partners.'''
 
@@ -577,6 +611,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return d
 
         return self._terminate_procedure(generate_body)
+
+    @manhole.expose()
+    @serialization.freeze_tag('AgencyAgency.terminate')
+    def terminate(self):
+        reactor.callLater(0, self._terminate)
 
     def on_killed(self):
         '''called as part of SIGTERM handler.'''

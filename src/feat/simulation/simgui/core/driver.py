@@ -81,7 +81,7 @@ class GuiDriver(driver.Driver):
         for ag in self._agencies:
             for a in ag._agents:
                 agents.append(a)
-        d = defer.DeferredList([a.terminate() for a in agents])
+        d = defer.DeferredList([a._terminate() for a in agents])
         d.addCallback(lambda _: self._remove_agencies())
         d.addCallback(lambda _: self.finished_processing())
         return d

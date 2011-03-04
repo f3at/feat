@@ -117,8 +117,10 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         desc = self.agent.get_descriptor()
         self.assertIsInstance(desc, descriptor.Descriptor)
 
-        desc.shard = 'changed'
-        yield self.agent.update_descriptor(desc)
+        def update_fun(desc):
+            desc.shard = 'changed'
+
+        yield self.agent.update_descriptor(update_fun)
         self.assertEqual('changed', self.agent._descriptor.shard)
 
     def testRegisterTwice(self):
@@ -155,7 +157,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         yield d
 
         self.assertEqual(1, len(self.agent._listeners))
-        yield self.agent.terminate()
+        yield self.agent._terminate()
 
         self.assertCalled(self.agent.agent, 'shutdown')
 

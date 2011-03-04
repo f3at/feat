@@ -1,6 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import types
+
 from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
@@ -28,16 +30,15 @@ def registry_lookup(name):
 
 
 @decorator.simple_function
-def update_descriptor(method):
+def update_descriptor(function):
 
     @replay.immutable
     def decorated(self, state, *args, **kwargs):
-        desc = state.medium.get_descriptor()
-        resp = method(self, state, desc, *args, **kwargs)
-        f = fiber.Fiber()
-        f.add_callback(state.medium.update_descriptor)
-        f.add_callback(lambda _: resp)
-        return f.succeed(desc)
+        immfun = replay.immutable(function)
+        method = types.MethodType(immfun, self, self.__class__)
+        f = fiber.succeed(method)
+        f.add_callback(state.medium.update_descriptor, *args, **kwargs)
+        return f
 
     return decorated
 

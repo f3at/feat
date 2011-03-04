@@ -47,7 +47,7 @@ class PartershipTest(common.SimulationTest):
     def testInitiatorTerminates(self):
         yield self._establish_partnership()
 
-        yield self.initiator.terminate()
+        yield self.initiator._terminate()
         yield self.receiver.wait_for_listeners_finish()
 
         self.assertEqual(1, len(self.agency._agents))
@@ -57,7 +57,7 @@ class PartershipTest(common.SimulationTest):
     def testReceiverTerminates(self):
         yield self._establish_partnership()
 
-        yield self.receiver.terminate()
+        yield self.receiver._terminate()
         yield self.initiator.wait_for_listeners_finish()
 
         self.assertEqual(1, len(self.agency._agents))
@@ -82,13 +82,13 @@ class PartershipTest(common.SimulationTest):
         yield self._establish_partnership('third', 'initiator')
         self.assert_partners(agents, [2, 2, 2])
 
-        yield self.initiator.terminate()
+        yield self.initiator._terminate()
         yield agents[1].wait_for_listeners_finish()
         yield agents[2].wait_for_listeners_finish()
 
         self.assert_partners(agents, [2, 1, 1])
 
-        yield self.receiver.terminate()
+        yield self.receiver._terminate()
         yield agents[2].wait_for_listeners_finish()
         self.assert_partners(agents, [2, 1, 0])
 

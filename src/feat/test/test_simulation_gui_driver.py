@@ -5,7 +5,10 @@ from feat.test import common
 from feat.agents.base import descriptor, agent
 from feat.agencies import agency
 
-from feat.simulation.simgui.core import driver
+try:
+    from feat.simulation.simgui.core import driver
+except ImportError, e:
+    SKIP_TEST = str(e)
 
 dot_template = """digraph G {\nsubgraph cluster_1 \
 {\ncolor=lightblue;\nstyle=filled;\nlabel=lobby;\nsubgraph cluster_0 \
@@ -15,6 +18,9 @@ label=DummyAgent];\n}\n\n}\n\n}\n"""
 
 
 class TestGuiDriver(common.TestCase):
+
+    if SKIP_TEST:
+        skip = SKIP_TEST
 
     def setUp(self):
         self.driver = driver.GuiDriver()
