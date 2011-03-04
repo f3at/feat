@@ -280,8 +280,6 @@ class Agency(agency.Agency):
                     if hasattr(options, attr):
                         new_value = getattr(options, attr)
                         old_value = conf_group[conf_key]
-                        if old_value is not None:
-                            continue
                         if new_value is not None and (old_value != new_value):
                             if old_value is None:
                                 self.log("Setting %s.%s to %r",
