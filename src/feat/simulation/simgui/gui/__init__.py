@@ -42,4 +42,4 @@ class Main(log.FluLogKeeper, log.Logger):
         Main._main = self
 
     def quit(self):
-        gtk.main_quit()
+        reactor.stop()
