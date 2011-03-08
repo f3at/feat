@@ -256,7 +256,9 @@
                             <property name="min_width">0</property>
                             <property name="title">value</property>
                             <child>
-                              <object class="GtkCellRendererText" id="cellrenderertext3"/>
+                              <object class="GtkCellRendererText" id="cellrenderertext3">
+                                <property name="editable">True</property>
+                              </object>
                               <attributes>
                                 <attribute name="text">1</attribute>
                               </attributes>
