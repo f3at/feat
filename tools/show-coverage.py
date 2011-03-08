@@ -90,6 +90,8 @@ def main(args):
     for file in files:
         if 'feat.test' in file:
             continue
+        if 'flt.test' in file:
+            continue
         if 'interface' in file:
             continue
         if 'feat.extern' in file:
