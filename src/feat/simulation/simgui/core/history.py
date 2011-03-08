@@ -48,8 +48,7 @@ class HistoryLogger(object):
         return self.dates
 
     def read_commands(self, date):
-        f = self.get_filename(date)
-        doc = minidom.parse(f)
+        doc, _ = self._get_document(date)
         commands = []
         cmds = doc.getElementsByTagName('cmd')
         for cmd in cmds:
@@ -63,6 +62,8 @@ class HistoryLogger(object):
             if date == cmd_time.date():
                 text = cmd.firstChild.data.strip()
                 commands.append([cmd_time, text])
+            if date < cmd_time.date():
+                break
         commands.sort(reverse=True)
         return commands
 
@@ -70,8 +71,11 @@ class HistoryLogger(object):
         filename = 'command-%d%d.xml' % (date.year, date.month)
         return os.path.join(self.history_dir, filename)
 
+    def _get_id(self, date):
+        return '%d%d' % (date.year, date.month)
+
     def _get_document(self, date):
-        id = '%d%d' % (date.year, date.month)
+        id = self._get_id(date)
         if not id in self.documents:
             try:
                 f = self.get_filename(date)
@@ -105,5 +109,5 @@ class HistoryLogger(object):
     def _save_to_disk(self, date, doc):
         filename = self.get_filename(date)
         f = open(filename, 'wb')
-        f.write(doc.toprettyxml())
+        f.write(doc.toxml())
         f.close()
