@@ -11,6 +11,7 @@ if not os.path.exists(os.path.join(basedir, "sim.py")):
         basedir = cwd
 sys.path.insert(0, basedir)
 sys.path.insert(0, os.path.join(basedir, '../../../'))
+sys.path.insert(0, os.path.join(basedir, '../../../flumotion-flt'))
 
 
 def main():

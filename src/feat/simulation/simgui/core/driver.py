@@ -7,6 +7,12 @@ from feat.common import manhole
 
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
+from feat.agents.raage import raage_agent
+
+from flt.agents.common import signal
+from flt.agents.signal import signal_agent
+from flt.agents.hapi import hapi_agent
+
 from feat.agents.base import recipient
 
 
