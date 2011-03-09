@@ -1,7 +1,7 @@
 import gtk
 
 from core import history
-from gui import command_history
+from gui.dlg import command_history
 
 
 class Command(object):

@@ -359,24 +359,33 @@
                         <property name="label" translatable="yes">console</property>
                       </object>
                       <packing>
-                        <property name="position">1</property>
                         <property name="tab_fill">False</property>
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkTreeView" id="error_view">
+                      <object class="GtkScrolledWindow" id="scrolledwindow3">
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
-                        <property name="model">error_model</property>
+                        <property name="hscrollbar_policy">automatic</property>
+                        <property name="vscrollbar_policy">automatic</property>
                         <child>
-                          <object class="GtkTreeViewColumn" id="message_column">
-                            <property name="title">messages</property>
+                          <object class="GtkTreeView" id="error_view">
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="model">error_model</property>
+                            <property name="headers_clickable">False</property>
+                            <property name="search_column">0</property>
                             <child>
-                              <object class="GtkCellRendererText" id="cellrenderertext2"/>
-                              <attributes>
-                                <attribute name="text">0</attribute>
-                                <attribute name="wrap-width">11</attribute>
-                              </attributes>
+                              <object class="GtkTreeViewColumn" id="message_column">
+                                <property name="title">messages</property>
+                                <child>
+                                  <object class="GtkCellRendererText" id="cellrenderertext2"/>
+                                  <attributes>
+                                    <attribute name="text">0</attribute>
+                                    <attribute name="wrap-width">11</attribute>
+                                  </attributes>
+                                </child>
+                              </object>
                             </child>
                           </object>
                         </child>

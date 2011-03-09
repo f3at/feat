@@ -28,13 +28,20 @@ class AgentMenu(Menu, gobject.GObject):
 
     __gsignals__ = {
             'terminate-agent': (gobject.SIGNAL_RUN_LAST, None,
+                (gobject.TYPE_STRING, )),
+            'help-agent': (gobject.SIGNAL_RUN_LAST, None,
                 (gobject.TYPE_STRING, ))}
 
     def __init__(self, agent_id):
         Menu.__init__(self)
 
+        self.append(_('Exposed methods'), self.on_help_agent, gtk.STOCK_HELP)
+        gtk.Menu.append(self, gtk.SeparatorMenuItem())
         self.append(_('Terminate'), self.on_terminate_agent, gtk.STOCK_DELETE)
         self.agent_id = agent_id
 
     def on_terminate_agent(self):
         self.emit('terminate-agent', self.agent_id)
+
+    def on_help_agent(self):
+        self.emit('help-agent', self.agent_id)

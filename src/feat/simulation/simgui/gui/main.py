@@ -8,6 +8,7 @@ import glib
 import pydot
 
 from gui import command, errors, menu, agentinfo
+from gui.dlg import help_agent
 from feat.extern import xdot
 from core import settings
 
@@ -145,15 +146,19 @@ class MainWindow(object):
     def _agent_show_menu(self, agent_id, event):
         agent_menu = menu.AgentMenu(agent_id)
         agent_menu.connect('terminate-agent', self._on_terminate_agent)
+        agent_menu.connect('help-agent', self._on_help_agent)
         agent_menu.popup(event)
 
     def _on_terminate_agent(self, menu, agent_id):
-        agency = self.driver.find_agency(agent_id)
-        for aagent in agency._agents:
-            id = aagent.snapshot()
-            if agent_id == id:
-                d = aagent.terminate()
-                d.addCallback(lambda _: self._on_script_processed())
+        agent = self.driver.find_agent(agent_id)
+        d = agent.terminate()
+        d.addCallback(lambda _: self._on_script_processed())
+
+    def _on_help_agent(self, menu, agent_id):
+        agent = self.driver.find_agent(agent_id)
+        self.help_agent_dlg = help_agent.HelpAgent(self.window)
+        self.help_agent_dlg.add_help(agent.help())
+        self.help_agent_dlg.run()
 
     def _on_script_processed(self):
         self._update_xdot()
