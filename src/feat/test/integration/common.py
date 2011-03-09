@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from twisted.trial.unittest import SkipTest
+from twisted.trial.unittest import SkipTest, FailTest
 from twisted.internet import defer
 
 from feat.test import common
@@ -77,3 +77,22 @@ class SimulationTest(common.TestCase):
                                               listeners_from_replay):
             self.assertEqual(from_snapshot._get_state(),
                              from_replay._get_state())
+
+    @defer.inlineCallbacks
+    def wait_for(self, check, timeout, freq=0.5):
+        assert callable(check)
+        waiting = 0
+
+        while True:
+            if check():
+                break
+            self.info('Check %r still negative, sleping %r seconds.',
+                      check.__name__, freq)
+            waiting += freq
+            if waiting > timeout:
+                raise FailTest('Timeout error waiting for check %r.',
+                               check.__name__)
+            yield common.delay(None, freq)
+
+    def count_agents(self):
+        return len([x for x in self.driver.iter_agents()])

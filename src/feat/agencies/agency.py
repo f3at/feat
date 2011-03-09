@@ -325,6 +325,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         self._updating = False
         self._update_queue = []
+        # terminating flag (meant not to run termination procedure more than
+        # once)
+        self._terminating = False
 
     def initiate(self):
         '''Establishes the connections to database and messaging platform,
@@ -580,7 +583,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _terminate_procedure(self, body):
         self.log("in _terminate_procedure()")
         assert callable(body)
-
+        if self._terminating:
+            # already doing the stuff
+            return
+        self._terminating = True
         # revoke all interests
         [self.revoke_interest(x.factory) for x in self._iter_interests()]
 
