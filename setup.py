@@ -37,8 +37,9 @@ def clean_build(dist):
 
 if os.path.isdir('src/feat'):
     feat_dist = setup(**feat_args)
-    clean_build(feat_dist)
 
 if os.path.isdir('src/flt'):
-    os.mkdir('build')
+    if os.path.isdir('src/feat'):
+        clean_build(feat_dist)
+        os.mkdir('build')
     setup(**flt_args)
