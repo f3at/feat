@@ -1411,7 +1411,8 @@ class DotWidget(gtk.DrawingArea):
     __gsignals__ = {
         'expose-event': 'override',
         'clicked' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE,(gobject.TYPE_STRING, gtk.gdk.Event)),
-        'show-menu' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gtk.gdk.Event))
+        'show-menu' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gtk.gdk.Event)),
+        'show-global-menu' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, (gtk.gdk.Event, ))
     }
 
     filter = 'dot'
@@ -1680,6 +1681,8 @@ class DotWidget(gtk.DrawingArea):
             url = self.get_url(x, y)
             if url is not None:
                 self.emit('show-menu', unicode(url.url), event)
+            else:
+                self.emit('show-global-menu', event)
             return True
         if event.button == 1 or event.button == 2:
             return True

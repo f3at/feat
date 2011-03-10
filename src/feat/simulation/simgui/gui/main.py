@@ -7,7 +7,7 @@ import glib
 
 import pydot
 
-from gui import command, errors, menu, agentinfo
+from gui import command, errors, menu, agentinfo, agentview
 from gui.dlg import help_agent
 from feat.extern import xdot
 from core import settings
@@ -37,6 +37,13 @@ class MainWindow(object):
         container = self.builder.get_object('xdot_container')
         container.pack_start(self.xdot)
 
+        self.menu_items = {}
+        self.menu_agents_filter = gtk.Menu()
+        agentview.setup_menu(self.menu_agents_filter, self.menu_items)
+        for key, item in self.menu_items.iteritems():
+            item.connect('activate', self._change_agents_filter, (key, ))
+        self.menu_agents_filter.show_all()
+
         self._setup_toolbar()
         self._setup_menuitem()
 
@@ -57,6 +64,8 @@ class MainWindow(object):
 
         self.xdot.connect('show-menu', lambda widget, url, event:
                 self._agent_show_menu(url, event))
+        self.xdot.connect('show-global-menu', lambda widget, event:
+                self._show_agents_filter(event))
 
     def _setup_toolbar(self):
         reset = self.builder.get_object('reset_toolbar')
@@ -148,6 +157,17 @@ class MainWindow(object):
         agent_menu.connect('terminate-agent', self._on_terminate_agent)
         agent_menu.connect('help-agent', self._on_help_agent)
         agent_menu.popup(event)
+
+    def _show_agents_filter(self, event):
+        self.menu_agents_filter.popup(None, None, None,
+                event.button, event.time)
+
+    def _change_agents_filter(self, item, key):
+        if not item.get_active():
+            self.driver.add_filter(key[0])
+        else:
+            self.driver.remove_filter(key[0])
+        self._update_xdot()
 
     def _on_terminate_agent(self, menu, agent_id):
         agent = self.driver.find_agent(agent_id)

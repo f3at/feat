@@ -5,6 +5,7 @@ from twisted.internet import defer
 from feat.simulation import driver
 from feat.common import manhole
 
+from feat.agents.base.agent import registry
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
 from feat.agents.raage import raage_agent
@@ -41,6 +42,9 @@ class GuiDriver(driver.Driver):
         self.last_error = ''
         self.current_dot = ''
 
+        self.filter_id = []
+        self.filter_type = []
+
         self.next_update = 2000
         self.min_update = 15000
         self.timer = glib.timeout_add(self.next_update/2, self._timeout_dot)
@@ -56,7 +60,8 @@ class GuiDriver(driver.Driver):
             callback()
 
     def _timeout_dot(self):
-        dot = export_drv_to_dot(self)
+        self._update_agent_filter()
+        dot = export_drv_to_dot(self, self.filter_id)
         if self.current_dot != dot:
             self.current_dot = dot
             self._throw_callbacks()
@@ -69,6 +74,29 @@ class GuiDriver(driver.Driver):
             self.next_update = self.min_update
         self.timer = glib.timeout_add(int(self.next_update), self._timeout_dot)
         return False
+
+    def add_filter(self, type_):
+        if type_ not in self.filter_type:
+            self.filter_type.append(type_)
+
+    def remove_filter(self, type_):
+        if type_ in self.filter_type:
+            self.filter_type.remove(type_)
+
+    def _update_agent_filter(self):
+        agent_objects = [registry[t] for t in self.filter_type]
+        self.filter_id = []
+
+        def is_in_filter(aa):
+            return len(
+                    filter(
+                        lambda f: isinstance(aa.get_agent(), f),
+                         agent_objects)) > 0
+
+        for agency in self._agencies:
+            self.filter_id += map(lambda a:\
+                        a.get_agent().get_descriptor().doc_id, \
+                        filter(is_in_filter, agency._agents))
 
     def on_processed_callback(self, callback):
         self.callbacks.append(callback)
@@ -97,7 +125,7 @@ class GuiDriver(driver.Driver):
             del self._agencies[0]
 
 
-def export_drv_to_dot(drv):
+def export_drv_to_dot(drv, agent_list=[]):
     shards = {}
     edges = []
 
@@ -117,6 +145,9 @@ def export_drv_to_dot(drv):
         agency_added = False
         for agent in agency._agents:
             desc = agent.get_descriptor()
+            if desc.doc_id in agent_list:
+                continue
+
             shard_name = desc.shard
             if shard_name in shards:
                 shard_dot = shards[shard_name]
@@ -142,7 +173,8 @@ def export_drv_to_dot(drv):
             for p in desc.partners:
                 dst = p.recipient.key
                 src = desc.doc_id
-                if (src, dst) not in edges and \
+                if dst not in agent_list and \
+                    (src, dst) not in edges and \
                     (dst, src) not in edges:
                         edges.append((src, dst))
 
