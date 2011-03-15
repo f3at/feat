@@ -4,7 +4,7 @@ import StringIO
 
 from zope.interface import implements
 
-from feat.common import log, manhole, defer
+from feat.common import log, manhole, defer, reflect
 from feat.agencies import agency, dependency
 from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
@@ -26,10 +26,13 @@ class Commands(manhole.Manhole):
         > spawn_agency()
         Also takes a list of components to switch into production mode.
         By default all the components work in test mode.
+        Components are the canonical names of interfaces classes used by
+        dependencies (example: flt.agents.hapi.interface.IServerFactory).
         '''
         ag = agency.Agency()
         self._agencies.append(ag)
-        for comp in components:
+        for canonical_name in components:
+            comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
         d = ag.initiate(self._messaging, self._database)
         d.addCallback(defer.override_result, ag)
