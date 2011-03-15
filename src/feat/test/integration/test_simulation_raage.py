@@ -2,14 +2,12 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat.common import delay, fiber
+from feat import everything
+from feat.common import delay
 from feat.test.integration import common
 from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
-from feat.agents.host import host_agent
-from feat.agents.shard import shard_agent
 from feat.agents.base import recipient, agent, replay, descriptor
-from feat.agents.raage import raage_agent
 from feat.agents.common import raage
 
 

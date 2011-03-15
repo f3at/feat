@@ -6,9 +6,7 @@ from feat.simulation import driver
 from feat.common import manhole
 
 from feat.agents.base.agent import registry
-from feat.agents.host import host_agent
-from feat.agents.shard import shard_agent
-from feat.agents.raage import raage_agent
+from feat import everything
 
 from flt.agents.common import signal
 from flt.agents.signal import signal_agent

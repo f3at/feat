@@ -1,7 +1,7 @@
 #!/usr/bin/python2.6
 from feat.common import run
-from feat.agents.host import host_agent
-from feat.agents.shard import shard_agent
+from feat import everything
+
 
 if __name__ == '__main__':
     with run.bootstrap() as agency:
