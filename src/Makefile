@@ -1,11 +1,10 @@
 PYTHON = /usr/bin/python2.6
 top_srcdir = .
-COVERAGE_MODULES = feat flt
+COVERAGE_MODULES = feat
 TOOLS = ../tools
 TRIAL = ${TOOLS}/flumotion-trial
 PEP8 = ${TOOLS}/pep8.py --repeat
 SHOW_COVERAGE = ${TOOLS}/show-coverage.py
-FLUFLT_ENV=${top_srcdir}/flumotion-flt/env
 
 check-local: check-tests check-local-pep8
 
@@ -14,7 +13,7 @@ check-local-pep8:
 	sort -u | xargs $(PYTHON) $(PEP8)
 
 check-tests:
-	$(FLUFLT_ENV) $(PYTHON) $(TRIAL) $(TRIAL_FLAGS) $(COVERAGE_MODULES)
+	$(PYTHON) $(TRIAL) $(TRIAL_FLAGS) $(COVERAGE_MODULES)
 
 check-tests-fast:
 	@make check-tests \
@@ -24,7 +23,7 @@ coverage:
 	@test ! -z "$(COVERAGE_MODULES)" ||				\
 	(echo Define COVERAGE_MODULES in your Makefile; exit 1)
 	rm -f feat-saved-coverage.pickle
-	@$(FLUFLT_ENV) $(PYTHON) $(TRIAL) --temp-directory=_trial_coverage --coverage --saved-coverage=feat-saved-coverage.pickle $(COVERAGE_MODULES)
+	$(PYTHON) $(TRIAL) --temp-directory=_trial_coverage --coverage --saved-coverage=feat-saved-coverage.pickle $(COVERAGE_MODULES)
 	make show-coverage
 
 show-coverage:
@@ -52,13 +51,6 @@ check-commit:
 	cd /tmp;							\
 	git clone --recursive --depth 0 $$repo;                      	\
 	cd $$reponame/src;						\
-	make build-fluflt;						\
 	make check-local;						\
 	cd $$current;							\
 	rm -rf $$dst;
-
-build-fluflt:
-	cd flumotion-flt;						\
-	./autogen.sh;							\
-	make;								\
-	cd ..
