@@ -10,7 +10,7 @@ from feat.agencies.emu import messaging, database
 from feat.interface.agent import IAgencyAgent
 from feat.interface.agency import ExecMode
 from feat.test import factories
-from feat.agents.base import document, descriptor
+from feat.agents.base import document, descriptor, dbtools
 
 
 class Commands(manhole.Manhole):
@@ -129,6 +129,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         d = self._database_connection.save_document(
             factories.build('descriptor'))
         d.addCallback(store)
+        d.addCallbacks(lambda _: \
+                       dbtools.push_initial_data(self._database_connection))
 
         self._messaging_connection = self._messaging.get_connection(self)
 
