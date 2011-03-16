@@ -95,6 +95,29 @@ class IMessagingClient(Interface):
         '''
 
 
+class IMessagingPeer(Interface):
+    '''
+    Interface which agent needs to implement to use messaging connection.
+    Required by (feat.agencies.messaging.Connection)
+    '''
+
+    def get_queue_name():
+        '''
+        Return the name of the queue to listen too.
+        Return value of None means: do not create any queue or consumer.
+        '''
+
+    def get_shard_name():
+        '''
+        Return the name of exchange to bind to.
+        '''
+
+    def on_message(message):
+        '''
+        Callback called after the message arrives.
+        '''
+
+
 class IDatabaseClient(Interface):
 
     def save_document(document):

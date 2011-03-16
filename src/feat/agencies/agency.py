@@ -16,9 +16,8 @@ from feat.agencies import common
 from feat.interface import agency, agent, protocols
 from feat.common.serialization import pytree, Serializable
 
-from interface import IListener, IAgencyInitiatorFactory,\
+from interface import IListener, IAgencyInitiatorFactory, IMessagingPeer,\
                       IAgencyInterestedFactory, IConnectionFactory
-
 from feat.agencies import contracts, requests, dependency
 
 
@@ -293,7 +292,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin):
     implements(agent.IAgencyAgent, journal.IRecorderNode,
-               journal.IJournalKeeper, serialization.ISerializable)
+               journal.IJournalKeeper, serialization.ISerializable,
+               IMessagingPeer)
 
     log_category = "agency-agent"
     journal_parent = None
@@ -422,45 +422,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc, *args, **kwargs):
         return self.agency.start_agent(desc, *args, **kwargs)
-
-    def on_message(self, message):
-        self.log('Received message: %r', message)
-
-        # check if it isn't expired message
-        ctime = self.get_time()
-        if message.expiration_time < ctime:
-            self.log('Throwing away expired message.')
-            return False
-
-        # handle registered dialog
-        if message.receiver_id is not None and\
-           message.receiver_id in self._listeners:
-            listener = self._listeners[message.receiver_id]
-            listener.on_message(message)
-            return True
-
-        # handle new conversation comming in (interest)
-        p_type = message.protocol_type
-        p_id = message.protocol_id
-        if p_type in self._interests and p_id in self._interests[p_type] and\
-          isinstance(message, self._interests[p_type][p_id].factory.initiator):
-            self.log('Looking for interest to instantiate.')
-            factory = self._interests[message.protocol_type]\
-                                     [message.protocol_id].factory
-            medium_factory = IAgencyInterestedFactory(factory)
-            medium = medium_factory(self, message)
-            self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                                 factory, medium)
-            interested = factory(self.agent, medium)
-            medium.initiate(interested)
-            listener = self.register_listener(medium)
-            listener.on_message(message)
-            return True
-
-        self.warning("Couldn't find appropriate listener for message: "
-                     "%s.%s.%s", message.protocol_type, message.protocol_id,
-                     message.__class__.__name__)
-        return False
 
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
@@ -677,6 +638,53 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self.log('Reraising exception %r', fail)
             fail.raiseException()
+
+    ### IMessagingPeer Methods ###
+
+    def on_message(self, message):
+        self.log('Received message: %r', message)
+
+        # check if it isn't expired message
+        ctime = self.get_time()
+        if message.expiration_time < ctime:
+            self.log('Throwing away expired message.')
+            return False
+
+        # handle registered dialog
+        if message.receiver_id is not None and\
+           message.receiver_id in self._listeners:
+            listener = self._listeners[message.receiver_id]
+            listener.on_message(message)
+            return True
+
+        # handle new conversation comming in (interest)
+        p_type = message.protocol_type
+        p_id = message.protocol_id
+        if p_type in self._interests and p_id in self._interests[p_type] and\
+          isinstance(message, self._interests[p_type][p_id].factory.initiator):
+            self.log('Looking for interest to instantiate.')
+            factory = self._interests[message.protocol_type]\
+                                     [message.protocol_id].factory
+            medium_factory = IAgencyInterestedFactory(factory)
+            medium = medium_factory(self, message)
+            self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                                 factory, medium)
+            interested = factory(self.agent, medium)
+            medium.initiate(interested)
+            listener = self.register_listener(medium)
+            listener.on_message(message)
+            return True
+
+        self.warning("Couldn't find appropriate listener for message: "
+                     "%s.%s.%s", message.protocol_type, message.protocol_id,
+                     message.__class__.__name__)
+        return False
+
+    def get_queue_name(self):
+        return self._descriptor.doc_id
+
+    def get_shard_name(self):
+        return self._descriptor.shard
 
     ### IRecorderNode Methods ###
 

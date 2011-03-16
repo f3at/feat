@@ -9,10 +9,10 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
-from feat.agents.base import message, recipient, descriptor, agent
+from feat.agents.base import message, recipient, agent
 from feat.common import log, decorator, journal
 from feat.common import delay as delay_module
-from feat.interface.agent import IAgencyAgent
+from feat.agencies.interface import IMessagingPeer
 
 from . import factories
 
@@ -462,18 +462,20 @@ class AgencyTestHelper(object):
 
 
 class StubAgent(object):
-    implements(IAgencyAgent)
+    implements(IMessagingPeer)
 
     def __init__(self):
-        self.descriptor = descriptor.Descriptor(shard='lobby',
-                                                doc_id=str(uuid.uuid1()))
+        self.queue_name = str(uuid.uuid1())
         self.messages = []
 
     def on_message(self, msg):
         self.messages.append(msg)
 
-    def get_descriptor(self):
-        return self.descriptor
+    def get_queue_name(self):
+        return self.queue_name
+
+    def get_shard_name(self):
+        return 'lobby'
 
 
 @agent.register('descriptor')

@@ -7,7 +7,6 @@ from zope.interface import implements
 from feat.common import log, manhole, defer, reflect
 from feat.agencies import agency, dependency
 from feat.agencies.emu import messaging, database
-from feat.interface.agent import IAgencyAgent
 from feat.interface.agency import ExecMode
 from feat.test import factories
 from feat.agents.base import document, descriptor, dbtools
@@ -99,7 +98,6 @@ class Commands(manhole.Manhole):
 
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
-    implements(IAgencyAgent)
 
     log_category = 'simulation-driver'
 
@@ -121,18 +119,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._init_connections()
 
     def _init_connections(self):
-
-        def store(desc):
-            self._descriptor = desc
-
         self._database_connection = self._database.get_connection(self)
-        d = self._database_connection.save_document(
-            factories.build('descriptor'))
-        d.addCallback(store)
-        d.addCallbacks(lambda _: \
-                       dbtools.push_initial_data(self._database_connection))
-
-        self._messaging_connection = self._messaging.get_connection(self)
+        dbtools.push_initial_data(self._database_connection)
 
     def iter_agents(self):
         for agency in self._agencies:
@@ -155,14 +143,6 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def finished_processing(self):
         '''Called when the protocol runs out of data to process'''
-
-    # IAgencyAgent
-
-    def on_message(self, msg):
-        pass
-
-    def get_descriptor(self):
-        return self._descriptor
 
     # Delegation of IDatabase methods for tests
 

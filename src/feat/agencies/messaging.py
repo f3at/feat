@@ -3,7 +3,7 @@
 
 from twisted.internet import defer, reactor
 from feat.common import log
-from feat.interface.agent import IAgencyAgent
+from feat.agencies.interface import IMessagingPeer
 from feat.agents.base.message import BaseMessage
 
 
@@ -18,15 +18,21 @@ class Connection(log.Logger):
     def __init__(self, messaging, agent):
         log.Logger.__init__(self, messaging)
         self._messaging = messaging
-        self._agent = IAgencyAgent(agent)
+        self._agent = IMessagingPeer(agent)
 
         self._bindings = []
-        self._queue_name = (self._agent.get_descriptor()).doc_id
+        self._queue_name = self._agent.get_queue_name()
+        self._queue = None
 
     def initiate(self):
-        d = defer.maybeDeferred(self._messaging.defineQueue,
-            self._queue_name)
-        d.addCallback(self._mainLoop)
+        if self._queue_name is not None:
+            d = defer.maybeDeferred(self._messaging.defineQueue,
+                self._queue_name)
+            d.addCallback(self._mainLoop)
+        else:
+            self.warning('Queue name is None, skipping creating queue '
+                         'and consumer.')
+            d = defer.succeed()
         d.addCallback(lambda _: self)
         return d
 
@@ -69,11 +75,12 @@ class Connection(log.Logger):
     # IMessagingClient implementation
 
     def disconnect(self):
-        self._queue.stop_consuming()
+        if self._queue:
+            self._queue.stop_consuming()
 
     def personal_binding(self, key, shard=None):
         if not shard:
-            shard = (self._agent.get_descriptor()).shard
+            shard = self._agent.get_shard_name()
         return PersonalBinding(self, key=key, shard=shard)
 
     def publish(self, key, shard, message):
