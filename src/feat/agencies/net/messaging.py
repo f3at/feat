@@ -338,9 +338,9 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     @wait_for_channel
-    def defineExchange(self, name):
+    def defineExchange(self, name, exchange_type="direct"):
         d = self.channel.exchange_declare(
-            exchange=name, type="direct", durable=True,
+            exchange=name, type=exchange_type, durable=True,
             nowait=False, auto_delete=False)
         return d
 

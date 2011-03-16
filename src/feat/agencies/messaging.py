@@ -32,7 +32,7 @@ class Connection(log.Logger):
         else:
             self.warning('Queue name is None, skipping creating queue '
                          'and consumer.')
-            d = defer.succeed()
+            d = defer.succeed(None)
         d.addCallback(lambda _: self)
         return d
 
