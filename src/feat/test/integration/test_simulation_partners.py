@@ -5,7 +5,7 @@ from twisted.internet import defer
 from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.base import (agent, descriptor, document, recipient,
-                              partners, )
+                              partners, replay, resource, )
 from feat.common import serialization, fiber
 
 
@@ -36,8 +36,14 @@ class Agent(agent.BaseAgent):
 
     partners_class = Partners
 
+    @replay.mutable
+    def initiate(self, state):
+        agent.BaseAgent.initiate(self)
 
-class PartershipTest(common.SimulationTest):
+        state.resources.define('foo', 2)
+
+
+class PartnershipTest(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
@@ -121,6 +127,79 @@ class PartershipTest(common.SimulationTest):
         yield d
         agents = [self.initiator, self.receiver]
         self.assert_partners(agents, [0, 0, 0])
+
+    def testSubstitutePartner(self):
+        '''
+        Three agents, all being partners. Than check the termination of
+        two of them.
+        '''
+        yield self.process(format_block("""
+        third = agency.start_agent(descriptor_factory('base-agent'))
+        """))
+
+        agents = [self.initiator, self.receiver, self.get_local('third')]
+
+        alloc1 = yield agents[2].get_agent().allocate_resource(foo=1)
+        alloc2 = yield agents[2].get_agent().allocate_resource(foo=1)
+
+        yield self._establish_partnership('initiator', 'receiver')
+        self.assert_partners(agents, [1, 1, 0])
+        yield self.initiator.get_agent().substitute_partner(
+            recipient.IRecipient(self.receiver),
+            recipient.IRecipient(agents[2]),
+            alloc1.id)
+        self.assert_partners(agents, [1, 1, 1])
+        yield self.receiver.get_agent().substitute_partner(
+            recipient.IRecipient(self.initiator),
+            recipient.IRecipient(agents[2]),
+            alloc2.id)
+        self.assert_partners(agents, [1, 1, 2])
+
+    @defer.inlineCallbacks
+    def testFailingPartner(self):
+        d = self._failing_partnership(self.initiator, self.receiver)
+        self.assertFailure(d, FailureOfPartner)
+        yield d
+        agents = [self.initiator, self.receiver]
+        self.assert_partners(agents, [0, 0, 0])
+
+    @defer.inlineCallbacks
+    def testEstablishPartnershipWithAllocations(self):
+        i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
+        r_alloc = yield self.receiver.get_agent().allocate_resource(foo=1)
+        yield self.initiator.get_agent().establish_partnership(
+            recipient.IRecipient(self.receiver), i_alloc.id, r_alloc.id)
+
+        agents = [self.initiator, self.receiver]
+        self.assert_partners(agents, [1, 1])
+        for medium in agents:
+            agent = medium.get_agent()
+            partner = agent.query_partners('all')[0]
+            self.assertTrue(partner.allocation_id is not None)
+
+    @defer.inlineCallbacks
+    def testEstablishPartnershipWithPreAllocaton(self):
+        i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
+        r_alloc = yield self.receiver.get_agent().preallocate_resource(foo=1)
+        d = self.initiator.get_agent().establish_partnership(
+            recipient.IRecipient(self.receiver), i_alloc.id, r_alloc.id)
+        self.assertFailure(d, resource.AllocationNotFound)
+        yield d
+
+        agents = [self.initiator, self.receiver]
+        self.assert_partners(agents, [0, 0])
+        r_alloc = yield self.receiver.get_agent().release_resource(r_alloc.id)
+
+    @defer.inlineCallbacks
+    def testEstablishPartnershipWithUnknownAllocaton(self):
+        i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
+        d = self.initiator.get_agent().establish_partnership(
+            recipient.IRecipient(self.receiver), i_alloc.id, 2)
+        self.assertFailure(d, resource.AllocationNotFound)
+        yield d
+
+        agents = [self.initiator, self.receiver]
+        self.assert_partners(agents, [0, 0])
 
     def assert_partners(self, agents, expected):
         for agent, e in zip(agents, expected):

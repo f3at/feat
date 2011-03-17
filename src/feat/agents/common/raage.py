@@ -32,7 +32,7 @@ class AllocationManager(manager.BaseManager):
     def closed(self, state):
         self.log("close manager")
         bids = state.medium.get_bids()
-        best_bid = message.Bid.pick_best(bids)
+        best_bid = message.Bid.pick_best(bids)[0]
         msg = message.Grant()
         params = (best_bid, msg)
         state.medium.grant(params)

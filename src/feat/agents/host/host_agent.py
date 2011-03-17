@@ -52,15 +52,15 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self.initiate_partners)
-        if not bootstrap:
-            f.add_callback(fiber.drop_result, self.start_join_shard_manager)
+        # if not bootstrap:
+        #     f.add_callback(fiber.drop_result, self.start_join_shard_manager)
         return f.succeed()
 
-    @replay.journaled
-    def start_join_shard_manager(self, state):
-        if state.partners.shard is None:
-            return shard.start_manager(
-                state.medium, shard.ActionType.join, shard.ActionType.create)
+    # @replay.journaled
+    # def start_join_shard_manager(self, state):
+    #     if state.partners.shard is None:
+    #         return shard.start_manager(
+    #             state.medium, shard.ActionType.join, shard.ActionType.create)
 
     @replay.journaled
     def switch_shard(self, state, shard):

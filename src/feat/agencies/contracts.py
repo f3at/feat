@@ -202,6 +202,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             rejection = rejection.clone()
         contractor.on_event(rejection)
 
+    @serialization.freeze_tag('AgencyManager.grant')
     @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
         self._ensure_state([contracts.ContractState.closed,

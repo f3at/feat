@@ -63,22 +63,24 @@ class Propose(BaseRequester):
     protocol_id = 'lets-pair-up'
 
     @replay.mutable
-    def initiate(self, state, allocation=None, partner_role=None,
-                 our_role=None):
+    def initiate(self, state, our_alloc_id=None, partner_alloc_id=None,
+                 partner_role=None, our_role=None, substitute=None):
         state.our_role = our_role
-        state.allocation = allocation
+        state.allocation_id = our_alloc_id
+        state.substitute = substitute
         msg = message.RequestMessage(
             payload=dict(
                 partner_class=state.agent.descriptor_type,
-                role=partner_role))
+                role=partner_role,
+                allocation_id=partner_alloc_id))
         state.medium.request(msg)
 
     @replay.journaled
     def got_reply(self, state, reply):
         if reply.payload['ok']:
             return state.agent.create_partner(
-                reply.payload['desc'], reply.reply_to, state.allocation,
-                state.our_role)
+                reply.payload['desc'], reply.reply_to, state.allocation_id,
+                state.our_role, substitute=state.substitute)
         else:
             self.info('Received error: %r', reply.payload['fail'])
             f = self._release_allocation()
@@ -94,7 +96,8 @@ class Propose(BaseRequester):
     @replay.mutable
     def _release_allocation(self, state):
         f = fiber.succeed()
-        if state.allocation:
-            return f.add_callback(state.agent.release_resource,
-                                  state.allocation)
+        if state.allocation_id:
+            return f.add_callback(fiber.drop_result,
+                                  state.agent.release_resource,
+                                  state.allocation_id)
         return f

@@ -53,7 +53,7 @@ class AllocationContractor(contractor.BaseContractor):
     def _pick_best_bid(self, state, bids):
         if bids is None:
             return
-        return message.Bid.pick_best(bids)
+        return message.Bid.pick_best(bids)[0]
 
     @replay.journaled
     def _refuse_or_handover(self, state, bid):

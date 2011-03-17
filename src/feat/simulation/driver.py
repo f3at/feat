@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import StringIO
+import uuid
 
 from zope.interface import implements
 
@@ -36,6 +37,13 @@ class Commands(manhole.Manhole):
         d = ag.initiate(self._messaging, self._database)
         d.addCallback(defer.override_result, ag)
         return d
+
+    @manhole.expose()
+    def uuid(self):
+        '''
+        Generates random string.
+        '''
+        return str(uuid.uuid1())
 
     @manhole.expose()
     def descriptor_factory(self, document_type, shard=u'lobby'):

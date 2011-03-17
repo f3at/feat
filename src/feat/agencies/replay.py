@@ -587,6 +587,7 @@ class AgencyManager(log.LogProxy, log.Logger,
     def reject(self, bid, rejection=None):
         pass
 
+    @serialization.freeze_tag('AgencyManager.grant')
     @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
         pass

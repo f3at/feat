@@ -8,10 +8,6 @@ from feat.common import manhole
 from feat.agents.base.agent import registry
 from feat import everything
 
-from flt.agents.common import signal
-from flt.agents.signal import signal_agent
-from flt.agents.hapi import hapi_agent
-
 from feat.agents.base import recipient
 
 

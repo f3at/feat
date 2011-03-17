@@ -373,7 +373,7 @@ class Serializer(object):
             return self.flatten_type_value(value, caps, freezing)
 
         # Flatten failures
-        if isinstance(value, (failure.Failure)):
+        if isinstance(value, (failure.Failure, )):
             return self.flatten_failure_value(value, caps, freezing)
 
         # Checks if value support the current required protocol

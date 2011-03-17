@@ -2,9 +2,10 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.common import log, enum, serialization, error_handler, delay, fiber
+from feat.common import (log, enum, serialization, error_handler,
+                         delay, fiber, defer, )
 from feat.agents.base import replay
-from feat.agencies.common import StateMachineMixin
+from feat.agencies.common import StateMachineMixin, StateAssertationError
 
 
 @serialization.register
@@ -93,8 +94,15 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         Check that confirmed allocation with given id exists.
         Raise exception otherwise.
         '''
-        a = self._find_allocation(allocation_id)
-        a._ensure_state(AllocationState.allocated)
+        try:
+            a = self._find_allocation(allocation_id)
+            a._ensure_state(AllocationState.allocated)
+            return fiber.succeed()
+        except StateAssertationError:
+            return fiber.fail(AllocationNotFound(
+                'Allocation with id=%s not found' % allocation_id))
+        except AllocationNotFound as e:
+            return fiber.fail(e)
 
     @replay.mutable
     def release(self, state, allocation_id):
