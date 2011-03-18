@@ -11,6 +11,6 @@ setup(name='feat',
       platforms=['any'],
       package_dir={'': 'src'},
       packages=find_packages(where='src'),
-      scripts=['src/feat/bin/bootstrap.py', 'src/feat/bin/host.py',
+      scripts=['src/feat/bin/host.py',
                'src/feat/bin/standalone.py'],
 )
