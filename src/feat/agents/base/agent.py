@@ -6,7 +6,7 @@ import types
 from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
-from feat.interface import agent
+from feat.interface import generic, agent
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, )
 
@@ -52,7 +52,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     __metaclass__ = MetaAgent
 
-    implements(agent.IAgent)
+    implements(agent.IAgent, generic.ITimeProvider)
 
     partners_class = partners.Partners
 
@@ -78,7 +78,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
 
-    ## IAgent Methods ##
+    ### IAgent Methods ###
 
     @replay.immutable
     def initiate(self, state):
@@ -101,7 +101,13 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 
-    ## end of IAgent ##
+    ### ITimeProvider Methods ###
+
+    @replay.immutable
+    def get_time(self, state):
+        return generic.ITimeProvider(state.medium).get_time()
+
+    ### Public Methods ###
 
     @replay.journaled
     def initiate_partners(self, state):
@@ -190,10 +196,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.resources.release(allocation_id)
 
     @replay.immutable
-    def get_time(self, state):
-        return state.medium.get_time()
-
-    @replay.immutable
     def get_document(self, state, doc_id):
         return state.medium.get_document(doc_id)
 
@@ -205,7 +207,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
 
-    # private
+    ### Private Methods ###
 
     @replay.mutable
     def _load_allocations(self, state):

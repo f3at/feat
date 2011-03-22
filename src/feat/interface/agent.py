@@ -84,13 +84,6 @@ class IAgencyAgent(Interface):
         @returns: L{RetryingProtocol}
         '''
 
-    def get_time():
-        '''
-        Use this to get current time. Should fetch the time from NTP server
-
-        @returns: Number of seconds since epoch
-        '''
-
     def save_document(document):
         '''
         Save the document into the database. Document might have been loaded

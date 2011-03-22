@@ -5,6 +5,7 @@ from feat.agents.base import replay
 from feat.common.serialization import pytree
 
 from feat.interface.agent import *
+from feat.interface.generic import *
 from feat.interface.journal import *
 from feat.interface.serialization import *
 
@@ -397,7 +398,8 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
 
     type_name = 'agent-medium'
 
-    implements(IAgencyAgent, IRecorderNode, IJournalKeeper, ISerializable)
+    implements(IAgencyAgent, ITimeProvider, IRecorderNode,
+               IJournalKeeper, ISerializable)
 
     def __init__(self, replay):
         log.LogProxy.__init__(self, replay)

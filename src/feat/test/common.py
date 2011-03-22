@@ -1,6 +1,6 @@
 import functools
 import uuid
-import time
+import time as python_time
 
 from zope.interface import implements
 from twisted.internet import defer, reactor
@@ -9,10 +9,11 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import agency
+from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import message, recipient, agent
 from feat.common import log, decorator, journal
 from feat.common import delay as delay_module
-from feat.agencies.interface import IMessagingPeer
+from feat.interface.generic import *
 
 from . import factories
 
@@ -24,6 +25,11 @@ except AttributeError:
 
 
 log.FluLogKeeper.init('test.log')
+
+
+def time():
+    #TODO: add time scaling
+    return python_time.time()
 
 
 def delay(value, delay):
@@ -75,6 +81,8 @@ def attr(*args, **kwargs):
 
 
 class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
+
+    implements(ITimeProvider)
 
     log_category = "test"
 
@@ -281,6 +289,11 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
     def tearDown(self):
         delay_module.time_scale = 1
 
+    ### ITimeProvider Methods ###
+
+    def get_time(self):
+        return time()
+
     ### Private Methods ###
 
     def _assertAsync(self, param, check, value, *args, **kwargs):
@@ -435,7 +448,7 @@ class AgencyTestHelper(object):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
         msg.reply_to = reply_to or self.endpoint
-        msg.expiration_time = expiration_time or (time.time() + 10)
+        msg.expiration_time = expiration_time or (python_time.time() + 10)
         msg.protocol_type = self.protocol_type
         msg.protocol_id = self.protocol_id
         msg.message_id = str(uuid.uuid1())
@@ -453,7 +466,7 @@ class AgencyTestHelper(object):
         msg.reply_to = recipient.IRecipient(reply_to)
         msg.message_id = str(uuid.uuid1())
         msg.protocol_id = original_msg.protocol_id
-        msg.expiration_time = time.time() + 10
+        msg.expiration_time = python_time.time() + 10
         msg.protocol_type = original_msg.protocol_type
         msg.receiver_id = original_msg.sender_id
 

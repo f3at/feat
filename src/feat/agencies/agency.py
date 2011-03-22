@@ -13,7 +13,7 @@ from feat.common import (log, manhole, journal, fiber, serialization, delay,
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.agencies import common
-from feat.interface import agency, agent, protocols
+from feat.interface import generic, agency, agent, protocols
 from feat.common.serialization import pytree, Serializable
 
 from interface import IListener, IAgencyInitiatorFactory, IMessagingPeer,\
@@ -291,7 +291,8 @@ class Agency(manhole.Manhole, log.FluLogKeeper, log.Logger,
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin):
-    implements(agent.IAgencyAgent, journal.IRecorderNode,
+    implements(agent.IAgencyAgent, generic.ITimeProvider,
+               journal.IRecorderNode,
                journal.IJournalKeeper, serialization.ISerializable,
                IMessagingPeer)
 
