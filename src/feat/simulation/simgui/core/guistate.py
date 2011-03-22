@@ -3,6 +3,7 @@ from twisted.python import components
 
 from feat.agents.base import resource, agent, partners, descriptor
 from feat.agencies import agency
+from feat.common import enum
 
 
 class IGuiState(Interface):
@@ -31,6 +32,12 @@ class GuiState(object):
         return list().__iter__()
 
 
+class EnumState(GuiState):
+
+    def iter_elements(self):
+        yield (None, ('value', self.obj.name), )
+
+
 class AgentGuiState(GuiState):
 
     def __init__(self, agent):
@@ -42,7 +49,7 @@ class AgentGuiState(GuiState):
     def iter_elements(self):
         state = self.obj._get_state()
         for attr in state.__dict__:
-            yield (None, getattr(state, attr))
+            yield (attr, getattr(state, attr))
 
 
 class ResourcesGuiState(GuiState):
@@ -83,6 +90,8 @@ class InterestGuiState(GuiState):
 
     def iter_elements(self):
         yield (None, ('factory', self.obj.factory))
+        yield (None, ('lobby binding',
+                      self.obj._lobby_binding is not None))
 
 
 class DescriptorGuiState(GuiState):
@@ -135,6 +144,11 @@ components.registerAdapter(
         agent.BaseAgent,
         IGuiState)
 
+
+components.registerAdapter(
+        EnumState,
+        enum.Enum,
+        IGuiState)
 
 components.registerAdapter(
         ResourcesGuiState,
