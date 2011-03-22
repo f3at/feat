@@ -3,6 +3,30 @@
 
 from zope.interface import Interface
 
+__all__ = ("IListener", "IConnectionFactory",
+           "IAgencyInitiatorFactory", "IAgencyInterestedFactory",
+           "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
+           "DatabaseError", "ConflictError", "NotFoundError")
+
+
+class DatabaseError(RuntimeError):
+    '''
+    Base class for database specific exceptions
+    '''
+
+
+class ConflictError(DatabaseError):
+    '''
+    Raised when we encounter revision mismatch.
+    '''
+
+
+class NotFoundError(DatabaseError):
+    '''
+    Raised when we request document which is not there
+    or has been deleted.
+    '''
+
 
 class IListener(Interface):
     '''Represents sth which can be registered in AgencyAgent to
@@ -165,22 +189,3 @@ class IDatabaseClient(Interface):
         @type document: Subclass of L{feat.agents.document.Document}.
         @returns: Deferred called with the updated document (latest revision).
         '''
-
-
-class DatabaseError(RuntimeError):
-    '''
-    Base class for database specific exceptions
-    '''
-
-
-class ConflictError(DatabaseError):
-    '''
-    Raised when we encounter revision mismatch.
-    '''
-
-
-class NotFoundError(DatabaseError):
-    '''
-    Raised when we request document which is not there
-    or has been deleted.
-    '''

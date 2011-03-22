@@ -55,6 +55,12 @@ class IAgencyAgent(Interface):
         @returns: Deferred
         '''
 
+    def join_shard(shard_id):
+        '''Joins shard with specified identifier.'''
+
+    def leave_shard(shard_id):
+        '''Leave the shard with specified identifier.'''
+
     def register_interest(factory):
         '''Registers an interest in a contract or a request.'''
 

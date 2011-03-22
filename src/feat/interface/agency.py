@@ -2,7 +2,15 @@ from zope.interface import Interface
 from feat.common import enum
 
 
-__all__ = ["IAgency"]
+__all__ = ["ExecMode", "IAgency"]
+
+
+class ExecMode(enum.Enum):
+    '''
+    Used for registering the dependencies.
+    '''
+
+    production, test, simulation = range(3)
 
 
 class IAgency(Interface):
@@ -35,11 +43,3 @@ class IAgency(Interface):
         '''
         Get the mode to run given component.
         '''
-
-
-class ExecMode(enum.Enum):
-    '''
-    Used for registering the dependencies.
-    '''
-
-    production, test, simulation = range(3)
