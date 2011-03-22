@@ -317,7 +317,7 @@ class FindNeighboursManager(manager.BaseManager):
             return
         elif free_slots == 1:
             if len(joins) > 0:
-                to_grant = joins[0]
+                to_grant = [joins[0]]
                 slots_needed = 1
             else:
                 self.info("Only one free slot and no join bids. Terminating.")

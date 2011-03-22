@@ -11,6 +11,7 @@ from feat.agencies.emu import messaging, database
 from feat.interface.agency import ExecMode
 from feat.test import factories
 from feat.agents.base import document, descriptor, dbtools
+from feat.agents.shard import shard_agent
 
 
 class Commands(manhole.Manhole):
@@ -103,6 +104,40 @@ class Commands(manhole.Manhole):
             agent_id = agent_id.doc_id
         agency = self.find_agency(agent_id)
         return agency and agency.find_agent(agent_id)
+
+    @manhole.expose()
+    def count_shard_kings(self):
+        res = 0
+        for medium in self.iter_agents():
+            agent = medium.get_agent()
+            if not isinstance(agent, shard_agent.ShardAgent):
+                continue
+            if agent.is_king():
+                res += 1
+        return res
+
+    @manhole.expose()
+    def validate_shards(self):
+        error = False
+        for medium in self.iter_agents():
+            agent = medium.get_agent()
+            if not isinstance(agent, shard_agent.ShardAgent):
+                continue
+            _, alloc = agent.list_resource()
+            allocated = alloc['neighbours']
+            part = len(agent.query_partners('neighbours'))
+            if allocated != part:
+                self.error("Shard Agent of shard %r has %d allocated "
+                           "resource and %d partners",
+                           medium._descriptor.shard, allocated, part)
+                error = True
+            if part < 3 and agent.is_peasant():
+                self.error(
+                    "Shard Agent of shard %r has only %d partners and "
+                    "is not a king", medium._descriptor.shard, part)
+                error = True
+        if not error:
+            self.info('All ok!')
 
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
