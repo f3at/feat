@@ -237,6 +237,11 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return chain.addBoth(self._assertAsync, check, value, *args, **kwargs)
 
+    def assertFails(self, exception_class, method, *args, **kwargs):
+        d = method(*args, **kwargs)
+        self.assertFailure(d, exception_class)
+        return d
+
     def assertAsyncFailure(self, chain, errorKlasses, value, *args, **kwargs):
         '''Adds an asynchronous assertion for failure to the specified chain.
 

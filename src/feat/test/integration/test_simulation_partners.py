@@ -4,15 +4,37 @@ from twisted.internet import defer
 
 from feat.common.text_helper import format_block
 from feat.test.integration import common
-from feat.agents.base import agent, descriptor, document
+from feat.agents.base import (agent, descriptor, document, recipient,
+                              partners, )
+from feat.common import serialization, fiber
+
+
+@serialization.register
+class FailureOfPartner(Exception, serialization.Serializable):
+    pass
 
 
 @document.register
 class Descriptor(descriptor.Descriptor):
 
-    document_type = 'base-agent'
+    document_type = 'partner-agent'
 
-agent.register('base-agent')(agent.BaseAgent)
+
+class FailingPartner(partners.BasePartner):
+
+    def initiate(self, agent):
+        return fiber.fail(FailureOfPartner('test'))
+
+
+class Partners(partners.Partners):
+
+    partners.has_many('failers', 'partner-agent', FailingPartner, 'failer')
+
+
+@agent.register('partner-agent')
+class Agent(agent.BaseAgent):
+
+    partners_class = Partners
 
 
 class PartershipTest(common.SimulationTest):
@@ -23,8 +45,8 @@ class PartershipTest(common.SimulationTest):
 
         setup = format_block("""
         agency = spawn_agency()
-        initiator = agency.start_agent(descriptor_factory('base-agent'))
-        receiver = agency.start_agent(descriptor_factory('base-agent'))
+        initiator = agency.start_agent(descriptor_factory('partner-agent'))
+        receiver = agency.start_agent(descriptor_factory('partner-agent'))
         """)
         yield self.process(setup)
         self.receiver = self.get_local('receiver')
@@ -70,7 +92,7 @@ class PartershipTest(common.SimulationTest):
         two of them.
         '''
         yield self.process(format_block("""
-        third = agency.start_agent(descriptor_factory('base-agent'))
+        third = agency.start_agent(descriptor_factory('partner-agent'))
         """))
 
         agents = [self.initiator, self.receiver, self.get_local('third')]
@@ -92,6 +114,14 @@ class PartershipTest(common.SimulationTest):
         yield agents[2].wait_for_listeners_finish()
         self.assert_partners(agents, [2, 1, 0])
 
+    @defer.inlineCallbacks
+    def testFailingPartner(self):
+        d = self._failing_partnership(self.initiator, self.receiver)
+        self.assertFailure(d, FailureOfPartner)
+        yield d
+        agents = [self.initiator, self.receiver]
+        self.assert_partners(agents, [0, 0, 0])
+
     def assert_partners(self, agents, expected):
         for agent, e in zip(agents, expected):
             self.assertEqual(e, len(agent.get_descriptor().partners))
@@ -103,3 +133,7 @@ class PartershipTest(common.SimulationTest):
         agent.propose_to(%s)
         """ % (initiator, receiver, ))
         return self.process(script)
+
+    def _failing_partnership(self, initiator, receiver):
+        return initiator.get_agent().propose_to(
+            recipient.IRecipient(receiver), partner_role='failer')

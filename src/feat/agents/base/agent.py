@@ -118,8 +118,9 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return f.succeed()
 
     @manhole.expose()
-    def propose_to(self, recp):
-        return self.establish_partnership(recipient.IRecipient(recp))
+    def propose_to(self, recp, partner_role=None):
+        return self.establish_partnership(recipient.IRecipient(recp),
+                                          partner_role=partner_role)
 
     @replay.journaled
     def establish_partnership(self, state, recp, allocation_id=None,

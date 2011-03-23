@@ -113,18 +113,20 @@ class ResourcesTest(common.TestCase, Common):
         self._assert_allocated([0, 0])
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
+    @defer.inlineCallbacks
     def testAllocateThrowsOnOverflow(self):
-        self.assertRaises(resource.NotEnoughResources,
-                          self.resources.allocate, a=10)
+        yield self.assertFails(resource.NotEnoughResources,
+                                self.resources.allocate, a=10)
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
+    @defer.inlineCallbacks
     def testIncorrectAllocation(self):
-        self.assertRaises(resource.DeclarationError,
-                          self.resources.allocate, a='sth stupupid')
+        yield self.assertFails(resource.DeclarationError,
+                                self.resources.allocate, a='sth stupupid')
         self.assertRaises(resource.DeclarationError,
                           self.resources.preallocate, a='sth stupupid')
-        self.assertRaises(resource.UnknownResource,
-                          self.resources.allocate, unknown=4)
+        yield self.assertFails(resource.UnknownResource,
+                                self.resources.allocate, unknown=4)
         self.assertRaises(resource.UnknownResource,
                           self.resources.preallocate, unknown=4)
         self.assertCalled(self.agent, 'update_descriptor', times=0)

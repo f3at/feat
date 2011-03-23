@@ -77,10 +77,13 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.mutable
     def allocate(self, state, **params):
-        self._validate_params(params)
-        allocation = Allocation(id=self._next_id(), **params)
-        self._append_allocation(allocation)
-        allocation._set_state(AllocationState.allocated)
+        try:
+            self._validate_params(params)
+            allocation = Allocation(id=self._next_id(), **params)
+            self._append_allocation(allocation)
+            allocation._set_state(AllocationState.allocated)
+        except BaseResourceException as e:
+            return fiber.fail(e)
         f = fiber.Fiber()
         f.add_callback(self._append_allocation_to_descriptor)
         return f.succeed(allocation)
@@ -327,21 +330,25 @@ class Allocation(StateMachineMixin, serialization.Serializable):
         return not self.__eq__(other)
 
 
-class BaseResourceException(Exception):
+class BaseResourceException(Exception, serialization.Serializable):
     pass
 
 
+@serialization.register
 class NotEnoughResources(BaseResourceException):
     pass
 
 
+@serialization.register
 class UnknownResource(BaseResourceException):
     pass
 
 
+@serialization.register
 class DeclarationError(BaseResourceException):
     pass
 
 
+@serialization.register
 class AllocationNotFound(BaseResourceException):
     pass
