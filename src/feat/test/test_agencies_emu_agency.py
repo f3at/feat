@@ -61,6 +61,7 @@ class DummyInterest(object):
         self.protocol_type = "Contract"
         self.protocol_id = "some-contract"
         self.interest_type = protocols.InterestType.public
+        self.initiator = message.Announcement
 
 
 class TestDependencies(common.TestCase, common.AgencyTestHelper):

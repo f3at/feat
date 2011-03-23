@@ -39,7 +39,8 @@ class IInterest(Interface):
 
     protocol_type = Attribute("Protocol type")
     protocol_id = Attribute("Protocol id")
-    initiator = Attribute("A message class that initiates the dialog")
+    initiator = Attribute("A message class that initiates the dialog. "
+                          "Should implement L{IFirstMessage}")
     interest_type = Attribute("Type of interest L{InterestType}")
 
     def __call__(agent, medium, *args, **kwargs):

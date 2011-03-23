@@ -1,12 +1,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import Interface
+from zope.interface import Interface, Attribute
 
 __all__ = ("IListener", "IConnectionFactory",
            "IAgencyInitiatorFactory", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
-           "DatabaseError", "ConflictError", "NotFoundError")
+           "DatabaseError", "ConflictError", "NotFoundError", "IFirstMessage")
 
 
 class DatabaseError(RuntimeError):
@@ -189,3 +189,13 @@ class IDatabaseClient(Interface):
         @type document: Subclass of L{feat.agents.document.Document}.
         @returns: Deferred called with the updated document (latest revision).
         '''
+
+
+class IFirstMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message object which is
+    the first one in the dialog. Implemeneted by: Announcement, Request.
+    '''
+
+    traversal_id = Attribute('Unique identifier. It is preserved during '
+                             'nesting between shard, to detect duplications.')

@@ -3,7 +3,17 @@
 import copy
 import operator
 
+from zope.interface import implements
+
 from feat.common import serialization, formatable
+from feat.agencies.interface import *
+
+
+class FirstMessageMixin(formatable.Formatable):
+    implements(IFirstMessage)
+    # field used by nested protocols to identify that incoming
+    # dialog has already been handled by the shard
+    formatable.field('traversal_id', None)
 
 
 @serialization.register
@@ -35,7 +45,7 @@ class ContractMessage(BaseMessage):
 
 
 @serialization.register
-class RequestMessage(BaseMessage):
+class RequestMessage(BaseMessage, FirstMessageMixin):
 
     formatable.field('protocol_type', 'Request')
 
@@ -50,9 +60,8 @@ class ResponseMessage(BaseMessage):
 
 
 @serialization.register
-class Announcement(ContractMessage):
+class Announcement(ContractMessage, FirstMessageMixin):
     pass
-
 
 @serialization.register
 class Rejection(ContractMessage):

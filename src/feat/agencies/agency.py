@@ -438,6 +438,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @replay.named_side_effect('AgencyAgent.register_interest')
     def register_interest(self, factory):
         factory = IInterest(factory)
+        if not IFirstMessage.implementedBy(factory.initiator):
+            raise TypeError(
+                "%r.initiator expected to implemented IFirstMessage. Got %r" %\
+                (factory, factory.initiator, ))
         p_type = factory.protocol_type
         p_id = factory.protocol_id
         if p_type not in self._interests:
