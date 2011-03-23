@@ -449,6 +449,17 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
                          initial_delay=1, max_delay=None, *args, **kwargs):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.initiate_task')
+    @replay.named_side_effect('AgencyAgent.initiate_task')
+    def initiate_task(self, factory, *args, **kwargs):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.retrying_task')
+    @replay.named_side_effect('AgencyAgent.retrying_task')
+    def retrying_task(self, factory, max_retries=None, initial_delay=1,
+                      max_delay=None, *args, **kwargs):
+        pass
+
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
         pass

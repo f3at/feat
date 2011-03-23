@@ -90,6 +90,28 @@ class IAgencyAgent(Interface):
         @returns: L{RetryingProtocol}
         '''
 
+    def initiate_task(factory, *args, **kwargs):
+        '''
+        Initiates a task
+
+        @rtype: L{IInitiator}
+        @returns: Instance of task initiator
+        '''
+
+    def retrying_task(self, factory, max_retries,
+                      initial_delay, max_delay, args, kwargs):
+        '''
+        Initiates the task which will get restart if it fails.
+        The restart will be delayed with exponential growth.
+
+        Extra params comparing to L{IAgencyAgent.initiate_task}:
+
+        @param max_retries: After how many retries to give up. Def. None: never
+        @param initial_delay: Delay before the first retry.
+        @param max_delay: Miximum delay to wait (above it it will not grow).
+        @returns: L{RetryingProtocol}
+        '''
+
     def save_document(document):
         '''
         Save the document into the database. Document might have been loaded

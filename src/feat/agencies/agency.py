@@ -13,14 +13,14 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency
-from feat.agents.base import recipient, replay, descriptor
+from feat.agents.base import recipient, replay, descriptor, task
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, delay
 from feat.common import manhole, error_handler, text_helper
 from feat.common.serialization import pytree, Serializable
 
 # Imported only for adapters to be registered
-from feat.agencies import contracts, requests
+from feat.agencies import contracts, requests, tasks
 
 # Import interfaces
 from interface import *
@@ -483,6 +483,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         medium.initiate(initiator)
         return initiator
 
+    @serialization.freeze_tag('AgencyAgent.initiate_task')
+    @replay.named_side_effect('AgencyAgent.initiate_task')
+    def initiate_task(self, factory, *args, **kwargs):
+        return self.initiate_protocol(factory, None, *args, **kwargs)
+
     @serialization.freeze_tag('AgencyAgent.retrying_protocol')
     @replay.named_side_effect('AgencyAgent.retrying_protocol')
     def retrying_protocol(self, factory, recipients, max_retries=None,
@@ -495,6 +500,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._retrying_protocols.append(r)
         r.notify_finish().addBoth(lambda _: self._retrying_protocols.remove(r))
         return r
+
+    @serialization.freeze_tag('AgencyAgent.retrying_task')
+    @replay.named_side_effect('AgencyAgent.retrying_task')
+    def retrying_task(self, factory, max_retries=None,
+                          initial_delay=1, max_delay=None,
+                          args=None, kwargs=None):
+        return self.retrying_protocol(factory, None, max_retries,
+                                      initial_delay, max_delay,
+                                      args, kwargs)
 
     @serialization.freeze_tag('AgencyAgency.save_document')
     def save_document(self, document):
