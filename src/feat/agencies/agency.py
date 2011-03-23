@@ -16,7 +16,7 @@ from feat.agencies import common, dependency
 from feat.agents.base import recipient, replay, descriptor, task
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, delay
-from feat.common import manhole, error_handler, text_helper
+from feat.common import manhole, error_handler, text_helper, container
 from feat.common.serialization import pytree, Serializable
 
 # Imported only for adapters to be registered
@@ -336,6 +336,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # termination procedure more than once
         self._terminating = False
 
+        # traversal_id -> True
+        self._traversal_ids = container.ExpDict(self)
+
+
     ### Public Methods ###
 
     def initiate(self):
@@ -575,6 +579,20 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         if message.expiration_time < ctime:
             self.log('Throwing away expired message')
             return False
+
+        # Check for known traversal ids:
+        if IFirstMessage.providedBy(message):
+            t_id = message.traversal_id
+            if t_id is None:
+                self.warning(
+                    "Received corrupted message. The traversal_id is! "
+                    "Message: %r", message)
+                return False
+            if t_id in self._traversal_ids:
+                self.log('Throwing away already known traversal id %r', t_id)
+                return False
+            else:
+                self._traversal_ids.set(t_id, True, message.expiration_time)
 
         # Handle registered dialog
         recv_id = message.receiver_id

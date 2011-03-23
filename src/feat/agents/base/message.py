@@ -63,6 +63,7 @@ class ResponseMessage(BaseMessage):
 class Announcement(ContractMessage, FirstMessageMixin):
     pass
 
+
 @serialization.register
 class Rejection(ContractMessage):
     pass

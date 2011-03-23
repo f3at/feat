@@ -191,6 +191,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                 called, arg = result
                 self.assertTrue(called)
                 self.assertTrue(isinstance(arg, message.Announcement))
+                self.assertFalse(arg.traversal_id is None)
 
         d.addCallback(asserts_on_msgs)
         d.addCallback(lambda x: self.manager)
@@ -592,6 +593,43 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(asserts_on_contractor)
 
         return d
+
+    @defer.inlineCallbacks
+    def testRecivingAnnouncementTwoTimes(self):
+        '''
+        This test checks that mechanics of storing traversal ids works
+        correctly. Second announcement with same traversal id
+        should be ignored.
+        '''
+        delay.time_scale = 1
+        expiration_time = time.time() + 1
+        yield self.recv_announce(expiration_time, traversal_id='first')
+
+        self.assertEqual(1, self._get_number_of_listeners())
+        yield self._expire_contractor()
+        self.assertEqual(0, self._get_number_of_listeners())
+
+        yield self.recv_announce(expiration_time, traversal_id='first')
+        self.assertEqual(0, self._get_number_of_listeners())
+
+        yield self.recv_announce(expiration_time, traversal_id='other')
+        self.assertEqual(1, self._get_number_of_listeners())
+        yield self._expire_contractor()
+
+        yield common.delay(None, 1)
+        # now receive expired message
+        yield self.recv_announce(expiration_time, traversal_id='first')
+        self.assertEqual(0, self._get_number_of_listeners())
+
+        yield self.recv_announce(expiration_time + 2, traversal_id='first')
+        self.assertEqual(1, self._get_number_of_listeners())
+        yield self._expire_contractor()
+
+    def _expire_contractor(self):
+        return self.agent._listeners.values()[0].expire_now()
+
+    def _get_number_of_listeners(self):
+        return len(self.agent._listeners.values())
 
     def testAnnounceExpiration(self):
         delay.time_scale = 0.01

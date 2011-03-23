@@ -427,11 +427,13 @@ class AgencyTestHelper(object):
         contractor._get_medium().defect(msg)
         return contractor
 
-    def recv_announce(self, *_):
+    def recv_announce(self, expiration_time=None, traversal_id=None):
         msg = message.Announcement()
         self.session_id = str(uuid.uuid1())
         msg.sender_id = self.session_id
-        return self.recv_msg(msg).addCallback(lambda ret: _)
+        msg.traversal_id = traversal_id or str(uuid.uuid1())
+
+        return self.recv_msg(msg, expiration_time=expiration_time)
 
     def recv_grant(self, _, update_report=None):
         msg = message.Grant()

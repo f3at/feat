@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from twisted.python import components
 from zope.interface import implements
 from twisted.internet import defer
@@ -79,6 +81,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         request = request.clone()
         self.log("Sending request: %r.", request)
         self._ensure_state(requests.RequestState.requested)
+
+        if request.traversal_id is None:
+            request.traversal_id = str(uuid.uuid1())
 
         self._send_message(request, self.expiration_time)
 

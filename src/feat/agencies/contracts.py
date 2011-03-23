@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from twisted.python import components, failure
 from zope.interface import implements
 
@@ -176,6 +178,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         announce = announce.clone()
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
+
+        if announce.traversal_id is None:
+            announce.traversal_id = str(uuid.uuid1())
 
         self._ensure_state(contracts.ContractState.initiated)
         self._set_state(contracts.ContractState.announced)
