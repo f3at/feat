@@ -6,7 +6,7 @@ from feat.agents.base.amqp.interface import *
 from feat.interface.agency import ExecMode
 from feat.common import fiber, manhole, defer
 from feat.common.text_helper import format_block
-from feat.test.common import delay, StubAgent
+from feat.test.common import delay, StubAgent, attr
 from feat.agencies.net import messaging
 
 from twisted.trial.unittest import SkipTest
@@ -56,6 +56,7 @@ class Agent(agent.BaseAgent):
         return state.connection
 
 
+@attr('slow')
 class TestWithRabbit(common.SimulationTest):
 
     timeout = 20
