@@ -30,7 +30,7 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     ### IAMQPClient methods ###
 
-    def initiate(self):
+    def connect(self):
         assert self._connection is None
         self._server = messaging.Messaging(self.host, self.port,
                                            self.user, self.password)

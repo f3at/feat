@@ -32,7 +32,7 @@ class Agent(agent.BaseAgent):
             IAMQPClientFactory, self, exchange, port=port,
             exchange_type=exchange_type)
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.connection.initiate)
+        f.add_callback(fiber.drop_result, state.connection.connect)
         return f
 
     @manhole.expose()
