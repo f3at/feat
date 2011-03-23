@@ -53,14 +53,7 @@ class AllocationContractor(contractor.BaseContractor):
     def _pick_best_bid(self, state, bids):
         if bids is None:
             return
-        best = message.Bid.pick_best(bids)
-
-        for bid in bids:
-            if bid == best:
-                continue
-            else:
-                state.nested_manager.reject_bid(bid)
-        return best
+        return message.Bid.pick_best(bids)
 
     @replay.journaled
     def _refuse_or_handover(self, state, bid):
@@ -68,6 +61,7 @@ class AllocationContractor(contractor.BaseContractor):
             refusal = message.Refusal()
             return state.medium.refuse(refusal)
         else:
+            state.nested_manager.elect(bid)
             return state.medium.handover(bid)
 
 
@@ -89,17 +83,16 @@ class NestedAllocationManager(manager.BaseManager):
         state.medium.announce(state.announcement)
 
     @replay.immutable
-    def wait_for_bids(sefl, state):
+    def wait_for_bids(self, state):
         f = fiber.Fiber()
         f.add_callback(state.medium.wait_for_state)
         f.add_callback(lambda _: state.medium.get_bids())
         f.succeed(ContractState.closed)
         return f
 
-    @replay.journaled
-    def reject_bid(self, state, bid):
-        self.debug('Sending rejection to bid from nested manager.')
-        return state.medium.reject(bid)
+    @replay.immutable
+    def elect(self, state, bid):
+        state.medium.elect(bid)
 
     @replay.journaled
     def terminate(self, state):

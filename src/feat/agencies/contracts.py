@@ -40,14 +40,15 @@ class ContractorState(enum.Enum):
     bid - Bid has been received
     refused - Refusal has been received
     rejected - Bid has been rejected
+    elected - Bid has been elected to be handed over
     granted - Grant has been sent
     completed - FinalReport has been received
     cancelled - Sent or received Cancellation
     acknowledged - Ack has been sent
     '''
 
-    (bid, refused, rejected, granted,
-     completed, cancelled, acknowledged) = range(7)
+    (bid, refused, rejected, elected, granted,
+     completed, cancelled, acknowledged) = range(8)
 
 
 class ManagerContractor(common.StateMachineMixin, log.Logger):
@@ -229,6 +230,12 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
+    @serialization.freeze_tag('AgencyManager.elect')
+    @replay.named_side_effect('AgencyManager.elect')
+    def elect(self, bid):
+        contractor = self.contractors[bid]
+        contractor._set_state(ContractorState.elected)
+
     @replay.named_side_effect('AgencyManager.cancel')
     def cancel(self, reason=None):
         self._ensure_state([contracts.ContractState.granted,
@@ -245,6 +252,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self):
+        # send the rejections to all the contractors
+        for contractor in self.contractors.with_state(ContractorState.bid):
+            contractor.on_event(message.Rejection())
+
         self._set_state(contracts.ContractState.terminated)
         delay.callLater(0, self._terminate, None)
 

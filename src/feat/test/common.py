@@ -375,6 +375,13 @@ class AgencyTestHelper(object):
             endpoint.shard, endpoint.key, endpoint.key)
         return endpoint, queue
 
+    def assert_queue_empty(self, queue, timeout=10):
+        d = queue.get()
+        d2 = delay(None, timeout)
+        d2.addCallback(lambda _: self.assertFalse(d.called))
+        d2.addCallback(d.callback)
+        return d2
+
     # methods for handling documents
 
     def doc_factory(self, doc_class, **options):

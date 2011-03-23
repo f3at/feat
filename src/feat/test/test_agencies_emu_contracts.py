@@ -138,7 +138,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                              self.agent._listeners)
         self.assertEqual(state, self.manager._get_medium().state)
         self.assertTrue(self.finished.called)
-        if state != contracts.ContractState.completed:
+        if state not in (contracts.ContractState.completed,
+                         contracts.ContractState.terminated, ):
             self.assertFailure(self.finished, protocols.InitiatorFailed)
         return self.manager
 
@@ -309,6 +310,45 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d.addCallback(lambda _: self._terminate_manager())
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.aborted)
+
+        return d
+
+    def testTerminatingFromClosedState(self):
+        delay.time_scale = 0.01
+
+        @replay.immutable
+        def closed_handler(s, state):
+            s.log('Contracts closed, terminating.')
+            to_elect = filter(lambda x: x.payload['cost'] == 3,
+                              state.medium.contractors)[0]
+            state.medium.elect(to_elect)
+            state.medium.terminate()
+
+        self.start_manager()
+        self.stub_method(self.manager, 'closed', closed_handler)
+
+        self.send_announce(self.manager)
+        d = self._consume_all()
+        d.addCallback(self._put_bids, (3, 2, 1, ))
+
+        d.addCallback(self.cb_after, obj=self.manager, method='closed')
+        d.addCallback(lambda _: self.assert_queue_empty(self.queues[0]))
+        d.addCallback(lambda _: self.queues[1].get())
+        d.addCallback(self.assertIsInstance, message.Rejection)
+        d.addCallback(lambda _: self.queues[2].get())
+        d.addCallback(self.assertIsInstance, message.Rejection)
+
+        def asserts_on_manager(_):
+            self.assertEqual(3, len(self.medium.contractors))
+            self.assertEqual(2, len(self.medium.contractors.with_state(\
+                        ContractorState.rejected)))
+            self.assertEqual(1, len(self.medium.contractors.with_state(\
+                        ContractorState.elected)))
+
+        d.addCallback(asserts_on_manager)
+
+        d.addCallback(self.assertUnregistered,
+                      contracts.ContractState.terminated)
 
         return d
 
