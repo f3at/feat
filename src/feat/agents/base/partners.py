@@ -254,10 +254,14 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             'Registering partner %r (lookup (%r, %r)) for recipient: %r',
             factory, partner_class, role, recp)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, partner.initiate, state.agent)
+        f.add_callback(fiber.drop_result, self.initiate_partner, partner)
         f.add_callback(fiber.drop_result, state.agent.update_descriptor,
                        self._append_partner, partner)
         return f.succeed()
+
+    @replay.immutable
+    def initiate_partner(self, state, partner):
+        return partner.initiate(state.agent)
 
     @replay.mutable
     def on_goodbye(self, state, recp):
