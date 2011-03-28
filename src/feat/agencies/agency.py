@@ -304,9 +304,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     implements(IAgencyAgent, ITimeProvider, IRecorderNode,
                IJournalKeeper, ISerializable, IMessagingPeer)
 
-    log_category = "agency-agent"
-    journal_parent = None
+    log_category = "agent-medium"
     type_name = "agent-medium" # this is used by ISerializable
+
+    journal_parent = None
 
     def __init__(self, agency, factory, descriptor):
         log.LogProxy.__init__(self, agency)
@@ -607,17 +608,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             p_id = message.protocol_id
             interest = self._interests[p_type].get(p_id)
             if interest and isinstance(message, interest.factory.initiator):
-                self.log('Looking for interest to instantiate')
-                factory = interest.factory
-                medium_factory = IAgencyInterestedFactory(factory)
-                medium = medium_factory(self, message)
-                self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                                     factory, medium)
-                interested = factory(self.agent, medium)
-                medium.initiate(interested)
-                listener = self.register_listener(medium)
-                listener.on_message(message)
-                return True
+                if interest.schedule_protocol(message):
+                    return True
 
         self.warning("Couldn't find appropriate listener for message: "
                      "%s.%s.%s", message.protocol_type, message.protocol_id,
@@ -669,15 +661,35 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             d.addErrback(self._ignore_initiator_failed)
             return d
 
-        d = defer.DeferredList(
-            [wait_for_listener(x) for x in self._listeners.values()])
-        return d
+        a = [interest.wait_finished() for interest in self._iter_interests()]
+        b = [wait_for_listener(l) for l in self._listeners.itervalues()]
+        return defer.DeferredList(a + b)
 
     def create_binding(self, key, shard=None):
         '''Used by Interest instances.'''
         return self._messaging.personal_binding(key, shard)
 
     ### Private Methods ###
+
+    def _start_listener(self, factory, message, cleanup_fun=None):
+        medium_factory = IAgencyInterestedFactory(factory)
+        medium = medium_factory(self, message)
+
+        self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                             factory, medium)
+
+        interested = factory(self.agent, medium)
+
+        if cleanup_fun:
+            wrapper_call = lambda _: cleanup_fun(message, interested)
+            medium.notify_finish().addBoth(wrapper_call)
+
+        medium.initiate(interested)
+
+        listener = self.register_listener(medium)
+        listener.on_message(message)
+
+        return interested
 
     def _next_update(self):
 
@@ -727,8 +739,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return
         self._terminating = True
 
+        # Revoke all queued protocols
+        [i.clear_queue() for i in self._iter_interests()]
+
         # Revoke all interests
-        [self.revoke_interest(x.factory) for x in self._iter_interests()]
+        [self.revoke_interest(i.factory) for i in list(self._iter_interests())]
 
         # Kill all retrying protocols
         d = defer.DeferredList([x.give_up() for x in self._retrying_protocols])
@@ -768,9 +783,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
     def _iter_interests(self):
-        for p_type in self._interests:
-            for x in self._interests[p_type].values():
-                yield x
+        return (interest
+                for interests in self._interests.itervalues()
+                for interest in interests.itervalues())
 
     def _kill_all_listeners(self, *_):
 
@@ -792,25 +807,58 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             fail.raiseException()
 
 
-@serialization.register
-class Interest(Serializable):
+class Interest(Serializable, log.Logger):
     '''Represents the interest from the point of view of agency.
     Manages the binding and stores factory reference'''
 
-    type_name = "agency-interest"
-    log_category = "agency-interest"
+    implements(IAgencyInterest)
+
+    type_name = "agent-interest"
+    log_category = "agent-interest"
 
     factory = None
     binding = None
 
     def __init__(self, agent_medium, factory):
-        self.factory = factory
+        log.Logger.__init__(self, agent_medium)
         self.medium = agent_medium
+        self.factory = factory
         self._lobby_binding = None
+        self._concurrency = getattr(factory, "concurrency", None)
+        self._queue = None
+        self._active = 0
+        self._notifier = defer.Notifier()
+
+        if self._concurrency is not None:
+            self._queue = container.ExpQueue(agent_medium)
 
         self.bind()
 
     ### Public Methods ###
+
+    def wait_finished(self):
+        if self._active == 0:
+            return defer.succeed(self)
+        return self._notifier.wait("finished")
+
+    def clear_queue(self):
+        if self._queue is not None:
+            self._queue.clear()
+
+    def schedule_protocol(self, message):
+        if not isinstance(message, self.factory.initiator):
+            return False
+
+        if self._queue is not None:
+            if self._active >= self._concurrency:
+                self.debug('Scheduling %s protocol %s',
+                           message.protocol_type, message.protocol_id)
+                self._queue.add(message, message.expiration_time)
+                return True
+
+        self._initiate_protocol(message)
+
+        return True
 
     def bind(self, shard=None):
         if self.factory.interest_type == InterestType.public:
@@ -818,10 +866,17 @@ class Interest(Serializable):
             self.binding = self.medium.create_binding(prot_id, shard)
             return self.binding
 
-    @replay.named_side_effect('Interest.revoke')
     def revoke(self):
         if self.factory.interest_type == InterestType.public:
             self.binding.revoke()
+
+    def __eq__(self, other):
+        return self.factory == other.factory
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    ### IAgencyInterest Method ###
 
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
@@ -838,13 +893,33 @@ class Interest(Serializable):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return dict(factory=self.factory)
+        return self.factory
 
-    def __eq__(self, other):
-        return self.factory == other.factory
+    ### Private Methods ###
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def _initiate_protocol(self, message):
+        self.debug('Instantiating %s protocol %s',
+                   message.protocol_type, message.protocol_id)
+        assert not self._concurrency or self._active < self._concurrency
+        self._active += 1
+        return self.medium._start_listener(self.factory, message,
+                                           self._protocol_terminated)
+
+    def _protocol_terminated(self, message, _protocol):
+        self.debug('%s protocol %s terminated',
+                   message.protocol_type, message.protocol_id)
+        assert self._active > 0
+        self._active -= 1
+        if self._queue is not None:
+            try:
+                message = self._queue.pop()
+                self._initiate_protocol(message)
+                return
+            except container.Empty:
+                pass
+        if self._active == 0:
+            # All protocols terminated and empty queue
+            self._notifier.callback("finished", self)
 
 
 class RetryingProtocol(common.InitiatorMediumBase, log.Logger):

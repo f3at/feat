@@ -798,7 +798,9 @@ class Unserializer(object):
         # on there references being fully restored when called.
         # This should not be relied on anyway.
         for instance, _ in reversed(self._instances):
-            instance.restored()
+            restored_fun = getattr(instance, "restored", None)
+            if restored_fun:
+                restored_fun()
 
     def restore_type(self, type_name):
         value = reflect.named_object(type_name)

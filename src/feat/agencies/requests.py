@@ -43,9 +43,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(requester.IAgencyRequester, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-requester'
-
-    type_name = 'requester-medium'
+    log_category = "requester-medium"
+    type_name = "requester-medium"
 
     error_state = requests.RequestState.wtf
 
@@ -152,12 +151,12 @@ components.registerAdapter(AgencyReplierFactory,
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.AgencyMiddleMixin, common.InterestedMediumBase):
+
     implements(replier.IAgencyReplier, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-replier'
-
-    type_name = 'replier-medium'
+    log_category = "replier-medium"
+    type_name = "replier-medium"
 
     error_state = requests.RequestState.wtf
 

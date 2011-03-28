@@ -1,12 +1,16 @@
-from zope.interface import implements
+from zope.interface import implements, classProvides
 
 from feat.common import serialization, log
 from feat.agents.base import replay
 from feat.common.serialization import pytree
 
 from feat.interface.agent import *
+from feat.interface.contractor import *
 from feat.interface.generic import *
 from feat.interface.journal import *
+from feat.interface.replier import *
+from feat.interface.requester import *
+from feat.interface.manager import *
 from feat.interface.serialization import *
 
 
@@ -394,9 +398,50 @@ class Factory(serialization.Serializable):
         return None
 
 
+@serialization.register
+class AgencyInterest(log.Logger):
+
+    type_name = "agent-interest"
+    log_category = "agent-interest"
+
+    classProvides(IRestorator)
+    implements(ISerializable)
+
+    def __eq__(self, other):
+        return self.factory == other.factory
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    ### IRestorator Methods ###
+
+    @classmethod
+    def prepare(cls):
+        return cls.__new__(cls)
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return self.factory
+
+    def recover(self, snapshot):
+        self.factory = snapshot
+
+    ### IAgencyInterest Method ###
+
+    @replay.named_side_effect('Interest.bind_to_lobby')
+    def bind_to_lobby(self):
+        pass
+
+    @replay.named_side_effect('Interest.unbind_from_lobby')
+    def unbind_from_lobby(self):
+        pass
+
+
 class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
 
-    type_name = 'agent-medium'
+    type_name = "agent-medium"
+    log_category = "agent-medium"
 
     implements(IAgencyAgent, ITimeProvider, IRecorderNode,
                IJournalKeeper, ISerializable)
@@ -510,6 +555,11 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
 class AgencyReplier(log.LogProxy, log.Logger,
                     BaseReplayDummy, StateMachineSpecific):
 
+    implements(ISerializable)
+
+    log_category = "replier-medium"
+    type_name = "replier-medium"
+
     def __init__(self, replay):
         log.Logger.__init__(self, replay)
         log.LogProxy.__init__(self, replay)
@@ -523,6 +573,11 @@ class AgencyReplier(log.LogProxy, log.Logger,
 class AgencyRequester(log.LogProxy, log.Logger,
                       BaseReplayDummy, StateMachineSpecific):
 
+    implements(IAgencyReplier, ISerializable)
+
+    log_category = "requester-medium"
+    type_name = "requester-medium"
+
     def __init__(self, replay):
         log.Logger.__init__(self, replay)
         log.LogProxy.__init__(self, replay)
@@ -534,6 +589,11 @@ class AgencyRequester(log.LogProxy, log.Logger,
 
 class AgencyContractor(log.LogProxy, log.Logger,
                        BaseReplayDummy, StateMachineSpecific):
+
+    implements(IAgencyContractor, ISerializable)
+
+    log_category = "contractor-medium"
+    type_name = "contractor-medium"
 
     def __init__(self, replay):
         log.Logger.__init__(self, replay)
@@ -571,6 +631,9 @@ class RetryingProtocol(BaseReplayDummy, log.Logger):
 
     implements(serialization.ISerializable)
 
+    log_category="retrying-protocol"
+    type_name="retrying-protocol"
+
     def __init__(self, replay):
         log.Logger.__init__(self, replay)
 
@@ -585,6 +648,11 @@ class RetryingProtocol(BaseReplayDummy, log.Logger):
 
 class AgencyManager(log.LogProxy, log.Logger,
                     BaseReplayDummy, StateMachineSpecific):
+
+    implements(IAgencyManager, ISerializable)
+
+    log_category = "manager-medium"
+    type_name = "manager-medium"
 
     def __init__(self, replay):
         log.Logger.__init__(self, replay)

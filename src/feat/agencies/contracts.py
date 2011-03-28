@@ -19,7 +19,7 @@ class AgencyManagerFactory(object):
     # TODO: ask Sebastien why this needs to be serializable
     implements(IAgencyInitiatorFactory, serialization.ISerializable)
 
-    type_name = 'manager-medium-factory'
+    type_name = "manager-medium-factory"
 
     def __init__(self, factory):
         self._factory = factory
@@ -58,7 +58,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     Represents the contractor from the point of view of the manager
     '''
 
-    log_category = 'manager-contractor'
+    log_category = "manager-contractor"
 
     def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
@@ -133,9 +133,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(manager.IAgencyManager, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-manager'
-
-    type_name = 'manager-medium'
+    log_category = "manager-medium"
+    type_name = "manager-medium"
 
     error_state = contracts.ContractState.wtf
 
@@ -442,9 +441,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(contractor.IAgencyContractor, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-contractor'
-
-    type_name = 'contractor-medium'
+    log_category = "contractor-medium"
+    type_name = "contractor-medium"
 
     error_state = contracts.ContractState.wtf
 
