@@ -1,5 +1,6 @@
 from feat.test.integration import common
 from feat.process import rabbitmq
+from feat.process.base import DependencyError
 from feat.agents.base import agent, descriptor, dependency, replay, message
 from feat.agents.base.amqp.interface import *
 from feat.interface.agency import ExecMode
