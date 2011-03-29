@@ -9,6 +9,8 @@ from feat.common.text_helper import format_block
 from feat.test.common import delay, StubAgent
 from feat.agencies.net import messaging
 
+from twisted.trial.unittest import SkipTest
+
 
 @descriptor.register('test-agent')
 class Descriptor(descriptor.Descriptor):
