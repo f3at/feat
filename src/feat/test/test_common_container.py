@@ -4,10 +4,12 @@
 
 from zope.interface import implements
 
+from feat.agents.base import replay
 from feat.common.container import *
-from feat.common import serialization
+from feat.common import serialization, journal
 from feat.common.serialization import base, pytree
 from feat.interface.generic import *
+from feat.interface.journal import *
 
 from . import common
 
@@ -22,6 +24,18 @@ class DummyTimeProvider(serialization.Serializable):
     def __init__(self, current=None):
         self.time = current if current is not None else common.time()
 
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.time == other.time
+
+    def __ne__(self, other):
+        eq = self.__eq__(other)
+        return eq if eq is NotImplemented else not eq
+
+    ### ITimeProvider override ###
+
+    @journal.side_effect
     def get_time(self):
         return self.time
 
@@ -32,6 +46,47 @@ class DummyTimeProvider(serialization.Serializable):
 
     def recover(self, snapshot):
         self.time = snapshot
+
+
+@serialization.register
+class ReplayableTimeProvider(replay.Replayable):
+
+    type_name = "replayable-time-provider"
+
+    implements(ITimeProvider)
+
+    def init_state(self, state, _keeper, current=None):
+        state.time = current if current is not None else common.time()
+        state.dict = ExpDict(self)
+        state.queue = ExpQueue(self)
+
+    @replay.mutable
+    def set(self, state, key, value, exp):
+        state.dict.set(key, value, exp)
+
+    @replay.mutable
+    def add(self, state, value, exp):
+        state.queue.add(value, exp)
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        my_state = self._get_state()
+        other_state = other._get_state()
+        return ((my_state.time == other_state.time)
+                and (my_state.dict == other_state.dict)
+                and (my_state.queue == other_state.queue))
+
+    def __ne__(self, other):
+        eq = self.__eq__(other)
+        return eq if eq is NotImplemented else not eq
+
+    ### ITimeProvider override ###
+
+    @journal.side_effect
+    @replay.immutable
+    def get_time(self, state):
+        return state.time
 
 
 class TestExpDict(common.TestCase):
@@ -284,7 +339,8 @@ class TestExpDict(common.TestCase):
 
         d = ExpDict(t)
         self.assertEqual(serialize(d),
-                         Ins("xdict", (Ins("dummy-time-provider", 0), {})))
+                         Ins("xdict",
+                             (Ins("dummy-time-provider", 0), {})))
         self.assertEqual(d, unserialize(serialize(d)))
         d["foo"] = 1
         d.set("bar", 2, 5)
@@ -491,7 +547,8 @@ class TestExpQueue(common.TestCase):
 
         d = ExpQueue(t)
         self.assertEqual(serialize(d),
-                         Ins("xqueue", (Ins("dummy-time-provider", 0), [])))
+                         Ins("xqueue",
+                             (Ins("dummy-time-provider", 0), [])))
         self.assertEqual(d, unserialize(serialize(d)))
         d.add(1)
         d.add(2, 5)
@@ -504,3 +561,26 @@ class TestExpQueue(common.TestCase):
                                          (8001, 4),
                                          (9001, 3),
                                          (None, 1)])))
+
+
+class TestReplayability(common.TestCase):
+
+    def setUp(self):
+        self.externalizer = serialization.Externalizer()
+        self.serializer = pytree.Serializer(externalizer=self.externalizer)
+        self.unserializer = pytree.Unserializer(externalizer=self.externalizer)
+        self.keeper = journal.StupidJournalKeeper(self.serializer,
+                                                  self.unserializer)
+        self.externalizer.add(self.keeper)
+
+    def serialize(self, value):
+        return self.serializer.convert(value)
+
+    def unserialize(self, value):
+        return self.unserializer.convert(value)
+
+    def testDictWithReplay(self):
+        t = ReplayableTimeProvider(self.keeper, 0)
+        t.set("spam", 3, 8.001)
+        t.set("bacon", 4, 8.0012)
+        self.assertEqual(t, self.unserialize(self.serialize(t)))
