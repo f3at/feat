@@ -239,7 +239,7 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
     def get_total_agents(self):
         return len(list(self.driver.iter_agents()))
 
-    @attr(timeout=50)
+    @attr(timeout=100)
     @defer.inlineCallbacks
     def test_growing_upto_14(self):
         for x in range(5):
