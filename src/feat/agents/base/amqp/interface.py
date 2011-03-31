@@ -32,7 +32,7 @@ class IAMQPClient(Interface):
         @returns: Deferred
         '''
 
-    def publish(message):
+    def publish(message, key):
         '''
         Push message.
         @returns: Deferred
