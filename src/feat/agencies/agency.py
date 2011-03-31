@@ -412,6 +412,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### IAgencyAgent Methods ###
 
+    @manhole.expose()
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)

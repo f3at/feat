@@ -5,7 +5,7 @@ import socket
 
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
-                              partners, resource, )
+                              partners, resource, document)
 from feat.agents.common import rpc
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
@@ -51,6 +51,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         state.resources.define('host', 1)
 
         f = fiber.Fiber()
+        f.add_callback(fiber.drop_result, self._update_hostname)
         f.add_callback(fiber.drop_result, self.initiate_partners)
         # if not bootstrap:
         #     f.add_callback(fiber.drop_result, self.start_join_shard_manager)
@@ -111,9 +112,24 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         f.add_callback(state.medium.save_document)
         return f.succeed(desc)
 
+    @manhole.expose()
     @rpc.publish
-    def get_hostname(self):
+    @replay.immutable
+    def get_hostname(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.hostname
+
+    ### Private Methods ###
+
+    @replay.side_effect
+    def _discover_hostname(self):
         return socket.gethostbyaddr(socket.gethostname())[0]
+
+    @agent.update_descriptor
+    def _update_hostname(self, state, desc, hostname=None):
+        if not hostname:
+            hostname = self._discover_hostname()
+        desc.hostname = hostname
 
 
 class ResourcesAllocationContractor(contractor.BaseContractor):
@@ -177,7 +193,9 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
 
 @descriptor.register("host_agent")
 class Descriptor(descriptor.Descriptor):
-    pass
+
+    # Hostname of the machine, updated when an agent is started
+    document.field('hostname', None)
 
 
 class StartAgentReplier(replier.BaseReplier):

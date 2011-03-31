@@ -36,6 +36,7 @@ class TestHostAgent(testsuite.TestCase):
 
         f, state = self.ball.call(expected, self.agent.initiate)
         self.assertFiberTriggered(f, fiber.TriggerType.succeed)
+        self.assertFiberCalls(f, self.agent._update_hostname)
         self.assertFiberCalls(f, self.agent.initiate_partners)
 #        self.assertFiberCalls(f, self.agent.start_join_shard_manager)
 
