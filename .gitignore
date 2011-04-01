@@ -1,3 +1,6 @@
+build
+dist
+src/feat.egg-info/
 src/_trial_coverage
 src/_trial_temp
 src/feat-saved-coverage.pickle
