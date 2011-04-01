@@ -1,0 +1,10 @@
+build
+dist
+src/feat.egg-info/
+src/_trial_coverage
+src/_trial_temp
+src/feat-saved-coverage.pickle
+src/test.log
+src/master.log
+src/standalone.log
+*.pyc

@@ -26,9 +26,9 @@ class IAMQPClientFactory(Interface):
 
 class IAMQPClient(Interface):
 
-    def initiate():
+    def connect():
         '''
-        Creates the destination exchange.
+        Connects and creates the destination exchange.
         @returns: Deferred
         '''
 

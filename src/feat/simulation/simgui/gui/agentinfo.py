@@ -3,6 +3,7 @@ import gtk
 from feat.agents.base import agent
 
 from core import guistate, settings
+from feat.common import log
 
 
 class AgentInfo(object):
@@ -46,5 +47,5 @@ class AgentInfo(object):
             for e in parse.iter_elements():
                 self.load(e[1], node, e[0])
             self.view.expand_row(self.model.get_path(node), True)
-        except TypeError:
-            pass
+        except TypeError as e:
+            log.info('agent-info', 'Error adapting: %r', e)

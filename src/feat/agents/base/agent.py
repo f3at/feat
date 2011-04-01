@@ -6,7 +6,7 @@ import types
 from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
-from feat.interface import agent
+from feat.interface import generic, agent
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, )
 
@@ -52,7 +52,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     __metaclass__ = MetaAgent
 
-    implements(agent.IAgent)
+    implements(agent.IAgent, generic.ITimeProvider)
 
     partners_class = partners.Partners
 
@@ -78,7 +78,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
 
-    ## IAgent Methods ##
+    ### IAgent Methods ###
 
     @replay.immutable
     def initiate(self, state):
@@ -101,7 +101,13 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 
-    ## end of IAgent ##
+    ### ITimeProvider Methods ###
+
+    @replay.immutable
+    def get_time(self, state):
+        return generic.ITimeProvider(state.medium).get_time()
+
+    ### Public Methods ###
 
     @replay.journaled
     def initiate_partners(self, state):
@@ -112,28 +118,60 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return f.succeed()
 
     @manhole.expose()
-    def propose_to(self, recp):
-        return self.establish_partnership(recipient.IRecipient(recp))
+    def propose_to(self, recp, partner_role=None):
+        return self.establish_partnership(recipient.IRecipient(recp),
+                                          partner_role=partner_role)
 
     @replay.journaled
     def establish_partnership(self, state, recp, allocation_id=None,
-                              partner_role=None, our_role=None):
+                              partner_allocation_id=None,
+                              partner_role=None, our_role=None,
+                              substitute=None):
+        f = fiber.succeed()
         found = state.partners.find(recp)
         if found:
-            self.debug('establish_partnership() called for %r which is already'
-                       'our partner with the class %r, ignoring',
-                       recp, type(found))
-            return found
-        f = fiber.Fiber()
-        f.add_callback(self.initiate_protocol, recp, allocation_id,
-                       partner_role, our_role)
+            msg = ('establish_partnership() called for %r which is already '
+                   'our partner with the class %r.' % (recp, type(found), ))
+            self.debug(msg)
+
+            if substitute:
+                f.add_callback(fiber.drop_result, state.partners.remove,
+                               substitute)
+
+            f.chain(fiber.fail(partners.DoublePartnership(msg)))
+            return f
+        f.add_callback(fiber.drop_result, self.initiate_protocol,
+                       requester.Propose, recp, allocation_id,
+                       partner_allocation_id,
+                       partner_role, our_role, substitute)
         f.add_callback(requester.Propose.notify_finish)
-        return f.succeed(requester.Propose)
+        return f
+
+    @replay.journaled
+    def substitute_partner(self, state, partners_recp, recp, alloc_id):
+        '''
+        Establish the partnership to recp and, when it is successfull
+        remove partner with recipient partners_recp.
+
+        Use with caution: The partner which we are removing is not notified
+        in any way, so he still keeps link in his description. The correct
+        usage of this method requires calling it from two agents which are
+        divorcing.
+        '''
+        partner = state.partners.find(recipient.IRecipient(partners_recp))
+        if not partner:
+            msg = 'subsitute_partner() did not find the partner %r' %\
+                  partners_recp
+            self.error(msg)
+            return fiber.fail(partners.FindPartnerError(msg))
+        return self.establish_partnership(recp, partner.allocation_id,
+                                          alloc_id, substitute=partner)
 
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,
-                       role=None):
-        return state.partners.create(partner_class, recp, allocation_id, role)
+                       role=None, substitute=None):
+        return state.partners.create(partner_class, recp, allocation_id, role,
+                                     substitute)
 
     @replay.mutable
     def partner_said_goodbye(self, state, recp):
@@ -169,11 +207,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def check_allocation_exists(self, state, allocation_id):
-        '''
-        May raise AllocationNotFound.
-        '''
-        state.resources.exists(allocation_id)
-        return True
+        return state.resources.exists(allocation_id)
 
     @replay.immutable
     def list_resource(self, state):
@@ -185,13 +219,20 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def confirm_allocation(self, state, allocation_id):
         return state.resources.confirm(allocation_id)
 
+    @replay.immutable
+    def allocation_used(self, state, allocation_id):
+        '''
+        Checks if allocation is used by any of the partners.
+        If allocation does not exist returns False.
+        @param allocation_id: ID of the allocation
+        @returns: True/False
+        '''
+        return len(filter(lambda x: x.allocation_id == allocation_id,
+                          state.partners.all)) > 0
+
     @replay.mutable
     def release_resource(self, state, allocation_id):
         return state.resources.release(allocation_id)
-
-    @replay.immutable
-    def get_time(self, state):
-        return state.medium.get_time()
 
     @replay.immutable
     def get_document(self, state, doc_id):
@@ -205,7 +246,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
 
-    # private
+    ### Private Methods ###
 
     @replay.mutable
     def _load_allocations(self, state):

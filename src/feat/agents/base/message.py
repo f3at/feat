@@ -1,8 +1,19 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
+import operator
+
+from zope.interface import implements
 
 from feat.common import serialization, formatable
+from feat.agencies.interface import *
+
+
+class FirstMessageMixin(formatable.Formatable):
+    implements(IFirstMessage)
+    # field used by nested protocols to identify that incoming
+    # dialog has already been handled by the shard
+    formatable.field('traversal_id', None)
 
 
 @serialization.register
@@ -34,7 +45,7 @@ class ContractMessage(BaseMessage):
 
 
 @serialization.register
-class RequestMessage(BaseMessage):
+class RequestMessage(BaseMessage, FirstMessageMixin):
 
     formatable.field('protocol_type', 'Request')
 
@@ -49,7 +60,7 @@ class ResponseMessage(BaseMessage):
 
 
 @serialization.register
-class Announcement(ContractMessage):
+class Announcement(ContractMessage, FirstMessageMixin):
     pass
 
 
@@ -84,14 +95,28 @@ class Acknowledgement(ContractMessage):
 class Bid(ContractMessage):
 
     @staticmethod
-    def pick_best(bids):
-        assert len(bids) > 0
+    def pick_best(bids, number=1):
+        '''
+        Picks the cheapest bids from the list provided.
+        @param bids: list of bids to choose from
+        @param number: number of bids to choose
+        @returns: the list of bids
+        '''
         for bid in bids:
             assert isinstance(bid, Bid)
 
-        costs = map(lambda x: x.payload['cost'], bids)
-        best = min(costs)
-        return filter(lambda x: x.payload['cost'] == best, bids)[0]
+        costs = sorted(map(lambda x: (x.payload['cost'], x), bids),
+                       key=operator.itemgetter(0))
+        picked = list()
+
+        for x in range(number):
+            try:
+                best, bid = costs.pop(0)
+            except IndexError:
+                break
+            picked.append(bid)
+
+        return picked
 
 
 @serialization.register

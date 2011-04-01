@@ -1,10 +1,19 @@
-from feat.agents.base import requester, replay, message
+from feat.agents.base import requester, replay, message, document
 from feat.common import fiber
 
 from feat.interface.recipient import IRecipient
 
 
 __all__ = ['start_agent', 'StartAgentRequester']
+
+
+@document.register
+class HostDef(document.Document):
+
+    document_type = "hostdef"
+
+    # The resources available for this host type.
+    document.field('resources', {})
 
 
 def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):

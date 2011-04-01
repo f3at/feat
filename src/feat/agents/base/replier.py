@@ -52,7 +52,7 @@ class GoodBye(BaseReplier):
     def requested(self, state, request):
         f = fiber.Fiber()
         f.add_callback(state.agent.partner_said_goodbye)
-        f.add_callback(self._send_reply)
+        f.add_both(self._send_reply)
         return f.succeed(request.reply_to)
 
     @replay.immutable
@@ -67,10 +67,25 @@ class ProposalReceiver(BaseReplier):
 
     @replay.journaled
     def requested(self, state, request):
-        msg = message.ResponseMessage(
-            payload=state.agent.descriptor_type)
         f = fiber.Fiber()
         f.add_callback(state.agent.create_partner, request.reply_to,
-                       role=request.payload['role'])
-        f.add_callback(fiber.drop_result, state.medium.reply, msg)
+                       role=request.payload['role'],
+                       allocation_id=request.payload['allocation_id'])
+        f.add_callback(fiber.drop_result, self._send_ok)
+        f.add_errback(self._send_failed)
         return f.succeed(request.payload['partner_class'])
+
+    @replay.journaled
+    def _send_ok(self, state):
+        payload = dict(ok=True, desc=state.agent.descriptor_type)
+        self._reply(payload)
+
+    @replay.journaled
+    def _send_failed(self, state, failure):
+        payload = dict(ok=False, fail=failure)
+        self._reply(payload)
+
+    @replay.immutable
+    def _reply(self, state, payload):
+        msg = message.ResponseMessage(payload=payload)
+        state.medium.reply(msg)

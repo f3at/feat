@@ -30,7 +30,7 @@ class JoinShardManager(manager.BaseManager):
     @replay.immutable
     def closed(self, state):
         bids = state.medium.get_bids()
-        best_bid = message.Bid.pick_best(bids)
+        best_bid = message.Bid.pick_best(bids)[0]
         msg = message.Grant()
         msg.payload['joining_agent'] = state.agent.get_own_address()
         params = (best_bid, msg)

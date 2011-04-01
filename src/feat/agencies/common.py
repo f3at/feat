@@ -126,9 +126,10 @@ class AgencyMiddleMixin(object):
         self._set_protocol_id(protocol_id)
 
     def _set_remote_id(self, remote_id):
-        if self.remote_id is not None:
-            self.debug('Changing id of remote peer. This usually means the '
-                       'message has been handed over.')
+        if self.remote_id is not None and self.remote_id != remote_id:
+            self.debug('Changing id of remote peer. %r -> %r. '
+                       'This usually means the message has been handed over.',
+                       self.remote_id, remote_id)
         self.remote_id = remote_id
 
     def _set_protocol_id(self, protocol_id):

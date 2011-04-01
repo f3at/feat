@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from twisted.python import components
 from zope.interface import implements
 from twisted.internet import defer
@@ -41,9 +43,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(requester.IAgencyRequester, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-requester'
-
-    type_name = 'requester-medium'
+    log_category = "requester-medium"
+    type_name = "requester-medium"
 
     error_state = requests.RequestState.wtf
 
@@ -79,6 +80,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         request = request.clone()
         self.log("Sending request: %r.", request)
         self._ensure_state(requests.RequestState.requested)
+
+        if request.traversal_id is None:
+            request.traversal_id = str(uuid.uuid1())
 
         self._send_message(request, self.expiration_time)
 
@@ -147,12 +151,12 @@ components.registerAdapter(AgencyReplierFactory,
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.AgencyMiddleMixin, common.InterestedMediumBase):
+
     implements(replier.IAgencyReplier, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-replier'
-
-    type_name = 'replier-medium'
+    log_category = "replier-medium"
+    type_name = "replier-medium"
 
     error_state = requests.RequestState.wtf
 

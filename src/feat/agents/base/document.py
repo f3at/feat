@@ -11,8 +11,14 @@ def register(klass):
         raise ValueError('document_type %s already registered!' %
                          klass.document_type)
     documents[klass.document_type] = klass
+    klass.type_name = klass.document_type
     serialization.register(klass)
     return klass
+
+
+def lookup(document_type):
+    global documents
+    return documents.get(document_type)
 
 
 field = formatable.field

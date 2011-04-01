@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from zope.interface import implements
+
 from twisted.python import components
 
 from feat.common import log, serialization, fiber, annotate
@@ -9,6 +9,16 @@ from feat.interface.protocols import InitiatorFailed
 
 
 class DefinitionError(Exception):
+    pass
+
+
+@serialization.register
+class DoublePartnership(Exception, serialization.Serializable):
+    pass
+
+
+@serialization.register
+class FindPartnerError(Exception, serialization.Serializable):
     pass
 
 
@@ -42,9 +52,9 @@ class OneRelation(Relation):
 
     def _ensure_one(self, partners, match):
         if len(match) > 1:
-            raise RuntimeError('Expected at most one partner of the class %r'
-                               ', found %d in %r' %\
-                               (self.factory, len(partners), partners))
+            raise FindPartnerError(
+            'Expected at most one partner of the class %r, found %d in %r' %\
+                (self.factory, len(partners), partners))
         elif len(match) == 1:
             return match[0]
 
@@ -117,8 +127,11 @@ class BasePartner(serialization.Serializable):
         return f.succeed(requester.GoodBye)
 
     def on_goodbye(self, agent):
+        f = fiber.succeed()
         if self.allocation_id:
-            agent.release_resource(self.allocation_id)
+            f.add_callback(fiber.drop_result, agent.release_resource,
+                           self.allocation_id)
+        return f
 
     def __eq__(self, other):
         return self.recipient == other.recipient and\
@@ -234,18 +247,18 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         if len(match) == 0:
             return None
         elif len(match) > 1:
-            raise RuntimeError('More than one partner was matched by the '
-                               'recipient %r!', recp)
+            raise FindPartnerError('More than one partner was matched by the '
+                                   'recipient %r!', recp)
         else:
             return match[0]
 
     @replay.mutable
     def create(self, state, partner_class, recp,
-               allocation_id=None, role=None):
-        f = self.find(recp)
-        if f:
+               allocation_id=None, role=None, substitute=None):
+        found = self.find(recp)
+        if found:
             self.info('We already are in partnership with recipient '
-                      '%r, instance: %r.', recp, f)
+                      '%r, instance: %r.', recp, found)
             return
 
         factory = self.query_handler(partner_class, role)
@@ -253,11 +266,23 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         self.debug(
             'Registering partner %r (lookup (%r, %r)) for recipient: %r',
             factory, partner_class, role, recp)
-        f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, partner.initiate, state.agent)
+
+        if substitute:
+            self.debug('It will substitute: %r', substitute)
+
+        f = fiber.succeed()
+        if allocation_id:
+            f.add_callback(fiber.drop_result,
+                           state.agent.check_allocation_exists,
+                           allocation_id)
+        f.add_callback(fiber.drop_result, self.initiate_partner, partner)
         f.add_callback(fiber.drop_result, state.agent.update_descriptor,
-                       self._append_partner, partner)
-        return f.succeed()
+                       self._append_partner, partner, substitute)
+        return f
+
+    @replay.immutable
+    def initiate_partner(self, state, partner):
+        return partner.initiate(state.agent)
 
     @replay.mutable
     def on_goodbye(self, state, recp):
@@ -268,14 +293,26 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return None
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
-                       self._remove_partner, partner)
+        f.add_callback(fiber.drop_result, self.remove, partner)
         f.add_callback(fiber.drop_result, partner.on_goodbye, state.agent)
         return f.succeed()
 
+    @replay.mutable
+    def remove(self, state, partner):
+        # FIXME: Two subsequent updates of descriptor.
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+                       self._remove_partner, partner)
+        if partner.allocation_id:
+            f.add_callback(fiber.drop_result, state.agent.release_resource,
+                           partner.allocation_id)
+        return f
+
     # private
 
-    def _append_partner(self, desc, partner):
+    def _append_partner(self, desc, partner, substitute):
+        if substitute:
+            self._remove_partner(desc, substitute)
         desc.partners.append(partner)
         return partner
 

@@ -32,7 +32,7 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     ### IAMQPClient methods ###
 
-    def initiate(self):
+    def connect(self):
         return defer.succeed(None)
 
     def publish(self, message, key):

@@ -1,4 +1,5 @@
 import uuid
+from types import NoneType
 
 from twisted.python import components
 from zope.interface import implements
@@ -106,6 +107,7 @@ class Recipients(serialization.Serializable, pb.Copyable):
 
     def __init__(self, recipients):
         self._recipients = []
+        recipients = recipients or []
         for recipient in recipients:
             self._recipients.append(IRecipient(recipient))
 
@@ -133,6 +135,7 @@ class Recipients(serialization.Serializable, pb.Copyable):
 
 
 components.registerAdapter(Recipients, list, IRecipients)
+components.registerAdapter(Recipients, NoneType, IRecipients)
 
 
 class Agent(Recipient):

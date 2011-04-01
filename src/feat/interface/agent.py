@@ -55,6 +55,12 @@ class IAgencyAgent(Interface):
         @returns: Deferred
         '''
 
+    def join_shard(shard_id):
+        '''Joins shard with specified identifier.'''
+
+    def leave_shard(shard_id):
+        '''Leave the shard with specified identifier.'''
+
     def register_interest(factory):
         '''Registers an interest in a contract or a request.'''
 
@@ -84,11 +90,26 @@ class IAgencyAgent(Interface):
         @returns: L{RetryingProtocol}
         '''
 
-    def get_time():
+    def initiate_task(factory, *args, **kwargs):
         '''
-        Use this to get current time. Should fetch the time from NTP server
+        Initiates a task
 
-        @returns: Number of seconds since epoch
+        @rtype: L{IInitiator}
+        @returns: Instance of task initiator
+        '''
+
+    def retrying_task(self, factory, max_retries,
+                      initial_delay, max_delay, args, kwargs):
+        '''
+        Initiates the task which will get restart if it fails.
+        The restart will be delayed with exponential growth.
+
+        Extra params comparing to L{IAgencyAgent.initiate_task}:
+
+        @param max_retries: After how many retries to give up. Def. None: never
+        @param initial_delay: Delay before the first retry.
+        @param max_delay: Miximum delay to wait (above it it will not grow).
+        @returns: L{RetryingProtocol}
         '''
 
     def save_document(document):

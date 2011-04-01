@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import StringIO
+import uuid
 
 from zope.interface import implements
 
@@ -10,6 +11,7 @@ from feat.agencies.emu import messaging, database
 from feat.interface.agency import ExecMode
 from feat.test import factories
 from feat.agents.base import document, descriptor, dbtools
+from feat.agents.shard import shard_agent
 
 
 class Commands(manhole.Manhole):
@@ -36,6 +38,13 @@ class Commands(manhole.Manhole):
         d = ag.initiate(self._messaging, self._database)
         d.addCallback(defer.override_result, ag)
         return d
+
+    @manhole.expose()
+    def uuid(self):
+        '''
+        Generates random string.
+        '''
+        return str(uuid.uuid1())
 
     @manhole.expose()
     def descriptor_factory(self, document_type, shard=u'lobby'):
@@ -96,6 +105,40 @@ class Commands(manhole.Manhole):
         agency = self.find_agency(agent_id)
         return agency and agency.find_agent(agent_id)
 
+    @manhole.expose()
+    def count_shard_kings(self):
+        res = 0
+        for medium in self.iter_agents():
+            agent = medium.get_agent()
+            if not isinstance(agent, shard_agent.ShardAgent):
+                continue
+            if agent.is_king():
+                res += 1
+        return res
+
+    @manhole.expose()
+    def validate_shards(self):
+        error = False
+        for medium in self.iter_agents():
+            agent = medium.get_agent()
+            if not isinstance(agent, shard_agent.ShardAgent):
+                continue
+            _, alloc = agent.list_resource()
+            allocated = alloc['neighbours']
+            part = len(agent.query_partners('neighbours'))
+            if allocated != part:
+                self.error("Shard Agent of shard %r has %d allocated "
+                           "resource and %d partners",
+                           medium._descriptor.shard, allocated, part)
+                error = True
+            if part < 3 and agent.is_peasant():
+                self.error(
+                    "Shard Agent of shard %r has only %d partners and "
+                    "is not a king", medium._descriptor.shard, part)
+                error = True
+        if not error:
+            self.info('All ok!')
+
 
 class Driver(log.Logger, log.FluLogKeeper, Commands):
 
@@ -152,6 +195,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def get_document(self, doc_id):
         return self._database_connection.get_document(doc_id)
+
+    def save_document(self, doc):
+        return self._database_connection.save_document(doc)
 
 
 class Output(StringIO.StringIO, object):

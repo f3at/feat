@@ -4,10 +4,13 @@ import types
 from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
+from twisted.python import failure
+
 from feat.common import decorator, enum, adapter, reflect
 from feat.interface.serialization import *
 
 DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
+                              Capabilities.failure_values,
                               Capabilities.enum_values,
                               Capabilities.long_values,
                               Capabilities.float_values,
@@ -277,6 +280,7 @@ class Serializer(object):
     pack_unicode = None
     pack_int = None
     pack_enum = None
+    pack_failure = None
     pack_long = None
     pack_float = None
     pack_bool = None
@@ -368,6 +372,10 @@ class Serializer(object):
         if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
+        # Flatten failures
+        if isinstance(value, (failure.Failure, )):
+            return self.flatten_failure_value(value, caps, freezing)
+
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
         if freezing:
@@ -442,6 +450,13 @@ class Serializer(object):
         self.check_capabilities(Capabilities.enum_values, value,
                                 caps, freezing)
         return self.pack_enum, value
+
+    def flatten_failure_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.failure_values, value,
+                                caps, freezing)
+        return self.pack_failure, [
+            self.flatten_value(type(value.value), caps, freezing),
+            self.flatten_value(str(value.value), caps, freezing)]
 
     def flatten_type_value(self, value, caps, freezing):
         self.check_capabilities(Capabilities.type_values, value,
@@ -783,7 +798,9 @@ class Unserializer(object):
         # on there references being fully restored when called.
         # This should not be relied on anyway.
         for instance, _ in reversed(self._instances):
-            instance.restored()
+            restored_fun = getattr(instance, "restored", None)
+            if restored_fun:
+                restored_fun()
 
     def restore_type(self, type_name):
         value = reflect.named_object(type_name)

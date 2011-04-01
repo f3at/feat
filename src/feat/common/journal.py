@@ -570,7 +570,7 @@ class StupidJournalEntry(object):
         return self
 
 
-class StupidJournalKeeper(object):
+class StupidJournalKeeper(RecorderRoot):
     '''Dummy in-memory journal keeper, DO NOT USE for serious stuff.
     Values ARE NOT SERIALIZED so it cannot be used for replayability.
     DO NOT RESPECT new_entry() ordering, entries are ordered by commit()
@@ -579,6 +579,7 @@ class StupidJournalKeeper(object):
     implements(IJournalKeeper, IEffectHandler)
 
     def __init__(self, serializer, unserializer, effect_handler=None):
+        RecorderRoot.__init__(self, self)
         self.serializer = serializer
         self.unserializer = unserializer
         self._effect_handler = effect_handler

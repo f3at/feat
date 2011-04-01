@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import log, reflect, serialization
+from feat.common import log, reflect, serialization, fiber
 from feat.interface import requester
 from feat.agents.base import replay, protocol, message
 
@@ -63,24 +63,41 @@ class Propose(BaseRequester):
     protocol_id = 'lets-pair-up'
 
     @replay.mutable
-    def initiate(self, state, allocation=None, our_role=None,
-                 partner_role=None):
+    def initiate(self, state, our_alloc_id=None, partner_alloc_id=None,
+                 partner_role=None, our_role=None, substitute=None):
         state.our_role = our_role
-        state.allocation = allocation
+        state.allocation_id = our_alloc_id
+        state.substitute = substitute
         msg = message.RequestMessage(
             payload=dict(
                 partner_class=state.agent.descriptor_type,
-                role=partner_role))
+                role=partner_role,
+                allocation_id=partner_alloc_id))
         state.medium.request(msg)
 
-    @replay.immutable
+    @replay.journaled
     def got_reply(self, state, reply):
-        return state.agent.create_partner(reply.payload, reply.reply_to,
-                                          state.allocation, state.our_role)
+        if reply.payload['ok']:
+            return state.agent.create_partner(
+                reply.payload['desc'], reply.reply_to, state.allocation_id,
+                state.our_role, substitute=state.substitute)
+        else:
+            self.info('Received error: %r', reply.payload['fail'])
+            f = self._release_allocation()
+            f.chain(fiber.fail(reply.payload['fail']))
+            return f
 
-    @replay.immutable
+    @replay.journaled
     def closed(self, state):
         self.warning('Our proposal to agent %r has been ignored. How rude!',
                      state.medium.recipients)
-        if state.allocation:
-            state.agent.release_resource(state.allocation)
+        return self._release_allocation()
+
+    @replay.mutable
+    def _release_allocation(self, state):
+        f = fiber.succeed()
+        if state.allocation_id:
+            return f.add_callback(fiber.drop_result,
+                                  state.agent.release_resource,
+                                  state.allocation_id)
+        return f

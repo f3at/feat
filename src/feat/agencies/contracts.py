@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from twisted.python import components, failure
 from zope.interface import implements
 
@@ -17,7 +19,7 @@ class AgencyManagerFactory(object):
     # TODO: ask Sebastien why this needs to be serializable
     implements(IAgencyInitiatorFactory, serialization.ISerializable)
 
-    type_name = 'manager-medium-factory'
+    type_name = "manager-medium-factory"
 
     def __init__(self, factory):
         self._factory = factory
@@ -40,14 +42,15 @@ class ContractorState(enum.Enum):
     bid - Bid has been received
     refused - Refusal has been received
     rejected - Bid has been rejected
+    elected - Bid has been elected to be handed over
     granted - Grant has been sent
     completed - FinalReport has been received
     cancelled - Sent or received Cancellation
     acknowledged - Ack has been sent
     '''
 
-    (bid, refused, rejected, granted,
-     completed, cancelled, acknowledged) = range(7)
+    (bid, refused, rejected, elected, granted,
+     completed, cancelled, acknowledged) = range(8)
 
 
 class ManagerContractor(common.StateMachineMixin, log.Logger):
@@ -55,7 +58,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     Represents the contractor from the point of view of the manager
     '''
 
-    log_category = 'manager-contractor'
+    log_category = "manager-contractor"
 
     def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
@@ -130,9 +133,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(manager.IAgencyManager, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-manager'
-
-    type_name = 'manager-medium'
+    log_category = "manager-medium"
+    type_name = "manager-medium"
 
     error_state = contracts.ContractState.wtf
 
@@ -176,6 +178,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
 
+        if announce.traversal_id is None:
+            announce.traversal_id = str(uuid.uuid1())
+
         self._ensure_state(contracts.ContractState.initiated)
         self._set_state(contracts.ContractState.announced)
 
@@ -201,6 +206,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             rejection = rejection.clone()
         contractor.on_event(rejection)
 
+    @serialization.freeze_tag('AgencyManager.grant')
     @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
         self._ensure_state([contracts.ContractState.closed,
@@ -229,6 +235,12 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
+    @serialization.freeze_tag('AgencyManager.elect')
+    @replay.named_side_effect('AgencyManager.elect')
+    def elect(self, bid):
+        contractor = self.contractors[bid]
+        contractor._set_state(ContractorState.elected)
+
     @replay.named_side_effect('AgencyManager.cancel')
     def cancel(self, reason=None):
         self._ensure_state([contracts.ContractState.granted,
@@ -245,6 +257,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self):
+        # send the rejections to all the contractors
+        for contractor in self.contractors.with_state(ContractorState.bid):
+            contractor.on_event(message.Rejection())
+
         self._set_state(contracts.ContractState.terminated)
         delay.callLater(0, self._terminate, None)
 
@@ -425,9 +441,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(contractor.IAgencyContractor, IListener,
                serialization.ISerializable)
 
-    log_category = 'agency-contractor'
-
-    type_name = 'contractor-medium'
+    log_category = "contractor-medium"
+    type_name = "contractor-medium"
 
     error_state = contracts.ContractState.wtf
 

@@ -1,0 +1,10 @@
+#!/usr/bin/python2.6
+
+from feat.agencies import bootstrap
+
+
+if __name__ == '__main__':
+    try:
+    	bootstrap.bootstrap()
+    except KeyboardInterrupt:
+        pass

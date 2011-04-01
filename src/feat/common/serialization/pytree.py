@@ -1,3 +1,5 @@
+from twisted.python.failure import Failure
+
 from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
@@ -180,7 +182,7 @@ class Unserializer(base.Unserializer):
     reference got dereferenced, so unpacking '''
 
     pass_through_types = set([str, unicode, int, long, float, bool,
-                              type(None), type, InterfaceClass])
+                              type(None), type, InterfaceClass, Failure])
 
     def __init__(self, pre_converter=None, registry=None, externalizer=None):
         base.Unserializer.__init__(self, pre_converter=pre_converter,

@@ -61,6 +61,7 @@ class DummyInterest(object):
         self.protocol_type = "Contract"
         self.protocol_id = "some-contract"
         self.interest_type = protocols.InterestType.public
+        self.initiator = message.Announcement
 
 
 class TestDependencies(common.TestCase, common.AgencyTestHelper):
@@ -328,6 +329,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
     def _build_req_msg(self, recp):
         r = message.RequestMessage()
         r.session_id = str(uuid.uuid1())
+        r.traversal_id = str(uuid.uuid1())
         r.payload = 10
         return r
 

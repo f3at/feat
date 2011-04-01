@@ -1,12 +1,15 @@
 from feat.test.integration import common
 from feat.process import rabbitmq
+from feat.process.base import DependencyError
 from feat.agents.base import agent, descriptor, dependency, replay, message
 from feat.agents.base.amqp.interface import *
 from feat.interface.agency import ExecMode
 from feat.common import fiber, manhole, defer
 from feat.common.text_helper import format_block
-from feat.test.common import delay, StubAgent
+from feat.test.common import delay, StubAgent, attr
 from feat.agencies.net import messaging
+
+from twisted.trial.unittest import SkipTest
 
 
 @descriptor.register('test-agent')
@@ -32,7 +35,7 @@ class Agent(agent.BaseAgent):
             IAMQPClientFactory, self, exchange, port=port,
             exchange_type=exchange_type)
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.connection.initiate)
+        f.add_callback(fiber.drop_result, state.connection.connect)
         return f
 
     @manhole.expose()
@@ -53,6 +56,7 @@ class Agent(agent.BaseAgent):
         return state.connection
 
 
+@attr('slow')
 class TestWithRabbit(common.SimulationTest):
 
     timeout = 20

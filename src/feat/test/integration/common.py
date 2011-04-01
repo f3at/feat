@@ -31,8 +31,15 @@ class SimulationTest(common.TestCase):
         self.driver.process(script)
         return d
 
-    def get_local(self, name):
-        return self.driver._parser.get_local(name)
+    def get_local(self, *names):
+        results = map(lambda name: self.driver._parser.get_local(name), names)
+        if len(results) == 1:
+            return results[0]
+        else:
+            return tuple(results)
+
+    def set_local(self, name, value):
+        self.driver._parser.set_local(value, name)
 
     @defer.inlineCallbacks
     def tearDown(self):

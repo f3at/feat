@@ -38,6 +38,12 @@ class IAgencyManager(contracts.IContractPeer):
                        [(bid1, grant1), (bid2, grant2), ... ]
         '''
 
+    def elect(bid):
+        '''
+        Mark the bid as elected. Elected bid will get rejected when the
+        manager terminates.
+        '''
+
     def cancel(reason):
         '''
         Sends cancellations to all granted or completed contractors
@@ -52,8 +58,7 @@ class IAgencyManager(contracts.IContractPeer):
         Unregister the listener from the agency. This method is meant to be
         used in nested contracts in case when the whole purpose of the managers
         implemenetation is fetching the bids from nested contractors.
-        Before this methods gets called the agent-side code should
-        take care to reject/handover all the bids received by the manager.
+        All the bids which have not been handed over will get rejected.
         '''
 
     def get_bids():

@@ -2,7 +2,7 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["InterestType", "IInitiatorFactory",
+__all__ = ["InterestType", "IInitiatorFactory", "IAgencyInterest",
            "IInterest", "IInitiator", "IInterested", "InitiatorFailed",
            "InitiatorExpired"]
 
@@ -31,6 +31,16 @@ class IInitiatorFactory(Interface):
         assuming the initiator role.'''
 
 
+class IAgencyInterest(Interface):
+    '''Agency side interest.'''
+
+    def bind_to_lobby():
+        pass
+
+    def unbind_from_lobby():
+        pass
+
+
 class IInterest(Interface):
     '''This class represent an interest in a type of protocol.
     It defines a protocol type, a protocol identifier and can be called
@@ -39,7 +49,9 @@ class IInterest(Interface):
 
     protocol_type = Attribute("Protocol type")
     protocol_id = Attribute("Protocol id")
-    initiator = Attribute("A message class that initiates the dialog")
+    initiator = Attribute("A message class that initiates the dialog. "
+                          "Should implement L{IFirstMessage}")
+    concurrency = Attribute("Number of concurrent instances allowed.")
     interest_type = Attribute("Type of interest L{InterestType}")
 
     def __call__(agent, medium, *args, **kwargs):
