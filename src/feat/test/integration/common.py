@@ -38,6 +38,9 @@ class SimulationTest(common.TestCase):
         else:
             return tuple(results)
 
+    def set_local(self, name, value):
+        self.driver._parser.set_local(value, name)
+
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():

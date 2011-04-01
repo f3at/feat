@@ -9,35 +9,61 @@ from feat.agencies.net import agency
 from feat.common import log
 
 
-class Options(optparse.OptionParser):
-
-    def __init__(self):
-        optparse.OptionParser.__init__(self)
-        agency.add_options(self)
+class OptionError(Exception):
+    pass
 
 
 def get_db_connection(agency):
     return agency._database.get_connection(None)
 
 
+def add_options(parser):
+    parser.add_option('-d', '--debug',
+                      action="store", type="string", dest="debug",
+                      help="Set debug levels.")
+
+
+def check_options(opts, args):
+    return opts, args
+
+
 class bootstrap(object):
+
+    def __init__(self, parser=None, args=None):
+        self._parser = parser
+        self.args = args
+        self.opts = None
+        self.agency = None
 
     def __enter__(self):
         log.FluLogKeeper.init()
-        opts = self.parse_opts()
-        self.agency = self.run_agency(opts)
-        return self.agency
+        self._parse_opts()
+        self._check_opts()
+        if self.opts.debug:
+            log.FluLogKeeper.set_debug(self.opts.debug)
+        self.agency = self._run_agency()
+        return self
 
     def __exit__(self, type, value, traceback):
+        if type is not None:
+            if issubclass(type, OptionError):
+                print >> sys.stderr, "ERROR: %s" % str(value)
+                return True
+            return
         reactor.run()
 
-    def parse_opts(self):
-        parser = Options()
-        (opts, args) = parser.parse_args()
-        return opts
+    def _parse_opts(self):
+        parser = self._parser or optparse.OptionParser()
+        add_options(parser)
+        agency.add_options(parser)
+        self.opts, self.args = parser.parse_args(args=self.args)
 
-    def run_agency(self, opts):
-        a = agency.Agency.from_config(os.environ, opts)
+    def _check_opts(self):
+        self.opts, self.args = check_options(self.opts, self.args)
+        self.opts, self.args = agency.check_options(self.opts, self.args)
+
+    def _run_agency(self):
+        a = agency.Agency.from_config(os.environ, self.opts)
         a.initiate()
         return a
 

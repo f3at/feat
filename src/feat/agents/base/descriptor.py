@@ -13,6 +13,10 @@ def register(klass, name):
     return document.register(klass)
 
 
+def lookup(name):
+    return document.lookup(name)
+
+
 @document.register
 class Descriptor(document.Document, pb.Copyable):
 

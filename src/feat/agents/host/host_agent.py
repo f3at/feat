@@ -9,7 +9,12 @@ from feat.agents.base import (agent, contractor, recipient, message,
 from feat.agents.common import rpc
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
-from feat.agents.common import shard
+from feat.agencies.interface import NotFoundError
+
+DEFAULT_RESOURCES = {"host": 1,
+                     "epu": 500,
+                     "core": 2,
+                     "mem": 1000}
 
 
 @serialization.register
@@ -41,17 +46,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
     partners_class = Partners
 
     @replay.mutable
-    def initiate(self, state, bootstrap=False):
+    def initiate(self, state, hostdef=None, bootstrap=False):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
 
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(ResourcesAllocationContractor)
 
-        state.resources.define('host', 1)
-
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self._update_hostname)
+        f.add_callback(fiber.drop_result, self._load_definition, hostdef)
         f.add_callback(fiber.drop_result, self.initiate_partners)
         # if not bootstrap:
         #     f.add_callback(fiber.drop_result, self.start_join_shard_manager)
@@ -123,13 +127,54 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
     @replay.side_effect
     def _discover_hostname(self):
-        return socket.gethostbyaddr(socket.gethostname())[0]
+        return unicode(socket.gethostbyaddr(socket.gethostname())[0])
 
     @agent.update_descriptor
     def _update_hostname(self, state, desc, hostname=None):
         if not hostname:
             hostname = self._discover_hostname()
         desc.hostname = hostname
+
+    @replay.immutable
+    def _load_definition(self, state, hostdef=None):
+        if not hostdef:
+            return self._apply_defaults()
+
+        if isinstance(hostdef, document.Document):
+            return self._apply_definition(hostdef)
+
+        f = fiber.Fiber()
+        f.add_callback(state.medium.get_document)
+        f.add_callbacks(self._apply_definition, self._definition_not_found,
+                        ebargs=(hostdef, ))
+        return f.succeed(hostdef)
+
+    def _definition_not_found(self, failure, hostdef_id):
+        failure.trap(NotFoundError)
+        msg = "Host definition document %r not found" % hostdef_id
+        self.error(msg)
+        raise NotFoundError(msg)
+
+    def _apply_definition(self, hostdef):
+        self._setup_resources(hostdef.resources)
+
+    def _apply_defaults(self):
+        self.warning("No host definition specified, "
+                     "using default resource definition")
+        self._setup_resources(DEFAULT_RESOURCES)
+
+    @replay.mutable
+    def _setup_resources(self, state, resources):
+        if not resources:
+            self.warning("Host do not have any resources defined")
+            return
+
+        self.info("Setting host resources to: %s",
+                  ", ".join(["%s=%s" % (n, v)
+                             for n, v in resources.iteritems()]))
+
+        for name, total in resources.iteritems():
+            state.resources.define(name, total)
 
 
 class ResourcesAllocationContractor(contractor.BaseContractor):

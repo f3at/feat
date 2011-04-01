@@ -71,6 +71,10 @@ def add_options(parser):
                       default=DEFAULT_MH_PORT)
 
 
+def check_options(opts, args):
+    return opts, args
+
+
 class Agency(agency.Agency):
 
     @classmethod

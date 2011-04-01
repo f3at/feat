@@ -196,6 +196,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def get_document(self, doc_id):
         return self._database_connection.get_document(doc_id)
 
+    def save_document(self, doc):
+        return self._database_connection.save_document(doc)
+
 
 class Output(StringIO.StringIO, object):
     """

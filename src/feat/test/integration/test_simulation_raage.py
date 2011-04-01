@@ -8,7 +8,7 @@ from feat.test.integration import common
 from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
 from feat.agents.base import recipient, agent, replay, descriptor
-from feat.agents.common import raage
+from feat.agents.common import raage, host
 
 
 def checkAllocation(test, agent, resources):
@@ -48,13 +48,19 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         raage_desc = descriptor_factory('raage_agent')
         req_desc = descriptor_factory('requesting_agent')
 
-        host_medium = agency.start_agent(host_desc, bootstrap=True)
+        host_medium = agency.start_agent(host_desc, hostdef=hostdef, \
+                                         bootstrap=True)
         host_agent = host_medium.get_agent()
 
         host_agent.start_agent(shard_desc)
         host_agent.start_agent(raage_desc)
         host_agent.start_agent(req_desc)
         """)
+
+        hostdef = host.HostDef()
+        hostdef.resources = {"host": 1}
+        self.set_local("hostdef", hostdef)
+
         yield self.process(setup)
         raage_medium = self.driver.find_agent(self.get_local('raage_desc'))
         self.raage_agent = raage_medium.get_agent()
@@ -117,7 +123,8 @@ class MultiHostAllocationSimulation(common.SimulationTest):
 
         # First agency runs the Shard, Raage, Signal and Host agents
         agency = spawn_agency()
-        host1_medium = agency.start_agent(host1_desc, bootstrap=True)
+        host1_medium = agency.start_agent(host1_desc, hostdef=hostdef, \
+                                          bootstrap=True)
         host1_agent = host1_medium.get_agent()
         host1_agent.start_agent(shard_desc)
         host1_agent.start_agent(raage_desc)
@@ -125,16 +132,22 @@ class MultiHostAllocationSimulation(common.SimulationTest):
 
         # Second agency runs the host agent
         spawn_agency()
-        host2_medium = _.start_agent(host2_desc)
+        host2_medium = _.start_agent(host2_desc, hostdef=hostdef)
         host2_agent = host2_medium.get_agent()
 
         # Third is like seccond
         spawn_agency()
-        host3_medium = _.start_agent(host3_desc)
+        host3_medium = _.start_agent(host3_desc, hostdef=hostdef)
         host3_agent = host3_medium.get_agent()
 
         """)
+
+        hostdef = host.HostDef()
+        hostdef.resources = {"host": 1}
+        self.set_local("hostdef", hostdef)
+
         yield self.process(setup)
+
         self.agency = self.get_local('agency')
         raage_medium = self.driver.find_agent(self.get_local('raage_desc'))
         self.raage_agent = raage_medium.get_agent()
