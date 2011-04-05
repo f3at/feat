@@ -87,6 +87,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.medium.register_interest(replier.GoodBye)
         state.medium.register_interest(replier.ProposalReceiver)
 
+    @replay.immutable
+    def startup(self, state):
+        pass
+
     @replay.journaled
     def shutdown(self, state):
         desc = self.get_descriptor()
