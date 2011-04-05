@@ -108,12 +108,13 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def release(self, state, allocation_id):
         allocation = self._find_allocation(allocation_id)
         was_allocated = allocation._cmp_state(AllocationState.allocated)
-        allocation.release()
-        self._remove_allocation(allocation)
+        f = fiber.succeed()
         if was_allocated:
-            f = fiber.Fiber()
-            f.add_callback(self._remove_allocation_from_descriptor)
-            return f.succeed(allocation)
+            f.add_callback(fiber.drop_result,
+                           self._remove_allocation_from_descriptor, allocation)
+        f.add_callback(fiber.drop_result, allocation.release)
+        f.add_callback(fiber.drop_result, self._remove_allocation, allocation)
+        return f
 
     @replay.mutable
     def define(self, state, name, value):
