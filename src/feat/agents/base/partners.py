@@ -127,11 +127,7 @@ class BasePartner(serialization.Serializable):
         return f.succeed(requester.GoodBye)
 
     def on_goodbye(self, agent):
-        f = fiber.succeed()
-        if self.allocation_id:
-            f.add_callback(fiber.drop_result, agent.release_resource,
-                           self.allocation_id)
-        return f
+        pass
 
     def __eq__(self, other):
         return self.recipient == other.recipient and\
