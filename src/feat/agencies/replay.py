@@ -12,6 +12,7 @@ from feat.interface.replier import *
 from feat.interface.requester import *
 from feat.interface.manager import *
 from feat.interface.serialization import *
+from feat.interface.task import *
 
 
 def side_effect_as_string(*args):
@@ -223,6 +224,7 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'contractor-medium', AgencyContractor)
         Factory(self, 'manager-medium', AgencyManager)
         Factory(self, 'retrying-protocol', RetryingProtocol)
+        Factory(self, 'task-medium', AgencyTask)
 
         self.reset()
 
@@ -687,3 +689,16 @@ class AgencyManager(log.LogProxy, log.Logger,
     @replay.named_side_effect('AgencyManager.get_bids')
     def get_bids(self):
         pass
+
+
+class AgencyTask(log.LogProxy, log.Logger,
+                 BaseReplayDummy, StateMachineSpecific):
+
+    type_name = "task-medium"
+    log_category = "task-medium"
+
+    implements(IAgencyTask, ISerializable)
+
+    def __init__(self, replay):
+        log.Logger.__init__(self, replay)
+        log.LogProxy.__init__(self, replay)
