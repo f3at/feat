@@ -521,6 +521,10 @@ class DummyAgent(agent.BaseAgent, Mock):
         pass
 
     @Mock.stub
+    def startup(self):
+        pass
+
+    @Mock.stub
     def unregister(self):
         pass
 

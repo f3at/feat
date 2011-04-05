@@ -1,6 +1,8 @@
 from zope.interface import Interface, Attribute
+from feat.common import enum
 
-__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent"]
+__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
+           "AgencyAgentState"]
 
 
 class IAgentFactory(Interface):
@@ -19,6 +21,19 @@ class IAgentFactory(Interface):
         arguments and environment.
         @returns: Tuple of the format: (command, args, env).
         '''
+
+
+class AgencyAgentState(enum.Enum):
+    '''
+    not_initiated - Agent is not initialized
+    initiating    - Agent is currently initializing
+    initiated     - Initialize done
+    starting_up   - Agent starting up
+    ready         - Agent is ready
+    error         - Agent has throw an exception
+    '''
+    (not_initiated, initiating, initiated,
+     starting_up, started, ready, error) = range(7)
 
 
 class IAgencyAgent(Interface):
@@ -180,6 +195,16 @@ class IAgencyAgent(Interface):
         Get the mode to run given component.
         '''
 
+    def wait_for_state(state):
+        '''
+        Wait for for specific state
+        '''
+
+    def get_machine_state():
+        '''
+        Returns the current state
+        '''
+
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
@@ -190,6 +215,9 @@ class IAgent(Interface):
         Called after the agent is registered to an agency.
         Args and keywords are passed to IAgency.start_agent().
         '''
+
+    def startup():
+        '''Called when initiate has finished'''
 
     def get_descriptor():
         '''Returns a copy of the agent descriptos.'''

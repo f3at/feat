@@ -164,8 +164,17 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
         d = defer.maybeDeferred(medium.initiate)
         #FIXME: we shouldn't need maybe_fiber
-        d.addCallback(fiber.drop_result, fiber.maybe_fiber,
-                      medium.agent.initiate, *args, **kwargs)
+        d.addCallback(fiber.drop_result, medium._call_initiate,
+                      *args, **kwargs)
+        try:
+            run_startup = kwargs.pop('run_startup')
+        except KeyError:
+            run_startup = True
+        if run_startup:
+            d.addCallback(fiber.drop_result, reactor.callLater,
+                          0, medium._call_startup)
+        else:
+            d.addCallback(fiber.drop_result, medium._ready)
         d.addCallback(fiber.override_result, medium)
         return d
 
@@ -299,7 +308,8 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
-                  dependency.AgencyAgentDependencyMixin):
+                  dependency.AgencyAgentDependencyMixin,
+                  common.StateMachineMixin):
 
     implements(IAgencyAgent, ITimeProvider, IRecorderNode,
                IJournalKeeper, ISerializable, IMessagingPeer)
@@ -312,6 +322,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def __init__(self, agency, factory, descriptor):
         log.LogProxy.__init__(self, agency)
         log.Logger.__init__(self, self)
+        common.StateMachineMixin.__init__(self,
+                AgencyAgentState.not_initiated)
 
         self.journal_keeper = self
         self.agency = IAgency(agency)
@@ -542,6 +554,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         reactor.callLater(0, self._terminate)
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
+
+    #StateMachineMixin
+
+    def get_machine_state(self):
+        return self._get_machine_state()
 
     ### ITimeProvider Methods ###
 
@@ -806,6 +823,27 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self.log('Reraising exception %r', fail)
             fail.raiseException()
+
+    def _call_initiate(self, *args, **kwargs):
+        self._set_state(AgencyAgentState.initiating)
+        d = fiber.maybe_fiber(self.agent.initiate, *args, **kwargs)
+        d.addCallback(fiber.drop_result, self._set_state,
+                      AgencyAgentState.initiated)
+        return d
+
+    def _call_startup(self):
+        self._set_state(AgencyAgentState.starting_up)
+        d = fiber.maybe_fiber(self.agent.startup)
+        d.addCallback(fiber.drop_result, self._ready)
+        d.addErrback(self._error_handler)
+        return d
+
+    def _ready(self):
+        self._set_state(AgencyAgentState.ready)
+
+    def _error_handler(self, e):
+        self._set_state(AgencyAgentState.error)
+        error_handler(self, e)
 
 
 class Interest(Serializable, log.Logger):

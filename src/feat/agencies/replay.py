@@ -451,6 +451,7 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     def __init__(self, replay):
         log.LogProxy.__init__(self, replay)
         log.Logger.__init__(self, replay)
+
         self.journal_keeper = self
         self.replay = replay
         self.replay.set_aa(self)
@@ -534,6 +535,12 @@ class AgencyAgent(log.LogProxy, log.Logger, BaseReplayDummy):
     @serialization.freeze_tag('AgencyAgency.get_document')
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')
+
+    def get_machine_state(self):
+        pass
+
+    def wait_for_state(self, state):
+        pass
 
     # IJournalKeeper
 
