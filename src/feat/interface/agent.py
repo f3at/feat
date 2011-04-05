@@ -83,6 +83,11 @@ class IAgencyAgent(Interface):
         Return the copy of the descriptor.
         '''
 
+    def get_configuration():
+        '''
+        Return a copy of the agents metadocument with configuration.
+        '''
+
     def update_descriptor(callable, *args, **kwargs):
         '''
         Schedule a descriptor update.
@@ -238,6 +243,23 @@ class IAgencyAgent(Interface):
     def get_machine_state():
         '''
         Returns the current state
+        '''
+
+    def call_next(method, *args, **kwargs):
+        '''
+        Calls the method outside the current execution chain.
+        @returns: The call id which can be used to cancel the call.
+        '''
+
+    def call_later(time_left, method, *args, **kwargs):
+        '''
+        Calls the method in future.
+        @returns: The call id which can be used to cancel the call.
+        '''
+
+    def cancel_delayed_call(call_id):
+        '''
+        Cancels the delayed call.
         '''
 
 

@@ -7,6 +7,7 @@ from feat.test import common
 from feat.common import delay as delay_module
 from feat.simulation import driver
 from feat.agencies import replay
+from feat.agents.base import agent
 
 
 attr = common.attr
@@ -68,6 +69,8 @@ class SimulationTest(common.TestCase):
     configurable_attributes = ['skip_replayability']
     skip_replayability = False
 
+    overriden_configs = None
+
     def setUp(self):
         delay_module.time_scale = 1
         self.driver = driver.Driver()
@@ -112,6 +115,7 @@ class SimulationTest(common.TestCase):
         else:
             print "\n\033[91mFIXME: \033[0mReplayability test skipped: %s\n" %\
                   self.skip_replayability
+        self.revert_overrides()
 
     def _validate_replay_on_agency(self, agency):
         for agent in agency._agents:
@@ -151,6 +155,8 @@ class SimulationTest(common.TestCase):
 
         while True:
             if check():
+                self.info('Check %r positive, continueing with the test.',
+                          check.__name__)
                 break
             self.info('Check %r still negative, sleping %r seconds.',
                       check.__name__, freq)
@@ -160,5 +166,22 @@ class SimulationTest(common.TestCase):
                                check.__name__)
             yield common.delay(None, freq)
 
-    def count_agents(self):
-        return len([x for x in self.driver.iter_agents()])
+    def wait_for_idle(self, timeout, freq=0.5):
+        return self.wait_for(self.driver.is_idle, timeout, freq)
+
+    def count_agents(self, agent_type=None):
+        return len([x for x in self.driver.iter_agents(agent_type)])
+
+    def override_config(self, agent_type, config):
+        if self.overriden_configs is None:
+            self.overriden_configs = dict()
+        factory = agent.registry_lookup(agent_type)
+        self.overriden_configs[agent_type] = factory.configuration_doc_id
+        factory.configuration_doc_id = config.doc_id
+
+    def revert_overrides(self):
+        if self.overriden_configs is None:
+            return
+        for key, value in self.overriden_configs.iteritems():
+            factory = agent.registry_lookup(key)
+            factory.configuration_doc_id = value

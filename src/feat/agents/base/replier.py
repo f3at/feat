@@ -51,7 +51,7 @@ class GoodBye(BaseReplier):
     @replay.journaled
     def requested(self, state, request):
         f = fiber.Fiber()
-        f.add_callback(state.agent.partner_said_goodbye)
+        f.add_callback(state.agent.partner_said_goodbye, request.payload)
         f.add_both(self._send_reply)
         return f.succeed(request.reply_to)
 

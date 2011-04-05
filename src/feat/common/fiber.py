@@ -8,7 +8,7 @@ from zope.interface import implements
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from feat.common import reflect, decorator
+from feat.common import decorator
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
 SECTION_BOUNDARY_TAG = "__section_boundary__"
@@ -17,6 +17,16 @@ SECTION_BOUNDARY_TAG = "__section_boundary__"
 def drop_result(_result, _method, *args, **kwargs):
     assert callable(_method)
     return _method(*args, **kwargs)
+
+
+def wrap_defer(_method, *args, **kwargs):
+    '''
+    Quick way to call a function returning a Deferred from place when you are
+    supposed to return the Fiber.
+    '''
+    f = succeed()
+    f.add_callback(drop_result, _method, *args, **kwargs)
+    return f
 
 
 def bridge_result(_result, _method, *args, **kwargs):

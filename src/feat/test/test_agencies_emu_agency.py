@@ -4,14 +4,14 @@
 import uuid
 import time
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.interface.agency import ExecMode
 from feat.common import delay, log
-from feat.agencies import agency, dependency
+from feat.agencies import agency
 from feat.agencies.interface import NotFoundError
 
 from . import common
@@ -244,7 +244,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testRequestTimeout(self):
-        delay.time_scale = 0.01
+        delay.time_scale = 0.1
 
         d = self.queue.get()
         payload = 5
@@ -351,6 +351,9 @@ class DummyMedium(common.Mock, log.Logger, log.LogProxy):
             return factory(True)
         else:
             return factory(False)
+
+    def call_next(self, _method, *args, **kwargs):
+        reactor.callLater(0, _method, *args, **kwargs)
 
 
 class DummyInitiator(common.Mock):

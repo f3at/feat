@@ -473,6 +473,10 @@ class AgencyAgent(BaseReplayDummy):
     def get_descriptor(self):
         pass
 
+    @replay.named_side_effect('AgencyAgent.get_configuration')
+    def get_configuration(self):
+        pass
+
     def update_descriptor(self, desc):
         pass
 
@@ -542,6 +546,18 @@ class AgencyAgent(BaseReplayDummy):
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')
 
+    @replay.named_side_effect('AgencyAgent.call_next')
+    def call_next(self, method, *args, **kwargs):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.call_later')
+    def call_later(self, time_left, method, *args, **kwargs):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
+    def cancel_delayed_call(self, call_id):
+        pass
+
     def get_machine_state(self):
         pass
 
@@ -587,6 +603,10 @@ class AgencyReplier(BaseReplayDummy, StateMachineSpecific):
     def reply(self, reply):
         pass
 
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
+        pass
+
 
 class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
 
@@ -599,6 +619,14 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
 
     @replay.named_side_effect('AgencyRequester.request')
     def request(self, request):
+        pass
+
+    @serialization.freeze_tag('AgencyContractor.ensure_state')
+    def ensure_state(self, states):
+        pass
+
+    @replay.named_side_effect('AgencyRequester.get_recipients')
+    def get_recipients(self):
         pass
 
 
@@ -636,6 +664,10 @@ class AgencyContractor(BaseReplayDummy, StateMachineSpecific):
     @serialization.freeze_tag('AgencyContractor.update_manager_address')
     @replay.named_side_effect('AgencyContractor.update_manager_address')
     def update_manager_address(self, recp):
+        pass
+
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
         pass
 
 
@@ -692,6 +724,14 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_bids(self):
         pass
 
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
+        pass
+
+    @replay.named_side_effect('AgencyManager.get_recipients')
+    def get_recipients(self):
+        pass
+
 
 class AgencyTask(BaseReplayDummy, StateMachineSpecific):
 
@@ -699,3 +739,7 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
     log_category = "task-medium"
 
     implements(IAgencyTask)
+
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
+        pass

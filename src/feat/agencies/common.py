@@ -2,6 +2,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
+from twisted.internet import reactor
 from twisted.python import failure
 
 from feat.common import delay, serialization, error_handler, log, defer
@@ -10,6 +11,10 @@ from feat.agents.base import replay
 
 
 class StateAssertationError(RuntimeError):
+    pass
+
+
+class CancelFiber(Exception):
     pass
 
 
@@ -26,10 +31,12 @@ class StateMachineMixin(object):
         self._notifier = defer.Notifier()
 
     @serialization.freeze_tag('StateMachineMixin.wait_for_state')
-    def wait_for_state(self, state):
-        if self.state == state:
+    def wait_for_state(self, *states):
+        if self.state in states:
             return defer.succeed(self)
-        return self._notifier.wait(state)
+        return defer.DeferredList(
+            map(lambda state: self._notifier.wait(state), states),
+            fireOnOneCallback=True)
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):
@@ -42,9 +49,7 @@ class StateMachineMixin(object):
     def _cmp_state(self, states):
         if not isinstance(states, list):
             states = [states]
-        if self.state in states:
-            return True
-        return False
+        return self.state in states
 
     def _ensure_state(self, states):
         if self._cmp_state(states):
@@ -161,9 +166,27 @@ class AgencyMiddleMixin(object):
         return d
 
     def _error_handler(self, f):
+        if f.check(CancelFiber):
+            self.debug('Swallowing CancelFiber exception. This means that the'
+                       ' ensure_state() call detected incorrect state and '
+                       'fiber was terminated.')
+            return
+
         error_handler(self, f)
         self._set_state(self.error_state)
         self._terminate(f)
+
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
+        '''
+        Exposed in a public interface. Use this to mark a point in the fiber
+        where it should get cancelled if the state machine is not in expected
+        state.
+        '''
+        try:
+            self._ensure_state(states)
+        except StateAssertationError:
+            raise CancelFiber()
 
 
 class ExpirationCallsMixin(object):
@@ -203,7 +226,7 @@ class ExpirationCallsMixin(object):
     def _expire_at(self, expire_time, method, state, *args, **kwargs):
         d = self._setup_expiration_call(expire_time, method,
                                            state, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate(InitiatorExpired('timeout')))
+        d.addCallback(lambda _: self._terminate(InitiatorExpired(_)))
         return d
 
     @replay.side_effect
@@ -248,13 +271,17 @@ class InitiatorMediumBase(object):
     def _terminate(self, arg):
         if isinstance(arg, (failure.Failure, Exception)):
             self.log("Firing errback of notifier with arg: %r.", arg)
-            self._fnotifier.errback('finish', arg)
+            self.call_next(self._fnotifier.errback, 'finish', arg)
         else:
             self.log("Firing callback of notifier with arg: %r.", arg)
-            self._fnotifier.callback('finish', arg)
+            self.call_next(self._fnotifier.callback, 'finish', arg)
+
+    def call_next(self, *_):
+        raise NotImplementedError("This method should be implemented outside "
+                                  "of this mixin!")
 
 
 class InterestedMediumBase(InitiatorMediumBase):
 
     def _terminate(self, arg):
-        self._fnotifier.callback('finish', arg)
+        self.call_next(self._fnotifier.callback, 'finish', arg)

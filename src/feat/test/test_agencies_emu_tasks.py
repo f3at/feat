@@ -87,7 +87,7 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
         self.assertFalse(self.task._get_medium().session_id in \
                 self.agent._listeners)
         self.assertEqual(state, self.task._get_medium().state)
-        self.assertTrue(self.finished.called)
+        return self.finished
 
     def assertTimeout(self, _):
         self.assertState(_, TaskState.expired)
@@ -127,9 +127,11 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
     def testRetryingProtocol(self):
         d = self.cb_after(None, self.agent, 'initiate_protocol')
         task = self.agent.retrying_task(ErrorTask, max_retries=3)
+        self.finished = task.notify_finish()
         yield d
         self.assertEqual(task.attempt, 1)
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         self.assertEqual(task.attempt, task.max_retries+1)
+        self.assertFailure(self.finished, BaseException)

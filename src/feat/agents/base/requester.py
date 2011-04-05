@@ -1,7 +1,7 @@
 from zope.interface import implements
 
 from feat.common import log, reflect, serialization, fiber
-from feat.interface import requester
+from feat.interface import requester, protocols
 from feat.agents.base import replay, protocol, message
 
 
@@ -52,9 +52,26 @@ class GoodBye(BaseRequester):
     protocol_id = 'goodbye'
 
     @replay.immutable
-    def initiate(self, state):
-        msg = message.RequestMessage()
+    def initiate(self, state, payload=None):
+        msg = message.RequestMessage(payload=payload)
         state.medium.request(msg)
+
+
+def say_goodbye(agent, recp, payload):
+
+    def _ignore_initiator_failed(fail):
+        if fail.check(protocols.InitiatorFailed):
+            agent.log('Swallowing %r expection.', fail.value)
+            return None
+        else:
+            agent.log('Reraising exception %r', fail)
+            fail.raiseException()
+
+    f = fiber.succeed(GoodBye)
+    f.add_callback(agent.initiate_protocol, recp, payload)
+    f.add_callback(GoodBye.notify_finish)
+    f.add_errback(_ignore_initiator_failed)
+    return f
 
 
 class Propose(BaseRequester):
@@ -90,7 +107,7 @@ class Propose(BaseRequester):
     @replay.entry_point
     def closed(self, state):
         self.warning('Our proposal to agent %r has been ignored. How rude!',
-                     state.medium.recipients)
+                     state.medium.get_recipients())
         return self._release_allocation()
 
     @replay.mutable

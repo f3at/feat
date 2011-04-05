@@ -1,30 +1,30 @@
-from feat.agents.base import manager, replay, recipient, message
+import uuid
+
+from feat.agents.base import manager, replay, recipient, message, descriptor
 from feat.agencies.agency import RetryingProtocol
 from feat.common import enum, fiber
 
 
-__all__ = ['start_manager', 'JoinShardManager', 'ActionType']
+__all__ = ['start_manager', 'JoinShardManager']
 
 
-def start_manager(medium, *solutions):
-    recp = recipient.Agent(JoinShardManager.protocol_id, 'lobby')
-
-    f = fiber.Fiber()
-    f.add_callback(medium.retrying_protocol, recp, args=(solutions, ))
-    f.add_callback(RetryingProtocol.notify_finish)
-    return f.succeed(JoinShardManager)
+def start_manager(agent):
+    f = agent.discover_service(JoinShardManager, timeout=1)
+    f.add_callback(lambda recp:
+                   agent.initiate_protocol(JoinShardManager, recp))
+    f.add_callback(JoinShardManager.notify_finish)
+    return f
 
 
 class JoinShardManager(manager.BaseManager):
 
     protocol_id = 'join-shard'
+    announce_timeout = 4
 
     @replay.immutable
-    def initiate(self, state, solutions):
+    def initiate(self, state):
         msg = message.Announcement()
-        msg.payload['level'] = 0
         msg.payload['joining_agent'] = state.agent.get_own_address()
-        msg.payload['solutions'] = solutions
         state.medium.announce(msg)
 
     @replay.immutable
@@ -41,12 +41,17 @@ class JoinShardManager(manager.BaseManager):
         pass
 
 
-class ActionType(enum.Enum):
-    '''
-    The type solution we are offering:
+@replay.side_effect
+def generate_shard_value():
+    return str(uuid.uuid1())
 
-    join   - join the existing shard
-    create - start your own ShardAgent as a child bid sender
-    adopt  - used by SA looking for the parent
-    '''
-    (join, create, adopt) = range(3)
+
+@descriptor.register("shard_agent")
+class Descriptor(descriptor.Descriptor):
+    pass
+
+
+def prepare_descriptor(agent, shard=None):
+    shard = shard or generate_shard_value()
+    desc = Descriptor(shard=shard)
+    return agent.save_document(desc)

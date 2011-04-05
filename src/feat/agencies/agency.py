@@ -13,7 +13,7 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency
-from feat.agents.base import recipient, replay, descriptor, task
+from feat.agents.base import recipient, replay, descriptor, message
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, delay
 from feat.common import manhole, error_handler, text_helper, container
@@ -308,6 +308,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     log_category = "agent-medium"
     type_name = "agent-medium" # this is used by ISerializable
 
+    _error_handler = error_handler
+
     journal_parent = None
 
     def __init__(self, agency, factory, descriptor):
@@ -333,9 +335,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         self._messaging = None
         self._database = None
+        self._configuration = None
 
         self._updating = False
         self._update_queue = []
+        self._delayed_calls = container.ExpDict(self)
         # Terminating flag, used to not to run
         # termination procedure more than once
         self._terminating = False
@@ -345,9 +349,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
 
     ### Public Methods ###
-
-    def call_next(self, fun, *args, **kwargs):
-        reactor.callLater(0, fun, *args, **kwargs)
 
     def initiate(self, *args, **kwargs):
         '''Establishes the connections to database and messaging platform,
@@ -360,6 +361,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_result,
                       self.agency._database.get_connection, self)
         d.addCallback(setter, '_database')
+        d.addCallback(defer.drop_result, self._load_configuration)
+        d.addCallback(setter, '_configuration')
         d.addCallback(defer.drop_result,
                       self.join_shard, self._descriptor.shard)
         d.addCallback(defer.drop_result,
@@ -411,6 +414,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.error('Tried to unregister listener with session_id: %r, '
                         'but not found!', session_id)
 
+    def reply_duplicate(self, original):
+        '''
+        Sends the f.a.b.message.Duplicate. This is used in contracts traversing
+        the graph, when the contract has rereached the same shard.
+        This message is necessary, as silently ignoring the incoming bids
+        adds a lot of latency to the nested contracts (it is waitng to receive
+        message from all the recipients).
+        '''
+        msg = message.Duplicate()
+        msg.protocol_id = original.protocol_id
+        msg.protocol_type = original.protocol_type
+        msg.expiration_time = original.expiration_time
+        msg.sender_id = str(uuid.uuid1())
+        msg.receiver_id = original.sender_id
+        return self.send_msg(original.reply_to, msg)
+
     def send_msg(self, recipients, msg, handover=False):
         recipients = recipient.IRecipients(recipients)
         if not handover:
@@ -439,6 +458,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
         return copy.deepcopy(self._descriptor)
+
+    @manhole.expose()
+    @replay.named_side_effect('AgencyAgent.get_configuration')
+    def get_configuration(self):
+        if self._configuration is None:
+            raise RuntimeError(
+                'Agent requested to get his configuration, but it was not '
+                'found. The metadocument with ID %r is not in database. ' %\
+                (self.agent.configuration_doc_id, ))
+
+        return copy.deepcopy(self._configuration)
 
     def update_descriptor(self, function, *args, **kwargs):
         d = defer.Deferred()
@@ -568,6 +598,31 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
+    @replay.named_side_effect('AgencyAgent.call_next')
+    def call_next(self, method, *args, **kwargs):
+        return self.call_later(0, method, *args, **kwargs)
+
+    @replay.named_side_effect('AgencyAgent.call_later')
+    def call_later(self, time_left, method, *args, **kwargs):
+        call = reactor.callLater(time_left, self._call, method,
+                                 *args, **kwargs)
+        call_id = str(uuid.uuid1())
+        self._store_delayed_call(call_id, call)
+        return call_id
+
+    @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
+    def cancel_delayed_call(self, call_id):
+        try:
+            call = self._delayed_calls.remove(call_id)
+        except KeyError:
+            self.warning('Tried to cancel nonexisting call id: %r', call_id)
+            return
+
+        if not call.active():
+            self.warning('Tried to cancel nonactive call id: %r', call_id)
+            return
+        call.cancel()
+
     #StateMachineMixin
 
     def get_machine_state(self):
@@ -603,48 +658,49 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### IMessagingPeer Methods ###
 
-    def on_message(self, message):
-        self.log('Received message: %r', message)
+    def on_message(self, msg):
+        self.log('Received message: %r', msg)
 
         # Check if it isn't expired message
         ctime = self.get_time()
-        if message.expiration_time < ctime:
+        if msg.expiration_time < ctime:
             self.log('Throwing away expired message')
             return False
 
         # Check for known traversal ids:
-        if IFirstMessage.providedBy(message):
-            t_id = message.traversal_id
+        if IFirstMessage.providedBy(msg):
+            t_id = msg.traversal_id
             if t_id is None:
                 self.warning(
                     "Received corrupted message. The traversal_id is! "
-                    "Message: %r", message)
+                    "Message: %r", msg)
                 return False
             if t_id in self._traversal_ids:
                 self.log('Throwing away already known traversal id %r', t_id)
+                self.reply_duplicate(msg)
                 return False
             else:
-                self._traversal_ids.set(t_id, True, message.expiration_time)
+                self._traversal_ids.set(t_id, True, msg.expiration_time)
 
         # Handle registered dialog
-        recv_id = message.receiver_id
+        recv_id = msg.receiver_id
         if recv_id is not None and recv_id in self._listeners:
             listener = self._listeners[recv_id]
-            listener.on_message(message)
+            listener.on_message(msg)
             return True
 
         # Handle new conversation coming in (interest)
-        p_type = message.protocol_type
+        p_type = msg.protocol_type
         if p_type in self._interests:
-            p_id = message.protocol_id
+            p_id = msg.protocol_id
             interest = self._interests[p_type].get(p_id)
-            if interest and isinstance(message, interest.factory.initiator):
-                if interest.schedule_protocol(message):
+            if interest and isinstance(msg, interest.factory.initiator):
+                if interest.schedule_protocol(msg):
                     return True
 
         self.warning("Couldn't find appropriate listener for message: "
-                     "%s.%s.%s", message.protocol_type, message.protocol_id,
-                     message.__class__.__name__)
+                     "%s.%s.%s", msg.protocol_type, msg.protocol_id,
+                     msg.__class__.__name__)
         return False
 
     def get_queue_name(self):
@@ -696,11 +752,31 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         b = [wait_for_listener(l) for l in self._listeners.itervalues()]
         return defer.DeferredList(a + b)
 
+    def is_idle(self):
+        empty_listeners = (len(list(self._listeners.itervalues())) == 0)
+        idle_interests = all(i.is_idle() for i in self._iter_interests())
+        no_pending_calls = all(not call.active() \
+                           for call in self._delayed_calls.itervalues())
+        return empty_listeners and idle_interests and no_pending_calls
+
     def create_binding(self, key, shard=None):
         '''Used by Interest instances.'''
         return self._messaging.personal_binding(key, shard)
 
     ### Private Methods ###
+
+    def _load_configuration(self):
+
+        def not_found(fail, doc_id):
+            fail.trap(NotFoundError)
+            self.warning('Agents configuration not found in database. '
+                         'Expected doc_id: %r', doc_id)
+            return
+
+        d_id = self.agent.configuration_doc_id
+        d = self.get_document(d_id)
+        d.addErrback(not_found, d_id)
+        return d
 
     def _start_listener(self, factory, message, cleanup_fun=None):
         medium_factory = IAgencyInterestedFactory(factory)
@@ -861,6 +937,25 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._set_state(AgencyAgentState.error)
         error_handler(self, e)
 
+    def _store_delayed_call(self, call_id, call):
+        if call.active():
+            self.log('Storing delayed call with id %r', call_id)
+            self._delayed_calls.set(call_id, call, call.getTime() + 0.1)
+
+    def _call(self, method, *args, **kwargs):
+
+        def raise_on_fiber(res):
+            if isinstance(d.result, fiber.Fiber):
+                raise RuntimeError("We don't are not expecting %r method to "
+                                   "return a Fiber, which it did!")
+
+        self.log('Calling method %r, with args: %r, kwargs: %r', method,
+                 args, kwargs)
+        d = defer.maybeDeferred(method, *args, **kwargs)
+        d.addCallback(raise_on_fiber)
+        d.addErrback(self._error_handler)
+        return d
+
 
 class Interest(Serializable, log.Logger):
     '''Represents the interest from the point of view of agency.
@@ -891,8 +986,16 @@ class Interest(Serializable, log.Logger):
 
     ### Public Methods ###
 
+    def is_idle(self):
+        '''
+        If self._active == 0 it means that the queue is empty.
+        The counter is decreased in synchronous method just before poping
+        the next value from the queue.
+        '''
+        return self._active == 0
+
     def wait_finished(self):
-        if self._active == 0:
+        if self.is_idle():
             return defer.succeed(self)
         return self._notifier.wait("finished")
 
@@ -1026,6 +1129,11 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 
     def snapshot(self):
         return id(self)
+
+    ### Required by InitiatorMediumbase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.medium.call_next(_method, *args, **kwargs)
 
     ### Private Methods ###
 

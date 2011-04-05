@@ -126,6 +126,9 @@ class ManagerContractors(dict):
                              msg)
         return self.get(match[0])
 
+    def get_bids(self):
+        return self.with_state(ContractorState.bid)
+
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin,
@@ -169,8 +172,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
 
-        self.agent.call_next(self._call, manager.initiate,
-                             *self.args, **self.kwargs)
+        self.call_next(self._call, manager.initiate,
+                       *self.args, **self.kwargs)
 
         return manager
 
@@ -263,19 +266,27 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
-        self._set_state(contracts.ContractState.terminated)
-        delay.callLater(0, self._terminate, None)
+        if not self._cmp_state([contracts.ContractState.expired,
+                                contracts.ContractState.cancelled,
+                                contracts.ContractState.aborted,
+                                contracts.ContractState.wtf]):
+            self._set_state(contracts.ContractState.terminated)
+            self.call_next(self._terminate, None)
 
     @replay.named_side_effect('AgencyManager.get_bids')
     def get_bids(self):
         contractors = self.contractors.with_state(ContractorState.bid)
         return [x.bid for x in contractors]
 
+    @replay.named_side_effect('AgencyManager.get_recipients')
+    def get_recipients(self):
+        return self.recipients
+
     # hooks for events (timeout and messages comming in)
 
     def _on_grant_expire(self):
         self._set_state(contracts.ContractState.aborted)
-        self._call(self.manager.aborted)
+        return self._call(self.manager.aborted)
 
     def _on_announce_expire(self):
         self.log('Timeout expired, closing the announce window')
@@ -283,23 +294,18 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._cancel_expiration_call()
 
-        if len(self.contractors.with_state(ContractorState.bid)) > 0:
-            self._close_announce_period()
-        else:
-            self._set_state(contracts.ContractState.expired)
-            self._run_and_terminate(self.manager.expired)
+        self._goto_closed_or_expired()
 
     def _on_bid(self, bid):
         self.log('Received bid %r', bid)
         ManagerContractor(self, bid)
         self._call(self.manager.bid, bid)
-        if self.expected_bids and len(self.contractors) >= self.expected_bids:
-            self._cancel_expiration_call()
-            self._close_announce_period()
+        self._check_if_should_goto_close()
 
     def _on_refusal(self, refusal):
-        self.log('Received bid %r', refusal)
+        self.log('Received refusal  %r', refusal)
         ManagerContractor(self, refusal, ContractorState.refused)
+        self._check_if_should_goto_close()
 
     def _on_report(self, report):
         self.log('Received report: %r', report)
@@ -348,7 +354,24 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _get_time(self):
         return self.agent.get_time()
 
+    ### Required by InitiatorMediumbase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
+
     # private
+
+    def _check_if_should_goto_close(self):
+        if self.expected_bids and len(self.contractors) >= self.expected_bids:
+            self._cancel_expiration_call()
+            self._goto_closed_or_expired()
+
+    def _goto_closed_or_expired(self):
+        if len(self.contractors.with_state(ContractorState.bid)) > 0:
+            self._close_announce_period()
+        else:
+            self._set_state(contracts.ContractState.expired)
+            self._run_and_terminate(self.manager.expired)
 
     def _close_announce_period(self):
         expiration_time = max(map(lambda bid: bid.expiration_time,
@@ -389,6 +412,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': contracts.ContractState.announced,
                  'state_before': contracts.ContractState.announced},
             message.Refusal:\
+                {'method': self._on_refusal,
+                 'state_after': contracts.ContractState.announced,
+                 'state_before': contracts.ContractState.announced},
+            message.Duplicate:\
                 {'method': self._on_refusal,
                  'state_after': contracts.ContractState.announced,
                  'state_before': contracts.ContractState.announced},
@@ -596,6 +623,11 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         report = self._send_message(report)
         return report
+
+    ### Required by InitiatorMediumBase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
 
     # hooks for messages comming in
 

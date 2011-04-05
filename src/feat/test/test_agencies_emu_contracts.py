@@ -132,15 +132,16 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         self.session_id = self.medium.session_id
         return self.medium.wait_for_state(contracts.ContractState.initiated)
 
+    @defer.inlineCallbacks
     def assertUnregistered(self, _, state):
         self.assertFalse(self.manager._get_medium().session_id in\
                              self.agent._listeners)
         self.assertEqual(state, self.manager._get_medium().state)
-        self.assertTrue(self.finished.called)
         if state not in (contracts.ContractState.completed,
                          contracts.ContractState.terminated, ):
             self.assertFailure(self.finished, protocols.InitiatorFailed)
-        return self.manager
+            yield self.finished
+        defer.returnValue(self.manager)
 
     def _consume_all(self, *_):
         return defer.DeferredList(map(lambda x: x.get(), self.queues))
@@ -265,9 +266,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                         ContractorState.rejected)))
 
         d.addCallback(asserts_on_manager)
-        ex = protocols.InitiatorExpired('timeout')
-        d.addCallback(lambda _: self.medium._terminate(ex))
-        d.addCallback(self.assertUnregistered, contracts.ContractState.closed)
+        d.addCallback(self.assertUnregistered, contracts.ContractState.expired)
 
         return d
 
@@ -356,7 +355,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         delay.time_scale = 0.01
         d = self.start_manager()
 
-        closed = self.cb_after(None, self.medium, '_on_announce_expire')
+        closed = self.medium.notify_finish()
+        self.assertFailure(closed, protocols.InitiatorFailed)
 
         d.addCallback(defer.drop_result, self.send_announce, self.manager)
         d.addCallback(defer.drop_result, self._consume_all)
