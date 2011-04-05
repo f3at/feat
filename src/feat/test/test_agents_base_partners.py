@@ -69,12 +69,14 @@ class TestPartners(common.TestCase):
         self.assertIsInstance(self.partners.first, FirstPartner)
 
         seconds = self.partners.query('second')
+        self.assertEqual(seconds, self.partners.query(SecondPartner))
         self.assertEqual(seconds, self.partners.second)
         self.assertIsInstance(seconds, list)
         self.assertEqual(3, len(seconds))
         [self.assertIsInstance(x, SecondPartner) for x in seconds]
 
         specials = self.partners.query('special')
+        self.assertEqual(specials, self.partners.query(SpecialPartner))
         self.assertEqual(specials, self.partners.special)
         self.assertIsInstance(specials, list)
         self.assertEqual(1, len(specials))

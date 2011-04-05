@@ -66,6 +66,12 @@ class IAgencyManager(contracts.IContractPeer):
         Return list of bids received by the manager from the contractors.
         '''
 
+    def get_recipients():
+        '''
+        @return: The recipients of the request
+        @rtype: IRecipient
+        '''
+
 
 class IAgentManager(protocols.IInitiator):
     '''Agent part of the contract manager. Use the L{IAgencyManager} given

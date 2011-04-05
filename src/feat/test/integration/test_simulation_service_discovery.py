@@ -15,9 +15,9 @@ class Initiator(manager.BaseManager):
     protocol_id = 'spam'
 
 
-@document.register
+@descriptor.register('discoverer-agent')
 class Descriptor(descriptor.Descriptor):
-    document_type = 'discoverer-agent'
+    pass
 
 
 @agent.register('discoverer-agent')

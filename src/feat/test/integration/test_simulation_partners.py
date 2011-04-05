@@ -19,15 +19,24 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
+@serialization.register
 class FailingPartner(partners.BasePartner):
 
     def initiate(self, agent):
         return fiber.fail(FailureOfPartner('test'))
 
 
+@serialization.register
+class GettingInfoPartner(partners.BasePartner):
+
+    def on_goodbye(self, agent, brothers):
+        agent.notify_brothers(brothers)
+
+
 class Partners(partners.Partners):
 
     partners.has_many('failers', 'partner-agent', FailingPartner, 'failer')
+    partners.has_many('info', 'partner-agent', GettingInfoPartner, 'info')
 
 
 @agent.register('partner-agent')
@@ -40,6 +49,15 @@ class Agent(agent.BaseAgent):
         agent.BaseAgent.initiate(self)
 
         state.resources.define('foo', 2)
+        state.received_brothers = list()
+
+    @replay.mutable
+    def notify_brothers(self, state, brothers):
+        state.received_brothers.append(brothers)
+
+    @replay.immutable
+    def get_received_brothers(self, state):
+        return state.received_brothers
 
 
 class PartnershipTest(common.SimulationTest):
@@ -120,20 +138,32 @@ class PartnershipTest(common.SimulationTest):
         self.assert_partners(agents, [2, 1, 0])
 
     @defer.inlineCallbacks
-    def testFailingPartner(self):
-        d = self._failing_partnership(self.initiator, self.receiver)
-        self.assertFailure(d, FailureOfPartner)
-        yield d
-        agents = [self.initiator, self.receiver]
-        self.assert_partners(agents, [0, 0, 0])
+    def testGetingInfo(self):
+        yield self.process(format_block("""
+        third = agency.start_agent(descriptor_factory('partner-agent'))
+        """))
 
+        agents = [self.initiator, self.receiver, self.get_local('third')]
+
+        yield self._partnership_with_info(agents[0], agents[1])
+        yield self._partnership_with_info(agents[2], agents[1])
+        yield self._partnership_with_info(agents[2], agents[0])
+        yield self.initiator._terminate()
+
+        recv = self.receiver.get_agent().get_received_brothers()
+        self.assertEqual(1, len(recv))
+        self.assertEqual(2, len(recv[0]))
+        for x in recv[0]:
+            self.assertIsInstance(x, GettingInfoPartner)
+
+    @defer.inlineCallbacks
     def testSubstitutePartner(self):
         '''
         Three agents, all being partners. Than check the termination of
         two of them.
         '''
         yield self.process(format_block("""
-        third = agency.start_agent(descriptor_factory('base-agent'))
+        third = agency.start_agent(descriptor_factory('partner-agent'))
         """))
 
         agents = [self.initiator, self.receiver, self.get_local('third')]
@@ -215,3 +245,8 @@ class PartnershipTest(common.SimulationTest):
     def _failing_partnership(self, initiator, receiver):
         return initiator.get_agent().propose_to(
             recipient.IRecipient(receiver), partner_role='failer')
+
+    def _partnership_with_info(self, initiator, receiver):
+        return initiator.get_agent().propose_to(
+            recipient.IRecipient(receiver), partner_role='info',
+            our_role='info')

@@ -20,5 +20,7 @@ class RequestState(enum.Enum):
 class IRequestPeer(Interface):
     '''Define common interface between both peers of the request protocol.'''
 
-    state = Attribute("L{RequestState}")
-    request = Attribute("Request's request message")
+    def ensure_state():
+        '''
+        Cancel the fiber if the machine is currectly in incorrect state.
+        '''

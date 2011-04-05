@@ -77,7 +77,7 @@ class NormalReplier(replier.BaseReplier):
     def requested(self, state, request):
         state.agent.protocol_started()
         f = fiber.Fiber()
-        f.add_callback(test_common.delay, 0.2)
+        f.add_callback(test_common.delay, 1)
         f.add_callback(self.done)
         return f.succeed()
 
@@ -111,6 +111,8 @@ class PooledReplier(NormalReplier):
 
 
 class ProtoSerializationTest(common.SimulationTest):
+
+    timeout = 15
 
     def prolog(self):
         setup = format_block("""

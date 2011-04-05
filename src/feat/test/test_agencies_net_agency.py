@@ -177,7 +177,7 @@ class IntegrationTestCase(common.TestCase):
     def testStartStandaloneAgent(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc, run_startup=False)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
@@ -193,7 +193,7 @@ class IntegrationTestCase(common.TestCase):
     def testStartStandaloneArguments(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc, run_startup=False)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
@@ -209,7 +209,7 @@ class IntegrationTestCase(common.TestCase):
     def testStartAgentFromStandalone(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 

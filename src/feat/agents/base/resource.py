@@ -325,8 +325,8 @@ class Allocation(StateMachineMixin, serialization.Serializable):
         self.cancel_expiration_call()
 
     def __repr__(self):
-        return "<Allocation state: %r, Resource: %r>" %\
-               (self.state.name, self.resources, )
+        return "<Allocation id: %r, state: %r, Resource: %r>" %\
+               (self.id, self.state.name, self.resources, )
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):

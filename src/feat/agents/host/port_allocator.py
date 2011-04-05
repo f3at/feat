@@ -138,5 +138,6 @@ class PortAllocator(serialization.Serializable, log.Logger):
         self.used = used
 
 
-class PortAllocationError(RuntimeError):
+@serialization.register
+class PortAllocationError(RuntimeError, serialization.Serializable):
     pass

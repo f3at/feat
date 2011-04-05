@@ -1,13 +1,12 @@
 import socket
 
 from twisted.internet import defer
-from twisted.python import failure
 
+from feat import everything
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, replay, document
+from feat.agents.base import agent, descriptor, document
 from feat.agents.common import host
-from feat.agents.host import host_agent
 from feat.common.text_helper import format_block
 
 from feat.interface.recipient import *
@@ -22,7 +21,7 @@ class HostAgentTests(common.SimulationTest):
         setup = format_block("""
         agency = spawn_agency()
         desc1 = descriptor_factory('host_agent')
-        medium = agency.start_agent(desc1)
+        medium = agency.start_agent(desc1, run_startup=False)
         agent = medium.get_agent()
         desc2 = medium.get_descriptor()
         """)
@@ -84,18 +83,21 @@ class HostAgentDefinitionTests(common.SimulationTest):
         setup = format_block("""
         agency1 = spawn_agency()
         desc1 = descriptor_factory('host_agent')
-        medium1 = agency1.start_agent(desc1, hostdef=hostdef)
+        medium1 = agency1.start_agent(desc1, hostdef=hostdef, \
+        run_startup=False)
         agent1 = medium1.get_agent()
 
         agency2 = spawn_agency()
         desc2 = descriptor_factory('host_agent')
-        medium2 = agency2.start_agent(desc2, hostdef=hostdef_id)
+        medium2 = agency2.start_agent(desc2, hostdef=hostdef_id, \
+        run_startup=False)
         agent2 = medium2.get_agent()
         """)
 
         hostdef = host.HostDef()
         hostdef.doc_id = "someid"
         hostdef.resources = {"spam": 999, "bacon": 42, "eggs": 3}
+
         self.driver.save_document(hostdef)
         self.set_local("hostdef", hostdef)
         self.set_local("hostdef_id", "someid")
@@ -130,7 +132,8 @@ class HostAgentRequerimentsTest(common.SimulationTest):
         setup = format_block("""
             agency = spawn_agency()
             desc = descriptor_factory('host_agent')
-            medium = agency.start_agent(desc, hostdef=hostdef)
+            medium = agency.start_agent(desc, hostdef=hostdef,\
+                                        run_startup=False)
             agent = medium.get_agent()
             """)
 
@@ -198,7 +201,7 @@ class HostAgentCheckTest(common.SimulationTest):
             error_desc = descriptor_factory('conditionerror-agent')
 
             host_medium = agency.start_agent(host_desc, hostdef=hostdef, \
-                                             bootstrap=True)
+                                             run_startup=False)
             host_agent = host_medium.get_agent()
 
             host_agent.start_agent(test_desc)

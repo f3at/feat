@@ -61,7 +61,9 @@ class ResponseMessage(BaseMessage):
 
 @serialization.register
 class Announcement(ContractMessage, FirstMessageMixin):
-    pass
+
+    # Increased every time the contract is nested to the other shard
+    formatable.field('level', 0)
 
 
 @serialization.register
@@ -132,3 +134,11 @@ class UpdateReport(ContractMessage):
 @serialization.register
 class FinalReport(ContractMessage):
     pass
+
+
+@serialization.register
+class Duplicate(BaseMessage):
+    '''
+    Sent as the reply to a contract announcement which the agent have already
+    served (matched by traversal_id field).
+    '''

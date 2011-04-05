@@ -77,7 +77,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(timeout, self._expired,
                 TaskState.expired, failure.Failure(error))
 
-        self.agent.call_next(self._initiate, *self.args, **self.kwargs)
+        self.call_next(self._initiate, *self.args, **self.kwargs)
 
         return task
 
@@ -91,6 +91,11 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def snapshot(self):
         return id(self)
+
+    ### Required by InitiatorMediumbase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
 
     # Used by ExpirationCallsMixin
 

@@ -1,12 +1,13 @@
 from zope.interface import implements
-from feat.interface import manager
 from feat.common import log, serialization, reflect
 from feat.agents.base import protocol, replay, message
+
+from feat.interface.manager import *
 
 
 class Meta(type(replay.Replayable)):
 
-    implements(manager.IManagerFactory)
+    implements(IManagerFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
@@ -25,7 +26,7 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     """
     __metaclass__ = Meta
 
-    implements(manager.IAgentManager)
+    implements(IAgentManager)
 
     announce = None
     grant = None
@@ -68,7 +69,7 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     def cancelled(self, grant, cancellation):
         '''@see: L{manager.IAgentManager}'''
 
-    def completed(self, grant, report):
+    def completed(self, report):
         '''@see: L{manager.IAgentManager}'''
 
     def aborted(self):
@@ -77,10 +78,10 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
 @serialization.register
 class DiscoverService(serialization.Serializable):
-    implements(manager.IManagerFactory)
+    implements(IManagerFactory)
 
     def __init__(self, factory, timeout):
-        factory = manager.IManagerFactory(factory)
+        factory = IManagerFactory(factory)
         self.protocol_type = factory.protocol_type
         self.protocol_id = 'discover-' + factory.protocol_id
         self.timeout = timeout
