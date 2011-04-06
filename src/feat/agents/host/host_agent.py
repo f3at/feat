@@ -54,9 +54,9 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(ResourcesAllocationContractor)
 
-        desc = state.medium.get_descriptor()
-        ports = desc.port_range
-        state.port_allocator = port_allocator.PortAllocator(self, ports)
+        ports = state.medium.get_descriptor().port_range
+        state.port_allocator = port_allocator.PortAllocator(
+            self, range(ports[0], ports[1]))
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self._update_hostname)
         f.add_callback(fiber.drop_result, self._load_definition, hostdef)
@@ -269,7 +269,7 @@ class Descriptor(descriptor.Descriptor):
     # Hostname of the machine, updated when an agent is started
     document.field('hostname', None)
     # Range used for allocating new ports
-    document.field('port_range', range(5000, 5999))
+    document.field('port_range', (5000, 5999))
 
 
 class StartAgentReplier(replier.BaseReplier):
