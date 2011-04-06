@@ -269,7 +269,7 @@ class Descriptor(descriptor.Descriptor):
     # Hostname of the machine, updated when an agent is started
     document.field('hostname', None)
     # Range used for allocating new ports
-    document.field('port_range', range(5000, 5999))
+    document.field('port_range', (5000, 5999))
 
 
 class StartAgentReplier(replier.BaseReplier):
