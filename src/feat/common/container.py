@@ -108,6 +108,20 @@ class ExpDict(ExpBase):
                 return item.value
         raise KeyError(key)
 
+    def pop(self, key, default=None):
+        '''Pops and returns the dictionary entry with with specified key.
+        @param key: unique key of the entry, used to remove or test ownership
+        @type key: any immutable
+        @return: value
+        @rtype: any python structure or L{ISerializable}'''
+        self._lazy_pack()
+        now = self._time.get_time()
+        if self._items:
+            item = self._items.pop(key, None)
+            if item.exp is None or item.exp > now:
+                return item.value
+        return default
+
     def get(self, key, default=None):
         '''Retrieve value from the entry with specified key.
         @param key: unique key of the entry, used to remove or test ownership
@@ -199,13 +213,11 @@ class ExpDict(ExpBase):
     ### ISerializable Method ###
 
     def snapshot(self):
-        now = self._time.get_time()
-        return self._time, dict([(k, i.snapshot())
-                                 for k, i in self._items.iteritems()
-                                 if i.exp is None or i.exp > now])
+        return (self._time, self._max_size,
+                dict([(k, i.snapshot()) for k, i in self._items.iteritems()]))
 
     def recover(self, snapshot):
-        self._time, data = snapshot
+        self._time, self._max_size, data = snapshot
         self._items = dict([(k, ExpItem.restore(s))
                             for k, s in data.iteritems()])
         self._last_pack = 0

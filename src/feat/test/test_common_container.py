@@ -339,8 +339,8 @@ class TestExpDict(common.TestCase):
 
         d = ExpDict(t)
         self.assertEqual(serialize(d),
-                         Ins("xdict",
-                             (Ins("dummy-time-provider", 0), {})))
+                         Ins("xdict", (Ins("dummy-time-provider", 0), 1000,
+                             {})))
         self.assertEqual(d, unserialize(serialize(d)))
         d["foo"] = 1
         d.set("bar", 2, 5)
@@ -348,7 +348,7 @@ class TestExpDict(common.TestCase):
         d.set("bacon", 4, 8.0012)
         self.assertEqual(d, unserialize(serialize(d)))
         self.assertEqual(serialize(d),
-                         Ins("xdict", (Ins("dummy-time-provider", 0),
+                         Ins("xdict", (Ins("dummy-time-provider", 0), 1000,
                                        {"foo": (None, 1),
                                         "bar": (5000, 2),
                                         "spam": (8001, 3),

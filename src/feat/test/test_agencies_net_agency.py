@@ -190,7 +190,7 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        delay.time_scale = 1
+        delay.time_scale = 1.2
         try:
             self.db_process = couchdb.Process(self)
         except DependencyError:

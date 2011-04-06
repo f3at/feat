@@ -196,7 +196,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def get_num_free_ports(self, state):
         return state.port_allocator.num_free()
 
-    ### Private Methods ###
+    @rpc.publish
+    def premodify_allocation(self, allocation_id, **delta):
+        return agent.BaseAgent.premodify_allocation(self,
+                allocation_id, **delta)
+
+    @rpc.publish
+    def apply_modification(self, change_id):
+        return agent.BaseAgent.apply_modification(self, change_id)
+
+### Private Methods ###
 
     @replay.side_effect
     def _discover_hostname(self):

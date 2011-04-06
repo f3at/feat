@@ -92,7 +92,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def initiate(self, state):
-        self._load_allocations()
         state.medium.register_interest(replier.PartnershipProtocol)
         state.medium.register_interest(replier.ProposalReceiver)
         state.medium.register_interest(replier.Ping)
@@ -248,7 +247,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def check_allocation_exists(self, state, allocation_id):
-        return state.resources.exists(allocation_id)
+        return state.resources.get_allocation(allocation_id)
 
     @replay.immutable
     def list_resource(self, state):
@@ -274,6 +273,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.mutable
     def release_resource(self, state, allocation_id):
         return state.resources.release(allocation_id)
+
+    @replay.mutable
+    def premodify_allocation(self, state, allocation_id, **delta):
+        return state.resources.premodify(allocation_id, **delta)
+
+    @replay.mutable
+    def apply_modification(self, state, change_id):
+        return state.resources.apply_modification(change_id)
 
     @replay.immutable
     def get_document(self, state, doc_id):
@@ -318,10 +325,3 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def cancel_delayed_call(self, state, call_id):
         state.medium.cancel_delayed_call(call_id)
-
-    ### Private Methods ###
-
-    @replay.mutable
-    def _load_allocations(self, state):
-        desc = self.get_descriptor()
-        state.resources.load(desc.allocations)

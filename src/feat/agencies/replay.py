@@ -170,7 +170,8 @@ class JournalReplayEntry(object):
         side_effect = self._restore_side_effect(side_effect)
         exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
 
-        expected_desc = side_effect_as_string(exp_fun_id, exp_args, exp_kwargs)
+        expected_desc = side_effect_as_string(exp_fun_id,
+                    exp_args, exp_kwargs)
 
         if exp_fun_id != function_id:
             raise ReplayError("Side-effect %s called instead of %s"
@@ -193,7 +194,8 @@ class JournalReplayEntry(object):
                               % (unexpected_desc, expected_desc))
 
         for effect_id, effect_args, effect_kwargs in effects:
-            self._replay.apply_effect(effect_id, *effect_args, **effect_kwargs)
+            self._replay.apply_effect(effect_id,
+                        *effect_args, **effect_kwargs)
 
         return self._replay.unserializer.convert(result)
 

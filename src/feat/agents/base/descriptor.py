@@ -24,7 +24,7 @@ class Descriptor(document.Document, pb.Copyable):
     # Shard identifier (unicode)
     document.field('shard', None)
     # List of allocations
-    document.field('allocations', list())
+    document.field('allocations', dict())
     # List of partners
     document.field('partners', list())
 
