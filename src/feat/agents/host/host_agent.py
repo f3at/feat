@@ -7,6 +7,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document)
 from feat.agents.common import rpc
+from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agencies.interface import NotFoundError
@@ -53,6 +54,9 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(ResourcesAllocationContractor)
 
+        desc = state.medium.get_descriptor()
+        ports = desc.port_range
+        state.port_allocator = port_allocator.PortAllocator(self, ports)
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self._update_hostname)
         f.add_callback(fiber.drop_result, self._load_definition, hostdef)
@@ -122,6 +126,29 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
     def get_hostname(self, state):
         desc = state.medium.get_descriptor()
         return desc.hostname
+
+    @rpc.publish
+    @replay.mutable
+    def allocate_ports(self, state, number):
+        try:
+            return state.port_allocator.reserve_ports(number)
+        except port_allocator.Port_Allocator as e:
+            return fiber.fail(e)
+
+    @rpc.publish
+    @replay.mutable
+    def release_ports(self, state, ports):
+        return state.port_allocator.release_ports(ports)
+
+    @rpc.publish
+    @replay.mutable
+    def set_ports_used(self, state, ports):
+        return state.port_allocator.set_ports_used(ports)
+
+    @rpc.publish
+    @replay.immutable
+    def get_num_free_ports(self, state):
+        return state.port_allocator.num_free()
 
     ### Private Methods ###
 
@@ -241,6 +268,8 @@ class Descriptor(descriptor.Descriptor):
 
     # Hostname of the machine, updated when an agent is started
     document.field('hostname', None)
+    # Range used for allocating new ports
+    document.field('port_range', range(5000, 5999))
 
 
 class StartAgentReplier(replier.BaseReplier):
