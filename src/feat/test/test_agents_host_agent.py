@@ -1,10 +1,10 @@
 from feat.agents.base import testsuite, recipient, message, replier
-from feat.agents.host import host_agent
+from feat.agents.host import host_agent, port_allocator
 from feat.agents.common import rpc
 from feat.common import fiber
 from feat.test import factories
 from feat.agents.common.shard import JoinShardManager
-from feat.test.common import attr
+from feat.test.common import attr, TestCase
 
 
 class TestHostAgent(testsuite.TestCase):
@@ -32,13 +32,59 @@ class TestHostAgent(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.register_interest',
                                   args=(host_agent.StartAgentReplier, )),
             testsuite.side_effect('AgencyAgent.register_interest',
-                            args=(host_agent.ResourcesAllocationContractor, ))]
+                            args=(host_agent.ResourcesAllocationContractor, )),
+            testsuite.side_effect('AgencyAgent.get_descriptor',
+                                 self.ball.descriptor), ]
 
         f, state = self.ball.call(expected, self.agent.initiate)
         self.assertFiberTriggered(f, fiber.TriggerType.succeed)
         self.assertFiberCalls(f, self.agent._update_hostname)
         self.assertFiberCalls(f, self.agent.initiate_partners)
 #        self.assertFiberCalls(f, self.agent.start_join_shard_manager)
+
+
+class TestPortAllocator(TestCase):
+
+    def setUp(self):
+        TestCase.setUp(self)
+        ports = range(5000, 5010)
+        self.allocator = port_allocator.PortAllocator(self, ports)
+
+    def testAllocate(self):
+        ports = self.allocator.reserve_ports(5)
+        self.assertEqual(len(ports), 5)
+        self.assertEqual(self.allocator.num_free(), 5)
+        self.assertEqual(self.allocator.num_used(), 5)
+
+    def testAllocateAndRelease(self):
+        ports = self.allocator.reserve_ports(5)
+        self.allocator.release_ports(ports[2:])
+        self.assertEqual(self.allocator.num_free(), 8)
+
+    def testAllocateTooManyPorts(self):
+        self.assertRaises(port_allocator.PortAllocationError,
+                          self.allocator.reserve_ports, 11)
+
+    def testReleaseUnknownPort(self):
+        self.allocator.release_ports([15000])
+        self.assertEqual(self.allocator.num_free(), 10)
+
+    def testReleaseUnallocatedPort(self):
+        self.allocator.release_ports([5000])
+        self.assertEqual(self.allocator.num_free(), 10)
+
+    def testSetPortsUsed(self):
+        self.allocator.set_ports_used([5000, 5001])
+        self.assertEqual(self.allocator.num_used(), 2)
+
+    def testSetPortAlreadyUsed(self):
+        ports = self.allocator.reserve_ports(5)
+        self.allocator.set_ports_used(ports)
+        self.assertEqual(self.allocator.num_used(), 5)
+
+    def testSetUnknownPort(self):
+        self.allocator.set_ports_used([15000, 15001])
+        self.assertEqual(self.allocator.num_used(), 0)
 
 
 @attr(skip="wip on transforming tree to a graph")
