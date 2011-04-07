@@ -111,6 +111,7 @@ class PortAllocator(serialization.Serializable, log.Logger):
         for r in self.used:
             first = r[0] - self.ports[0]
             second = r[1] - self.ports[0]
+
             for i in range(first, second + 1):
                 bitmap[i] = True
         return bitmap
