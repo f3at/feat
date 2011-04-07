@@ -32,6 +32,7 @@ class BaseContractor(log.Logger, replay.Replayable):
     log_category = "contractor"
     protocol_type = "Contract"
     protocol_id = None
+    interest_type = InterestType.private
 
     bid_timeout = 10
     ack_timeout = 10

@@ -83,9 +83,11 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
         # state.join_interest =\
         #     state.medium.register_interest(JoinShardContractor)
         # state.join_interest.bind_to_lobby()
-        state.role = None
         state.neighbour_interest =\
-            state.medium.register_interest(FindNeighboursContractor)
+            state.medium.register_interest(
+            contractor.Service(FindNeighboursContractor))
+        state.medium.register_interest(FindNeighboursContractor)
+        state.role = None
         self.become_king()
 
         return self.initiate_partners()
@@ -93,9 +95,9 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def look_for_neighbours(self, state):
-        recp = recipient.Broadcast(FindNeighboursManager.protocol_id, 'lobby')
-        f = fiber.succeed(FindNeighboursManager)
-        f.add_callback(self.initiate_protocol, recp)
+        f = self.discover_service(FindNeighboursManager, timeout=1)
+        f.add_callback(
+            lambda recp: self.initiate_protocol(FindNeighboursManager, recp))
         f.add_callback(FindNeighboursManager.notify_finish)
         f.add_errback(self.look_for_failed)
         return f
@@ -193,7 +195,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     bid_timeout = 6
 
     protocol_id = 'find-neighbours'
-    interest_type = InterestType.public
+    concurrency = 1
 
     @replay.mutable
     def announced(self, state, announcement):
