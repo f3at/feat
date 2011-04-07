@@ -47,7 +47,7 @@ class TestPortAllocator(TestCase):
 
     def setUp(self):
         TestCase.setUp(self)
-        ports = range(5000, 5010)
+        ports = (5000, 5010)
         self.allocator = port_allocator.PortAllocator(self, ports)
 
     def testAllocate(self):

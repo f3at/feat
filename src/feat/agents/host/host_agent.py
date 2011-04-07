@@ -55,8 +55,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         state.medium.register_interest(ResourcesAllocationContractor)
 
         ports = state.medium.get_descriptor().port_range
-        state.port_allocator = port_allocator.PortAllocator(
-            self, range(ports[0], ports[1]))
+        state.port_allocator = port_allocator.PortAllocator(self, ports)
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self._update_hostname)
         f.add_callback(fiber.drop_result, self._load_definition, hostdef)
