@@ -35,6 +35,7 @@ class HostAgentTests(common.SimulationTest):
         agent = self.get_local('agent')
         totals = agent._get_state().resources.get_totals()
         self.assertTrue("host" in totals)
+        self.assertTrue("bandwith" in totals)
         self.assertTrue("epu" in totals)
         self.assertTrue("core" in totals)
         self.assertTrue("mem" in totals)

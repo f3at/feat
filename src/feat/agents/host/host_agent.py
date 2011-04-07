@@ -16,6 +16,7 @@ from feat.agencies.interface import NotFoundError
 from feat.interface.agent import Access, Address, Storage, CategoryError
 
 DEFAULT_RESOURCES = {"host": 1,
+                     "bandwith": 100,
                      "epu": 500,
                      "core": 2,
                      "mem": 1000}
