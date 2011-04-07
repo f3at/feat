@@ -1,7 +1,7 @@
 from zope.interface import implements
 from feat.interface import manager
 from feat.common import log, serialization, reflect
-from feat.agents.base import protocol, replay
+from feat.agents.base import protocol, replay, message
 
 
 class Meta(type(replay.Replayable)):
@@ -73,3 +73,37 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
     def aborted(self):
         '''@see: L{manager.IAgentManager}'''
+
+
+@serialization.register
+class DiscoverService(serialization.Serializable):
+    implements(manager.IManagerFactory)
+
+    def __init__(self, factory, timeout):
+        factory = manager.IManagerFactory(factory)
+        self.protocol_type = factory.protocol_type
+        self.protocol_id = 'discover-' + factory.protocol_id
+        self.timeout = timeout
+
+    def __call__(self, agent, medium):
+        instance = ServiceDiscoveryManager(agent, medium)
+        instance.protocol_id = self.protocol_id
+        instance.announce_timeout = self.timeout
+        return instance
+
+
+class ServiceDiscoveryManager(BaseManager):
+
+    @replay.journaled
+    def initiate(self, state):
+        state.providers = list()
+        state.medium.announce(message.Announcement())
+
+    @replay.mutable
+    def bid(self, state, bid):
+        state.providers.append(bid.reply_to)
+        state.medium.reject(bid, message.Rejection())
+
+    @replay.immutable
+    def expired(self, state):
+        return state.providers

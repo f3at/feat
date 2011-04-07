@@ -6,9 +6,10 @@ import types
 from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
-from feat.interface import generic, agent
+from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
-                              replier, partners, dependency, )
+                              replier, partners, dependency, manager,
+                              protocol, )
 
 
 registry = dict()
@@ -245,6 +246,26 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @update_descriptor
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
+
+    @replay.journaled
+    def discover_service(self, state, factory, timeout=3, shard='lobby'):
+
+        def expire_handler(fail):
+            if fail.check(protocols.InitiatorFailed):
+                return fail.value.args[0]
+            else:
+                fail.raiseException()
+
+        initiator = manager.DiscoverService(factory, timeout)
+        recp = recipient.Broadcast(shard=shard,
+                                   protocol_id=initiator.protocol_id)
+        f = fiber.succeed(initiator)
+        f.add_callback(self.initiate_protocol, recp)
+        # this contract will always finish in expired state as it is blindly
+        # rejecting all it gets
+        f.add_callback(manager.ServiceDiscoveryManager.notify_finish)
+        f.add_errback(expire_handler)
+        return f
 
     ### Private Methods ###
 
