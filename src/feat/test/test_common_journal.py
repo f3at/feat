@@ -782,8 +782,9 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         entry = self.new_entry("dummy")
-        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.RECMODE_TAG] = JournalMode.recording
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
+        section.state[journal.RECORDING_TAG] = True
 
         self.assertRaises(SideEffectResultError, bad_effect1)
         self.assertRaises(SideEffectResultError, bad_effect2)
@@ -806,7 +807,7 @@ class TestJournaling(common.TestCase):
         entry.add_side_effect(funid, "ok")
         entry.add_side_effect(funid, "ok")
 
-        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.RECMODE_TAG] = JournalMode.replay
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         self.assertEqual("ok", bad_replay_effect(42, 18))
@@ -842,7 +843,7 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         entry = self.new_entry("dummy")
-        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.RECMODE_TAG] = JournalMode.recording
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         del _effect_calls[:]
@@ -868,7 +869,7 @@ class TestJournaling(common.TestCase):
         # Test in replay context
         section = fiber.WovenSection()
         section.enter()
-        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.RECMODE_TAG] = JournalMode.replay
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         entry.rewind_side_effects()
@@ -912,7 +913,7 @@ class TestJournaling(common.TestCase):
         section = fiber.WovenSection()
         section.enter()
         entry = self.new_entry("dummy")
-        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.RECMODE_TAG] = JournalMode.recording
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         del _effect_calls[:]
@@ -938,7 +939,7 @@ class TestJournaling(common.TestCase):
         # Test in replay context
         section = fiber.WovenSection()
         section.enter()
-        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.RECMODE_TAG] = JournalMode.replay
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         entry.rewind_side_effects()
@@ -1001,7 +1002,7 @@ class TestJournaling(common.TestCase):
         # Test from inside a recording context
         section = fiber.WovenSection()
         section.enter()
-        section.state[journal.RECORDED_TAG] = JournalMode.recording
+        section.state[journal.RECMODE_TAG] = JournalMode.recording
 
         entry = self.new_entry("dummy")
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
@@ -1043,7 +1044,7 @@ class TestJournaling(common.TestCase):
         # Test from inside a recording context
         section = fiber.WovenSection()
         section.enter()
-        section.state[journal.RECORDED_TAG] = JournalMode.replay
+        section.state[journal.RECMODE_TAG] = JournalMode.replay
         section.state[journal.JOURNAL_ENTRY_TAG] = entry
 
         entry.rewind_side_effects()

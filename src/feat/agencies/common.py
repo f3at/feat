@@ -4,7 +4,7 @@ import uuid
 
 from twisted.python import failure
 
-from feat.common import delay, fiber, serialization, error_handler, log, defer
+from feat.common import delay, serialization, error_handler, log, defer
 from feat.interface.protocols import InitiatorExpired, InitiatorFailed
 from feat.agents.base import replay
 
@@ -28,7 +28,7 @@ class StateMachineMixin(object):
     @serialization.freeze_tag('StateMachineMixin.wait_for_state')
     def wait_for_state(self, state):
         if self.state == state:
-            return defer.succeed(None)
+            return defer.succeed(self)
         return self._notifier.wait(state)
 
     def _set_state(self, state):
@@ -37,7 +37,7 @@ class StateMachineMixin(object):
             self.state = state
 
         if self._notifier:
-            self._notifier.callback(state, None)
+            self._notifier.callback(state, self)
 
     def _cmp_state(self, states):
         if not isinstance(states, list):
@@ -156,9 +156,7 @@ class AgencyMiddleMixin(object):
 
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
-
-        #FIXME: we shouldn't need maybe_fiber, mabeDeferred should be enough
-        d = fiber.maybe_fiber(method, *args, **kwargs)
+        d = defer.maybeDeferred(method, *args, **kwargs)
         d.addErrback(self._error_handler)
         return d
 

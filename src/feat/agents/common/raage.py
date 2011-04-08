@@ -20,7 +20,7 @@ class AllocationManager(manager.BaseManager):
     protocol_id = 'request-allocation'
     announce_timeout = 6
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, resources):
         self.log("initiate manager")
         state.resources = resources
@@ -28,7 +28,7 @@ class AllocationManager(manager.BaseManager):
         msg.payload['resources'] = state.resources
         state.medium.announce(msg)
 
-    @replay.immutable
+    @replay.entry_point
     def closed(self, state):
         self.log("close manager")
         bids = state.medium.get_bids()
@@ -37,7 +37,7 @@ class AllocationManager(manager.BaseManager):
         params = (best_bid, msg)
         state.medium.grant(params)
 
-    @replay.mutable
+    @replay.entry_point
     def completed(self, state, reports):
         self.log("completed manager")
         report = reports[0]

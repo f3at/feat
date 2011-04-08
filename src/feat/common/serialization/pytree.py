@@ -169,8 +169,8 @@ class Serializer(base.Serializer):
     def pack_frozen_function(self, value):
         return reflect.canonical_name(value)
 
-    def pack_frozen_method(self, value):
-        return reflect.canonical_name(value)
+    pack_frozen_method = pack_frozen_function
+    pack_frozen_builtin = pack_frozen_function
 
 
 class Unserializer(base.Unserializer):

@@ -2,19 +2,19 @@ from twisted.internet.defer import *
 from twisted.internet.defer import returnValue
 
 
-def drop_result(result, method, *args, **kwargs):
-    assert callable(method)
-    return method(*args, **kwargs)
+def drop_result(_result, _method, *args, **kwargs):
+    assert callable(_method)
+    return _method(*args, **kwargs)
 
 
-def bridge_result(result, method, *args, **kwargs):
-    assert callable(method)
-    method(*args, **kwargs)
-    return result
+def bridge_result(_result, _method, *args, **kwargs):
+    assert callable(_method)
+    _method(*args, **kwargs)
+    return _result
 
 
-def override_result(result, new_result):
-    return new_result
+def override_result(_result, _new_result):
+    return _new_result
 
 
 class Notifier(object):

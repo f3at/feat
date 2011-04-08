@@ -27,7 +27,7 @@ class Agent(agent.BaseAgent):
                         'feat.agents.base.amqp.simulation.AMQPClient',
                         ExecMode.test)
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, host, port, exchange, exchange_type):
         agent.BaseAgent.initiate(self)
 
