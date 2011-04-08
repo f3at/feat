@@ -20,7 +20,7 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("protoser_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         state.medium.register_interest(NormalReplier)
@@ -63,7 +63,7 @@ class NormalRequester(requester.BaseRequester):
     protocol_id = 'test_normal'
     timeout = 10
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         msg = message.RequestMessage()
         state.medium.request(msg)

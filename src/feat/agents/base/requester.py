@@ -62,7 +62,7 @@ class Propose(BaseRequester):
     timeout = 3
     protocol_id = 'lets-pair-up'
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, our_alloc_id=None, partner_alloc_id=None,
                  partner_role=None, our_role=None, substitute=None):
         state.our_role = our_role
@@ -75,7 +75,7 @@ class Propose(BaseRequester):
                 allocation_id=partner_alloc_id))
         state.medium.request(msg)
 
-    @replay.journaled
+    @replay.entry_point
     def got_reply(self, state, reply):
         if reply.payload['ok']:
             return state.agent.create_partner(
@@ -87,7 +87,7 @@ class Propose(BaseRequester):
             f.chain(fiber.fail(reply.payload['fail']))
             return f
 
-    @replay.journaled
+    @replay.entry_point
     def closed(self, state):
         self.warning('Our proposal to agent %r has been ignored. How rude!',
                      state.medium.recipients)

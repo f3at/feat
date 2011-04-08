@@ -51,15 +51,15 @@ def entry_point(function):
           pass
     '''
 
+    guard_wrapper = guard.mutable(function)
+
     # Register the function
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call", function)
+                                 "_register_recorded_call", guard_wrapper)
 
     def wrapper(self, *args, **kwargs):
-        state = self._get_state()
         recorder = IRecorder(self)
-        return recorder.call(function, (state, ) + args,
-                             kwargs, reentrant=False)
+        return recorder.call(guard_wrapper, args, kwargs, reentrant=False)
 
     return wrapper
 

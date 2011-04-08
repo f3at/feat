@@ -11,9 +11,10 @@ from feat.common.annotate import MetaAnnotable
 
 from feat.common import decorator, annotate, reflect, fiber, serialization
 
-RECORDED_TAG = "__RECORDED__"
+RECORDING_TAG = "__RECORDING__"
+RECMODE_TAG = "__RECMODE__"
 JOURNAL_ENTRY_TAG = "__JOURNAL_ENTRY__"
-EFFECT_ENTRY_TAG = "__EFFECT_ENTRY__"
+SIDE_EFFECT_TAG = "__SIDE_EFFECT__"
 
 
 def replay(journal_entry, function, *args, **kwargs):
@@ -27,11 +28,11 @@ def replay(journal_entry, function, *args, **kwargs):
     section.enter()
 
     # Check if this is the first recording in the fiber section
-    journal_mode = section.state.get(RECORDED_TAG, None)
+    journal_mode = section.state.get(RECMODE_TAG, None)
     is_first = journal_mode is None
 
     if is_first:
-        section.state[RECORDED_TAG] = JournalMode.replay
+        section.state[RECMODE_TAG] = JournalMode.replay
         section.state[JOURNAL_ENTRY_TAG] = IJournalReplayEntry(journal_entry)
 
     result = function(*args, **kwargs)
@@ -98,65 +99,49 @@ def _check_side_effet_result(result, info):
 
 
 def _side_effect_wrapper(callable, args, kwargs, name):
-    section = fiber.WovenSection()
-    section.enter()
+    section_state = fiber.get_state()
 
-    mode = section.state.get(RECORDED_TAG, None)
-    entry = section.state.get(JOURNAL_ENTRY_TAG, None)
-    effect = section.state.get(EFFECT_ENTRY_TAG, None)
+    if section_state is not None:
+        # We are in a woven section
 
-    if effect is not None:
-        # Already inside a side-effect call, so just abort and call
-        section.abort()
-        result = callable(*args, **kwargs)
-        return _check_side_effet_result(result, name)
+        entry = section_state.get(JOURNAL_ENTRY_TAG, None)
 
-    if mode == JournalMode.recording:
-        # Recording mode, execute and record the side-effect
-        effect = entry.new_side_effect(name, *args, **kwargs)
+        if entry is not None:
+            # We are in a replayable section
+            mode = section_state.get(RECMODE_TAG, None)
 
-        section.state[EFFECT_ENTRY_TAG] = effect
+            if mode == JournalMode.replay:
+                return entry.next_side_effect(name, *args, **kwargs)
 
-        try:
+            # Create a side-effect entry
+            effect = entry.new_side_effect(name, *args, **kwargs)
+            # Keep it in the replayable section state
+            section_state[SIDE_EFFECT_TAG] = effect
+            # Break the fiber to allow new replayable sections
+            fiber.break_fiber()
+            # Keep the side-effect entry to detect we are in one
+            fiber.set_stack_var(SIDE_EFFECT_TAG, effect)
+            try:
+                result = callable(*args, **kwargs)
+                result = _check_side_effet_result(result, name)
+                effect.set_result(result)
+                effect.commit()
+                return result
+            except:
+                #FIXME: handle exceptions in side effects
+                raise
 
-            result = _check_side_effet_result(callable(*args, **kwargs), name)
-            effect.set_result(result)
-            effect.commit()
-
-        finally:
-
-            del section.state[EFFECT_ENTRY_TAG]
-
-
-        return section.exit(result)
-
-    if mode == JournalMode.replay:
-        result = entry.next_side_effect(name, *args, **kwargs)
-        return section.exit(result)
-
-    # We are not inside a recorded section, abort and execute
-    section.abort()
+    # Not in a replayable section, maybe in another side-effect
     return _check_side_effet_result(callable(*args, **kwargs), name)
 
 
 def add_effect(effect_id, *args, **kwargs):
     '''If inside a side-effect, adds an effect to it.'''
-    section = fiber.WovenSection()
-    section.enter()
-
-    try:
-
-        effect = section.state.get(EFFECT_ENTRY_TAG, None)
-
-        if effect is not None:
-            effect.add_effect(effect_id, *args, **kwargs)
-            return True
-
+    effect = fiber.get_stack_var(SIDE_EFFECT_TAG)
+    if effect is None:
         return False
-
-    finally:
-
-        section.abort()
+    effect.add_effect(effect_id, *args, **kwargs)
+    return True
 
 
 class RecorderRoot(serialization.Serializable):
@@ -285,12 +270,20 @@ class Recorder(RecorderNode, annotate.Annotable):
         section.enter()
         fibdesc = section.descriptor
 
+        # Check if we are in replay mode
+        mode = section.state.get(RECMODE_TAG, None)
+        if mode == JournalMode.replay:
+            fun_id, function = self._resolve_function(fun_id, function)
+            return self._call_fun(fun_id, function, args, kwargs)
+
         # Check if this is the first recording in the fiber section
-        entry = section.state.get(JOURNAL_ENTRY_TAG, None)
-        section_first = entry is None
+        recording = section.state.get(RECORDING_TAG, None)
+        section_first = recording is None
 
         try:
 
+            entry = section.state.get(JOURNAL_ENTRY_TAG, None)
+            mode = section.state.get(RECMODE_TAG, None)
             fiber_first = section_first and section.descriptor.fiber_depth == 0
             fun_id, function = self._resolve_function(fun_id, function)
 
@@ -299,13 +292,15 @@ class Recorder(RecorderNode, annotate.Annotable):
                                                       *args, **kwargs)
                 entry.set_fiber_context(fibdesc.fiber_id, fibdesc.fiber_depth)
 
-                section.state[RECORDED_TAG] = JournalMode.recording
+                section.state[RECORDING_TAG] = True
+                section.state[RECMODE_TAG] = JournalMode.recording
                 section.state[JOURNAL_ENTRY_TAG] = entry
 
             if not (fiber_first or reentrant):
                 # If not reentrant and it is not the first, it's BAAAAAD.
-                raise ReentrantCallError("Recorded functions cannot be called "
-                                         "from another recorded function")
+                raise ReentrantCallError("Recorded functions %s cannot be "
+                                         "called from inside the recording "
+                                         "section" % (fun_id, ))
 
             result = self._call_fun(fun_id, function, args, kwargs)
 
@@ -316,8 +311,9 @@ class Recorder(RecorderNode, annotate.Annotable):
         finally:
 
             if section_first:
+                section.state[RECORDING_TAG] = False
                 section.state[JOURNAL_ENTRY_TAG] = None
-                section.state[RECORDED_TAG] = None
+                section.state[RECMODE_TAG] = None
 
         return section.exit(result)
 

@@ -26,6 +26,7 @@ class Capabilities(enum.Enum):
      type_values,
      function_values,
      method_values,
+     builtin_values,
      int_keys,
      enum_keys,
      long_keys,
@@ -38,7 +39,7 @@ class Capabilities(enum.Enum):
      tuple_keys,
      circular_references,
      new_style_types,
-     meta_types) = range(31)
+     meta_types) = range(32)
 
 
 class IRegistry(Interface):

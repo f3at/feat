@@ -46,7 +46,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
     partners_class = Partners
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, hostdef=None, bootstrap=False):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
@@ -208,7 +208,7 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     protocol_id = 'allocate-resources'
     interest_type = InterestType.public
 
-    @replay.mutable
+    @replay.entry_point
     def announced(self, state, announcement):
         resources = announcement.payload['resources']
         try:
@@ -249,7 +249,7 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     rejected = release_preallocation
     expired = release_preallocation
 
-    @replay.mutable
+    @replay.entry_point
     def granted(self, state, grant):
         f = fiber.Fiber()
         f.add_callback(state.agent.confirm_allocation)

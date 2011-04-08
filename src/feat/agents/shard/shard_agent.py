@@ -72,7 +72,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
 
     partners_class = Partners
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, hosts=10, neighbours=3):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
@@ -197,7 +197,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     protocol_id = 'find-neighbours'
     concurrency = 1
 
-    @replay.mutable
+    @replay.entry_point
     def announced(self, state, announcement):
         if self._is_own_announcement(announcement):
             self._refuse()
@@ -230,7 +230,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     rejected = _release_allocation
     cancelled = _release_allocation
 
-    @replay.mutable
+    @replay.entry_point
     def granted(self, state, grant):
         recp = grant.payload['joining_agent']
         if grant.payload['solution_type'] == SolutionType.join:
@@ -292,14 +292,14 @@ class FindNeighboursManager(manager.BaseManager):
     announce_timeout = 3
     grant_timeout = 3
 
-    @replay.journaled
+    @replay.entry_point
     def initiate(self, state):
         msg = message.Announcement()
         msg.payload['joining_agent'] = state.agent.get_own_address()
         state.medium.announce(msg)
         state.allocations = list()
 
-    @replay.journaled
+    @replay.entry_point
     def closed(self, state):
         # Try to get at least 2 and preferable 3 join bids.
         # If thats imposible get the best divorce bid.
@@ -346,7 +346,7 @@ class FindNeighboursManager(manager.BaseManager):
         f.add_callback(state.medium.grant)
         return f
 
-    @replay.journaled
+    @replay.entry_point
     def completed(self, state, reports):
         pass
 

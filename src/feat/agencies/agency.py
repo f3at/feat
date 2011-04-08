@@ -161,21 +161,12 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                  factory, args, kwargs)
         medium = AgencyAgent(self, factory, descriptor)
         self._agents.append(medium)
-
-        d = defer.maybeDeferred(medium.initiate)
-        #FIXME: we shouldn't need maybe_fiber
-        d.addCallback(fiber.drop_result, medium._call_initiate,
+        run_startup = kwargs.pop('run_startup', True)
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_result, medium.initiate,
                       *args, **kwargs)
-        try:
-            run_startup = kwargs.pop('run_startup')
-        except KeyError:
-            run_startup = True
-        if run_startup:
-            d.addCallback(fiber.drop_result, reactor.callLater,
-                          0, medium._call_startup)
-        else:
-            d.addCallback(fiber.drop_result, medium._ready)
-        d.addCallback(fiber.override_result, medium)
+        d.addCallback(defer.bridge_result, medium.startup,
+                      startup_agent=run_startup)
         return d
 
     def shutdown(self):
@@ -355,17 +346,37 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Public Methods ###
 
-    def initiate(self):
+    def call_next(self, fun, *args, **kwargs):
+        reactor.callLater(0, fun, *args, **kwargs)
+
+    def initiate(self, *args, **kwargs):
         '''Establishes the connections to database and messaging platform,
         taking into account that it might meen performing asynchronous job.'''
         setter = lambda value, name: setattr(self, name, value)
-        d = defer.succeed(None)
-        d.addCallback(lambda _: self.agency._messaging.get_connection(self))
+        d = defer.Deferred()
+        d.addCallback(defer.drop_result,
+                      self.agency._messaging.get_connection, self)
         d.addCallback(setter, '_messaging')
-        d.addCallback(lambda _: self.agency._database.get_connection(self))
+        d.addCallback(defer.drop_result,
+                      self.agency._database.get_connection, self)
         d.addCallback(setter, '_database')
-        d.addCallback(lambda _: self.join_shard(self._descriptor.shard))
+        d.addCallback(defer.drop_result,
+                      self.join_shard, self._descriptor.shard)
+        d.addCallback(defer.drop_result,
+                      self._call_initiate, *args, **kwargs)
+        d.addCallback(defer.override_result, self)
+
+        # Ensure the execution chain is broken
+        self.call_next(d.callback, None)
+
         return d
+
+    def startup(self, startup_agent=True):
+        if startup_agent:
+            return self._call_startup()
+        # Not calling agent startup, for testing purpose only
+        self._ready()
+        return defer.succeed(self)
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -502,7 +513,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         initiator = factory(self.agent, medium)
         self.register_listener(medium)
+
         medium.initiate(initiator)
+
         return initiator
 
     @serialization.freeze_tag('AgencyAgent.initiate_task')
@@ -551,7 +564,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):
-        reactor.callLater(0, self._terminate)
+        self.call_next(self._terminate)
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
@@ -702,12 +715,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             wrapper_call = lambda _: cleanup_fun(message, interested)
             medium.notify_finish().addBoth(wrapper_call)
 
-        medium.initiate(interested)
-
-        listener = self.register_listener(medium)
-        listener.on_message(message)
+        self.call_next(self._init_listener, medium, interested, message)
 
         return interested
+
+    def _init_listener(self, medium, interested, message):
+        medium.initiate(interested)
+        listener = self.register_listener(medium)
+        listener.on_message(message)
 
     def _next_update(self):
 
@@ -723,7 +738,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         def next_update(any=None):
             self._updating = False
-            reactor.callLater(0, self._next_update)
+            self.call_next(self._next_update)
             return any
 
         if self._updating:
@@ -796,7 +811,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         Run a agent-side method and wait for all the listeners
         to finish processing.
         '''
-        d = fiber.maybe_fiber(method, *args, **kwargs)
+        d = defer.maybeDeferred(method, *args, **kwargs)
         d.addBoth(self.wait_for_listeners_finish)
         return d
 
@@ -826,15 +841,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _call_initiate(self, *args, **kwargs):
         self._set_state(AgencyAgentState.initiating)
-        d = fiber.maybe_fiber(self.agent.initiate, *args, **kwargs)
+        d = defer.maybeDeferred(self.agent.initiate, *args, **kwargs)
         d.addCallback(fiber.drop_result, self._set_state,
                       AgencyAgentState.initiated)
         return d
 
     def _call_startup(self):
         self._set_state(AgencyAgentState.starting_up)
-        d = fiber.maybe_fiber(self.agent.startup)
+        d = defer.maybeDeferred(self.agent.startup)
         d.addCallback(fiber.drop_result, self._ready)
+        d.addCallback(fiber.override_result, self)
         d.addErrback(self._error_handler)
         return d
 

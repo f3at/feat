@@ -14,10 +14,9 @@ class FailureOfPartner(Exception, serialization.Serializable):
     pass
 
 
-@document.register
+@descriptor.register('partner-agent')
 class Descriptor(descriptor.Descriptor):
-
-    document_type = 'partner-agent'
+    pass
 
 
 class FailingPartner(partners.BasePartner):
@@ -36,7 +35,7 @@ class Agent(agent.BaseAgent):
 
     partners_class = Partners
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
 

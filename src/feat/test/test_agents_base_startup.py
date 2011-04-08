@@ -1,30 +1,30 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 
+from feat.common import fiber, defer
 from feat.interface.agent import AgencyAgentState
 from feat.agents.base import descriptor, agent, document
 from feat.test import common
 
 
-@document.register
+@descriptor.register('startup-test')
 class Descriptor(descriptor.Descriptor):
+    pass
 
-    document_type = 'startup-error'
 
-
-@agent.register('startup-error')
+@agent.register('startup-test')
 class DummyAgent(agent.BaseAgent, common.Mock):
 
     def __init__(self, medium):
         agent.BaseAgent.__init__(self, medium)
         common.Mock.__init__(self)
+        self._started_defer = defer.Deferred()
 
-    @common.Mock.stub
-    def initiate(self):
-        pass
+    @common.Mock.record
+    def initiate(self, startup_fail=False):
+        self.startup_fail = startup_fail
 
     @common.Mock.stub
     def shutdown(self):
@@ -32,11 +32,19 @@ class DummyAgent(agent.BaseAgent, common.Mock):
 
     @common.Mock.record
     def startup(self):
-        raise BaseException('')
+        if self.startup_fail:
+            raise BaseException('')
+        return self._started_defer
 
     @common.Mock.stub
     def unregister(self):
         pass
+
+    def set_started(self):
+        self._started_defer.callback(self)
+
+    def _wait_started(self, _):
+        return self._started_defer
 
 
 class TestStartupTask(common.TestCase, common.AgencyTestHelper):
@@ -46,20 +54,14 @@ class TestStartupTask(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testAgentStartup(self):
-        desc = yield self.doc_factory(descriptor.Descriptor)
+        desc = yield self.doc_factory(Descriptor)
         dummy = yield self.agency.start_agent(desc)
         self.assertCalled(dummy.get_agent(), 'initiate')
-        yield dummy.wait_for_state(AgencyAgentState.initiated)
-        self.assertEqual(dummy.get_machine_state(),
-                         AgencyAgentState.initiated)
-        self.assertCalled(dummy.get_agent(), 'startup', times=0)
-        yield dummy.wait_for_state(AgencyAgentState.starting_up)
+        self.assertCalled(dummy.get_agent(), 'startup')
         self.assertEqual(dummy.get_machine_state(),
                          AgencyAgentState.starting_up)
+        dummy.get_agent().set_started()
         yield dummy.wait_for_state(AgencyAgentState.ready)
-        self.assertCalled(dummy.get_agent(), 'startup', times=1)
-        self.assertEqual(dummy.get_machine_state(),
-                         AgencyAgentState.ready)
 
     @defer.inlineCallbacks
     def testAgentNoStartup(self):
@@ -73,7 +75,7 @@ class TestStartupTask(common.TestCase, common.AgencyTestHelper):
     @defer.inlineCallbacks
     def testAgentFails(self):
         desc = yield self.doc_factory(Descriptor)
-        dummy = yield self.agency.start_agent(desc)
+        dummy = yield self.agency.start_agent(desc, startup_fail=True)
         yield dummy.wait_for_state(AgencyAgentState.error)
         self.assertEqual(dummy.get_machine_state(),
                          AgencyAgentState.error)

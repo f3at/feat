@@ -11,7 +11,7 @@ from feat.interface.protocols import InterestType
 @agent.register('raage_agent')
 class ResourcesAllocationAgent(agent.BaseAgent):
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         state.medium.register_interest(AllocationContractor)
@@ -21,7 +21,7 @@ class AllocationContractor(contractor.BaseContractor):
     protocol_id = 'request-allocation'
     interest_type = InterestType.public
 
-    @replay.mutable
+    @replay.entry_point
     def announced(self, state, announcement):
 
         f = fiber.Fiber()

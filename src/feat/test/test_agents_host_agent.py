@@ -106,8 +106,12 @@ class TestJoinShardManager(testsuite.TestCase):
             testsuite.side_effect('AgencyAgent.get_descriptor',
                                   self.ball.descriptor),
             testsuite.side_effect('AgencyManager.announce', args=args)]
+
         output, state = self.ball.call(expected, self.manager.initiate,
                                        "action")
+#
+#        output, state = self.ball.call(expected, self.manager.initiate,
+#                                       "action")
 
     def testClosed(self):
         bids = [

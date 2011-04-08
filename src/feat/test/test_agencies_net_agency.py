@@ -124,7 +124,7 @@ class MasterAgent(StandaloneAgent):
                 '-l', logfile]
         return command, args, env
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         StandaloneAgent.initiate(self)
 

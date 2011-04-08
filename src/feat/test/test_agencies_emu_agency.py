@@ -22,14 +22,14 @@ class DummyRequester(requester.BaseRequester):
     protocol_id = 'dummy-request'
     timeout = 2
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, argument):
         state._got_response = False
         msg = message.RequestMessage()
         msg.payload = argument
         state.medium.request(msg)
 
-    @replay.mutable
+    @replay.entry_point
     def got_reply(self, state, message):
         state._got_response = True
 
@@ -47,7 +47,7 @@ class DummyReplier(replier.BaseReplier):
 
     protocol_id = 'dummy-request'
 
-    @replay.immutable
+    @replay.entry_point
     def requested(self, state, request):
         state.agent.got_payload = request.payload
         state.medium.reply(message.ResponseMessage())

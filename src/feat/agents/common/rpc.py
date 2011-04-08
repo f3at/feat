@@ -1,6 +1,6 @@
 from zope.interface import Interface, implements
 
-from feat.common import annotate, decorator, fiber, error_handler
+from feat.common import annotate, decorator, fiber, defer, error_handler
 from feat.agents.base import replay, message, requester, replier
 
 
@@ -80,7 +80,7 @@ class RPCRequester(requester.BaseRequester):
     def init_state(self, state, agent, med):
         requester.BaseRequester.init_state(self, state, IRPCClient(agent), med)
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state, fun_id, *args, **kwargs):
         msg = message.RequestMessage()
         msg.payload['fun_id'] = fun_id
@@ -94,8 +94,8 @@ class RPCRequester(requester.BaseRequester):
         exc = reply.payload['exception']
         msg = reply.payload['message']
         if issubclass(exc, RPCException):
-            raise exc(msg)
-        return fiber.fail(exc("REMOTE: " + str(msg)))
+            return defer.fail(exc(msg))
+        return defer.fail(exc("REMOTE: " + str(msg)))
 
 
 class RPCReplier(replier.BaseReplier):

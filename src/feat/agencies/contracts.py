@@ -169,7 +169,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(timeout, self._error_handler,
                         contracts.ContractState.wtf, failure.Failure(error))
 
-        self._call(manager.initiate, *self.args, **self.kwargs)
+        self.agent.call_next(self._call, manager.initiate,
+                             *self.args, **self.kwargs)
+
         return manager
 
     @replay.named_side_effect('AgencyManager.announce')
