@@ -180,7 +180,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def allocate_ports(self, state, number):
         try:
             return state.port_allocator.reserve_ports(number)
-        except port_allocator.Port_Allocator as e:
+        except port_allocator.PortAllocationError as e:
             return fiber.fail(e)
 
     @rpc.publish
