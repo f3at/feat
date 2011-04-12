@@ -14,6 +14,7 @@ class HostDef(document.Document):
 
     # The resources available for this host type.
     document.field('resources', {})
+    document.field('categories', {})
 
 
 def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):

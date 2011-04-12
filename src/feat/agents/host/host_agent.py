@@ -11,11 +11,17 @@ from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agencies.interface import NotFoundError
+from feat.interface.agent import Access, Address, Storage, CategoryError
 
 DEFAULT_RESOURCES = {"host": 1,
                      "epu": 500,
                      "core": 2,
                      "mem": 1000}
+
+
+DEFAULT_CATEGORIES = {'access': Access.none,
+                      'address': Address.none,
+                      'storage': Storage.none}
 
 
 @serialization.register
@@ -97,6 +103,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
             f.add_callback(fiber.drop_result,
                            self.check_allocation_exists, allocation_id)
         f.add_callback(fiber.drop_result, self.get_document, doc_id)
+        f.add_callback(self._check_requeriments)
         f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
@@ -182,13 +189,15 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         self.error(msg)
         raise NotFoundError(msg)
 
-    def _apply_definition(self, hostdef):
+    @replay.mutable
+    def _apply_definition(self, state, hostdef):
         self._setup_resources(hostdef.resources)
+        self._setup_categories(hostdef.categories)
 
-    def _apply_defaults(self):
-        self.warning("No host definition specified, "
-                     "using default resource definition")
+    @replay.mutable
+    def _apply_defaults(self, state):
         self._setup_resources(DEFAULT_RESOURCES)
+        self._setup_categories(DEFAULT_CATEGORIES)
 
     @replay.mutable
     def _setup_resources(self, state, resources):
@@ -202,6 +211,36 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
         for name, total in resources.iteritems():
             state.resources.define(name, total)
+
+    @replay.mutable
+    def _setup_categories(self, state, categories):
+        if not categories:
+            self.warning("Host do not have any categories defined")
+            return
+
+        self.info("Setting host categories to: %s",
+                  ", ".join(["%s=%s" % (n, v)
+                             for n, v in categories.iteritems()]))
+
+        state.categories = categories
+
+    @replay.immutable
+    def _check_requeriments(self, state, doc):
+        agnt = agent.registry_lookup(doc.document_type)
+        agent_categories = agnt.categories
+        for cat, val in agent_categories.iteritems():
+            if ((isinstance(val, Access) and val == Access.none) or
+               (isinstance(val, Address) and val == Address.none) or
+               (isinstance(val, Storage) and val == Storage.none)):
+                continue
+
+            if not (cat in state.categories and
+                    state.categories[cat] == val):
+                msg = "Category %s doesn't match %s != %s" % (
+                      cat, val, state.categories[cat])
+                self.error(msg)
+                raise CategoryError(msg)
+        return doc
 
 
 class ResourcesAllocationContractor(contractor.BaseContractor):
