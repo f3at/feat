@@ -2,7 +2,40 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
-           "AgencyAgentState"]
+           "AgencyAgentState", "Access", "Address", "Storage",
+           "CategoryError"]
+
+
+class CategoryError(RuntimeError):
+    '''
+    Raised when categories don't match with the
+    categories defined in the HostAgent.
+    '''
+
+
+class Access(enum.Enum):
+    '''
+    If the machine can be accessed from outside
+    '''
+
+    none, public, private = range(3)
+
+
+class Address(enum.Enum):
+    '''
+    If the machine network address can change or is fixed
+    '''
+
+    none, fixed, dynamic = range(3)
+
+
+class Storage(enum.Enum):
+    '''
+    If the machine storage is reliable upon restart is shared amongst other
+    machines in the same site.
+    '''
+
+    none, static, shared, volatile = range(4)
 
 
 class IAgentFactory(Interface):
@@ -10,6 +43,8 @@ class IAgentFactory(Interface):
     starting an agent.'''
 
     standalone = Attribute("bool. whether to run in standalone process")
+
+    categories = Attribute("Dict. Access, Address and Storage")
 
     def __call__(medium, *args, **kwargs):
         pass

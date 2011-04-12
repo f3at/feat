@@ -61,6 +61,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     standalone = False
 
+    categories = {'access': agent.Access.none,
+                  'address': agent.Address.none,
+                  'storage': agent.Storage.none}
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
