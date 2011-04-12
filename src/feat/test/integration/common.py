@@ -110,7 +110,7 @@ class SimulationTest(common.TestCase):
             yield x.wait_for_listeners_finish()
         yield common.TestCase.tearDown(self)
         if not self.skip_replayability:
-            self.log("Test finished, now validating replayability.")
+            self.info("Test finished, now validating replayability.")
             for agency in self.driver._agencies:
                 self._validate_replay_on_agency(agency)
         else:
@@ -173,12 +173,21 @@ class SimulationTest(common.TestCase):
                       check.__name__, freq)
             waiting += freq
             if waiting > timeout:
-                raise FailTest('Timeout error waiting for check %r.',
+                raise FailTest('Timeout error waiting for check %r.' %\
                                check.__name__)
             yield common.delay(None, freq)
 
+    @defer.inlineCallbacks
     def wait_for_idle(self, timeout, freq=0.5):
-        return self.wait_for(self.driver.is_idle, timeout, freq)
+        try:
+            yield self.wait_for(self.driver.is_idle, timeout, freq)
+        except FailTest as e:
+            for agent in self.driver.iter_agents():
+                activity = agent.show_activity()
+                if activity is None:
+                    continue
+                self.info(activity)
+            raise
 
     def count_agents(self, agent_type=None):
         return len([x for x in self.driver.iter_agents(agent_type)])

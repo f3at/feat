@@ -1,4 +1,5 @@
 from feat.agents.base import replay
+from feat.common import fiber
 
 
 class InitiatorBase(object):
@@ -6,10 +7,10 @@ class InitiatorBase(object):
     This mixin should be mixed into class implementing IInitiator interface.
     '''
 
-    @replay.immutable
-    def notify_state(self, state, status):
-        return state.medium.wait_for_state(status)
+    @replay.journaled
+    def notify_state(self, state, *states):
+        return fiber.wrap_defer(state.medium.wait_for_state, *states)
 
-    @replay.immutable
+    @replay.journaled
     def notify_finish(self, state):
-        return state.medium.notify_finish()
+        return fiber.wrap_defer(state.medium.notify_finish)

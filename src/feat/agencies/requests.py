@@ -101,7 +101,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.InitiatorMediumBase._terminate(self, arg)
 
     def _on_reply(self, msg):
-        self.log('on_reply')
         d = self._call(self.requester.got_reply, msg)
         d.addCallback(self._terminate)
         return d

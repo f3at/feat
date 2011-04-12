@@ -3,11 +3,11 @@
 from twisted.internet import defer
 
 from feat import everything
-from feat.common import delay
+from feat.common import delay, first
 from feat.test.integration import common
 from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
-from feat.agents.base import recipient, agent, replay, descriptor
+from feat.agents.base import recipient, agent, replay, descriptor, dbtools
 from feat.agents.common import raage, host
 
 
@@ -25,8 +25,8 @@ class RequestingAgent(agent.BaseAgent):
 
     @replay.mutable
     def request_resource(self, state, resources):
-        shard = self.get_own_address().shard
-        return raage.allocate_resource(state.medium, shard, resources)
+        self.info('Requesting resoruce %r', resources)
+        return raage.allocate_resource(self, resources)
 
 
 @descriptor.register('requesting_agent')
@@ -37,23 +37,21 @@ class Descriptor(descriptor.Descriptor):
 @common.attr('slow')
 class SingleHostAllocationSimulation(common.SimulationTest):
 
+    timeout = 20
+
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.2
+        delay.time_scale = 0.8
         setup = format_block("""
         agency = spawn_agency()
 
         host_desc = descriptor_factory('host_agent')
-        shard_desc = descriptor_factory('shard_agent', 'lobby')
-        raage_desc = descriptor_factory('raage_agent')
         req_desc = descriptor_factory('requesting_agent')
 
-        host_medium = agency.start_agent(host_desc, hostdef=hostdef, \
-        run_startup=False)
+        host_medium = agency.start_agent(host_desc, hostdef=hostdef)
         host_agent = host_medium.get_agent()
 
-        host_agent.start_agent(shard_desc, run_startup=False)
-        host_agent.start_agent(raage_desc)
+        host_agent.wait_for_ready()
         host_agent.start_agent(req_desc)
         """)
 
@@ -62,7 +60,9 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
-        raage_medium = self.driver.find_agent(self.get_local('raage_desc'))
+        yield self.wait_for_idle(10)
+
+        raage_medium = list(self.driver.iter_agents('raage_agent'))[0]
         self.raage_agent = raage_medium.get_agent()
         self.host_medium = self.get_local('host_medium')
         self.host_agent = self.get_local('host_agent')
@@ -76,13 +76,16 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         yield common.SimulationTest.tearDown(self)
 
     def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(4, len(agents))
+        self.assertEqual(1, self.count_agents('host_agent'))
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('requesting_agent'))
 
     @defer.inlineCallbacks
     def testFindHost(self):
         resources = {'host': 1}
         checkAllocation(self, self.host_agent, {'host': 0})
+        self.info('starting test')
         allocation_id, irecipient = \
                 yield self.req_agent.request_resource(resources)
         checkAllocation(self, self.host_agent, resources)
@@ -107,44 +110,37 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         yield d
 
 
-@common.attr(
-    skip="fails on buildbot. will be fixed by reworking the agent")
 @common.attr('slow')
 class MultiHostAllocationSimulation(common.SimulationTest):
 
+    timeout = 20
+
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.2
+        delay.time_scale = 0.8
         setup = format_block("""
-        shard_desc = descriptor_factory('shard_agent', 'lobby')
-        raage_desc = descriptor_factory('raage_agent')
         host1_desc = descriptor_factory('host_agent')
         host2_desc = descriptor_factory('host_agent')
         host3_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
 
-        # First agency runs the Shard, Raage, Signal and Host agents
+        # First agency will eventually run Host, Shard, Raage and
+        # Requesting agent
         agency = spawn_agency()
-        host1_medium = agency.start_agent(host1_desc, hostdef=hostdef,\
-        run_startup=False)
-        host1_agent = host1_medium.get_agent()
-        host1_agent.start_agent(shard_desc, run_startup=False)
-        host1_agent.start_agent(raage_desc)
-        host1_agent.start_agent(req_desc)
+        agency.start_agent(host1_desc, hostdef=hostdef)
+        host = _.get_agent()
+        host.wait_for_ready()
+        host.start_agent(req_desc)
 
         # Second agency runs the host agent
         spawn_agency()
-        host2_medium = _.start_agent(host2_desc, hostdef=hostdef, \
-        run_startup=False)
-        host2_agent = host2_medium.get_agent()
+        _.start_agent(host2_desc, hostdef=hostdef)
+        _.get_agent()
+        _.wait_for_ready()
 
-        # Third is like seccond
+        # Third is like second
         spawn_agency()
-        host3_medium = _.start_agent(host3_desc, hostdef=hostdef, \
-        run_startup=False)
-
-        host3_agent = host3_medium.get_agent()
-
+        _.start_agent(host3_desc, hostdef=hostdef)
         """)
 
         hostdef = host.HostDef()
@@ -152,19 +148,12 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
+        yield self.wait_for_idle(20)
 
-        self.agency = self.get_local('agency')
-        raage_medium = self.driver.find_agent(self.get_local('raage_desc'))
-        self.raage_agent = raage_medium.get_agent()
-        req_medium = self.driver.find_agent(self.get_local('req_desc'))
+        self.agents = [x.get_agent() \
+                       for x in self.driver.iter_agents('host_agent')]
+        req_medium = list(self.driver.iter_agents('requesting_agent'))[0]
         self.req_agent = req_medium.get_agent()
-        host1_medium = self.agency.find_agent(self.get_local('host1_desc'))
-        self.host1_agent = host1_medium.get_agent()
-        host2_medium = self.driver.find_agent(self.get_local('host2_desc'))
-        self.host2_agent = host2_medium.get_agent()
-        host3_medium = self.driver.find_agent(self.get_local('host3_desc'))
-        self.host3_agent = host3_medium.get_agent()
-        self.agents = [self.host1_agent, self.host2_agent, self.host3_agent]
 
     @defer.inlineCallbacks
     def _waitToFinish(self, _=None):
@@ -191,9 +180,8 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         self.assertEquals(count, 0)
 
     def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(6, len(agents))
-        # FIXME:  Check that the agency has all the agents
+        self.assertEqual(6, self.count_agents())
+        self.assertEqual(3, len(self.agents))
 
     @defer.inlineCallbacks
     def testAllocateOneHost(self):
@@ -230,3 +218,93 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         yield self._startAllocation(resources, 3, sequencial=False)
         yield self._waitToFinish()
         self._checkAllocations(resources, 3)
+
+
+@common.attr('slow')
+class ContractNestingSimulation(common.SimulationTest):
+
+    timeout = 40
+
+    def setUp(self):
+        config = everything.shard_agent.ShardAgentConfiguration(
+            doc_id = 'test-config',
+            hosts_per_shard = 2)
+        dbtools.initial_data(config)
+        self.override_config('shard_agent', config)
+        return common.SimulationTest.setUp(self)
+
+    @defer.inlineCallbacks
+    def prolog(self):
+        delay.time_scale = 0.8
+        setup = format_block("""
+        # Host 1 will run Raage, Host, Shard and Requesting agents
+        agency = spawn_agency()
+        host_desc = descriptor_factory('host_agent')
+        req_desc = descriptor_factory('requesting_agent')
+        agency.start_agent(host_desc, hostdef=hostdef1)
+        host = _.get_agent()
+        host.wait_for_ready()
+        host.start_agent(req_desc)
+
+        # Host 2 run only host agent
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef1)
+
+        # Host 3 will run Shard, Host and Raage
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
+        _.get_agent()
+        _.wait_for_ready()
+
+        # Host 4 will run only host agent
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
+        """)
+
+        # host definition in first shard (no space to allocate)
+        hostdef1 = host.HostDef(resources=dict(host=0))
+        self.set_local("hostdef1", hostdef1)
+
+        # host definition in second shard (no space to allocate)
+        hostdef2 = host.HostDef(resources=dict(host=1))
+        self.set_local("hostdef2", hostdef2)
+
+        yield self.process(setup)
+        yield self.wait_for_idle(20)
+
+        raage_mediums = self.driver.iter_agents('raage_agent')
+        self.raage_agents = [x.get_agent() for x in raage_mediums]
+        host_mediums = self.driver.iter_agents('host_agent')
+        self.host_agents = [x.get_agent() for x in host_mediums]
+        self.req_agent = first(
+            self.driver.iter_agents('requesting_agent')).get_agent()
+
+    def testValidateProlog(self):
+        self.assertEqual(4, self.count_agents('host_agent'))
+        self.assertEqual(2, self.count_agents('shard_agent'))
+        self.assertEqual(2, self.count_agents('raage_agent'))
+
+    @defer.inlineCallbacks
+    def testRequestFromOtherShard(self):
+        self.info("Starting test")
+        resources = dict(host=1)
+        allocation_id, irecipient1 = \
+                yield self.req_agent.request_resource(resources)
+        self.assert_allocated('host', 1)
+
+        allocation_id, irecipient2 = \
+                yield self.req_agent.request_resource(resources)
+        self.assert_allocated('host', 2)
+
+        shard2_hosts = map(recipient.IRecipient, self.host_agents[2:4])
+        self.assertTrue(irecipient1 in shard2_hosts)
+        self.assertTrue(irecipient2 in shard2_hosts)
+
+    def assert_allocated(self, resource, expected):
+        count = 0
+        for agent in self.host_agents:
+            _, allocated = agent.list_resource()
+            count += allocated.get(resource, 0)
+        self.assertEquals(expected, count,
+                          "Expected %d allocated %s, found %d" %\
+                          (expected, resource, count, ))

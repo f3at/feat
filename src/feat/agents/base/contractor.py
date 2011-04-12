@@ -81,8 +81,8 @@ class BaseContractor(log.Logger, replay.Replayable):
 class NestingContractor(BaseContractor):
 
     @replay.mutable
-    def fetch_nested_bids(self, state, original_announcement, recipients):
-        recipients = map(recipient.IRecipient, recipients)
+    def fetch_nested_bids(self, state, recipients, original_announcement):
+        recipients = recipient.IRecipients(recipients)
         sender = original_announcement.reply_to
         if  sender in recipients:
             self.log("Removing sender from list of recipients to nest")
@@ -118,7 +118,8 @@ class NestingContractor(BaseContractor):
 
     @replay.mutable
     def handover(self, state, bid):
-        state.nested_manager.elect(bid)
+        if hasattr(state, 'nested_manager'):
+            state.nested_manager.elect(bid)
         state.medium.handover(bid)
 
 
@@ -136,6 +137,10 @@ class NestedManagerFactory(serialization.Serializable):
         instance.announce_timeout = self.time_left
         instance.protocol_id = self.protocol_id
         return instance
+
+    def __repr__(self):
+        return "<NestedManagerFactory for %r, time: %r>" %\
+               (self.protocol_id, self.time_left, )
 
     def __eq__(self, other):
         if type(self) != type(other):
@@ -159,7 +164,7 @@ class NestedManager(manager.BaseManager):
         f = fiber.succeed()
         f.add_callback(fiber.drop_result, state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
-        f.add_callback(fiber.drop_result, state.medium.contractors.get_bids)
+        f.add_callback(fiber.drop_result, state.medium.get_bids)
         return f
 
     @replay.journaled

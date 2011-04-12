@@ -177,7 +177,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     yield agent
 
     def is_idle(self):
-        return all(map(lambda agent: agent.is_idle(), self.iter_agents()))
+        return all([agent.is_idle() for agent in self.iter_agents()])
 
     def register_breakpoint(self, name):
         if name in self._breakpoints:

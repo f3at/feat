@@ -2,7 +2,6 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.internet import reactor
 from twisted.python import failure
 
 from feat.common import delay, serialization, error_handler, log, defer
@@ -267,6 +266,7 @@ class InitiatorMediumBase(object):
     def __init__(self):
         self._fnotifier = defer.Notifier()
 
+    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 

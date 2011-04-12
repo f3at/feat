@@ -243,7 +243,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyManager.elect')
     @replay.named_side_effect('AgencyManager.elect')
     def elect(self, bid):
-        contractor = self.contractors[bid]
+        contractor = self.contractors.get(bid, None)
+        if not contractor:
+            self.debug('Asked to elect() an unknown bid. Ignoring.')
+            return
         contractor._set_state(ContractorState.elected)
 
     @replay.named_side_effect('AgencyManager.cancel')
@@ -261,7 +264,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._run_and_terminate(self.manager.cancelled)
 
     @replay.named_side_effect('AgencyManager.terminate')
-    def terminate(self):
+    def terminate(self, result=None):
         # send the rejections to all the contractors
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
@@ -271,7 +274,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                                 contracts.ContractState.aborted,
                                 contracts.ContractState.wtf]):
             self._set_state(contracts.ContractState.terminated)
-            self.call_next(self._terminate, None)
+            self.call_next(self._terminate, result)
 
     @replay.named_side_effect('AgencyManager.get_bids')
     def get_bids(self):

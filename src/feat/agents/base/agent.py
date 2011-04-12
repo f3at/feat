@@ -8,8 +8,8 @@ from zope.interface import implements
 from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
-                              replier, partners, dependency, manager,
-                              protocol, )
+                              replier, partners, dependency, manager, )
+from feat.interface.agent import AgencyAgentState
 
 
 registry = dict()
@@ -120,6 +120,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     ### Public Methods ###
 
+    @manhole.expose()
+    @replay.journaled
+    def wait_for_ready(self, state):
+        return fiber.wrap_defer(state.medium.wait_for_state,
+                                AgencyAgentState.ready)
+
     @replay.journaled
     def initiate_partners(self, state):
         desc = self.get_descriptor()
@@ -196,6 +202,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
               Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
 
+    @replay.immutable
+    def query_partner_handler(self, state, partner_type, role=None):
+        return state.partners.query_handler(partner_type, role)
+
     @manhole.expose()
     @replay.immutable
     def get_own_address(self, state):
@@ -209,6 +219,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):
         return state.medium.initiate_protocol(*args, **kwargs)
+
+    @replay.immutable
+    def retrying_protocol(self, state, *args, **kwargs):
+        return state.medium.retrying_protocol(*args, **kwargs)
+
+    @replay.immutable
+    def initiate_task(self, state, *args, **kwargs):
+        return state.medium.initiate_task(*args, **kwargs)
 
     @replay.mutable
     def preallocate_resource(self, state, **params):

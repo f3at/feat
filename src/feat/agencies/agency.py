@@ -753,11 +753,48 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return defer.DeferredList(a + b)
 
     def is_idle(self):
-        empty_listeners = (len(list(self._listeners.itervalues())) == 0)
-        idle_interests = all(i.is_idle() for i in self._iter_interests())
-        no_pending_calls = all(not call.active() \
-                           for call in self._delayed_calls.itervalues())
-        return empty_listeners and idle_interests and no_pending_calls
+        return self.has_empty_listeners() and \
+               self.has_all_interests_idle() and \
+               not self.has_pending_calls() and \
+               self.is_ready()
+
+    def is_ready(self):
+        return self._cmp_state(AgencyAgentState.ready)
+
+    def has_empty_listeners(self):
+        return (len(list(self._listeners.itervalues())) == 0)
+
+    def has_pending_calls(self):
+        return not all(
+            not call.active() for call in self._delayed_calls.itervalues())
+
+    def has_all_interests_idle(self):
+        return all(i.is_idle() for i in self._iter_interests())
+
+    @manhole.expose()
+    def show_activity(self):
+        if self.is_idle():
+            return None
+        resp = "\n%r id: %r\n state: %r" % \
+               (self.agent.__class__.__name__, self.get_descriptor().doc_id,
+                self._get_machine_state().name)
+        if not self.has_empty_listeners():
+            resp += '\nListeners: \n'
+            t = text_helper.Table(fields=["Class"], lengths = [60])
+            resp += t.render((i.get_agent_side().__class__.__name__, ) \
+                             for i in self._listeners.itervalues())
+        if self.has_pending_calls():
+            resp += "\nPending calls: \n"
+            t = text_helper.Table(fields=["Call"], lengths = [60])
+            resp += t.render((str(call), ) \
+                             for call in self._delayed_calls.itervalues())
+        if not self.has_all_interests_idle():
+            resp += "\nInterests not idle: \n"
+            t = text_helper.Table(fields=["Factory"], lengths = [60])
+            resp += t.render((str(i.factory), ) \
+                             for call in self._iter_interests())
+        resp += "#" * 60
+        return resp
 
     def create_binding(self, key, shard=None):
         '''Used by Interest instances.'''

@@ -10,7 +10,7 @@ def error_handler(self, f):
     def log_error(format, *args):
         self.logex(log.LogLevel.error, format, args, depth=3)
 
-    log_error("Error processing: %s", f.getErrorMessage())
+    log_error("Error processing: %s", f.getErrorMessage() or f)
 
     frames = traceback.extract_tb(f.getTracebackObject())
     if len(frames) > 0:

@@ -71,10 +71,11 @@ class CommonMixin(object):
         desc = descriptor_factory('host_agent')
         spawn_agency()
         _.start_agent(desc, run_startup=False)
-        _.get_agent()
+        agent = _.get_agent()
+        agent.wait_for_ready()
         """)
         yield self.process(script)
-        agent = self.get_local('_')
+        agent = self.get_local('agent')
         if join_shard:
             yield agent.start_join_shard_manager()
         yield self.wait_for_idle(20)
@@ -330,7 +331,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         return common.SimulationTest.setUp(self)
 
     def prolog(self):
-        delay.time_scale = 0.8
+        delay.time_scale = 0.2
 
     @attr(skip="at current buildbox it takes 3 minutes to run it.")
     @attr(timeout=100)
@@ -346,6 +347,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(1, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
         expected = self._get_exp(1, 0, 0, 0, kings=1)
         self.check_structure(expected)
         shard_to_kill = list(self.driver.iter_agents('shard_agent'))[0]
@@ -353,12 +355,14 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(2, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
         expected = self._get_exp(1, 0, 0, 0, kings=1)
         self.check_structure(expected)
 
         agent = yield self.start_host()
         self.assertEqual(3, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
+        self.assertEqual(2, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 2, 0, 0, kings=2)
         self.check_structure(expected)
 
@@ -366,6 +370,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(4, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
+        self.assertEqual(2, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 2, 0, 0, kings=2)
         self.check_structure(expected)
 
@@ -373,6 +378,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(5, self.count_agents('host_agent'))
         self.assertEqual(3, self.count_agents('shard_agent'))
+        self.assertEqual(3, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 3, 0, kings=3)
         self.check_structure(expected)
 
@@ -380,12 +386,15 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(6, self.count_agents('host_agent'))
         self.assertEqual(3, self.count_agents('shard_agent'))
+        self.assertEqual(3, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 3, 0, kings=3)
         self.check_structure(expected)
 
         self.info('7th host starting')
         agent = yield self.start_host()
-        self.assertEqual(11, self.count_agents())
+        self.assertEqual(7, self.count_agents('host_agent'))
+        self.assertEqual(4, self.count_agents('shard_agent'))
+        self.assertEqual(4, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 0, 4, kings=4)
         self.check_structure(expected)
 
@@ -393,6 +402,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(8, self.count_agents('host_agent'))
         self.assertEqual(4, self.count_agents('shard_agent'))
+        self.assertEqual(4, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 0, 4, kings=4)
         self.check_structure(expected)
 
@@ -400,6 +410,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(9, self.count_agents('host_agent'))
         self.assertEqual(5, self.count_agents('shard_agent'))
+        self.assertEqual(5, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 1, 4, kings=3)
         self.check_structure(expected)
 
@@ -407,6 +418,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(10, self.count_agents('host_agent'))
         self.assertEqual(5, self.count_agents('shard_agent'))
+        self.assertEqual(5, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 1, 4, kings=3)
         self.check_structure(expected)
 
@@ -414,6 +426,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(11, self.count_agents('host_agent'))
         self.assertEqual(6, self.count_agents('shard_agent'))
+        self.assertEqual(6, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 2, 4, kings=2)
         self.check_structure(expected)
 
@@ -421,6 +434,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         agent = yield self.start_host()
         self.assertEqual(12, self.count_agents('host_agent'))
         self.assertEqual(6, self.count_agents('shard_agent'))
+        self.assertEqual(6, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 2, 4, kings=2)
         self.check_structure(expected)
 
@@ -431,6 +445,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         yield self.wait_for_idle(20)
         self.assertEqual(12, self.count_agents('host_agent'))
         self.assertEqual(6, self.count_agents('shard_agent'))
+        self.assertEqual(6, self.count_agents('raage_agent'))
         expected = self._get_exp(0, 0, 0, 6, kings=5)
         self.check_structure(expected)
         self.driver.validate_shards()

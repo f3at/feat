@@ -3,9 +3,11 @@
 import operator
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              replay, partners, resource, document, dbtools, )
-from feat.agents.common import rpc
+                              replay, partners, resource, document, dbtools,
+                              task, )
+from feat.agents.common import rpc, raage, host
 from feat.common import fiber, serialization, manhole, enum
+from feat.interface.protocols import InitiatorFailed
 
 
 @serialization.register
@@ -52,10 +54,54 @@ class ShardPartner(partners.BasePartner):
         return f
 
 
+class StructuralPartner(partners.BasePartner):
+    '''
+    Abstract base class for all the partners which should be started and
+    managed by Shard Agent.
+    '''
+
+    @classmethod
+    def discover(cls, agent):
+        '''
+        Should return a fiber which results in a list of agents of this type
+        available in the shard.
+        '''
+        raise NotImplementedError('Should be overloaded')
+
+    @classmethod
+    def prepare_descriptor(cls, agent):
+        '''
+        Should return a fiber which results in a saved descriptor in the
+        database.
+        '''
+        raise NotImplementedError('Should be overloaded')
+
+    def on_goodbye(self, agent, brothers):
+        return agent.check_shard_structure()
+
+
+@serialization.register
+class RaagePartner(StructuralPartner):
+
+    type_name = 'shard->raage'
+
+    @classmethod
+    def discover(cls, agent):
+        return raage.discover(agent)
+
+    @classmethod
+    def prepare_descriptor(cls, agent):
+        desc = raage.Descriptor()
+        return agent.save_document(desc)
+
+
 class Partners(partners.Partners):
 
     partners.has_many('hosts', 'host_agent', HostPartner)
     partners.has_many('neighbours', 'shard_agent', ShardPartner)
+    partners.has_one('raage', 'raage_agent', RaagePartner)
+
+    shard_structure = ['raage_agent']
 
 
 class ShardAgentRole(enum.Enum):
@@ -103,6 +149,8 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
             contractor.Service(FindNeighboursContractor))
         state.medium.register_interest(FindNeighboursContractor)
 
+        state.medium.register_interest(QueryStructureContractor)
+
         state.role = None
         self.become_king()
 
@@ -110,7 +158,52 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
 
     @replay.mutable
     def startup(self, state):
-        return self.look_for_neighbours()
+        f = self.look_for_neighbours()
+        f.add_callback(fiber.drop_result, self.check_shard_structure)
+        return f
+
+    @replay.mutable
+    def check_shard_structure(self, state):
+        for partner_class in state.partners.shard_structure:
+            factory = self.query_partner_handler(partner_class)
+            partner = self.query_partners(factory)
+            if partner is None:
+                self.debug("check_shard_structure() detected missing %r "
+                           "partner, taking action.". partner_class)
+            self.initiate_task(FixMissingPartner, factory)
+
+    @replay.mutable
+    def request_starting_partner(self, state, factory):
+        task = self.initiate_task(StartPartner, factory)
+        return fiber.wrap_defer(task.notify_finish)
+
+    @manhole.expose()
+    @rpc.publish
+    @replay.journaled
+    def query_structure(self, state, partner_type, distance=1):
+
+        def swallow_initiator_failed(fail):
+            fail.trap(InitiatorFailed)
+            self.debug('query_structure failed with %r, returning empty '
+                       'list', fail)
+            return list()
+
+        if distance != 1:
+            agent.error('Query distance is not supported yet. Right now '
+                        'this parameter is ignored and defaults to 1')
+            distance = 1
+        manager = self.initiate_protocol(
+            QueryStructureManager, state.partners.neighbours,
+            partner_type, distance)
+        f = manager.notify_finish()
+        f.add_errback(swallow_initiator_failed)
+        return f
+
+    @manhole.expose()
+    @rpc.publish
+    @replay.journaled
+    def get_host_list(self, state):
+        return state.partners.hosts
 
     @manhole.expose()
     @replay.journaled
@@ -537,7 +630,7 @@ class JoinShardContractor(contractor.NestingContractor):
         f = fiber.Fiber()
 
         f.add_callback(fiber.drop_result, self.fetch_nested_bids,
-                       announcement, state.agent.query_partners('neighbours'))
+                       state.agent.query_partners('neighbours'), announcement)
         f.add_callback(self._pick_best_bid, bid)
         f.add_callback(self._bid_refuse_or_handover, bid)
         f.add_callback(fiber.drop_result, self.terminate_nested_manager)
@@ -605,3 +698,128 @@ class JoinShardContractor(contractor.NestingContractor):
     def _finalize(self, state, _):
         report = message.FinalReport()
         state.medium.finalize(report)
+
+
+class FixMissingPartner(task.BaseTask):
+
+    protocol_id = 'fix-missing-partner'
+    timeout = 15
+
+    @replay.entry_point
+    def initiate(self, state, factory):
+        state.factory = factory
+        f = factory.discover(state.agent)
+        f.add_callback(self.request_starting_partner_if_necessary)
+        f.add_callback(state.agent.establish_partnership)
+        return f
+
+    @replay.immutable
+    def request_starting_partner_if_necessary(self, state, discovered):
+        if len(discovered) == 1:
+            return discovered[0]
+        elif len(discovered) > 1:
+            # FIXME: At this point using alerts would be a good idea
+            self.warning('Discovery returned %d partners of the factory %r. '
+                         'Something is clearly wrong!', len(discovered),
+                         state.factory)
+            return discovered[0]
+        else:
+            return state.agent.request_starting_partner(state.factory)
+
+
+@serialization.register
+class StartPartnerException(Exception, serialization.Serializable):
+    pass
+
+
+class StartPartner(task.BaseTask):
+
+    protocol_id = 'request-starting-partner'
+    timeout = 60
+
+    @replay.entry_point
+    def initiate(self, state, factory):
+        state.descriptor = None
+        state.hosts = state.agent.query_partners('hosts')
+        state.factory = factory
+        self.log('StartPartner task initiated, will be trying to start a '
+                 '%r on one of the hosts: %r', factory, state.hosts)
+        if len(state.hosts) == 0:
+            # FIXME: Here would be a good idea to put an alert
+            return self._fail('Shard Agent cannot start partner %r as it has '
+                              'no Host Partners', factory)
+        state.current_index = -1
+
+        f = factory.prepare_descriptor(state.agent)
+        f.add_callback(self._store_descriptor)
+        f.add_callback(fiber.drop_result, self._try_next)
+        return f
+
+    @replay.mutable
+    def _try_next(self, state):
+        state.current_index += 1
+        try:
+            partner = state.hosts[state.current_index]
+        except IndexError:
+            return self._fail(
+                'No of the Host Partners managed to start a partner %r',
+                state.factory)
+
+        f = host.start_agent(state.agent, partner, state.descriptor)
+        f.add_errback(self._failed_to_start, partner)
+        return f
+
+    @replay.immutable
+    def _failed_to_start(self, state, fail, partner):
+        self.error('Failed to start %r on partner %r. Reason: %r. Will retry '
+                   'with the next', state.factory, partner, fail)
+        return self._try_next()
+
+    def _fail(self, msg):
+        self.error(msg)
+        return fiber.fail(StartPartnerException(msg))
+
+    @replay.mutable
+    def _store_descriptor(self, state, desc):
+        state.descriptor = desc
+
+
+class QueryStructureManager(manager.BaseManager):
+
+    protocol_id = 'query-structure'
+
+    announce_timeout = 3
+
+    @replay.entry_point
+    def initiate(self, state, partner_type, distance):
+        payload = dict(partner_type=partner_type, distance=distance)
+        msg = message.Announcement(payload=payload)
+        state.medium.announce(msg)
+
+    @replay.immutable
+    def closed(self, state):
+        bids = state.medium.get_bids()
+        result = list()
+        for bid in bids:
+            result += bid.payload['partners']
+        state.medium.terminate(result)
+
+
+class QueryStructureContractor(contractor.BaseContractor):
+
+    protocol_id = 'query-structure'
+
+    @replay.entry_point
+    def announced(self, state, announcement):
+        # FIXME: Eventually this contract should be a NestedContractor, which
+        # would compare the announcement.level and
+        # announcement.payload.distance, nest contract in necessary and
+        # consolidate the bids. This way we will get the tree decomposition
+        # of the graph for the arbitrary structure agent type
+        partner_type = announcement.payload['partner_type']
+        factory = state.agent.query_partner_handler(partner_type)
+        partners = state.agent.query_partners(factory)
+
+        payload = dict(partners=partners)
+        msg = message.Bid(payload=payload)
+        state.medium.bid(msg)

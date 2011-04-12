@@ -175,9 +175,15 @@ class JournalReplayEntry(object):
                               % (unexpected_desc, expected_desc))
 
         if exp_args != args:
-            raise ReplayError("Bad side-effect arguments in %s "
-                              "when expecting of %s"
-                              % (unexpected_desc, expected_desc))
+            which = 0
+            for exp, got in zip(exp_args, args):
+                if exp == got:
+                    which += 1
+                else:
+                    break
+            raise ReplayError("Bad side-effect arguments in %s when expecting"
+                              "of %s. Different arguent index %d."
+                              % (unexpected_desc, expected_desc, which))
 
         if exp_kwargs != kwargs:
             raise ReplayError("Bad side-effect keyworkds in %s "
@@ -561,6 +567,8 @@ class AgencyAgent(BaseReplayDummy):
     def get_machine_state(self):
         pass
 
+    @serialization.freeze_tag('StateMachineMixin.wait_for_state')
+    @replay.named_side_effect('StateMachineMixin.wait_for_state')
     def wait_for_state(self, state):
         pass
 
@@ -627,6 +635,10 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
 
     @replay.named_side_effect('AgencyRequester.get_recipients')
     def get_recipients(self):
+        pass
+
+    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    def notify_finish(self):
         pass
 
 
@@ -717,7 +729,7 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
         pass
 
     @replay.named_side_effect('AgencyManager.terminate')
-    def terminate(self):
+    def terminate(self, result=None):
         pass
 
     @replay.named_side_effect('AgencyManager.get_bids')
@@ -732,6 +744,10 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
+    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    def notify_finish(self):
+        pass
+
 
 class AgencyTask(BaseReplayDummy, StateMachineSpecific):
 
@@ -742,4 +758,8 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
 
     @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
     def ensure_state(self, states):
+        pass
+
+    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    def notify_finish(self):
         pass

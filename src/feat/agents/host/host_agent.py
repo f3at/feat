@@ -63,25 +63,6 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     partners_class = Partners
 
-    @replay.journaled
-    def resolve_missing_shard_agent_problem(self, state, host_recipients):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.medium.initiate_task,
-                       problem.CollectiveSolver, MissingShard(self),
-                       host_recipients)
-        f.add_callback(lambda x: x.notify_finish())
-        return f
-
-    @replay.immutable
-    def get_shard_partner(self, state):
-        partner = state.partners.shard
-        self.log('In get_shard_partner(). Current result is: %r', partner)
-        if partner:
-            return fiber.succeed(partner)
-        f = self.wait_for_event('joined_to_shard')
-        f.add_callback(fiber.drop_result, self.get_shard_partner)
-        return f
-
     @replay.entry_point
     def initiate(self, state, hostdef=None):
         agent.BaseAgent.initiate(self)
@@ -89,7 +70,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         notifier.AgentMixin.initiate(self, state)
 
         state.medium.register_interest(StartAgentReplier)
-        state.medium.register_interest(ResourcesAllocationContractor)
+        state.medium.register_interest(HostAllocationContractor)
         state.medium.register_interest(
             problem.SolveProblemInterest(MissingShard(self)))
         ports = state.medium.get_descriptor().port_range
@@ -116,6 +97,25 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def start_own_shard(self, state, shard=None):
         f = common_shard.prepare_descriptor(self, shard)
         f.add_callback(self.start_agent)
+        return f
+
+    @replay.journaled
+    def resolve_missing_shard_agent_problem(self, state, host_recipients):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_result, state.medium.initiate_task,
+                       problem.CollectiveSolver, MissingShard(self),
+                       host_recipients)
+        f.add_callback(lambda x: x.notify_finish())
+        return f
+
+    @replay.immutable
+    def get_shard_partner(self, state):
+        partner = state.partners.shard
+        self.log('In get_shard_partner(). Current result is: %r', partner)
+        if partner:
+            return fiber.succeed(partner)
+        f = self.wait_for_event('joined_to_shard')
+        f.add_callback(fiber.drop_result, self.get_shard_partner)
         return f
 
     @replay.journaled
@@ -297,9 +297,11 @@ class MissingShard(problem.BaseProblem):
         return self.agent.start_own_shard(own_address.shard)
 
 
-class ResourcesAllocationContractor(contractor.BaseContractor):
+class HostAllocationContractor(contractor.BaseContractor):
+
     protocol_id = 'allocate-resources'
-    interest_type = InterestType.public
+    interest_type = InterestType.private
+    concurrency = 1
 
     @replay.entry_point
     def announced(self, state, announcement):
@@ -328,11 +330,6 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     def _refuse(self, state, reason):
         state.medium.refuse(message.Refusal(payload=reason))
 
-    @replay.immutable
-    def _get_cost(self, state, bid):
-        bid.payload['cost'] = 0
-        return bid
-
     @replay.mutable
     def release_preallocation(self, state, *_):
         if state.preallocation_id is not None:
@@ -346,14 +343,29 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     def granted(self, state, grant):
         f = fiber.Fiber()
         f.add_callback(state.agent.confirm_allocation)
-        f.add_callback(self._finalize)
+        f.add_callbacks(self._finalize, self._granted_failed)
         return f.succeed(state.preallocation_id)
+
+    ### Private ###
+
+    @replay.mutable
+    def _granted_failed(self, state, fail):
+        msg = "Granted failed with failure %r" % (fail, )
+        cancel = message.Cancellation(reason=msg)
+        state.medium.defect(msg)
+        self.error(msg)
+        return self.release_preallocation()
 
     @replay.mutable
     def _finalize(self, state, allocation):
         report = message.FinalReport()
         report.payload['allocation_id'] = allocation.id
         state.medium.finalize(report)
+
+    @replay.immutable
+    def _get_cost(self, state, bid):
+        bid.payload['cost'] = 0
+        return bid
 
 
 @descriptor.register("host_agent")
