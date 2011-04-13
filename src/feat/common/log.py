@@ -62,6 +62,10 @@ class Logger(object):
 
     ### ILoggable Methods ###
 
+    def logex(self, level, format, args, depth=1):
+        self._logger.do_log(level, self.log_name,
+                            self.log_category, format, args, depth=depth+1)
+
     def log(self, format, *args):
         self._logger.do_log(LogLevel.log, self.log_name,
                             self.log_category, format, args)

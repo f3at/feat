@@ -6,13 +6,18 @@ from feat.common import log
 
 
 def error_handler(self, f):
-    self.error("Error processing: %s", f.getErrorMessage())
+
+    def log_error(format, *args):
+        self.logex(log.LogLevel.error, format, args, depth=3)
+
+    log_error("Error processing: %s", f.getErrorMessage())
+
     frames = traceback.extract_tb(f.getTracebackObject())
     if len(frames) > 0:
-        self.error('Last traceback frame: %r', frames[-1])
+        log_error("Last traceback frame: %r", frames[-1])
     if log.verbose:
-        self.error("Full traceback below:\n%s",
-                   "".join(traceback.format_tb(f.getTracebackObject())))
+        log_error("Full traceback below:\n%s",
+                  "".join(traceback.format_tb(f.getTracebackObject())))
 
 
 def first(iterator):
