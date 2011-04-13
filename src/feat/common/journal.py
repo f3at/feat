@@ -311,7 +311,7 @@ class Recorder(RecorderNode, annotate.Annotable):
         finally:
 
             if section_first:
-                section.state[RECORDING_TAG] = False
+                section.state[RECORDING_TAG] = None
                 section.state[JOURNAL_ENTRY_TAG] = None
                 section.state[RECMODE_TAG] = None
 

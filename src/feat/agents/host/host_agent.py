@@ -230,13 +230,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         self.error(msg)
         raise NotFoundError(msg)
 
-    @replay.mutable
-    def _apply_definition(self, state, hostdef):
+    def _apply_definition(self, hostdef):
         self._setup_resources(hostdef.resources)
         self._setup_categories(hostdef.categories)
 
-    @replay.mutable
-    def _apply_defaults(self, state):
+    def _apply_defaults(self):
         self._setup_resources(DEFAULT_RESOURCES)
         self._setup_categories(DEFAULT_CATEGORIES)
 
