@@ -96,6 +96,8 @@ def main(args):
             continue
         if 'feat.extern' in file:
             continue
+        if 'feat.simulation.simgui' in file:
+            continue
         if '__init__' in file:
             continue
         c.add_file(file)
