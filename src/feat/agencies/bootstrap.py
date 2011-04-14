@@ -103,7 +103,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
         if opts.hostres or opts.hostcat:
             hostdef = host.HostDef()
             for resdef in opts.hostres:
-                parts = values.split(":", 1)
+                parts = resdef.split(":", 1)
                 name = parts[0]
                 value = 1
                 if len(parts) > 1:
@@ -128,7 +128,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
         d.addCallback(defer.drop_result, conn.save_document, host_desc)
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
-        d.addCallbacks(lambda medium: medium.wait_for_state(AgencyAgentState.ready))
+        d.addCallbacks(lambda m: m.wait_for_state(AgencyAgentState.ready))
 
         # Starting the other agents
 

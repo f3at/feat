@@ -259,7 +259,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             return
 
         self.info("Setting host categories to: %s",
-                  ", ".join(["%s=%s" % (n, v)
+                  ", ".join(["%s=%s" % (n, v.name)
                              for n, v in categories.iteritems()]))
 
         state.categories = categories
