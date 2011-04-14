@@ -106,6 +106,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         self.assertFailure(d, InitiatorFailed)
         yield d
 
+
 @common.attr(
     skip="fails on buildbot. will be fixed by reworking the agent")
 @common.attr('slow')
