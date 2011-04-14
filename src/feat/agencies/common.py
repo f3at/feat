@@ -34,9 +34,11 @@ class StateMachineMixin(object):
     def wait_for_state(self, *states):
         if self.state in states:
             return defer.succeed(self)
-        return defer.DeferredList(
+        d = defer.DeferredList(
             map(lambda state: self._notifier.wait(state), states),
             fireOnOneCallback=True)
+        d.addCallback(lambda _: self)
+        return d
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):
