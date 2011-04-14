@@ -4,7 +4,8 @@ from twisted.trial.unittest import SkipTest, FailTest
 from twisted.internet import defer
 
 from feat.test import common
-from feat.common import delay as delay_module
+from feat.common import text_helper, delay as delay_module
+from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
 from feat.agents.base import agent
@@ -137,6 +138,16 @@ class SimulationTest(common.TestCase):
         agent_snapshot, listeners = agent.snapshot_agent()
         self.log("Replay complete. Comparing state of the agent and his "
                  "%d listeners.", len(listeners))
+        if agent_snapshot._get_state() != r.agent._get_state():
+            res = repr(pytree.freeze(agent_snapshot._get_state()))
+            exp = repr(pytree.freeze(r.agent._get_state()))
+            diffs = text_helper.format_diff(exp, res, "\n               ")
+            self.fail("Agent snapshot different after replay:\n"
+                      "  SNAPSHOT:    %s\n"
+                      "  EXPECTED:    %s\n"
+                      "  DIFFERENCES: %s\n"
+                      % (res, exp, diffs))
+
         self.assertEqual(agent_snapshot._get_state(), r.agent._get_state())
 
         listeners_from_replay = [obj for obj in r.registry.values()

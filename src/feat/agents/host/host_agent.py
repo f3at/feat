@@ -277,7 +277,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             if not (cat in state.categories and
                     state.categories[cat] == val):
                 msg = "Category %s doesn't match %s != %s" % (
-                      cat, val, state.categories[cat])
+                      cat, val.name, state.categories[cat].name)
                 self.error(msg)
                 raise CategoryError(msg)
         return doc
