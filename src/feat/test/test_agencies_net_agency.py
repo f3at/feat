@@ -1,4 +1,5 @@
 import os
+import optparse
 
 from twisted.internet import defer
 from twisted.spread import jelly
@@ -14,6 +15,12 @@ from twisted.trial.unittest import SkipTest
 
 
 jelly.globalSecurity.allowModules(__name__)
+
+
+class OptParseMock(object):
+    msg_port = '1999'
+    manhole_public_key = 'file2'
+    agent_name = 'name'
 
 
 class UnitTestCase(common.TestCase):
@@ -42,6 +49,13 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('2000', self.agency.config['msg']['port'])
         self.assertTrue('manhole' in self.agency.config)
         self.assertEqual('file', self.agency.config['manhole']['public_key'])
+        self.assertFalse('name' in self.agency.config['agent'])
+
+        #Overwrite some configuration values
+        self.agency._load_config(env, OptParseMock())
+        self.assertEqual('1999', self.agency.config['msg']['port'])
+        self.assertEqual('file2', self.agency.config['manhole']['public_key'])
+        self.assertFalse('name' in self.agency.config['agent'])
 
     def testStoreConfig(self):
         self.agency.config = dict()
@@ -52,6 +66,35 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('localhost', env['FEAT_MSG_HOST'])
         self.assertEqual('3000', env['FEAT_MSG_PORT'])
         self.assertEqual('file', env['FEAT_MANHOLE_PUBLIC_KEY'])
+
+    def testDefaultConfig(self):
+        parser = optparse.OptionParser()
+        agency.add_options(parser)
+        options = parser.get_default_values()
+        self.assertTrue(hasattr(options, 'msg_host'))
+        self.assertTrue(hasattr(options, 'msg_port'))
+        self.assertTrue(hasattr(options, 'msg_user'))
+        self.assertTrue(hasattr(options, 'msg_password'))
+        self.assertTrue(hasattr(options, 'db_host'))
+        self.assertTrue(hasattr(options, 'db_port'))
+        self.assertTrue(hasattr(options, 'db_name'))
+        self.assertTrue(hasattr(options, 'manhole_public_key'))
+        self.assertTrue(hasattr(options, 'manhole_private_key'))
+        self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
+        self.assertTrue(hasattr(options, 'manhole_port'))
+        self.assertEqual(options.msg_host, agency.DEFAULT_MSG_HOST)
+        self.assertEqual(options.msg_port, agency.DEFAULT_MSG_PORT)
+        self.assertEqual(options.msg_user, agency.DEFAULT_MSG_USER)
+        self.assertEqual(options.msg_password, agency.DEFAULT_MSG_PASSWORD)
+        self.assertEqual(options.db_host, agency.DEFAULT_DB_HOST)
+        self.assertEqual(options.db_port, agency.DEFAULT_DB_PORT)
+        self.assertEqual(options.db_name, agency.DEFAULT_DB_NAME)
+        self.assertEqual(options.manhole_public_key, agency.DEFAULT_MH_PUBKEY)
+        self.assertEqual(options.manhole_private_key,
+                         agency.DEFAULT_MH_PRIVKEY)
+        self.assertEqual(options.manhole_authorized_keys,
+                         agency.DEFAULT_MH_AUTH)
+        self.assertEqual(options.manhole_port, agency.DEFAULT_MH_PORT)
 
 
 @agent.register('standalone')
