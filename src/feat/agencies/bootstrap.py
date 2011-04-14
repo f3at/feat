@@ -123,7 +123,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
         # Starting the host agent
         host_desc = everything.host_agent.Descriptor(shard=u'lobby')
-        host_kwargs = dict(bootstrap=True, hostdef=hostdef)
+        host_kwargs = dict(hostdef=hostdef)
         d.addCallback(defer.drop_result, conn.save_document, host_desc)
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
