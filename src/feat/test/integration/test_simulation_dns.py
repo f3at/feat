@@ -28,19 +28,19 @@ class Agent(agent.BaseAgent):
 
     @replay.mutable
     def register(self, state):
-        return dns.add_mapping(state.medium, state.prefix, state.ip)
+        return dns.add_mapping(self, state.prefix, state.ip)
 
     @replay.mutable
     def unregister(self, state):
-        return dns.remove_mapping(state.medium, state.prefix, state.ip)
+        return dns.remove_mapping(self, state.prefix, state.ip)
 
     @replay.mutable
     def do_remove(self, state, prefix, ip):
-        return dns.remove_mapping(state.medium, prefix, ip)
+        return dns.remove_mapping(self, prefix, ip)
 
     @replay.mutable
     def do_add(self, state, prefix, ip):
-        return dns.add_mapping(state.medium, prefix, ip)
+        return dns.add_mapping(self, prefix, ip)
 
 
 @common.attr('slow')
