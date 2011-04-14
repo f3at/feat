@@ -6,7 +6,8 @@ from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
 from feat.common import log, run, defer
-from feat.interface.agent import Access, Address, Storage
+from feat.interface.agent import (Access, Address, Storage,
+                                 AgencyAgentState, )
 
 
 def add_options(parser):
@@ -127,6 +128,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
         d.addCallback(defer.drop_result, conn.save_document, host_desc)
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
+        d.addCallbacks(lambda medium: medium.wait_for_state(AgencyAgentState.ready))
 
         # Starting the other agents
 
