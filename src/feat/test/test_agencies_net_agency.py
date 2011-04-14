@@ -173,6 +173,9 @@ class IntegrationTestCase(common.TestCase):
             db_host=db_host, db_port=db_port, db_name=db_name)
         yield self.agency.initiate()
 
+    def check_journal_entries(self):
+        self.assertEqual(len(self.agency._journal_entries), 0)
+
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):
         desc = host_agent.Descriptor(shard=u'lobby')
@@ -188,6 +191,7 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
@@ -204,6 +208,7 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartAgentFromStandalone(self):
@@ -225,6 +230,7 @@ class IntegrationTestCase(common.TestCase):
         for slave in self.agency._broker.slaves:
             mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def tearDown(self):
