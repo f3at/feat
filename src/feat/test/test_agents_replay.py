@@ -134,6 +134,7 @@ class DymmyReplayable(replay.Replayable):
         # Inside the ball
         state.sum += value
 
+
 class TestCombined(common.TestCase):
 
     def setUp(self):
