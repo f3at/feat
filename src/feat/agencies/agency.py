@@ -791,7 +791,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         if not self.has_all_interests_idle():
             resp += "\nInterests not idle: \n"
             t = text_helper.Table(fields=["Factory"], lengths = [60])
-            resp += t.render((str(i.factory), ) \
+            resp += t.render((str(call.factory), ) \
                              for call in self._iter_interests())
         resp += "#" * 60
         return resp
