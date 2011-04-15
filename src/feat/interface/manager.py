@@ -53,17 +53,26 @@ class IAgencyManager(contracts.IContractPeer):
         @type reason: str
         '''
 
-    def terminate():
+    def terminate(result=None):
         '''
         Unregister the listener from the agency. This method is meant to be
         used in nested contracts in case when the whole purpose of the managers
         implemenetation is fetching the bids from nested contractors.
         All the bids which have not been handed over will get rejected.
+
+        @param result: optional trigger value for the Deferred given
+                       by notify_finish()
         '''
 
     def get_bids():
         '''
         Return list of bids received by the manager from the contractors.
+        '''
+
+    def get_recipients():
+        '''
+        @return: The recipients of the request
+        @rtype: IRecipient
         '''
 
 

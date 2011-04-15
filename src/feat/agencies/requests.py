@@ -71,7 +71,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.expiration_time = self.agent.get_time() + requester.timeout
         self._expire_at(self.expiration_time, self.requester.closed,
                         requests.RequestState.closed)
-        self._call(requester.initiate, *self.args, **self.kwargs)
+
+        self.call_next(self._call, requester.initiate,
+                       *self.args, **self.kwargs)
 
         return requester
 
@@ -86,6 +88,10 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._send_message(request, self.expiration_time)
 
+    @replay.named_side_effect('AgencyRequester.get_recipients')
+    def get_recipients(self):
+        return self.recipients
+
     # private
 
     def _terminate(self, arg):
@@ -95,7 +101,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.InitiatorMediumBase._terminate(self, arg)
 
     def _on_reply(self, msg):
-        self.log('on_reply')
         d = self._call(self.requester.got_reply, msg)
         d.addCallback(self._terminate)
         return d
@@ -104,6 +109,11 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _get_time(self):
         return self.agent.get_time()
+
+    ### Required by InitiatorMediumBase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
 
     # IListener stuff
 
@@ -193,6 +203,11 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug('Terminate called')
         self.agent.unregister_listener(self.session_id)
         common.InterestedMediumBase._terminate(self, arg)
+
+    ### Required by InitiatorMediumBase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
 
     # IListener stuff
 

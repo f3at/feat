@@ -125,8 +125,11 @@ class ListGui(GuiState):
         GuiState.__init__(self, l)
 
     def iter_elements(self):
-        for item in self.obj:
-            yield (None, (item.__class__, ''))
+        for item, index in zip(self.obj, range(len(self.obj))):
+            if isinstance(item, partners.BasePartner):
+                yield (None, (index+1, item.__class__))
+            else:
+                yield (None, (index+1, item))
 
 
 class DictGui(GuiState):

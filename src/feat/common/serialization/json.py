@@ -46,7 +46,8 @@ JSON_CONVERTER_CAPS = set([Capabilities.int_values,
                            Capabilities.meta_types])
 
 JSON_FREEZER_CAPS = JSON_CONVERTER_CAPS \
-                    | set([Capabilities.function_values,
+                    | set([Capabilities.builtin_values,
+                           Capabilities.function_values,
                            Capabilities.method_values])
 
 
@@ -127,8 +128,8 @@ class Serializer(base.Serializer):
     def pack_frozen_function(self, data):
         return reflect.canonical_name(data)
 
-    def pack_frozen_method(self, data):
-        return reflect.canonical_name(data)
+    pack_frozen_builtin = pack_frozen_function
+    pack_frozen_method = pack_frozen_function
 
 
 class Unserializer(base.Unserializer):

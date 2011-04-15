@@ -17,6 +17,7 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         yield common.AgencyTestHelper.setUp(self)
         self.db = self.agency._database
         self.connection = self.db.get_connection(self)
+        dbtools._documents = []
 
     @defer.inlineCallbacks
     def testDefiningDocument(self):

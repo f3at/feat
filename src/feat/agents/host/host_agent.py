@@ -1,21 +1,30 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
 import socket
+import operator
 
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
-                              partners, resource, document)
+                              partners, resource, document, notifier,
+                              problem, )
 from feat.agents.common import rpc
+from feat.agents.common import shard as common_shard
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agencies.interface import NotFoundError
+from feat.interface.agent import Access, Address, Storage, CategoryError
 
 DEFAULT_RESOURCES = {"host": 1,
+                     "bandwith": 100,
                      "epu": 500,
                      "core": 2,
                      "mem": 1000}
+
+
+DEFAULT_CATEGORIES = {'access': Access.none,
+                      'address': Address.none,
+                      'storage': Storage.none}
 
 
 @serialization.register
@@ -24,16 +33,24 @@ class ShardPartner(partners.BasePartner):
     type_name = 'host->shard'
 
     def initiate(self, agent):
-        return agent.switch_shard(self.recipient.shard)
+        f = agent.switch_shard(self.recipient.shard)
+        f.add_callback(fiber.drop_result, agent.callback_event,
+                       'joined_to_shard', None)
+        return f
 
-    def on_goodbye(self, agent):
-        # TODO: NOT TESTED! Work in progress interupted by more important
-        # task. Should be tested in the class:
-        # f.t.i.test_simulation_tree_growth.FailureRecoverySimulation
-        agent.info('Shard partner said goodbye. Trying to find new shard.')
-        f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, agent.start_join_shard_manager)
-        return f.succeed()
+    def on_goodbye(self, agent, brothers):
+        '''
+        Algorithm for resolving this situation goes as follows.
+        We receive the list of brothers (HostPartner currently in same
+        comporomising position). The algorithm always picks the first from the
+        list as the one to resolve the problem. Everybody else needs to
+        ask his lefthand neighbour to resolve a situation for him.
+        If the requests to the neighbour timeouts, he is removed from the
+        local list and the algorithm iterates in.
+        '''
+        agent.info('Shard partner said goodbye.')
+        recipients = map(operator.attrgetter('recipient'), brothers)
+        return agent.resolve_missing_shard_agent_problem(recipients)
 
 
 class Partners(partners.Partners):
@@ -42,33 +59,64 @@ class Partners(partners.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, rpc.AgentMixin):
+class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     partners_class = Partners
 
-    @replay.mutable
-    def initiate(self, state, hostdef=None, bootstrap=False):
+    @replay.entry_point
+    def initiate(self, state, hostdef=None):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
+        notifier.AgentMixin.initiate(self, state)
 
         state.medium.register_interest(StartAgentReplier)
-        state.medium.register_interest(ResourcesAllocationContractor)
-
+        state.medium.register_interest(HostAllocationContractor)
+        state.medium.register_interest(
+            problem.SolveProblemInterest(MissingShard(self)))
         ports = state.medium.get_descriptor().port_range
         state.port_allocator = port_allocator.PortAllocator(self, ports)
+
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self._update_hostname)
         f.add_callback(fiber.drop_result, self._load_definition, hostdef)
         f.add_callback(fiber.drop_result, self.initiate_partners)
-        # if not bootstrap:
-        #     f.add_callback(fiber.drop_result, self.start_join_shard_manager)
         return f.succeed()
 
-    # @replay.journaled
-    # def start_join_shard_manager(self, state):
-    #     if state.partners.shard is None:
-    #         return shard.start_manager(
-    #             state.medium, shard.ActionType.join, shard.ActionType.create)
+    @replay.journaled
+    def startup(self, state):
+        return self.start_join_shard_manager()
+
+    @replay.journaled
+    def start_join_shard_manager(self, state):
+        if state.partners.shard is None:
+            f = common_shard.start_manager(self)
+            f.add_errback(fiber.drop_result, self.start_own_shard)
+            return f
+
+    @replay.journaled
+    def start_own_shard(self, state, shard=None):
+        f = common_shard.prepare_descriptor(self, shard)
+        f.add_callback(self.start_agent)
+        return f
+
+    @replay.journaled
+    def resolve_missing_shard_agent_problem(self, state, host_recipients):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_result, state.medium.initiate_task,
+                       problem.CollectiveSolver, MissingShard(self),
+                       host_recipients)
+        f.add_callback(lambda x: x.notify_finish())
+        return f
+
+    @replay.immutable
+    def get_shard_partner(self, state):
+        partner = state.partners.shard
+        self.log('In get_shard_partner(). Current result is: %r', partner)
+        if partner:
+            return fiber.succeed(partner)
+        f = self.wait_for_event('joined_to_shard')
+        f.add_callback(fiber.drop_result, self.get_shard_partner)
+        return f
 
     @replay.journaled
     def switch_shard(self, state, shard):
@@ -91,11 +139,13 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         if isinstance(doc_id, descriptor.Descriptor):
             doc_id = doc_id.doc_id
         assert isinstance(doc_id, (str, unicode, ))
+
         f = fiber.succeed()
         if allocation_id:
             f.add_callback(fiber.drop_result,
                            self.check_allocation_exists, allocation_id)
         f.add_callback(fiber.drop_result, self.get_document, doc_id)
+        f.add_callback(self._check_requeriments)
         f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
@@ -183,11 +233,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
 
     def _apply_definition(self, hostdef):
         self._setup_resources(hostdef.resources)
+        self._setup_categories(hostdef.categories)
 
     def _apply_defaults(self):
-        self.warning("No host definition specified, "
-                     "using default resource definition")
         self._setup_resources(DEFAULT_RESOURCES)
+        self._setup_categories(DEFAULT_CATEGORIES)
 
     @replay.mutable
     def _setup_resources(self, state, resources):
@@ -202,12 +252,58 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin):
         for name, total in resources.iteritems():
             state.resources.define(name, total)
 
-
-class ResourcesAllocationContractor(contractor.BaseContractor):
-    protocol_id = 'allocate-resources'
-    interest_type = InterestType.public
-
     @replay.mutable
+    def _setup_categories(self, state, categories):
+        if not categories:
+            self.warning("Host do not have any categories defined")
+            return
+
+        self.info("Setting host categories to: %s",
+                  ", ".join(["%s=%s" % (n, v.name)
+                             for n, v in categories.iteritems()]))
+
+        state.categories = categories
+
+    @replay.immutable
+    def _check_requeriments(self, state, doc):
+        agnt = agent.registry_lookup(doc.document_type)
+        agent_categories = agnt.categories
+        for cat, val in agent_categories.iteritems():
+            if ((isinstance(val, Access) and val == Access.none) or
+               (isinstance(val, Address) and val == Address.none) or
+               (isinstance(val, Storage) and val == Storage.none)):
+                continue
+
+            if not (cat in state.categories and
+                    state.categories[cat] == val):
+                msg = "Category %s doesn't match %s != %s" % (
+                      cat, val.name, state.categories[cat].name)
+                self.error(msg)
+                raise CategoryError(msg)
+        return doc
+
+
+@serialization.register
+class MissingShard(problem.BaseProblem):
+
+    def wait_for_solution(self):
+        return self.agent.get_shard_partner()
+
+    def solve_for(self, solution, recp):
+        return self.agent.call_remote(solution, 'propose_to', recp)
+
+    def solve_localy(self):
+        own_address = self.agent.get_own_address()
+        return self.agent.start_own_shard(own_address.shard)
+
+
+class HostAllocationContractor(contractor.BaseContractor):
+
+    protocol_id = 'allocate-resources'
+    interest_type = InterestType.private
+    concurrency = 1
+
+    @replay.entry_point
     def announced(self, state, announcement):
         resources = announcement.payload['resources']
         try:
@@ -234,11 +330,6 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     def _refuse(self, state, reason):
         state.medium.refuse(message.Refusal(payload=reason))
 
-    @replay.immutable
-    def _get_cost(self, state, bid):
-        bid.payload['cost'] = 0
-        return bid
-
     @replay.mutable
     def release_preallocation(self, state, *_):
         if state.preallocation_id is not None:
@@ -248,18 +339,33 @@ class ResourcesAllocationContractor(contractor.BaseContractor):
     rejected = release_preallocation
     expired = release_preallocation
 
-    @replay.mutable
+    @replay.entry_point
     def granted(self, state, grant):
         f = fiber.Fiber()
         f.add_callback(state.agent.confirm_allocation)
-        f.add_callback(self._finalize)
+        f.add_callbacks(self._finalize, self._granted_failed)
         return f.succeed(state.preallocation_id)
+
+    ### Private ###
+
+    @replay.mutable
+    def _granted_failed(self, state, fail):
+        msg = "Granted failed with failure %r" % (fail, )
+        cancel = message.Cancellation(reason=msg)
+        state.medium.defect(msg)
+        self.error(msg)
+        return self.release_preallocation()
 
     @replay.mutable
     def _finalize(self, state, allocation):
         report = message.FinalReport()
         report.payload['allocation_id'] = allocation.id
         state.medium.finalize(report)
+
+    @replay.immutable
+    def _get_cost(self, state, bid):
+        bid.payload['cost'] = 0
+        return bid
 
 
 @descriptor.register("host_agent")
@@ -268,7 +374,7 @@ class Descriptor(descriptor.Descriptor):
     # Hostname of the machine, updated when an agent is started
     document.field('hostname', None)
     # Range used for allocating new ports
-    document.field('port_range', (5000, 5999))
+    document.field('port_range', (5000, 5999, ))
 
 
 class StartAgentReplier(replier.BaseReplier):

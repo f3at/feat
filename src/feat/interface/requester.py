@@ -16,9 +16,6 @@ class IAgencyRequester(requests.IRequestPeer):
     '''Agency part of a requester. Used by L{IAgentRequester} to perform
     the requester role of the request protocol.'''
 
-    replies = Attribute('list of replies received')
-    session_id = Attribute('Indentifier of dialog passed in messages')
-
     def request(request):
         '''Post a request message.'''
 
@@ -28,6 +25,12 @@ class IAgencyRequester(requests.IRequestPeer):
         and perform all the necesseary setup.
         @param requester: requester instance
         @type requester: L{IAgentRequester}
+        '''
+
+    def get_recipients():
+        '''
+        @return: The recipients of the request
+        @rtype: IRecipient
         '''
 
 

@@ -9,6 +9,7 @@ from feat.common import log, manhole, defer, reflect
 from feat.agencies import agency, dependency
 from feat.agencies.emu import messaging, database
 from feat.interface.agency import ExecMode
+from feat.interface import recipient
 from feat.test import factories
 from feat.agents.base import document, descriptor, dbtools
 from feat.agents.shard import shard_agent
@@ -19,6 +20,10 @@ class Commands(manhole.Manhole):
     Implementation of all the commands understood by the protocol.
     This is a mixin mixed to Driver class.
     '''
+
+    @manhole.expose()
+    def load(self, module):
+        reflect.named_module(module)
 
     @manhole.expose()
     def spawn_agency(self, *components):
@@ -100,8 +105,11 @@ class Commands(manhole.Manhole):
         Return the medium class of the agent with agent_id if the one is
         running in simulation.
         """
-        if isinstance(agent_id, descriptor.Descriptor):
-            agent_id = agent_id.doc_id
+        try:
+            recp = recipient.IRecipient(agent_id)
+            agent_id = recp.key
+        except TypeError:
+            pass
         agency = self.find_agency(agent_id)
         return agency and agency.find_agent(agent_id)
 
@@ -165,10 +173,15 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._database_connection = self._database.get_connection(self)
         dbtools.push_initial_data(self._database_connection)
 
-    def iter_agents(self):
+    def iter_agents(self, agent_type=None):
         for agency in self._agencies:
             for agent in agency._agents:
-                yield agent
+                if agent_type is None or \
+                   agent.get_agent().descriptor_type == agent_type:
+                    yield agent
+
+    def is_idle(self):
+        return all([agent.is_idle() for agent in self.iter_agents()])
 
     def register_breakpoint(self, name):
         if name in self._breakpoints:

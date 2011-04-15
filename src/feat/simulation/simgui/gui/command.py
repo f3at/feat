@@ -16,9 +16,7 @@ class Command(object):
         self.editor = self.builder.get_object('command_editor')
         textbuffer = self.editor.get_buffer()
         textbuffer.set_text("""agency = spawn_agency()
-shard_desc = descriptor_factory('shard_agent', 'root')
 host_desc = descriptor_factory('host_agent')
-agency.start_agent(shard_desc)
 agency.start_agent(host_desc)
 """)
 

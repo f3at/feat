@@ -4,12 +4,16 @@ import uuid
 
 from twisted.python import failure
 
-from feat.common import delay, fiber, serialization, error_handler, log, defer
+from feat.common import delay, serialization, error_handler, log, defer
 from feat.interface.protocols import InitiatorExpired, InitiatorFailed
 from feat.agents.base import replay
 
 
 class StateAssertationError(RuntimeError):
+    pass
+
+
+class CancelFiber(Exception):
     pass
 
 
@@ -26,10 +30,14 @@ class StateMachineMixin(object):
         self._notifier = defer.Notifier()
 
     @serialization.freeze_tag('StateMachineMixin.wait_for_state')
-    def wait_for_state(self, state):
-        if self.state == state:
-            return defer.succeed(None)
-        return self._notifier.wait(state)
+    def wait_for_state(self, *states):
+        if self.state in states:
+            return defer.succeed(self)
+        d = defer.DeferredList(
+            map(lambda state: self._notifier.wait(state), states),
+            fireOnOneCallback=True)
+        d.addCallback(lambda _: self)
+        return d
 
     def _set_state(self, state):
         if not self.state or not (state == self.state):
@@ -37,14 +45,12 @@ class StateMachineMixin(object):
             self.state = state
 
         if self._notifier:
-            self._notifier.callback(state, None)
+            self._notifier.callback(state, self)
 
     def _cmp_state(self, states):
         if not isinstance(states, list):
             states = [states]
-        if self.state in states:
-            return True
-        return False
+        return self.state in states
 
     def _ensure_state(self, states):
         if self._cmp_state(states):
@@ -156,16 +162,32 @@ class AgencyMiddleMixin(object):
 
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
-
-        #FIXME: we shouldn't need maybe_fiber, mabeDeferred should be enough
-        d = fiber.maybe_fiber(method, *args, **kwargs)
+        d = defer.maybeDeferred(method, *args, **kwargs)
         d.addErrback(self._error_handler)
         return d
 
     def _error_handler(self, f):
+        if f.check(CancelFiber):
+            self.debug('Swallowing CancelFiber exception. This means that the'
+                       ' ensure_state() call detected incorrect state and '
+                       'fiber was terminated.')
+            return
+
         error_handler(self, f)
         self._set_state(self.error_state)
         self._terminate(f)
+
+    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    def ensure_state(self, states):
+        '''
+        Exposed in a public interface. Use this to mark a point in the fiber
+        where it should get cancelled if the state machine is not in expected
+        state.
+        '''
+        try:
+            self._ensure_state(states)
+        except StateAssertationError:
+            raise CancelFiber()
 
 
 class ExpirationCallsMixin(object):
@@ -205,7 +227,7 @@ class ExpirationCallsMixin(object):
     def _expire_at(self, expire_time, method, state, *args, **kwargs):
         d = self._setup_expiration_call(expire_time, method,
                                            state, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate(InitiatorExpired('timeout')))
+        d.addCallback(lambda _: self._terminate(InitiatorExpired(_)))
         return d
 
     @replay.side_effect
@@ -244,19 +266,24 @@ class InitiatorMediumBase(object):
     def __init__(self):
         self._fnotifier = defer.Notifier()
 
+    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 
     def _terminate(self, arg):
         if isinstance(arg, (failure.Failure, Exception)):
             self.log("Firing errback of notifier with arg: %r.", arg)
-            self._fnotifier.errback('finish', arg)
+            self.call_next(self._fnotifier.errback, 'finish', arg)
         else:
             self.log("Firing callback of notifier with arg: %r.", arg)
-            self._fnotifier.callback('finish', arg)
+            self.call_next(self._fnotifier.callback, 'finish', arg)
+
+    def call_next(self, *_):
+        raise NotImplementedError("This method should be implemented outside "
+                                  "of this mixin!")
 
 
 class InterestedMediumBase(InitiatorMediumBase):
 
     def _terminate(self, arg):
-        self._fnotifier.callback('finish', arg)
+        self.call_next(self._fnotifier.callback, 'finish', arg)

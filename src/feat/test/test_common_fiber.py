@@ -7,8 +7,9 @@ from twisted.python import failure
 
 from feat.common import fiber
 
+from feat.interface.fiber import *
+
 from . import common
-from feat.interface.fiber import TriggerType
 
 
 class Dummy(object):
@@ -412,7 +413,7 @@ class TestFiber(common.TestCase):
         self.assertNotEqual(None, fiber.get_state())
 
         # Check exception for invalid depth
-        self.assertRaises(RuntimeError, fiber.get_state, depth=-1)
+        self.assertRaises(RuntimeError, fiber.get_state, depth=-100)
         self.assertRaises(RuntimeError, fiber.get_state, depth=666)
         self.assertRaises(RuntimeError, fiber.set_state, None, depth=666)
 
@@ -1446,3 +1447,83 @@ class TestFiber(common.TestCase):
         self.assertEqual(trace, [])
         d.addCallback(check, trace)
         return d
+
+    def testStackVars(self):
+
+        NAME1 = "__test__"
+        VALUE1 = 42
+        NAME2 = "__test2__"
+        VALUE2 = 66
+        NAME3 = "__test3__"
+        VALUE3 = 18
+
+        def level1():
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            level2()
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+
+        def level2():
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            fiber.break_fiber()
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            fiber.set_stack_var(NAME2, VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            level3()
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+
+        def level3():
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            fiber.set_stack_var(NAME1, VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            level4()
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+
+        def level4():
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            fiber.set_stack_var(NAME3, VALUE3)
+            fiber.set_stack_var(NAME2, VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+            self.assertEqual(fiber.get_stack_var(NAME2), VALUE2)
+            self.assertEqual(fiber.get_stack_var(NAME3), VALUE3)
+            fiber.break_fiber()
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), None)
+            fiber.set_stack_var(NAME3, VALUE3)
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), VALUE3)
+            level5()
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), VALUE3)
+
+        def level5():
+            self.assertEqual(fiber.get_stack_var(NAME1), None)
+            self.assertEqual(fiber.get_stack_var(NAME2), None)
+            self.assertEqual(fiber.get_stack_var(NAME3), VALUE3)
+
+        fiber.set_stack_var(NAME1, VALUE1)
+        self.assertEqual(fiber.get_stack_var(NAME1), VALUE1)
+        self.assertEqual(fiber.get_stack_var(NAME2), None)
+        self.assertEqual(fiber.get_stack_var(NAME3), None)

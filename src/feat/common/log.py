@@ -62,6 +62,10 @@ class Logger(object):
 
     ### ILoggable Methods ###
 
+    def logex(self, level, format, args, depth=1):
+        self._logger.do_log(level, self.log_name,
+                            self.log_category, format, args, depth=depth+1)
+
     def log(self, format, *args):
         self._logger.do_log(LogLevel.log, self.log_name,
                             self.log_category, format, args)
@@ -155,7 +159,7 @@ class FluLogKeeper(object):
                depth=-1, file_path=None, line_num=None):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
-                     where=-depth, filePath=file_path, line=line_num)
+                     where=depth, filePath=file_path, line=line_num)
 
 
 _default_keeper = None

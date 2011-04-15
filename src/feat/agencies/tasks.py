@@ -3,12 +3,12 @@
 from twisted.python import components, failure
 from zope.interface import implements
 
-from feat.interface import task, protocols
-from feat.common import log, enum, fiber, delay, error_handler, serialization
-
-from feat.agencies.interface import IAgencyInitiatorFactory, IListener
-
 from feat.agencies import common
+from feat.agencies.interface import IAgencyInitiatorFactory, IListener
+from feat.common import log, enum, fiber, defer, delay
+from feat.common import error_handler, serialization
+
+from feat.interface import task, protocols
 
 
 class AgencyTaskFactory(object):
@@ -77,8 +77,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._expire_at(timeout, self._expired,
                 TaskState.expired, failure.Failure(error))
 
-        d = fiber.maybe_fiber(self.task.initiate, *self.args, **self.kwargs)
-        d.addCallbacks(self._completed, self._error)
+        self.call_next(self._initiate, *self.args, **self.kwargs)
+
         return task
 
     def get_session_id(self):
@@ -92,12 +92,22 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def snapshot(self):
         return id(self)
 
+    ### Required by InitiatorMediumbase ###
+
+    def call_next(self, _method, *args, **kwargs):
+        return self.agent.call_next(_method, *args, **kwargs)
+
     # Used by ExpirationCallsMixin
 
     def _get_time(self):
         return self.agent.get_time()
 
     #Private section
+
+    def _initiate(self, *args, **kwargs):
+        d = defer.maybeDeferred(self.task.initiate, *args, **kwargs)
+        d.addCallbacks(self._completed, self._error)
+        return d
 
     def _completed(self, arg):
         self._set_state(TaskState.completed)
@@ -109,7 +119,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _expired(self, arg):
         self._set_state(TaskState.expired)
-        d = fiber.maybe_fiber(self.task.expired)
+        d = defer.maybeDeferred(self.task.expired)
         return d
 
     def _terminate(self, arg):

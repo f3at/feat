@@ -8,24 +8,35 @@ from zope.interface import implements
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from feat.common import reflect, decorator
+from feat.common import decorator
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
+SECTION_BOUNDARY_TAG = "__section_boundary__"
 
 
-def drop_result(result, method, *args, **kwargs):
-    assert callable(method)
-    return method(*args, **kwargs)
+def drop_result(_result, _method, *args, **kwargs):
+    assert callable(_method)
+    return _method(*args, **kwargs)
 
 
-def bridge_result(result, method, *args, **kwargs):
-    assert callable(method)
-    method(*args, **kwargs)
-    return result
+def wrap_defer(_method, *args, **kwargs):
+    '''
+    Quick way to call a function returning a Deferred from place when you are
+    supposed to return the Fiber.
+    '''
+    f = succeed()
+    f.add_callback(drop_result, _method, *args, **kwargs)
+    return f
 
 
-def override_result(result, new_result):
-    return new_result
+def bridge_result(_result, _method, *args, **kwargs):
+    assert callable(_method)
+    _method(*args, **kwargs)
+    return _result
+
+
+def override_result(_result, _new_result):
+    return _new_result
 
 
 def succeed(parma=None):
@@ -36,10 +47,9 @@ def fail(failure=None):
     return Fiber().fail(failure)
 
 
-def maybe_fiber(function, *args, **kwargs):
-
+def maybe_fiber(_function, *args, **kwargs):
     try:
-        result = function(*args, **kwargs)
+        result = _function(*args, **kwargs)
     except:
         return defer.fail(failure.Failure())
     else:
@@ -66,7 +76,7 @@ def woven(fun):
     return wrapper
 
 
-def get_state(depth=0):
+def get_stack_var(name, depth=0):
     '''This function may fiddle with the locals of the calling function,
     to make it the root function of the fiber. If called from a short-lived
     function be sure to use a bigger frame depth.
@@ -82,24 +92,40 @@ def get_state(depth=0):
     frame = base_frame
     while frame:
         locals = frame.f_locals
-        state = locals.get(SECTION_STATE_TAG)
-        if state:
+        value = locals.get(name)
+        if value is not None:
             if level > 0:
                 # Copy a reference of the fiber state in the base frame
-                base_frame.f_locals[SECTION_STATE_TAG] = state
-            return state
+                base_frame.f_locals[name] = value
+            return value
+        if locals.get(SECTION_BOUNDARY_TAG):
+            return None
         frame = frame.f_back
         level += 1
     return None
 
 
-def set_state(state, depth=0):
+def set_stack_var(name, value, depth=0):
     base_frame = _get_base_frame(depth)
     if not base_frame:
         # Frame not found
         raise RuntimeError("Base frame not found")
 
-    base_frame.f_locals[SECTION_STATE_TAG] = state
+    base_frame.f_locals[name] = value
+
+
+def get_state(depth=0):
+    return get_stack_var(SECTION_STATE_TAG, depth=depth+1)
+
+
+def set_state(state, depth=0):
+    set_stack_var(SECTION_STATE_TAG, state, depth=depth+1)
+
+
+def break_fiber(depth=0):
+    """After calling break_fiber, get_state() will return None."""
+    set_stack_var(SECTION_BOUNDARY_TAG, True, depth=depth+1)
+    set_stack_var(SECTION_STATE_TAG, None, depth=depth+1)
 
 
 def del_state(depth=0):

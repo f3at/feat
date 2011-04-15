@@ -1,11 +1,11 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import types
 
 from twisted.python import components
 
 from feat.common import log, serialization, fiber, annotate
 from feat.agents.base import replay, recipient, requester
-from feat.interface.protocols import InitiatorFailed
 
 
 class DefinitionError(Exception):
@@ -109,27 +109,17 @@ class BasePartner(serialization.Serializable):
         pass
 
     def on_shutdown(self, agent):
-
-        def _ignore_initiator_failed(fail):
-            if fail.check(InitiatorFailed):
-                agent.log('Swallowing %r expection.', fail.value)
-                return None
-            else:
-                agent.log('Reraising exception %r', fail)
-                fail.raiseException()
-
         agent.log('Shutdown handler sending goodbye, for '
                   'agent %r partner %r.', agent, self)
-        f = fiber.Fiber()
-        f.add_callback(agent.initiate_protocol, self.recipient)
-        f.add_callback(requester.GoodBye.notify_finish)
-        f.add_errback(_ignore_initiator_failed)
-        return f.succeed(requester.GoodBye)
+        brothers = agent.query_partners(type(self))
+        return requester.say_goodbye(agent, self.recipient, brothers)
 
-    def on_goodbye(self, agent):
+    def on_goodbye(self, agent, payload=None):
         pass
 
     def __eq__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return self.recipient == other.recipient and\
                self.allocation_id == other.allocation_id
 
@@ -227,14 +217,20 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     # quering and updating
 
     @replay.immutable
-    def query(self, state, name):
+    def query(self, state, name_or_class):
         partners = state.agent.get_descriptor().partners
-        return self._relations[name].query(partners)
+        if isinstance(name_or_class, types.TypeType) and \
+            issubclass(name_or_class, BasePartner):
+            return filter(lambda x: isinstance(x, name_or_class), partners)
+        else:
+            relation = self._get_relation(name_or_class)
+            return relation.query(partners)
 
     @replay.immutable
     def query_with_role(self, state, name, role):
         partners = state.agent.get_descriptor().partners
-        return self._relations[name].query_with_role(partners, role)
+        relation = self._get_relation(name)
+        return relation.query_with_role(partners, role)
 
     @replay.immutable
     def find(self, state, recp):
@@ -281,7 +277,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return partner.initiate(state.agent)
 
     @replay.mutable
-    def on_goodbye(self, state, recp):
+    def on_goodbye(self, state, recp, blackbox):
         partner = self.find(recp)
         if partner is None:
             self.warning(
@@ -290,8 +286,16 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_result, self.remove, partner)
-        f.add_callback(fiber.drop_result, partner.on_goodbye, state.agent)
+        f.add_callback(fiber.drop_result, self._call_on_goodbye,
+                       partner, blackbox)
         return f.succeed()
+
+    @replay.immutable
+    def _call_on_goodbye(self, state, partner, blackbox):
+        # This is done outside the currect execution chain, as the
+        # action performed may be arbitrary long running, and we don't want
+        # to run into the timeout of goodbye request
+        state.agent.call_next(partner.on_goodbye, state.agent, blackbox)
 
     @replay.mutable
     def remove(self, state, partner):
@@ -305,6 +309,12 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return f
 
     # private
+
+    def _get_relation(self, name):
+        try:
+            return self._relations[name]
+        except KeyError:
+            raise ValueError('Unknown relation name %r: ' % (name, ))
 
     def _append_partner(self, desc, partner, substitute):
         if substitute:

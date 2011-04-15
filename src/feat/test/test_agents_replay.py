@@ -105,6 +105,36 @@ class Base(replay.Replayable):
         return f
 
 
+class DymmyReplayable(replay.Replayable):
+
+    def init_state(self, state, parent, first):
+        state.sum = first
+
+    @replay.entry_point
+    def test(self, state, value):
+        # Inside the ball
+        state.sum += value
+        f = fiber.succeed(value + 1)
+        f.add_callback(self._step2)
+        return f
+
+    def _step2(self, value):
+        # Outside the ball
+        self._step3(value + 1)
+        # Two times to be sure each calls are recorded
+        self._step4(value + 2)
+
+    @replay.mutable
+    def _step3(self, state, value):
+        # Inside the ball
+        state.sum += value
+
+    @replay.mutable
+    def _step4(self, state, value):
+        # Inside the ball
+        state.sum += value
+
+
 class TestCombined(common.TestCase):
 
     def setUp(self):
@@ -112,6 +142,11 @@ class TestCombined(common.TestCase):
         self.unserializer = pytree.Unserializer()
         self.keeper = journal.StupidJournalKeeper(self.serializer,
                                                   self.unserializer)
+
+    def testInOut(self):
+        root = journal.RecorderRoot(self.keeper)
+        obj = DymmyReplayable(root, 0)
+        return obj.test(10)
 
     def testReentranceError(self):
         root = journal.RecorderRoot(self.keeper)

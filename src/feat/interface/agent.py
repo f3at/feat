@@ -1,6 +1,41 @@
 from zope.interface import Interface, Attribute
+from feat.common import enum
 
-__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent"]
+__all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
+           "AgencyAgentState", "Access", "Address", "Storage",
+           "CategoryError"]
+
+
+class CategoryError(RuntimeError):
+    '''
+    Raised when categories don't match with the
+    categories defined in the HostAgent.
+    '''
+
+
+class Access(enum.Enum):
+    '''
+    If the machine can be accessed from outside
+    '''
+
+    none, public, private = range(3)
+
+
+class Address(enum.Enum):
+    '''
+    If the machine network address can change or is fixed
+    '''
+
+    none, fixed, dynamic = range(3)
+
+
+class Storage(enum.Enum):
+    '''
+    If the machine storage is reliable upon restart is shared amongst other
+    machines in the same site.
+    '''
+
+    none, static, shared, volatile = range(4)
 
 
 class IAgentFactory(Interface):
@@ -8,6 +43,8 @@ class IAgentFactory(Interface):
     starting an agent.'''
 
     standalone = Attribute("bool. whether to run in standalone process")
+
+    categories = Attribute("Dict. Access, Address and Storage")
 
     def __call__(medium, *args, **kwargs):
         pass
@@ -21,6 +58,19 @@ class IAgentFactory(Interface):
         '''
 
 
+class AgencyAgentState(enum.Enum):
+    '''
+    not_initiated - Agent is not initialized
+    initiating    - Agent is currently initializing
+    initiated     - Initialize done
+    starting_up   - Agent starting up
+    ready         - Agent is ready
+    error         - Agent has throw an exception
+    '''
+    (not_initiated, initiating, initiated,
+     starting_up, started, ready, error) = range(7)
+
+
 class IAgencyAgent(Interface):
     '''Agency part of an agent. Used as a medium by the agent
     L{IAgent} implementation.'''
@@ -31,6 +81,11 @@ class IAgencyAgent(Interface):
     def get_descriptor():
         '''
         Return the copy of the descriptor.
+        '''
+
+    def get_configuration():
+        '''
+        Return a copy of the agents metadocument with configuration.
         '''
 
     def update_descriptor(callable, *args, **kwargs):
@@ -180,6 +235,33 @@ class IAgencyAgent(Interface):
         Get the mode to run given component.
         '''
 
+    def wait_for_state(state):
+        '''
+        Wait for for specific state
+        '''
+
+    def get_machine_state():
+        '''
+        Returns the current state
+        '''
+
+    def call_next(method, *args, **kwargs):
+        '''
+        Calls the method outside the current execution chain.
+        @returns: The call id which can be used to cancel the call.
+        '''
+
+    def call_later(time_left, method, *args, **kwargs):
+        '''
+        Calls the method in future.
+        @returns: The call id which can be used to cancel the call.
+        '''
+
+    def cancel_delayed_call(call_id):
+        '''
+        Cancels the delayed call.
+        '''
+
 
 class IAgent(Interface):
     '''Agent interface. It uses the L{IAgencyAgent} given at initialization
@@ -190,6 +272,9 @@ class IAgent(Interface):
         Called after the agent is registered to an agency.
         Args and keywords are passed to IAgency.start_agent().
         '''
+
+    def startup():
+        '''Called when initiate has finished'''
 
     def get_descriptor():
         '''Returns a copy of the agent descriptos.'''

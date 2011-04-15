@@ -1,30 +1,52 @@
-from feat.agents.base import manager, replay, recipient, message
-from feat.agencies.agency import RetryingProtocol
-from feat.common import enum, fiber
+import uuid
+
+from feat.agents.base import manager, replay, message, descriptor
 
 
-__all__ = ['start_manager', 'JoinShardManager', 'ActionType']
+__all__ = ['start_manager', 'query_structure', 'get_host_list']
 
 
-def start_manager(medium, *solutions):
-    recp = recipient.Agent(JoinShardManager.protocol_id, 'lobby')
+def start_manager(agent):
+    f = agent.discover_service(JoinShardManager, timeout=1)
+    f.add_callback(lambda recp:
+                   agent.initiate_protocol(JoinShardManager, recp))
+    f.add_callback(JoinShardManager.notify_finish)
+    return f
 
-    f = fiber.Fiber()
-    f.add_callback(medium.retrying_protocol, recp, args=(solutions, ))
-    f.add_callback(RetryingProtocol.notify_finish)
-    return f.succeed(JoinShardManager)
+
+def query_structure(agent, partner_type, distance=1):
+    shard_recp = agent.query_partners('shard')
+    if not shard_recp:
+        agent.warning(
+            "query_structure() called, but agent doesn't have shard partner, "
+            "hence noone to send a query to.")
+        return list()
+    else:
+        f = agent.call_remote(shard_recp, 'query_structure',
+                              partner_type, distance)
+        return f
+
+
+def get_host_list(agent):
+    shard_recp = agent.query_partners('shard')
+    if not shard_recp:
+        agent.warning(
+            "get_host_list() called, but agent doesn't have shard partner, "
+            "returning empty list")
+        return list()
+    else:
+        return agent.call_remote(shard_recp, 'get_host_list')
 
 
 class JoinShardManager(manager.BaseManager):
 
     protocol_id = 'join-shard'
+    announce_timeout = 4
 
     @replay.immutable
-    def initiate(self, state, solutions):
+    def initiate(self, state):
         msg = message.Announcement()
-        msg.payload['level'] = 0
         msg.payload['joining_agent'] = state.agent.get_own_address()
-        msg.payload['solutions'] = solutions
         state.medium.announce(msg)
 
     @replay.immutable
@@ -41,12 +63,17 @@ class JoinShardManager(manager.BaseManager):
         pass
 
 
-class ActionType(enum.Enum):
-    '''
-    The type solution we are offering:
+@replay.side_effect
+def generate_shard_value():
+    return str(uuid.uuid1())
 
-    join   - join the existing shard
-    create - start your own ShardAgent as a child bid sender
-    adopt  - used by SA looking for the parent
-    '''
-    (join, create, adopt) = range(3)
+
+@descriptor.register("shard_agent")
+class Descriptor(descriptor.Descriptor):
+    pass
+
+
+def prepare_descriptor(agent, shard=None):
+    shard = shard or generate_shard_value()
+    desc = Descriptor(shard=shard)
+    return agent.save_document(desc)

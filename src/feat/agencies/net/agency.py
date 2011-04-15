@@ -293,3 +293,11 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+     ### Journaling Methods ###
+
+    def journal_new_entry(self, agent_id, journal_id,
+                          function_id, *args, **kwargs):
+        record = []
+        return agency.AgencyJournalEntry(self.serializer, record, agent_id,
+                                  journal_id, function_id, *args, **kwargs)

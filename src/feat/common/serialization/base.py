@@ -40,7 +40,8 @@ DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
                               Capabilities.meta_types])
 
 DEFAULT_FREEZER_CAPS = DEFAULT_CONVERTER_CAPS \
-                       | set([Capabilities.function_values,
+                       | set([Capabilities.builtin_values,
+                              Capabilities.function_values,
                               Capabilities.method_values])
 
 FREEZING_TAG_ATTRIBUTE = '__freezing_tag__'
@@ -463,6 +464,13 @@ class Serializer(object):
                                 caps, freezing)
         return self.pack_type, value
 
+    def flatten_builtin_value(self, value, caps, freezing):
+        self.check_capabilities(Capabilities.builtin_values, value,
+                                caps, freezing)
+        if freezing:
+            return self.pack_frozen_builtin, value
+        return self.pack_function, value
+
     def flatten_function_value(self, value, caps, freezing):
         self.check_capabilities(Capabilities.function_values, value,
                                 caps, freezing)
@@ -603,6 +611,7 @@ class Serializer(object):
                      bool: flatten_bool_value,
                      type(None): flatten_none_value,
                      types.FunctionType: flatten_function_value,
+                     types.BuiltinFunctionType: flatten_builtin_value,
                      types.MethodType: flatten_method_value}
 
     _key_lookup = {tuple: flatten_tuple_key,

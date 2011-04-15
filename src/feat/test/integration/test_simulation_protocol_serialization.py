@@ -20,7 +20,7 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("protoser_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         state.medium.register_interest(NormalReplier)
@@ -63,7 +63,7 @@ class NormalRequester(requester.BaseRequester):
     protocol_id = 'test_normal'
     timeout = 10
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         msg = message.RequestMessage()
         state.medium.request(msg)
@@ -77,7 +77,7 @@ class NormalReplier(replier.BaseReplier):
     def requested(self, state, request):
         state.agent.protocol_started()
         f = fiber.Fiber()
-        f.add_callback(test_common.delay, 0.2)
+        f.add_callback(test_common.delay, 1)
         f.add_callback(self.done)
         return f.succeed()
 
@@ -111,6 +111,8 @@ class PooledReplier(NormalReplier):
 
 
 class ProtoSerializationTest(common.SimulationTest):
+
+    timeout = 15
 
     def prolog(self):
         setup = format_block("""

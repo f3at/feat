@@ -117,10 +117,17 @@ class Recipients(serialization.Serializable, pb.Copyable):
     def recover(self, snapshot):
         self._recipients = snapshot["recipients"]
 
+    def remove(self, recp):
+        self._recipients.remove(recp)
+
+    def __len__(self):
+        return len(self._recipients)
+
     def __eq__(self, other):
         for el1, el2 in zip(self._recipients, other._recipients):
             if el1 != el2:
                 return False
+        return True
 
     def __repr__(self):
         cont = ["k=%r,s=%r" % (recp.key, recp.shard, )

@@ -6,20 +6,23 @@ import types
 from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
-from feat.interface import generic, agent
+from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
-                              replier, partners, dependency, )
+                              replier, partners, dependency, manager, )
+from feat.interface.agent import AgencyAgentState
 
 
 registry = dict()
 
 
 @decorator.parametrized_class
-def register(klass, name):
+def register(klass, name, configuration_id=None):
     global registry
     registry[name] = klass
+    doc_id = configuration_id or name + "_conf"
     klass.descriptor_type = name
     klass.type_name = name + ":data"
+    klass.configuration_doc_id = doc_id
     serialization.register(klass)
     return klass
 
@@ -60,6 +63,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     standalone = False
 
+    categories = {'access': agent.Access.none,
+                  'address': agent.Address.none,
+                  'storage': agent.Storage.none}
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
@@ -86,6 +93,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.medium.register_interest(replier.GoodBye)
         state.medium.register_interest(replier.ProposalReceiver)
 
+    @replay.immutable
+    def startup(self, state):
+        pass
+
     @replay.journaled
     def shutdown(self, state):
         desc = self.get_descriptor()
@@ -109,6 +120,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     ### Public Methods ###
 
+    @manhole.expose()
+    @replay.journaled
+    def wait_for_ready(self, state):
+        return fiber.wrap_defer(state.medium.wait_for_state,
+                                AgencyAgentState.ready)
+
     @replay.journaled
     def initiate_partners(self, state):
         desc = self.get_descriptor()
@@ -118,9 +135,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return f.succeed()
 
     @manhole.expose()
-    def propose_to(self, recp, partner_role=None):
+    def propose_to(self, recp, partner_role=None, our_role=None):
         return self.establish_partnership(recipient.IRecipient(recp),
-                                          partner_role=partner_role)
+                                          partner_role=partner_role,
+                                          our_role=our_role)
 
     @replay.journaled
     def establish_partnership(self, state, recp, allocation_id=None,
@@ -174,14 +192,19 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
                                      substitute)
 
     @replay.mutable
-    def partner_said_goodbye(self, state, recp):
-        return state.partners.on_goodbye(recp)
+    def partner_said_goodbye(self, state, recp, payload):
+        return state.partners.on_goodbye(recp, payload)
 
     @manhole.expose()
     @replay.immutable
-    def query_partners(self, state, name):
-        '''query_partners(name) -> Query the partners by the relation name.'''
-        return state.partners.query(name)
+    def query_partners(self, state, name_or_class):
+        '''query_partners(name_or_class) ->
+              Query the partners by the relation name or partner class.'''
+        return state.partners.query(name_or_class)
+
+    @replay.immutable
+    def query_partner_handler(self, state, partner_type, role=None):
+        return state.partners.query_handler(partner_type, role)
 
     @manhole.expose()
     @replay.immutable
@@ -196,6 +219,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):
         return state.medium.initiate_protocol(*args, **kwargs)
+
+    @replay.immutable
+    def retrying_protocol(self, state, *args, **kwargs):
+        return state.medium.retrying_protocol(*args, **kwargs)
+
+    @replay.immutable
+    def initiate_task(self, state, *args, **kwargs):
+        return state.medium.initiate_task(*args, **kwargs)
 
     @replay.mutable
     def preallocate_resource(self, state, **params):
@@ -236,15 +267,47 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def get_document(self, state, doc_id):
-        return state.medium.get_document(doc_id)
+        return fiber.wrap_defer(state.medium.get_document, doc_id)
 
     @replay.immutable
     def save_document(self, state, doc):
-        return state.medium.save_document(doc)
+        return fiber.wrap_defer(state.medium.save_document, doc)
 
     @update_descriptor
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
+
+    @replay.journaled
+    def discover_service(self, state, factory, timeout=3, shard='lobby'):
+
+        def expire_handler(fail):
+            if fail.check(protocols.InitiatorFailed):
+                return fail.value.args[0]
+            else:
+                fail.raiseException()
+
+        initiator = manager.DiscoverService(factory, timeout)
+        recp = recipient.Broadcast(shard=shard,
+                                   protocol_id=initiator.protocol_id)
+        f = fiber.succeed(initiator)
+        f.add_callback(self.initiate_protocol, recp)
+        # this contract will always finish in expired state as it is blindly
+        # rejecting all it gets
+        f.add_callback(manager.ServiceDiscoveryManager.notify_finish)
+        f.add_errback(expire_handler)
+        return f
+
+    @replay.immutable
+    def call_next(self, state, method, *args, **kwargs):
+        return state.medium.call_next(method, *args, **kwargs)
+
+    @replay.immutable
+    def call_later(self, state, time_left, method, *args, **kwargs):
+        return state.medium.call_later(time_left, method, *args, **kwargs)
+
+    @replay.immutable
+    def cancel_delayed_call(self, state, call_id):
+        state.medium.cancel_delayed_call(call_id)
 
     ### Private Methods ###
 

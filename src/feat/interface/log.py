@@ -45,3 +45,6 @@ class ILogger(Interface):
 
     def error(format, *args):
         pass
+
+    def logex(level, format, args, depth=1):
+        '''Extended logging. Allows changing stack depth.'''

@@ -1,4 +1,5 @@
 import os
+import optparse
 
 from twisted.internet import defer
 from twisted.spread import jelly
@@ -14,6 +15,12 @@ from twisted.trial.unittest import SkipTest
 
 
 jelly.globalSecurity.allowModules(__name__)
+
+
+class OptParseMock(object):
+    msg_port = '1999'
+    manhole_public_key = 'file2'
+    agent_name = 'name'
 
 
 class UnitTestCase(common.TestCase):
@@ -42,6 +49,13 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('2000', self.agency.config['msg']['port'])
         self.assertTrue('manhole' in self.agency.config)
         self.assertEqual('file', self.agency.config['manhole']['public_key'])
+        self.assertFalse('name' in self.agency.config['agent'])
+
+        #Overwrite some configuration values
+        self.agency._load_config(env, OptParseMock())
+        self.assertEqual('1999', self.agency.config['msg']['port'])
+        self.assertEqual('file2', self.agency.config['manhole']['public_key'])
+        self.assertFalse('name' in self.agency.config['agent'])
 
     def testStoreConfig(self):
         self.agency.config = dict()
@@ -52,6 +66,35 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('localhost', env['FEAT_MSG_HOST'])
         self.assertEqual('3000', env['FEAT_MSG_PORT'])
         self.assertEqual('file', env['FEAT_MANHOLE_PUBLIC_KEY'])
+
+    def testDefaultConfig(self):
+        parser = optparse.OptionParser()
+        agency.add_options(parser)
+        options = parser.get_default_values()
+        self.assertTrue(hasattr(options, 'msg_host'))
+        self.assertTrue(hasattr(options, 'msg_port'))
+        self.assertTrue(hasattr(options, 'msg_user'))
+        self.assertTrue(hasattr(options, 'msg_password'))
+        self.assertTrue(hasattr(options, 'db_host'))
+        self.assertTrue(hasattr(options, 'db_port'))
+        self.assertTrue(hasattr(options, 'db_name'))
+        self.assertTrue(hasattr(options, 'manhole_public_key'))
+        self.assertTrue(hasattr(options, 'manhole_private_key'))
+        self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
+        self.assertTrue(hasattr(options, 'manhole_port'))
+        self.assertEqual(options.msg_host, agency.DEFAULT_MSG_HOST)
+        self.assertEqual(options.msg_port, agency.DEFAULT_MSG_PORT)
+        self.assertEqual(options.msg_user, agency.DEFAULT_MSG_USER)
+        self.assertEqual(options.msg_password, agency.DEFAULT_MSG_PASSWORD)
+        self.assertEqual(options.db_host, agency.DEFAULT_DB_HOST)
+        self.assertEqual(options.db_port, agency.DEFAULT_DB_PORT)
+        self.assertEqual(options.db_name, agency.DEFAULT_DB_NAME)
+        self.assertEqual(options.manhole_public_key, agency.DEFAULT_MH_PUBKEY)
+        self.assertEqual(options.manhole_private_key,
+                         agency.DEFAULT_MH_PRIVKEY)
+        self.assertEqual(options.manhole_authorized_keys,
+                         agency.DEFAULT_MH_AUTH)
+        self.assertEqual(options.manhole_port, agency.DEFAULT_MH_PORT)
 
 
 @agent.register('standalone')
@@ -124,7 +167,7 @@ class MasterAgent(StandaloneAgent):
                 '-l', logfile]
         return command, args, env
 
-    @replay.mutable
+    @replay.entry_point
     def initiate(self, state):
         StandaloneAgent.initiate(self)
 
@@ -173,11 +216,14 @@ class IntegrationTestCase(common.TestCase):
             db_host=db_host, db_port=db_port, db_name=db_name)
         yield self.agency.initiate()
 
+    def check_journal_entries(self):
+        self.assertEqual(len(self.agency._journal_entries), 0)
+
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc, run_startup=False)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
@@ -188,12 +234,13 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc, run_startup=False)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
@@ -204,12 +251,13 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartAgentFromStandalone(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, bootstrap=True)
+        yield self.agency.start_agent(desc)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
@@ -225,6 +273,7 @@ class IntegrationTestCase(common.TestCase):
         for slave in self.agency._broker.slaves:
             mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
+        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def tearDown(self):

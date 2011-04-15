@@ -3,12 +3,11 @@
 import operator
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              descriptor, replay, partners, resource, )
-from feat.agents.common import host, rpc
+                              replay, partners, resource, document, dbtools,
+                              task, )
+from feat.agents.common import rpc, raage, host
 from feat.common import fiber, serialization, manhole, enum
-from feat.interface.protocols import InterestType
-from feat.interface.contracts import ContractState
-from feat.agents.common import shard
+from feat.interface.protocols import InitiatorFailed
 
 
 @serialization.register
@@ -46,17 +45,63 @@ class ShardPartner(partners.BasePartner):
         assert isinstance(alloc, resource.Allocation)
         self.allocation_id = alloc and alloc.id
 
-    def on_goodbye(self, agent):
-        f = partners.BasePartner.on_goodbye(self, agent)
+    @fiber.woven
+    def on_goodbye(self, agent, brothers):
+        f = fiber.succeed(self)
+        f.add_callback(partners.BasePartner.on_goodbye, agent)
         f.add_both(fiber.drop_result, agent.become_king)
         f.add_both(fiber.drop_result, agent.look_for_neighbours)
         return f
+
+
+class StructuralPartner(partners.BasePartner):
+    '''
+    Abstract base class for all the partners which should be started and
+    managed by Shard Agent.
+    '''
+
+    @classmethod
+    def discover(cls, agent):
+        '''
+        Should return a fiber which results in a list of agents of this type
+        available in the shard.
+        '''
+        raise NotImplementedError('Should be overloaded')
+
+    @classmethod
+    def prepare_descriptor(cls, agent):
+        '''
+        Should return a fiber which results in a saved descriptor in the
+        database.
+        '''
+        raise NotImplementedError('Should be overloaded')
+
+    def on_goodbye(self, agent, brothers):
+        return agent.check_shard_structure()
+
+
+@serialization.register
+class RaagePartner(StructuralPartner):
+
+    type_name = 'shard->raage'
+
+    @classmethod
+    def discover(cls, agent):
+        return raage.discover(agent)
+
+    @classmethod
+    def prepare_descriptor(cls, agent):
+        desc = raage.Descriptor()
+        return agent.save_document(desc)
 
 
 class Partners(partners.Partners):
 
     partners.has_many('hosts', 'host_agent', HostPartner)
     partners.has_many('neighbours', 'shard_agent', ShardPartner)
+    partners.has_one('raage', 'raage_agent', RaagePartner)
+
+    shard_structure = ['raage_agent']
 
 
 class ShardAgentRole(enum.Enum):
@@ -67,38 +112,112 @@ class ShardAgentRole(enum.Enum):
     (king, peasant, ) = range(2)
 
 
+@document.register
+class ShardAgentConfiguration(document.Document):
+
+    document_type = 'shard_agent_conf'
+    document.field('doc_id', u'shard_agent_conf', '_id')
+    document.field('hosts_per_shard', 10)
+    document.field('neighbours', 3)
+
+
+dbtools.initial_data(ShardAgentConfiguration)
+
+
 @agent.register('shard_agent')
 class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
 
     partners_class = Partners
 
-    @replay.mutable
-    def initiate(self, state, hosts=10, neighbours=3):
+    @replay.entry_point
+    def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
 
-        state.resources.define('hosts', hosts)
-        state.resources.define('neighbours', neighbours)
+        config = state.medium.get_configuration()
 
-        # state.join_interest =\
-        #     state.medium.register_interest(JoinShardContractor)
-        # state.join_interest.bind_to_lobby()
-        state.role = None
+        state.resources.define('hosts', config.hosts_per_shard)
+        state.resources.define('neighbours', config.neighbours)
+
+        state.join_interest =\
+            state.medium.register_interest(
+            contractor.Service(JoinShardContractor))
+        state.medium.register_interest(JoinShardContractor)
+
         state.neighbour_interest =\
-            state.medium.register_interest(FindNeighboursContractor)
+            state.medium.register_interest(
+            contractor.Service(FindNeighboursContractor))
+        state.medium.register_interest(FindNeighboursContractor)
+
+        state.medium.register_interest(QueryStructureContractor)
+
+        state.role = None
         self.become_king()
 
         return self.initiate_partners()
 
+    @replay.mutable
+    def startup(self, state):
+        f = self.look_for_neighbours()
+        f.add_callback(fiber.drop_result, self.check_shard_structure)
+        return f
+
+    @replay.mutable
+    def check_shard_structure(self, state):
+        for partner_class in state.partners.shard_structure:
+            factory = self.query_partner_handler(partner_class)
+            partner = self.query_partners(factory)
+            if partner is None:
+                self.debug("check_shard_structure() detected missing %r "
+                           "partner, taking action.". partner_class)
+            self.initiate_task(FixMissingPartner, factory)
+
+    @replay.mutable
+    def request_starting_partner(self, state, factory):
+        task = self.initiate_task(StartPartner, factory)
+        return fiber.wrap_defer(task.notify_finish)
+
+    @manhole.expose()
+    @rpc.publish
+    @replay.journaled
+    def query_structure(self, state, partner_type, distance=1):
+
+        def swallow_initiator_failed(fail):
+            fail.trap(InitiatorFailed)
+            self.debug('query_structure failed with %r, returning empty '
+                       'list', fail)
+            return list()
+
+        if distance != 1:
+            agent.error('Query distance is not supported yet. Right now '
+                        'this parameter is ignored and defaults to 1')
+            distance = 1
+        manager = self.initiate_protocol(
+            QueryStructureManager, state.partners.neighbours,
+            partner_type, distance)
+        f = manager.notify_finish()
+        f.add_errback(swallow_initiator_failed)
+        return f
+
+    @manhole.expose()
+    @rpc.publish
+    @replay.journaled
+    def get_host_list(self, state):
+        return state.partners.hosts
+
     @manhole.expose()
     @replay.journaled
     def look_for_neighbours(self, state):
-        recp = recipient.Broadcast(FindNeighboursManager.protocol_id, 'lobby')
-        f = fiber.succeed(FindNeighboursManager)
-        f.add_callback(self.initiate_protocol, recp)
+        f = self.discover_service(FindNeighboursManager, timeout=1)
+        f.add_callback(
+            lambda recp: self.initiate_protocol(FindNeighboursManager, recp))
         f.add_callback(FindNeighboursManager.notify_finish)
         f.add_errback(self.look_for_failed)
         return f
+
+    @rpc.publish
+    def propose_to(self, recp, partner_role=None, our_role=None):
+        return agent.BaseAgent.propose_to(self, recp, partner_role, our_role)
 
     def look_for_failed(self, f):
         self.info('Look for neighbours contract failed. Reason: %r', f)
@@ -158,12 +277,14 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     def become_king(self, state):
         if not self.is_king():
             state.neighbour_interest.bind_to_lobby()
+            state.join_interest.bind_to_lobby()
             state.role = ShardAgentRole.king
 
     @replay.mutable
     def become_peasant(self, state):
         if not self.is_peasant():
             state.neighbour_interest.unbind_from_lobby()
+            state.join_interest.unbind_from_lobby()
             state.role = ShardAgentRole.peasant
 
     @replay.immutable
@@ -193,9 +314,9 @@ class FindNeighboursContractor(contractor.BaseContractor):
     bid_timeout = 6
 
     protocol_id = 'find-neighbours'
-    interest_type = InterestType.public
+    concurrency = 1
 
-    @replay.mutable
+    @replay.entry_point
     def announced(self, state, announcement):
         if self._is_own_announcement(announcement):
             self._refuse()
@@ -228,7 +349,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     rejected = _release_allocation
     cancelled = _release_allocation
 
-    @replay.mutable
+    @replay.entry_point
     def granted(self, state, grant):
         recp = grant.payload['joining_agent']
         if grant.payload['solution_type'] == SolutionType.join:
@@ -290,14 +411,14 @@ class FindNeighboursManager(manager.BaseManager):
     announce_timeout = 3
     grant_timeout = 3
 
-    @replay.journaled
+    @replay.entry_point
     def initiate(self, state):
         msg = message.Announcement()
         msg.payload['joining_agent'] = state.agent.get_own_address()
         state.medium.announce(msg)
         state.allocations = list()
 
-    @replay.journaled
+    @replay.entry_point
     def closed(self, state):
         # Try to get at least 2 and preferable 3 join bids.
         # If thats imposible get the best divorce bid.
@@ -344,7 +465,7 @@ class FindNeighboursManager(manager.BaseManager):
         f.add_callback(state.medium.grant)
         return f
 
-    @replay.journaled
+    @replay.entry_point
     def completed(self, state, reports):
         pass
 
@@ -443,6 +564,8 @@ class FindNeighboursManager(manager.BaseManager):
             for neighbour in neighbours[divorcer]:
                 if neighbour in incorrect_choices:
                     continue
+                if divorcer not in divorce_bids:
+                    continue
                 neighbour_values = shard_info.get(neighbour.key, (3, 0, ))
                 possible_divorces[(divorcer, neighbour, )] =\
                                              values + neighbour_values
@@ -485,212 +608,218 @@ class FindNeighboursManager(manager.BaseManager):
         return msg
 
 
+@serialization.register
+class JoinShardContractor(contractor.NestingContractor):
 
-# @serialization.register
-# class JoinShardContractor(contractor.BaseContractor):
+    protocol_id = 'join-shard'
+    concurrency = 1
 
-#     protocol_id = 'join-shard'
-#     interest_type = InterestType.public
+    @replay.mutable
+    def announced(self, state, announcement):
+        allocation = state.agent.preallocate_resource(hosts=1)
 
-#     @replay.mutable
-#     def announced(self, state, announcement):
-#         state.nested_manager = None
-#         our_action = None
+        if allocation is not None:
+            state.preallocation_id = allocation.id
+            bid = message.Bid()
+            # we want to favor filling up the farthers
+            # shards from the entry point
+            bid.payload['cost'] = -announcement.level
+        else:
+            bid = None
 
-#         def wants(a_type):
-#             return a_type in announcement.payload['solutions']
+        f = fiber.Fiber()
 
-#         wants_join = wants(shard.ActionType.join)
-#         wants_create = wants(shard.ActionType.create)
-#         wants_adopt = wants(shard.ActionType.adopt)
+        f.add_callback(fiber.drop_result, self.fetch_nested_bids,
+                       state.agent.query_partners('neighbours'), announcement)
+        f.add_callback(self._pick_best_bid, bid)
+        f.add_callback(self._bid_refuse_or_handover, bid)
+        f.add_callback(fiber.drop_result, self.terminate_nested_manager)
+        return f.succeed()
 
-#         if wants_join:
-#             allocation = state.agent.preallocate_resource(hosts=1)
-#             if allocation:
-#                 our_action = shard.ActionType.join
-#                 cost = 0
-#         if our_action is None and (wants_adopt or wants_create):
-#             allocation = state.agent.preallocate_resource(children=1)
-#             if allocation:
-#                 our_action = wants_create and shard.ActionType.create or\
-#                                               shard.ActionType.adopt
-#                 cost = 20
-#         state.preallocation_id = allocation and allocation.id
+    @replay.immutable
+    def _pick_best_bid(self, state, nested_bids, own_bid):
+        # prepare the list of bids
+        bids = list()
+        if own_bid:
+            bids.append(own_bid)
+        if nested_bids is None:
+            nested_bids = list()
+        bids += nested_bids
+        self.log('_pick_best_bid analizes total of %d bids', len(bids))
 
-#         # create a bid for our own action
-#         bid = None
-#         if our_action is not None:
-#             bid = message.Bid()
-#             bid.payload['action_type'] = our_action
-#             cost += announcement.payload['level'] * 15
-#             bid.payload['cost'] = cost
+        # check if we have received anything
+        if len(bids) == 0:
+            self.info('Did not receive any bids to evaluate! '
+                      'Contract will fail.')
+            return None
 
-#         f = fiber.Fiber()
-#         if our_action in [shard.ActionType.create, None]:
-#             # Maybe children shards can just join
-#             # this poor fellow, lets ask them.
-#             f.add_callback(fiber.drop_result, self._fetch_children_bids,
-#                            announcement)
-#         f.add_callback(self._pick_best_bid, bid)
-#         f.add_callback(self._bid_refuse_or_handover, bid)
-#         f.add_callback(fiber.drop_result, self._terminate_nested_manager)
-#         return f.succeed()
+        # elect best bid
+        return message.Bid.pick_best(bids)[0]
 
-#     @replay.mutable
-#     def _fetch_children_bids(self, state, announcement):
-#         children = state.agent.query_partners('children')
-#         if len(children) == 0:
-#             return list()
+    @replay.journaled
+    def _bid_refuse_or_handover(self, state, bid=None, original_bid=None):
+        if bid is None:
+            refusal = message.Refusal()
+            return state.medium.refuse(refusal)
+        elif bid == original_bid:
+            state.bid = bid
+            return state.medium.bid(bid)
+        else:
+            f = fiber.Fiber()
+            f.add_callback(self.release_preallocation)
+            f.add_callback(fiber.drop_result, self.handover, bid)
+            return f.succeed()
 
-#         new_announcement = announcement.clone()
-#         new_announcement.payload['level'] += 1
+    @replay.immutable
+    def release_preallocation(self, state, *_):
+        if getattr(state, 'preallocation_id', None):
+            return state.agent.release_resource(state.preallocation_id)
 
-#         state.nested_manager = state.agent.initiate_protocol(
-#             NestedJoinShardManager, children, new_announcement)
-#         f = fiber.Fiber()
-#         f.add_callback(fiber.drop_result,
-#                        state.nested_manager.wait_for_bids)
-#         return f.succeed()
+    announce_expired = release_preallocation
+    rejected = release_preallocation
+    expired = release_preallocation
 
-#     @replay.immutable
-#     def _terminate_nested_manager(self, state):
-#         if state.nested_manager:
-#             state.nested_manager.terminate()
+    @replay.mutable
+    def granted(self, state, grant):
+        f = fiber.succeed(state.preallocation_id)
+        f.add_callback(state.agent.confirm_allocation)
+        f.add_callback(
+            fiber.drop_result, state.agent.establish_partnership,
+            grant.payload['joining_agent'], state.preallocation_id)
+        f.add_callback(state.medium.update_manager_address)
+        f.add_callbacks(self._finalize, self._granted_failed)
+        return f
 
-#     @replay.immutable
-#     def _pick_best_bid(self, state, nested_bids, own_bid):
-#         # prepare the list of bids
-#         bids = list()
-#         if own_bid:
-#             bids.append(own_bid)
-#         if nested_bids is None:
-#             nested_bids = list()
-#         bids += nested_bids
-#         self.log('_pick_best_bid analizes total of %d bids', len(bids))
+    def _granted_failed(self, failure):
+        self.release_preallocation()
+        failure.raiseException()
 
-#         # check if we have received anything
-#         if len(bids) == 0:
-#             self.info('Did not receive any bids to evaluate! '
-#                       'Contract will fail.')
-#             return None
-
-#         # elect best bid
-#         best = message.Bid.pick_best(bids)[0]
-
-#         # Send refusals to contractors of nested manager which we already
-#         # know will not receive the grant.
-#         for bid in bids:
-#             if bid == best:
-#                 continue
-#             elif bid in nested_bids:
-#                 state.nested_manager.reject_bid(bid)
-#         return best
-
-#     @replay.journaled
-#     def _bid_refuse_or_handover(self, state, bid=None, original_bid=None):
-#         if bid is None:
-#             refusal = message.Refusal()
-#             return state.medium.refuse(refusal)
-#         elif bid == original_bid:
-#             state.bid = bid
-#             return state.medium.bid(bid)
-#         else:
-#             f = fiber.Fiber()
-#             f.add_callback(self.release_preallocation)
-#             f.add_callback(fiber.drop_result, state.medium.handover, bid)
-#             return f.succeed()
-
-#     @replay.immutable
-#     def release_preallocation(self, state, *_):
-#         if state.preallocation_id is not None:
-#             return state.agent.release_resource(state.preallocation_id)
-
-#     announce_expired = release_preallocation
-#     rejected = release_preallocation
-#     expired = release_preallocation
-
-#     @replay.mutable
-#     def granted(self, state, grant):
-#         joining_agent_id = grant.payload['joining_agent'].key
-
-#         if state.bid.payload['action_type'] == shard.ActionType.create:
-#             f = fiber.Fiber()
-#             f.add_callback(state.agent.confirm_allocation)
-#             f.add_callback(fiber.drop_result,
-#                            state.agent.prepare_child_descriptor)
-#             f.add_callback(self._request_start_agent)
-#             f.add_callback(state.agent.establish_partnership,
-#                            state.preallocation_id, u'child', u'parent')
-#             f.add_callback(self._generate_new_address, joining_agent_id)
-#             f.add_callback(state.medium.update_manager_address)
-#             f.add_callbacks(self._finalize, self._granted_failed)
-#             return f.succeed(state.preallocation_id)
-#         elif state.bid.payload['action_type'] == shard.ActionType.join:
-#             f = fiber.Fiber()
-#             f.add_callback(state.agent.confirm_allocation)
-#             f.add_callback(
-#                 fiber.drop_result, state.agent.establish_partnership,
-#                 grant.payload['joining_agent'], state.preallocation_id)
-#             f.add_callback(state.medium.update_manager_address)
-#             f.add_callbacks(self._finalize, self._granted_failed)
-#             return f.succeed(state.preallocation_id)
-#         elif state.bid.payload['action_type'] == shard.ActionType.adopt:
-#             f = fiber.Fiber()
-#             f.add_callback(state.agent.confirm_allocation)
-#             f.add_callback(
-#                 fiber.drop_result, state.agent.establish_partnership,
-#                 grant.payload['joining_agent'], state.preallocation_id,
-#                 u'child', u'parent')
-#             f.add_callbacks(self._finalize, self._granted_failed)
-#             return f.succeed(state.preallocation_id)
-
-#     def _granted_failed(self, failure):
-#         self.release_preallocation()
-#         failure.raiseException()
-
-#     @replay.immutable
-#     def _finalize(self, state, _):
-#         report = message.FinalReport()
-#         state.medium.finalize(report)
-
-#     @replay.immutable
-#     def _request_start_agent(self, state, desc):
-#         recp = state.medium.announce.payload['joining_agent']
-#         totals, _ = state.agent.list_resource()
-#         return host.start_agent(state.agent, recp, desc, allocation_id=None,
-#                                 **totals)
-
-#     def _generate_new_address(self, shard_partner, agent_id):
-#         return recipient.Agent(agent_id, shard_partner.recipient.shard)
+    @replay.immutable
+    def _finalize(self, state, _):
+        report = message.FinalReport()
+        state.medium.finalize(report)
 
 
-# @serialization.register
-# class NestedJoinShardManager(manager.BaseManager):
+class FixMissingPartner(task.BaseTask):
 
-#     protocol_id = 'join-shard'
+    protocol_id = 'fix-missing-partner'
+    timeout = 15
 
-#     @replay.journaled
-#     def initiate(self, state, announcement):
-#         state.medium.announce(announcement)
+    @replay.entry_point
+    def initiate(self, state, factory):
+        state.factory = factory
+        f = factory.discover(state.agent)
+        f.add_callback(self.request_starting_partner_if_necessary)
+        f.add_callback(state.agent.establish_partnership)
+        return f
 
-#     @replay.immutable
-#     def wait_for_bids(self, state):
-#         f = fiber.Fiber()
-#         f.add_callback(state.medium.wait_for_state)
-#         f.add_callback(lambda _: state.medium.contractors.keys())
-#         f.succeed(ContractState.closed)
-#         return f
-
-#     @replay.journaled
-#     def reject_bid(self, state, bid):
-#         self.debug('Sending rejection to bid from nested manager.')
-#         return state.medium.reject(bid)
-
-#     @replay.journaled
-#     def terminate(self, state):
-#         state.medium.terminate()
+    @replay.immutable
+    def request_starting_partner_if_necessary(self, state, discovered):
+        if len(discovered) == 1:
+            return discovered[0]
+        elif len(discovered) > 1:
+            # FIXME: At this point using alerts would be a good idea
+            self.warning('Discovery returned %d partners of the factory %r. '
+                         'Something is clearly wrong!', len(discovered),
+                         state.factory)
+            return discovered[0]
+        else:
+            return state.agent.request_starting_partner(state.factory)
 
 
-@descriptor.register("shard_agent")
-class Descriptor(descriptor.Descriptor):
+@serialization.register
+class StartPartnerException(Exception, serialization.Serializable):
     pass
+
+
+class StartPartner(task.BaseTask):
+
+    protocol_id = 'request-starting-partner'
+    timeout = 60
+
+    @replay.entry_point
+    def initiate(self, state, factory):
+        state.descriptor = None
+        state.hosts = state.agent.query_partners('hosts')
+        state.factory = factory
+        self.log('StartPartner task initiated, will be trying to start a '
+                 '%r on one of the hosts: %r', factory, state.hosts)
+        if len(state.hosts) == 0:
+            # FIXME: Here would be a good idea to put an alert
+            return self._fail('Shard Agent cannot start partner %r as it has '
+                              'no Host Partners', factory)
+        state.current_index = -1
+
+        f = factory.prepare_descriptor(state.agent)
+        f.add_callback(self._store_descriptor)
+        f.add_callback(fiber.drop_result, self._try_next)
+        return f
+
+    @replay.mutable
+    def _try_next(self, state):
+        state.current_index += 1
+        try:
+            partner = state.hosts[state.current_index]
+        except IndexError:
+            return self._fail(
+                'No of the Host Partners managed to start a partner %r',
+                state.factory)
+
+        f = host.start_agent(state.agent, partner, state.descriptor)
+        f.add_errback(self._failed_to_start, partner)
+        return f
+
+    @replay.immutable
+    def _failed_to_start(self, state, fail, partner):
+        self.error('Failed to start %r on partner %r. Reason: %r. Will retry '
+                   'with the next', state.factory, partner, fail)
+        return self._try_next()
+
+    def _fail(self, msg):
+        self.error(msg)
+        return fiber.fail(StartPartnerException(msg))
+
+    @replay.mutable
+    def _store_descriptor(self, state, desc):
+        state.descriptor = desc
+
+
+class QueryStructureManager(manager.BaseManager):
+
+    protocol_id = 'query-structure'
+
+    announce_timeout = 3
+
+    @replay.entry_point
+    def initiate(self, state, partner_type, distance):
+        payload = dict(partner_type=partner_type, distance=distance)
+        msg = message.Announcement(payload=payload)
+        state.medium.announce(msg)
+
+    @replay.immutable
+    def closed(self, state):
+        bids = state.medium.get_bids()
+        result = list()
+        for bid in bids:
+            result += bid.payload['partners']
+        state.medium.terminate(result)
+
+
+class QueryStructureContractor(contractor.BaseContractor):
+
+    protocol_id = 'query-structure'
+
+    @replay.entry_point
+    def announced(self, state, announcement):
+        # FIXME: Eventually this contract should be a NestedContractor, which
+        # would compare the announcement.level and
+        # announcement.payload.distance, nest contract in necessary and
+        # consolidate the bids. This way we will get the tree decomposition
+        # of the graph for the arbitrary structure agent type
+        partner_type = announcement.payload['partner_type']
+        factory = state.agent.query_partner_handler(partner_type)
+        partners = state.agent.query_partners(factory)
+
+        payload = dict(partners=partners)
+        msg = message.Bid(payload=payload)
+        state.medium.bid(msg)

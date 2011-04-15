@@ -6,6 +6,8 @@ from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
 from feat.common import log, run, defer
+from feat.interface.agent import (Access, Address, Storage,
+                                 AgencyAgentState, )
 
 
 def add_options(parser):
@@ -19,12 +21,17 @@ def add_options(parser):
                       help="Add a resource to the host agent. "
                            "Format: RES_NAME:RES_MAX. Example: 'epu:42'.",
                       metavar="HOST_DEF_ID", action="append", default=[])
+    parser.add_option('-g', '--host-category', dest="hostcat",
+                    help="Add a category to the host agent. "
+                         "Format: CAT_NAME:CAT_VALUE.",
+                    metavar="HOST_DEF_ID", action="append", default=[])
 
 
 def check_options(opts, args):
-    if opts.hostdef and opts.hostres:
-        raise run.OptionError("Host resources cannot be specified when "
-                              "specifying a host definition document.")
+    if opts.hostdef and (opts.hostres or opts.hostcat):
+        raise run.OptionError("Host resources or categories cannot be "
+                              "specified when specifyin"
+                              "a host definition document.")
     if args:
         raise run.OptionError("Unexpected arguments: %r" % args)
 
@@ -39,6 +46,22 @@ def start_agent(host_medium, desc, *args, **kwargs):
     d.addErrback(host_medium.agency._error_handler)
     d.addCallback(lambda _: host_medium)
     return d
+
+
+def check_category(catdef):
+    parts = catdef.split(":", 1)
+    name = parts[0].lower()
+    value = 'none'
+    if len(parts) > 1:
+        value = parts[1].lower()
+
+    if name == 'access' and value in Access.values():
+        return name, Access.get(value)
+    if name == 'address' and value in Address.values():
+        return name, Address.get(value)
+    if name == 'storage' and value in Storage.values():
+        return name, Storage.get(value)
+    raise run.OptionError("Invalid host category: %s" % catdef)
 
 
 def bootstrap(parser=None, args=None, descriptors=None):
@@ -77,7 +100,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
                 raise run.OptionError(msg)
             descriptors.append(factory())
 
-        if opts.hostres:
+        if opts.hostres or opts.hostcat:
             hostdef = host.HostDef()
             for resdef in opts.hostres:
                 parts = resdef.split(":", 1)
@@ -91,16 +114,21 @@ def bootstrap(parser=None, args=None, descriptors=None):
                                               % resdef)
                 hostdef.resources[name] = value
 
+            for catdef in opts.hostcat:
+                name, value = check_category(catdef)
+                hostdef.categories[name] = value
+
         conn = run.get_db_connection(agency)
 
         d = defer.succeed(None)
 
         # Starting the host agent
         host_desc = everything.host_agent.Descriptor(shard=u'lobby')
-        host_kwargs = dict(bootstrap=True, hostdef=hostdef)
+        host_kwargs = dict(hostdef=hostdef)
         d.addCallback(defer.drop_result, conn.save_document, host_desc)
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
+        d.addCallbacks(lambda m: m.wait_for_state(AgencyAgentState.ready))
 
         # Starting the other agents
 
