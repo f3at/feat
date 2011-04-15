@@ -7,8 +7,8 @@ from feat.common import delay, first
 from feat.test.integration import common
 from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
-from feat.agents.base import recipient, agent, replay, descriptor, dbtools
-from feat.agents.common import raage, host
+from feat.agents.base import recipient, dbtools
+from feat.agents.common import host
 
 
 def checkAllocation(test, agent, resources):
@@ -20,20 +20,6 @@ def checkNoAllocated(test, a_id):
     test.assertEquals(a_id, None)
 
 
-@agent.register('requesting_agent')
-class RequestingAgent(agent.BaseAgent):
-
-    @replay.mutable
-    def request_resource(self, state, resources):
-        self.info('Requesting resoruce %r', resources)
-        return raage.allocate_resource(self, resources)
-
-
-@descriptor.register('requesting_agent')
-class Descriptor(descriptor.Descriptor):
-    pass
-
-
 @common.attr('slow')
 class SingleHostAllocationSimulation(common.SimulationTest):
 
@@ -43,6 +29,8 @@ class SingleHostAllocationSimulation(common.SimulationTest):
     def prolog(self):
         delay.time_scale = 0.8
         setup = format_block("""
+        load('feat.test.integration.resource')
+
         agency = spawn_agency()
 
         host_desc = descriptor_factory('host_agent')
@@ -87,7 +75,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         checkAllocation(self, self.host_agent, {'host': 0})
         self.info('starting test')
         allocation_id, irecipient = \
-                yield self.req_agent.request_resource(resources)
+                yield self.req_agent.request_resource(**resources)
         checkAllocation(self, self.host_agent, resources)
         self.assertEqual(recipient.IRecipient(self.host_medium), irecipient)
 
@@ -95,17 +83,17 @@ class SingleHostAllocationSimulation(common.SimulationTest):
     def testNoHostFree(self):
         resources = {'host': 1}
         allocation_id, irecipient = \
-                yield self.req_agent.request_resource(resources)
+                yield self.req_agent.request_resource(**resources)
         yield self.host_medium.wait_for_listeners_finish()
         checkAllocation(self, self.host_agent, resources)
-        d = self.req_agent.request_resource(resources)
+        d = self.req_agent.request_resource(**resources)
         self.assertFailure(d, InitiatorFailed)
         yield d
 
     @defer.inlineCallbacks
     def testBadResource(self):
         resources = {'beers': 999}
-        d = self.req_agent.request_resource(resources)
+        d = self.req_agent.request_resource(**resources)
         self.assertFailure(d, InitiatorFailed)
         yield d
 
@@ -119,6 +107,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def prolog(self):
         delay.time_scale = 0.8
         setup = format_block("""
+        load('feat.test.integration.resource')
         host1_desc = descriptor_factory('host_agent')
         host2_desc = descriptor_factory('host_agent')
         host3_desc = descriptor_factory('host_agent')
@@ -164,7 +153,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def _startAllocation(self, resources, count, sequencial=True):
         d_list = list()
         for i in range(count):
-            d = self.req_agent.request_resource(resources)
+            d = self.req_agent.request_resource(**resources)
             if sequencial:
                 yield d
             else:
@@ -238,6 +227,7 @@ class ContractNestingSimulation(common.SimulationTest):
         delay.time_scale = 0.8
         setup = format_block("""
         # Host 1 will run Raage, Host, Shard and Requesting agents
+        load('feat.test.integration.resource')
         agency = spawn_agency()
         host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
@@ -289,11 +279,11 @@ class ContractNestingSimulation(common.SimulationTest):
         self.info("Starting test")
         resources = dict(host=1)
         allocation_id, irecipient1 = \
-                yield self.req_agent.request_resource(resources)
+                yield self.req_agent.request_resource(**resources)
         self.assert_allocated('host', 1)
 
         allocation_id, irecipient2 = \
-                yield self.req_agent.request_resource(resources)
+                yield self.req_agent.request_resource(**resources)
         self.assert_allocated('host', 2)
 
         shard2_hosts = map(recipient.IRecipient, self.host_agents[2:4])

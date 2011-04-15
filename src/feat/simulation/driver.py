@@ -22,6 +22,10 @@ class Commands(manhole.Manhole):
     '''
 
     @manhole.expose()
+    def load(self, module):
+        reflect.named_module(module)
+
+    @manhole.expose()
     def spawn_agency(self, *components):
         '''
         Spawn new agency, returns the reference. Usage:
