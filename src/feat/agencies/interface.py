@@ -4,7 +4,9 @@
 from zope.interface import Interface, Attribute
 
 __all__ = ("IListener", "IConnectionFactory",
-           "IAgencyInitiatorFactory", "IAgencyInterestedFactory",
+           "IAgencyInitiatorFactory", "IAgencyInterestFactory",
+           "IAgencyInterestInternalFactory",
+           "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError", "IFirstMessage")
 
@@ -53,12 +55,60 @@ class IListener(Interface):
         '''
 
 
+class IAgencyInterestFactory(Interface):
+    '''Factory constructing L{IAgencyInterest} instances.'''
+
+    def __call__(factory):
+        '''Creates a new agency interest
+        for the specified agent-side factory.'''
+
+
+class IAgencyInterestInternalFactory(Interface):
+    '''Factory constructing L{IAgencyInterestInternal} instances.'''
+
+    def __call__(agency_agent):
+        '''Creates a new internal agency interest
+        for the specified agent-side factory.'''
+
+
+class IAgencyInterestInternal(Interface):
+
+    factory = Attribute("Agent-side protocol factory.")
+
+    def bind(shard):
+        '''Create a binding for the specified shard.'''
+
+    def revoke():
+        '''Revoke the current bindings to the current shard.'''
+
+    def schedule_protocol(message):
+        '''Schedules the startup of a protocol for the specified message.'''
+
+    def clear_queue():
+        '''Clears the protocol queue.'''
+
+    def wait_finished():
+        '''Returns a Deferred that will be fired when there is no more
+        active protocols and the protocol queue gets empty.'''
+
+    def is_idle():
+        '''Returns True if there is no active or queued protocols.'''
+
+
 class IAgencyInitiatorFactory(Interface):
-    '''Factory constructing L{IAgencyInitiator} instance'''
+    '''Factory constructing L{IAgencyInitiator} instance.'''
+
+    def __call__(agency_agent, recipients, *args, **kwargs):
+        '''Creates a new agency initiator
+        for the specified agent-side factory.'''
 
 
 class IAgencyInterestedFactory(Interface):
-    '''Factory contructing L{IAgencyInterested} instance'''
+    '''Factory constructing L{IAgencyInterested} instance.'''
+
+    def __call__(agency_agent, message):
+        '''Creates a new agency interested
+        for the specified agent-side factory.'''
 
 
 class IConnectionFactory(Interface):

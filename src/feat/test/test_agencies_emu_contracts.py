@@ -604,10 +604,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         def stub_time(time):
 
             def give(res):
+
                 def method(s):
                     return res
 
                 return method
+
             self.stub_method(self.agency, 'get_time', give(time))
 
         delay.time_scale = 1

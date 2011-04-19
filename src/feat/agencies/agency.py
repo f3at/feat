@@ -390,6 +390,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.agency.journal_agent_snapshot(self._descriptor.doc_id,
                                            self.snapshot_agent())
 
+    def journal_protocol_created(self, *args, **kwargs):
+        self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                             *args, **kwargs)
+
     @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc, *args, **kwargs):
         return self.agency.start_agent(desc, *args, **kwargs)
@@ -508,10 +512,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         if p_id in self._interests[p_type]:
             self.error('Already interested in %s.%s protocol', p_type, p_id)
             return False
-        i = Interest(self, factory)
-        self._interests[p_type][p_id] = i
+        interest_factory = IAgencyInterestInternalFactory(factory)
+        interest = interest_factory(self)
+        self._interests[p_type][p_id] = interest
         self.debug('Registered interest in %s.%s protocol', p_type, p_id)
-        return i
+        return interest
 
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
@@ -537,16 +542,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         recipients = IRecipients(recipients)
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
-
-        self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                             factory, medium, *args, **kwargs)
-
-        initiator = factory(self.agent, medium)
-        self.register_listener(medium)
-
-        medium.initiate(initiator)
-
-        return initiator
+        return medium.initiate()
 
     @serialization.freeze_tag('AgencyAgent.initiate_task')
     @replay.named_side_effect('AgencyAgent.initiate_task')
@@ -815,28 +811,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addErrback(not_found, d_id)
         return d
 
-    def _start_listener(self, factory, message, cleanup_fun=None):
-        medium_factory = IAgencyInterestedFactory(factory)
-        medium = medium_factory(self, message)
-
-        self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                             factory, medium)
-
-        interested = factory(self.agent, medium)
-
-        if cleanup_fun:
-            wrapper_call = lambda _: cleanup_fun(message, interested)
-            medium.notify_finish().addBoth(wrapper_call)
-
-        self.call_next(self._init_listener, medium, interested, message)
-
-        return interested
-
-    def _init_listener(self, medium, interested, message):
-        medium.initiate(interested)
-        listener = self.register_listener(medium)
-        listener.on_message(message)
-
     def _next_update(self):
 
         def saved(desc, result, d):
@@ -992,129 +966,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(raise_on_fiber)
         d.addErrback(self._error_handler)
         return d
-
-
-class Interest(Serializable, log.Logger):
-    '''Represents the interest from the point of view of agency.
-    Manages the binding and stores factory reference'''
-
-    implements(IAgencyInterest)
-
-    type_name = "agent-interest"
-    log_category = "agent-interest"
-
-    factory = None
-    binding = None
-
-    def __init__(self, agent_medium, factory):
-        log.Logger.__init__(self, agent_medium)
-        self.medium = agent_medium
-        self.factory = factory
-        self._lobby_binding = None
-        self._concurrency = getattr(factory, "concurrency", None)
-        self._queue = None
-        self._active = 0
-        self._notifier = defer.Notifier()
-
-        if self._concurrency is not None:
-            self._queue = container.ExpQueue(agent_medium)
-
-        self.bind()
-
-    ### Public Methods ###
-
-    def is_idle(self):
-        '''
-        If self._active == 0 it means that the queue is empty.
-        The counter is decreased in synchronous method just before poping
-        the next value from the queue.
-        '''
-        return self._active == 0
-
-    def wait_finished(self):
-        if self.is_idle():
-            return defer.succeed(self)
-        return self._notifier.wait("finished")
-
-    def clear_queue(self):
-        if self._queue is not None:
-            self._queue.clear()
-
-    def schedule_protocol(self, message):
-        if not isinstance(message, self.factory.initiator):
-            return False
-
-        if self._queue is not None:
-            if self._active >= self._concurrency:
-                self.debug('Scheduling %s protocol %s',
-                           message.protocol_type, message.protocol_id)
-                self._queue.add(message, message.expiration_time)
-                return True
-
-        self._initiate_protocol(message)
-
-        return True
-
-    def bind(self, shard=None):
-        if self.factory.interest_type == InterestType.public:
-            prot_id = self.factory.protocol_id
-            self.binding = self.medium.create_binding(prot_id, shard)
-            return self.binding
-
-    def revoke(self):
-        if self.factory.interest_type == InterestType.public:
-            self.binding.revoke()
-
-    def __eq__(self, other):
-        return self.factory == other.factory
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    ### IAgencyInterest Method ###
-
-    @replay.named_side_effect('Interest.bind_to_lobby')
-    def bind_to_lobby(self):
-        assert self._lobby_binding is None
-        prot_id = self.factory.protocol_id
-        binding = self.medium._messaging.personal_binding(prot_id, 'lobby')
-        self._lobby_binding = binding
-
-    @replay.named_side_effect('Interest.unbind_from_lobby')
-    def unbind_from_lobby(self):
-        self._lobby_binding.revoke()
-        self._lobby_binding = None
-
-    ### ISerializable Methods ###
-
-    def snapshot(self):
-        return self.factory
-
-    ### Private Methods ###
-
-    def _initiate_protocol(self, message):
-        self.debug('Instantiating %s protocol %s',
-                   message.protocol_type, message.protocol_id)
-        assert not self._concurrency or self._active < self._concurrency
-        self._active += 1
-        return self.medium._start_listener(self.factory, message,
-                                           self._protocol_terminated)
-
-    def _protocol_terminated(self, message, _protocol):
-        self.debug('%s protocol %s terminated',
-                   message.protocol_type, message.protocol_id)
-        assert self._active > 0
-        self._active -= 1
-        if self._queue is not None:
-            try:
-                message = self._queue.pop()
-                self._initiate_protocol(message)
-                return
-            except container.Empty:
-                pass
-        if self._active == 0:
-            # All protocols terminated and empty queue
-            self._notifier.callback("finished", self)
 
 
 class RetryingProtocol(common.InitiatorMediumBase, log.Logger):

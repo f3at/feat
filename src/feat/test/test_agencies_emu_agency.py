@@ -5,14 +5,15 @@ import uuid
 import time
 
 from twisted.internet import defer, reactor
+from twisted.python import components
 from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.interface.agency import ExecMode
 from feat.common import delay, log
-from feat.agencies import agency
-from feat.agencies.interface import NotFoundError
+from feat.agencies import agency, protocols as aprotocols
+from feat.agencies.interface import *
 
 from . import common
 
@@ -62,6 +63,15 @@ class DummyInterest(object):
         self.protocol_id = "some-contract"
         self.interest_type = protocols.InterestType.public
         self.initiator = message.Announcement
+
+
+class DummyAgencyInterest(aprotocols.DialogInterest):
+    pass
+
+
+components.registerAdapter(DummyAgencyInterest,
+                           protocols.IInterest,
+                           IAgencyInterestInternalFactory)
 
 
 class TestDependencies(common.TestCase, common.AgencyTestHelper):

@@ -62,7 +62,15 @@ class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
     def initiate():
-        pass
+        '''Initiate initiator. Should be call before anything else.'''
+
+    def wait_for_state(*states):
+        '''Returns a Deferred that will be fired when the initiator
+        state changed to one of the specified state.'''
+
+    def wait_finish():
+        '''Returns a Deferred that will be fired
+        when the initiator finishes.'''
 
 
 class InitiatorFailed(Exception):

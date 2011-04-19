@@ -7,34 +7,15 @@ from zope.interface import implements
 
 from feat.agents.base import message, recipient, replay
 from feat.common import log, enum, delay, serialization
-from feat.interface import contracts, contractor, manager, protocols
-from feat.interface.recipient import RecipientType
+from feat.agencies import common, protocols
 
-from feat.agencies.interface import (IListener, IAgencyInitiatorFactory,
-                                     IAgencyInterestedFactory)
-from feat.agencies import common
-
-
-class AgencyManagerFactory(object):
-    # TODO: ask Sebastien why this needs to be serializable
-    implements(IAgencyInitiatorFactory, serialization.ISerializable)
-
-    type_name = "manager-medium-factory"
-
-    def __init__(self, factory):
-        self._factory = factory
-
-    def __call__(self, agent, recipients, *args, **kwargs):
-        return AgencyManager(agent, recipients, *args, **kwargs)
-
-    # ISerializable
-
-    def snapshot(self):
-        return None
-
-components.registerAdapter(AgencyManagerFactory,
-                           manager.IManagerFactory,
-                           IAgencyInitiatorFactory)
+from feat.agencies.interface import *
+from feat.interface.serialization import *
+from feat.interface.protocols import *
+from feat.interface.contracts import *
+from feat.interface.manager import *
+from feat.interface.contractor import *
+from feat.interface.recipient import *
 
 
 class ContractorState(enum.Enum):
@@ -72,6 +53,8 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         if bid in self.manager.contractors:
             raise RuntimeError('Contractor for the bid already registered!')
         self.manager.contractors[bid] = self
+
+    ### Private Methods ###
 
     def _send_message(self, msg):
         self.log('Sending message: %r to contractor: %r',
@@ -133,23 +116,24 @@ class ManagerContractors(dict):
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                     common.InitiatorMediumBase):
-    implements(manager.IAgencyManager, IListener,
-               serialization.ISerializable)
+
+    implements(IAgencyManager, IListener, ISerializable)
 
     log_category = "manager-medium"
     type_name = "manager-medium"
 
-    error_state = contracts.ContractState.wtf
+    error_state = ContractState.wtf
 
-    def __init__(self, agent, recipients, *args, **kwargs):
-        log.Logger.__init__(self, agent)
-        log.LogProxy.__init__(self, agent)
+    def __init__(self, agency_agent, factory, recipients, *args, **kwargs):
+        log.Logger.__init__(self, agency_agent)
+        log.LogProxy.__init__(self, agency_agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
         common.InitiatorMediumBase.__init__(self)
 
-        self.agent = agent
+        self.agent = agency_agent
+        self.factory = factory
         self.recipients = recipients
         self.expected_bids = self._count_expected_bids(recipients)
         self.args = args
@@ -157,25 +141,31 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.contractors = ManagerContractors()
 
-    # manager.IAgencyManager stuff
+    # IAgencyManager stuff
 
-    def initiate(self, manager):
+    def initiate(self):
+        self.agent.journal_protocol_created(self.factory, self,
+                                            *self.args, **self.kwargs)
+        manager = self.factory(self.agent.get_agent(), self)
+        self.agent.register_listener(self)
+
         self.manager = manager
         self.log_name = manager.__class__.__name__
         self._set_protocol_id(manager.protocol_id)
 
-        self._set_state(contracts.ContractState.initiated)
+        self._set_state(ContractState.initiated)
         timeout = self.agent.get_time() + self.manager.initiate_timeout
-        error = protocols.InitiatorExpired(
-            'Timeout exceeded waiting for manager.initate() '
-            'to send the announcement')
+        error = InitiatorExpired("Timeout exceeded waiting for "
+                                 "initate() to send the announcement")
         self._expire_at(timeout, self._error_handler,
-                        contracts.ContractState.wtf, failure.Failure(error))
+                        ContractState.wtf, failure.Failure(error))
 
-        self.call_next(self._call, manager.initiate,
+        self.call_next(self._call, self.manager.initiate,
                        *self.args, **self.kwargs)
 
         return manager
+
+    ### IAgencyManager Methods ###
 
     @replay.named_side_effect('AgencyManager.announce')
     def announce(self, announce):
@@ -186,23 +176,22 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         if announce.traversal_id is None:
             announce.traversal_id = str(uuid.uuid1())
 
-        self._ensure_state(contracts.ContractState.initiated)
-        self._set_state(contracts.ContractState.announced)
+        self._ensure_state(ContractState.initiated)
+        self._set_state(ContractState.announced)
 
-        expiration_time = self.agent.get_time() + self.manager.announce_timeout
-        bid = self._send_message(announce, expiration_time)
+        exp_time = self.agent.get_time() + self.manager.announce_timeout
+        bid = self._send_message(announce, exp_time)
 
         self._cancel_expiration_call()
-        self._setup_expiration_call(expiration_time,
-                                    self._on_announce_expire)
+        self._setup_expiration_call(exp_time, self._on_announce_expire)
 
         return bid
 
     @replay.named_side_effect('AgencyManager.reject')
     def reject(self, bid, rejection=None):
-        self._ensure_state([contracts.ContractState.announced,
-                            contracts.ContractState.granted,
-                            contracts.ContractState.closed])
+        self._ensure_state([ContractState.announced,
+                            ContractState.granted,
+                            ContractState.closed])
 
         contractor = self.contractors[bid]
         if not rejection:
@@ -214,8 +203,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyManager.grant')
     @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
-        self._ensure_state([contracts.ContractState.closed,
-                            contracts.ContractState.announced])
+        self._ensure_state([ContractState.closed,
+                            ContractState.announced])
 
         if not isinstance(grants, list):
             grants = [grants]
@@ -224,11 +213,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         grants = [(bid, grant.clone(), ) for bid, grant in grants]
 
         self._cancel_expiration_call()
-        self._set_state(contracts.ContractState.granted)
+        self._set_state(ContractState.granted)
 
         expiration_time = self.agent.get_time() + self.manager.grant_timeout
         self._expire_at(expiration_time, self._on_grant_expire,
-                        contracts.ContractState.aborted)
+                        ContractState.aborted)
 
         # send a grant event to the contractors
         for bid, grant in grants:
@@ -251,9 +240,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyManager.cancel')
     def cancel(self, reason=None):
-        self._ensure_state([contracts.ContractState.granted,
-                            contracts.ContractState.cancelled])
-        self._set_state(contracts.ContractState.cancelled)
+        self._ensure_state([ContractState.granted,
+                            ContractState.cancelled])
+        self._set_state(ContractState.cancelled)
 
         to_cancel = self.contractors.with_state(\
                         ContractorState.granted, ContractorState.completed)
@@ -269,11 +258,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         for contractor in self.contractors.with_state(ContractorState.bid):
             contractor.on_event(message.Rejection())
 
-        if not self._cmp_state([contracts.ContractState.expired,
-                                contracts.ContractState.cancelled,
-                                contracts.ContractState.aborted,
-                                contracts.ContractState.wtf]):
-            self._set_state(contracts.ContractState.terminated)
+        if not self._cmp_state([ContractState.expired,
+                                ContractState.cancelled,
+                                ContractState.aborted,
+                                ContractState.wtf]):
+            self._set_state(ContractState.terminated)
             self.call_next(self._terminate, result)
 
     @replay.named_side_effect('AgencyManager.get_bids')
@@ -285,15 +274,53 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_recipients(self):
         return self.recipients
 
-    # hooks for events (timeout and messages comming in)
+    ### IListener Methods ###
+
+    def on_message(self, msg):
+        mapping = {
+            message.Bid:\
+                {'method': self._on_bid,
+                 'state_after': ContractState.announced,
+                 'state_before': ContractState.announced},
+            message.Refusal:\
+                {'method': self._on_refusal,
+                 'state_after': ContractState.announced,
+                 'state_before': ContractState.announced},
+            message.Duplicate:\
+                {'method': self._on_refusal,
+                 'state_after': ContractState.announced,
+                 'state_before': ContractState.announced},
+            message.FinalReport:\
+                {'method': self._on_report,
+                 'state_after': ContractState.granted,
+                 'state_before': ContractState.granted},
+            message.Cancellation:\
+                {'method': self._on_cancel,
+                 'state_before': ContractState.granted,
+                 'state_after': ContractState.cancelled},
+        }
+        self._event_handler(mapping, msg)
+
+    def get_session_id(self):
+        return self.session_id
+
+    def get_agent_side(self):
+        return self.manager
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return id(self)
+
+    ### Hooks for events (timeout and messages comming in) ###
 
     def _on_grant_expire(self):
-        self._set_state(contracts.ContractState.aborted)
+        self._set_state(ContractState.aborted)
         return self._call(self.manager.aborted)
 
     def _on_announce_expire(self):
         self.log('Timeout expired, closing the announce window')
-        self._ensure_state(contracts.ContractState.announced)
+        self._ensure_state(ContractState.announced)
 
         self._cancel_expiration_call()
 
@@ -339,8 +366,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _on_complete(self):
         self.log('All Reports received. Sending ACKs')
-        self._ensure_state(contracts.ContractState.granted)
-        self._set_state(contracts.ContractState.completed)
+        self._ensure_state(ContractState.granted)
+        self._set_state(ContractState.completed)
         self._cancel_expiration_call()
 
         contractors = self.contractors.with_state(ContractorState.completed)
@@ -362,7 +389,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
 
-    # private
+    ### Private Methods ###
 
     def _check_if_should_goto_close(self):
         if self.expected_bids and len(self.contractors) >= self.expected_bids:
@@ -373,15 +400,15 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         if len(self.contractors.with_state(ContractorState.bid)) > 0:
             self._close_announce_period()
         else:
-            self._set_state(contracts.ContractState.expired)
+            self._set_state(ContractState.expired)
             self._run_and_terminate(self.manager.expired)
 
     def _close_announce_period(self):
         expiration_time = max(map(lambda bid: bid.expiration_time,
                                   self.contractors))
         self._expire_at(expiration_time, self.manager.expired,
-                        contracts.ContractState.expired)
-        self._set_state(contracts.ContractState.closed)
+                        ContractState.expired)
+        self._set_state(ContractState.closed)
         self._call(self.manager.closed)
 
     def _terminate(self, arg):
@@ -406,81 +433,21 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             count += 1
         return count
 
-    # IListener stuff
-
-    def on_message(self, msg):
-        mapping = {
-            message.Bid:\
-                {'method': self._on_bid,
-                 'state_after': contracts.ContractState.announced,
-                 'state_before': contracts.ContractState.announced},
-            message.Refusal:\
-                {'method': self._on_refusal,
-                 'state_after': contracts.ContractState.announced,
-                 'state_before': contracts.ContractState.announced},
-            message.Duplicate:\
-                {'method': self._on_refusal,
-                 'state_after': contracts.ContractState.announced,
-                 'state_before': contracts.ContractState.announced},
-            message.FinalReport:\
-                {'method': self._on_report,
-                 'state_after': contracts.ContractState.granted,
-                 'state_before': contracts.ContractState.granted},
-            message.Cancellation:\
-                {'method': self._on_cancel,
-                 'state_before': contracts.ContractState.granted,
-                 'state_after': contracts.ContractState.cancelled},
-        }
-        self._event_handler(mapping, msg)
-
-    def get_session_id(self):
-        return self.session_id
-
-    def get_agent_side(self):
-        return self.manager
-
-    # ISerializable
-
-    def snapshot(self):
-        return id(self)
-
-
-class AgencyContractorFactory(object):
-    implements(IAgencyInterestedFactory, serialization.ISerializable)
-
-    type_name = "contractor-medium-factory"
-
-    def __init__(self, factory):
-        self._factory = factory
-
-    def __call__(self, agent, recipients, *args, **kwargs):
-        return AgencyContractor(agent, recipients, *args, **kwargs)
-
-    # ISerializable
-
-    def snapshot(self):
-        return None
-
-
-components.registerAdapter(AgencyContractorFactory,
-                           contractor.IContractorFactory,
-                           IAgencyInterestedFactory)
-
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                        common.InterestedMediumBase):
-    implements(contractor.IAgencyContractor, IListener,
-               serialization.ISerializable)
+
+    implements(IAgencyContractor, IListener, ISerializable)
 
     log_category = "contractor-medium"
     type_name = "contractor-medium"
 
-    error_state = contracts.ContractState.wtf
+    error_state = ContractState.wtf
 
-    def __init__(self, agent, announcement):
-        log.Logger.__init__(self, agent)
-        log.LogProxy.__init__(self, agent)
+    def __init__(self, agency_agent, factory, announcement):
+        log.Logger.__init__(self, agency_agent)
+        log.LogProxy.__init__(self, agency_agent)
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self, announcement.sender_id,
@@ -489,19 +456,23 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         assert isinstance(announcement, message.Announcement)
 
-        self.agent = agent
+        self.agent = agency_agent
+        self.factory = factory
         self.announce = announcement
         self.recipients = announcement.reply_to
 
         self._reporter_call = None
 
-    def initiate(self, contractor):
+    def initiate(self):
+        self.agent.journal_protocol_created(self.factory, self)
+        contractor = self.factory(self.agent.get_agent(), self)
+
         self.contractor = contractor
         self.log_name = self.contractor.__class__.__name__
-        self._set_state(contracts.ContractState.initiated)
+        self._set_state(ContractState.initiated)
         return contractor
 
-    # contractor.IAgencyContractor stuff
+    ### IAgencyContractor Methods ###
 
     @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
@@ -510,15 +481,15 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
 
-        self._ensure_state(contracts.ContractState.announced)
-        self._set_state(contracts.ContractState.bid)
+        self._ensure_state(ContractState.announced)
+        self._set_state(ContractState.bid)
 
         expiration_time = self.agent.get_time() + self.contractor.bid_timeout
         self.own_bid = self._send_message(bid, expiration_time)
 
         self._cancel_expiration_call()
         self._expire_at(expiration_time, self.contractor.bid_expired,
-                        contracts.ContractState.expired)
+                        ContractState.expired)
 
         return self.own_bid
 
@@ -529,8 +500,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug('Sending bid of the nested contractor: %r.', bid)
         assert isinstance(bid, message.Bid)
 
-        self._ensure_state(contracts.ContractState.announced)
-        self._set_state(contracts.ContractState.delegated)
+        self._ensure_state(ContractState.announced)
+        self._set_state(ContractState.delegated)
 
         self.bid = self._handover_message(bid)
         delay.callLater(0, self._terminate, None)
@@ -542,8 +513,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
 
-        self._ensure_state(contracts.ContractState.announced)
-        self._set_state(contracts.ContractState.refused)
+        self._ensure_state(ContractState.announced)
+        self._set_state(ContractState.refused)
 
         refusal = self._send_message(refusal)
         self._terminate(None)
@@ -555,8 +526,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
 
-        self._ensure_state(contracts.ContractState.granted)
-        self._set_state(contracts.ContractState.defected)
+        self._ensure_state(ContractState.granted)
+        self._set_state(ContractState.defected)
 
         cancellation = self._send_message(cancellation)
         self._terminate(None)
@@ -568,15 +539,15 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
 
-        self._ensure_state(contracts.ContractState.granted)
-        self._set_state(contracts.ContractState.completed)
+        self._ensure_state(ContractState.granted)
+        self._set_state(ContractState.completed)
 
         expiration_time = self.agent.get_time() + self.contractor.bid_timeout
         self.report = self._send_message(report, expiration_time)
 
         self._cancel_expiration_call()
         self._expire_at(expiration_time, self.contractor.aborted,
-                        contracts.ContractState.aborted)
+                        ContractState.aborted)
         return self.report
 
     @serialization.freeze_tag('AgencyContractor.update_manager_address')
@@ -588,7 +559,53 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        self.recipients, recp)
             self.recipients = recp
 
-    # private section
+    ### IListener Methods ###
+
+    def on_message(self, msg):
+        mapping = {
+            message.Announcement:\
+                {'method': self._on_announce,
+                 'state_before': ContractState.initiated,
+                 'state_after': ContractState.announced},
+            message.Rejection:\
+                {'method': self._on_reject,
+                 'state_after': ContractState.rejected,
+                 'state_before': ContractState.bid},
+            message.Grant:\
+                {'method': self._on_grant,
+                 'state_after': ContractState.granted,
+                 'state_before': ContractState.bid},
+            message.Cancellation:\
+                [{'method': self._on_cancel_in_granted,
+                 'state_after': ContractState.cancelled,
+                 'state_before': ContractState.granted},
+                 {'method': self._on_cancel_in_completed,
+                 'state_after': ContractState.aborted,
+                 'state_before': ContractState.completed}],
+            message.Acknowledgement:\
+                {'method': self._on_ack,
+                 'state_after': ContractState.acknowledged,
+                 'state_before': ContractState.completed},
+        }
+        self._event_handler(mapping, msg)
+
+    def get_session_id(self):
+        return self.session_id
+
+    def get_agent_side(self):
+        return self.contractor
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return id(self)
+
+    ### Used by ExpirationCallsMixin ###
+
+    def _get_time(self):
+        return self.agent.get_time()
+
+    ### Private Methods ###
 
     def _terminate(self, arg):
         common.ExpirationCallsMixin._terminate(self)
@@ -598,7 +615,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.unregister_listener(self.session_id)
         common.InterestedMediumBase._terminate(self, arg)
 
-    # update reporter stuff
+    ### Update reporter stuff ###
 
     def _cancel_reporter(self):
         if self._reporter_call and not (self._reporter_call.called or\
@@ -622,7 +639,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _update(self, report):
         self.debug("Sending update report %r", report)
         assert isinstance(report, message.UpdateReport)
-        self._ensure_state(contracts.ContractState.granted)
+        self._ensure_state(ContractState.granted)
 
         report = self._send_message(report)
         return report
@@ -632,12 +649,12 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
 
-    # hooks for messages comming in
+    ### Hooks for messages comming in ###
 
     def _on_announce(self, announcement):
         self._expire_at(announcement.expiration_time,
                         self.contractor.announce_expired,
-                        contracts.ContractState.closed)
+                        ContractState.closed)
         self._call(self.contractor.announced, announcement)
 
     def _on_grant(self, grant):
@@ -667,48 +684,31 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _on_cancel_in_completed(self, cancellation):
         self._run_and_terminate(self.contractor.aborted)
 
-    # IListener stuff
 
-    def on_message(self, msg):
-        mapping = {
-            message.Announcement:\
-                {'method': self._on_announce,
-                 'state_before': contracts.ContractState.initiated,
-                 'state_after': contracts.ContractState.announced},
-            message.Rejection:\
-                {'method': self._on_reject,
-                 'state_after': contracts.ContractState.rejected,
-                 'state_before': contracts.ContractState.bid},
-            message.Grant:\
-                {'method': self._on_grant,
-                 'state_after': contracts.ContractState.granted,
-                 'state_before': contracts.ContractState.bid},
-            message.Cancellation:\
-                [{'method': self._on_cancel_in_granted,
-                 'state_after': contracts.ContractState.cancelled,
-                 'state_before': contracts.ContractState.granted},
-                 {'method': self._on_cancel_in_completed,
-                 'state_after': contracts.ContractState.aborted,
-                 'state_before': contracts.ContractState.completed}],
-            message.Acknowledgement:\
-                {'method': self._on_ack,
-                 'state_after': contracts.ContractState.acknowledged,
-                 'state_before': contracts.ContractState.completed},
-        }
-        self._event_handler(mapping, msg)
+class AgencyManagerFactory(protocols.BaseInitiatorFactory):
+    type_name = "manager-medium-factory"
+    protocol_factory = AgencyManager
 
-    def get_session_id(self):
-        return self.session_id
 
-    def get_agent_side(self):
-        return self.contractor
+components.registerAdapter(AgencyManagerFactory,
+                           IManagerFactory,
+                           IAgencyInitiatorFactory)
 
-    # Used by ExpirationCallsMixin
 
-    def _get_time(self):
-        return self.agent.get_time()
+class AgencyContractorInterest(protocols.DialogInterest):
+    pass
 
-    # ISerializable
 
-    def snapshot(self):
-        return id(self)
+components.registerAdapter(AgencyContractorInterest,
+                           IContractorFactory,
+                           IAgencyInterestInternalFactory)
+
+
+class AgencyContractorFactory(protocols.BaseInterestedFactory):
+    type_name = "contractor-medium-factory"
+    protocol_factory = AgencyContractor
+
+
+components.registerAdapter(AgencyContractorFactory,
+                           IContractorFactory,
+                           IAgencyInterestedFactory)
