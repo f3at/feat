@@ -8,7 +8,8 @@ from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
 from feat.agents.raage import raage_agent
 from feat.agents.dns import dns_agent
-from feat.agents.common import host, shard, raage, dns
+from feat.agents.monitor import monitor_agent
+from feat.agents.common import host, shard, raage, dns, monitor
 
 # Internal to register serialization adapters
 from feat.common.serialization import adapters

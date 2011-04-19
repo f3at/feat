@@ -178,7 +178,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d.addCallback(lambda _: self._messaging.disconnect())
         return d
 
-    def unregister_agent(self, medium, agent_id):
+    def unregister_agent(self, medium):
+        agent_id = medium.get_descriptor().doc_id
+        self.debug('Unregistering agent id: %r', agent_id)
         self._agents.remove(medium)
         self.journal_agent_deleted(agent_id)
 
@@ -882,10 +884,18 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Run code specific to the given shutdown
         d.addBoth(lambda _: body())
         # Tell the agency we are no more
-        d.addBoth(lambda doc: self.agency.unregister_agent(self, doc.doc_id))
+        d.addBoth(lambda _: self.agency.unregister_agent(self))
         # Close the messaging connection
         d.addBoth(lambda _: self._messaging.disconnect())
         return d
+
+    def terminate_hard(self):
+        '''Kill the agent without notifying anybody.'''
+
+        def generate_body():
+            '''nothing to do'''
+
+        return self._terminate_procedure(generate_body)
 
     def _terminate(self):
         '''terminate() -> Shutdown agent gently removing the descriptor and

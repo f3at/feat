@@ -1,6 +1,7 @@
 import uuid
 
 from feat.agents.base import manager, replay, message, descriptor
+from feat.common import fiber
 
 
 __all__ = ['start_manager', 'query_structure', 'get_host_list']
@@ -33,7 +34,7 @@ def get_host_list(agent):
         agent.warning(
             "get_host_list() called, but agent doesn't have shard partner, "
             "returning empty list")
-        return list()
+        return fiber.succeed(list())
     else:
         return agent.call_remote(shard_recp, 'get_host_list', _timeout=1)
 

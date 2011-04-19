@@ -5,7 +5,7 @@ import operator
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
                               task, )
-from feat.agents.common import rpc, raage, host
+from feat.agents.common import rpc, raage, host, monitor
 from feat.common import fiber, serialization, manhole, enum
 from feat.interface.protocols import InitiatorFailed
 
@@ -95,13 +95,29 @@ class RaagePartner(StructuralPartner):
         return agent.save_document(desc)
 
 
+@serialization.register
+class MonitorPartner(StructuralPartner):
+
+    type_name = 'shard->monitor'
+
+    @classmethod
+    def discover(cls, agent):
+        return monitor.discover(agent)
+
+    @classmethod
+    def prepare_descriptor(cls, agent):
+        desc = monitor.Descriptor()
+        return agent.save_document(desc)
+
+
 class Partners(partners.Partners):
 
     partners.has_many('hosts', 'host_agent', HostPartner)
     partners.has_many('neighbours', 'shard_agent', ShardPartner)
     partners.has_one('raage', 'raage_agent', RaagePartner)
+    partners.has_one('monitor', 'monitor_agent', MonitorPartner)
 
-    shard_structure = ['raage_agent']
+    shard_structure = ['raage_agent', 'monitor_agent']
 
 
 class ShardAgentRole(enum.Enum):
@@ -167,10 +183,11 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
         for partner_class in state.partners.shard_structure:
             factory = self.query_partner_handler(partner_class)
             partner = self.query_partners(factory)
-            if partner is None:
+            if partner is None or (isinstance(partner, list) and \
+               len(partner) == 0):
                 self.debug("check_shard_structure() detected missing %r "
-                           "partner, taking action.". partner_class)
-            self.initiate_task(FixMissingPartner, factory)
+                           "partner, taking action.", partner_class)
+                self.initiate_task(FixMissingPartner, factory)
 
     @replay.mutable
     def request_starting_partner(self, state, factory):

@@ -7,10 +7,10 @@ __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
 
 
 class CategoryError(RuntimeError):
-    '''
+    """
     Raised when categories don't match with the
     categories defined in the HostAgent.
-    '''
+    """
 
 
 class Access(enum.Enum):
