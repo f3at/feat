@@ -169,7 +169,9 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         self.assertEquals(count, 0)
 
     def testValidateProlog(self):
-        self.assertEqual(6, self.count_agents())
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('requesting_agent'))
         self.assertEqual(3, len(self.agents))
 
     @defer.inlineCallbacks
