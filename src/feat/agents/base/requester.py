@@ -2,7 +2,7 @@ from zope.interface import implements
 
 from feat.common import log, reflect, serialization, fiber
 from feat.interface import requester, protocols
-from feat.agents.base import replay, protocol, message
+from feat.agents.base import replay, protocol, message, recipient
 
 
 class Meta(type(replay.Replayable)):
@@ -46,18 +46,50 @@ class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
         '''@see: L{requester.IAgentRequester}'''
 
 
-class GoodBye(BaseRequester):
+class PartnershipProtocol(BaseRequester):
 
     timeout = 1
-    protocol_id = 'goodbye'
+    protocol_id = 'partner-notification'
 
-    @replay.immutable
-    def initiate(self, state, payload=None):
+    known_types = ['goodbye', 'died', 'restarted', 'burried']
+
+    @replay.entry_point
+    def initiate(self, state, notification_type, origin, blackbox=None):
+        origin = recipient.IRecipient(origin)
+        if notification_type not in type(self).known_types:
+            raise AttributeError(
+                'Expected notification type to be in %r, got %r' %\
+                (type(self).known_types, notification_type, ))
+        payload = {
+            'type': notification_type,
+            'blackbox': blackbox,
+            'origin': origin}
         msg = message.RequestMessage(payload=payload)
         state.medium.request(msg)
 
+    @replay.immutable
+    def got_reply(self, state, reply):
+        return reply.payload
+
 
 def say_goodbye(agent, recp, payload):
+    origin = agent.get_own_address()
+    return _notify_partner(agent, recp, 'goodbye', origin, payload)
+
+
+def notify_died(agent, recp, origin, payload):
+    return _notify_partner(agent, recp, 'died', origin, payload)
+
+
+def notify_restarted(agent, recp, origin, new_address):
+    return _notify_partner(agent, recp, 'restarted', origin, new_address)
+
+
+def notify_burried(agent, recp, origin, payload):
+    return _notify_partner(agent, recp, 'burried', origin, payload)
+
+
+def _notify_partner(agent, recp, notification_type, origin, payload):
 
     def _ignore_initiator_failed(fail):
         if fail.check(protocols.InitiatorFailed):
@@ -67,9 +99,10 @@ def say_goodbye(agent, recp, payload):
             agent.log('Reraising exception %r', fail)
             fail.raiseException()
 
-    f = fiber.succeed(GoodBye)
-    f.add_callback(agent.initiate_protocol, recp, payload)
-    f.add_callback(GoodBye.notify_finish)
+    f = fiber.succeed(PartnershipProtocol)
+    f.add_callback(agent.initiate_protocol, recp, notification_type,
+                   origin, payload)
+    f.add_callback(PartnershipProtocol.notify_finish)
     f.add_errback(_ignore_initiator_failed)
     return f
 

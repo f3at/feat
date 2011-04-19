@@ -44,16 +44,21 @@ class BaseReplier(log.Logger, replay.Replayable):
         '''@see: L{replier.IAgentReplier}'''
 
 
-class GoodBye(BaseReplier):
+class PartnershipProtocol(BaseReplier):
 
-    protocol_id = 'goodbye'
+    protocol_id = 'partner-notification'
 
     @replay.journaled
     def requested(self, state, request):
-        f = fiber.Fiber()
-        f.add_callback(state.agent.partner_said_goodbye, request.payload)
+        not_type = request.payload['type']
+        blackbox = request.payload['blackbox']
+        origin = request.payload['origin']
+
+        f = fiber.succeed(origin)
+        f.add_callback(state.agent.partner_sent_notification, not_type,
+                       blackbox)
         f.add_both(self._send_reply)
-        return f.succeed(request.reply_to)
+        return f
 
     @replay.immutable
     def _send_reply(self, state, payload):

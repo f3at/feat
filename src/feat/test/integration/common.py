@@ -178,7 +178,7 @@ class SimulationTest(common.TestCase):
             yield common.delay(None, freq)
 
     @defer.inlineCallbacks
-    def wait_for_idle(self, timeout, freq=0.5):
+    def wait_for_idle(self, timeout, freq=0.05):
         try:
             yield self.wait_for(self.driver.is_idle, timeout, freq)
         except FailTest as e:

@@ -8,6 +8,9 @@ from feat.common import log, serialization, fiber, annotate
 from feat.agents.base import replay, recipient, requester
 
 
+ACCEPT_RESPONSABILITY = "___I'm on it___"
+
+
 class DefinitionError(Exception):
     pass
 
@@ -115,13 +118,42 @@ class BasePartner(serialization.Serializable):
         return requester.say_goodbye(agent, self.recipient, brothers)
 
     def on_goodbye(self, agent, payload=None):
-        pass
+        '''
+        Called when the partner goes through the termination procedure.
+        @param payload: By default list of the partner of the same class
+                        of the agent.
+        '''
+
+    def on_died(self, agent, payload=None):
+        '''
+        Called by the monitoring agent, when he detects that the partner has
+        died. If your handler is going to solve this problem return the
+        ACCEPT_RESPONSABILITY constant.
+
+        @param payload: Same as in on_goodbye.
+        '''
+
+    def on_restarted(self, agent, migrated):
+        '''
+        Called after the partner is restarted by the monitoring agent.
+        @param migrated: Flag saying whether the IRecipient of partner has
+                         changed
+        '''
+
+    def on_burried(self, agent, payload=None):
+        '''
+        Called when all the hope is lost. Noone took the responsability for
+        handling the agents death, and monitoring agent failed to restart it.
+
+        @param payload: Same as in on_goodbye.
+        '''
 
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
         return self.recipient == other.recipient and\
-               self.allocation_id == other.allocation_id
+               self.allocation_id == other.allocation_id and\
+               self.role == other.role
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -277,25 +309,20 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return partner.initiate(state.agent)
 
     @replay.mutable
-    def on_goodbye(self, state, recp, blackbox):
+    def receive_notification(self, state, recp, notification_type,
+                             blackbox):
         partner = self.find(recp)
         if partner is None:
-            self.warning(
-                "Didn't find a partner matching the goodbye sender :%r!", recp)
+            self.warning("Didn't find a partner matching the notification "
+                         "%r origin :%r!", notification_type, recp)
             return None
-
-        f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self.remove, partner)
-        f.add_callback(fiber.drop_result, self._call_on_goodbye,
-                       partner, blackbox)
-        return f.succeed()
-
-    @replay.immutable
-    def _call_on_goodbye(self, state, partner, blackbox):
-        # This is done outside the currect execution chain, as the
-        # action performed may be arbitrary long running, and we don't want
-        # to run into the timeout of goodbye request
-        state.agent.call_next(partner.on_goodbye, state.agent, blackbox)
+        handler_method = '_on_%s' % (notification_type, )
+        handler = getattr(self, handler_method, None)
+        if not callable(handler):
+            return fiber.fail(
+                ValueError('No handler found for notification %r!' %\
+                           (notification_type, )))
+        return handler(partner, blackbox)
 
     @replay.mutable
     def remove(self, state, partner):
@@ -308,13 +335,58 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                            partner.allocation_id)
         return f
 
+    # handlers for incoming notifications from/about partners
+
+    def _on_goodbye(self, partner, blackbox):
+        return self._remove_and_trigger_cb(partner, 'on_goodbye', blackbox)
+
+    def _on_burried(self, partner, blackbox):
+        return self._remove_and_trigger_cb(partner, 'on_burried', blackbox)
+
+    @replay.immutable
+    def _on_died(self, state, partner, blackbox):
+        return fiber.wrap_defer(partner.on_died, state.agent, blackbox)
+
+    @replay.immutable
+    def _on_restarted(self, state, partner, new_address):
+        moved = (new_address != partner.recipient)
+        f = fiber.succeed()
+        if moved:
+            f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+                           self._update_recipient, partner, new_address)
+        f.add_callback(fiber.drop_result, self._call_next_cb,
+                       partner.on_restarted, moved)
+        return f
+
     # private
+
+    def _remove_and_trigger_cb(self, partner, cb_name, blackbox):
+        callback = getattr(partner, cb_name, None)
+        assert callable(callback)
+        f = fiber.Fiber()
+        f.add_callback(fiber.drop_result, self.remove, partner)
+        f.add_callback(fiber.drop_result, self._call_next_cb,
+                       callback, blackbox)
+        return f.succeed()
+
+    @replay.immutable
+    def _call_next_cb(self, state, method, blackbox):
+        # This is done outside the currect execution chain, as the
+        # action performed may be arbitrary long running, and we don't want
+        # to run into the timeout of goodbye request
+        state.agent.call_next(method, state.agent, blackbox)
 
     def _get_relation(self, name):
         try:
             return self._relations[name]
         except KeyError:
             raise ValueError('Unknown relation name %r: ' % (name, ))
+
+    def _update_recipient(self, desc, partner, new_recp):
+        index = desc.partners.index(partner)
+        partner.recipient = new_recp
+        desc.partners[index] = partner
+        return partner
 
     def _append_partner(self, desc, partner, substitute):
         if substitute:

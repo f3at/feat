@@ -93,7 +93,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def initiate(self, state):
         self._load_allocations()
-        state.medium.register_interest(replier.GoodBye)
+        state.medium.register_interest(replier.PartnershipProtocol)
         state.medium.register_interest(replier.ProposalReceiver)
 
     @replay.immutable
@@ -195,8 +195,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
                                      substitute)
 
     @replay.mutable
-    def partner_said_goodbye(self, state, recp, payload):
-        return state.partners.on_goodbye(recp, payload)
+    def partner_sent_notification(self, state, recp, notification_type,
+                                  payload):
+        return state.partners.receive_notification(recp, notification_type,
+                                                  payload)
 
     @manhole.expose()
     @replay.immutable
