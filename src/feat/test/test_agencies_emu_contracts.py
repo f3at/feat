@@ -600,8 +600,20 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         correctly. Second announcement with same traversal id
         should be ignored.
         '''
+
+        def stub_time(time):
+
+            def give(res):
+                def method(s):
+                    return res
+
+                return method
+            self.stub_method(self.agency, 'get_time', give(time))
+
         delay.time_scale = 1
-        expiration_time = time.time() + 1
+
+        stub_time(0)
+        expiration_time = 1
         yield self.recv_announce(expiration_time, traversal_id='first')
 
         self.assertEqual(1, self._get_number_of_listeners())
@@ -615,12 +627,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(1, self._get_number_of_listeners())
         yield self._expire_contractor()
 
-        yield common.delay(None, 1)
+        stub_time(2)
         # now receive expired message
         yield self.recv_announce(expiration_time, traversal_id='first')
         self.assertEqual(0, self._get_number_of_listeners())
 
-        yield self.recv_announce(expiration_time + 2, traversal_id='first')
+        yield self.recv_announce(expiration_time + 3, traversal_id='first')
         self.assertEqual(1, self._get_number_of_listeners())
         yield self._expire_contractor()
 
