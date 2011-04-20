@@ -22,6 +22,9 @@ class Messaging(log.Logger, log.FluLogKeeper):
         # name -> exchange
         self._exchanges = {}
 
+    def is_idle(self):
+        return all(q.is_idle() for q in self._queues.itervalues())
+
     # IConnectionFactory implementation
 
     def get_connection(self, agent):

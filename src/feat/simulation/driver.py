@@ -181,6 +181,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     yield agent
 
     def is_idle(self):
+        return self._messaging.is_idle() and self.are_agents_idle()
+
+    def are_agents_idle(self):
         return all([agent.is_idle() for agent in self.iter_agents()])
 
     def register_breakpoint(self, name):

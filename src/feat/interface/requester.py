@@ -43,7 +43,7 @@ class IAgentRequester(protocols.IInitiator):
     timeout = Attribute('Number of seconds after which contract expires.\
                          Default=0 means no timeout')
 
-    def initiate():
+    def initiate(*args, **kwargs):
         pass
 
     def got_reply(reply):

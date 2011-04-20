@@ -26,7 +26,7 @@ class TaskState(enum.Enum):
 
 class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
                  common.ExpirationCallsMixin, common.AgencyMiddleMixin,
-                 common.InitiatorMediumBase):
+                 common.TransientInitiatorMediumBase):
 
     implements(IAgencyTask, ISerializable, IListener)
 
@@ -40,7 +40,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
-        common.InitiatorMediumBase.__init__(self)
+        common.TransientInitiatorMediumBase.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
@@ -53,8 +53,9 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.journal_protocol_created(self.factory, self,
                                             *self.args, **self.kwargs)
         task = self.factory(self.agent.get_agent(), self)
-        # FIXME: Now that this is moved to the medium,
-        # should we really register a listener for tasks ?
+        # FIXME: register listener anyway for agency to be able to monitor
+        # the task termination. IListener should be renamed in a later
+        # refactoring to better match its role.
         self.agent.register_listener(self)
 
         self.task = task
@@ -73,11 +74,18 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         return task
 
+    ### IListener Methods ###
+
+    def on_message(self, mesg):
+        raise NotImplementedError("Task do not support full IListener")
+
     def get_session_id(self):
         return self.session_id
 
     def get_agent_side(self):
         return self.task
+
+    # notify_finish() implemented in common.TransientInitiatorMediumBase
 
     ### ISerializable Methods ###
 
@@ -114,13 +122,13 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         d = defer.maybeDeferred(self.task.expired)
         return d
 
-    def _terminate(self, arg):
+    def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering task %s" % self.session_id)
         self.agent.unregister_listener(self.session_id)
 
-        common.InitiatorMediumBase._terminate(self, arg)
+        common.TransientInitiatorMediumBase._terminate(self, result)
 
 
 class AgencyTaskFactory(protocols.BaseInitiatorFactory):

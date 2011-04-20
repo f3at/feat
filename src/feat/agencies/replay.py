@@ -13,6 +13,8 @@ from feat.interface.requester import *
 from feat.interface.manager import *
 from feat.interface.serialization import *
 from feat.interface.task import *
+from feat.interface.collector import *
+from feat.interface.poster import *
 
 
 def side_effect_as_string(*args):
@@ -233,6 +235,8 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'manager-medium', AgencyManager)
         Factory(self, 'retrying-protocol', RetryingProtocol)
         Factory(self, 'task-medium', AgencyTask)
+        Factory(self, 'collector-medium', AgencyCollector)
+        Factory(self, 'poster-medium', AgencyPoster)
 
         self.reset()
 
@@ -637,7 +641,7 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass
 
@@ -683,12 +687,36 @@ class AgencyContractor(BaseReplayDummy, StateMachineSpecific):
         pass
 
 
+class AgencyCollector(BaseReplayDummy):
+
+    implements(IAgencyCollector)
+
+    log_category = "collector-medium"
+    type_name = "collector-medium"
+
+    ### IAgencyCollector Methods ###
+
+
+class AgencyPoster(BaseReplayDummy):
+
+    implements(IAgencyPoster)
+
+    log_category = "poster-medium"
+    type_name = "poster-medium"
+
+    ### IAgencyPoster Methods ###
+
+    @replay.named_side_effect('AgencyPoster.post')
+    def post(self, message):
+        pass
+
+
 class RetryingProtocol(BaseReplayDummy):
 
     log_category="retrying-protocol"
     type_name="retrying-protocol"
 
-    @serialization.freeze_tag('RetryingProtocol.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         raise RuntimeError('This should never get called')
 
@@ -744,7 +772,7 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass
 
@@ -760,6 +788,6 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
     def ensure_state(self, states):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass

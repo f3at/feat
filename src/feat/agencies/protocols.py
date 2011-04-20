@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import log, serialization, defer, container
+from feat.common import log, defer, container
 from feat.agents.base import replay
 
 from feat.agencies.interface import *
@@ -98,7 +98,7 @@ class BaseInterest(log.Logger):
     def is_idle(self):
         '''
         If self._active == 0 it means that the queue is empty.
-        The counter is decreased in synchronous method just before poping
+        The counter is decreased in synchronous method just before popping
         the next value from the queue.
         '''
         return self._active == 0
@@ -112,7 +112,7 @@ class BaseInterest(log.Logger):
         if self._queue is not None:
             self._queue.clear()
 
-    def schedule_protocol(self, message):
+    def schedule_message(self, message):
         if not isinstance(message, self.factory.initiator):
             return False
 
@@ -123,7 +123,7 @@ class BaseInterest(log.Logger):
                 self._queue.add(message, message.expiration_time)
                 return True
 
-        self._initiate_protocol(message)
+        self._process_message(message)
 
         return True
 
@@ -143,8 +143,7 @@ class BaseInterest(log.Logger):
     def bind_to_lobby(self):
         assert self._lobby_binding is None
         prot_id = self.factory.protocol_id
-        binding = self.agency_agent._messaging.personal_binding(prot_id,
-                                                                'lobby')
+        binding = self.agency_agent.create_binding(prot_id, 'lobby')
         self._lobby_binding = binding
 
     @replay.named_side_effect('Interest.unbind_from_lobby')
@@ -157,33 +156,21 @@ class BaseInterest(log.Logger):
     def snapshot(self):
         return self.factory
 
-    ### Private Methods ###
+    ### Protected Methods ###
 
-    def _initiate_protocol(self, message):
-        self.debug('Instantiating %s protocol %s',
-                   message.protocol_type, message.protocol_id)
+    def _process_message(self, message):
         assert not self._concurrency or self._active < self._concurrency
         self._active += 1
 
-        medium_factory = IAgencyInterestedFactory(self.factory)
-        medium = medium_factory(self.agency_agent, message)
-        protocol = medium.initiate()
-        listener = self.agency_agent.register_listener(medium)
-        medium.notify_finish().addBoth(defer.drop_result,
-                                       self._protocol_terminated,
-                                       message, protocol)
-
-        self.agency_agent.call_next(listener.on_message, message)
-
-    def _protocol_terminated(self, message, _protocol):
-        self.debug('%s protocol %s terminated',
+    def _message_processed(self, message):
+        self.debug('Message %s for protocol %s processed',
                    message.protocol_type, message.protocol_id)
         assert self._active > 0
         self._active -= 1
         if self._queue is not None:
             try:
                 message = self._queue.pop()
-                self._initiate_protocol(message)
+                self._process_message(message)
                 return
             except container.Empty:
                 pass
@@ -193,4 +180,18 @@ class BaseInterest(log.Logger):
 
 
 class DialogInterest(BaseInterest):
-    pass
+
+    def _process_message(self, message):
+        BaseInterest._process_message(self, message)
+
+        self.debug('Instantiating %s protocol %s',
+                   message.protocol_type, message.protocol_id)
+
+        medium_factory = IAgencyInterestedFactory(self.factory)
+        medium = medium_factory(self.agency_agent, message)
+        medium.initiate()
+        listener = self.agency_agent.register_listener(medium)
+        medium.notify_finish().addBoth(defer.drop_result,
+                                       self._message_processed, message)
+
+        self.agency_agent.call_next(listener.on_message, message)

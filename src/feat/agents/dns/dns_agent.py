@@ -4,7 +4,7 @@ import socket
 
 from zope.interface import implements
 
-from feat.agents.base import replay, agent, dependency, contractor
+from feat.agents.base import replay, agent, dependency, contractor, collector
 from feat.agents.base import descriptor, document, dbtools, message
 from feat.agents.dns import production, simulation
 from feat.common import fiber, manhole
@@ -75,9 +75,11 @@ class DNSAgent(agent.BaseAgent):
 
         ami = state.medium.register_interest(AddMappingContractor)
         rmi = state.medium.register_interest(RemoveMappingContractor)
+        muc = state.medium.register_interest(MappingUpdatesCollector)
 
         ami.bind_to_lobby()
         rmi.bind_to_lobby()
+        muc.bind_to_lobby()
 
         f = fiber.succeed()
         f.add_callback(fiber.drop_result, state.labour.initiate)
@@ -202,4 +204,26 @@ class RemoveMappingContractor(DNSMappingContractor):
 
     @replay.immutable
     def tell_agent(self, state, prefix, ip):
+        state.agent.remove_mapping(prefix, ip)
+
+
+class MappingUpdatesCollector(collector.BaseCollector):
+
+    protocol_id = 'update-dns-mapping'
+    interest_type = InterestType.public
+
+    def notified(self, msg):
+        action, args = msg.payload
+        handler = getattr(self, "action_" + action, None)
+        if not handler:
+            self.warning("Unknown mapping update action: %s", action)
+            return
+        return handler(*args)
+
+    @replay.immutable
+    def action_add_mapping(self, state, prefix, ip):
+        state.agent.add_mapping(prefix, ip)
+
+    @replay.immutable
+    def action_remove_mapping(self, state, prefix, ip):
         state.agent.remove_mapping(prefix, ip)

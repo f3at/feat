@@ -146,6 +146,9 @@ class Queue(object):
         reactor.callLater(0, self._send_messages)
         return d
 
+    def is_idle(self):
+        return not self._consumers or len(self._messages) == 0
+
     def stop_consuming(self):
         ex = FinishConnection("Disconnecting")
         while len(self._consumers) > 0:

@@ -13,14 +13,11 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency
-from feat.agents.base import recipient, replay, descriptor, message
+from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, delay
 from feat.common import manhole, error_handler, text_helper, container
-from feat.common.serialization import pytree, Serializable
-
-# Imported only for adapters to be registered
-from feat.agencies import contracts, requests, tasks
+from feat.common.serialization import pytree
 
 # Import interfaces
 from interface import *
@@ -302,8 +299,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin,
                   common.StateMachineMixin):
 
-    implements(IAgencyAgent, ITimeProvider, IRecorderNode,
-               IJournalKeeper, ISerializable, IMessagingPeer)
+    implements(IAgencyAgent, IAgencyAgentInternal, ITimeProvider,
+               IRecorderNode, IJournalKeeper, ISerializable, IMessagingPeer)
 
     log_category = "agent-medium"
     type_name = "agent-medium" # this is used by ISerializable
@@ -397,53 +394,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc, *args, **kwargs):
         return self.agency.start_agent(desc, *args, **kwargs)
-
-    def register_listener(self, listener):
-        listener = IListener(listener)
-        session_id = listener.get_session_id()
-        self.debug('Registering listener session_id: %r', session_id)
-        assert session_id not in self._listeners
-        self._listeners[session_id] = listener
-        return listener
-
-    def unregister_listener(self, session_id):
-        if session_id in self._listeners:
-            self.debug('Unregistering listener session_id: %r', session_id)
-            listener = self._listeners[session_id]
-            self.agency.journal_protocol_deleted(
-                self._descriptor.doc_id, listener.get_agent_side(),
-                listener.snapshot())
-            del(self._listeners[session_id])
-        else:
-            self.error('Tried to unregister listener with session_id: %r, '
-                        'but not found!', session_id)
-
-    def reply_duplicate(self, original):
-        '''
-        Sends the f.a.b.message.Duplicate. This is used in contracts traversing
-        the graph, when the contract has rereached the same shard.
-        This message is necessary, as silently ignoring the incoming bids
-        adds a lot of latency to the nested contracts (it is waitng to receive
-        message from all the recipients).
-        '''
-        msg = message.Duplicate()
-        msg.protocol_id = original.protocol_id
-        msg.protocol_type = original.protocol_type
-        msg.expiration_time = original.expiration_time
-        msg.sender_id = str(uuid.uuid1())
-        msg.receiver_id = original.sender_id
-        return self.send_msg(original.reply_to, msg)
-
-    def send_msg(self, recipients, msg, handover=False):
-        recipients = recipient.IRecipients(recipients)
-        if not handover:
-            msg.reply_to = recipient.IRecipient(self)
-            msg.message_id = str(uuid.uuid1())
-        assert msg.expiration_time is not None
-        for recp in recipients:
-            self.log('Sending message to %r', recp)
-            self._messaging.publish(recp.key, recp.shard, msg)
-        return msg
 
     def on_killed(self):
         '''called as part of SIGTERM handler.'''
@@ -652,9 +602,55 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def snapshot(self):
         return self._descriptor.doc_id
 
+    ### IAgencyAgentInternal Methods ###
+
+    def create_binding(self, key, shard=None):
+        '''Used by Interest instances.'''
+        return self._messaging.personal_binding(key, shard)
+
+    def register_listener(self, listener):
+        listener = IListener(listener)
+        session_id = listener.get_session_id()
+        self.debug('Registering listener session_id: %r', session_id)
+        assert session_id not in self._listeners
+        self._listeners[session_id] = listener
+        return listener
+
+    def unregister_listener(self, session_id):
+        if session_id in self._listeners:
+            self.debug('Unregistering listener session_id: %r', session_id)
+            listener = self._listeners[session_id]
+            self.agency.journal_protocol_deleted(
+                self._descriptor.doc_id, listener.get_agent_side(),
+                listener.snapshot())
+            del(self._listeners[session_id])
+        else:
+            self.error('Tried to unregister listener with session_id: %r, '
+                        'but not found!', session_id)
+
+    def send_msg(self, recipients, msg, handover=False):
+        recipients = recipient.IRecipients(recipients)
+        if not handover:
+            msg.reply_to = recipient.IRecipient(self)
+            msg.message_id = str(uuid.uuid1())
+        assert msg.expiration_time is not None
+        for recp in recipients:
+            self.log('Sending message to %r', recp)
+            self._messaging.publish(recp.key, recp.shard, msg)
+        return msg
+
     ### IMessagingPeer Methods ###
 
     def on_message(self, msg):
+        '''
+        When a message with an already knwon traversal_id is received,
+        we try to build a duplication message and send it in to a protocol
+        dependent recipient. This is used in contracts traversing
+        the graph, when the contract has rereached the same shard.
+        This message is necessary, as silently ignoring the incoming bids
+        adds a lot of latency to the nested contracts (it is waitng to receive
+        message from all the recipients).
+        '''
         self.log('Received message: %r', msg)
 
         # Check if it isn't expired message
@@ -668,22 +664,26 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             t_id = msg.traversal_id
             if t_id is None:
                 self.warning(
-                    "Received corrupted message. The traversal_id is! "
+                    "Received corrupted message. The traversal_id is None ! "
                     "Message: %r", msg)
                 return False
             if t_id in self._traversal_ids:
                 self.log('Throwing away already known traversal id %r', t_id)
-                self.reply_duplicate(msg)
+                recp = msg.duplication_recipient()
+                if recp:
+                    resp = msg.duplication_message()
+                    self.send_msg(recp, resp)
                 return False
             else:
                 self._traversal_ids.set(t_id, True, msg.expiration_time)
 
         # Handle registered dialog
-        recv_id = msg.receiver_id
-        if recv_id is not None and recv_id in self._listeners:
-            listener = self._listeners[recv_id]
-            listener.on_message(msg)
-            return True
+        if IDialogMessage.providedBy(msg):
+            recv_id = msg.receiver_id
+            if recv_id is not None and recv_id in self._listeners:
+                listener = self._listeners[recv_id]
+                listener.on_message(msg)
+                return True
 
         # Handle new conversation coming in (interest)
         p_type = msg.protocol_type
@@ -691,7 +691,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             p_id = msg.protocol_id
             interest = self._interests[p_type].get(p_id)
             if interest and isinstance(msg, interest.factory.initiator):
-                if interest.schedule_protocol(msg):
+                if interest.schedule_message(msg):
                     return True
 
         self.warning("Couldn't find appropriate listener for message: "
@@ -784,6 +784,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             t = text_helper.Table(fields=["Call"], lengths = [60])
             resp += t.render((str(call), ) \
                              for call in self._delayed_calls.itervalues())
+
         if not self.has_all_interests_idle():
             resp += "\nInterests not idle: \n"
             t = text_helper.Table(fields=["Factory"], lengths = [60])
@@ -791,10 +792,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                              for call in self._iter_interests())
         resp += "#" * 60
         return resp
-
-    def create_binding(self, key, shard=None):
-        '''Used by Interest instances.'''
-        return self._messaging.personal_binding(key, shard)
 
     ### Private Methods ###
 
@@ -968,7 +965,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
 
-class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
+class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
     implements(ISerializable)
 
@@ -977,7 +974,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 
     def __init__(self, medium, factory, recipients, args, kwargs,
                  max_retries=None, initial_delay=1, max_delay=None):
-        common.InitiatorMediumBase.__init__(self)
+        common.TransientInitiatorMediumBase.__init__(self)
         log.Logger.__init__(self, medium)
 
         self.medium = medium
@@ -1000,7 +997,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 
     @serialization.freeze_tag('RetryingProtocol.notify_finish')
     def notify_finish(self):
-        return common.InitiatorMediumBase.notify_finish(self)
+        return common.TransientInitiatorMediumBase.notify_finish(self)
 
     @serialization.freeze_tag('RetryingProtocol.give_up')
     def give_up(self):
@@ -1018,7 +1015,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
     def snapshot(self):
         return id(self)
 
-    ### Required by InitiatorMediumbase ###
+    ### Required by TransientInitiatorMediumbase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.medium.call_next(_method, *args, **kwargs)
@@ -1037,7 +1034,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         return d
 
     def _finalize(self, result):
-        common.InitiatorMediumBase._terminate(self, result)
+        common.TransientInitiatorMediumBase._terminate(self, result)
 
     def _wait_and_retry(self, failure):
         self.info('Retrying protocol for factory: %r failed for the %d time. ',
@@ -1048,7 +1045,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
             self.info("Will not try to restart.")
-            common.InitiatorMediumBase._terminate(self, failure)
+            common.TransientInitiatorMediumBase._terminate(self, failure)
             return
 
         # do retry

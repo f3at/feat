@@ -3,12 +3,13 @@
 
 from zope.interface import Interface, Attribute
 
-__all__ = ("IListener", "IConnectionFactory",
+__all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
            "IAgencyInitiatorFactory", "IAgencyInterestFactory",
            "IAgencyInterestInternalFactory",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
-           "DatabaseError", "ConflictError", "NotFoundError", "IFirstMessage")
+           "DatabaseError", "ConflictError", "NotFoundError",
+           "IFirstMessage", "IDialogMessage")
 
 
 class DatabaseError(RuntimeError):
@@ -55,6 +56,28 @@ class IListener(Interface):
         '''
 
 
+class IAgencyAgentInternal(Interface):
+    '''Internal interface of an agency agent.'''
+
+    def get_agent():
+        pass
+
+    def create_binding(prot_id, shard):
+        pass
+
+    def register_listener(medium):
+        pass
+
+    def unregister_listener(session_id):
+        pass
+
+    def send_msg(recipients, msg, handover=False):
+        pass
+
+    def journal_protocol_created(factory, medium, *args, **kwargs):
+        pass
+
+
 class IAgencyInterestFactory(Interface):
     '''Factory constructing L{IAgencyInterest} instances.'''
 
@@ -81,18 +104,18 @@ class IAgencyInterestInternal(Interface):
     def revoke():
         '''Revoke the current bindings to the current shard.'''
 
-    def schedule_protocol(message):
-        '''Schedules the startup of a protocol for the specified message.'''
+    def schedule_message(message):
+        '''Schedules the handling of a the specified message.'''
 
     def clear_queue():
-        '''Clears the protocol queue.'''
+        '''Clears the message queue.'''
 
     def wait_finished():
         '''Returns a Deferred that will be fired when there is no more
-        active protocols and the protocol queue gets empty.'''
+        active or queued messages.'''
 
     def is_idle():
-        '''Returns True if there is no active or queued protocols.'''
+        '''Returns True if there is no active or queued messages.'''
 
 
 class IAgencyInitiatorFactory(Interface):
@@ -249,3 +272,14 @@ class IFirstMessage(Interface):
 
     traversal_id = Attribute('Unique identifier. It is preserved during '
                              'nesting between shard, to detect duplications.')
+
+
+class IDialogMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message
+    objects which take part on a dialog.
+    '''
+
+    reply_to = Attribute("The recipient to send the response to.")
+    sender_id = Attribute("The sender unique identifier.")
+    receiver_id = Attribute("The receiver unique identifier.")

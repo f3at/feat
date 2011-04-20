@@ -891,8 +891,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(lambda contractor:
-                 message.BaseMessage(receiver_id=\
-                                     contractor._get_medium().session_id))
+                 message.ContractMessage(receiver_id=\
+                                         contractor._get_medium().session_id))
         d.addCallback(self.recv_msg)
         # this will be ignored, we follow the path to expiration
 

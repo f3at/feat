@@ -19,7 +19,7 @@ from feat.interface.replier import *
 
 class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
                       common.ExpirationCallsMixin, common.AgencyMiddleMixin,
-                      common.InitiatorMediumBase):
+                      common.TransientInitiatorMediumBase):
 
     implements(IAgencyRequester, IListener, ISerializable)
 
@@ -34,7 +34,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
-        common.InitiatorMediumBase.__init__(self)
+        common.TransientInitiatorMediumBase.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
@@ -96,6 +96,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_agent_side(self):
         return self.requester
 
+    # notify_finish() implemented in common.TransientInitiatorMediumBase
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -106,18 +108,18 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _get_time(self):
         return self.agent.get_time()
 
-    ### Required by InitiatorMediumBase ###
+    ### Required by TransientInitiatorMediumBase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
 
     ### Private Methods ###
 
-    def _terminate(self, arg):
+    def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
         self.log("Unregistering requester")
         self.agent.unregister_listener(self.session_id)
-        common.InitiatorMediumBase._terminate(self, arg)
+        common.TransientInitiatorMediumBase._terminate(self, result)
 
     def _on_reply(self, msg):
         d = self._call(self.requester.got_reply, msg)
@@ -126,7 +128,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.AgencyMiddleMixin, common.InterestedMediumBase):
+                    common.AgencyMiddleMixin,
+                    common.TransientInterestedMediumBase):
 
     implements(IAgencyReplier, IListener, ISerializable)
 
@@ -141,7 +144,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self, message.sender_id,
                                           message.protocol_id)
-        common.InterestedMediumBase.__init__(self)
+        common.TransientInterestedMediumBase.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
@@ -170,11 +173,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._send_message(reply, self.request.expiration_time)
         delay.callLater(0, self._terminate, None)
 
-    def _terminate(self, arg):
-        self.debug('Terminate called')
-        self.agent.unregister_listener(self.session_id)
-        common.InterestedMediumBase._terminate(self, arg)
-
     ### IListener Methods ###
 
     def on_message(self, msg):
@@ -191,15 +189,24 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_agent_side(self):
         return self.replier
 
+    # notify_finish() implemented in common.TransientInterestedMediumBase
+
     ### ISerializable Methods ###
 
     def snapshot(self):
         return id(self)
 
-    ### Required by InitiatorMediumBase ###
+    ### Required by TransientInterestedMediumBase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
+
+    ### Overridden Methods ###
+
+    def _terminate(self, result):
+        self.debug('Terminate called')
+        self.agent.unregister_listener(self.session_id)
+        common.TransientInterestedMediumBase._terminate(self, result)
 
 
 class AgencyRequesterFactory(protocols.BaseInitiatorFactory):

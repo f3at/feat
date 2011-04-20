@@ -115,7 +115,7 @@ class ManagerContractors(dict):
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin,
-                    common.InitiatorMediumBase):
+                    common.TransientInitiatorMediumBase):
 
     implements(IAgencyManager, IListener, ISerializable)
 
@@ -130,7 +130,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.StateMachineMixin.__init__(self)
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self)
-        common.InitiatorMediumBase.__init__(self)
+        common.TransientInitiatorMediumBase.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
@@ -307,6 +307,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_agent_side(self):
         return self.manager
 
+    # notify_finish() implemented in common.TransientInitiatorMediumBase
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -384,7 +386,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _get_time(self):
         return self.agent.get_time()
 
-    ### Required by InitiatorMediumbase ###
+    ### Required by TransientInitiatorMediumbase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
@@ -411,13 +413,13 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(ContractState.closed)
         self._call(self.manager.closed)
 
-    def _terminate(self, arg):
+    def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering manager")
         self.agent.unregister_listener(self.session_id)
 
-        common.InitiatorMediumBase._terminate(self, arg)
+        common.TransientInitiatorMediumBase._terminate(self, result)
 
     def _count_expected_bids(self, recipients):
         '''
@@ -436,7 +438,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
 class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        common.ExpirationCallsMixin, common.AgencyMiddleMixin,
-                       common.InterestedMediumBase):
+                       common.TransientInterestedMediumBase):
 
     implements(IAgencyContractor, IListener, ISerializable)
 
@@ -452,7 +454,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.ExpirationCallsMixin.__init__(self)
         common.AgencyMiddleMixin.__init__(self, announcement.sender_id,
                                           announcement.protocol_id)
-        common.InterestedMediumBase.__init__(self)
+        common.TransientInterestedMediumBase.__init__(self)
 
         assert isinstance(announcement, message.Announcement)
 
@@ -595,6 +597,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_agent_side(self):
         return self.contractor
 
+    # notify_finish() implemented in common.TransientInterestedMediumBase
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -607,13 +611,13 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     ### Private Methods ###
 
-    def _terminate(self, arg):
+    def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering contractor")
         self._cancel_reporter()
         self.agent.unregister_listener(self.session_id)
-        common.InterestedMediumBase._terminate(self, arg)
+        common.TransientInterestedMediumBase._terminate(self, result)
 
     ### Update reporter stuff ###
 
@@ -644,7 +648,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         report = self._send_message(report)
         return report
 
-    ### Required by InitiatorMediumBase ###
+    ### Required by TransientInterestedMediumBase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.agent.call_next(_method, *args, **kwargs)
