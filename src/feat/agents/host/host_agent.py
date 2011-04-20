@@ -145,7 +145,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             f.add_callback(fiber.drop_result,
                            self.check_allocation_exists, allocation_id)
         f.add_callback(fiber.drop_result, self.get_document, doc_id)
-        f.add_callback(self._check_requeriments)
+        f.add_callback(self._check_requirements)
         f.add_callback(self._update_shard_field)
         f.add_callback(state.medium.start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
@@ -271,7 +271,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         state.categories = categories
 
     @replay.immutable
-    def _check_requeriments(self, state, doc):
+    def _check_requirements(self, state, doc):
         agnt = agent.registry_lookup(doc.document_type)
         agent_categories = agnt.categories
         for cat, val in agent_categories.iteritems():
@@ -284,7 +284,6 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
                     state.categories[cat] == val):
                 msg = "Category %s doesn't match %s != %s" % (
                       cat, val.name, state.categories[cat].name)
-                self.error(msg)
                 raise CategoryError(msg)
         return doc
 
