@@ -10,6 +10,20 @@ from feat.interface.agent import (Access, Address, Storage,
                                  AgencyAgentState, )
 
 
+def parse_config_file(option, opt_str, value, parser):
+    import ConfigParser
+    try:
+        cfg = ConfigParser.ConfigParser()
+        cfg.readfp(open(value, 'r'))
+        for dest, value in cfg.items('Feat'):
+            sv = value.split()
+            if len(sv) > 1:
+                value = sv
+            setattr(parser.values, dest, value)
+    except IOError:
+        print 'Config file not found, skipping ...'
+
+
 def add_options(parser):
     parser.add_option('-a', '--agent', dest="agents", action="append",
                       help="Start an agent of specified type.",
@@ -25,6 +39,12 @@ def add_options(parser):
                     help="Add a category to the host agent. "
                          "Format: CAT_NAME:CAT_VALUE.",
                     metavar="HOST_DEF_ID", action="append", default=[])
+    parser.add_option('-C', '--config-file', action='callback',
+                      help="Config file, the configuration loaded from the \
+                      configuration file will overwrite other \
+                      parameters defined",
+                      callback=parse_config_file, nargs=1,
+                      type="string", dest='config_file')
 
 
 def check_options(opts, args):
@@ -128,8 +148,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
         d.addCallback(defer.drop_result, conn.save_document, host_desc)
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
-        d.addCallbacks(lambda m: m.wait_for_state(AgencyAgentState.ready))
-
+        d.addCallbacks(lambda medium:
+                       medium.wait_for_state(AgencyAgentState.ready))
         # Starting the other agents
 
         for desc in descriptors:
