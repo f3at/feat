@@ -4,11 +4,22 @@ import types
 
 from twisted.python import components
 
-from feat.common import log, serialization, fiber, annotate
+from feat.common import (log, serialization, fiber, annotate, error_handler,
+                         formatable, )
 from feat.agents.base import replay, recipient, requester
 
+from feat.interface.protocols import *
 
-ACCEPT_RESPONSABILITY = "___I'm on it___"
+
+def accept_responsability(initiator):
+    initiator = IInitiator(initiator)
+    expiration_time = initiator.get_expiration_time()
+    return ResponsabilityAccepted(expiration_time=expiration_time)
+
+
+@serialization.register
+class ResponsabilityAccepted(formatable.Formatable):
+    formatable.field('expiration_time', None)
 
 
 class DefinitionError(Exception):
@@ -106,6 +117,8 @@ class BasePartner(serialization.Serializable):
         self.allocation_id = allocation_id
         self.role = role
 
+    ### callbacks for partnership notifications ###
+
     def initiate(self, agent):
         pass
 
@@ -122,13 +135,15 @@ class BasePartner(serialization.Serializable):
                         of the agent.
         '''
 
-    def on_died(self, agent, payload=None):
+    def on_died(self, agent, payload, monitor):
         '''
         Called by the monitoring agent, when he detects that the partner has
         died. If your handler is going to solve this problem return the
-        ACCEPT_RESPONSABILITY constant.
+        L{feat.agents.base.partners.ResponsabilityAccepted} instance.
 
         @param payload: Same as in on_goodbye.
+        @param monitor: IRecipient of monitoring agent who notified us about
+                        this unfortunate event
         '''
 
     def on_restarted(self, agent, migrated):
@@ -146,6 +161,13 @@ class BasePartner(serialization.Serializable):
         @param payload: Same as in on_goodbye.
         '''
 
+    ### utility methods to be used from the handlers ###
+
+    def remove_me_from_descriptor(self, agent):
+        return agent.remove_partner(self)
+
+    ### python specific ###
+
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
@@ -158,12 +180,20 @@ class BasePartner(serialization.Serializable):
             return NotImplemented
         return not self.__eq__(other)
 
+    def __repr__(self):
+        return "<%s.%s recp: %r, alloc: %s, role: %r>" % \
+                (str(self.__class__.__module__),
+                 str(self.__class__.__name__),
+                 self.recipient, self.allocation_id, self.role, )
+
 
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     log_category = "partners"
 
     default_handler = BasePartner
+
+    _error_handler = error_handler
 
     has_many("all", "whatever", BasePartner, force=True)
 
@@ -266,13 +296,18 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def find(self, state, recp):
+        if recipient.IRecipient.providedBy(recp):
+            agent_id = recipient.IRecipient(recp).key
+        else:
+            agent_id = recp
         desc = state.agent.get_descriptor()
-        match = [x for x in desc.partners if x.recipient == recp]
+        match = [x for x in desc.partners if x.recipient.key == agent_id]
         if len(match) == 0:
             return None
         elif len(match) > 1:
             raise FindPartnerError('More than one partner was matched by the '
-                                   'recipient %r!', recp)
+                                   'recipient %r!. Matched: %r' % \
+                                   (recp, match, ))
         else:
             return match[0]
 
@@ -283,7 +318,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         if found:
             self.info('We already are in partnership with recipient '
                       '%r, instance: %r.', recp, found)
-            return
+            return fiber.succeed(found)
 
         factory = self.query_handler(partner_class, role)
         partner = factory(recp, allocation_id, role)
@@ -310,7 +345,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.mutable
     def receive_notification(self, state, recp, notification_type,
-                             blackbox):
+                             blackbox, sender):
         partner = self.find(recp)
         if partner is None:
             self.warning("Didn't find a partner matching the notification "
@@ -322,7 +357,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             return fiber.fail(
                 ValueError('No handler found for notification %r!' %\
                            (notification_type, )))
-        return handler(partner, blackbox)
+        return handler(partner, blackbox, sender)
 
     @replay.mutable
     def remove(self, state, partner):
@@ -337,25 +372,28 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     # handlers for incoming notifications from/about partners
 
-    def _on_goodbye(self, partner, blackbox):
+    def _on_goodbye(self, partner, blackbox, sender):
         return self._remove_and_trigger_cb(partner, 'on_goodbye', blackbox)
 
-    def _on_burried(self, partner, blackbox):
+    def _on_burried(self, partner, blackbox, sender):
         return self._remove_and_trigger_cb(partner, 'on_burried', blackbox)
 
     @replay.immutable
-    def _on_died(self, state, partner, blackbox):
-        return fiber.wrap_defer(partner.on_died, state.agent, blackbox)
+    def _on_died(self, state, partner, blackbox, sender):
+        f = fiber.wrap_defer(partner.on_died, state.agent, blackbox, sender)
+        f.add_errback(self._error_handler)
+        return f
 
     @replay.immutable
-    def _on_restarted(self, state, partner, new_address):
+    def _on_restarted(self, state, partner, new_address, sender):
         moved = (new_address != partner.recipient)
         f = fiber.succeed()
-        if moved:
-            f.add_callback(fiber.drop_result, state.agent.update_descriptor,
-                           self._update_recipient, partner, new_address)
+        partner.recipient = recipient.IRecipient(new_address)
         f.add_callback(fiber.drop_result, self._call_next_cb,
                        partner.on_restarted, moved)
+        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+                       self._update_partner,
+                       partner)
         return f
 
     # private
@@ -382,11 +420,16 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         except KeyError:
             raise ValueError('Unknown relation name %r: ' % (name, ))
 
-    def _update_recipient(self, desc, partner, new_recp):
-        index = desc.partners.index(partner)
-        partner.recipient = new_recp
-        desc.partners[index] = partner
-        return partner
+    def _update_partner(self, desc, partner):
+        found = [x for x in desc.partners
+                 if x.recipient.key == partner.recipient.key]
+        if len(found) != 1:
+            self.error('Trying to update partner %r failed. Not found in %r',
+                       partner, desc.partners)
+        else:
+            index = desc.partners.index(found[0])
+            desc.partners[index] = partner
+            return partner
 
     def _append_partner(self, desc, partner, substitute):
         if substitute:

@@ -29,6 +29,17 @@ DEFAULT_CATEGORIES = {'access': Access.none,
 
 
 @serialization.register
+class HostedPartner(partners.BasePartner):
+    '''
+    This class is for agents we are partners with only because we started them.
+    If your patnership is meant to represent sth more you should implement the
+    appriopriate handler.
+    '''
+
+    type_name = 'host->some_agent'
+
+
+@serialization.register
 class ShardPartner(partners.BasePartner):
 
     type_name = 'host->shard'
@@ -53,8 +64,20 @@ class ShardPartner(partners.BasePartner):
         recipients = map(operator.attrgetter('recipient'), brothers)
         return agent.resolve_missing_shard_agent_problem(recipients)
 
+    def on_died(self, agent, brothers, monitor):
+        agent.info('Shard partner died.')
+        recipients = map(operator.attrgetter('recipient'), brothers)
+        task = agent.collectively_restart_shard(
+            recipients, self.recipient.key, monitor)
+        return partners.accept_responsability(task)
+
+    def on_restarted(self, agent, migrated):
+        agent.callback_event('shard_agent_restarted', self.recipient)
+
 
 class Partners(partners.Partners):
+
+    default_handler = HostedPartner
 
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
@@ -76,7 +99,9 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             contractor.Service(StartAgentContractor))
         state.medium.register_interest(HostAllocationContractor)
         state.medium.register_interest(
-            problem.SolveProblemInterest(MissingShard(self)))
+            problem.SolveProblemInterest(MissingShard))
+        state.medium.register_interest(
+            problem.SolveProblemInterest(RestartShard))
         ports = state.medium.get_descriptor().port_range
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
@@ -105,12 +130,28 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def resolve_missing_shard_agent_problem(self, state, host_recipients):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.medium.initiate_task,
-                       problem.CollectiveSolver, MissingShard(self),
-                       host_recipients)
-        f.add_callback(lambda x: x.notify_finish())
-        return f
+        task = state.medium.initiate_task(
+            problem.CollectiveSolver, MissingShard(self), host_recipients)
+        return task.notify_finish()
+
+    @replay.mutable
+    def collectively_restart_shard(self, state, host_recipients,
+                                   agent_id, monitor):
+        task = getattr(state, 'restart_shard_task', None)
+        if task is None or task.finished():
+            state.restart_shard_task = state.medium.initiate_task(
+                problem.CollectiveSolver,
+                RestartShard(self, agent_id, monitor),
+                host_recipients)
+        return state.restart_shard_task
+
+    @replay.mutable
+    def wait_for_shard_restart(self, state):
+        task = getattr(state, 'restart_shard_task', None)
+        if task is None or task.finished():
+            return fiber.succeed(state.partners.shard)
+        else:
+            return self.wait_for_event('shard_agent_restarted')
 
     @replay.immutable
     def get_shard_partner(self, state):
@@ -141,7 +182,6 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     @replay.journaled
     def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
         task = self.initiate_task(StartAgent, doc_id, allocation_id,
-                                  fix_double_partnership=False,
                                   args=args, kwargs=kwargs)
         return task.notify_finish()
 
@@ -152,13 +192,10 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         '''
         return state.medium.start_agent(desc, *args, **kwargs)
 
-    @manhole.expose()
     @replay.journaled
     def restart_agent(self, state, agent_id):
         self.debug('I will restart agent with id %r.', agent_id)
-        task = self.initiate_task(StartAgent, agent_id, allocation_id=None,
-                                  fix_double_partnership=True)
-        return task.notify_finish()
+        return self.start_agent(agent_id)
 
     @manhole.expose()
     @rpc.publish
@@ -285,7 +322,7 @@ class StartAgent(task.BaseTask):
     timeout = 10
 
     @replay.entry_point
-    def initiate(self, state, doc_id, allocation_id, fix_double_partnership,
+    def initiate(self, state, doc_id, allocation_id,
                  args=tuple(), kwargs=dict()):
         if isinstance(doc_id, descriptor.Descriptor):
             doc_id = doc_id.doc_id
@@ -294,7 +331,6 @@ class StartAgent(task.BaseTask):
         state.doc_id = doc_id
         state.descriptor = None
         state.allocation_id = allocation_id
-        state.fix_double_partnership = fix_double_partnership
 
         f = fiber.succeed()
         f.add_callback(fiber.drop_result, self._fetch_descriptor)
@@ -310,17 +346,8 @@ class StartAgent(task.BaseTask):
     @replay.immutable
     def _establish_partnership(self, state, recp):
         f = state.agent.establish_partnership(
-            recp, state.allocation_id, our_role=u'host')
-        if state.fix_double_partnership:
-            f.add_errback(self._fix_double_partnership)
+            recp, state.allocation_id, our_role=u'host', allow_double=True)
         return f
-
-    @replay.immutable
-    def _fix_double_partnership(self, state, fail):
-        fail.trap(partners.DoublePartnership)
-        self.debug('We are already partners with restarting agent, '
-                   'swallowing DoublePartnership error')
-        return state.agent.find_partner(state.doc_id)
 
     @replay.mutable
     def _fetch_descriptor(self, state):
@@ -342,7 +369,8 @@ class StartAgent(task.BaseTask):
         which shard it will endup. If it is None or set to lobby, the HA
         will update the field to match his own'''
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
-            state.descriptor.shard = state.agent.get_own_address().shard
+            own_shard = state.agent.get_own_address().shard
+            state.descriptor.shard = own_shard
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)
@@ -370,6 +398,8 @@ class StartAgent(task.BaseTask):
 @serialization.register
 class MissingShard(problem.BaseProblem):
 
+    problem_id = 'missing-shard'
+
     def wait_for_solution(self):
         return self.agent.get_shard_partner()
 
@@ -379,6 +409,38 @@ class MissingShard(problem.BaseProblem):
     def solve_localy(self):
         own_address = self.agent.get_own_address()
         return self.agent.start_own_shard(own_address.shard)
+
+
+@serialization.register
+class RestartShard(problem.BaseProblem):
+
+    problem_id = 'restart-shard'
+
+    def __init__(self, agent, agent_id=None, monitor=None):
+        problem.BaseProblem.__init__(self, agent)
+        self.agent_id = agent_id
+        self.monitor = monitor
+
+    def wait_for_solution(self):
+        return self.agent.wait_for_shard_restart()
+
+    def solve_for(self, solution, recp):
+        pass
+
+    def solve_localy(self):
+        partner = self.agent.query_partners('shard')
+        f = fiber.succeed()
+        if partner:
+            f.add_callback(fiber.drop_result, self.agent.remove_partner,
+                           partner)
+        f.add_callback(fiber.drop_result, self.agent.restart_agent,
+                       self.agent_id)
+        f.add_callback(self._finalize)
+        return f
+
+    def _finalize(self, recp):
+        self.agent.callback_event('shard_agent_restarted', recp)
+        return self.agent.call_remote(self.monitor, 'restart_complete', recp)
 
 
 class HostAllocationContractor(contractor.BaseContractor):

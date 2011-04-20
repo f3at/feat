@@ -40,8 +40,15 @@ class AgencyJournalSideEffect(object):
         self._serializer = serializer
         self._record = record
         self._fun_id = function_id
-        self._args = serializer.convert(args or None)
-        self._kwargs = serializer.convert(kwargs or None)
+        # FIXME: This is ugly hack introduced by the fact that we cannot
+        # serialize methods, hence if side effect param is a method it has
+        # to be skipped
+        if function_id != "SIDE EFFECT SKIPPED":
+            self._args = serializer.convert(args or None)
+            self._kwargs = serializer.convert(kwargs or None)
+        else:
+            self._args = None
+            self._kwargs = None
         self._effects = []
         self._result = None
 
@@ -184,13 +191,25 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._agents.remove(medium)
         self.journal_agent_deleted(agent_id)
 
+        # FIXME: This shouldn't be necessary! Here we are manually getting
+        # rid of things which should just be garbage collected (self.registry
+        # is a WeekRefDict). It doesn't happpen supposingly
+        for key in self.registry.keys():
+            if key[0] == agent_id:
+                self.debug("Manualy removing recorder id %r, instance: %r",
+                           key, self.registry[key])
+                del(self.registry[key])
+
     ### Journaling Methods ###
 
     def register(self, recorder):
         j_id = recorder.journal_id
         self.log('Registering recorder: %r, id: %r',
                  recorder.__class__.__name__, j_id)
-        assert j_id not in self.registry
+        if j_id in self.registry:
+            raise RuntimeError(
+                'Journal id %r already in registry, it points to %r object' %\
+                (j_id, self.registry[j_id], ))
         self.registry[j_id] = recorder
 
     def journal_new_entry(self, agent_id, journal_id,
@@ -513,7 +532,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                              max_retries, initial_delay)
         self._retrying_protocols.append(r)
         r.notify_finish().addBoth(lambda _: self._retrying_protocols.remove(r))
-        return r
+        return r.initiate()
 
     @serialization.freeze_tag('AgencyAgent.retrying_task')
     @replay.named_side_effect('AgencyAgent.retrying_task')
@@ -547,11 +566,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
-    @replay.named_side_effect('AgencyAgent.call_next')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_next(self, method, *args, **kwargs):
         return self.call_later(0, method, *args, **kwargs)
 
-    @replay.named_side_effect('AgencyAgent.call_later')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_later(self, time_left, method, *args, **kwargs):
         call = reactor.callLater(time_left, self._call, method,
                                  *args, **kwargs)
@@ -1014,7 +1033,9 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         self._delayed_call = None
         self._initiator = None
 
-        self._bind()
+    def initiate(self):
+        self.call_next(self._bind)
+        return self
 
     ### Public Methods ###
 

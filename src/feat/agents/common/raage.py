@@ -12,6 +12,17 @@ def allocate_resource(agent, resources, shard=None,
     return f
 
 
+def retrying_allocate_resource(agent, resources, shard=None,
+                               categories={}, max_distance=None,
+                               max_retries=3):
+    f = discover(agent, shard)
+    f.add_callback(lambda recp: agent.retrying_protocol(
+        AllocationManager, recp, max_retries=max_retries,
+        args=(resources, categories, max_distance, )))
+    f.add_callback(lambda x: x.notify_finish())
+    return f
+
+
 def discover(agent, shard=None):
     shard = shard or agent.get_own_address().shard
     return agent.discover_service(AllocationManager, timeout=1, shard=shard)

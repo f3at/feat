@@ -173,11 +173,16 @@ class JournalReplayEntry(object):
         expected_desc = side_effect_as_string(exp_fun_id,
                     exp_args, exp_kwargs)
 
+        # FIXME: This is ugly hack introduced by the fact that we cannot
+        # serialize methods, hence if side effect param is a method it has
+        # to be skipped
+        ignore_args_and_kwargs = (function_id == "SIDE EFFECT SKIPPED")
+
         if exp_fun_id != function_id:
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
-        if args != exp_args:
+        if not ignore_args_and_kwargs and exp_args != args:
             which = 0
             for exp, got in zip(exp_args, args):
                 if exp == got:
@@ -189,7 +194,7 @@ class JournalReplayEntry(object):
                               "%s. Different argument index %d."
                               % (unexpected_desc, expected_desc, which))
 
-        if exp_kwargs != kwargs:
+        if not ignore_args_and_kwargs and exp_kwargs != kwargs:
             raise ReplayError("Bad side-effect keywords in %s, "
                               " expecting %s"
                               % (unexpected_desc, expected_desc))
@@ -559,11 +564,11 @@ class AgencyAgent(BaseReplayDummy):
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')
 
-    @replay.named_side_effect('AgencyAgent.call_next')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_next(self, method, *args, **kwargs):
         pass
 
-    @replay.named_side_effect('AgencyAgent.call_later')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_later(self, time_left, method, *args, **kwargs):
         pass
 

@@ -72,6 +72,12 @@ class IInitiator(Interface):
         '''Returns a Deferred that will be fired
         when the initiator finishes.'''
 
+    def get_expiration_time():
+        '''
+        Returns number of seconds since epoch when the expiration call for
+        current state will fire.
+        '''
+
 
 class InitiatorFailed(Exception):
     '''
@@ -89,3 +95,9 @@ class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
     protocol_id = Attribute("Protocol id")
+
+    def get_expiration_time():
+        '''
+        Returns number of seconds since epoch when the expiration call for
+        current state will fire.
+        '''

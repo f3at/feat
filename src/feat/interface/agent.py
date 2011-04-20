@@ -46,6 +46,9 @@ class IAgentFactory(Interface):
 
     categories = Attribute("Dict. Access, Address and Storage")
 
+    restart_strategy = Attribute(
+        "L{feat.agents.common.monitor.RestartStrategy}")
+
     def __call__(medium, *args, **kwargs):
         pass
 

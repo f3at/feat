@@ -35,8 +35,9 @@ class GettingInfoPartner(partners.BasePartner):
 @serialization.register
 class ResponsablePartner(partners.BasePartner):
 
-    def on_died(self, agent, brothers):
-        return partners.ACCEPT_RESPONSABILITY
+    def on_died(self, agent, brothers, monitor):
+        assert recipient.IRecipient.providedBy(monitor)
+        return 'ACCEPT_RESPONSABILITY'
 
     def on_restarted(self, agent, moved):
         assert moved
@@ -48,6 +49,8 @@ class ResponsablePartner(partners.BasePartner):
 
 
 class Partners(partners.Partners):
+
+    default_role = 'default_role'
 
     partners.has_many('failers', 'partner-agent', FailingPartner, 'failer')
     partners.has_many('info', 'partner-agent', GettingInfoPartner, 'info')
@@ -122,8 +125,12 @@ class PartnershipTest(common.SimulationTest):
     def testEstablishPartnership(self):
         yield self._establish_partnership()
 
-        self.assertEqual(1, len(self.initiator.get_descriptor().partners))
-        self.assertEqual(1, len(self.receiver.get_descriptor().partners))
+        i_partners = self.initiator.get_descriptor().partners
+        self.assertEqual(1, len(i_partners))
+        self.assertEqual('default_role', i_partners[0].role)
+        r_partners = self.receiver.get_descriptor().partners
+        self.assertEqual(1, len(r_partners))
+        self.assertEqual('default_role', r_partners[0].role)
 
     @defer.inlineCallbacks
     def testInitiatorTerminates(self):
@@ -278,9 +285,9 @@ class PartnershipTest(common.SimulationTest):
 
         monitor = yield self._start_agent()
         resp = yield monitor.notify_died(irecv, iinit)
-        self.assertEqual(partners.ACCEPT_RESPONSABILITY, resp)
+        self.assertEqual('ACCEPT_RESPONSABILITY', resp)
 
-        new_address = recipient.dummy_agent()
+        new_address = recipient.Agent(agent_id = iinit.key, shard=u'shard')
         yield monitor.notify_restarted(irecv, iinit, new_address)
         yield self.wait_for_idle(3)
         self.assertTrue(self.receiver.get_agent().has_migrated())
@@ -315,7 +322,7 @@ class PartnershipTest(common.SimulationTest):
         return self.process(script)
 
     def _failing_partnership(self, initiator, receiver):
-        return self._partnership(initiator, receiver, 'failer')
+        return self._partnership(initiator, receiver, None, 'failer')
 
     def _partnership_with_info(self, initiator, receiver):
         return self._partnership(initiator, receiver, 'info', 'info')

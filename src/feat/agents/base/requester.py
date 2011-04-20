@@ -1,6 +1,8 @@
+from twisted.python.failure import Failure
+
 from zope.interface import implements
 
-from feat.common import log, reflect, serialization, fiber
+from feat.common import log, reflect, serialization, fiber, error_handler
 from feat.agents.base import replay, protocol, message, recipient
 
 from feat.interface.requester import *
@@ -52,6 +54,8 @@ class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
     timeout = 0
     protocol_id = None
 
+    _error_handler = error_handler
+
     def __init__(self, agent, medium):
         log.Logger.__init__(self, medium)
         replay.Replayable.__init__(self, agent, medium)
@@ -88,7 +92,7 @@ class Ping(BaseRequester):
 
 class PartnershipProtocol(BaseRequester):
 
-    timeout = 1
+    timeout = 3
     protocol_id = 'partner-notification'
 
     known_types = ['goodbye', 'died', 'restarted', 'burried']
@@ -109,6 +113,9 @@ class PartnershipProtocol(BaseRequester):
 
     @replay.immutable
     def got_reply(self, state, reply):
+        payload = reply.payload
+        if isinstance(payload, Failure):
+            self._error_handler(payload)
         return reply.payload
 
 
@@ -141,6 +148,7 @@ class Propose(BaseRequester):
         state.our_role = our_role
         state.allocation_id = our_alloc_id
         state.substitute = substitute
+
         msg = message.RequestMessage(
             payload=dict(
                 partner_class=state.agent.descriptor_type,
@@ -151,9 +159,10 @@ class Propose(BaseRequester):
     @replay.entry_point
     def got_reply(self, state, reply):
         if reply.payload['ok']:
+            our_role = state.our_role or reply.payload['default_role']
             return state.agent.create_partner(
                 reply.payload['desc'], reply.reply_to, state.allocation_id,
-                state.our_role, substitute=state.substitute)
+                our_role, substitute=state.substitute)
         else:
             self.info('Received error: %r', reply.payload['fail'])
             f = self._release_allocation()

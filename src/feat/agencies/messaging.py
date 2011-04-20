@@ -23,6 +23,7 @@ class Connection(log.Logger):
         self._bindings = []
         self._queue_name = self._agent.get_queue_name()
         self._queue = None
+        self._disconnect = False
 
     def initiate(self):
         if self._queue_name is not None:
@@ -49,6 +50,8 @@ class Connection(log.Logger):
                 reason.raiseException()
 
         def bind():
+            if self._disconnect:
+                return
             d = self._consumeQueue(queue)
             d.addCallbacks(rebind, stop)
 
@@ -75,6 +78,7 @@ class Connection(log.Logger):
     # IMessagingClient implementation
 
     def disconnect(self):
+        self._disconnect = True
         if self._queue:
             self._queue.stop_consuming()
 

@@ -53,10 +53,11 @@ class PartnershipProtocol(BaseReplier):
         not_type = request.payload['type']
         blackbox = request.payload['blackbox']
         origin = request.payload['origin']
+        sender = request.reply_to
 
         f = fiber.succeed(origin)
         f.add_callback(state.agent.partner_sent_notification, not_type,
-                       blackbox)
+                       blackbox, sender)
         f.add_both(self._send_reply)
         return f
 
@@ -82,12 +83,17 @@ class ProposalReceiver(BaseReplier):
 
     @replay.journaled
     def _send_ok(self, state):
-        payload = dict(ok=True, desc=state.agent.descriptor_type)
+        default_role = getattr(state.agent.partners_class, 'default_role',
+                               None)
+        payload = {'ok': True,
+                   'desc': state.agent.descriptor_type,
+                   'default_role': default_role}
         self._reply(payload)
 
     @replay.journaled
     def _send_failed(self, state, failure):
-        payload = dict(ok=False, fail=failure)
+        payload = {'ok': False,
+                   'fail': failure}
         self._reply(payload)
 
     @replay.immutable

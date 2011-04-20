@@ -1,6 +1,28 @@
 from feat.agents.base import descriptor, replay, manager, message
+from feat.common import serialization, enum
 
-__all__ = ['Descriptor', 'MonitorManager', 'discover', 'request_monitor']
+
+__all__ = ['Descriptor', 'MonitorManager', 'discover', 'request_monitor',
+           'RestartFailed', 'RestartStrategy']
+
+
+class RestartFailed(Exception):
+    pass
+
+
+class RestartStrategy(enum.Enum):
+    """
+    Enum for the IAgentFactory.restart_strategy attribute
+    buryme    - Don't try to restart agent, just notify everybody about the
+                death.
+    local     - May be be restarted but only in the same shard.
+    whereever - May be restarted whereever in the cluster.
+    monitor   - Special strategy used by monitoring agents. When monitor
+                cannot be restarted in the shard before dying for good his
+                partners will get monitored by the monitoring agent who is
+                resolving this issue.
+    """
+    buryme, local, whereever, monitor = range(4)
 
 
 def request_monitor(agent, shard=None):

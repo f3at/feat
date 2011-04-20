@@ -199,6 +199,11 @@ class ExpirationCallsMixin(object):
     def __init__(self):
         self._expiration_call = None
 
+    @replay.side_effect
+    def get_expiration_time(self):
+        if self._expiration_call:
+            return self._expiration_call.getTime()
+
     def _get_time(self):
         raise NotImplemented('Should be define in the class using the mixin')
 

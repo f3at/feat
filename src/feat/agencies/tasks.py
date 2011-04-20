@@ -5,8 +5,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.agencies import common, protocols
-from feat.common import log, enum, defer, delay
-from feat.common import error_handler
+from feat.common import (log, enum, defer, delay, error_handler, )
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -67,11 +66,13 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(TaskState.performing)
 
         self._cancel_expiration_call()
-        timeout = self.agent.get_time() + self.task.timeout
-        error = InitiatorExpired("Timeout exceeded waiting "
-                                 "for task.initate()")
-        self._expire_at(timeout, self._expired,
-                TaskState.expired, failure.Failure(error))
+
+        if self.task.timeout:
+            timeout = self.agent.get_time() + self.task.timeout
+            error = InitiatorExpired("Timeout exceeded waiting "
+                                     "for task.initate()")
+            self._expire_at(timeout, self._expired,
+                    TaskState.expired, failure.Failure(error))
 
         self.call_next(self._initiate, *self.args, **self.kwargs)
 
@@ -104,7 +105,6 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def finished(self):
         return not self._cmp_state(TaskState.performing)
 
-
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -128,7 +128,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         return d
 
     def _completed(self, arg):
-        if arg != NOT_DONE_YET:
+        if arg != NOT_DONE_YET or not self._cmp_state(TaskState.performing):
             self._set_state(TaskState.completed)
             delay.callLater(0, self._terminate, arg)
 

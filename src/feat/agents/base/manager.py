@@ -66,7 +66,7 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     def expired(self):
         '''@see: L{manager.IAgentManager}'''
 
-    def cancelled(self, grant, cancellation):
+    def cancelled(self, cancellation):
         '''@see: L{manager.IAgentManager}'''
 
     def completed(self, report):

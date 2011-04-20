@@ -10,6 +10,7 @@ from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.interface.agent import AgencyAgentState
+from feat.agents.common.monitor import RestartStrategy
 
 
 registry = dict()
@@ -66,6 +67,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     categories = {'access': agent.Access.none,
                   'address': agent.Address.none,
                   'storage': agent.Storage.none}
+
+    restart_strategy = RestartStrategy.buryme
 
     # resources required to run the agent
     resources = {'epu': 1}
@@ -147,10 +150,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def establish_partnership(self, state, recp, allocation_id=None,
                               partner_allocation_id=None,
                               partner_role=None, our_role=None,
-                              substitute=None):
+                              substitute=None, allow_double=False):
         f = fiber.succeed()
         found = state.partners.find(recp)
-        if found:
+        default_role = getattr(self.partners_class, 'default_role', None)
+        our_role = our_role or default_role
+        if not allow_double and found:
             msg = ('establish_partnership() called for %r which is already '
                    'our partner with the class %r.' % (recp, type(found), ))
             self.debug(msg)
@@ -164,7 +169,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         f.add_callback(fiber.drop_result, self.initiate_protocol,
                        requester.Propose, recp, allocation_id,
                        partner_allocation_id,
-                       partner_role, our_role, substitute)
+                       our_role, partner_role, substitute)
         f.add_callback(requester.Propose.notify_finish)
         return f
 
@@ -194,11 +199,15 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.partners.create(partner_class, recp, allocation_id, role,
                                      substitute)
 
+    @replay.immutable
+    def remove_partner(self, state, partner):
+        return state.partners.remove(partner)
+
     @replay.mutable
     def partner_sent_notification(self, state, recp, notification_type,
-                                  payload):
-        return state.partners.receive_notification(recp, notification_type,
-                                                  payload)
+                                  payload, sender):
+        return state.partners.receive_notification(
+            recp, notification_type, payload, sender)
 
     @manhole.expose()
     @replay.immutable

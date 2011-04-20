@@ -79,6 +79,10 @@ class StructuralPartner(partners.BasePartner):
     def on_goodbye(self, agent, brothers):
         return agent.check_shard_structure()
 
+    def on_died(self, agent, brothers, monitor):
+        task = agent.request_restarting_partner(self.recipient.key, monitor)
+        return partners.accept_responsability(task)
+
 
 @serialization.register
 class RaagePartner(StructuralPartner):
@@ -145,6 +149,8 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
 
     partners_class = Partners
 
+    restart_strategy = monitor.RestartStrategy.local
+
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
@@ -193,6 +199,11 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     def request_starting_partner(self, state, factory):
         task = self.initiate_task(StartPartner, factory)
         return fiber.wrap_defer(task.notify_finish)
+
+    @replay.mutable
+    def request_restarting_partner(self, state, agent_id, monitor=None):
+        task = self.initiate_task(RestartPartner, agent_id, monitor)
+        return task
 
     @manhole.expose()
     @rpc.publish
@@ -748,28 +759,17 @@ class StartPartnerException(Exception):
     pass
 
 
-class StartPartner(task.BaseTask):
+class AbstractStartPartner(task.BaseTask):
+    """
+    Base class for StartPartner and RestartPartner tasks.
+    Implements common functionality which is cyclying through the list of
+    host partners and requesting the to start the agent.
+    """
 
-    protocol_id = 'request-starting-partner'
     timeout = 60
 
-    @replay.entry_point
-    def initiate(self, state, factory):
-        state.descriptor = None
-        state.hosts = state.agent.query_partners('hosts')
-        state.factory = factory
-        self.log('StartPartner task initiated, will be trying to start a '
-                 '%r on one of the hosts: %r', factory, state.hosts)
-        if len(state.hosts) == 0:
-            # FIXME: Here would be a good idea to put an alert
-            return self._fail('Shard Agent cannot start partner %r as it has '
-                              'no Host Partners', factory)
-        state.current_index = -1
-
-        f = factory.prepare_descriptor(state.agent)
-        f.add_callback(self._store_descriptor)
-        f.add_callback(fiber.drop_result, self._try_next)
-        return f
+    def initiate(self):
+        raise NotImplementedError('Abstract class, implement me.')
 
     @replay.mutable
     def _try_next(self, state):
@@ -778,8 +778,8 @@ class StartPartner(task.BaseTask):
             partner = state.hosts[state.current_index]
         except IndexError:
             return self._fail(
-                'No of the Host Partners managed to start a partner %r',
-                state.factory)
+                'No of the Host Partners managed to start a partner %r' %\
+                (state.descriptor.document_type, ))
 
         f = host.start_agent(state.agent, partner, state.descriptor)
         f.add_errback(self._failed_to_start, partner)
@@ -788,7 +788,8 @@ class StartPartner(task.BaseTask):
     @replay.immutable
     def _failed_to_start(self, state, fail, partner):
         self.error('Failed to start %r on partner %r. Reason: %r. Will retry '
-                   'with the next', state.factory, partner, fail)
+                   'with the next', state.descriptor.document_type, partner,
+                   fail)
         return self._try_next()
 
     def _fail(self, msg):
@@ -798,6 +799,68 @@ class StartPartner(task.BaseTask):
     @replay.mutable
     def _store_descriptor(self, state, desc):
         state.descriptor = desc
+        return desc
+
+    @replay.mutable
+    def _init(self, state, initiate_arg):
+        '''
+        Set initial state of the task. Called from initiate.
+        @param initiate_arg: either the PartnerClass object (StartTask)
+                             or an agent_id (RestartTask)
+        '''
+        state.descriptor = None
+        state.hosts = state.agent.query_partners('hosts')
+        state.current_index = -1
+
+        self.log('%s task initiated, will be trying to start a '
+                 '%r on one of the hosts: %r', str(self.__class__.__name__),
+                 initiate_arg, state.hosts)
+        if len(state.hosts) == 0:
+            # FIXME: Here would be a good idea to put an alert
+            return self._fail('Shard Agent cannot start partner %r as it has '
+                              'no Host Partners!' % (initiate_arg, ))
+
+
+class StartPartner(AbstractStartPartner):
+
+    protocol_id = 'request-starting-partner'
+
+    @replay.entry_point
+    def initiate(self, state, factory):
+        self._init(factory)
+
+        f = factory.prepare_descriptor(state.agent)
+        f.add_callback(self._store_descriptor)
+        f.add_callback(fiber.drop_result, self._try_next)
+        return f
+
+
+class RestartPartner(AbstractStartPartner):
+
+    protocol_id = 'request-restarting-partner'
+
+    @replay.entry_point
+    def initiate(self, state, agent_id, monitor):
+        self._init(agent_id)
+        state.monitor = monitor
+
+        f = state.agent.get_document(agent_id)
+        f.add_callback(self._store_descriptor)
+        f.add_callback(self._remove_host_partner)
+        f.add_callback(fiber.drop_result, self._try_next)
+        f.add_callback(self._notify_monitor)
+        return f
+
+    @replay.mutable
+    def _remove_host_partner(self, state, desc):
+        f = desc.remove_host_partner(state.agent)
+        f.add_callback(self._store_descriptor)
+        return f
+
+    @replay.immutable
+    def _notify_monitor(self, state, recp):
+        return state.agent.call_remote(state.monitor, 'restart_complete',
+                                       recp)
 
 
 class QueryStructureManager(manager.BaseManager):

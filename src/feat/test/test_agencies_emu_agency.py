@@ -418,6 +418,7 @@ class TestRetryingProtocol(common.TestCase):
         self.assertEqual(2, instance.delay)
 
     def _start_instance(self, max_retries, initial_delay, max_delay):
-        return agency.RetryingProtocol(
+        instance = agency.RetryingProtocol(
             self.medium, DummyInitiator, None, tuple(), dict(),
             max_retries, initial_delay, max_delay)
+        return instance.initiate()

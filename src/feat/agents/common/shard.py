@@ -24,7 +24,7 @@ def query_structure(agent, partner_type, distance=1):
         return list()
     else:
         f = agent.call_remote(shard_recp, 'query_structure',
-                              partner_type, distance)
+                              partner_type, distance, _timeout=1)
         return f
 
 
@@ -66,7 +66,7 @@ class JoinShardManager(manager.BaseManager):
 
 @replay.side_effect
 def generate_shard_value():
-    return str(uuid.uuid1())
+    return unicode(uuid.uuid1())
 
 
 @descriptor.register("shard_agent")
