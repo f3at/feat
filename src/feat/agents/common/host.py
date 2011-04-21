@@ -2,6 +2,7 @@ from feat.agents.base import requester, replay, message, document
 from feat.common import fiber
 
 from feat.interface.recipient import IRecipient
+from feat.interface.agent import Access, Address, Storage
 
 
 __all__ = ['start_agent', 'StartAgentRequester']
@@ -28,6 +29,20 @@ def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):
     f.add_callback(StartAgentRequester.notify_finish)
     f.succeed(StartAgentRequester)
     return f
+
+
+def check_categories(host, categories):
+    for name, val in categories.iteritems():
+        if ((isinstance(val, Access) and val == Access.none) or
+            (isinstance(val, Address) and val == Address.none) or
+            (isinstance(val, Storage) and val == Storage.none)):
+            continue
+
+        host_categories = host._get_state().categories
+        if not (name in host_categories.keys() and
+                host_categories[name] == val):
+                return False
+    return True
 
 
 class StartAgentRequester(requester.BaseRequester):

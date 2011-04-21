@@ -9,6 +9,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               problem, task, )
 from feat.agents.common import rpc
 from feat.agents.common import shard as common_shard
+from feat.agents.common.host import check_categories
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
@@ -254,24 +255,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         self.info("Setting host categories to: %s",
                   ", ".join(["%s=%s" % (n, v.name)
                              for n, v in categories.iteritems()]))
-
         state.categories = categories
 
     @replay.immutable
     def check_requirements(self, state, doc):
         agnt = agent.registry_lookup(doc.document_type)
-        agent_categories = agnt.categories
-        for cat, val in agent_categories.iteritems():
-            if ((isinstance(val, Access) and val == Access.none) or
-               (isinstance(val, Address) and val == Address.none) or
-               (isinstance(val, Storage) and val == Storage.none)):
-                continue
-
-            if not (cat in state.categories and
-                    state.categories[cat] == val):
-                msg = "Category %s doesn't match %s != %s" % (
-                      cat, val.name, state.categories[cat].name)
-                raise CategoryError(msg)
+        ret = check_categories(self, agnt.categories)
+        if not ret:
+            msg = "Categoryies doesn't match"
+            self.error(msg)
+            raise CategoryError(msg)
         return doc
 
 
@@ -384,6 +377,12 @@ class HostAllocationContractor(contractor.BaseContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
+        categories = announcement.payload['categories']
+        ret = check_categories(state.agent, categories)
+        if not ret:
+            self._refuse("Categories doesn't match")
+            return
+
         resources = announcement.payload['resources']
         try:
             preallocation = state.agent.preallocate_resource(**resources)

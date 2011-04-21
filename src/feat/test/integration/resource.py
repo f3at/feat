@@ -8,15 +8,16 @@ class RequestingAgent(agent.BaseAgent):
 
     @manhole.expose()
     @replay.mutable
-    def request_resource(self, state, **resources):
-        self.info('Requesting resoruce %r', resources)
-        return raage.allocate_resource(self, resources)
+    def request_resource(self, state, resources, categories):
+        self.info('Requesting resoruce %r category %r', resources, categories)
+        return raage.allocate_resource(self, resources, categories)
 
     @manhole.expose()
     @replay.mutable
-    def request_local_resource(self, state, **resources):
-        self.info('Requesting resoruce %r', resources)
-        return raage.allocate_resource(self, resources, max_distance=0)
+    def request_local_resource(self, state, resources, categories):
+        self.info('Requesting resoruce %r category %r', resources, categories)
+        return raage.allocate_resource(self, resources, categories,
+                                       max_distance=0)
 
 
 @descriptor.register('requesting_agent')
