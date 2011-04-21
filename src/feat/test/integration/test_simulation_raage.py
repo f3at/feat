@@ -13,7 +13,8 @@ from feat.agents.common import host
 
 def checkAllocation(test, agent, resources):
     _, allocated = agent.list_resource()
-    test.assertEquals(allocated, resources)
+    for key in resources:
+        test.assertEquals(allocated[key], resources[key], key)
 
 
 def checkNoAllocated(test, a_id):
@@ -44,7 +45,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         """)
 
         hostdef = host.HostDef()
-        hostdef.resources = {"host": 1}
+        hostdef.resources = {"host": 1, "epu": 10}
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
@@ -133,7 +134,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         """)
 
         hostdef = host.HostDef()
-        hostdef.resources = {"host": 1}
+        hostdef.resources = {"host": 1, "epu": 10}
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
@@ -164,7 +165,8 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def _checkAllocations(self, resources, count):
         for agent in self.agents:
             _, allocated = agent.list_resource()
-            if allocated == resources:
+            if all([allocated[name] == value \
+                    for name, value in resources.iteritems()]):
                 count -= 1
         self.assertEquals(count, 0)
 
@@ -254,11 +256,11 @@ class ContractNestingSimulation(common.SimulationTest):
         """)
 
         # host definition in first shard (no space to allocate)
-        hostdef1 = host.HostDef(resources=dict(host=0))
+        hostdef1 = host.HostDef(resources=dict(host=0, epu=10))
         self.set_local("hostdef1", hostdef1)
 
         # host definition in second shard (no space to allocate)
-        hostdef2 = host.HostDef(resources=dict(host=1))
+        hostdef2 = host.HostDef(resources=dict(host=1, epu=10))
         self.set_local("hostdef2", hostdef2)
 
         yield self.process(setup)

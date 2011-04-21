@@ -99,7 +99,7 @@ class HostAgentDefinitionTests(common.SimulationTest):
 
         hostdef = host.HostDef()
         hostdef.doc_id = "someid"
-        hostdef.resources = {"spam": 999, "bacon": 42, "eggs": 3}
+        hostdef.resources = {"spam": 999, "bacon": 42, "eggs": 3, "epu": 10}
 
         self.driver.save_document(hostdef)
         self.set_local("hostdef", hostdef)
@@ -216,6 +216,7 @@ class HostAgentCheckTest(common.SimulationTest):
         hostdef.categories = {"access": Access.private,
                                 "address": Address.fixed,
                                 "storage": Storage.static}
+        hostdef.resources = {"epu": 10}
         self.driver.save_document(hostdef)
         self.set_local("hostdef", hostdef)
 

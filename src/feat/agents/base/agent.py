@@ -67,6 +67,9 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
                   'address': agent.Address.none,
                   'storage': agent.Storage.none}
 
+    # resources required to run the agent
+    resources = {'epu': 1}
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
@@ -201,6 +204,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         '''query_partners(name_or_class) ->
               Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
+
+    @replay.immutable
+    def find_partner(self, state, recp_or_agent_id):
+        return state.partners.find(recp_or_agent_id)
 
     @replay.immutable
     def query_partner_handler(self, state, partner_type, role=None):
