@@ -109,14 +109,17 @@ class SimulationTest(common.TestCase):
         for x in self.driver.iter_agents():
             yield x.wait_for_listeners_finish()
         yield common.TestCase.tearDown(self)
-        if not self.skip_replayability:
-            self.info("Test finished, now validating replayability.")
-            for agency in self.driver._agencies:
-                self._validate_replay_on_agency(agency)
-        else:
-            print "\n\033[91mFIXME: \033[0mReplayability test skipped: %s\n" %\
-                  self.skip_replayability
-        self.revert_overrides()
+        try:
+            if not self.skip_replayability:
+                self.info("Test finished, now validating replayability.")
+                for agency in self.driver._agencies:
+                    self._validate_replay_on_agency(agency)
+            else:
+                msg = ("\n\033[91mFIXME: \033[0mReplayability test "
+                      "skipped: %s\n" % self.skip_replayability)
+                print msg
+        finally:
+            self.revert_overrides()
 
     def _validate_replay_on_agency(self, agency):
         for agent in agency._agents:
