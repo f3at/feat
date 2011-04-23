@@ -1,12 +1,14 @@
 from zope.interface import implements
 
 from feat.common import log, reflect, serialization, fiber
-from feat.interface import requester, protocols
 from feat.agents.base import replay, protocol, message, recipient
+
+from feat.interface.requester import *
+from feat.interface.protocols import *
 
 
 class Meta(type(replay.Replayable)):
-    implements(requester.IRequesterFactory)
+    implements(IRequesterFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
@@ -17,7 +19,7 @@ class Meta(type(replay.Replayable)):
 class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
     __metaclass__ = Meta
-    implements(requester.IAgentRequester)
+    implements(IAgentRequester)
 
     log_category = "requester"
     timeout = 0
@@ -37,13 +39,13 @@ class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
         log.Logger.__init__(self, state.medium)
 
     def initiate(self):
-        '''@see: L{requester.IAgentRequester}'''
+        '''@see: L{IAgentRequester}'''
 
     def got_reply(self, reply):
-        '''@see: L{requester.IAgentRequester}'''
+        '''@see: L{IAgentRequester}'''
 
     def closed(self):
-        '''@see: L{requester.IAgentRequester}'''
+        '''@see: L{IAgentRequester}'''
 
 
 class PartnershipProtocol(BaseRequester):
@@ -92,7 +94,7 @@ def notify_burried(agent, recp, origin, payload):
 def _notify_partner(agent, recp, notification_type, origin, payload):
 
     def _ignore_initiator_failed(fail):
-        if fail.check(protocols.InitiatorFailed):
+        if fail.check(InitiatorFailed):
             agent.log('Swallowing %r expection.', fail.value)
             return None
         else:

@@ -35,7 +35,7 @@ def get_host_list(agent):
             "returning empty list")
         return list()
     else:
-        return agent.call_remote(shard_recp, 'get_host_list')
+        return agent.call_remote(shard_recp, 'get_host_list', _timeout=1)
 
 
 class JoinShardManager(manager.BaseManager):
