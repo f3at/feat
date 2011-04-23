@@ -84,11 +84,18 @@ class NestingContractor(BaseContractor):
     def fetch_nested_bids(self, state, recipients, original_announcement):
         recipients = recipient.IRecipients(recipients)
         sender = original_announcement.reply_to
-        if  sender in recipients:
+        max_distance = original_announcement.max_distance
+
+        if sender in recipients:
             self.log("Removing sender from list of recipients to nest")
             recipients.remove(sender)
         if len(recipients) == 0:
             self.log("Empty list to nest to, will not nest")
+            return list()
+        elif max_distance is not None and \
+             original_announcement.level + 1 > max_distance:
+            self.log("Reached max distance for nesting of %d, returning empy "
+                     "list.", max_distance)
             return list()
         else:
             self.log("Will nest contract to %d contractors.", len(recipients))

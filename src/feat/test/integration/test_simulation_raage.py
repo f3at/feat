@@ -256,7 +256,7 @@ class ContractNestingSimulation(common.SimulationTest):
         """)
 
         # host definition in first shard (no space to allocate)
-        hostdef1 = host.HostDef(resources=dict(host=0, epu=10))
+        hostdef1 = host.HostDef(resources=dict(host=0, epu=10, local=1))
         self.set_local("hostdef1", hostdef1)
 
         # host definition in second shard (no space to allocate)
@@ -277,6 +277,19 @@ class ContractNestingSimulation(common.SimulationTest):
         self.assertEqual(4, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('raage_agent'))
+
+    @defer.inlineCallbacks
+    def testRequestLocalResource(self):
+        self.info("Starting test")
+        resources = dict(host=1)
+        d = self.req_agent.request_local_resource(**resources)
+        self.assertFailure(d, InitiatorFailed)
+        yield d
+        self.assert_allocated('host', 0)
+
+        allocation_id, irecipient1 = \
+                yield self.req_agent.request_resource(local=1)
+        self.assert_allocated('local', 1)
 
     @defer.inlineCallbacks
     def testRequestFromOtherShard(self):

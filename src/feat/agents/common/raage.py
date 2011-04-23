@@ -3,10 +3,10 @@ from feat.agents.base import manager, replay, message, descriptor
 __all__ = ['allocate_resource', 'AllocationManager', 'discover', 'Descriptor']
 
 
-def allocate_resource(agent, resources, shard=None):
+def allocate_resource(agent, resources, shard=None, max_distance=None):
     f = discover(agent, shard)
     f.add_callback(lambda recp: agent.initiate_protocol(
-        AllocationManager, recp, resources))
+        AllocationManager, recp, resources, max_distance))
     f.add_callback(lambda x: x.notify_finish())
     return f
 
@@ -22,10 +22,11 @@ class AllocationManager(manager.BaseManager):
     announce_timeout = 6
 
     @replay.entry_point
-    def initiate(self, state, resources):
+    def initiate(self, state, resources, max_distance):
         self.log("initiate manager")
         state.resources = resources
         msg = message.Announcement()
+        msg.max_distance = max_distance
         msg.payload['resources'] = state.resources
         state.medium.announce(msg)
 

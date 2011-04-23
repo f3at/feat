@@ -64,6 +64,9 @@ class Announcement(ContractMessage, FirstMessageMixin):
 
     # Increased every time the contract is nested to the other shard
     formatable.field('level', 0)
+    # Used in nested contracts. How many times can contract be nested.
+    # None = infinity
+    formatable.field('max_distance', None)
 
 
 @serialization.register
