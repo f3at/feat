@@ -94,3 +94,12 @@ class ProposalReceiver(BaseReplier):
     def _reply(self, state, payload):
         msg = message.ResponseMessage(payload=payload)
         state.medium.reply(msg)
+
+
+class Ping(BaseReplier):
+
+    protocol_id = 'ping'
+
+    @replay.entry_point
+    def requested(self, state, request):
+        state.medium.reply(message.ResponseMessage())

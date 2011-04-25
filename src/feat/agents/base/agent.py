@@ -95,6 +95,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         self._load_allocations()
         state.medium.register_interest(replier.PartnershipProtocol)
         state.medium.register_interest(replier.ProposalReceiver)
+        state.medium.register_interest(replier.Ping)
 
     @replay.immutable
     def startup(self, state):

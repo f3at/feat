@@ -63,7 +63,6 @@ class AgentMixin(object):
         value = self._published[fun_id](self, *args, **kwargs)
         return value
 
-
     ### Private Methods ###
 
     @classmethod
@@ -80,6 +79,7 @@ class RPCRequesterFactory(serialization.Serializable):
 
     def __init__(self, timeout):
         self.timeout = timeout
+        self.protocol_id = RPCRequester.protocol_id
 
     def __call__(self, agent, medium):
         instance = RPCRequester(agent, medium)

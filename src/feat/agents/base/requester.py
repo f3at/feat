@@ -7,6 +7,33 @@ from feat.interface.requester import *
 from feat.interface.protocols import *
 
 
+def say_goodbye(agent, recp, payload):
+    origin = agent.get_own_address()
+    return _notify_partner(agent, recp, 'goodbye', origin, payload)
+
+
+def notify_died(agent, recp, origin, payload):
+    return _notify_partner(agent, recp, 'died', origin, payload)
+
+
+def notify_restarted(agent, recp, origin, new_address):
+    return _notify_partner(agent, recp, 'restarted', origin, new_address)
+
+
+def notify_burried(agent, recp, origin, payload):
+    return _notify_partner(agent, recp, 'burried', origin, payload)
+
+
+def ping(agent, recp):
+    f = fiber.succeed(Ping)
+    f.add_callback(agent.initiate_protocol, recp)
+    f.add_callback(Ping.notify_finish)
+    return f
+
+
+### Private ###
+
+
 class Meta(type(replay.Replayable)):
     implements(IRequesterFactory)
 
@@ -48,6 +75,17 @@ class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
         '''@see: L{IAgentRequester}'''
 
 
+class Ping(BaseRequester):
+
+    timeout = 1
+    protocol_id = 'ping'
+
+    @replay.entry_point
+    def initiate(self, state):
+        msg = message.RequestMessage()
+        state.medium.request(msg)
+
+
 class PartnershipProtocol(BaseRequester):
 
     timeout = 1
@@ -72,23 +110,6 @@ class PartnershipProtocol(BaseRequester):
     @replay.immutable
     def got_reply(self, state, reply):
         return reply.payload
-
-
-def say_goodbye(agent, recp, payload):
-    origin = agent.get_own_address()
-    return _notify_partner(agent, recp, 'goodbye', origin, payload)
-
-
-def notify_died(agent, recp, origin, payload):
-    return _notify_partner(agent, recp, 'died', origin, payload)
-
-
-def notify_restarted(agent, recp, origin, new_address):
-    return _notify_partner(agent, recp, 'restarted', origin, new_address)
-
-
-def notify_burried(agent, recp, origin, payload):
-    return _notify_partner(agent, recp, 'burried', origin, payload)
 
 
 def _notify_partner(agent, recp, notification_type, origin, payload):
