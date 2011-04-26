@@ -3,8 +3,8 @@ from feat.agents.base import manager, replay, message, descriptor
 __all__ = ['allocate_resource', 'AllocationManager', 'discover', 'Descriptor']
 
 
-def allocate_resource(agent, resources, categories,
-                      shard=None, max_distance=None):
+def allocate_resource(agent, resources, shard=None,
+                      categories={}, max_distance=None):
     f = discover(agent, shard)
     f.add_callback(lambda recp: agent.initiate_protocol(
         AllocationManager, recp, resources, categories, max_distance))
