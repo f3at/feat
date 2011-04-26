@@ -9,7 +9,7 @@ from feat.process import couchdb, rabbitmq
 from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
 from feat.agents.base import agent, descriptor, replay
-from feat.common import serialization, fiber
+from feat.common import serialization, fiber, delay
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
@@ -171,7 +171,7 @@ class MasterAgent(StandaloneAgent):
     def initiate(self, state):
         StandaloneAgent.initiate(self)
 
-        desc = Descriptor(shard='lobby')
+        desc = Descriptor(shard=u'lobby')
         f = fiber.Fiber()
         f.add_callback(state.medium.save_document)
         f.add_callback(state.medium.start_agent)
@@ -190,6 +190,7 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
+        delay.time_scale = 1
         try:
             self.db_process = couchdb.Process(self)
         except DependencyError:
@@ -257,12 +258,17 @@ class IntegrationTestCase(common.TestCase):
     def testStartAgentFromStandalone(self):
         desc = host_agent.Descriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc)
+        yield self.agency.start_agent(desc, run_startup=False)
         self.assertEqual(1, len(self.agency._agents))
         host_a = self.agency._agents[0].get_agent()
 
+        def is_idle():
+            return all([x.is_idle() for x in self.agency._agents])
+
+        yield self.wait_for(is_idle, timeout=30)
+
         # this will be called in the other process
-        desc = MasterDescriptor()
+        desc = MasterDescriptor(shard=u'lobby')
         desc = yield self.db.save_document(desc)
         yield host_a.start_agent(desc.doc_id)
 

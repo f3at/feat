@@ -245,7 +245,7 @@ class ContractNestingSimulation(common.SimulationTest):
 
     def setUp(self):
         config = everything.shard_agent.ShardAgentConfiguration(
-            doc_id = 'test-config',
+            doc_id = u'test-config',
             hosts_per_shard = 2)
         dbtools.initial_data(config)
         self.override_config('shard_agent', config)
