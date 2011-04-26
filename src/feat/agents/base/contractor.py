@@ -156,6 +156,8 @@ class NestedManagerFactory(serialization.Serializable):
                self.protocol_id == other.protocol_id
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -208,6 +210,8 @@ class Service(serialization.Serializable):
                self.interest_type == other.interest_type
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 

@@ -76,6 +76,8 @@ class Formatable(serialization.Serializable, annotate.Annotable):
         return True
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
     # ISerializable

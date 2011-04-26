@@ -47,3 +47,7 @@ class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
     def expired(self):
         '''@see L{task.IAgentTask}'''
+
+    @replay.immutable
+    def finished(self, state):
+        return state.medium.finished()

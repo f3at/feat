@@ -270,6 +270,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         return True
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -336,6 +338,8 @@ class Allocation(StateMachineMixin, serialization.Serializable):
                self.id == other.id
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 

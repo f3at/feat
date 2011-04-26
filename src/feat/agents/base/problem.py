@@ -41,6 +41,8 @@ class BaseProblem(serialization.Serializable):
         return True
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -119,6 +121,8 @@ class SolveProblemInterest(serialization.Serializable):
                self.interest_type == other.interest_type
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 

@@ -62,6 +62,8 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
                 and self.key == other.key)
 
     def __ne__(self, other):
+        if not isinstance(other, BaseRecipient):
+            return NotImplemented
         return not self.__eq__(other)
 
     def __repr__(self):
@@ -135,6 +137,8 @@ class Recipients(serialization.Serializable, pb.Copyable):
         return "<RecipientsList: %s>" % "; ".join(cont)
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
     def __iter__(self):

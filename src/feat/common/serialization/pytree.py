@@ -33,6 +33,8 @@ class External(object):
         return self.identifier == other.identifier
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -63,6 +65,8 @@ class Instance(object):
                 and self.snapshot == other.snapshot)
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -98,6 +102,8 @@ class Reference(object):
                 and self.value == other.value)
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -126,6 +132,8 @@ class Dereference(object):
         return self.refid == other.refid
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 

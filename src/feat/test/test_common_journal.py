@@ -325,6 +325,8 @@ class SideEffectsDummy(serialization.Serializable):
         return self.name == other.name
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
     @journal.side_effect

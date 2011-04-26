@@ -4,11 +4,16 @@
 from twisted.internet import defer
 
 from feat.agents.base import (descriptor, replay, task)
-from feat.agencies.tasks import TaskState
-from feat.common import delay, fiber
+from feat.agencies.tasks import TaskState, NOT_DONE_YET
+from feat.common import serialization
 from feat.interface import protocols
 
 from feat.test import common
+
+
+@serialization.register
+class SomeException(Exception, serialization.Serializable):
+    pass
 
 
 class BaseTestTask(task.BaseTask, common.Mock):
@@ -20,6 +25,21 @@ class BaseTestTask(task.BaseTask, common.Mock):
     @replay.immutable
     def _get_medium(self, state):
         return state.medium
+
+
+class AsyncTask(BaseTestTask):
+
+    @replay.entry_point
+    def initiate(self, state):
+        return NOT_DONE_YET
+
+    @replay.mutable
+    def finish(self, state, arg):
+        state.medium.finish(arg)
+
+    @replay.mutable
+    def fail(self, state, arg):
+        state.medium.fail(arg)
 
 
 class TimeoutTask(BaseTestTask):
@@ -135,3 +155,18 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         self.assertEqual(task.attempt, task.max_retries+1)
         self.assertFailure(self.finished, BaseException)
+
+    @defer.inlineCallbacks
+    def testAsyncTasks(self):
+        self.start_task(AsyncTask)
+        self.assertFalse(self.task.finished())
+        d = self.task.notify_finish()
+        self.task.finish('result')
+        res = yield d
+        self.assertEqual('result', res)
+        self.assertTrue(self.task.finished())
+
+        self.start_task(AsyncTask)
+        self.assertFailure(self.finished, SomeException)
+        self.task.fail(SomeException('result'))
+        yield self.finished

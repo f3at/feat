@@ -791,3 +791,15 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
     @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass
+
+    @replay.named_side_effect('AgencyTask.finish')
+    def finish(self, arg):
+        pass
+
+    @replay.named_side_effect('AgencyTask.fail')
+    def fail(self, failure):
+        pass
+
+    @replay.named_side_effect('AgencyTask.finished')
+    def finished(self):
+        pass

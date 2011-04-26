@@ -3,9 +3,10 @@
 from twisted.python import components, failure
 from zope.interface import implements
 
+from feat.agents.base import replay
 from feat.agencies import common, protocols
-from feat.common import log, enum, fiber, defer, delay
-from feat.common import error_handler, serialization
+from feat.common import log, enum, defer, delay
+from feat.common import error_handler
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -33,6 +34,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     log_category = 'agency-task'
 
     type_name = 'task-medium'
+
+    _error_handler = error_handler
 
     def __init__(self, agency_agent, factory, *args, **kwargs):
         log.Logger.__init__(self, agency_agent)
@@ -87,6 +90,21 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     # notify_finish() implemented in common.TransientInitiatorMediumBase
 
+    @replay.named_side_effect('AgencyTask.finish')
+    def finish(self, arg):
+        self._completed(arg)
+
+    @replay.named_side_effect('AgencyTask.fail')
+    def fail(self, fail):
+        if isinstance(fail, Exception):
+            fail = failure.Failure(fail)
+        self._error(fail)
+
+    @replay.named_side_effect('AgencyTask.finished')
+    def finished(self):
+        return not self._cmp_state(TaskState.performing)
+
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -110,10 +128,12 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         return d
 
     def _completed(self, arg):
-        self._set_state(TaskState.completed)
-        delay.callLater(0, self._terminate, arg)
+        if arg != NOT_DONE_YET:
+            self._set_state(TaskState.completed)
+            delay.callLater(0, self._terminate, arg)
 
     def _error(self, arg):
+        self._error_handler(arg)
         self._set_state(TaskState.error)
         delay.callLater(0, self._terminate, arg)
 

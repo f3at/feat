@@ -156,6 +156,8 @@ class BasePartner(serialization.Serializable):
                self.role == other.role
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
