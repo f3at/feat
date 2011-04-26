@@ -71,6 +71,9 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         notifier.AgentMixin.initiate(self, state)
 
         state.medium.register_interest(StartAgentReplier)
+        state.medium.register_interest(StartAgentContractor)
+        state.medium.register_interest(
+            contractor.Service(StartAgentContractor))
         state.medium.register_interest(HostAllocationContractor)
         state.medium.register_interest(
             problem.SolveProblemInterest(MissingShard(self)))
@@ -339,7 +342,7 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _validate_allocation(self, state):
         if state.allocation_id:
-            return self.check_allocation_exists(state.allocation_id)
+            return state.agent.check_allocation_exists(state.allocation_id)
         else:
             resources = self._get_factory().resources
             f = state.agent.allocate_resource(**resources)
@@ -430,7 +433,7 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _granted_failed(self, state, fail):
         msg = "Granted failed with failure %r" % (fail, )
         cancel = message.Cancellation(reason=msg)
-        state.medium.defect(msg)
+        state.medium.defect(cancel)
         self.error(msg)
         return self.release_preallocation()
 
@@ -478,3 +481,65 @@ class StartAgentReplier(replier.BaseReplier):
         msg = message.ResponseMessage()
         msg.payload['agent'] = recipient.IRecipient(new_agent)
         state.medium.reply(msg)
+
+
+class StartAgentContractor(contractor.BaseContractor):
+
+    protocol_id = 'start-agent'
+
+    @replay.entry_point
+    def announced(self, state, announce):
+        state.descriptor = announce.payload['descriptor']
+        state.factory = agent.registry_lookup(state.descriptor.document_type)
+
+        if not check_categories(state.agent, state.factory.categories):
+            self._refuse()
+            return
+
+        alloc = state.agent.preallocate_resource(
+            **state.factory.resources)
+
+        if alloc is None:
+            self._refuse()
+            return
+
+        state.alloc_id = alloc.id
+
+        bid = message.Bid()
+        state.medium.bid(bid)
+
+    @replay.mutable
+    def _release_allocation(self, state, *_):
+        if state.alloc_id:
+            return state.agent.release_resource(state.alloc_id)
+
+    closed = _release_allocation
+    rejected = _release_allocation
+    expired = _release_allocation
+    cancelled = _release_allocation
+
+    @replay.entry_point
+    def granted(self, state, grant):
+        f = state.agent.confirm_allocation(state.alloc_id)
+        f.add_callback(fiber.drop_result, state.agent.start_agent,
+                       state.descriptor.doc_id, state.alloc_id)
+        f.add_callbacks(self._finalize, self._starting_failed)
+        return f
+
+    @replay.immutable
+    def _finalize(self, state, recp):
+        msg = message.FinalReport(payload=recp)
+        state.medium.finalize(msg)
+
+    @replay.immutable
+    def _starting_failed(self, state, fail):
+        msg = message.Cancellation(reason=fail)
+        f = self._release_allocation()
+        f.add_callback(fiber.drop_result, state.medium.defect,
+                       msg)
+        return f
+
+    @replay.immutable
+    def _refuse(self, state):
+        msg = message.Refusal()
+        state.medium.refuse(msg)
