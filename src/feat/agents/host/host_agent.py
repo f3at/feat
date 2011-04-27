@@ -176,6 +176,12 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         desc = state.medium.get_descriptor()
         return desc.hostname
 
+    @manhole.expose()
+    @rpc.publish
+    @replay.side_effect
+    def get_ip(self):
+        return unicode(socket.gethostbyname(socket.gethostname()))
+
     @rpc.publish
     @replay.mutable
     def allocate_ports(self, state, number):

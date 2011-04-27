@@ -49,10 +49,12 @@ class HostAgentTests(common.SimulationTest):
 
     def testHostname(self):
         expected = socket.gethostbyaddr(socket.gethostname())[0]
+        expected_ip = socket.gethostbyname(socket.gethostname())
         self.assertEqual(self.get_local('desc1').hostname, None)
         self.assertEqual(self.get_local('desc2').hostname, expected)
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
+        self.assertEqual(agent.get_ip(), expected_ip)
 
     @defer.inlineCallbacks
     def testAllocatePorts(self):
