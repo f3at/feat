@@ -358,6 +358,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_result,
                       self.agency._database.get_connection, self)
         d.addCallback(setter, '_database')
+        d.addCallback(defer.drop_result, self._increase_instance_id)
         d.addCallback(defer.drop_result, self._load_configuration)
         d.addCallback(setter, '_configuration')
         d.addCallback(defer.drop_result,
@@ -794,6 +795,18 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return resp
 
     ### Private Methods ###
+
+    def _increase_instance_id(self):
+        '''
+        Run at the initialization before calling any code at agent-side.
+        Ensures that only this instance holds the currect revision of the
+        descriptor document.
+        '''
+
+        def do_increase(desc):
+            desc.instance_id += 1
+
+        return self.update_descriptor(do_increase)
 
     def _load_configuration(self):
 

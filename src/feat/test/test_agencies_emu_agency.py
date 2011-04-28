@@ -101,6 +101,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
+        self.assertEqual(1, self.agent.get_descriptor().instance_id)
 
         self.endpoint, self.queue = self.setup_endpoint()
 
