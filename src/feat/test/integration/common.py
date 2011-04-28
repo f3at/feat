@@ -131,7 +131,7 @@ class SimulationTest(common.TestCase):
                  agent.agent.__class__.__name__, aid)
 
         entries = [entry for entry in agency._journal_entries\
-                   if entry and entry[0] == aid]
+                   if entry[0] == aid]
         self.log("Found %d entries of this agent.", len(entries))
 
         r = replay.Replay(iter(entries), aid)

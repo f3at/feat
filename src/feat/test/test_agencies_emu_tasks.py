@@ -11,8 +11,7 @@ from feat.interface import protocols
 from feat.test import common
 
 
-@serialization.register
-class SomeException(Exception, serialization.Serializable):
+class SomeException(Exception):
     pass
 
 

@@ -13,7 +13,7 @@ from twisted.spread import jelly
 from twisted.trial.unittest import SkipTest
 
 from feat.common import serialization, enum
-from feat.common.serialization import base
+from feat.common.serialization import base, adapters
 from feat.interface.serialization import *
 
 from . import common
@@ -315,7 +315,7 @@ class ConverterTest(common.TestCase):
                                 % (result, exp_type_names,
                                    type(result).__name__))
                 for v in values:
-                    if self.safe_equal(v, result, generic_int):
+                    if self.safe_equal(result, v, generic_int):
                         expected = v
                         break
                 else:
@@ -710,10 +710,12 @@ class ConverterTest(common.TestCase):
         if a is b:
             return True
 
-        if type(a) != type(b):
-            if not (gint and isinstance(a, (int, long))
-                    and isinstance(b, (int, long))):
-                return False
+        if not (isinstance(a, type(b))
+                or isinstance(b, type(a))):
+            if type(a) != type(b):
+                if not (gint and isinstance(a, (int, long))
+                        and isinstance(b, (int, long))):
+                    return False
 
         if isinstance(a, float):
             return abs(a - b) < 0.000001

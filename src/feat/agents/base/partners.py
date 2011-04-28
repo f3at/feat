@@ -15,13 +15,11 @@ class DefinitionError(Exception):
     pass
 
 
-@serialization.register
-class DoublePartnership(Exception, serialization.Serializable):
+class DoublePartnership(Exception):
     pass
 
 
-@serialization.register
-class FindPartnerError(Exception, serialization.Serializable):
+class FindPartnerError(Exception):
     pass
 
 

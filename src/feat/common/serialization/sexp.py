@@ -1,5 +1,3 @@
-from twisted.python.failure import Failure
-
 from feat.common import reflect
 
 from feat.common.serialization import base
@@ -23,8 +21,6 @@ EXTERNAL_ATOM = "external"
 
 REFERENCE_ATOM = "reference"
 DEREFERENCE_ATOM = "dereference"
-
-FAILURE = "failure"
 
 
 class Serializer(base.Serializer):
@@ -61,9 +57,6 @@ class Serializer(base.Serializer):
 
     def pack_reference(self, value):
         return [REFERENCE_ATOM] + value
-
-    def pack_failure(self, value):
-        return [FAILURE] + value
 
     def pack_dereference(self, value):
         return [DEREFERENCE_ATOM, value]
@@ -104,9 +97,6 @@ class Unserializer(base.Unserializer):
             return None
 
         type_name = data[0]
-
-        if type_name == FAILURE:
-            return (None, Unserializer.unpack_failure)
 
         # We assume that if it's nothing we know about, it's an instance
         default = (None, Unserializer.unpack_instance)
@@ -149,10 +139,6 @@ class Unserializer(base.Unserializer):
     def unpack_instance(self, data):
         type_name, value = data
         return self.restore_instance(type_name, value)
-
-    def unpack_failure(self, data):
-        _, exception_type, msg = data
-        return Failure(exception_type(msg))
 
     def unpack_reference(self, data):
         _, refid, value = data

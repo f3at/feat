@@ -417,35 +417,29 @@ class AllocationChange(serialization.Serializable):
         return not self.__eq__(other)
 
 
-class BaseResourceException(Exception, serialization.Serializable):
+class BaseResourceException(Exception):
     pass
 
 
-@serialization.register
 class NotEnoughResources(BaseResourceException):
     pass
 
 
-@serialization.register
 class UnknownResource(BaseResourceException):
     pass
 
 
-@serialization.register
 class DeclarationError(BaseResourceException):
     pass
 
 
-@serialization.register
 class AllocationNotFound(BaseResourceException):
     pass
 
 
-@serialization.register
 class AllocationChangeNotFound(BaseResourceException):
     pass
 
 
-@serialization.register
 class AllocationTypeError(BaseResourceException):
     pass

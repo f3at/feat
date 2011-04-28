@@ -177,20 +177,21 @@ class JournalReplayEntry(object):
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
-        if exp_args != args:
+        if args != exp_args:
             which = 0
             for exp, got in zip(exp_args, args):
                 if exp == got:
                     which += 1
                 else:
                     break
-            raise ReplayError("Bad side-effect arguments in %s when expecting"
-                              "of %s. Different arguent index %d."
+
+            raise ReplayError("Bad side-effect arguments in %s, expecting "
+                              "%s. Different argument index %d."
                               % (unexpected_desc, expected_desc, which))
 
         if exp_kwargs != kwargs:
-            raise ReplayError("Bad side-effect keyworkds in %s "
-                              "when expecting of %s"
+            raise ReplayError("Bad side-effect keywords in %s, "
+                              " expecting %s"
                               % (unexpected_desc, expected_desc))
 
         for effect_id, effect_args, effect_kwargs in effects:

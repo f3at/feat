@@ -43,8 +43,7 @@ class ResourcesAllocationAgent(agent.BaseAgent, rpc.AgentMixin):
         return shard.query_structure(self, 'raage_agent', distance=1)
 
 
-@serialization.register
-class EmptyBids(Exception, serialization.Serializable):
+class EmptyBids(Exception):
     pass
 
 
@@ -75,16 +74,7 @@ class AllocationContractor(contractor.NestingContractor):
 
     @replay.mutable
     def _nest_to_neighbours(self, state, fail, announcement):
-        # FIXME: Here I wanted to use:
-        # fail.trap(EmptyBids)
-        # but this doesn't work in replay. In replay mode instead of
-        # Failure I receive a list:
-        # [<class 'feat.agents.raage.raage_agent.EmptyBids'>,
-        #  'Resource allocation will fail as no suitable bids
-        #    have been received.']
-        # This will be fixed by the story with real support for serializing
-        # exceptions.
-
+        fail.trap(EmptyBids)
         f = state.agent.get_neighbours()
         f.add_callback(self.fetch_nested_bids, announcement)
         f.add_callback(self._pick_best_bid)

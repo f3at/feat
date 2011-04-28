@@ -1,3 +1,4 @@
+import collections
 import functools
 import uuid
 import time as python_time
@@ -304,7 +305,10 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         '''
 
         def check(failure):
-            self.assertTrue(failure.check(*errorKlasses))
+            if isinstance(errorKlasses, collections.Sequence):
+                self.assertTrue(failure.check(*errorKlasses))
+            else:
+                self.assertTrue(failure.check(errorKlasses))
             return None # Resolve the error
 
         if chain is None:

@@ -3,6 +3,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from twisted.internet import defer
+from twisted.trial.unittest import FailTest
 from zope.interface import implements
 
 from feat.common import journal, fiber, serialization, reflect
@@ -395,6 +396,44 @@ class C(A):
         return "C.bar+" + A.bar(self)
 
 
+class ExceptionTestDummy(journal.Recorder):
+
+    @journal.recorded()
+    def type_error_1(self):
+        1 + ""
+
+    @journal.recorded()
+    def type_error_2(self):
+        try:
+            1 + ""
+        except:
+            return fiber.fail()
+
+    @journal.recorded()
+    def type_error_3(self):
+        f = fiber.Fiber()
+        f.add_callback(self._async_type_error)
+        f.add_both(self._check_for_replay)
+        return f.succeed()
+
+    @journal.recorded()
+    def type_error_4(self):
+        f = fiber.Fiber()
+        f.add_callback(common.delay, 0.1)
+        f.add_callback(self._async_type_error)
+        f.add_both(self._check_for_replay)
+        return f.succeed()
+
+    def _async_type_error(self, _):
+        1 + ""
+
+    @journal.recorded()
+    def _check_for_replay(self, f):
+        if not f.check(TypeError):
+            raise FailTest("Expecting TypeError, got %s" % f.type.__name__)
+        f.trap(ValueError)
+
+
 class TestJournaling(common.TestCase):
 
     def setUp(self):
@@ -408,6 +447,15 @@ class TestJournaling(common.TestCase):
 
     def new_entry(self, fun_id, *args, **kwargs):
         return self.keeper.new_entry(None, fun_id, *args, **kwargs)
+
+    @defer.inlineCallbacks
+    def testExceptions(self):
+        R = journal.RecorderRoot(self.keeper, base_id="test")
+        a = ExceptionTestDummy(R)
+        yield self.assertFails(TypeError, a.type_error_1)
+        yield self.assertFails(TypeError, a.type_error_2)
+        yield self.assertFails(TypeError, a.type_error_3)
+        yield self.assertFails(TypeError, a.type_error_4)
 
     def testInheritence(self):
         R = journal.RecorderRoot(self.keeper, base_id="test")
@@ -712,9 +760,10 @@ class TestJournaling(common.TestCase):
         r = journal.RecorderRoot(self.keeper)
         o = ReentrantDummy(r)
 
-        self.assertRaises(ReentrantCallError, o.good)
-        self.assertRaises(ReentrantCallError, o.bad)
+        d = defer.succeed(None)
 
+        d = self.assertAsyncFailure(d, [ReentrantCallError], o.good)
+        d = self.assertAsyncFailure(d, [ReentrantCallError], o.bad)
         d = self.assertAsyncEqual(None, "the ugly", o.ugly)
         d = self.assertAsyncFailure(d, [ReentrantCallError], o.async_ugly)
 
@@ -754,11 +803,15 @@ class TestJournaling(common.TestCase):
         self.assertRaises(AttributeError, o.replay,
                           self.keeper.new_entry(None, wrong2_id))
 
-        self.assertRaises(RecordingResultError, o.bad)
-        self.assertRaises(RecordingResultError, o.super_bad)
+        d = defer.succeed(None)
 
-        self.assertRaises(RecordingResultError, o.record, bad_id)
-        self.assertRaises(RecordingResultError, o.record, super_bad_id)
+        d = self.assertAsyncFailure(d, [RecordingResultError], o.bad)
+        d = self.assertAsyncFailure(d, [RecordingResultError], o.super_bad)
+
+        d = self.assertAsyncFailure(d, [RecordingResultError],
+                                    o.record, bad_id)
+        d = self.assertAsyncFailure(d, [RecordingResultError],
+                                    o.record, super_bad_id)
 
         d = self.assertAsyncEqual(None, "foo", o.record, foo_id)
         d = self.assertAsyncEqual(d, "bar", o.record, bar_id)

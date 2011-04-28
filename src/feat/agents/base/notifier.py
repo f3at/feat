@@ -4,8 +4,7 @@ from feat.common import serialization, fiber, defer
 from feat.agents.base import replay
 
 
-@serialization.register
-class TimeoutError(Exception, serialization.Serializable):
+class TimeoutError(Exception):
     pass
 
 

@@ -152,8 +152,8 @@ class TestCombined(common.TestCase):
         root = journal.RecorderRoot(self.keeper)
         obj = Base(root, 18)
 
-        d = self.assertAsyncRaises(None, ReentrantCallError,
-                                   obj.reentrance_sync_error)
+        d = self.assertAsyncFailure(None, ReentrantCallError,
+                                    obj.reentrance_sync_error)
 
         d = self.assertAsyncFailure(d, [ReentrantCallError],
                                     obj.reentrance_async_error1)

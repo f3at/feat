@@ -9,8 +9,7 @@ from feat.agents.base import (agent, descriptor, recipient,
 from feat.common import serialization, fiber
 
 
-@serialization.register
-class FailureOfPartner(Exception, serialization.Serializable):
+class FailureOfPartner(Exception):
     pass
 
 

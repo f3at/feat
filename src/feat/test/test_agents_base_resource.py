@@ -157,12 +157,12 @@ class ResourcesTest(common.TestCase, Common):
     def testIncorrectAllocation(self):
         yield self.assertFails(resource.DeclarationError,
                                 self.resources.allocate, a='sth stupupid')
-        self.assertRaises(resource.DeclarationError,
-                          self.resources.preallocate, a='sth stupupid')
+        yield self.assertFails(resource.DeclarationError,
+                               self.resources.preallocate, a='sth stupupid')
         yield self.assertFails(resource.UnknownResource,
                                 self.resources.allocate, unknown=4)
-        self.assertRaises(resource.UnknownResource,
-                          self.resources.preallocate, unknown=4)
+        yield self.assertFails(resource.UnknownResource,
+                               self.resources.preallocate, unknown=4)
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
     @defer.inlineCallbacks
@@ -209,8 +209,8 @@ class ResourcesTest(common.TestCase, Common):
         self._assert_changes({'a': 1, 'b': 1})
 
     def testBadDefine(self):
-        self.assertRaises(resource.DeclarationError, self.resources.define,
-                          'c', 'not int')
+        return self.assertAsyncFailure(None, resource.DeclarationError,
+                                       self.resources.define, 'c', 'not int')
 
     @defer.inlineCallbacks
     def testAllocationExists(self):

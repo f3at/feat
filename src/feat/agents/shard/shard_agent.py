@@ -727,8 +727,7 @@ class FixMissingPartner(task.BaseTask):
             return state.agent.request_starting_partner(state.factory)
 
 
-@serialization.register
-class StartPartnerException(Exception, serialization.Serializable):
+class StartPartnerException(Exception):
     pass
 
 
