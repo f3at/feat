@@ -16,10 +16,13 @@ def parse_config_file(option, opt_str, value, parser):
         cfg = ConfigParser.ConfigParser()
         cfg.readfp(open(value, 'r'))
         for dest, value in cfg.items('Feat'):
-            sv = value.split()
-            if len(sv) > 1:
-                value = sv
-            setattr(parser.values, dest, value)
+            values = value.split()
+            opt = parser.get_option('--'+dest)
+            if not opt:
+                raise run.OptionError("Invalid option %s defined in"
+                                      "config file" % dest)
+            for value in values:
+                opt.process(opt_str, value, parser.values, parser)
     except IOError:
         print 'Config file not found, skipping ...'
 
@@ -112,7 +115,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
         # Checking options
         opts, args = check_options(opts, args)
-
         for name in opts.agents:
             factory = descriptor.lookup(name)
             if factory is None:
