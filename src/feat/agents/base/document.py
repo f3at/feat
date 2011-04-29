@@ -27,5 +27,5 @@ field = formatable.field
 @serialization.register
 class Document(formatable.Formatable):
 
-    field('doc_id', None, '_id')
-    field('rev', None, '_rev')
+    field('doc_id', None, '_id', unicode)
+    field('rev', None, '_rev', unicode)

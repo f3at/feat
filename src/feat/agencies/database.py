@@ -41,6 +41,6 @@ class Connection(log.Logger, log.FluLogKeeper):
         return d
 
     def update_id_and_rev(self, resp, doc):
-        doc.doc_id = resp.get('id', None)
-        doc.rev = resp.get('rev', None)
+        doc.doc_id = unicode(resp.get('id', None))
+        doc.rev = unicode(resp.get('rev', None))
         return doc

@@ -1,3 +1,6 @@
+import sys
+import os
+
 from zope.interface import implements
 from twisted.web import error as web_error
 
@@ -5,7 +8,12 @@ from feat.agencies.database import Connection
 from feat.common import log, decorator
 from feat.agencies.interface import (IConnectionFactory, ConflictError,
                                          NotFoundError)
-from feat.extern.paisley import paisley as feat_paisley
+
+from feat import extern
+# Add feat/extern/paisley to the load path
+sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
+
+import paisley as feat_paisley
 
 
 @decorator.simple_function

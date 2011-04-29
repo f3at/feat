@@ -58,16 +58,16 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testReloadingDocument(self):
-        doc = DummyDocument(field='something')
+        doc = DummyDocument(field=u'something')
         doc = yield self.connection.save_document(doc)
         fetched_doc = yield self.connection.get_document(doc.doc_id)
 
-        doc.field = 'something else'
+        doc.field = u'something else'
         doc = yield self.connection.save_document(doc)
 
-        self.assertEqual('something', fetched_doc.field)
+        self.assertEqual(u'something', fetched_doc.field)
         fetched_doc = yield self.connection.reload_document(fetched_doc)
-        self.assertEqual('something else', fetched_doc.field)
+        self.assertEqual(u'something else', fetched_doc.field)
 
     @defer.inlineCallbacks
     def testDeletingDocumentThanSavingAgain(self):
