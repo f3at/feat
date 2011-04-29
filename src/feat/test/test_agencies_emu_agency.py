@@ -174,7 +174,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertCalled(self.agent.agent, 'shutdown')
 
         doc_id = self.agent._descriptor.doc_id
-        d = self.agency._database.openDoc(doc_id)
+        d = self.agency._database.get_connection().get_document(doc_id)
         self.assertFailure(d, NotFoundError)
         yield d
         self.assertEqual(0, len(self.agency._agents))

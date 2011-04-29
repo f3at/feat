@@ -9,7 +9,8 @@ __all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
-           "IFirstMessage", "IDialogMessage", "IDbConnectionFactory")
+           "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
+           "IDatabaseDriver")
 
 
 class DatabaseError(RuntimeError):
@@ -295,4 +296,33 @@ class IDbConnectionFactory(Interface):
         Instantiate the connection for the agent.
 
         @returns: L{IDatabaseClient}
+        '''
+
+class IDatabaseDriver(Interface):
+    '''
+    Interface implemeneted by the database driver.
+    '''
+
+    def save_doc(doc, doc_id=None):
+        '''
+        Create new or update existing document.
+        @param doc: string with json document
+        @param doc_id: id of the document
+        @return: Deferred fired with the HTTP response body (keys: id, rev)
+        '''
+
+    def open_doc(doc_id):
+        '''
+        Fetch document from database.
+        @param doc_id: id of the document to fetch
+        @return: Deferred fired with json parsed document.
+        '''
+
+    def delete_doc(doc_id, revision):
+        '''
+        Mark document as delete.
+        @param doc_id: id of document to delete
+        @param revision: revision of the document
+        @return: Deferred fired with dict(id, rev) or errbacked with
+                 ConflictError
         '''

@@ -10,6 +10,7 @@ from zope.interface import implements
 from feat.common import log
 
 from feat.agencies.interface import (IDbConnectionFactory,
+                                     IDatabaseDriver,
                                      ConflictError,
                                      NotFoundError)
 from feat.agencies.database import Connection
@@ -17,12 +18,10 @@ from feat.agencies.database import Connection
 
 class Database(log.Logger, log.FluLogKeeper):
 
-    implements(IDbConnectionFactory)
+    implements(IDbConnectionFactory, IDatabaseDriver)
 
     '''
     Imitates the CouchDB server internals.
-    The bizare naming used in this class origins from paisley,
-    which we want to stay consitent with.
     '''
 
     log_category = "database"
@@ -35,14 +34,14 @@ class Database(log.Logger, log.FluLogKeeper):
         self._documents = {}
         self.connection = Connection(self)
 
-    # IDbConnectionFactory
+    ### IDbConnectionFactory
 
     def get_connection(self):
         return self.connection
 
-    # end of IDbConnectionFactory
+    ### IDatabaseDriver
 
-    def saveDoc(self, doc, docId=None):
+    def save_doc(self, doc, doc_id=None):
         '''Imitate sending HTTP request to CouchDB server'''
 
         self.log("save_document called for doc: %r", doc)
@@ -53,7 +52,7 @@ class Database(log.Logger, log.FluLogKeeper):
             if not isinstance(doc, (str, unicode, )):
                 raise ValueError('Doc should be either str or unicode')
             doc = json.loads(doc)
-            doc = self._set_id_and_revision(doc, docId)
+            doc = self._set_id_and_revision(doc, doc_id)
 
             self._documents[doc['_id']] = doc
 
@@ -64,7 +63,7 @@ class Database(log.Logger, log.FluLogKeeper):
 
         return d
 
-    def openDoc(self, docId):
+    def open_doc(self, doc_id):
         '''Imitated fetching the document from the database.
         Doesnt implement options from paisley to get the old revision or
         get the list of revision.
@@ -72,7 +71,7 @@ class Database(log.Logger, log.FluLogKeeper):
         d = defer.Deferred()
 
         try:
-            doc = self._get_doc(docId)
+            doc = self._get_doc(doc_id)
             doc = copy.deepcopy(doc)
             if doc.get('_deleted', None):
                 raise NotFoundError('deleted')
@@ -82,24 +81,26 @@ class Database(log.Logger, log.FluLogKeeper):
 
         return d
 
-    def deleteDoc(self, docId, revision):
+    def delete_doc(self, doc_id, revision):
         '''Imitates sending DELETE request to CouchDB server'''
         d = defer.Deferred()
 
         try:
-            doc = self._get_doc(docId)
+            doc = self._get_doc(doc_id)
             if doc['_rev'] != revision:
                 raise ConflictError("Document update conflict.")
             if doc.get('_deleted', None):
                 raise NotFoundError('deleted')
             doc['_rev'] = self._generate_id()
             doc['_deleted'] = True
-            self.log('Marking document %r as deleted', docId)
-            d.callback(Response(ok=True, id=docId, rev=doc['_rev']))
+            self.log('Marking document %r as deleted', doc_id)
+            d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
         except (ConflictError, NotFoundError, ) as e:
             d.errback(e)
 
         return d
+
+    ### private
 
     def _set_id_and_revision(self, doc, doc_id):
         doc_id = doc_id or doc.get('_id', None)
