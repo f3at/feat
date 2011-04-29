@@ -127,7 +127,7 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
     @manhole.expose()
     def get_document(self, doc_id):
         '''get_document(doc_id) -> Download the document given the id.'''
-        conn = self.agency._database.get_connection(None)
+        conn = self.agency._database.get_connection()
         return conn.get_document(doc_id)
 
     @manhole.expose()

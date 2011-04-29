@@ -9,14 +9,15 @@ from zope.interface import implements
 
 from feat.common import log
 
-from feat.agencies.interface import \
-     (IConnectionFactory, ConflictError, NotFoundError)
+from feat.agencies.interface import (IDbConnectionFactory,
+                                     ConflictError,
+                                     NotFoundError)
 from feat.agencies.database import Connection
 
 
 class Database(log.Logger, log.FluLogKeeper):
 
-    implements(IConnectionFactory)
+    implements(IDbConnectionFactory)
 
     '''
     Imitates the CouchDB server internals.
@@ -34,12 +35,12 @@ class Database(log.Logger, log.FluLogKeeper):
         self._documents = {}
         self.connection = Connection(self)
 
-    # IConnectionFactory
+    # IDbConnectionFactory
 
-    def get_connection(self, agent):
+    def get_connection(self):
         return self.connection
 
-    # end of IConnectionFactory
+    # end of IDbConnectionFactory
 
     def saveDoc(self, doc, docId=None):
         '''Imitate sending HTTP request to CouchDB server'''

@@ -1,9 +1,10 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from zope.interface import implements
 
 from twisted.internet import defer, reactor
 from feat.common import log
-from feat.agencies.interface import IMessagingPeer
+from feat.agencies.interface import IMessagingPeer, IMessagingClient
 from feat.agents.base.message import BaseMessage
 
 
@@ -12,6 +13,8 @@ class FinishConnection(Exception):
 
 
 class Connection(log.Logger):
+
+    implements(IMessagingClient)
 
     log_category = 'messaging-connection'
 

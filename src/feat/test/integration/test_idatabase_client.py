@@ -135,7 +135,7 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
         self.database = emu_database.Database()
-        self.connection = self.database.get_connection(None)
+        self.connection = self.database.get_connection()
 
 
 @attr('slow')
@@ -161,7 +161,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
         host, port = config['host'], config['port']
         self.database = database.Database(host, port, 'test')
         yield self.database.createDB()
-        self.connection = self.database.get_connection(None)
+        self.connection = self.database.get_connection()
 
     def tearDown(self):
         return self.process.terminate()

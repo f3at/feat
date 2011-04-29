@@ -170,7 +170,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._init_connections()
 
     def _init_connections(self):
-        self._database_connection = self._database.get_connection(self)
+        self._database_connection = self._database.get_connection()
         dbtools.push_initial_data(self._database_connection)
 
     def iter_agents(self, agent_type=None):

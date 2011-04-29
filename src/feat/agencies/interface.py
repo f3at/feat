@@ -9,7 +9,7 @@ __all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
-           "IFirstMessage", "IDialogMessage")
+           "IFirstMessage", "IDialogMessage", "IDbConnectionFactory")
 
 
 class DatabaseError(RuntimeError):
@@ -136,9 +136,8 @@ class IAgencyInterestedFactory(Interface):
 
 class IConnectionFactory(Interface):
     '''
-    Responsible for creating connection to external server.
-    Should be implemented by database and messaging drivers
-    passed to the agency.
+    Responsible for creating connection to messaging server.
+    Should be implemented by messaging drivers passed to the agency.
     '''
 
     def get_connection(agent):
@@ -146,8 +145,8 @@ class IConnectionFactory(Interface):
         Instantiate the connection for the agent.
 
         @params agent: Agent to connect to.
-        @type agent: L{feat.interfaces.agent.IAgencyAgent}
-        @returns: The connection instance.
+        @type agent: L{feat.agency.interfaces.IMessagingPeer}
+        @returns: L{IMessagingClient}
         '''
 
 
@@ -283,3 +282,17 @@ class IDialogMessage(Interface):
     reply_to = Attribute("The recipient to send the response to.")
     sender_id = Attribute("The sender unique identifier.")
     receiver_id = Attribute("The receiver unique identifier.")
+
+
+class IDbConnectionFactory(Interface):
+    '''
+    Responsible for creating connection to database server.
+    Should be implemented by database drivers passed to the agency.
+    '''
+
+    def get_connection():
+        '''
+        Instantiate the connection for the agent.
+
+        @returns: L{IDatabaseClient}
+        '''

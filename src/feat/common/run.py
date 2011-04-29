@@ -21,7 +21,7 @@ class OptionError(Exception):
 
 
 def get_db_connection(agency):
-    return agency._database.get_connection(None)
+    return agency._database.get_connection()
 
 
 def add_options(parser):

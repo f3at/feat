@@ -154,7 +154,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
-        self._database = IConnectionFactory(database)
+        self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
         return defer.succeed(None)
 
@@ -377,7 +377,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       self.agency._messaging.get_connection, self)
         d.addCallback(setter, '_messaging')
         d.addCallback(defer.drop_result,
-                      self.agency._database.get_connection, self)
+                      self.agency._database.get_connection)
         d.addCallback(setter, '_database')
         d.addCallback(defer.drop_result, self._increase_instance_id)
         d.addCallback(defer.drop_result, self._load_configuration)

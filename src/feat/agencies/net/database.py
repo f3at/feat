@@ -6,8 +6,8 @@ from twisted.web import error as web_error
 
 from feat.agencies.database import Connection
 from feat.common import log, decorator
-from feat.agencies.interface import (IConnectionFactory, ConflictError,
-                                         NotFoundError)
+from feat.agencies.interface import (IDbConnectionFactory, ConflictError,
+                                     NotFoundError)
 
 from feat import extern
 # Add feat/extern/paisley to the load path
@@ -29,7 +29,7 @@ def wrap_in_error_handler(method):
 
 class Database(feat_paisley.CouchDB, log.FluLogKeeper, log.Logger):
 
-    implements(IConnectionFactory)
+    implements(IDbConnectionFactory)
 
     log_category = "database"
 
@@ -40,9 +40,9 @@ class Database(feat_paisley.CouchDB, log.FluLogKeeper, log.Logger):
 
         self.connection = Connection(self)
 
-    # IConnectionFactory
+    # IDbConnectionFactory
 
-    def get_connection(self, agent):
+    def get_connection(self):
         return self.connection
 
     # end of IConnectionFactory

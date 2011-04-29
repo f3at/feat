@@ -11,7 +11,7 @@ from twisted.internet import defer
 
 from feat.common import log, enum, error_handler
 from feat.common.serialization import banana
-from feat.agencies.interface import IConnectionFactory
+from feat.agencies.interface import IConnectionFactory, IDbConnectionFactory
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.common import StateMachineMixin
 from feat.agents.base.message import BaseMessage
