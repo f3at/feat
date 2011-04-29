@@ -1,22 +1,26 @@
 import sys
 import os
+import json
 
 from zope.interface import implements
 from twisted.web import error as web_error
+from twisted.internet import error
+from twisted.web._newclient import ResponseDone
 
-from feat.agencies.database import Connection
-from feat.common import log
+from feat.agencies.database import Connection, ChangeListenerMixin
+from feat.common import log, text_helper, defer, delay
 
 from feat.agencies.interface import *
+
 
 from feat import extern
 # Add feat/extern/paisley to the load path
 sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
+from paisley.changes import ChangeNotifier
+from paisley.client import CouchDB
 
-import paisley as feat_paisley
 
-
-class Database(log.FluLogKeeper, log.Logger):
+class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -25,34 +29,121 @@ class Database(log.FluLogKeeper, log.Logger):
     def __init__(self, host, port, db_name):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+        ChangeListenerMixin.__init__(self)
 
-        self.paisley = feat_paisley.CouchDB(host, port)
+        self.paisley = CouchDB(host, port)
         self.db_name = db_name
-        self.connection = Connection(self)
+        self.semaphore = defer.DeferredSemaphore(1)
+        self.notifier = ChangeNotifier(
+            self.paisley, self.db_name)
+        self.notifier.addListener(self)
+        self.retry = 0
+        self.reconnector = None
 
     ### IDbConnectionFactory
 
     def get_connection(self):
-        return self.connection
+        return Connection(self)
 
     ### IDatabaseDriver
 
     def open_doc(self, doc_id):
-        d = self.paisley.openDoc(self.db_name, doc_id)
-        d.addErrback(self._error_handler)
-        return d
+        return self._paisley_call(self.paisley.openDoc, self.db_name, doc_id)
 
     def save_doc(self, doc, doc_id=None):
-        d = self.paisley.saveDoc(self.db_name, doc, doc_id)
-        d.addErrback(self._error_handler)
-        return d
+        return self._paisley_call(self.paisley.saveDoc,
+                                  self.db_name, doc, doc_id)
 
     def delete_doc(self, doc_id, revision):
-        d = self.paisley.openDoc(self.db_name, doc_id, revision)
-        d.addErrback(self._error_handler)
+        return self._paisley_call(self.paisley.deleteDoc,
+                                  self.db_name, doc_id, revision)
+
+    def create_db(self):
+        return self._paisley_call(self.paisley.createDB,
+                                  self.db_name)
+
+    def listen_changes(self, doc_ids, callback):
+        d = ChangeListenerMixin.listen_changes(self, doc_ids, callback)
+        d.addCallback(defer.bridge_result, self._setup_notifier)
         return d
 
+    def cancel_listener(self, listener_id):
+        ChangeListenerMixin.cancel_listener(self, listener_id)
+        return self._setup_notifier()
+
+    ### paisleys ChangeListener interface
+
+    def changed(self, change):
+        # The change parameter is just an ugly effect of json unserialization
+        # of the couchdb output. It can be many different things, hence the
+        # strange logic above.
+        if "changes" in change:
+            doc_id = change['id']
+            for line in change['changes']:
+                # The changes are analized when there is not http request
+                # pending. Otherwise it can result in race condition problem.
+                self.semaphore.run(self._trigger_change, doc_id, line['rev'])
+        else:
+            self.info('Bizare notification received from CouchDB: %r', change)
+
+    def connectionLost(self, reason):
+        if reason.check(error.ConnectionDone):
+            # expected just pass
+            pass
+        elif reason.check(ResponseDone):
+            self.debug("CouchDB closed the notification listener. This might "
+                       "indicate missconfiguration. Take look at it")
+        elif reason.check(error.ConnectionRefusedError):
+            self.retry += 1
+            wait = min(2**(self.retry - 1), 300)
+            self.debug('CouchDB refused connection for %d time. '
+                       'This indicates missconfiguration or temporary '
+                       'network problem. Will try to reconnect in %d seconds.',
+                       self.retry, wait)
+            self.reconnector = delay.callLater(wait, self._setup_notifier)
+        else:
+            # FIXME handle disconnection when network is down
+            self.warning('Connection to db lost with reason: %r', reason)
+            return self._setup_notifier()
+
     ### private
+
+    def _setup_notifier(self):
+        doc_ids = self._extract_doc_ids()
+        self.log('Setting up the notifier passing. Doc_ids: %r.',
+                 doc_ids)
+        if self.notifier.isRunning():
+            self.notifier.stop()
+        if len(doc_ids) == 0:
+            # Don't run listner if it is not needed,
+            # cancel reconnector if one is running.
+            if self.reconnector and self.reconnector.active():
+                self.reconnector.cancel()
+                self.reconnector = None
+            return
+
+        d = self.notifier.start(
+            heartbeat=1000)
+        d.addCallback(self._connected)
+        d.addErrback(self.connectionLost)
+        return d
+
+    def _connected(self, _):
+        self.debug('Established persistent connection for receiving '
+                   'notifications.')
+        self.retry = 0
+        if self.reconnector:
+            if self.reconnector.active():
+                self.reconnector.cancel()
+            self.reconnector = None
+
+    def _paisley_call(self, method, *args, **kwargs):
+        # It is necessarry to acquire the lock to perform the http request
+        # because we won't to be sure that we are not in the middle of sth
+        # while analizing the change notification
+        d = self.semaphore.run(method, *args, **kwargs)
+        d.addErrback(self._error_handler)
+        return d
 
     def _error_handler(self, failure):
         exception = failure.value

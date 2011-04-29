@@ -108,7 +108,7 @@ class ExpDict(ExpBase):
                 return item.value
         raise KeyError(key)
 
-    def pop(self, key, default=None):
+    def pop(self, key, *default):
         '''Pops and returns the dictionary entry with with specified key.
         @param key: unique key of the entry, used to remove or test ownership
         @type key: any immutable
@@ -117,10 +117,16 @@ class ExpDict(ExpBase):
         self._lazy_pack()
         now = self._time.get_time()
         if self._items:
-            item = self._items.pop(key, None)
-            if item.exp is None or item.exp > now:
-                return item.value
-        return default
+            try:
+                item = self._items.pop(key)
+                if item.exp is None or item.exp > now:
+                    return item.value
+                raise KeyError(key)
+            except KeyError:
+                if len(default) == 1:
+                    return default[0]
+                else:
+                    raise
 
     def get(self, key, default=None):
         '''Retrieve value from the entry with specified key.

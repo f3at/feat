@@ -4,7 +4,7 @@ import copy
 import uuid
 import json
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.common import log
@@ -13,10 +13,10 @@ from feat.agencies.interface import (IDbConnectionFactory,
                                      IDatabaseDriver,
                                      ConflictError,
                                      NotFoundError)
-from feat.agencies.database import Connection
+from feat.agencies.database import Connection, ChangeListenerMixin
 
 
-class Database(log.Logger, log.FluLogKeeper):
+class Database(log.Logger, log.FluLogKeeper, ChangeListenerMixin):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -29,15 +29,15 @@ class Database(log.Logger, log.FluLogKeeper):
     def __init__(self):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+        ChangeListenerMixin.__init__(self)
 
         # id -> document
         self._documents = {}
-        self.connection = Connection(self)
 
     ### IDbConnectionFactory
 
     def get_connection(self):
-        return self.connection
+        return Connection(self)
 
     ### IDatabaseDriver
 
@@ -57,6 +57,7 @@ class Database(log.Logger, log.FluLogKeeper):
             self._documents[doc['_id']] = doc
 
             r = Response(ok=True, id=doc['_id'], rev=doc['_rev'])
+            self._trigger_change(doc['_id'], doc['_rev'])
             d.callback(r)
         except (ConflictError, ValueError, ) as e:
             d.errback(e)
@@ -94,6 +95,7 @@ class Database(log.Logger, log.FluLogKeeper):
             doc['_rev'] = self._generate_id()
             doc['_deleted'] = True
             self.log('Marking document %r as deleted', doc_id)
+            self._trigger_change(doc['_id'], doc['_rev'])
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
         except (ConflictError, NotFoundError, ) as e:
             d.errback(e)

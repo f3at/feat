@@ -437,7 +437,7 @@ class AgencyTestHelper(object):
         @return_type: subclass of feat.agents.document.Document
         '''
         document = factories.build(doc_class.document_type, **options)
-        return self.agency._database.connection.save_document(document)
+        return self.agency._database.get_connection().save_document(document)
 
     # methods for sending and receiving custom messages
 

@@ -9,8 +9,9 @@ def drop_result(_result, _method, *args, **kwargs):
 
 def bridge_result(_result, _method, *args, **kwargs):
     assert callable(_method)
-    _method(*args, **kwargs)
-    return _result
+    d = maybeDeferred(_method, *args, **kwargs)
+    d.addCallback(override_result, _result)
+    return d
 
 
 def override_result(_result, _new_result):

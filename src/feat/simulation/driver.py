@@ -205,13 +205,16 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     # Delegation of IDatabase methods for tests
 
+    @manhole.expose()
     def reload_document(self, doc):
         assert isinstance(doc, document.Document)
         return self._database_connection.reload_document(doc)
 
+    @manhole.expose()
     def get_document(self, doc_id):
         return self._database_connection.get_document(doc_id)
 
+    @manhole.expose()
     def save_document(self, doc):
         return self._database_connection.save_document(doc)
 

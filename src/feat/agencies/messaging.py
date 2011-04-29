@@ -27,6 +27,7 @@ class Connection(log.Logger):
         self._queue_name = self._agent.get_queue_name()
         self._queue = None
         self._disconnect = False
+        self._consumeDeferred = None
 
     def initiate(self):
         if self._queue_name is not None:
@@ -82,8 +83,9 @@ class Connection(log.Logger):
 
     def disconnect(self):
         self._disconnect = True
-        if self._queue:
-            self._queue.stop_consuming()
+        if self._consumeDeferred and not self._consumeDeferred.called:
+            ex = FinishConnection("Disconnecting")
+            self._consumeDeferred.errback(ex)
 
     def personal_binding(self, key, shard=None):
         if not shard:
@@ -154,15 +156,10 @@ class Queue(object):
         return d
 
     def is_idle(self):
-        return not self._consumers or len(self._messages) == 0
+        return self.has_empty_consumers() or len(self._messages) == 0
 
-    def stop_consuming(self):
-        ex = FinishConnection("Disconnecting")
-        while len(self._consumers) > 0:
-            d = self._consumers.pop(0)
-            d.errback(ex)
-        if self._send_task:
-            self._send_task.cancel()
+    def has_empty_consumers(self):
+        return len([x for x in self._consumers if not x.called]) == 0
 
     def enqueue(self, message):
         self._messages.append(message)
@@ -170,10 +167,17 @@ class Queue(object):
 
     def _send_messages(self):
         self._send_task = None
-        while len(self._messages) > 0 and len(self._consumers) > 0:
-            message = self._messages.pop(0)
-            consumer = self._consumers.pop(0)
-            consumer.callback(message)
+        try:
+            while len(self._messages) > 0 and len(self._consumers) > 0:
+                consumer = None
+                while not (consumer and not consumer.called):
+                    consumer = self._consumers.pop(0)
+                message = self._messages.pop(0)
+                consumer.callback(message)
+        except IndexError:
+            # we had consumers but they disconnected,
+            # this is expected, just pass
+            pass
 
     def _schedule_sending(self):
         if self._send_task is None:

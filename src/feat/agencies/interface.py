@@ -215,6 +215,41 @@ class IMessagingPeer(Interface):
         '''
 
 
+class IFirstMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message object which is
+    the first one in the dialog. Implemeneted by: Announcement, Request.
+    '''
+
+    traversal_id = Attribute('Unique identifier. It is preserved during '
+                             'nesting between shard, to detect duplications.')
+
+
+class IDbConnectionFactory(Interface):
+    '''
+    Responsible for creating connection to database server.
+    Should be implemented by database drivers passed to the agency.
+    '''
+
+    def get_connection():
+        '''
+        Instantiate the connection for the agent.
+
+        @returns: L{IDatabaseClient}
+        '''
+
+
+class IDialogMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message
+    objects which take part on a dialog.
+    '''
+
+    reply_to = Attribute("The recipient to send the response to.")
+    sender_id = Attribute("The sender unique identifier.")
+    receiver_id = Attribute("The receiver unique identifier.")
+
+
 class IDatabaseClient(Interface):
 
     def save_document(document):
@@ -263,45 +298,37 @@ class IDatabaseClient(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
-
-class IFirstMessage(Interface):
-    '''
-    This interface needs to be implemeneted by the message object which is
-    the first one in the dialog. Implemeneted by: Announcement, Request.
-    '''
-
-    traversal_id = Attribute('Unique identifier. It is preserved during '
-                             'nesting between shard, to detect duplications.')
-
-
-class IDialogMessage(Interface):
-    '''
-    This interface needs to be implemeneted by the message
-    objects which take part on a dialog.
-    '''
-
-    reply_to = Attribute("The recipient to send the response to.")
-    sender_id = Attribute("The sender unique identifier.")
-    receiver_id = Attribute("The receiver unique identifier.")
-
-
-class IDbConnectionFactory(Interface):
-    '''
-    Responsible for creating connection to database server.
-    Should be implemented by database drivers passed to the agency.
-    '''
-
-    def get_connection():
+    def changes_listener(doc_ids, callback):
         '''
-        Instantiate the connection for the agent.
-
-        @returns: L{IDatabaseClient}
+        Register a callback called when the document is changed.
+        If different=True (defualt) only changes triggered by this session
+        are ignored.
+        @param document: Document ids to look to
+        @param callback: Callable to call
+        @param different: Flag telling whether to ignore changes triggered
+                          by this session.
         '''
+
+    def disconnect():
+        '''
+        Disconnect from database server.
+        '''
+
+    def create_database():
+        '''
+        Request creating the database.
+        '''
+
 
 class IDatabaseDriver(Interface):
     '''
     Interface implemeneted by the database driver.
     '''
+
+    def create_db():
+        '''
+        Request creating the database.
+        '''
 
     def save_doc(doc, doc_id=None):
         '''
@@ -325,4 +352,21 @@ class IDatabaseDriver(Interface):
         @param revision: revision of the document
         @return: Deferred fired with dict(id, rev) or errbacked with
                  ConflictError
+        '''
+
+    def listen_changes(doc_ids, callback):
+        '''
+        Register callback called when one of the documents get changed.
+        @param doc_ids: list of document ids which we are interested in
+        @param callback: callback to call, it will get doc_id and revision
+        @return: Deferred trigger with unique listener identifier
+        @rtype: Deferred
+        '''
+
+    def cancel_listener(listener_id):
+        '''
+        Unregister callback called on document changes.
+        @param listener_id: Id returned buy listen_changes() method
+        @rtype: Deferred
+        @return: Deferred which will fire when the listener is cancelled.
         '''

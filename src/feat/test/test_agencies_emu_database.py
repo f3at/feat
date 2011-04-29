@@ -3,7 +3,6 @@ import json
 from twisted.internet import defer
 
 from feat.agencies.emu import database
-from feat.agents.base import document
 from feat.agencies.interface import ConflictError, NotFoundError
 
 from . import common
@@ -105,6 +104,8 @@ class TestDatabaseIntegration(common.TestCase):
     '''This testcase uses only external interface for sanity check.
     Idea is to later reuse the testcase for paisley.'''
 
+    timeout = 3
+
     def setUp(self):
         self.database = database.Database()
 
@@ -154,3 +155,29 @@ class TestDatabaseIntegration(common.TestCase):
         d = self.database.open_doc(id)
         self.assertFailure(d, NotFoundError)
         yield d
+
+    @defer.inlineCallbacks
+    def testListeningOnChanges(self):
+        self.calls = list()
+
+        d = self.cb_after(None, self, 'change_cb')
+        listener_id = yield self.database.listen_changes(
+            ('someid', ), self.change_cb)
+        self.assertIsInstance(listener_id, (str, unicode, ))
+        self.assertEqual(0, len(self.calls))
+        resp = yield self.database.save_doc(self._gen_doc('someid'))
+        yield d
+        self.assertEqual(1, len(self.calls))
+        doc_id, rev = self.calls[0]
+        self.assertEqual(doc_id, resp['id'])
+        self.assertEqual(rev, resp['rev'])
+
+        yield self.database.cancel_listener(listener_id)
+        yield self.database.delete_doc(doc_id, rev)
+        self.assertEqual(1, len(self.calls))
+
+    def change_cb(self, doc_id, rev):
+        self.calls.append((doc_id, rev, ))
+
+    def _gen_doc(self, doc_id):
+        return json.dumps({'_id': doc_id})

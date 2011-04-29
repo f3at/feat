@@ -207,7 +207,7 @@ class IntegrationTestCase(common.TestCase):
         db_host, db_port, db_name = c['host'], c['port'], 'test'
         db = database.Database(db_host, db_port, db_name)
         self.db = db.get_connection()
-        yield db.createDB()
+        yield self.db.create_database()
 
         yield self.msg_process.restart()
         c = self.msg_process.get_config()

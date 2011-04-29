@@ -169,7 +169,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d = defer.succeed(None)
         d.addCallback(defer.drop_result, medium.initiate,
                       *args, **kwargs)
-        d.addCallback(defer.bridge_result, medium.startup,
+        d.addCallback(defer.bridge_result, medium.call_next, medium.startup,
                       startup_agent=run_startup)
         return d
 
@@ -379,6 +379,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_result,
                       self.agency._database.get_connection)
         d.addCallback(setter, '_database')
+        d.addCallback(defer.drop_result,
+                      self._subscribe_for_descriptor_changes)
         d.addCallback(defer.drop_result, self._increase_instance_id)
         d.addCallback(defer.drop_result, self._load_configuration)
         d.addCallback(setter, '_configuration')
@@ -394,11 +396,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
     def startup(self, startup_agent=True):
+        d = defer.succeed(None)
         if startup_agent:
-            return self._call_startup()
+            d.addCallback(defer.drop_result, self._call_startup)
         # Not calling agent startup, for testing purpose only
-        self._ready()
-        return defer.succeed(self)
+        d.addCallback(defer.drop_result, self._ready)
+        return d
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -817,6 +820,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Private Methods ###
 
+    def _subscribe_for_descriptor_changes(self):
+        return self._database.changes_listener(
+            (self._descriptor.doc_id, ), self._descriptor_changed)
+
+    def _descriptor_changed(self, doc_id, rev):
+        self.warning('Received the notification about other database session '
+                     'changing our descriptor. This means that I got '
+                     'restarted on some other machine and need to commit '
+                     'suacide :(. Or you have a bug ;).')
+        return self.terminate_hard()
+
     def _increase_instance_id(self):
         '''
         Run at the initialization before calling any code at agent-side.
@@ -906,6 +920,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addBoth(lambda _: self.agency.unregister_agent(self))
         # Close the messaging connection
         d.addBoth(lambda _: self._messaging.disconnect())
+        # Close the database connection
+        d.addBoth(lambda _: self._database.disconnect())
         return d
 
     def terminate_hard(self):

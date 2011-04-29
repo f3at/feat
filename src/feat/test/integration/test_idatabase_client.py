@@ -130,6 +130,49 @@ class TestCase(object):
         rev3 = doc.rev
         self.assertNotEqual(rev3, rev2)
 
+    @defer.inlineCallbacks
+    def testOtherSession(self):
+        self.changes = list()
+
+
+        my_doc = DummyDocument(field=u'whatever')
+        my_doc = yield self.connection.save_document(my_doc)
+        yield self.connection.changes_listener((my_doc.doc_id, ),
+                                               self.change_cb)
+        my_doc.field = 'sth else'
+        yield self.connection.save_document(my_doc)
+        # this change should be ignored
+        self.assertTrue(self._len_changes(0))
+
+        other_connection = self.database.get_connection()
+        my_doc.field = 'sth different'
+        yield other_connection.save_document(my_doc)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+        self.assertEqual(my_doc.rev, self.changes[0][1])
+
+        my_doc.field = 'another'
+        yield self.connection.save_document(my_doc)
+        self.assertTrue(self._len_changes(1))
+
+        my_doc = yield other_connection.delete_document(my_doc)
+        yield self.wait_for(self._len_changes(2), 2, freq=0.01)
+        self.assertEqual(my_doc.rev, self.changes[1][1])
+
+        yield self.connection.disconnect()
+
+
+    ### methods specific for testing the notification callbacks
+
+    def change_cb(self, doc, rev):
+        self.changes.append((doc, rev, ))
+
+    def _len_changes(self, expected):
+
+        def check():
+            return len(self.changes) == expected
+
+        return check
+
 
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
@@ -160,8 +203,26 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
         config = self.process.get_config()
         host, port = config['host'], config['port']
         self.database = database.Database(host, port, 'test')
-        yield self.database.createDB()
         self.connection = self.database.get_connection()
+        yield self.connection.create_database()
 
     def tearDown(self):
-        return self.process.terminate()
+        self.connection.disconnect()
+        return self.process.terminate(keep_workdir=True)
+
+    @defer.inlineCallbacks
+    def testDisconnection(self):
+        self.changes = list()
+
+        my_doc = DummyDocument(field=u'whatever', doc_id="my_doc")
+        my_doc = yield self.connection.save_document(my_doc)
+        yield self.connection.changes_listener((my_doc.doc_id, ),
+                                               self.change_cb)
+
+        yield self.process.terminate(keep_workdir=True)
+        yield self.process.restart()
+
+        other_connection = self.database.get_connection()
+        my_doc.field = u'sth different'
+        yield other_connection.save_document(my_doc)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
