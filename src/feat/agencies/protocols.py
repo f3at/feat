@@ -62,8 +62,10 @@ class BaseInterest(log.Logger):
     factory = None
     binding = None
 
-    def __init__(self, factory):
+    def __init__(self, factory, *args, **kwargs):
         self.factory = factory
+        self.args = args
+        self.kwargs = kwargs
         self.agency_agent = None
         self._lobby_binding = None
         self._concurrency = getattr(factory, "concurrency", None)
@@ -74,10 +76,15 @@ class BaseInterest(log.Logger):
     ### Public Methods ###
 
     def __eq__(self, other):
-        return self.factory == other.factory
+        if type(self) != type(other):
+            return NotImplemented
+        return (self.factory == other.factory
+                and self.args == other.args
+                and self.kwargs == other.kwargs)
 
     def __ne__(self, other):
-        return not self.__eq__(other)
+        eq = self.__eq__(other)
+        return eq if eq is NotImplemented else not eq
 
     ### IAgencyInterestInternalFactory Methods ###
 
@@ -154,7 +161,7 @@ class BaseInterest(log.Logger):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.factory
+        return self.factory, self.args, self.kwargs
 
     ### Protected Methods ###
 
@@ -188,7 +195,8 @@ class DialogInterest(BaseInterest):
                    message.protocol_type, message.protocol_id)
 
         medium_factory = IAgencyInterestedFactory(self.factory)
-        medium = medium_factory(self.agency_agent, message)
+        medium = medium_factory(self.agency_agent, message,
+                                *self.args, **self.kwargs)
         medium.initiate()
         listener = self.agency_agent.register_listener(medium)
         medium.notify_finish().addBoth(defer.drop_result,

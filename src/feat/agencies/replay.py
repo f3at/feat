@@ -456,10 +456,10 @@ class AgencyInterest(log.Logger):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.factory
+        return self.factory, self.args, self.kwargs
 
     def recover(self, snapshot):
-        self.factory = snapshot
+        self.factory, self.args, self.kwargs = snapshot
 
     ### IAgencyInterest Method ###
 

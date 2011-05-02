@@ -40,6 +40,9 @@ class BaseReplier(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
+    def initiate(self):
+        '''@see: L{replier.IAgentReplier}'''
+
     def requested(self, request):
         '''@see: L{replier.IAgentReplier}'''
 

@@ -103,6 +103,25 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def startup(self, state):
         pass
 
+    @replay.immutable
+    def get_descriptor(self, state):
+        return state.medium.get_descriptor()
+
+    @replay.immutable
+    def get_agent_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.doc_id
+
+    @replay.immutable
+    def get_instance_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.instance_id
+
+    @replay.immutable
+    def get_full_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.doc_id + "/" + desc.instance_id
+
     @replay.journaled
     def shutdown(self, state):
         desc = self.get_descriptor()
@@ -229,10 +248,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def get_own_address(self, state):
         '''get_own_address() -> Return IRecipient representing the agent.'''
         return recipient.IRecipient(state.medium)
-
-    @replay.immutable
-    def get_descriptor(self, state):
-        return state.medium.get_descriptor()
 
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):

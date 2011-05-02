@@ -1,9 +1,16 @@
 from feat.agents.base import descriptor, replay, manager, message
-from feat.common import serialization, enum
+from feat.common import enum
+
+# To access from thi module
+from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
+from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 
 
-__all__ = ['Descriptor', 'MonitorManager', 'discover', 'request_monitor',
-           'RestartFailed', 'RestartStrategy']
+__all__ = ['Descriptor', 'MonitorManager',
+           'discover', 'request_monitor',
+           'RestartFailed', 'RestartStrategy',
+           'IPacemakerFactory', 'IPacemaker',
+           'Pacemaker', 'FakePacemaker']
 
 
 class RestartFailed(Exception):

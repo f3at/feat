@@ -447,7 +447,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     error_state = ContractState.wtf
 
-    def __init__(self, agency_agent, factory, announcement):
+    def __init__(self, agency_agent, factory, announcement, *args, **kwargs):
         log.Logger.__init__(self, agency_agent)
         log.LogProxy.__init__(self, agency_agent)
         common.StateMachineMixin.__init__(self)
@@ -460,18 +460,25 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.agent = agency_agent
         self.factory = factory
+        self.args = args
+        self.kwargs = kwargs
         self.announce = announcement
         self.recipients = announcement.reply_to
 
         self._reporter_call = None
 
     def initiate(self):
-        self.agent.journal_protocol_created(self.factory, self)
+        self.agent.journal_protocol_created(self.factory, self,
+                                            *self.args, **self.kwargs)
         contractor = self.factory(self.agent.get_agent(), self)
 
         self.contractor = contractor
         self.log_name = self.contractor.__class__.__name__
         self._set_state(ContractState.initiated)
+
+        self.call_next(self._call, self.contractor.initiate,
+                       *self.args, **self.kwargs)
+
         return contractor
 
     ### IAgencyContractor Methods ###

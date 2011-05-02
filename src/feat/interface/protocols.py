@@ -61,7 +61,7 @@ class IInterest(Interface):
 class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
-    def initiate():
+    def initiate(*args, **kwargs):
         '''Initiate initiator. Should be call before anything else.'''
 
     def wait_for_state(*states):
@@ -95,6 +95,9 @@ class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
     protocol_id = Attribute("Protocol id")
+
+    def initiate(*args, **kwargs):
+        '''Initiate the interested protocol.'''
 
     def get_expiration_time():
         '''

@@ -43,5 +43,8 @@ class BaseCollector(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
+    def initiate(self):
+        '''@see: L{IAgentCollector}'''
+
     def notified(self, notification):
         '''@see: L{IAgentCollector}'''

@@ -97,22 +97,29 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
     log_category = "collector-medium"
     type_name = "collector-medium"
 
-    def __init__(self, agency_agent, factory):
+    def __init__(self, agency_agent, factory, *args, **kwargs):
         log.Logger.__init__(self, agency_agent)
         log.LogProxy.__init__(self, agency_agent)
         common.InterestedMediumBase.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
+        self.args = args
+        self.kwargs = kwargs
 
         self.collector = None
 
     def initiate(self):
-        self.agent.journal_protocol_created(self.factory, self)
+        self.agent.journal_protocol_created(self.factory, self,
+                                            *self.args, **self.kwargs)
         collector = self.factory(self.agent.get_agent(), self)
 
         self.collector = collector
         self.log_name = collector.__class__.__name__
+
+        self.agent.call_next(self._call, self.collector.initiate,
+                             *self.args, **self.kwargs)
+
         return collector
 
     def on_message(self, message):

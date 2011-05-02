@@ -85,7 +85,6 @@ class RandomAgent(agent.BaseAgent):
 
     resources = {'epu': 10}
 
-
     @replay.immutable
     def get_monitors(self, state):
         return state.partners.all_with_role(u'monitor')
@@ -475,4 +474,3 @@ class SimulateMultipleMonitors(common.SimulationTest):
         yield defer.DeferredList(defers)
         yield self.wait_for_idle(20)
         self.assertEqual(1, self.count_agents('random-agent'))
-

@@ -471,7 +471,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return defer.DeferredList([x.revoke() for x in bindings])
 
     @replay.named_side_effect('AgencyAgent.register_interest')
-    def register_interest(self, factory):
+    def register_interest(self, factory, *args, **kwargs):
         factory = IInterest(factory)
         if not IFirstMessage.implementedBy(factory.initiator):
             raise TypeError(
@@ -485,7 +485,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.error('Already interested in %s.%s protocol', p_type, p_id)
             return False
         interest_factory = IAgencyInterestInternalFactory(factory)
-        interest = interest_factory(self)
+        interest = interest_factory(self, *args, **kwargs)
         self._interests[p_type][p_id] = interest
         self.debug('Registered interest in %s.%s protocol', p_type, p_id)
         return interest

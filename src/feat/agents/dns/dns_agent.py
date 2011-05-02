@@ -9,7 +9,7 @@ from feat.agents.base import descriptor, document, dbtools, message
 from feat.agents.dns import production, simulation
 from feat.common import fiber, manhole
 
-from feat.agents.dns.labour import *
+from feat.agents.dns.interface import *
 from feat.interface.agency import *
 from feat.interface.agent import *
 from feat.interface.protocols import *

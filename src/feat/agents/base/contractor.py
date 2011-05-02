@@ -53,6 +53,9 @@ class BaseContractor(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
+    def initiate(self):
+        '''@see: L{contractor.IAgentContractor}'''
+
     def announced(self, announcement):
         '''@see: L{contractor.IAgentContractor}'''
 
