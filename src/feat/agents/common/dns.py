@@ -28,6 +28,12 @@ class DNSMappingManager(manager.BaseManager):
 
         state.medium.grant([(bid, msg) for bid in state.medium.get_bids()])
 
+    @replay.entry_point
+    def completed(self, state, reports):
+        self.log("completed manager")
+        report = reports[0]
+        return report.payload['suffix'], report.reply_to
+
 
 class AddMappingManager(DNSMappingManager):
     protocol_id = 'add-dns-mapping'

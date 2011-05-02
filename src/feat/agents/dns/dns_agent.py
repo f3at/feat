@@ -147,6 +147,10 @@ class DNSAgent(agent.BaseAgent):
         self.debug("Failed to resolve A query for %s", name)
         return []
 
+    @replay.immutable
+    def get_suffix(self, state):
+        return state.suffix
+
     @manhole.expose()
     @replay.mutable
     def lookup_ns(self, state, name):
@@ -176,7 +180,8 @@ class DNSMappingContractor(contractor.BaseContractor):
         prefix = grant.payload['prefix']
         ip = grant.payload['ip']
         self.tell_agent(prefix, ip)
-        state.medium.finalize(message.FinalReport())
+        payload = dict(suffix=state.agent.get_suffix())
+        state.medium.finalize(message.FinalReport(payload=payload))
 
     def tell_agent(self, prefix, ip):
         """To be overriden in sub-classes."""
