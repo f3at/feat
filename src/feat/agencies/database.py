@@ -14,13 +14,13 @@ from feat.agencies.interface import IDatabaseClient, IDatabaseDriver
 from feat.interface.generic import *
 
 
-class ChangeListenerMixin(object):
+class ChangeListener(log.Logger):
     '''
-    Mixed in .net.database.Database and emu.database.Database.
-    Expects the destination object to provide ILogger.
+    Base class for .net.database.Database and emu.database.Database.
     '''
 
-    def __init__(self):
+    def __init__(self, logger):
+        log.Logger.__init__(self, logger)
         # id -> [(callback, listener_id)]
         self._listeners = {}
 

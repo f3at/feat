@@ -1,14 +1,13 @@
 import sys
 import os
-import json
 
 from zope.interface import implements
 from twisted.web import error as web_error
 from twisted.internet import error
 from twisted.web._newclient import ResponseDone
 
-from feat.agencies.database import Connection, ChangeListenerMixin
-from feat.common import log, text_helper, defer, delay
+from feat.agencies.database import Connection, ChangeListener
+from feat.common import log, defer, delay
 
 from feat.agencies.interface import *
 
@@ -20,7 +19,7 @@ from paisley.changes import ChangeNotifier
 from paisley.client import CouchDB
 
 
-class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
+class Database(log.FluLogKeeper, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -28,8 +27,7 @@ class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
 
     def __init__(self, host, port, db_name):
         log.FluLogKeeper.__init__(self)
-        log.Logger.__init__(self, self)
-        ChangeListenerMixin.__init__(self)
+        ChangeListener.__init__(self, self)
 
         self.paisley = CouchDB(host, port)
         self.db_name = db_name
@@ -63,12 +61,12 @@ class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
                                   self.db_name)
 
     def listen_changes(self, doc_ids, callback):
-        d = ChangeListenerMixin.listen_changes(self, doc_ids, callback)
+        d = ChangeListener.listen_changes(self, doc_ids, callback)
         d.addCallback(defer.bridge_result, self._setup_notifier)
         return d
 
     def cancel_listener(self, listener_id):
-        ChangeListenerMixin.cancel_listener(self, listener_id)
+        ChangeListener.cancel_listener(self, listener_id)
         return self._setup_notifier()
 
     ### paisleys ChangeListener interface
@@ -89,10 +87,11 @@ class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
     def connectionLost(self, reason):
         if reason.check(error.ConnectionDone):
             # expected just pass
-            pass
+            return
         elif reason.check(ResponseDone):
             self.debug("CouchDB closed the notification listener. This might "
                        "indicate missconfiguration. Take look at it")
+            return
         elif reason.check(error.ConnectionRefusedError):
             self.retry += 1
             wait = min(2**(self.retry - 1), 300)
@@ -101,6 +100,7 @@ class Database(log.FluLogKeeper, log.Logger, ChangeListenerMixin):
                        'network problem. Will try to reconnect in %d seconds.',
                        self.retry, wait)
             self.reconnector = delay.callLater(wait, self._setup_notifier)
+            return
         else:
             # FIXME handle disconnection when network is down
             self.warning('Connection to db lost with reason: %r', reason)

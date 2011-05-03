@@ -156,10 +156,10 @@ class Queue(object):
         return d
 
     def is_idle(self):
-        return self.has_empty_consumers() or len(self._messages) == 0
+        return not self.has_waiting_consumers() or len(self._messages) == 0
 
-    def has_empty_consumers(self):
-        return len([x for x in self._consumers if not x.called]) == 0
+    def has_waiting_consumers(self):
+        return len([x for x in self._consumers if not x.called]) > 0
 
     def enqueue(self, message):
         self._messages.append(message)

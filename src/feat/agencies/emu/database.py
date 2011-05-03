@@ -13,10 +13,10 @@ from feat.agencies.interface import (IDbConnectionFactory,
                                      IDatabaseDriver,
                                      ConflictError,
                                      NotFoundError)
-from feat.agencies.database import Connection, ChangeListenerMixin
+from feat.agencies.database import Connection, ChangeListener
 
 
-class Database(log.Logger, log.FluLogKeeper, ChangeListenerMixin):
+class Database(log.FluLogKeeper, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -28,8 +28,7 @@ class Database(log.Logger, log.FluLogKeeper, ChangeListenerMixin):
 
     def __init__(self):
         log.FluLogKeeper.__init__(self)
-        log.Logger.__init__(self, self)
-        ChangeListenerMixin.__init__(self)
+        ChangeListener.__init__(self, self)
 
         # id -> document
         self._documents = {}
