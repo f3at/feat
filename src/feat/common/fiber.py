@@ -15,7 +15,7 @@ SECTION_BOUNDARY_TAG = "__section_boundary__"
 
 
 def drop_result(_result, _method, *args, **kwargs):
-    assert callable(_method)
+    assert callable(_method), "method %r is not callable!" % (_method, )
     return _method(*args, **kwargs)
 
 

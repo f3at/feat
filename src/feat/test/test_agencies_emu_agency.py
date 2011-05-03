@@ -5,14 +5,15 @@ import uuid
 import time
 
 from twisted.internet import defer, reactor
+from twisted.python import components
 from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.interface.agency import ExecMode
 from feat.common import delay, log
-from feat.agencies import agency
-from feat.agencies.interface import NotFoundError
+from feat.agencies import agency, protocols as aprotocols
+from feat.agencies.interface import *
 
 from . import common
 
@@ -64,6 +65,15 @@ class DummyInterest(object):
         self.initiator = message.Announcement
 
 
+class DummyAgencyInterest(aprotocols.DialogInterest):
+    pass
+
+
+components.registerAdapter(DummyAgencyInterest,
+                           protocols.IInterest,
+                           IAgencyInterestInternalFactory)
+
+
 class TestDependencies(common.TestCase, common.AgencyTestHelper):
 
     def setUp(self):
@@ -91,6 +101,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
+        self.assertEqual(1, self.agent.get_descriptor().instance_id)
 
         self.endpoint, self.queue = self.setup_endpoint()
 
@@ -163,7 +174,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertCalled(self.agent.agent, 'shutdown')
 
         doc_id = self.agent._descriptor.doc_id
-        d = self.agency._database.openDoc(doc_id)
+        d = self.agency._database.get_connection().get_document(doc_id)
         self.assertFailure(d, NotFoundError)
         yield d
         self.assertEqual(0, len(self.agency._agents))
@@ -407,6 +418,7 @@ class TestRetryingProtocol(common.TestCase):
         self.assertEqual(2, instance.delay)
 
     def _start_instance(self, max_retries, initial_delay, max_delay):
-        return agency.RetryingProtocol(
+        instance = agency.RetryingProtocol(
             self.medium, DummyInitiator, None, tuple(), dict(),
             max_retries, initial_delay, max_delay)
+        return instance.initiate()

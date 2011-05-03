@@ -13,6 +13,8 @@ from feat.interface.requester import *
 from feat.interface.manager import *
 from feat.interface.serialization import *
 from feat.interface.task import *
+from feat.interface.collector import *
+from feat.interface.poster import *
 
 
 def side_effect_as_string(*args):
@@ -168,30 +170,38 @@ class JournalReplayEntry(object):
         side_effect = self._restore_side_effect(side_effect)
         exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
 
-        expected_desc = side_effect_as_string(exp_fun_id, exp_args, exp_kwargs)
+        expected_desc = side_effect_as_string(exp_fun_id,
+                    exp_args, exp_kwargs)
+
+        # FIXME: This is ugly hack introduced by the fact that we cannot
+        # serialize methods, hence if side effect param is a method it has
+        # to be skipped
+        ignore_args_and_kwargs = (function_id == "SIDE EFFECT SKIPPED")
 
         if exp_fun_id != function_id:
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
-        if exp_args != args:
+        if not ignore_args_and_kwargs and exp_args != args:
             which = 0
             for exp, got in zip(exp_args, args):
                 if exp == got:
                     which += 1
                 else:
                     break
-            raise ReplayError("Bad side-effect arguments in %s when expecting"
-                              "of %s. Different arguent index %d."
+
+            raise ReplayError("Bad side-effect arguments in %s, expecting "
+                              "%s. Different argument index %d."
                               % (unexpected_desc, expected_desc, which))
 
-        if exp_kwargs != kwargs:
-            raise ReplayError("Bad side-effect keyworkds in %s "
-                              "when expecting of %s"
+        if not ignore_args_and_kwargs and exp_kwargs != kwargs:
+            raise ReplayError("Bad side-effect keywords in %s, "
+                              " expecting %s"
                               % (unexpected_desc, expected_desc))
 
         for effect_id, effect_args, effect_kwargs in effects:
-            self._replay.apply_effect(effect_id, *effect_args, **effect_kwargs)
+            self._replay.apply_effect(effect_id,
+                        *effect_args, **effect_kwargs)
 
         return self._replay.unserializer.convert(result)
 
@@ -233,6 +243,8 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'manager-medium', AgencyManager)
         Factory(self, 'retrying-protocol', RetryingProtocol)
         Factory(self, 'task-medium', AgencyTask)
+        Factory(self, 'collector-medium', AgencyCollector)
+        Factory(self, 'poster-medium', AgencyPoster)
 
         self.reset()
 
@@ -444,10 +456,10 @@ class AgencyInterest(log.Logger):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.factory
+        return self.factory, self.args, self.kwargs
 
     def recover(self, snapshot):
-        self.factory = snapshot
+        self.factory, self.args, self.kwargs = snapshot
 
     ### IAgencyInterest Method ###
 
@@ -483,6 +495,7 @@ class AgencyAgent(BaseReplayDummy):
     def get_configuration(self):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.update_descriptor')
     def update_descriptor(self, desc):
         pass
 
@@ -552,11 +565,11 @@ class AgencyAgent(BaseReplayDummy):
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')
 
-    @replay.named_side_effect('AgencyAgent.call_next')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_next(self, method, *args, **kwargs):
         pass
 
-    @replay.named_side_effect('AgencyAgent.call_later')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_later(self, time_left, method, *args, **kwargs):
         pass
 
@@ -637,7 +650,7 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass
 
@@ -683,12 +696,36 @@ class AgencyContractor(BaseReplayDummy, StateMachineSpecific):
         pass
 
 
+class AgencyCollector(BaseReplayDummy):
+
+    implements(IAgencyCollector)
+
+    log_category = "collector-medium"
+    type_name = "collector-medium"
+
+    ### IAgencyCollector Methods ###
+
+
+class AgencyPoster(BaseReplayDummy):
+
+    implements(IAgencyPoster)
+
+    log_category = "poster-medium"
+    type_name = "poster-medium"
+
+    ### IAgencyPoster Methods ###
+
+    @replay.named_side_effect('AgencyPoster.post')
+    def post(self, message):
+        pass
+
+
 class RetryingProtocol(BaseReplayDummy):
 
     log_category="retrying-protocol"
     type_name="retrying-protocol"
 
-    @serialization.freeze_tag('RetryingProtocol.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         raise RuntimeError('This should never get called')
 
@@ -744,7 +781,7 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         pass
 
@@ -760,6 +797,18 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
     def ensure_state(self, states):
         pass
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
+        pass
+
+    @replay.named_side_effect('AgencyTask.finish')
+    def finish(self, arg):
+        pass
+
+    @replay.named_side_effect('AgencyTask.fail')
+    def fail(self, failure):
+        pass
+
+    @replay.named_side_effect('AgencyTask.finished')
+    def finished(self):
         pass

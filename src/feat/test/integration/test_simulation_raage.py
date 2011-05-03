@@ -9,11 +9,13 @@ from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
 from feat.agents.base import recipient, dbtools
 from feat.agents.common import host
+from feat.interface.agent import Access, Address, Storage
 
 
 def checkAllocation(test, agent, resources):
     _, allocated = agent.list_resource()
-    test.assertEquals(allocated, resources)
+    for key in resources:
+        test.assertEquals(allocated[key], resources[key], key)
 
 
 def checkNoAllocated(test, a_id):
@@ -44,7 +46,10 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         """)
 
         hostdef = host.HostDef()
-        hostdef.resources = {"host": 1}
+        hostdef.resources = {"host": 1, "epu": 10}
+        hostdef.categories = {"access": Access.private,
+                              "address": Address.dynamic,
+                              "storage": Storage.static}
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
@@ -72,28 +77,41 @@ class SingleHostAllocationSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def testFindHost(self):
         resources = {'host': 1}
+        categories = {'access': Access.private,
+                      'address': Address.none,
+                      'storage': Storage.static}
         checkAllocation(self, self.host_agent, {'host': 0})
         self.info('starting test')
         allocation_id, irecipient = \
-                yield self.req_agent.request_resource(**resources)
+                yield self.req_agent.request_resource(resources, categories)
         checkAllocation(self, self.host_agent, resources)
         self.assertEqual(recipient.IRecipient(self.host_medium), irecipient)
 
     @defer.inlineCallbacks
     def testNoHostFree(self):
         resources = {'host': 1}
+        categories = {}
         allocation_id, irecipient = \
-                yield self.req_agent.request_resource(**resources)
+                yield self.req_agent.request_resource(resources, categories)
         yield self.host_medium.wait_for_listeners_finish()
         checkAllocation(self, self.host_agent, resources)
-        d = self.req_agent.request_resource(**resources)
+        d = self.req_agent.request_resource(resources, categories)
         self.assertFailure(d, InitiatorFailed)
         yield d
 
     @defer.inlineCallbacks
     def testBadResource(self):
         resources = {'beers': 999}
-        d = self.req_agent.request_resource(**resources)
+        categories = {}
+        d = self.req_agent.request_resource(resources, categories)
+        self.assertFailure(d, InitiatorFailed)
+        yield d
+
+    @defer.inlineCallbacks
+    def testBadCategory(self):
+        resources = {'host': 1}
+        categories = {'address': Address.fixed}
+        d = self.req_agent.request_resource(resources, categories)
         self.assertFailure(d, InitiatorFailed)
         yield d
 
@@ -133,7 +151,10 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         """)
 
         hostdef = host.HostDef()
-        hostdef.resources = {"host": 1}
+        hostdef.resources = {"host": 1, "epu": 10}
+        hostdef.categories = {"access": Access.private,
+                              "address": Address.dynamic,
+                              "storage": Storage.static}
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
@@ -150,10 +171,10 @@ class MultiHostAllocationSimulation(common.SimulationTest):
             yield x.wait_for_listeners_finish()
 
     @defer.inlineCallbacks
-    def _startAllocation(self, resources, count, sequencial=True):
+    def _startAllocation(self, resources, categories, count, sequencial=True):
         d_list = list()
         for i in range(count):
-            d = self.req_agent.request_resource(**resources)
+            d = self.req_agent.request_resource(resources, categories)
             if sequencial:
                 yield d
             else:
@@ -164,47 +185,55 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def _checkAllocations(self, resources, count):
         for agent in self.agents:
             _, allocated = agent.list_resource()
-            if allocated == resources:
+            if all([allocated[name] == value \
+                    for name, value in resources.iteritems()]):
                 count -= 1
         self.assertEquals(count, 0)
 
     def testValidateProlog(self):
-        self.assertEqual(6, self.count_agents())
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('requesting_agent'))
         self.assertEqual(3, len(self.agents))
 
     @defer.inlineCallbacks
     def testAllocateOneHost(self):
         resources = {'host': 1}
+        categories = {'access': Access.private}
         self._checkAllocations(resources, 0)
-        yield self._startAllocation(resources, 1)
+        yield self._startAllocation(resources, categories, 1)
         yield self._waitToFinish()
         self._checkAllocations(resources, 1)
 
     @defer.inlineCallbacks
     def testAllocateAllHostsSecuencially(self):
         resources = {'host': 1}
+        categories = {'access': Access.private}
         self._checkAllocations(resources, 0)
-        yield self._startAllocation(resources, 1)
+        yield self._startAllocation(resources, categories, 1)
         yield self._waitToFinish()
         self._checkAllocations(resources, 1)
 
-        yield self._startAllocation(resources, 1)
+        yield self._startAllocation(resources, categories, 1)
         yield self._waitToFinish()
         self._checkAllocations(resources, 2)
 
     @defer.inlineCallbacks
     def testAllocateSomeHosts(self):
         resources = {'host': 1}
+        categories = {'access': Access.private}
         self._checkAllocations(resources, 0)
-        yield self._startAllocation(resources, 2)
+        yield self._startAllocation(resources, categories, 2)
         yield self._waitToFinish()
         self._checkAllocations(resources, 2)
 
     @defer.inlineCallbacks
     def testAllocateAllHosts(self):
         resources = {'host': 1}
+        categories = {'access': Access.private}
         self._checkAllocations(resources, 0)
-        yield self._startAllocation(resources, 3, sequencial=False)
+        yield self._startAllocation(resources, categories,
+                                    3, sequencial=False)
         yield self._waitToFinish()
         self._checkAllocations(resources, 3)
 
@@ -216,7 +245,7 @@ class ContractNestingSimulation(common.SimulationTest):
 
     def setUp(self):
         config = everything.shard_agent.ShardAgentConfiguration(
-            doc_id = 'test-config',
+            doc_id = u'test-config',
             hosts_per_shard = 2)
         dbtools.initial_data(config)
         self.override_config('shard_agent', config)
@@ -252,11 +281,11 @@ class ContractNestingSimulation(common.SimulationTest):
         """)
 
         # host definition in first shard (no space to allocate)
-        hostdef1 = host.HostDef(resources=dict(host=0))
+        hostdef1 = host.HostDef(resources=dict(host=0, epu=10, local=1))
         self.set_local("hostdef1", hostdef1)
 
         # host definition in second shard (no space to allocate)
-        hostdef2 = host.HostDef(resources=dict(host=1))
+        hostdef2 = host.HostDef(resources=dict(host=1, epu=10))
         self.set_local("hostdef2", hostdef2)
 
         yield self.process(setup)
@@ -275,15 +304,28 @@ class ContractNestingSimulation(common.SimulationTest):
         self.assertEqual(2, self.count_agents('raage_agent'))
 
     @defer.inlineCallbacks
+    def testRequestLocalResource(self):
+        self.info("Starting test")
+        resources = dict(host=1)
+        d = self.req_agent.request_local_resource(resources, {})
+        self.assertFailure(d, InitiatorFailed)
+        yield d
+        self.assert_allocated('host', 0)
+
+        allocation_id, irecipient1 = \
+                yield self.req_agent.request_resource({'local': 1}, {})
+        self.assert_allocated('local', 1)
+
+    @defer.inlineCallbacks
     def testRequestFromOtherShard(self):
         self.info("Starting test")
         resources = dict(host=1)
         allocation_id, irecipient1 = \
-                yield self.req_agent.request_resource(**resources)
+                yield self.req_agent.request_resource(resources, {})
         self.assert_allocated('host', 1)
 
         allocation_id, irecipient2 = \
-                yield self.req_agent.request_resource(**resources)
+                yield self.req_agent.request_resource(resources, {})
         self.assert_allocated('host', 2)
 
         shard2_hosts = map(recipient.IRecipient, self.host_agents[2:4])

@@ -4,13 +4,10 @@ import types
 from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
-from twisted.python import failure
-
 from feat.common import decorator, enum, adapter, reflect
 from feat.interface.serialization import *
 
 DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
-                              Capabilities.failure_values,
                               Capabilities.enum_values,
                               Capabilities.long_values,
                               Capabilities.float_values,
@@ -66,6 +63,11 @@ def register(restorator):
     global _global_registry
     _global_registry.register(restorator)
     return restorator
+
+
+def lookup(type_name):
+    global _global_registry
+    return _global_registry.lookup_restorator(type_name)
 
 
 def get_registry():
@@ -155,17 +157,16 @@ class Registry(object):
     implements(IRegistry)
 
     def __init__(self):
-        self._registry = {} # {TYPE_NAME: IRestorator}
-
+        self._restorators = {} # {TYPE_NAME: IRestorator}
 
     ### IRegistry Methods ###
 
     def register(self, restorator):
         r = IRestorator(restorator)
-        self._registry[r.type_name] = r
+        self._restorators[r.type_name] = r
 
     def lookup(self, type_name):
-        return self._registry.get(type_name)
+        return self._restorators.get(type_name)
 
 
 class Externalizer(object):
@@ -281,7 +282,6 @@ class Serializer(object):
     pack_unicode = None
     pack_int = None
     pack_enum = None
-    pack_failure = None
     pack_long = None
     pack_float = None
     pack_bool = None
@@ -303,11 +303,12 @@ class Serializer(object):
     pack_frozen_method = None
 
     def __init__(self, converter_caps=None, freezer_caps=None,
-                 post_converter=None, externalizer=None):
+                 post_converter=None, externalizer=None, registry=None):
         self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self.freezer_capabilities = freezer_caps or DEFAULT_FREEZER_CAPS
         self._post_converter = post_converter and IConverter(post_converter)
         self._externalizer = externalizer and IExternalizer(externalizer)
+        self._registry = IRegistry(registry) if registry else _global_registry
         self.reset()
 
     ### IFreezer Methods ###
@@ -373,25 +374,26 @@ class Serializer(object):
         if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
-        # Flatten failures
-        if isinstance(value, (failure.Failure, )):
-            return self.flatten_failure_value(value, caps, freezing)
-
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
-        if freezing:
-            if ISnapshotable.providedBy(value):
-                return self.flatten_instance(value, caps, freezing)
-        elif ISerializable.providedBy(value):
-            if self._externalizer:
-                extid = self._externalizer.identify(value)
-                if extid is not None:
-                    return self.flatten_external(extid, caps, freezing)
-            return self.flatten_instance(value, caps, freezing)
-        raise TypeError("Type %s values not supported by serializer %s. "
-                        "Value = %r." % (type(value).__name__,
-                                         reflect.canonical_name(self),
-                                         value, ))
+        try:
+
+            if freezing:
+                snapshotable = ISnapshotable(value)
+                return self.flatten_instance(snapshotable, caps, freezing)
+            else:
+                serializable = ISerializable(value)
+                if self._externalizer:
+                    extid = self._externalizer.identify(serializable)
+                    if extid is not None:
+                        return self.flatten_external(extid, caps, freezing)
+                return self.flatten_instance(serializable, caps, freezing)
+
+        except TypeError:
+            raise TypeError("Type %s values not supported by serializer %s. "
+                            "Value = %r." % (type(value).__name__,
+                                             reflect.canonical_name(self),
+                                             value, ))
 
     def flatten_unknown_key(self, value, caps, freezing):
         # Flatten enums
@@ -451,13 +453,6 @@ class Serializer(object):
         self.check_capabilities(Capabilities.enum_values, value,
                                 caps, freezing)
         return self.pack_enum, value
-
-    def flatten_failure_value(self, value, caps, freezing):
-        self.check_capabilities(Capabilities.failure_values, value,
-                                caps, freezing)
-        return self.pack_failure, [
-            self.flatten_value(type(value.value), caps, freezing),
-            self.flatten_value(str(value.value), caps, freezing)]
 
     def flatten_type_value(self, value, caps, freezing):
         self.check_capabilities(Capabilities.type_values, value,

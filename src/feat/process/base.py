@@ -71,11 +71,12 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         log.Logger.__init__(self, logger)
         StateMachineMixin.__init__(self, ProcessState.initiated)
 
-        self._control = ControlProtocol(self, self.started_test, self.on_ready)
         self.config = dict()
         self.args = list()
         self.command = None
         self.env = dict()
+
+        self._control = None
 
         self.initiate(*args, **kwargs)
         self.validate_setup()
@@ -85,6 +86,7 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
                             ProcessState.finished,
                             ProcessState.failed])
 
+        self._control = ControlProtocol(self, self.started_test, self.on_ready)
         self._process = reactor.spawnProcess(
             self._control, self.command,
             args=[self.command] + self.args, env=self.env)

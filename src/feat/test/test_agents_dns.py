@@ -5,17 +5,20 @@ from twisted.names import client, dns
 from zope.interface import implements
 
 from feat.agents.dns import dns_agent, production
-from feat.agents.dns.labour import *
+from feat.common import log
+
+from feat.agents.dns.interface import *
 
 from . import common
 
 
-class DummyPatron(object):
+class DummyPatron(log.LogProxy):
 
     implements(IDNSServerPatron)
 
-    def __init__(self, aa_ttl=300, ns="ns.mydomain.lan",
-                 ns_ttl=300, mapping={}):
+    def __init__(self, logger, aa_ttl=300,
+                 ns="ns.mydomain.lan", ns_ttl=300, mapping={}):
+        log.LogProxy.__init__(self, logger)
         self._aa_ttl = aa_ttl
         self._mapping = mapping
         self._ns = ns
@@ -37,7 +40,7 @@ class TestDNSAgent(common.TestCase):
 
         @defer.inlineCallbacks
         def check(name, exp_ns, exp_ttl, **kwargs):
-            patron = DummyPatron(**kwargs)
+            patron = DummyPatron(self, **kwargs)
             labour = production.Labour(patron)
             labour.initiate()
             res = labour.startup(0)
@@ -63,7 +66,7 @@ class TestDNSAgent(common.TestCase):
 
         @defer.inlineCallbacks
         def check(name, exp_ips, exp_ttl, **kwargs):
-            patron = DummyPatron(**kwargs)
+            patron = DummyPatron(self, **kwargs)
             labour = production.Labour(patron)
             labour.initiate()
             res = labour.startup(0)

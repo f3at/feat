@@ -1,10 +1,17 @@
-from feat.agents.base import requester, replay, message, document
-from feat.common import fiber
+from feat.agents.base import requester, replay, message, document, manager
+from feat.common import fiber, serialization
 
 from feat.interface.recipient import IRecipient
+from feat.interface.agent import Access, Address, Storage
 
 
-__all__ = ['start_agent', 'StartAgentRequester']
+__all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
+           'HostDef', 'NoHostFound']
+
+
+@serialization.register
+class NoHostFound(Exception, serialization.Serializable):
+    pass
 
 
 @document.register
@@ -17,17 +24,71 @@ class HostDef(document.Document):
     document.field('categories', {})
 
 
-def start_agent(medium, recp, desc, allocation_id=None, *args, **kwargs):
+def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):
     '''
     Tells remote host agent to start agent identified by desc.
     The result value of the fiber is IRecipient.
     '''
     f = fiber.Fiber()
-    f.add_callback(medium.initiate_protocol, IRecipient(recp), desc,
+    f.add_callback(agent.initiate_protocol, IRecipient(recp), desc,
                    allocation_id, *args, **kwargs)
     f.add_callback(StartAgentRequester.notify_finish)
     f.succeed(StartAgentRequester)
     return f
+
+
+def start_agent_in_shard(agent, desc, shard):
+    f = agent.discover_service(StartAgentManager, shard=shard, timeout=1)
+    f.add_callback(_check_recp_not_empty, shard)
+    f.add_callback(lambda recp:
+                   agent.initiate_protocol(StartAgentManager, recp, desc))
+    f.add_callback(StartAgentManager.notify_finish)
+    return f
+
+
+def check_categories(host, categories):
+    for name, val in categories.iteritems():
+        if ((isinstance(val, Access) and val == Access.none) or
+            (isinstance(val, Address) and val == Address.none) or
+            (isinstance(val, Storage) and val == Storage.none)):
+            continue
+
+        host_categories = host._get_state().categories
+        if not (name in host_categories.keys() and
+                host_categories[name] == val):
+                return False
+    return True
+
+
+### Private module stuff ###
+
+
+def _check_recp_not_empty(recp, shard):
+    if len(recp) == 0:
+        return fiber.fail(
+            NoHostFound('No hosts found in the shard %s' % (shard, )))
+    return recp
+
+
+class StartAgentManager(manager.BaseManager):
+
+    protocol_id = 'start-agent'
+
+    @replay.entry_point
+    def initiate(self, state, desc):
+        payload = dict(descriptor=desc)
+        msg = message.Announcement(payload=payload)
+        state.medium.announce(msg)
+
+    @replay.entry_point
+    def closed(self, state):
+        bids = state.medium.get_bids()
+        state.medium.grant((bids[0], message.Grant(), ))
+
+    @replay.entry_point
+    def completed(self, state, reports):
+        # returns the IRecipient of new agent
+        return reports[0].payload
 
 
 class StartAgentRequester(requester.BaseRequester):

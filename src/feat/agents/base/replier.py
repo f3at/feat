@@ -40,20 +40,29 @@ class BaseReplier(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
+    def initiate(self):
+        '''@see: L{replier.IAgentReplier}'''
+
     def requested(self, request):
         '''@see: L{replier.IAgentReplier}'''
 
 
-class GoodBye(BaseReplier):
+class PartnershipProtocol(BaseReplier):
 
-    protocol_id = 'goodbye'
+    protocol_id = 'partner-notification'
 
     @replay.journaled
     def requested(self, state, request):
-        f = fiber.Fiber()
-        f.add_callback(state.agent.partner_said_goodbye, request.payload)
+        not_type = request.payload['type']
+        blackbox = request.payload['blackbox']
+        origin = request.payload['origin']
+        sender = request.reply_to
+
+        f = fiber.succeed(origin)
+        f.add_callback(state.agent.partner_sent_notification, not_type,
+                       blackbox, sender)
         f.add_both(self._send_reply)
-        return f.succeed(request.reply_to)
+        return f
 
     @replay.immutable
     def _send_reply(self, state, payload):
@@ -77,15 +86,29 @@ class ProposalReceiver(BaseReplier):
 
     @replay.journaled
     def _send_ok(self, state):
-        payload = dict(ok=True, desc=state.agent.descriptor_type)
+        default_role = getattr(state.agent.partners_class, 'default_role',
+                               None)
+        payload = {'ok': True,
+                   'desc': state.agent.descriptor_type,
+                   'default_role': default_role}
         self._reply(payload)
 
     @replay.journaled
     def _send_failed(self, state, failure):
-        payload = dict(ok=False, fail=failure)
+        payload = {'ok': False,
+                   'fail': failure}
         self._reply(payload)
 
     @replay.immutable
     def _reply(self, state, payload):
         msg = message.ResponseMessage(payload=payload)
         state.medium.reply(msg)
+
+
+class Ping(BaseReplier):
+
+    protocol_id = 'ping'
+
+    @replay.entry_point
+    def requested(self, state, request):
+        state.medium.reply(message.ResponseMessage())

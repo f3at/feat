@@ -55,6 +55,8 @@ class MutableState(serialization.Serializable):
         in special way, because during replay we use special dummy
         implementations.
         """
+        if type(self) != type(other):
+            return NotImplemented
         ignored_keys = ['medium', 'agent']
         for key in self.__dict__:
             if key in ignored_keys:
@@ -66,6 +68,8 @@ class MutableState(serialization.Serializable):
         return True
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -101,4 +105,6 @@ class Guarded(serialization.Serializable):
         return self._get_state() == other._get_state()
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)

@@ -5,9 +5,10 @@ from twisted.internet import defer
 from feat import everything
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, document
+from feat.agents.base import agent, descriptor, document, replay
 from feat.agents.common import host
 from feat.common.text_helper import format_block
+from feat.common import first
 
 from feat.interface.recipient import *
 from feat.interface.agent import Access, Address, Storage
@@ -99,7 +100,7 @@ class HostAgentDefinitionTests(common.SimulationTest):
 
         hostdef = host.HostDef()
         hostdef.doc_id = "someid"
-        hostdef.resources = {"spam": 999, "bacon": 42, "eggs": 3}
+        hostdef.resources = {"spam": 999, "bacon": 42, "eggs": 3, "epu": 10}
 
         self.driver.save_document(hostdef)
         self.set_local("hostdef", hostdef)
@@ -180,7 +181,7 @@ class Descriptor(descriptor.Descriptor):
 
 
 @agent.register('conditionerror-agent')
-class ConditionAgent(agent.BaseAgent):
+class ConditionAgent2(agent.BaseAgent):
 
     categories = {'access': Access.none,
                   'address': Address.dynamic,
@@ -188,7 +189,7 @@ class ConditionAgent(agent.BaseAgent):
 
 
 @document.register
-class Descriptor(descriptor.Descriptor):
+class Descriptor2(descriptor.Descriptor):
 
     document_type = 'conditionerror-agent'
 
@@ -216,6 +217,7 @@ class HostAgentCheckTest(common.SimulationTest):
         hostdef.categories = {"access": Access.private,
                                 "address": Address.fixed,
                                 "storage": Storage.static}
+        hostdef.resources = {"epu": 10}
         self.driver.save_document(hostdef)
         self.set_local("hostdef", hostdef)
 
@@ -241,3 +243,57 @@ class HostAgentCheckTest(common.SimulationTest):
         test_medium = self.driver.find_agent(self.get_local('test_desc'))
         test_agent = test_medium.get_agent()
         check_requeriments(test_agent.categories)
+
+
+@agent.register('contract-running-agent')
+class RequestingAgent(agent.BaseAgent):
+
+    @replay.mutable
+    def request(self, state, shard):
+        desc = Descriptor3()
+        f = self.save_document(desc)
+        f.add_callback(lambda desc:
+                       host.start_agent_in_shard(self, desc, shard))
+        return f
+
+
+@descriptor.register('contract-running-agent')
+class Descriptor3(descriptor.Descriptor):
+    pass
+
+
+class SimulationStartAgentContract(common.SimulationTest):
+
+    @defer.inlineCallbacks
+    def prolog(self):
+        setup = format_block("""
+        test_desc = descriptor_factory('contract-running-agent')
+
+        spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+
+       spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+
+       spawn_agency()
+        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agent = _.get_agent()
+        agent.wait_for_ready()
+        agent.start_agent(test_desc)
+        """)
+        yield self.process(setup)
+        medium = first(self.driver.iter_agents('contract-running-agent'))
+        self.agent = medium.get_agent()
+
+    @defer.inlineCallbacks
+    def testRunningContract(self):
+        self.assertEqual(3, self.count_agents('host_agent'))
+        self.assertEqual(1, self.count_agents('contract-running-agent'))
+        shard = self.agent.get_own_address().shard
+        yield self.agent.request(shard)
+        self.assertEqual(2, self.count_agents('contract-running-agent'))
+
+    def testNonexistingShard(self):
+        d = self.agent.request('some shard')
+        self.assertFailure(d, host.NoHostFound)
+        return d

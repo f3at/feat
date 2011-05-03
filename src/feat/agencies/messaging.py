@@ -1,9 +1,10 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from zope.interface import implements
 
 from twisted.internet import defer, reactor
 from feat.common import log
-from feat.agencies.interface import IMessagingPeer
+from feat.agencies.interface import IMessagingPeer, IMessagingClient
 from feat.agents.base.message import BaseMessage
 
 
@@ -12,6 +13,8 @@ class FinishConnection(Exception):
 
 
 class Connection(log.Logger):
+
+    implements(IMessagingClient)
 
     log_category = 'messaging-connection'
 
@@ -23,6 +26,8 @@ class Connection(log.Logger):
         self._bindings = []
         self._queue_name = self._agent.get_queue_name()
         self._queue = None
+        self._disconnect = False
+        self._consumeDeferred = None
 
     def initiate(self):
         if self._queue_name is not None:
@@ -49,6 +54,8 @@ class Connection(log.Logger):
                 reason.raiseException()
 
         def bind():
+            if self._disconnect:
+                return
             d = self._consumeQueue(queue)
             d.addCallbacks(rebind, stop)
 
@@ -75,8 +82,10 @@ class Connection(log.Logger):
     # IMessagingClient implementation
 
     def disconnect(self):
-        if self._queue:
-            self._queue.stop_consuming()
+        self._disconnect = True
+        if self._consumeDeferred and not self._consumeDeferred.called:
+            ex = FinishConnection("Disconnecting")
+            self._consumeDeferred.errback(ex)
 
     def personal_binding(self, key, shard=None):
         if not shard:
@@ -146,13 +155,11 @@ class Queue(object):
         reactor.callLater(0, self._send_messages)
         return d
 
-    def stop_consuming(self):
-        ex = FinishConnection("Disconnecting")
-        while len(self._consumers) > 0:
-            d = self._consumers.pop(0)
-            d.errback(ex)
-        if self._send_task:
-            self._send_task.cancel()
+    def is_idle(self):
+        return not self.has_waiting_consumers() or len(self._messages) == 0
+
+    def has_waiting_consumers(self):
+        return len([x for x in self._consumers if not x.called]) > 0
 
     def enqueue(self, message):
         self._messages.append(message)
@@ -160,10 +167,17 @@ class Queue(object):
 
     def _send_messages(self):
         self._send_task = None
-        while len(self._messages) > 0 and len(self._consumers) > 0:
-            message = self._messages.pop(0)
-            consumer = self._consumers.pop(0)
-            consumer.callback(message)
+        try:
+            while len(self._messages) > 0 and len(self._consumers) > 0:
+                consumer = None
+                while not (consumer and not consumer.called):
+                    consumer = self._consumers.pop(0)
+                message = self._messages.pop(0)
+                consumer.callback(message)
+        except IndexError:
+            # we had consumers but they disconnected,
+            # this is expected, just pass
+            pass
 
     def _schedule_sending(self):
         if self._send_task is None:

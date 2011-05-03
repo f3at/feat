@@ -57,11 +57,12 @@ class TestStartupTask(common.TestCase, common.AgencyTestHelper):
         desc = yield self.doc_factory(Descriptor)
         dummy = yield self.agency.start_agent(desc)
         self.assertCalled(dummy.get_agent(), 'initiate')
-        self.assertCalled(dummy.get_agent(), 'startup')
+        self.assertCalled(dummy.get_agent(), 'startup', times=0)
         self.assertEqual(dummy.get_machine_state(),
-                         AgencyAgentState.starting_up)
+                         AgencyAgentState.initiated)
         dummy.get_agent().set_started()
         yield dummy.wait_for_state(AgencyAgentState.ready)
+        self.assertCalled(dummy.get_agent(), 'startup', times=1)
 
     @defer.inlineCallbacks
     def testAgentNoStartup(self):

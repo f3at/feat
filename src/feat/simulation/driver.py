@@ -170,7 +170,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._init_connections()
 
     def _init_connections(self):
-        self._database_connection = self._database.get_connection(self)
+        self._database_connection = self._database.get_connection()
         dbtools.push_initial_data(self._database_connection)
 
     def iter_agents(self, agent_type=None):
@@ -181,6 +181,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     yield agent
 
     def is_idle(self):
+        return self._messaging.is_idle() and self.are_agents_idle()
+
+    def are_agents_idle(self):
         return all([agent.is_idle() for agent in self.iter_agents()])
 
     def register_breakpoint(self, name):
@@ -202,13 +205,16 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     # Delegation of IDatabase methods for tests
 
+    @manhole.expose()
     def reload_document(self, doc):
         assert isinstance(doc, document.Document)
         return self._database_connection.reload_document(doc)
 
+    @manhole.expose()
     def get_document(self, doc_id):
         return self._database_connection.get_document(doc_id)
 
+    @manhole.expose()
     def save_document(self, doc):
         return self._database_connection.save_document(doc)
 

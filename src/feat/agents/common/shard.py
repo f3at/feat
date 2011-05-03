@@ -1,6 +1,7 @@
 import uuid
 
 from feat.agents.base import manager, replay, message, descriptor
+from feat.common import fiber
 
 
 __all__ = ['start_manager', 'query_structure', 'get_host_list']
@@ -23,7 +24,7 @@ def query_structure(agent, partner_type, distance=1):
         return list()
     else:
         f = agent.call_remote(shard_recp, 'query_structure',
-                              partner_type, distance)
+                              partner_type, distance, _timeout=1)
         return f
 
 
@@ -33,9 +34,9 @@ def get_host_list(agent):
         agent.warning(
             "get_host_list() called, but agent doesn't have shard partner, "
             "returning empty list")
-        return list()
+        return fiber.succeed(list())
     else:
-        return agent.call_remote(shard_recp, 'get_host_list')
+        return agent.call_remote(shard_recp, 'get_host_list', _timeout=1)
 
 
 class JoinShardManager(manager.BaseManager):
@@ -65,7 +66,7 @@ class JoinShardManager(manager.BaseManager):
 
 @replay.side_effect
 def generate_shard_value():
-    return str(uuid.uuid1())
+    return unicode(uuid.uuid1())
 
 
 @descriptor.register("shard_agent")

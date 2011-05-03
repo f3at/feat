@@ -10,7 +10,6 @@ __all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
 class Capabilities(enum.Enum):
     (int_values,
      enum_values,
-     failure_values,
      long_values,
      float_values,
      str_values,
@@ -39,7 +38,7 @@ class Capabilities(enum.Enum):
      tuple_keys,
      circular_references,
      new_style_types,
-     meta_types) = range(32)
+     meta_types) = range(31)
 
 
 class IRegistry(Interface):

@@ -25,6 +25,7 @@ class Agent(agent.BaseAgent):
         agent.BaseAgent.initiate(self)
         state.prefix = prefix
         state.ip = ip
+        state.mapper = dns.new_mapper(self)
 
     @replay.mutable
     def register(self, state):
@@ -41,6 +42,22 @@ class Agent(agent.BaseAgent):
     @replay.mutable
     def do_add(self, state, prefix, ip):
         return dns.add_mapping(self, prefix, ip)
+
+    @replay.mutable
+    def register_with_mapper(self, state):
+        return state.mapper.add_mapping(state.prefix, state.ip)
+
+    @replay.mutable
+    def unregister_with_mapper(self, state):
+        return state.mapper.remove_mapping(state.prefix, state.ip)
+
+    @replay.mutable
+    def do_remove_with_mapper(self, state, prefix, ip):
+        return state.mapper.remove_mapping(prefix, ip)
+
+    @replay.mutable
+    def do_add_with_mapper(self, state, prefix, ip):
+        return state.mapper.add_mapping(prefix, ip)
 
 
 @common.attr('slow')
@@ -168,3 +185,78 @@ class DNSAgentTest(common.SimulationTest):
         # Test multiple removal
 
         yield agent2.unregister()
+
+    @defer.inlineCallbacks
+    def testMappingBroadcastWithNotification(self):
+
+        @defer.inlineCallbacks
+        def assertAddress(name, expected, exp_ttl = 300):
+            for dns_medium in self.driver.iter_agents("dns_agent"):
+                dns_agent = dns_medium.get_agent()
+                result = yield dns_agent.lookup_address(name, "127.0.0.1")
+                for ip, ttl in result:
+                    self.assertEqual(exp_ttl, ttl)
+                self.assertEqual(expected, [ip for ip, _ttl in result])
+
+        agent1 = self.get_local("agent1")
+        agent2 = self.get_local("agent2")
+        agent3 = self.get_local("agent3")
+
+        yield assertAddress("", [])
+        yield assertAddress("foo.bar", [])
+        yield assertAddress("spam.beans", [])
+        yield assertAddress("foo.bar.test.lan", [])
+        yield assertAddress("spam.beans.test.lan", [])
+
+        # Test mapping addition
+
+        yield agent1.register_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", ["192.168.0.1"])
+        yield assertAddress("spam.beans.test.lan", [])
+        yield assertAddress("foo.bar", [])
+
+        yield agent2.register_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", ["192.168.0.1"])
+        yield assertAddress("spam.beans.test.lan", ["192.168.0.2"])
+        yield assertAddress("foo.bar", [])
+        yield assertAddress("spam.beans", [])
+
+        yield agent3.register_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", ["192.168.0.1"])
+        yield assertAddress("spam.beans.test.lan", ["192.168.0.3",
+                                                    "192.168.0.2"])
+        yield assertAddress("spam.beans.test.lan", ["192.168.0.2",
+                                                    "192.168.0.3"])
+
+        # Test mapping multiple addition
+
+        yield agent1.register_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", ["192.168.0.1"])
+
+        # Test mapping removal
+
+        yield agent1.unregister_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", [])
+        yield assertAddress("spam.beans.test.lan", ["192.168.0.3",
+                                                    "192.168.0.2"])
+
+        yield agent3.unregister_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", [])
+        yield assertAddress("spam.beans.test.lan", ["192.168.0.2"])
+
+        yield agent2.unregister_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAddress("foo.bar.test.lan", [])
+        yield assertAddress("spam.beans.test.lan", [])
+
+
+        # Test multiple removal
+
+        yield agent2.unregister_with_mapper()
+        yield self.wait_for_idle(10)

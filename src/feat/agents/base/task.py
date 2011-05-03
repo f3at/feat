@@ -1,12 +1,13 @@
 from zope.interface import implements
-from feat.interface import task
 from feat.common import log, serialization, reflect
 from feat.agents.base import protocol, replay
+
+from feat.interface.task import *
 
 
 class Meta(type(replay.Replayable)):
 
-    implements(task.ITaskFactory)
+    implements(ITaskFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
@@ -21,7 +22,7 @@ class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
     __metaclass__ = Meta
 
-    implements(task.IAgentTask)
+    implements(IAgentTask)
 
     log_category = "task"
     protocol_type = "Task"
@@ -43,7 +44,15 @@ class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
         log.Logger.__init__(self, state.medium)
 
     def initiate(self):
-        '''@see L{task.IAgentTask}'''
+        '''@see L{IAgentTask}'''
 
     def expired(self):
-        '''@see L{task.IAgentTask}'''
+        '''@see L{IAgentTask}'''
+
+    @replay.immutable
+    def finished(self, state):
+        return state.medium.finished()
+
+    @replay.immutable
+    def get_expiration_time(self, state):
+        return state.medium.get_expiration_time()

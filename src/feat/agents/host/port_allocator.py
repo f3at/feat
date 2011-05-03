@@ -31,6 +31,8 @@ class PortAllocator(serialization.Serializable, log.Logger):
             self.used == other.used
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
     def restored(self):

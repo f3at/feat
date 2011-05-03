@@ -6,9 +6,10 @@ import operator
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
-                              problem, )
+                              problem, task, )
 from feat.agents.common import rpc
 from feat.agents.common import shard as common_shard
+from feat.agents.common.host import check_categories
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
@@ -25,6 +26,17 @@ DEFAULT_RESOURCES = {"host": 1,
 DEFAULT_CATEGORIES = {'access': Access.none,
                       'address': Address.none,
                       'storage': Storage.none}
+
+
+@serialization.register
+class HostedPartner(partners.BasePartner):
+    '''
+    This class is for agents we are partners with only because we started them.
+    If your patnership is meant to represent sth more you should implement the
+    appriopriate handler.
+    '''
+
+    type_name = 'host->some_agent'
 
 
 @serialization.register
@@ -52,8 +64,20 @@ class ShardPartner(partners.BasePartner):
         recipients = map(operator.attrgetter('recipient'), brothers)
         return agent.resolve_missing_shard_agent_problem(recipients)
 
+    def on_died(self, agent, brothers, monitor):
+        agent.info('Shard partner died.')
+        recipients = map(operator.attrgetter('recipient'), brothers)
+        task = agent.collectively_restart_shard(
+            recipients, self.recipient.key, monitor)
+        return partners.accept_responsability(task)
+
+    def on_restarted(self, agent, migrated):
+        agent.callback_event('shard_agent_restarted', self.recipient)
+
 
 class Partners(partners.Partners):
+
+    default_handler = HostedPartner
 
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
@@ -70,9 +94,14 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         notifier.AgentMixin.initiate(self, state)
 
         state.medium.register_interest(StartAgentReplier)
+        state.medium.register_interest(StartAgentContractor)
+        state.medium.register_interest(
+            contractor.Service(StartAgentContractor))
         state.medium.register_interest(HostAllocationContractor)
         state.medium.register_interest(
-            problem.SolveProblemInterest(MissingShard(self)))
+            problem.SolveProblemInterest(MissingShard))
+        state.medium.register_interest(
+            problem.SolveProblemInterest(RestartShard))
         ports = state.medium.get_descriptor().port_range
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
@@ -101,12 +130,28 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def resolve_missing_shard_agent_problem(self, state, host_recipients):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.medium.initiate_task,
-                       problem.CollectiveSolver, MissingShard(self),
-                       host_recipients)
-        f.add_callback(lambda x: x.notify_finish())
-        return f
+        task = state.medium.initiate_task(
+            problem.CollectiveSolver, MissingShard(self), host_recipients)
+        return task.notify_finish()
+
+    @replay.mutable
+    def collectively_restart_shard(self, state, host_recipients,
+                                   agent_id, monitor):
+        task = getattr(state, 'restart_shard_task', None)
+        if task is None or task.finished():
+            state.restart_shard_task = state.medium.initiate_task(
+                problem.CollectiveSolver,
+                RestartShard(self, agent_id, monitor),
+                host_recipients)
+        return state.restart_shard_task
+
+    @replay.mutable
+    def wait_for_shard_restart(self, state):
+        task = getattr(state, 'restart_shard_task', None)
+        if task is None or task.finished():
+            return fiber.succeed(state.partners.shard)
+        else:
+            return self.wait_for_event('shard_agent_restarted')
 
     @replay.immutable
     def get_shard_partner(self, state):
@@ -136,38 +181,21 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
-        if isinstance(doc_id, descriptor.Descriptor):
-            doc_id = doc_id.doc_id
-        assert isinstance(doc_id, (str, unicode, ))
-
-        f = fiber.succeed()
-        if allocation_id:
-            f.add_callback(fiber.drop_result,
-                           self.check_allocation_exists, allocation_id)
-        f.add_callback(fiber.drop_result, self.get_document, doc_id)
-        f.add_callback(self._check_requeriments)
-        f.add_callback(self._update_shard_field)
-        f.add_callback(state.medium.start_agent, *args, **kwargs)
-        f.add_callback(recipient.IRecipient)
-        f.add_callback(self.establish_partnership, allocation_id,
-                       our_role=u'host')
-        return f
-
-    @manhole.expose()
-    @replay.journaled
-    def start_agent_from_descriptor(self, state, desc):
-        return self.start_agent(desc.doc_id)
+        task = self.initiate_task(StartAgent, doc_id, allocation_id,
+                                  args=args, kwargs=kwargs)
+        return task.notify_finish()
 
     @replay.immutable
-    def _update_shard_field(self, state, desc):
-        '''Sometime creating the descriptor for new agent we cannot know in
-        which shard it will endup. If it is None or set to lobby, the HA
-        will update the field to match his own'''
-        if desc.shard is None or desc.shard == 'lobby':
-            desc.shard = self.get_own_address().shard
-        f = fiber.Fiber()
-        f.add_callback(state.medium.save_document)
-        return f.succeed(desc)
+    def medium_start_agent(self, state, desc, *args, **kwargs):
+        '''
+        Just delegation to Agency part. Used by StartAgent task.
+        '''
+        return state.medium.start_agent(desc, *args, **kwargs)
+
+    @replay.journaled
+    def restart_agent(self, state, agent_id):
+        self.debug('I will restart agent with id %r.', agent_id)
+        return self.start_agent(agent_id)
 
     @manhole.expose()
     @rpc.publish
@@ -205,7 +233,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def get_num_free_ports(self, state):
         return state.port_allocator.num_free()
 
-    ### Private Methods ###
+    @rpc.publish
+    def premodify_allocation(self, allocation_id, **delta):
+        return agent.BaseAgent.premodify_allocation(self,
+                allocation_id, **delta)
+
+    @rpc.publish
+    def apply_modification(self, change_id):
+        return agent.BaseAgent.apply_modification(self, change_id)
+
+### Private Methods ###
 
     @replay.side_effect
     def _discover_hostname(self):
@@ -267,30 +304,101 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         self.info("Setting host categories to: %s",
                   ", ".join(["%s=%s" % (n, v.name)
                              for n, v in categories.iteritems()]))
-
         state.categories = categories
 
     @replay.immutable
-    def _check_requeriments(self, state, doc):
+    def check_requirements(self, state, doc):
         agnt = agent.registry_lookup(doc.document_type)
-        agent_categories = agnt.categories
-        for cat, val in agent_categories.iteritems():
-            if ((isinstance(val, Access) and val == Access.none) or
-               (isinstance(val, Address) and val == Address.none) or
-               (isinstance(val, Storage) and val == Storage.none)):
-                continue
-
-            if not (cat in state.categories and
-                    state.categories[cat] == val):
-                msg = "Category %s doesn't match %s != %s" % (
-                      cat, val.name, state.categories[cat].name)
-                self.error(msg)
-                raise CategoryError(msg)
+        ret = check_categories(self, agnt.categories)
+        if not ret:
+            msg = "Categoryies doesn't match"
+            self.error(msg)
+            raise CategoryError(msg)
         return doc
+
+
+class StartAgent(task.BaseTask):
+
+    timeout = 10
+
+    @replay.entry_point
+    def initiate(self, state, doc_id, allocation_id,
+                 args=tuple(), kwargs=dict()):
+        if isinstance(doc_id, descriptor.Descriptor):
+            doc_id = doc_id.doc_id
+        assert isinstance(doc_id, (str, unicode, ))
+
+        state.doc_id = doc_id
+        state.descriptor = None
+        state.allocation_id = allocation_id
+
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_result, self._fetch_descriptor)
+        f.add_callback(fiber.drop_result, self._check_requirements)
+        f.add_callback(fiber.drop_result, self._update_shard_field)
+        f.add_callback(fiber.drop_result, self._validate_allocation)
+        f.add_callback(fiber.drop_result, getattr, state, 'descriptor')
+        f.add_callback(state.agent.medium_start_agent, *args, **kwargs)
+        f.add_callback(recipient.IRecipient)
+        f.add_callback(self._establish_partnership)
+        return f
+
+    @replay.immutable
+    def _establish_partnership(self, state, recp):
+        f = state.agent.establish_partnership(
+            recp, state.allocation_id, our_role=u'host', allow_double=True)
+        return f
+
+    @replay.mutable
+    def _fetch_descriptor(self, state):
+        f = state.agent.get_document(state.doc_id)
+        f.add_callback(self._store_descriptor)
+        return f
+
+    @replay.mutable
+    def _store_descriptor(self, state, value):
+        state.descriptor = value
+
+    @replay.mutable
+    def _check_requirements(self, state):
+        state.agent.check_requirements(state.descriptor)
+
+    @replay.mutable
+    def _update_shard_field(self, state):
+        '''Sometime creating the descriptor for new agent we cannot know in
+        which shard it will endup. If it is None or set to lobby, the HA
+        will update the field to match his own'''
+        if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
+            own_shard = state.agent.get_own_address().shard
+            state.descriptor.shard = own_shard
+        f = fiber.succeed(state.descriptor)
+        f.add_callback(state.agent.save_document)
+        f.add_callback(self._store_descriptor)
+        return f
+
+    @replay.mutable
+    def _validate_allocation(self, state):
+        if state.allocation_id:
+            return state.agent.check_allocation_exists(state.allocation_id)
+        else:
+            resources = self._get_factory().resources
+            f = state.agent.allocate_resource(**resources)
+            f.add_callback(self._store_allocation)
+            return f
+
+    @replay.mutable
+    def _store_allocation(self, state, allocation):
+        state.allocation_id = allocation.id
+
+    @replay.immutable
+    def _get_factory(self, state):
+        return agent.registry_lookup(state.descriptor.document_type)
 
 
 @serialization.register
 class MissingShard(problem.BaseProblem):
+
+    problem_id = 'missing-shard'
 
     def wait_for_solution(self):
         return self.agent.get_shard_partner()
@@ -303,6 +411,38 @@ class MissingShard(problem.BaseProblem):
         return self.agent.start_own_shard(own_address.shard)
 
 
+@serialization.register
+class RestartShard(problem.BaseProblem):
+
+    problem_id = 'restart-shard'
+
+    def __init__(self, agent, agent_id=None, monitor=None):
+        problem.BaseProblem.__init__(self, agent)
+        self.agent_id = agent_id
+        self.monitor = monitor
+
+    def wait_for_solution(self):
+        return self.agent.wait_for_shard_restart()
+
+    def solve_for(self, solution, recp):
+        pass
+
+    def solve_localy(self):
+        partner = self.agent.query_partners('shard')
+        f = fiber.succeed()
+        if partner:
+            f.add_callback(fiber.drop_result, self.agent.remove_partner,
+                           partner)
+        f.add_callback(fiber.drop_result, self.agent.restart_agent,
+                       self.agent_id)
+        f.add_callback(self._finalize)
+        return f
+
+    def _finalize(self, recp):
+        self.agent.callback_event('shard_agent_restarted', recp)
+        return self.agent.call_remote(self.monitor, 'restart_complete', recp)
+
+
 class HostAllocationContractor(contractor.BaseContractor):
 
     protocol_id = 'allocate-resources'
@@ -311,6 +451,12 @@ class HostAllocationContractor(contractor.BaseContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
+        categories = announcement.payload['categories']
+        ret = check_categories(state.agent, categories)
+        if not ret:
+            self._refuse("Categories doesn't match")
+            return
+
         resources = announcement.payload['resources']
         try:
             preallocation = state.agent.preallocate_resource(**resources)
@@ -358,7 +504,7 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _granted_failed(self, state, fail):
         msg = "Granted failed with failure %r" % (fail, )
         cancel = message.Cancellation(reason=msg)
-        state.medium.defect(msg)
+        state.medium.defect(cancel)
         self.error(msg)
         return self.release_preallocation()
 
@@ -406,3 +552,65 @@ class StartAgentReplier(replier.BaseReplier):
         msg = message.ResponseMessage()
         msg.payload['agent'] = recipient.IRecipient(new_agent)
         state.medium.reply(msg)
+
+
+class StartAgentContractor(contractor.BaseContractor):
+
+    protocol_id = 'start-agent'
+
+    @replay.entry_point
+    def announced(self, state, announce):
+        state.descriptor = announce.payload['descriptor']
+        state.factory = agent.registry_lookup(state.descriptor.document_type)
+
+        if not check_categories(state.agent, state.factory.categories):
+            self._refuse()
+            return
+
+        alloc = state.agent.preallocate_resource(
+            **state.factory.resources)
+
+        if alloc is None:
+            self._refuse()
+            return
+
+        state.alloc_id = alloc.id
+
+        bid = message.Bid()
+        state.medium.bid(bid)
+
+    @replay.mutable
+    def _release_allocation(self, state, *_):
+        if state.alloc_id:
+            return state.agent.release_resource(state.alloc_id)
+
+    closed = _release_allocation
+    rejected = _release_allocation
+    expired = _release_allocation
+    cancelled = _release_allocation
+
+    @replay.entry_point
+    def granted(self, state, grant):
+        f = state.agent.confirm_allocation(state.alloc_id)
+        f.add_callback(fiber.drop_result, state.agent.start_agent,
+                       state.descriptor.doc_id, state.alloc_id)
+        f.add_callbacks(self._finalize, self._starting_failed)
+        return f
+
+    @replay.immutable
+    def _finalize(self, state, recp):
+        msg = message.FinalReport(payload=recp)
+        state.medium.finalize(msg)
+
+    @replay.immutable
+    def _starting_failed(self, state, fail):
+        msg = message.Cancellation(reason=fail)
+        f = self._release_allocation()
+        f.add_callback(fiber.drop_result, state.medium.defect,
+                       msg)
+        return f
+
+    @replay.immutable
+    def _refuse(self, state):
+        msg = message.Refusal()
+        state.medium.refuse(msg)

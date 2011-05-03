@@ -199,6 +199,11 @@ class ExpirationCallsMixin(object):
     def __init__(self):
         self._expiration_call = None
 
+    @replay.side_effect
+    def get_expiration_time(self):
+        if self._expiration_call:
+            return self._expiration_call.getTime()
+
     def _get_time(self):
         raise NotImplemented('Should be define in the class using the mixin')
 
@@ -263,27 +268,50 @@ class ExpirationCallsMixin(object):
 
 class InitiatorMediumBase(object):
 
+    def _terminate(self):
+        '''Nothing special.'''
+
+
+class TransientInitiatorMediumBase(InitiatorMediumBase):
+
     def __init__(self):
         self._fnotifier = defer.Notifier()
 
-    @serialization.freeze_tag('InitiatorMediumBase.notify_finish')
+    @serialization.freeze_tag('IListener.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 
-    def _terminate(self, arg):
-        if isinstance(arg, (failure.Failure, Exception)):
-            self.log("Firing errback of notifier with arg: %r.", arg)
-            self.call_next(self._fnotifier.errback, 'finish', arg)
+    def _terminate(self, result):
+        if isinstance(result, (failure.Failure, Exception)):
+            self.log("Firing errback of notifier with result: %r.", result)
+            self.call_next(self._fnotifier.errback, 'finish', result)
         else:
-            self.log("Firing callback of notifier with arg: %r.", arg)
-            self.call_next(self._fnotifier.callback, 'finish', arg)
+            self.log("Firing callback of notifier with result: %r.", result)
+            self.call_next(self._fnotifier.callback, 'finish', result)
 
     def call_next(self, *_):
         raise NotImplementedError("This method should be implemented outside "
                                   "of this mixin!")
 
 
-class InterestedMediumBase(InitiatorMediumBase):
+class InterestedMediumBase(object):
 
-    def _terminate(self, arg):
-        self.call_next(self._fnotifier.callback, 'finish', arg)
+    def _terminate(self):
+        '''Nothing special.'''
+
+
+class TransientInterestedMediumBase(InterestedMediumBase):
+
+    def __init__(self):
+        self._fnotifier = defer.Notifier()
+
+    def _terminate(self, result):
+        self.call_next(self._fnotifier.callback, 'finish', result)
+
+    @serialization.freeze_tag('IListener.notify_finish')
+    def notify_finish(self):
+        return self._fnotifier.wait('finish')
+
+    def call_next(self, *_):
+        raise NotImplementedError("This method should be implemented outside "
+                                  "of this mixin!")

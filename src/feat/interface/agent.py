@@ -7,10 +7,10 @@ __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
 
 
 class CategoryError(RuntimeError):
-    '''
+    """
     Raised when categories don't match with the
     categories defined in the HostAgent.
-    '''
+    """
 
 
 class Access(enum.Enum):
@@ -45,6 +45,9 @@ class IAgentFactory(Interface):
     standalone = Attribute("bool. whether to run in standalone process")
 
     categories = Attribute("Dict. Access, Address and Storage")
+
+    restart_strategy = Attribute(
+        "L{feat.agents.common.monitor.RestartStrategy}")
 
     def __call__(medium, *args, **kwargs):
         pass
@@ -278,6 +281,21 @@ class IAgent(Interface):
 
     def get_descriptor():
         '''Returns a copy of the agent descriptos.'''
+
+    def get_agent_id():
+        '''Returns a global unique identifier for the agent.
+        Do not change when the agent is restarted.'''
+
+    def get_instance_id():
+        '''Returns the agent instance identifier.
+        Changes when the agent is restarted.
+        It's unique only for the agent.'''
+
+    def get_full_id():
+        '''Return a global unique identifier for this agent instance.
+        It's a combination of agent_id and instance_id:
+          full_id = agent_id + "/" + instance_id
+        '''
 
     def shutdown():
         """

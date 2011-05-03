@@ -3,20 +3,20 @@ from twisted.python import failure
 from twisted.internet import reactor, error
 from zope.interface import implements, classProvides
 
-from feat.agents.base import replay
+from feat.agents.base import replay, labour
 from feat.common import defer, serialization
 
-from feat.agents.dns.labour import *
+from feat.agents.dns.interface import *
 
 
 @serialization.register
-class Labour(serialization.Serializable, EqualityMixin):
+class Labour(labour.BaseLabour):
 
     classProvides(IDNSServerLabourFactory)
     implements(IDNSServerLabour)
 
     def __init__(self, patron):
-        self._patron = patron
+        labour.BaseLabour.__init__(self, patron)
         self._resolver = Resolver(patron)
         self._listener = None
 

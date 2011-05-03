@@ -18,6 +18,10 @@ def initial_data(doc):
         raise AttributeError(
             'First argument needs to be an instance or class of something '
             'inheriting from feat.agents.base.document.Document!')
+    if doc.doc_id:
+        for x in _documents:
+            if x.doc_id == doc.doc_id:
+                _documents.remove(x)
     _documents.append(doc)
 
 

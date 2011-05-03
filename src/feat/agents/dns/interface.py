@@ -1,20 +1,6 @@
 from zope.interface import Interface
 
-__all__ = ["IDNSServerPatron", "EqualityMixin",
-           "IDNSServerLabourFactory", "IDNSServerLabour"]
-
-
-class EqualityMixin(object):
-
-    def __eq__(self, other):
-        if isinstance(other, type(self)):
-            return True
-        return NotImplemented
-
-    def __ne__(self, other):
-        if isinstance(other, type(self)):
-            return False
-        return NotImplemented
+__all__ = ["IDNSServerPatron", "IDNSServerLabourFactory", "IDNSServerLabour"]
 
 
 class IDNSServerPatron(Interface):

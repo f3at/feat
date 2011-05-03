@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from twisted.trial.unittest import SkipTest, FailTest
+from twisted.trial.unittest import FailTest
 from twisted.internet import defer
 
 from feat.test import common
@@ -109,14 +109,17 @@ class SimulationTest(common.TestCase):
         for x in self.driver.iter_agents():
             yield x.wait_for_listeners_finish()
         yield common.TestCase.tearDown(self)
-        if not self.skip_replayability:
-            self.info("Test finished, now validating replayability.")
-            for agency in self.driver._agencies:
-                self._validate_replay_on_agency(agency)
-        else:
-            print "\n\033[91mFIXME: \033[0mReplayability test skipped: %s\n" %\
-                  self.skip_replayability
-        self.revert_overrides()
+        try:
+            if not self.skip_replayability:
+                self.info("Test finished, now validating replayability.")
+                for agency in self.driver._agencies:
+                    self._validate_replay_on_agency(agency)
+            else:
+                msg = ("\n\033[91mFIXME: \033[0mReplayability test "
+                      "skipped: %s\n" % self.skip_replayability)
+                print msg
+        finally:
+            self.revert_overrides()
 
     def _validate_replay_on_agency(self, agency):
         for agent in agency._agents:
@@ -128,7 +131,7 @@ class SimulationTest(common.TestCase):
                  agent.agent.__class__.__name__, aid)
 
         entries = [entry for entry in agency._journal_entries\
-                   if entry and entry[0] == aid]
+                   if entry[0] == aid]
         self.log("Found %d entries of this agent.", len(entries))
 
         r = replay.Replay(iter(entries), aid)
@@ -160,28 +163,10 @@ class SimulationTest(common.TestCase):
                              from_replay._get_state())
 
     @defer.inlineCallbacks
-    def wait_for(self, check, timeout, freq=0.5):
-        assert callable(check)
-        waiting = 0
-
-        while True:
-            if check():
-                self.info('Check %r positive, continueing with the test.',
-                          check.__name__)
-                break
-            self.info('Check %r still negative, sleping %r seconds.',
-                      check.__name__, freq)
-            waiting += freq
-            if waiting > timeout:
-                raise FailTest('Timeout error waiting for check %r.' %\
-                               check.__name__)
-            yield common.delay(None, freq)
-
-    @defer.inlineCallbacks
-    def wait_for_idle(self, timeout, freq=0.5):
+    def wait_for_idle(self, timeout, freq=0.05):
         try:
             yield self.wait_for(self.driver.is_idle, timeout, freq)
-        except FailTest as e:
+        except FailTest:
             for agent in self.driver.iter_agents():
                 activity = agent.show_activity()
                 if activity is None:

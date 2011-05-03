@@ -3,10 +3,14 @@
 
 from zope.interface import Interface, Attribute
 
-__all__ = ("IListener", "IConnectionFactory",
-           "IAgencyInitiatorFactory", "IAgencyInterestedFactory",
+__all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
+           "IAgencyInitiatorFactory", "IAgencyInterestFactory",
+           "IAgencyInterestInternalFactory",
+           "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
-           "DatabaseError", "ConflictError", "NotFoundError", "IFirstMessage")
+           "DatabaseError", "ConflictError", "NotFoundError",
+           "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
+           "IDatabaseDriver")
 
 
 class DatabaseError(RuntimeError):
@@ -53,19 +57,88 @@ class IListener(Interface):
         '''
 
 
+class IAgencyAgentInternal(Interface):
+    '''Internal interface of an agency agent.'''
+
+    def get_agent():
+        pass
+
+    def create_binding(prot_id, shard):
+        pass
+
+    def register_listener(medium):
+        pass
+
+    def unregister_listener(session_id):
+        pass
+
+    def send_msg(recipients, msg, handover=False):
+        pass
+
+    def journal_protocol_created(factory, medium, *args, **kwargs):
+        pass
+
+
+class IAgencyInterestFactory(Interface):
+    '''Factory constructing L{IAgencyInterest} instances.'''
+
+    def __call__(factory):
+        '''Creates a new agency interest
+        for the specified agent-side factory.'''
+
+
+class IAgencyInterestInternalFactory(Interface):
+    '''Factory constructing L{IAgencyInterestInternal} instances.'''
+
+    def __call__(agency_agent):
+        '''Creates a new internal agency interest
+        for the specified agent-side factory.'''
+
+
+class IAgencyInterestInternal(Interface):
+
+    factory = Attribute("Agent-side protocol factory.")
+
+    def bind(shard):
+        '''Create a binding for the specified shard.'''
+
+    def revoke():
+        '''Revoke the current bindings to the current shard.'''
+
+    def schedule_message(message):
+        '''Schedules the handling of a the specified message.'''
+
+    def clear_queue():
+        '''Clears the message queue.'''
+
+    def wait_finished():
+        '''Returns a Deferred that will be fired when there is no more
+        active or queued messages.'''
+
+    def is_idle():
+        '''Returns True if there is no active or queued messages.'''
+
+
 class IAgencyInitiatorFactory(Interface):
-    '''Factory constructing L{IAgencyInitiator} instance'''
+    '''Factory constructing L{IAgencyInitiator} instance.'''
+
+    def __call__(agency_agent, recipients, *args, **kwargs):
+        '''Creates a new agency initiator
+        for the specified agent-side factory.'''
 
 
 class IAgencyInterestedFactory(Interface):
-    '''Factory contructing L{IAgencyInterested} instance'''
+    '''Factory constructing L{IAgencyInterested} instance.'''
+
+    def __call__(agency_agent, message):
+        '''Creates a new agency interested
+        for the specified agent-side factory.'''
 
 
 class IConnectionFactory(Interface):
     '''
-    Responsible for creating connection to external server.
-    Should be implemented by database and messaging drivers
-    passed to the agency.
+    Responsible for creating connection to messaging server.
+    Should be implemented by messaging drivers passed to the agency.
     '''
 
     def get_connection(agent):
@@ -73,8 +146,8 @@ class IConnectionFactory(Interface):
         Instantiate the connection for the agent.
 
         @params agent: Agent to connect to.
-        @type agent: L{feat.interfaces.agent.IAgencyAgent}
-        @returns: The connection instance.
+        @type agent: L{feat.agency.interfaces.IMessagingPeer}
+        @returns: L{IMessagingClient}
         '''
 
 
@@ -142,6 +215,41 @@ class IMessagingPeer(Interface):
         '''
 
 
+class IFirstMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message object which is
+    the first one in the dialog. Implemeneted by: Announcement, Request.
+    '''
+
+    traversal_id = Attribute('Unique identifier. It is preserved during '
+                             'nesting between shard, to detect duplications.')
+
+
+class IDbConnectionFactory(Interface):
+    '''
+    Responsible for creating connection to database server.
+    Should be implemented by database drivers passed to the agency.
+    '''
+
+    def get_connection():
+        '''
+        Instantiate the connection for the agent.
+
+        @returns: L{IDatabaseClient}
+        '''
+
+
+class IDialogMessage(Interface):
+    '''
+    This interface needs to be implemeneted by the message
+    objects which take part on a dialog.
+    '''
+
+    reply_to = Attribute("The recipient to send the response to.")
+    sender_id = Attribute("The sender unique identifier.")
+    receiver_id = Attribute("The receiver unique identifier.")
+
+
 class IDatabaseClient(Interface):
 
     def save_document(document):
@@ -190,12 +298,75 @@ class IDatabaseClient(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
+    def changes_listener(doc_ids, callback):
+        '''
+        Register a callback called when the document is changed.
+        If different=True (defualt) only changes triggered by this session
+        are ignored.
+        @param document: Document ids to look to
+        @param callback: Callable to call
+        @param different: Flag telling whether to ignore changes triggered
+                          by this session.
+        '''
 
-class IFirstMessage(Interface):
+    def disconnect():
+        '''
+        Disconnect from database server.
+        '''
+
+    def create_database():
+        '''
+        Request creating the database.
+        '''
+
+
+class IDatabaseDriver(Interface):
     '''
-    This interface needs to be implemeneted by the message object which is
-    the first one in the dialog. Implemeneted by: Announcement, Request.
+    Interface implemeneted by the database driver.
     '''
 
-    traversal_id = Attribute('Unique identifier. It is preserved during '
-                             'nesting between shard, to detect duplications.')
+    def create_db():
+        '''
+        Request creating the database.
+        '''
+
+    def save_doc(doc, doc_id=None):
+        '''
+        Create new or update existing document.
+        @param doc: string with json document
+        @param doc_id: id of the document
+        @return: Deferred fired with the HTTP response body (keys: id, rev)
+        '''
+
+    def open_doc(doc_id):
+        '''
+        Fetch document from database.
+        @param doc_id: id of the document to fetch
+        @return: Deferred fired with json parsed document.
+        '''
+
+    def delete_doc(doc_id, revision):
+        '''
+        Mark document as delete.
+        @param doc_id: id of document to delete
+        @param revision: revision of the document
+        @return: Deferred fired with dict(id, rev) or errbacked with
+                 ConflictError
+        '''
+
+    def listen_changes(doc_ids, callback):
+        '''
+        Register callback called when one of the documents get changed.
+        @param doc_ids: list of document ids which we are interested in
+        @param callback: callback to call, it will get doc_id and revision
+        @return: Deferred trigger with unique listener identifier
+        @rtype: Deferred
+        '''
+
+    def cancel_listener(listener_id):
+        '''
+        Unregister callback called on document changes.
+        @param listener_id: Id returned buy listen_changes() method
+        @rtype: Deferred
+        @return: Deferred which will fire when the listener is cancelled.
+        '''

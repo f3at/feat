@@ -88,7 +88,7 @@ class IAgentManager(protocols.IInitiator):
     announce_timeout = Attribute('How long to wait for incoming bids/refusals'
                                  'before going to closed state')
 
-    def initiate():
+    def initiate(*args, **kwargs):
         pass
 
     def bid(bid):

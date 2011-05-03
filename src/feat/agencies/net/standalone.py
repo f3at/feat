@@ -26,8 +26,8 @@ class Agency(agency.Agency):
     def initiate(self):
         reactor.callWhenRunning(self._run)
 
-    def unregister_agent(self, medium, agent_id):
-        agency.Agency.unregister_agent(self, medium, agent_id)
+    def unregister_agent(self, medium):
+        agency.Agency.unregister_agent(self, medium)
         self.kill()
 
     def wait_running(self):
@@ -43,7 +43,7 @@ class Agency(agency.Agency):
             kwargs = json.unserialize(self.config['agent']['kwargs'])
 
         d = agency.Agency.initiate(self)
-        d.addCallback(lambda _: self._database.get_connection(None))
+        d.addCallback(lambda _: self._database.get_connection())
         d.addCallback(lambda conn: conn.get_document(aid))
         d.addCallback(self.start_agent_locally, *args, **kwargs)
         d.addCallbacks(self.notify_running, self.notify_failed)

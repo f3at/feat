@@ -1,9 +1,10 @@
+import collections
 import functools
 import uuid
 import time as python_time
 
 from zope.interface import implements
-from twisted.internet import defer, reactor
+from twisted.internet import reactor
 from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
@@ -11,9 +12,12 @@ from twisted.scripts import trial
 from feat.agencies.emu import agency
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import message, recipient, agent
-from feat.common import log, decorator, journal
+from feat.common import log, defer, decorator, journal
 from feat.common import delay as delay_module
 from feat.interface.generic import *
+
+# Import for registering stuff
+from feat import everything
 
 from . import factories
 
@@ -141,6 +145,40 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return util.acquireAttribute(self._parents, 'slow', False)
 
+    @defer.inlineCallbacks
+    def wait_for(self, check, timeout, freq=0.5):
+        assert callable(check)
+        waiting = 0
+
+        while True:
+            if check():
+                self.info('Check %r positive, continuing with the test.',
+                          check.__name__)
+                break
+            self.info('Check %r still negative, sleeping %r seconds.',
+                      check.__name__, freq)
+            waiting += freq
+            if waiting > timeout:
+                raise unittest.FailTest('Timeout error waiting for check %r.'
+                                        % check.__name__)
+            yield delay(None, freq)
+
+    def is_agency_idle(self, agency):
+        return all([agent.is_idle() for agent in agency.get_agents()])
+
+    @defer.inlineCallbacks
+    def wait_agency_for_idle(self, agency, timeout, freq=0.5):
+        try:
+            check = lambda: self.is_agency_idle(agency)
+            yield self.wait_for(check, timeout, freq)
+        except unittest.FailTest:
+            for agent in agency.get_agents():
+                activity = agent.show_activity()
+                if activity is None:
+                    continue
+                self.info(activity)
+            raise
+
     def cb_after(self, arg, obj, method):
         '''
         Returns defered fired after the call of method on object.
@@ -267,7 +305,10 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         '''
 
         def check(failure):
-            self.assertTrue(failure.check(*errorKlasses))
+            if isinstance(errorKlasses, collections.Sequence):
+                self.assertTrue(failure.check(*errorKlasses))
+            else:
+                self.assertTrue(failure.check(errorKlasses))
             return None # Resolve the error
 
         if chain is None:
@@ -396,7 +437,7 @@ class AgencyTestHelper(object):
         @return_type: subclass of feat.agents.document.Document
         '''
         document = factories.build(doc_class.document_type, **options)
-        return self.agency._database.connection.save_document(document)
+        return self.agency._database.get_connection().save_document(document)
 
     # methods for sending and receiving custom messages
 
@@ -456,6 +497,13 @@ class AgencyTestHelper(object):
         msg = message.Acknowledgement()
         msg.sender_id = self.session_id
         return self.recv_msg(msg).addCallback(lambda ret: _)
+
+    def recv_notification(self, result=None, traversal_id=None):
+        msg = message.Notification()
+        msg.traversal_id = traversal_id or str(uuid.uuid1())
+        d = self.recv_msg(msg, key="dummy-notification")
+        d.addCallback(defer.override_result, result)
+        return d
 
     def recv_msg(self, msg, reply_to=None, key='dummy-contract',
                   expiration_time=None):

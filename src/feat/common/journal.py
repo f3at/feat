@@ -259,10 +259,16 @@ class Recorder(RecorderNode, annotate.Annotable):
         fun_id = journal_entry.function_id
         args, kwargs = journal_entry.get_arguments()
         fun_id, function = self._resolve_function(fun_id, None)
-        return replay(journal_entry, self._call_fun,
+        return replay(journal_entry, self._replayed_call,
                       fun_id, function, args, kwargs)
 
     ### Private Methods ###
+
+    def _replayed_call(self, fun_id, function, args, kwargs):
+        try:
+            return self._call_fun(fun_id, function, args, kwargs)
+        except Exception as e:
+            return fiber.fail(e)
 
     def _recorded_call(self, fun_id, function, args, kwargs, reentrant=True):
         # Starts the fiber section
@@ -279,6 +285,7 @@ class Recorder(RecorderNode, annotate.Annotable):
         # Check if this is the first recording in the fiber section
         recording = section.state.get(RECORDING_TAG, None)
         section_first = recording is None
+        result = None
 
         try:
 
@@ -304,13 +311,18 @@ class Recorder(RecorderNode, annotate.Annotable):
 
             result = self._call_fun(fun_id, function, args, kwargs)
 
-            if section_first:
-                entry.set_result(result)
-                entry.commit()
+        except Exception as e:
+
+            if not section_first:
+                raise
+
+            result = fiber.fail(e)
 
         finally:
 
             if section_first:
+                entry.set_result(result)
+                entry.commit()
                 section.state[RECORDING_TAG] = None
                 section.state[JOURNAL_ENTRY_TAG] = None
                 section.state[RECMODE_TAG] = None

@@ -10,6 +10,7 @@ from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.interface.agent import AgencyAgentState
+from feat.agents.common.monitor import RestartStrategy
 
 
 registry = dict()
@@ -67,6 +68,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
                   'address': agent.Address.none,
                   'storage': agent.Storage.none}
 
+    restart_strategy = RestartStrategy.buryme
+
+    # resources required to run the agent
+    resources = {'epu': 1}
+
     def __init__(self, medium):
         manhole.Manhole.__init__(self)
         log.Logger.__init__(self, medium)
@@ -89,13 +95,32 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def initiate(self, state):
-        self._load_allocations()
-        state.medium.register_interest(replier.GoodBye)
+        state.medium.register_interest(replier.PartnershipProtocol)
         state.medium.register_interest(replier.ProposalReceiver)
+        state.medium.register_interest(replier.Ping)
 
     @replay.immutable
     def startup(self, state):
         pass
+
+    @replay.immutable
+    def get_descriptor(self, state):
+        return state.medium.get_descriptor()
+
+    @replay.immutable
+    def get_agent_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.doc_id
+
+    @replay.immutable
+    def get_instance_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.instance_id
+
+    @replay.immutable
+    def get_full_id(self, state):
+        desc = state.medium.get_descriptor()
+        return desc.doc_id + "/" + desc.instance_id
 
     @replay.journaled
     def shutdown(self, state):
@@ -144,10 +169,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def establish_partnership(self, state, recp, allocation_id=None,
                               partner_allocation_id=None,
                               partner_role=None, our_role=None,
-                              substitute=None):
+                              substitute=None, allow_double=False):
         f = fiber.succeed()
         found = state.partners.find(recp)
-        if found:
+        default_role = getattr(self.partners_class, 'default_role', None)
+        our_role = our_role or default_role
+        if not allow_double and found:
             msg = ('establish_partnership() called for %r which is already '
                    'our partner with the class %r.' % (recp, type(found), ))
             self.debug(msg)
@@ -161,7 +188,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         f.add_callback(fiber.drop_result, self.initiate_protocol,
                        requester.Propose, recp, allocation_id,
                        partner_allocation_id,
-                       partner_role, our_role, substitute)
+                       our_role, partner_role, substitute)
         f.add_callback(requester.Propose.notify_finish)
         return f
 
@@ -191,9 +218,15 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.partners.create(partner_class, recp, allocation_id, role,
                                      substitute)
 
+    @replay.immutable
+    def remove_partner(self, state, partner):
+        return state.partners.remove(partner)
+
     @replay.mutable
-    def partner_said_goodbye(self, state, recp, payload):
-        return state.partners.on_goodbye(recp, payload)
+    def partner_sent_notification(self, state, recp, notification_type,
+                                  payload, sender):
+        return state.partners.receive_notification(
+            recp, notification_type, payload, sender)
 
     @manhole.expose()
     @replay.immutable
@@ -201,6 +234,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         '''query_partners(name_or_class) ->
               Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
+
+    @replay.immutable
+    def find_partner(self, state, recp_or_agent_id):
+        return state.partners.find(recp_or_agent_id)
 
     @replay.immutable
     def query_partner_handler(self, state, partner_type, role=None):
@@ -211,10 +248,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def get_own_address(self, state):
         '''get_own_address() -> Return IRecipient representing the agent.'''
         return recipient.IRecipient(state.medium)
-
-    @replay.immutable
-    def get_descriptor(self, state):
-        return state.medium.get_descriptor()
 
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):
@@ -238,7 +271,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def check_allocation_exists(self, state, allocation_id):
-        return state.resources.exists(allocation_id)
+        return state.resources.get_allocation(allocation_id)
 
     @replay.immutable
     def list_resource(self, state):
@@ -264,6 +297,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.mutable
     def release_resource(self, state, allocation_id):
         return state.resources.release(allocation_id)
+
+    @replay.mutable
+    def premodify_allocation(self, state, allocation_id, **delta):
+        return state.resources.premodify(allocation_id, **delta)
+
+    @replay.mutable
+    def apply_modification(self, state, change_id):
+        return state.resources.apply_modification(change_id)
 
     @replay.immutable
     def get_document(self, state, doc_id):
@@ -308,10 +349,3 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def cancel_delayed_call(self, state, call_id):
         state.medium.cancel_delayed_call(call_id)
-
-    ### Private Methods ###
-
-    @replay.mutable
-    def _load_allocations(self, state):
-        desc = self.get_descriptor()
-        state.resources.load(desc.allocations)

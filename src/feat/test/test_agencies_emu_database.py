@@ -3,7 +3,6 @@ import json
 from twisted.internet import defer
 
 from feat.agencies.emu import database
-from feat.agents.base import document
 from feat.agencies.interface import ConflictError, NotFoundError
 
 from . import common
@@ -17,7 +16,7 @@ class TestDatabase(common.TestCase):
     @defer.inlineCallbacks
     def testSaveUnsavedDocument(self):
         content = self._generate_content('some text')
-        resp = yield self.database.saveDoc(json.dumps(content))
+        resp = yield self.database.save_doc(json.dumps(content))
 
         self.assertTrue('id' in resp)
         self.assertTrue('rev' in resp)
@@ -35,7 +34,7 @@ class TestDatabase(common.TestCase):
     @defer.inlineCallbacks
     def testUpdatingDocumentCorrectRevision(self):
         content1 = self._generate_content('some text')
-        resp = yield self.database.saveDoc(json.dumps(content1))
+        resp = yield self.database.save_doc(json.dumps(content1))
 
         doc_id = resp['id']
         rev = resp['rev']
@@ -44,7 +43,7 @@ class TestDatabase(common.TestCase):
         content2['_id'] = doc_id
         content2['_rev'] = rev
 
-        resp2 = yield self.database.saveDoc(json.dumps(content2))
+        resp2 = yield self.database.save_doc(json.dumps(content2))
 
         self.assertEqual(resp2['id'], doc_id)
         self.assertNotEqual(resp2['rev'], rev)
@@ -54,24 +53,24 @@ class TestDatabase(common.TestCase):
     @defer.inlineCallbacks
     def testUpdatingDocumentWithoutRevisionOrIncorrect(self):
         content1 = self._generate_content('some text')
-        resp = yield self.database.saveDoc(json.dumps(content1))
+        resp = yield self.database.save_doc(json.dumps(content1))
 
         doc_id = resp['id']
 
         content2 = self._generate_content('some new text')
         content2['_id'] = doc_id
 
-        d = self.database.saveDoc(json.dumps(content2))
+        d = self.database.save_doc(json.dumps(content2))
         self.assertFailure(d, ConflictError)
 
         content2['_rev'] = 'incorrect revision'
-        d = self.database.saveDoc(json.dumps(content2))
+        d = self.database.save_doc(json.dumps(content2))
         self.assertFailure(d, ConflictError)
         yield d
 
     def testNonStringDocument(self):
         content = dict()
-        d = self.database.saveDoc(content)
+        d = self.database.save_doc(content)
         self.assertFailure(d, ValueError)
 
         return d
@@ -81,7 +80,7 @@ class TestDatabase(common.TestCase):
         content = dict()
         content['_id'] = 'id which loses'
 
-        resp = yield self.database.saveDoc(json.dumps(content),
+        resp = yield self.database.save_doc(json.dumps(content),
                                            'id which wins')
         self.assertEqual('id which wins', resp['id'])
         self.assertEqual(1, len(self.database._documents))
@@ -91,7 +90,7 @@ class TestDatabase(common.TestCase):
     def testPassingIdAsSecondParam(self):
         content = dict()
 
-        resp = yield self.database.saveDoc(json.dumps(content),
+        resp = yield self.database.save_doc(json.dumps(content),
                                            'id which wins')
         self.assertEqual('id which wins', resp['id'])
         self.assertEqual(1, len(self.database._documents))
@@ -105,52 +104,80 @@ class TestDatabaseIntegration(common.TestCase):
     '''This testcase uses only external interface for sanity check.
     Idea is to later reuse the testcase for paisley.'''
 
+    timeout = 3
+
     def setUp(self):
         self.database = database.Database()
 
     @defer.inlineCallbacks
     def testDeletingAndUpdating(self):
         content = dict()
-        resp = yield self.database.saveDoc(json.dumps(content))
+        resp = yield self.database.save_doc(json.dumps(content))
         id = resp['id']
         rev = resp['rev']
 
-        resp2 = yield self.database.deleteDoc(id, rev)
+        resp2 = yield self.database.delete_doc(id, rev)
         id2 = resp2['id']
         self.assertEqual(id, id2)
         rev2 = resp2['rev']
         self.assertNotEqual(rev2, rev)
 
-        d = self.database.deleteDoc(id, rev)
+        d = self.database.delete_doc(id, rev)
         self.assertFailure(d, ConflictError)
         yield d
 
         content['_rev'] = rev2
         content['_id'] = id
-        resp3 = yield self.database.saveDoc(json.dumps(content))
+        resp3 = yield self.database.save_doc(json.dumps(content))
         rev3 = resp3['rev']
         self.assertNotEqual(rev3, rev2)
 
     @defer.inlineCallbacks
     def testGettingDocumentUpdatingDeleting(self):
         id = 'test id'
-        d = self.database.openDoc(id)
+        d = self.database.open_doc(id)
         self.assertFailure(d, NotFoundError)
         yield d
 
         content = {'_id': id, 'field': 'value'}
-        resp = yield self.database.saveDoc(json.dumps(content))
+        resp = yield self.database.save_doc(json.dumps(content))
         rev = resp['rev']
         self.assertEqual(id, resp['id'])
 
-        fetched = yield self.database.openDoc(id)
+        fetched = yield self.database.open_doc(id)
         self.assertTrue(isinstance(fetched, dict))
         self.assertTrue('field' in fetched)
         self.assertEqual(rev, fetched['_rev'])
 
-        del_resp = yield self.database.deleteDoc(id, rev)
+        del_resp = yield self.database.delete_doc(id, rev)
         self.assertTrue(del_resp['ok'])
 
-        d = self.database.openDoc(id)
+        d = self.database.open_doc(id)
         self.assertFailure(d, NotFoundError)
         yield d
+
+    @defer.inlineCallbacks
+    def testListeningOnChanges(self):
+        self.calls = list()
+
+        d = self.cb_after(None, self, 'change_cb')
+        listener_id = yield self.database.listen_changes(
+            ('someid', ), self.change_cb)
+        self.assertIsInstance(listener_id, (str, unicode, ))
+        self.assertEqual(0, len(self.calls))
+        resp = yield self.database.save_doc(self._gen_doc('someid'))
+        yield d
+        self.assertEqual(1, len(self.calls))
+        doc_id, rev = self.calls[0]
+        self.assertEqual(doc_id, resp['id'])
+        self.assertEqual(rev, resp['rev'])
+
+        yield self.database.cancel_listener(listener_id)
+        yield self.database.delete_doc(doc_id, rev)
+        self.assertEqual(1, len(self.calls))
+
+    def change_cb(self, doc_id, rev):
+        self.calls.append((doc_id, rev, ))
+
+    def _gen_doc(self, doc_id):
+        return json.dumps({'_id': doc_id})

@@ -1,6 +1,7 @@
 from zope.interface import Interface, implements
 
-from feat.common import annotate, decorator, fiber, defer, error_handler
+from feat.common import (annotate, decorator, fiber, defer,
+                         error_handler, serialization, )
 from feat.agents.base import replay, message, requester, replier
 
 
@@ -45,11 +46,12 @@ class AgentMixin(object):
 
     @replay.journaled
     def call_remote(self, state, recipient, fun_id, *args, **kwargs):
+        timeout = kwargs.pop('_timeout', 10)
         f = fiber.Fiber()
         f.add_callback(self.initiate_protocol,
                        recipient, fun_id, *args, **kwargs)
         f.add_callback(RPCRequester.notify_finish)
-        return f.succeed(RPCRequester)
+        return f.succeed(RPCRequesterFactory(timeout))
 
     ### IRPCServer Methods ###
 
@@ -61,7 +63,6 @@ class AgentMixin(object):
         value = self._published[fun_id](self, *args, **kwargs)
         return value
 
-
     ### Private Methods ###
 
     @classmethod
@@ -72,10 +73,23 @@ class AgentMixin(object):
         cls._published[fun_id] = function
 
 
+@serialization.register
+class RPCRequesterFactory(serialization.Serializable):
+    implements(requester.IRequesterFactory)
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+        self.protocol_id = RPCRequester.protocol_id
+
+    def __call__(self, agent, medium):
+        instance = RPCRequester(agent, medium)
+        instance.timeout = self.timeout
+        return instance
+
+
 class RPCRequester(requester.BaseRequester):
 
     protocol_id = 'rpc'
-    timeout = 10
 
     def init_state(self, state, agent, med):
         requester.BaseRequester.init_state(self, state, IRPCClient(agent), med)

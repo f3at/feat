@@ -13,14 +13,11 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency
-from feat.agents.base import recipient, replay, descriptor, message
+from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, delay
 from feat.common import manhole, error_handler, text_helper, container
-from feat.common.serialization import pytree, Serializable
-
-# Imported only for adapters to be registered
-from feat.agencies import contracts, requests, tasks
+from feat.common.serialization import pytree
 
 # Import interfaces
 from interface import *
@@ -43,8 +40,15 @@ class AgencyJournalSideEffect(object):
         self._serializer = serializer
         self._record = record
         self._fun_id = function_id
-        self._args = serializer.convert(args or None)
-        self._kwargs = serializer.convert(kwargs or None)
+        # FIXME: This is ugly hack introduced by the fact that we cannot
+        # serialize methods, hence if side effect param is a method it has
+        # to be skipped
+        if function_id != "SIDE EFFECT SKIPPED":
+            self._args = serializer.convert(args or None)
+            self._kwargs = serializer.convert(kwargs or None)
+        else:
+            self._args = None
+            self._kwargs = None
         self._effects = []
         self._result = None
 
@@ -150,7 +154,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
-        self._database = IConnectionFactory(database)
+        self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
         return defer.succeed(None)
 
@@ -165,7 +169,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d = defer.succeed(None)
         d.addCallback(defer.drop_result, medium.initiate,
                       *args, **kwargs)
-        d.addCallback(defer.bridge_result, medium.startup,
+        d.addCallback(defer.bridge_result, medium.call_next, medium.startup,
                       startup_agent=run_startup)
         return d
 
@@ -181,9 +185,20 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d.addCallback(lambda _: self._messaging.disconnect())
         return d
 
-    def unregister_agent(self, medium, agent_id):
+    def unregister_agent(self, medium):
+        agent_id = medium.get_descriptor().doc_id
+        self.debug('Unregistering agent id: %r', agent_id)
         self._agents.remove(medium)
         self.journal_agent_deleted(agent_id)
+
+        # FIXME: This shouldn't be necessary! Here we are manually getting
+        # rid of things which should just be garbage collected (self.registry
+        # is a WeekRefDict). It doesn't happpen supposingly
+        for key in self.registry.keys():
+            if key[0] == agent_id:
+                self.debug("Manualy removing recorder id %r, instance: %r",
+                           key, self.registry[key])
+                del(self.registry[key])
 
     ### Journaling Methods ###
 
@@ -191,7 +206,10 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         j_id = recorder.journal_id
         self.log('Registering recorder: %r, id: %r',
                  recorder.__class__.__name__, j_id)
-        assert j_id not in self.registry
+        if j_id in self.registry:
+            raise RuntimeError(
+                'Journal id %r already in registry, it points to %r object' %\
+                (j_id, self.registry[j_id], ))
         self.registry[j_id] = recorder
 
     def journal_new_entry(self, agent_id, journal_id,
@@ -302,8 +320,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin,
                   common.StateMachineMixin):
 
-    implements(IAgencyAgent, ITimeProvider, IRecorderNode,
-               IJournalKeeper, ISerializable, IMessagingPeer)
+    implements(IAgencyAgent, IAgencyAgentInternal, ITimeProvider,
+               IRecorderNode, IJournalKeeper, ISerializable, IMessagingPeer)
 
     log_category = "agent-medium"
     type_name = "agent-medium" # this is used by ISerializable
@@ -359,8 +377,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       self.agency._messaging.get_connection, self)
         d.addCallback(setter, '_messaging')
         d.addCallback(defer.drop_result,
-                      self.agency._database.get_connection, self)
+                      self.agency._database.get_connection)
         d.addCallback(setter, '_database')
+        d.addCallback(defer.drop_result,
+                      self._subscribe_for_descriptor_changes)
+        d.addCallback(defer.drop_result, self._increase_instance_id)
         d.addCallback(defer.drop_result, self._load_configuration)
         d.addCallback(setter, '_configuration')
         d.addCallback(defer.drop_result,
@@ -375,11 +396,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
     def startup(self, startup_agent=True):
+        d = defer.succeed(None)
         if startup_agent:
-            return self._call_startup()
+            d.addCallback(defer.drop_result, self._call_startup)
         # Not calling agent startup, for testing purpose only
-        self._ready()
-        return defer.succeed(self)
+        d.addCallback(defer.drop_result, self._ready)
+        return d
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -390,56 +412,13 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.agency.journal_agent_snapshot(self._descriptor.doc_id,
                                            self.snapshot_agent())
 
+    def journal_protocol_created(self, *args, **kwargs):
+        self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                             *args, **kwargs)
+
     @serialization.freeze_tag('AgencyAgent.start_agent')
     def start_agent(self, desc, *args, **kwargs):
         return self.agency.start_agent(desc, *args, **kwargs)
-
-    def register_listener(self, listener):
-        listener = IListener(listener)
-        session_id = listener.get_session_id()
-        self.debug('Registering listener session_id: %r', session_id)
-        assert session_id not in self._listeners
-        self._listeners[session_id] = listener
-        return listener
-
-    def unregister_listener(self, session_id):
-        if session_id in self._listeners:
-            self.debug('Unregistering listener session_id: %r', session_id)
-            listener = self._listeners[session_id]
-            self.agency.journal_protocol_deleted(
-                self._descriptor.doc_id, listener.get_agent_side(),
-                listener.snapshot())
-            del(self._listeners[session_id])
-        else:
-            self.error('Tried to unregister listener with session_id: %r, '
-                        'but not found!', session_id)
-
-    def reply_duplicate(self, original):
-        '''
-        Sends the f.a.b.message.Duplicate. This is used in contracts traversing
-        the graph, when the contract has rereached the same shard.
-        This message is necessary, as silently ignoring the incoming bids
-        adds a lot of latency to the nested contracts (it is waitng to receive
-        message from all the recipients).
-        '''
-        msg = message.Duplicate()
-        msg.protocol_id = original.protocol_id
-        msg.protocol_type = original.protocol_type
-        msg.expiration_time = original.expiration_time
-        msg.sender_id = str(uuid.uuid1())
-        msg.receiver_id = original.sender_id
-        return self.send_msg(original.reply_to, msg)
-
-    def send_msg(self, recipients, msg, handover=False):
-        recipients = recipient.IRecipients(recipients)
-        if not handover:
-            msg.reply_to = recipient.IRecipient(self)
-            msg.message_id = str(uuid.uuid1())
-        assert msg.expiration_time is not None
-        for recp in recipients:
-            self.log('Sending message to %r', recp)
-            self._messaging.publish(recp.key, recp.shard, msg)
-        return msg
 
     def on_killed(self):
         '''called as part of SIGTERM handler.'''
@@ -470,6 +449,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         return copy.deepcopy(self._configuration)
 
+    @serialization.freeze_tag('AgencyAgent.update_descriptor')
     def update_descriptor(self, function, *args, **kwargs):
         d = defer.Deferred()
         self._update_queue.append((d, function, args, kwargs))
@@ -495,7 +475,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return defer.DeferredList([x.revoke() for x in bindings])
 
     @replay.named_side_effect('AgencyAgent.register_interest')
-    def register_interest(self, factory):
+    def register_interest(self, factory, *args, **kwargs):
         factory = IInterest(factory)
         if not IFirstMessage.implementedBy(factory.initiator):
             raise TypeError(
@@ -508,10 +488,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         if p_id in self._interests[p_type]:
             self.error('Already interested in %s.%s protocol', p_type, p_id)
             return False
-        i = Interest(self, factory)
-        self._interests[p_type][p_id] = i
+        interest_factory = IAgencyInterestInternalFactory(factory)
+        interest = interest_factory(self, *args, **kwargs)
+        self._interests[p_type][p_id] = interest
         self.debug('Registered interest in %s.%s protocol', p_type, p_id)
-        return i
+        return interest
 
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
@@ -537,16 +518,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         recipients = IRecipients(recipients)
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, recipients, *args, **kwargs)
-
-        self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                             factory, medium, *args, **kwargs)
-
-        initiator = factory(self.agent, medium)
-        self.register_listener(medium)
-
-        medium.initiate(initiator)
-
-        return initiator
+        return medium.initiate()
 
     @serialization.freeze_tag('AgencyAgent.initiate_task')
     @replay.named_side_effect('AgencyAgent.initiate_task')
@@ -564,7 +536,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                              max_retries, initial_delay)
         self._retrying_protocols.append(r)
         r.notify_finish().addBoth(lambda _: self._retrying_protocols.remove(r))
-        return r
+        return r.initiate()
 
     @serialization.freeze_tag('AgencyAgent.retrying_task')
     @replay.named_side_effect('AgencyAgent.retrying_task')
@@ -598,11 +570,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
-    @replay.named_side_effect('AgencyAgent.call_next')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_next(self, method, *args, **kwargs):
         return self.call_later(0, method, *args, **kwargs)
 
-    @replay.named_side_effect('AgencyAgent.call_later')
+    @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_later(self, time_left, method, *args, **kwargs):
         call = reactor.callLater(time_left, self._call, method,
                                  *args, **kwargs)
@@ -656,9 +628,55 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def snapshot(self):
         return self._descriptor.doc_id
 
+    ### IAgencyAgentInternal Methods ###
+
+    def create_binding(self, key, shard=None):
+        '''Used by Interest instances.'''
+        return self._messaging.personal_binding(key, shard)
+
+    def register_listener(self, listener):
+        listener = IListener(listener)
+        session_id = listener.get_session_id()
+        self.debug('Registering listener session_id: %r', session_id)
+        assert session_id not in self._listeners
+        self._listeners[session_id] = listener
+        return listener
+
+    def unregister_listener(self, session_id):
+        if session_id in self._listeners:
+            self.debug('Unregistering listener session_id: %r', session_id)
+            listener = self._listeners[session_id]
+            self.agency.journal_protocol_deleted(
+                self._descriptor.doc_id, listener.get_agent_side(),
+                listener.snapshot())
+            del(self._listeners[session_id])
+        else:
+            self.error('Tried to unregister listener with session_id: %r, '
+                        'but not found!', session_id)
+
+    def send_msg(self, recipients, msg, handover=False):
+        recipients = recipient.IRecipients(recipients)
+        if not handover:
+            msg.reply_to = recipient.IRecipient(self)
+            msg.message_id = str(uuid.uuid1())
+        assert msg.expiration_time is not None
+        for recp in recipients:
+            self.log('Sending message to %r', recp)
+            self._messaging.publish(recp.key, recp.shard, msg)
+        return msg
+
     ### IMessagingPeer Methods ###
 
     def on_message(self, msg):
+        '''
+        When a message with an already knwon traversal_id is received,
+        we try to build a duplication message and send it in to a protocol
+        dependent recipient. This is used in contracts traversing
+        the graph, when the contract has rereached the same shard.
+        This message is necessary, as silently ignoring the incoming bids
+        adds a lot of latency to the nested contracts (it is waitng to receive
+        message from all the recipients).
+        '''
         self.log('Received message: %r', msg)
 
         # Check if it isn't expired message
@@ -672,22 +690,26 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             t_id = msg.traversal_id
             if t_id is None:
                 self.warning(
-                    "Received corrupted message. The traversal_id is! "
+                    "Received corrupted message. The traversal_id is None ! "
                     "Message: %r", msg)
                 return False
             if t_id in self._traversal_ids:
                 self.log('Throwing away already known traversal id %r', t_id)
-                self.reply_duplicate(msg)
+                recp = msg.duplication_recipient()
+                if recp:
+                    resp = msg.duplication_message()
+                    self.send_msg(recp, resp)
                 return False
             else:
                 self._traversal_ids.set(t_id, True, msg.expiration_time)
 
         # Handle registered dialog
-        recv_id = msg.receiver_id
-        if recv_id is not None and recv_id in self._listeners:
-            listener = self._listeners[recv_id]
-            listener.on_message(msg)
-            return True
+        if IDialogMessage.providedBy(msg):
+            recv_id = msg.receiver_id
+            if recv_id is not None and recv_id in self._listeners:
+                listener = self._listeners[recv_id]
+                listener.on_message(msg)
+                return True
 
         # Handle new conversation coming in (interest)
         p_type = msg.protocol_type
@@ -695,7 +717,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             p_id = msg.protocol_id
             interest = self._interests[p_type].get(p_id)
             if interest and isinstance(msg, interest.factory.initiator):
-                if interest.schedule_protocol(msg):
+                if interest.schedule_message(msg):
                     return True
 
         self.warning("Couldn't find appropriate listener for message: "
@@ -788,6 +810,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             t = text_helper.Table(fields=["Call"], lengths = [60])
             resp += t.render((str(call), ) \
                              for call in self._delayed_calls.itervalues())
+
         if not self.has_all_interests_idle():
             resp += "\nInterests not idle: \n"
             t = text_helper.Table(fields=["Factory"], lengths = [60])
@@ -796,11 +819,30 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         resp += "#" * 60
         return resp
 
-    def create_binding(self, key, shard=None):
-        '''Used by Interest instances.'''
-        return self._messaging.personal_binding(key, shard)
-
     ### Private Methods ###
+
+    def _subscribe_for_descriptor_changes(self):
+        return self._database.changes_listener(
+            (self._descriptor.doc_id, ), self._descriptor_changed)
+
+    def _descriptor_changed(self, doc_id, rev):
+        self.warning('Received the notification about other database session '
+                     'changing our descriptor. This means that I got '
+                     'restarted on some other machine and need to commit '
+                     'suacide :(. Or you have a bug ;).')
+        return self.terminate_hard()
+
+    def _increase_instance_id(self):
+        '''
+        Run at the initialization before calling any code at agent-side.
+        Ensures that only this instance holds the currect revision of the
+        descriptor document.
+        '''
+
+        def do_increase(desc):
+            desc.instance_id += 1
+
+        return self.update_descriptor(do_increase)
 
     def _load_configuration(self):
 
@@ -815,28 +857,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addErrback(not_found, d_id)
         return d
 
-    def _start_listener(self, factory, message, cleanup_fun=None):
-        medium_factory = IAgencyInterestedFactory(factory)
-        medium = medium_factory(self, message)
-
-        self.agency.journal_protocol_created(self._descriptor.doc_id,
-                                             factory, medium)
-
-        interested = factory(self.agent, medium)
-
-        if cleanup_fun:
-            wrapper_call = lambda _: cleanup_fun(message, interested)
-            medium.notify_finish().addBoth(wrapper_call)
-
-        self.call_next(self._init_listener, medium, interested, message)
-
-        return interested
-
-    def _init_listener(self, medium, interested, message):
-        medium.initiate(interested)
-        listener = self.register_listener(medium)
-        listener.on_message(message)
-
     def _next_update(self):
 
         def saved(desc, result, d):
@@ -845,8 +865,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             d.callback(result)
 
         def error(failure, d):
-            self.error("Failed updating descriptor: %s",
-                       failure.getErrorMessage())
+            if failure.check(ConflictError):
+                self.warning('Descriptor update conflict, killing the agent.')
+                self.call_next(self.terminate_hard)
+            else:
+                self.error("Failed updating descriptor: %s",
+                           failure.getErrorMessage())
             d.errback(failure)
 
         def next_update(any=None):
@@ -898,10 +922,20 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Run code specific to the given shutdown
         d.addBoth(lambda _: body())
         # Tell the agency we are no more
-        d.addBoth(lambda doc: self.agency.unregister_agent(self, doc.doc_id))
+        d.addBoth(lambda _: self.agency.unregister_agent(self))
         # Close the messaging connection
         d.addBoth(lambda _: self._messaging.disconnect())
+        # Close the database connection
+        d.addBoth(lambda _: self._database.disconnect())
         return d
+
+    def terminate_hard(self):
+        '''Kill the agent without notifying anybody.'''
+
+        def generate_body():
+            '''nothing to do'''
+
+        return self._terminate_procedure(generate_body)
 
     def _terminate(self):
         '''terminate() -> Shutdown agent gently removing the descriptor and
@@ -994,130 +1028,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
 
-class Interest(Serializable, log.Logger):
-    '''Represents the interest from the point of view of agency.
-    Manages the binding and stores factory reference'''
-
-    implements(IAgencyInterest)
-
-    type_name = "agent-interest"
-    log_category = "agent-interest"
-
-    factory = None
-    binding = None
-
-    def __init__(self, agent_medium, factory):
-        log.Logger.__init__(self, agent_medium)
-        self.medium = agent_medium
-        self.factory = factory
-        self._lobby_binding = None
-        self._concurrency = getattr(factory, "concurrency", None)
-        self._queue = None
-        self._active = 0
-        self._notifier = defer.Notifier()
-
-        if self._concurrency is not None:
-            self._queue = container.ExpQueue(agent_medium)
-
-        self.bind()
-
-    ### Public Methods ###
-
-    def is_idle(self):
-        '''
-        If self._active == 0 it means that the queue is empty.
-        The counter is decreased in synchronous method just before poping
-        the next value from the queue.
-        '''
-        return self._active == 0
-
-    def wait_finished(self):
-        if self.is_idle():
-            return defer.succeed(self)
-        return self._notifier.wait("finished")
-
-    def clear_queue(self):
-        if self._queue is not None:
-            self._queue.clear()
-
-    def schedule_protocol(self, message):
-        if not isinstance(message, self.factory.initiator):
-            return False
-
-        if self._queue is not None:
-            if self._active >= self._concurrency:
-                self.debug('Scheduling %s protocol %s',
-                           message.protocol_type, message.protocol_id)
-                self._queue.add(message, message.expiration_time)
-                return True
-
-        self._initiate_protocol(message)
-
-        return True
-
-    def bind(self, shard=None):
-        if self.factory.interest_type == InterestType.public:
-            prot_id = self.factory.protocol_id
-            self.binding = self.medium.create_binding(prot_id, shard)
-            return self.binding
-
-    def revoke(self):
-        if self.factory.interest_type == InterestType.public:
-            self.binding.revoke()
-
-    def __eq__(self, other):
-        return self.factory == other.factory
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    ### IAgencyInterest Method ###
-
-    @replay.named_side_effect('Interest.bind_to_lobby')
-    def bind_to_lobby(self):
-        assert self._lobby_binding is None
-        prot_id = self.factory.protocol_id
-        binding = self.medium._messaging.personal_binding(prot_id, 'lobby')
-        self._lobby_binding = binding
-
-    @replay.named_side_effect('Interest.unbind_from_lobby')
-    def unbind_from_lobby(self):
-        self._lobby_binding.revoke()
-        self._lobby_binding = None
-
-    ### ISerializable Methods ###
-
-    def snapshot(self):
-        return self.factory
-
-    ### Private Methods ###
-
-    def _initiate_protocol(self, message):
-        self.debug('Instantiating %s protocol %s',
-                   message.protocol_type, message.protocol_id)
-        assert not self._concurrency or self._active < self._concurrency
-        self._active += 1
-        return self.medium._start_listener(self.factory, message,
-                                           self._protocol_terminated)
-
-    def _protocol_terminated(self, message, _protocol):
-        self.debug('%s protocol %s terminated',
-                   message.protocol_type, message.protocol_id)
-        assert self._active > 0
-        self._active -= 1
-        if self._queue is not None:
-            try:
-                message = self._queue.pop()
-                self._initiate_protocol(message)
-                return
-            except container.Empty:
-                pass
-        if self._active == 0:
-            # All protocols terminated and empty queue
-            self._notifier.callback("finished", self)
-
-
-class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
+class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
     implements(ISerializable)
 
@@ -1126,7 +1037,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
 
     def __init__(self, medium, factory, recipients, args, kwargs,
                  max_retries=None, initial_delay=1, max_delay=None):
-        common.InitiatorMediumBase.__init__(self)
+        common.TransientInitiatorMediumBase.__init__(self)
         log.Logger.__init__(self, medium)
 
         self.medium = medium
@@ -1143,13 +1054,15 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         self._delayed_call = None
         self._initiator = None
 
-        self._bind()
+    def initiate(self):
+        self.call_next(self._bind)
+        return self
 
     ### Public Methods ###
 
     @serialization.freeze_tag('RetryingProtocol.notify_finish')
     def notify_finish(self):
-        return common.InitiatorMediumBase.notify_finish(self)
+        return common.TransientInitiatorMediumBase.notify_finish(self)
 
     @serialization.freeze_tag('RetryingProtocol.give_up')
     def give_up(self):
@@ -1167,7 +1080,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
     def snapshot(self):
         return id(self)
 
-    ### Required by InitiatorMediumbase ###
+    ### Required by TransientInitiatorMediumbase ###
 
     def call_next(self, _method, *args, **kwargs):
         return self.medium.call_next(_method, *args, **kwargs)
@@ -1186,7 +1099,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         return d
 
     def _finalize(self, result):
-        common.InitiatorMediumBase._terminate(self, result)
+        common.TransientInitiatorMediumBase._terminate(self, result)
 
     def _wait_and_retry(self, failure):
         self.info('Retrying protocol for factory: %r failed for the %d time. ',
@@ -1197,7 +1110,7 @@ class RetryingProtocol(common.InitiatorMediumBase, log.Logger):
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
             self.info("Will not try to restart.")
-            common.InitiatorMediumBase._terminate(self, failure)
+            common.TransientInitiatorMediumBase._terminate(self, failure)
             return
 
         # do retry

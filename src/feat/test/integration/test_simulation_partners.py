@@ -4,13 +4,12 @@ from twisted.internet import defer
 
 from feat.common.text_helper import format_block
 from feat.test.integration import common
-from feat.agents.base import (agent, descriptor, document, recipient,
-                              partners, replay, resource, )
+from feat.agents.base import (agent, descriptor, recipient,
+                              partners, replay, resource, requester, )
 from feat.common import serialization, fiber
 
 
-@serialization.register
-class FailureOfPartner(Exception, serialization.Serializable):
+class FailureOfPartner(Exception):
     pass
 
 
@@ -33,10 +32,30 @@ class GettingInfoPartner(partners.BasePartner):
         agent.notify_brothers(brothers)
 
 
+@serialization.register
+class ResponsablePartner(partners.BasePartner):
+
+    def on_died(self, agent, brothers, monitor):
+        assert recipient.IRecipient.providedBy(monitor)
+        return 'ACCEPT_RESPONSABILITY'
+
+    def on_restarted(self, agent, moved):
+        assert moved
+        assert self.recipient.shard == 'shard'
+        agent.done_migrated()
+
+    def on_burried(self, agent, brothers):
+        pass
+
+
 class Partners(partners.Partners):
+
+    default_role = 'default_role'
 
     partners.has_many('failers', 'partner-agent', FailingPartner, 'failer')
     partners.has_many('info', 'partner-agent', GettingInfoPartner, 'info')
+    partners.has_many('caretaker', 'partner-agent', ResponsablePartner,
+                      'caretaker')
 
 
 @agent.register('partner-agent')
@@ -50,6 +69,15 @@ class Agent(agent.BaseAgent):
 
         state.resources.define('foo', 2)
         state.received_brothers = list()
+        state.migrated = False
+
+    @replay.mutable
+    def done_migrated(self, state):
+        state.migrated = True
+
+    @replay.immutable
+    def has_migrated(self, state):
+        return state.migrated
 
     @replay.mutable
     def notify_brothers(self, state, brothers):
@@ -58,6 +86,18 @@ class Agent(agent.BaseAgent):
     @replay.immutable
     def get_received_brothers(self, state):
         return state.received_brothers
+
+    @replay.journaled
+    def notify_died(self, state, recp, origin):
+        return requester.notify_died(self, recp, origin, 'payload')
+
+    @replay.journaled
+    def notify_burried(self, state, recp, origin):
+        return requester.notify_burried(self, recp, origin, 'payload')
+
+    @replay.journaled
+    def notify_restarted(self, state, recp, origin, new_address):
+        return requester.notify_restarted(self, recp, origin, new_address)
 
 
 class PartnershipTest(common.SimulationTest):
@@ -85,8 +125,12 @@ class PartnershipTest(common.SimulationTest):
     def testEstablishPartnership(self):
         yield self._establish_partnership()
 
-        self.assertEqual(1, len(self.initiator.get_descriptor().partners))
-        self.assertEqual(1, len(self.receiver.get_descriptor().partners))
+        i_partners = self.initiator.get_descriptor().partners
+        self.assertEqual(1, len(i_partners))
+        self.assertEqual('default_role', i_partners[0].role)
+        r_partners = self.receiver.get_descriptor().partners
+        self.assertEqual(1, len(r_partners))
+        self.assertEqual('default_role', r_partners[0].role)
 
     @defer.inlineCallbacks
     def testInitiatorTerminates(self):
@@ -230,6 +274,41 @@ class PartnershipTest(common.SimulationTest):
         agents = [self.initiator, self.receiver]
         self.assert_partners(agents, [0, 0])
 
+    @defer.inlineCallbacks
+    def testNotifyKilledRestarted(self):
+        yield self._partnership_taking_care(self.initiator, self.receiver)
+        partner_obj = self.receiver.get_agent().query_partners('caretaker')[0]
+        self.assertIsInstance(partner_obj, ResponsablePartner)
+
+        irecv = recipient.IRecipient(self.receiver)
+        iinit = recipient.IRecipient(self.initiator)
+
+        monitor = yield self._start_agent()
+        resp = yield monitor.notify_died(irecv, iinit)
+        self.assertEqual('ACCEPT_RESPONSABILITY', resp)
+
+        new_address = recipient.Agent(agent_id = iinit.key, shard=u'shard')
+        yield monitor.notify_restarted(irecv, iinit, new_address)
+        yield self.wait_for_idle(3)
+        self.assertTrue(self.receiver.get_agent().has_migrated())
+
+        partner_obj = self.receiver.get_agent().query_partners('caretaker')[0]
+        self.assertEqual(new_address, partner_obj.recipient)
+
+    @defer.inlineCallbacks
+    def testNotifyBurried(self):
+        yield self._partnership_taking_care(self.initiator, self.receiver)
+        irecv = recipient.IRecipient(self.receiver)
+        iinit = recipient.IRecipient(self.initiator)
+
+        monitor = yield self._start_agent()
+
+        yield monitor.notify_burried(irecv, iinit)
+        yield self.wait_for_idle(3)
+
+        partner_obj = self.receiver.get_agent().query_partners('caretaker')
+        self.assertEqual(0, len(partner_obj))
+
     def assert_partners(self, agents, expected):
         for agent, e in zip(agents, expected):
             self.assertEqual(e, len(agent.get_descriptor().partners))
@@ -243,10 +322,25 @@ class PartnershipTest(common.SimulationTest):
         return self.process(script)
 
     def _failing_partnership(self, initiator, receiver):
-        return initiator.get_agent().propose_to(
-            recipient.IRecipient(receiver), partner_role='failer')
+        return self._partnership(initiator, receiver, None, 'failer')
 
     def _partnership_with_info(self, initiator, receiver):
+        return self._partnership(initiator, receiver, 'info', 'info')
+
+    def _partnership_taking_care(self, initiator, receiver):
+        return self._partnership(initiator, receiver, 'caretaker', 'caretaker')
+
+    def _partnership(self, initiator, receiver,
+                     partner_role=None, our_role=None):
         return initiator.get_agent().propose_to(
-            recipient.IRecipient(receiver), partner_role='info',
-            our_role='info')
+            recipient.IRecipient(receiver), partner_role=partner_role,
+            our_role=our_role)
+
+    @defer.inlineCallbacks
+    def _start_agent(self):
+        yield self.process(format_block("""
+        agency.start_agent(descriptor_factory('partner-agent'))
+        _.get_agent()
+        """))
+
+        defer.returnValue(self.get_local('_'))

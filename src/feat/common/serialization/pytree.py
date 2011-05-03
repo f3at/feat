@@ -1,5 +1,3 @@
-from twisted.python.failure import Failure
-
 from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
@@ -33,6 +31,8 @@ class External(object):
         return self.identifier == other.identifier
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -63,6 +63,8 @@ class Instance(object):
                 and self.snapshot == other.snapshot)
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -98,6 +100,8 @@ class Reference(object):
                 and self.value == other.value)
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -126,6 +130,8 @@ class Dereference(object):
         return self.refid == other.refid
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -182,7 +188,7 @@ class Unserializer(base.Unserializer):
     reference got dereferenced, so unpacking '''
 
     pass_through_types = set([str, unicode, int, long, float, bool,
-                              type(None), type, InterfaceClass, Failure])
+                              type(None), type, InterfaceClass])
 
     def __init__(self, pre_converter=None, registry=None, externalizer=None):
         base.Unserializer.__init__(self, pre_converter=pre_converter,

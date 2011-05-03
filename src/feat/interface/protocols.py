@@ -61,8 +61,22 @@ class IInterest(Interface):
 class IInitiator(Interface):
     '''Represent the side of a protocol initiating the dialog.'''
 
-    def initiate():
-        pass
+    def initiate(*args, **kwargs):
+        '''Initiate initiator. Should be call before anything else.'''
+
+    def wait_for_state(*states):
+        '''Returns a Deferred that will be fired when the initiator
+        state changed to one of the specified state.'''
+
+    def wait_finish():
+        '''Returns a Deferred that will be fired
+        when the initiator finishes.'''
+
+    def get_expiration_time():
+        '''
+        Returns number of seconds since epoch when the expiration call for
+        current state will fire.
+        '''
 
 
 class InitiatorFailed(Exception):
@@ -81,3 +95,12 @@ class IInterested(Interface):
     '''Represent the side of a protocol interested in a dialog.'''
 
     protocol_id = Attribute("Protocol id")
+
+    def initiate(*args, **kwargs):
+        '''Initiate the interested protocol.'''
+
+    def get_expiration_time():
+        '''
+        Returns number of seconds since epoch when the expiration call for
+        current state will fire.
+        '''

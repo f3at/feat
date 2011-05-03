@@ -6,6 +6,7 @@ from feat.common import (log, enum, serialization, error_handler,
                          delay, fiber, defer, )
 from feat.agents.base import replay
 from feat.agencies.common import StateMachineMixin, StateAssertationError
+from feat.common.container import ExpDict
 
 
 @serialization.register
@@ -21,8 +22,9 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         # resource_name -> total
         state.totals = dict()
         # allocation_id -> allocation
-        state.allocations = dict()
         state.id_autoincrement = 1
+        # contains preallocations and allocation_changes
+        state.modifications = ExpDict(agent)
 
     @replay.immutable
     def restored(self, state):
@@ -31,26 +33,6 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         replay.Replayable.restored(self)
 
     # Public API
-
-    @replay.mutable
-    def load(self, state, allocations):
-        '''
-        Loads the list of allocations. Meant to be used during agent
-        initialization for restoring allocations stored in descriptor.
-        '''
-        assert isinstance(allocations, list)
-        for allocation in allocations:
-            assert allocation.state == AllocationState.allocated
-            for name in allocation.resources:
-                try:
-                    self._check_resource_exists(name)
-                except UnknownResource:
-                    self.define(name, 0)
-            self._append_allocation(allocation, force=True)
-
-
-        state.id_autoincrement =\
-            len(allocations) > 0 and max(state.allocations.keys()) + 1 or 1
 
     @replay.immutable
     def get_totals(self, state):
@@ -61,60 +43,90 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         try:
             self._validate_params(params)
             allocation = Allocation(id=self._next_id(), **params)
-            allocation._set_state(AllocationState.preallocated)
             self._append_allocation(allocation)
-            self._setup_allocation_expiration(allocation)
             return allocation
         except NotEnoughResources:
             return None
 
     @replay.mutable
     def confirm(self, state, allocation_id):
-        allocation = self._find_allocation(allocation_id)
-        allocation.confirm()
+        '''
+        confirms a preallocation
+        '''
+        allocation = state.modifications.get(allocation_id, None)
+        if allocation == None or not isinstance(allocation, Allocation):
+            return fiber.fail(AllocationNotFound(
+                    'Expired or non-existent allocation_id=%s' %\
+                            allocation_id))
+        self._remove_modification(allocation_id)
+
         f = fiber.Fiber()
         f.add_callback(self._append_allocation_to_descriptor)
         return f.succeed(allocation)
+
+    @replay.mutable
+    def apply_modification(self, state, alloc_change_id):
+        alloc_change = state.modifications.get(alloc_change_id, None)
+        if alloc_change == None or\
+            not isinstance(alloc_change, AllocationChange):
+            return fiber.fail(AllocationChangeNotFound(
+                    'Expired or non-existent modification_id=%s' %\
+                            alloc_change_id))
+        self._remove_modification(alloc_change_id)
+
+        f = fiber.Fiber()
+        f.add_callback(self._modify_allocation_in_descriptor)
+        return f.succeed(alloc_change)
 
     @replay.mutable
     def allocate(self, state, **params):
         try:
             self._validate_params(params)
             allocation = Allocation(id=self._next_id(), **params)
-            self._append_allocation(allocation)
-            allocation._set_state(AllocationState.allocated)
+            self._validate(state.totals, self._read_allocations().values() +
+                    [allocation], state.modifications)
         except BaseResourceException as e:
             return fiber.fail(e)
         f = fiber.Fiber()
         f.add_callback(self._append_allocation_to_descriptor)
         return f.succeed(allocation)
 
-    def exists(self, allocation_id):
+    def get_allocation(self, allocation_id):
         '''
         Check that confirmed allocation with given id exists.
         Raise exception otherwise.
         '''
         try:
-            a = self._find_allocation(allocation_id)
-            a._ensure_state(AllocationState.allocated)
-            return fiber.succeed()
-        except StateAssertationError:
-            return fiber.fail(AllocationNotFound(
-                'Allocation with id=%s not found' % allocation_id))
+            allocation = self._read_allocations().get(allocation_id, None)
+            if allocation is None:
+                raise AllocationNotFound(
+                    'Allocation with id=%s not found' % allocation_id)
+            return fiber.succeed(allocation)
         except AllocationNotFound as e:
             return fiber.fail(e)
 
     @replay.mutable
     def release(self, state, allocation_id):
+        '''
+        Used to release allocations or preallocations
+        '''
         allocation = self._find_allocation(allocation_id)
-        was_allocated = allocation._cmp_state(AllocationState.allocated)
         f = fiber.succeed()
-        if was_allocated:
+        if allocation_id in self._read_allocations():
             f.add_callback(fiber.drop_result,
-                           self._remove_allocation_from_descriptor, allocation)
-        f.add_callback(fiber.drop_result, allocation.release)
-        f.add_callback(fiber.drop_result, self._remove_allocation, allocation)
+                        self._remove_allocation_from_descriptor, allocation)
+        else:
+            f.add_callback(fiber.drop_result,
+                        self._remove_modification, allocation_id)
         return f
+
+    @replay.mutable
+    def _remove_modification(self, state, change_id):
+        mod = state.modifications.pop(change_id, None)
+        if mod is None:
+            raise AllocationNotFound(
+                    'Expired or non-existenr modification with id=%s ' %\
+                            change_id)
 
     @replay.mutable
     def define(self, state, name, value):
@@ -129,19 +141,43 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             self._validate(new_totals)
         state.totals = new_totals
 
-    def allocated(self, totals=None, allocations=None):
-        totals, allocations = self._unpack_defaults(totals, allocations)
-
+    def allocated(self, totals=None, allocations=None, modifications=None):
+        '''
+        allocations : allocated
+        modifications : preallocations and allocation changes
+        '''
+        totals, allocations, modifications = self._unpack_defaults(totals,
+                                                allocations, modifications)
         result = dict()
         for name in totals:
             result[name] = 0
         for allocation in allocations:
-            ar = allocation.resources
-            for resource in ar:
-                result[resource] += ar[resource]
+            allocation.add_to(result)
+        for m in modifications:
+            modifications[m].add_to(result)
         return result
 
     # ENDOF Public API
+
+    @replay.immutable
+    def get_allocations(self, state):
+        return self._read_allocations()
+
+    @replay.immutable
+    def get_modifications(self, state):
+        return copy.copy(state.modifications)
+
+    @replay.mutable
+    def premodify(self, state, allocation_id, **delta):
+        try:
+            self._validate_params(delta)
+            allocation = self._find_allocation(allocation_id)
+            alloc_change = AllocationChange(self._next_id(),
+                        allocation_id, **delta)
+            self._append_modification(alloc_change)
+            return alloc_change
+        except NotEnoughResources:
+            return None
 
     # handling allocation list in descriptor
 
@@ -149,7 +185,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def _append_allocation_to_descriptor(self, state, allocation):
 
         def do_append(desc, allocation):
-            desc.allocations.append(allocation)
+            desc.allocations[allocation.id] = allocation
             return allocation
 
         f = fiber.Fiber()
@@ -160,25 +196,51 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def _remove_allocation_from_descriptor(self, state, allocation):
 
         def do_remove(desc, allocation):
-            if allocation not in desc.allocations:
+            if allocation.id not in desc.allocations:
                 self.warning('Tried to remove allocation %r from descriptor, '
                              'but the allocation are: %r',
                              allocation, desc.allocations)
                 return
-
-            desc.allocations.remove(allocation)
+            del(desc.allocations[allocation.id])
             return allocation
 
         f = fiber.Fiber()
         f.add_callback(state.agent.update_descriptor, allocation)
         return f.succeed(do_remove)
 
+    @replay.journaled
+    def _modify_allocation_in_descriptor(self, state, alloc_change):
+
+        def do_update(desc, alloc_change):
+            alloc_id = alloc_change.allocation_id
+            if alloc_id not in desc.allocations:
+                self.warning('Tried to update allocation %r in descriptor, '
+                             'but the allocations are: %r',
+                             alloc_id, desc.allocations)
+                return
+
+            delta = alloc_change.delta
+            al = desc.allocations[alloc_id]
+            for r in delta:
+                if r not in al.resources:
+                    al.resources[r] = delta[r]
+                else:
+                    al.resources[r] += delta[r]
+                if al.resources[r] < 0:
+                    al.resources[r] = 0
+            return al
+
+        f = fiber.Fiber()
+        f.add_callback(state.agent.update_descriptor, alloc_change)
+        return f.succeed(do_update)
+
     # Methods for maintaining the allocations inside
 
-    def _validate(self, totals=None, allocations=None):
-        totals, allocations = self._unpack_defaults(totals, allocations)
+    def _validate(self, totals=None, allocations=None, modifications=None):
+        totals, allocations, modifications = self._unpack_defaults(totals,
+                                                allocations, modifications)
 
-        allocated = self.allocated(totals, allocations)
+        allocated = self.allocated(totals, allocations, modifications)
         errors = list()
         for name in totals:
             if allocated[name] > totals[name]:
@@ -188,45 +250,57 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         if len(errors) > 0:
             raise NotEnoughResources(' '.join(errors))
 
+    @replay.immutable
+    def _read_allocations(self, state):
+        allocations = state.agent.get_descriptor().allocations
+        return allocations
+
     @replay.mutable
     def _next_id(self, state):
         ret = state.id_autoincrement
         state.id_autoincrement += 1
-        return ret
+        return str(ret)
 
     @replay.immutable
     def _find_allocation(self, state, allocation_id):
-        if allocation_id not in state.allocations:
+        """
+        Search for an allocation or a preallocation
+        @returns: Allocation object
+        """
+        allocation = self._read_allocations().get(allocation_id, None)
+        if allocation is None:
+            preallocation = state.modifications.get(allocation_id, None)
+            if preallocation is not None:
+                if isinstance(preallocation, AllocationChange):
+                    raise AllocationTypeError(
+                        'Incorect type of allocation with id=%s' %\
+                                allocation_id)
+                return preallocation
             raise AllocationNotFound(
                 'Allocation with id=%s not found' % allocation_id)
-        return state.allocations[allocation_id]
+        return allocation
 
     @replay.mutable
-    def _append_allocation(self, state, allocation, force=False):
+    def _append_allocation(self, state, allocation):
         if not isinstance(allocation, Allocation):
             raise ValueError('Expected Allocation class, got %r instead!' %\
-                             allocation.__class__)
-        if not force:
-            self._validate(state.totals,
-                           state.allocations.values() + [allocation])
-        state.allocations[allocation.id] = allocation
+                             allocation.__class__, )
 
-    @replay.side_effect
-    def _setup_allocation_expiration(self, allocation):
-        allocation.expire_in(allocation.default_timeout,
-                             self._expire_allocation)
+        self._validate(state.totals, self._read_allocations().values() +
+                [allocation], state.modifications)
+        state.modifications.set(allocation.id, allocation,
+                expiration=allocation.default_timeout, relative=True)
 
     @replay.mutable
-    def _expire_allocation(self, state, allocation):
-        allocation._set_state(AllocationState.expired)
-        self._remove_allocation(allocation)
+    def _append_modification(self, state, alloc_change):
+        if not isinstance(alloc_change, AllocationChange):
+            raise ValueError('Expected AllocationChange class,\
+                    got %r instead!' % modification.__class__, )
 
-    @replay.mutable
-    def _remove_allocation(self, state, allocation):
-        if allocation.id not in state.allocations:
-            raise AllocationNotFound()
-
-        del(state.allocations[allocation.id])
+        self._validate(state.totals, self._read_allocations().values() +
+                [Allocation(None, **alloc_change.delta)], state.modifications)
+        state.modifications.set(alloc_change.id, alloc_change,
+                expiration=alloc_change.default_timeout, relative=True)
 
     def _validate_params(self, params):
         """
@@ -241,12 +315,18 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
                     params[name].__class__)
 
     @replay.immutable
-    def _unpack_defaults(self, state, totals, allocations):
+    def _unpack_defaults(self, state, totals, allocations, modifications):
+        """
+        @allocations:  list of allocations (Allocations)
+        @modifications: Allocations and allocation changes (AllocationChange)
+        """
         if totals is None:
             totals = state.totals
         if allocations is None:
-            allocations = state.allocations.values()
-        return totals, allocations
+            allocations = self._read_allocations().values()
+        if modifications is None:
+            modifications = state.modifications
+        return totals, allocations, modifications
 
     @replay.immutable
     def _check_resource_exists(self, state, name):
@@ -255,8 +335,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def __repr__(self, state):
-        return "<Resources. Totals: %r, Allocations: %r>" %\
-               (state.totals, state.allocations)
+        return "<Resources. Totals: %r>" %\
+               (state.totals, )
 
     @replay.immutable
     def __eq__(self, state, other):
@@ -265,99 +345,101 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         os = other._get_state()
         if os.totals != state.totals:
             return False
-        if state.allocations != os.allocations:
+        if state.modifications != os.modifications:
             return False
         return True
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
-class AllocationState(enum.Enum):
-    '''
-    initiated    - not yet allocated
-    preallocated - temporary allocation, will expire after the timeout
-    allocated    - confirmed, will live until released
-    expired      - preallocation has reached its timeout and has expired
-    released     - release() was called
-    '''
-
-    (initiated, preallocated, allocated, expired, released) = range(5)
-
-
 @serialization.register
-class Allocation(StateMachineMixin, serialization.Serializable):
+class Allocation(serialization.Serializable):
 
     type_name = 'alloc'
 
     default_timeout = 10
     _error_handler=error_handler
 
-    def __init__(self, allocated=False, id=None, **resources):
-        init_state = allocated and AllocationState.allocated or \
-                     AllocationState.initiated
-        StateMachineMixin.__init__(self, init_state)
-
-        self._expiration_call = None
-
+    def __init__(self, id=None, **resources):
         self.id = id
         self.resources = resources
 
-    @replay.side_effect
-    def expire_in(self, time_left, cb):
-        self._expiration_call = delay.callLater(time_left, cb, self)
-
-    @replay.side_effect
-    def cancel_expiration_call(self):
-        if self._expiration_call and not (self._expiration_call.called or\
-                                          self._expiration_call.cancelled):
-            self._expiration_call.cancel()
-            self._expiration_call = None
-
-    def confirm(self):
-        self._ensure_state(AllocationState.preallocated)
-        self.cancel_expiration_call()
-        self._set_state(AllocationState.allocated)
-        return self
-
-    def release(self):
-        self._set_state(AllocationState.released)
-        self.cancel_expiration_call()
+    def add_to(self, total):
+        for r in self.resources:
+            total[r] += self.resources[r]
+        return total
 
     def __repr__(self):
-        return "<Allocation id: %r, state: %r, Resource: %r>" %\
-               (self.id, self.state.name, self.resources, )
+        return "<Allocation id: %r, Resource: %r>" %\
+               (self.id, self.resources, )
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        return self.state == other.state and \
-               self.resources == other.resources and \
+        return self.resources == other.resources and \
                self.id == other.id
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
 
-class BaseResourceException(Exception, serialization.Serializable):
+@serialization.register
+class AllocationChange(serialization.Serializable):
+
+    type_name = 'alloc_change'
+
+    default_timeout = 10
+
+    def __init__(self, id, allocation_id=None, **delta):
+
+        self.id = id
+        self.allocation_id = allocation_id
+        self.delta = delta
+
+    def add_to(self, total):
+        for r in self.delta:
+            total[r] += max(0, self.delta[r])
+        return total
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.id == other.id and \
+               self.allocation_id == other.allocation_id and \
+               self.delta == other.delta
+
+    def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
+        return not self.__eq__(other)
+
+
+class BaseResourceException(Exception):
     pass
 
 
-@serialization.register
 class NotEnoughResources(BaseResourceException):
     pass
 
 
-@serialization.register
 class UnknownResource(BaseResourceException):
     pass
 
 
-@serialization.register
 class DeclarationError(BaseResourceException):
     pass
 
 
-@serialization.register
 class AllocationNotFound(BaseResourceException):
+    pass
+
+
+class AllocationChangeNotFound(BaseResourceException):
+    pass
+
+
+class AllocationTypeError(BaseResourceException):
     pass

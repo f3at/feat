@@ -1,6 +1,6 @@
 import copy
 
-from zope.interface import implements
+from zope.interface import implements, Interface, Attribute
 
 from feat.agents.base import task, contractor, manager, message, replay
 from feat.common import serialization, fiber, log
@@ -9,45 +9,88 @@ from feat.interface.protocols import InterestType
 from feat.interface.contracts import ContractState
 
 
-class BaseProblem(serialization.Serializable):
+class IProblemFactory(Interface):
 
-    def __init__(self, agent):
-        self.agent = agent
+    problem_id = Attribute('unique identifier of the problem')
 
-    def wait_for_solution(self):
+    def __call__(agent, **kwargs):
+        '''
+        Construct the problem instance.
+        '''
+
+
+class IProblem(Interface):
+
+    problem_id = Attribute('unique identifier of the problem')
+
+    def get_keywords():
+        '''
+        Return the keywords used to create this problem instance.
+        '''
+
+    def wait_for_solution():
         '''
         Should return a fiber which will fire when the problem is solved.
         The trigger value will be passed to solve_for calls.
         '''
-        pass
 
-    def solve_for(self, solution, recp):
+    def solve_for(solution, recp):
         '''
         Solve the problem for the agent with IRecipient recp.
         The solution param is the fiber trigger value of the
         wait_for_solution() fiber.
         '''
-        pass
 
-    def solve_localy(self):
+    def solve_localy():
         '''
         Called when decision is made that this agent will be the one resolving
         the problem.
         '''
 
+
+class MetaBaseProblem(type(serialization.Serializable)):
+    implements(IProblemFactory)
+
+    problem_id = None
+
+
+class BaseProblem(serialization.Serializable):
+    implements(IProblem)
+    __metaclass__ = MetaBaseProblem
+
+    problem_id = None
+
+    def __init__(self, agent, **kwargs):
+        self.agent = agent
+        self.kwargs = kwargs
+
+    def get_keywords(self):
+        return self.kwargs
+
+    def wait_for_solution(self):
+        pass
+
+    def solve_for(self, solution, recp):
+        pass
+
+    def solve_localy(self):
+        pass
+
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
-        return True
+        return self.kwargs == other.kwargs
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
 class CollectiveSolver(task.BaseTask):
 
     protocol_id = 'problem-solver'
-    timeout = 30
+    timeout = None
 
     @replay.mutable
     def initiate(self, state, problem, brothers):
@@ -69,7 +112,7 @@ class CollectiveSolver(task.BaseTask):
     @replay.immutable
     def _ask_to_resolve(self, state, resolver):
         f = fiber.succeed(SolveProblemManagerFactory(state.problem))
-        f.add_callback(state.agent.initiate_protocol, resolver)
+        f.add_callback(state.agent.initiate_protocol, resolver, state.problem)
         f.add_callback(lambda x: x.notify_finish())
         return f
 
@@ -98,15 +141,15 @@ class CollectiveSolver(task.BaseTask):
 class SolveProblemInterest(serialization.Serializable):
     implements(contractor.IContractorFactory)
 
-    def __init__(self, problem):
-        self.problem = problem
-        self.protocol_id = 'solve-' + problem.__class__.__name__
+    def __init__(self, factory):
+        self.factory = IProblemFactory(factory)
+        self.protocol_id = 'solve-' + factory.problem_id
         self.protocol_type = SolveProblemContractor.protocol_type
         self.initiator = SolveProblemContractor.initiator
         self.interest_type = SolveProblemContractor.interest_type
 
     def __call__(self, agent, medium):
-        instance = SolveProblemContractor(agent, medium, self.problem)
+        instance = SolveProblemContractor(agent, medium, self.factory)
         instance.protocol_id = self.protocol_id
         return instance
 
@@ -119,6 +162,8 @@ class SolveProblemInterest(serialization.Serializable):
                self.interest_type == other.interest_type
 
     def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return not self.__eq__(other)
 
 
@@ -126,20 +171,22 @@ class SolveProblemContractor(contractor.BaseContractor):
 
     interest_type = InterestType.private
 
-    def __init__(self, agent, medium, problem):
+    def __init__(self, agent, medium, factory):
         log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium, problem)
+        replay.Replayable.__init__(self, agent, medium, factory)
 
-    def init_state(self, state, agent, medium, problem):
+    def init_state(self, state, agent, medium, factory):
         state.agent = agent
         state.medium = medium
-        state.problem = problem
+        state.factory = IProblemFactory(factory)
+        state.problem = None
 
-    @replay.journaled
+    @replay.mutable
     def announced(self, state, announcement):
         '''
         This part of contract is just to let the guy know we are here.
         '''
+        state.problem = state.factory(state.agent, **announcement.payload)
         state.medium.bid(message.Bid())
 
     @replay.mutable
@@ -165,7 +212,7 @@ class SolveProblemManagerFactory(serialization.Serializable):
 
     def __init__(self, problem):
         self.problem = problem
-        self.protocol_id = 'solve-' + problem.__class__.__name__
+        self.protocol_id = 'solve-' + problem.problem_id
         self.protocol_type = SolveProblemManager.protocol_type
 
     def __call__(self, agent, medium):
@@ -176,9 +223,12 @@ class SolveProblemManagerFactory(serialization.Serializable):
 
 class SolveProblemManager(manager.BaseManager):
 
-    @replay.journaled
-    def initiate(self, state):
-        state.medium.announce(message.Announcement())
+    @replay.entry_point
+    def initiate(self, state, problem):
+        state.problem = problem
+        announce = message.Announcement()
+        announce.payload = state.problem.get_keywords()
+        state.medium.announce(announce)
 
     @replay.journaled
     def closed(self, state):
