@@ -449,6 +449,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         return copy.deepcopy(self._configuration)
 
+    @serialization.freeze_tag('AgencyAgent.update_descriptor')
     def update_descriptor(self, function, *args, **kwargs):
         d = defer.Deferred()
         self._update_queue.append((d, function, args, kwargs))
@@ -864,8 +865,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             d.callback(result)
 
         def error(failure, d):
-            self.error("Failed updating descriptor: %s",
-                       failure.getErrorMessage())
+            if failure.check(ConflictError):
+                self.warning('Descriptor update conflict, killing the agent.')
+                self.call_next(self.terminate_hard)
+            else:
+                self.error("Failed updating descriptor: %s",
+                           failure.getErrorMessage())
             d.errback(failure)
 
         def next_update(any=None):

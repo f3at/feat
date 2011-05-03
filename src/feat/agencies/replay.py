@@ -495,6 +495,7 @@ class AgencyAgent(BaseReplayDummy):
     def get_configuration(self):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.update_descriptor')
     def update_descriptor(self, desc):
         pass
 

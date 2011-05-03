@@ -125,10 +125,10 @@ class Connection(log.Logger):
                  doc_id, rev)
         key = (doc_id, rev, )
         known = self.known_revisions.pop(key, False)
-        if not known:
-            self.change_cb(doc_id, rev)
-        else:
+        if known:
             self.log('Ignoring change notification, it is ours.')
+        elif callable(self.change_cb):
+            self.change_cb(doc_id, rev)
 
     def _update_id_and_rev(self, resp, doc):
         doc.doc_id = unicode(resp.get('id', None))
