@@ -591,8 +591,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def delete_document(self, document):
         return self._database.delete_document(document)
 
-    @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
+    @manhole.expose()
     def terminate(self):
         self.call_next(self._terminate)
 
