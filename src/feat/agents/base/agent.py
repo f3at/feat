@@ -261,6 +261,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def initiate_task(self, state, *args, **kwargs):
         return state.medium.initiate_task(*args, **kwargs)
 
+    @replay.immutable
+    def register_interest(self, state, *args, **kwargs):
+        return state.medium.register_interest(*args, **kwargs)
+
     @replay.mutable
     def preallocate_resource(self, state, **params):
         return state.resources.preallocate(**params)

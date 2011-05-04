@@ -4,7 +4,7 @@ import operator
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
-                              task, )
+                              task, poster)
 from feat.agents.common import rpc, raage, host, monitor
 from feat.common import fiber, serialization, manhole, enum
 from feat.interface.protocols import InitiatorFailed
@@ -36,6 +36,7 @@ class ShardPartner(partners.BasePartner):
     type_name = 'shard->neighbour'
 
     def initiate(self, agent):
+        agent.on_new_neighbour(self.recipient)
         if self.allocation_id is None:
             f = agent.allocate_resource(neighbours=1)
             f.add_callback(self._store_alloc_id)
@@ -50,6 +51,7 @@ class ShardPartner(partners.BasePartner):
         f = fiber.succeed(self)
         f.add_callback(partners.BasePartner.on_goodbye, agent)
         f.add_both(fiber.drop_result, agent.become_king)
+        f.add_both(fiber.drop_result, agent.on_neighbour_gone, self.recipient)
         f.add_both(fiber.drop_result, agent.look_for_neighbours)
         return f
 
@@ -173,6 +175,11 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
 
         state.medium.register_interest(QueryStructureContractor)
 
+        # Creates shard's notifications poster
+        shard = self.get_own_address().shard
+        recp = recipient.Broadcast(ShardNotificationPoster.protocol_id, shard)
+        state.poster = self.initiate_protocol(ShardNotificationPoster, recp)
+
         state.role = None
         self.become_king()
 
@@ -288,6 +295,16 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
             return self.call_remote(recp, 'release_resource', alloc_id)
         else:
             fail.raiseException()
+
+    ### Notification Methods ###
+
+    @replay.immutable
+    def on_new_neighbour(self, state, shard):
+        state.poster.new_neighbour(shard)
+
+    @replay.immutable
+    def on_neighbour_gone(self, state, shard):
+        state.poster.neighbour_gone(shard)
 
     ### Managing the shard agents role ###
 
@@ -902,3 +919,21 @@ class QueryStructureContractor(contractor.BaseContractor):
         payload = dict(partners=partners)
         msg = message.Bid(payload=payload)
         state.medium.bid(msg)
+
+
+class ShardNotificationPoster(poster.BasePoster):
+
+    protocol_id = 'shard-notification'
+
+    @replay.immutable
+    def neighbour_gone(self, state, shard):
+        self.notify("neighbour_gone", shard)
+
+    @replay.immutable
+    def new_neighbour(self, state, shard):
+        self.notify("new_neighbour", shard)
+
+    ### Overridden Methods ###
+
+    def pack_payload(self, name, *args):
+        return (name, args)

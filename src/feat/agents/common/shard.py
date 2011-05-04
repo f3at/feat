@@ -1,10 +1,24 @@
 import uuid
 
-from feat.agents.base import manager, replay, message, descriptor
+from zope.interface import Interface
+
+from feat.agents.base import replay, message, descriptor, recipient
+from feat.agents.base import manager, collector
 from feat.common import fiber
+
+from feat.interface.protocols import *
 
 
 __all__ = ['start_manager', 'query_structure', 'get_host_list']
+
+
+class IShardNotificationHandler(Interface):
+
+    def on_new_neighbour_shard(recipient):
+        """Called when we got a new neighbour shard."""
+
+    def on_neighbour_shard_gone(recipient):
+        """Called when neighbour shard goes away."""
 
 
 def start_manager(agent):
@@ -37,6 +51,12 @@ def get_host_list(agent):
         return fiber.succeed(list())
     else:
         return agent.call_remote(shard_recp, 'get_host_list', _timeout=1)
+
+
+def register_for_notifications(agent):
+    shard = agent.get_own_address().shard
+    recip = recipient.Broadcast(ShardNotificationCollector.protocol_id, shard)
+    return agent.register_interest(ShardNotificationCollector)
 
 
 class JoinShardManager(manager.BaseManager):
@@ -78,3 +98,31 @@ def prepare_descriptor(agent, shard=None):
     shard = shard or generate_shard_value()
     desc = Descriptor(shard=shard)
     return agent.save_document(desc)
+
+
+class ShardNotificationCollector(collector.BaseCollector):
+
+    protocol_id = 'shard-notification'
+    interest_type = InterestType.public
+
+    @replay.mutable
+    def initiate(self, state):
+        # Just in case there is an adapter involved
+        state.handler = IShardNotificationHandler(state.agent)
+
+    @replay.immutable
+    def notified(self, state, msg):
+        name, args = msg.payload
+        handler = getattr(self, "on_" + name, None)
+        if not handler:
+            self.warning("Unknown shard notification: %s", name)
+            return
+        return handler(*args)
+
+    @replay.immutable
+    def on_new_neighbour(self, state, recipient):
+        state.handler.on_new_neighbour_shard(recipient)
+
+    @replay.immutable
+    def on_neighbour_gone(self, state, recipient):
+        state.handler.on_neighbour_shard_gone(recipient)
