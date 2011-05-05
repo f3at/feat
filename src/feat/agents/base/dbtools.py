@@ -27,7 +27,7 @@ def initial_data(doc):
 
 def create_connection(host, port, name):
     db = database.Database(host, port, name)
-    return db.connection
+    return db.get_connection()
 
 
 @defer.inlineCallbacks
@@ -67,7 +67,7 @@ def create_db(connection):
         log.warning('script', 'Creating of database failed, reason: %s',
                     f.value)
 
-    d = connection.database.createDB()
+    d = connection.create_database()
     d.addErrback(display_warning)
     return d
 
