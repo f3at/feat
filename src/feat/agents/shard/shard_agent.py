@@ -136,7 +136,7 @@ class ShardAgentRole(enum.Enum):
 class ShardAgentConfiguration(document.Document):
 
     document_type = 'shard_agent_conf'
-    document.field('doc_id', u'shard_agent_conf', '_id')
+    document.field('doc_id', u'shard_agent_conf', '_id', unicode)
     document.field('hosts_per_shard', 10)
     document.field('neighbours', 3)
 

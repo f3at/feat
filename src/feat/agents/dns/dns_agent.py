@@ -23,7 +23,7 @@ DEFAULT_NS_TTL = 300
 class DNSAgentConfiguration(document.Document):
 
     document_type = 'dns_agent_conf'
-    document.field('doc_id', u'dns_agent_conf', '_id')
+    document.field('doc_id', u'dns_agent_conf', '_id', unicode)
     document.field('port', DEFAULT_PORT)
     document.field('ns_ttl', DEFAULT_NS_TTL)
     document.field('aa_ttl', DEFAULT_AA_TTL)
