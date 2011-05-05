@@ -208,13 +208,13 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
     def tearDown(self):
         self.connection.disconnect()
-        return self.process.terminate(keep_workdir=True)
+        return self.process.terminate()
 
     @defer.inlineCallbacks
     def testDisconnection(self):
         self.changes = list()
 
-        my_doc = DummyDocument(field=u'whatever', doc_id="my_doc")
+        my_doc = DummyDocument(field=u'whatever', doc_id=u"my_doc")
         my_doc = yield self.connection.save_document(my_doc)
         yield self.connection.changes_listener((my_doc.doc_id, ),
                                                self.change_cb)
