@@ -141,6 +141,22 @@ class ResourcesTest(common.TestCase, Common):
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
     @defer.inlineCallbacks
+    def testPremodifyRelease(self):
+        allocation = yield self.resources.allocate(a=3, b=2)
+        allocation2 = yield self.resources.allocate(b=1)
+        # Resources {a:5 b:6}
+        modification = yield \
+            self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
+
+        self._assert_allocated([4, 4])
+        self._assert_preallocated({'a': 0, 'b': 0})
+        self._assert_changes({'a': 1, 'b': 1})
+        yield self.resources.release_modification(modification.id)
+        self._assert_allocated([3, 3])
+        self._assert_preallocated({'a': 0, 'b': 0})
+        self._assert_changes({'a': 0, 'b': 0})
+
+    @defer.inlineCallbacks
     def testCannotOverallocate(self):
         allocation = yield self.resources.preallocate(a=10)
         self.assertTrue(allocation is None)

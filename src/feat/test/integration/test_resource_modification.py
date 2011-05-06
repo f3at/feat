@@ -46,6 +46,18 @@ class RequestingAgent(agent.BaseAgent, rpc.AgentMixin):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
 
+    @replay.journaled
+    def call_premodify(self, state, agent, recp, allocation_id, **delta):
+        return host.premodify_allocation(agent, recp, allocation_id, **delta)
+
+    @replay.journaled
+    def call_apply_premodify(self, state, agent, recp, change_id):
+        return host.apply_modification(agent, recp, change_id)
+
+    @replay.journaled
+    def call_cancel_premodify(self, state, agent, recp, change_id):
+        return host.release_modification(agent, recp, change_id)
+
 
 class RemotePremodifyTest(common.SimulationTest, Common):
 
@@ -80,6 +92,69 @@ class RemotePremodifyTest(common.SimulationTest, Common):
         self.assertEqual(2, len(agents))
 
     @defer.inlineCallbacks
+    def testHostPremodify(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        yield self.req_agent.call_premodify(self.req_agent, recp,
+                                        allocation.id, a=1)
+
+        self._assert_allocated(self.host_agent, "a", 2)
+
+    @defer.inlineCallbacks
+    def testHostPremodifyApply(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        change = yield self.req_agent.call_premodify(self.req_agent, recp,
+                                                     allocation.id, a=1)
+
+        self._assert_allocated(self.host_agent, "a", 2)
+        yield self.req_agent.call_apply_premodify(self.req_agent, recp,
+                                                  change.id)
+        self._assert_allocated(self.host_agent, "a", 2)
+
+    @defer.inlineCallbacks
+    def testHostPremodifyRelease(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        change = yield self.req_agent.call_premodify(self.req_agent, recp,
+                                                     allocation.id, a=1)
+
+        self._assert_allocated(self.host_agent, "a", 2)
+        yield self.req_agent.call_cancel_premodify(self.req_agent, recp,
+                                                  change.id)
+        self._assert_allocated(self.host_agent, "a", 1)
+
+    @defer.inlineCallbacks
+    def testHostPremodifyUnknownId(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        change = yield self.req_agent.call_premodify(self.req_agent, recp,
+                                                     allocation.id, a=1)
+
+        d = defer.succeed(None)
+        d = self.assertAsyncFailure(d, (resource.AllocationNotFound, ),
+                fiber.maybe_fiber, self.req_agent.call_premodify,
+                self.req_agent, recp, 10, a=1)
+        yield d
+
+    @defer.inlineCallbacks
+    def testHostPremodifyTimeout(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        change = yield self.req_agent.call_premodify(self.req_agent, recp,
+                                                     allocation.id, a=1)
+
+        def check():
+            return self._is_allocated(self.host_agent, "a", 1)
+
+        yield self.wait_for(check, 40, freq=4)
+
+    @defer.inlineCallbacks
     def testCallRemotePremodify(self):
         allocation = yield self.host_agent.allocate_resource(a=1)
         recp = IRecipient(self.host_agent)
@@ -101,6 +176,19 @@ class RemotePremodifyTest(common.SimulationTest, Common):
         yield self.req_agent.call_remote(recp, "apply_modification",
                         modification.id)
         self._assert_allocated(self.host_agent, "a", 2)
+
+    @defer.inlineCallbacks
+    def testPartnerPremodifyRelease(self):
+        allocation = yield self.host_agent.allocate_resource(a=1)
+        recp = IRecipient(self.host_agent)
+
+        modification = yield self.req_agent.call_remote(recp,
+                    "premodify_allocation", allocation_id=allocation.id, a=1)
+
+        self._assert_allocated(self.host_agent, "a", 2)
+        yield self.req_agent.call_remote(recp, "release_modification",
+                        modification.id)
+        self._assert_allocated(self.host_agent, "a", 1)
 
     @defer.inlineCallbacks
     def testPartnerPremodifyUnknownid(self):

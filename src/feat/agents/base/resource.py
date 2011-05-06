@@ -121,6 +121,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         return f
 
     @replay.mutable
+    def release_modification(self, state, change_id):
+        self._remove_modification(change_id)
+
+    @replay.mutable
     def _remove_modification(self, state, change_id):
         mod = state.modifications.pop(change_id, None)
         if mod is None:
