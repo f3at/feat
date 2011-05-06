@@ -90,7 +90,7 @@ class BaseProblem(serialization.Serializable):
 class CollectiveSolver(task.BaseTask):
 
     protocol_id = 'problem-solver'
-    timeout = None
+    timeout = 60
 
     @replay.mutable
     def initiate(self, state, problem, brothers):

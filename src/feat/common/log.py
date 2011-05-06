@@ -22,6 +22,14 @@ def get_default():
     return _default_keeper
 
 
+def logex(category, level, format, args=(), depth=1, log_name=None,
+          file_path=None, line_num=None):
+    global _default_keeper
+    _default_keeper.do_log(level, log_name, category,
+                           format, args, depth=depth,
+                           file_path=file_path, line_num=line_num)
+
+
 def log(category, format, *args):
     global _default_keeper
     _default_keeper.do_log(LogLevel.log, None, category, format, args)
@@ -62,9 +70,11 @@ class Logger(object):
 
     ### ILoggable Methods ###
 
-    def logex(self, level, format, args, depth=1):
+    def logex(self, level, format, args, depth=1,
+              file_path=None, line_num=None):
         self._logger.do_log(level, self.log_name,
-                            self.log_category, format, args, depth=depth+1)
+                            self.log_category, format, args, depth=depth+1,
+                            file_path=file_path, line_num=line_num)
 
     def log(self, format, *args):
         self._logger.do_log(LogLevel.log, self.log_name,

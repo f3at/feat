@@ -3,6 +3,8 @@
 import difflib
 import re
 
+from feat.common import reflect
+
 
 class Table(object):
 
@@ -75,3 +77,13 @@ def format_diff(str1, str2, header="\n", first_header=""):
         sep = header
         result += sep + "Got '%s'" % b
     return result
+
+
+def format_args(*args, **kwargs):
+    return ", ".join([repr(a) for a in args]
+                     + ["%r=%r" % i for i in kwargs.iteritems()])
+
+
+def format_call(callback, *args, **kwargs):
+    return "%s(%s)" % (reflect.canonical_name(callback),
+                       format_args(*args, **kwargs))

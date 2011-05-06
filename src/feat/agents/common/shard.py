@@ -35,10 +35,10 @@ def query_structure(agent, partner_type, distance=1):
         agent.warning(
             "query_structure() called, but agent doesn't have shard partner, "
             "hence noone to send a query to.")
-        return list()
+        return fiber.succeed([])
     else:
         f = agent.call_remote(shard_recp, 'query_structure',
-                              partner_type, distance, _timeout=1)
+                              partner_type, distance, _timeout=10)
         return f
 
 

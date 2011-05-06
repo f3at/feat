@@ -235,6 +235,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
               Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
 
+    @manhole.expose()
+    @replay.immutable
+    def query_partners_with_role(self, state, name, role):
+        return state.partners.query_with_role(name, role)
+
     @replay.immutable
     def find_partner(self, state, recp_or_agent_id):
         return state.partners.find(recp_or_agent_id)

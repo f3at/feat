@@ -54,6 +54,10 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
     def __iter__(self):
         return self._array.__iter__()
 
+    def __hash__(self):
+        # VERY important to support recipient as key in a dictionary or a set
+        return hash((self._key, self._shard))
+
     def __eq__(self, other):
         if not isinstance(other, BaseRecipient):
             return NotImplemented

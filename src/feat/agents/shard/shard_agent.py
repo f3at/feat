@@ -4,7 +4,7 @@ import operator
 
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
-                              task, poster)
+                              task, poster, notifier)
 from feat.agents.common import rpc, raage, host, monitor
 from feat.common import fiber, serialization, manhole, enum
 from feat.interface.protocols import InitiatorFailed
@@ -79,7 +79,7 @@ class StructuralPartner(partners.BasePartner):
         raise NotImplementedError('Should be overloaded')
 
     def on_goodbye(self, agent, brothers):
-        return agent.check_shard_structure()
+        return agent.fix_shard_structure()
 
     def on_died(self, agent, brothers, monitor):
         task = agent.request_restarting_partner(self.recipient.key, monitor)
@@ -147,7 +147,7 @@ dbtools.initial_data(ShardAgentConfiguration)
 
 
 @agent.register('shard_agent')
-class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
+class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     partners_class = Partners
 
@@ -157,6 +157,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
+        notifier.AgentMixin.initiate(self, state)
 
         config = state.medium.get_configuration()
 
@@ -180,6 +181,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
         recp = recipient.Broadcast(ShardNotificationPoster.protocol_id, shard)
         state.poster = self.initiate_protocol(ShardNotificationPoster, recp)
 
+        state.tasks = {}
         state.role = None
         self.become_king()
 
@@ -188,19 +190,35 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     @replay.mutable
     def startup(self, state):
         f = self.look_for_neighbours()
-        f.add_callback(fiber.drop_result, self.check_shard_structure)
+        f.add_callback(fiber.drop_result, self.fix_shard_structure)
         return f
 
     @replay.mutable
-    def check_shard_structure(self, state):
+    def fix_shard_structure(self, state):
         for partner_class in state.partners.shard_structure:
             factory = self.query_partner_handler(partner_class)
+            if factory in state.tasks:
+                continue
             partner = self.query_partners(factory)
             if partner is None or (isinstance(partner, list) and \
                len(partner) == 0):
-                self.debug("check_shard_structure() detected missing %r "
+                self.debug("fix_shard_structure() detected missing %r "
                            "partner, taking action.", partner_class)
-                self.initiate_task(FixMissingPartner, factory)
+                task = self.initiate_task(FixMissingPartner, factory)
+                state.tasks[factory] = task
+        return self.wait_for_structure()
+
+    @replay.immutable
+    def wait_for_structure(self, state):
+        if state.tasks:
+            return self.wait_for_event("partners_fixed")
+        return fiber.succeed(self)
+
+    @replay.mutable
+    def _partner_fixed(self, state, task, factory):
+        del state.tasks[factory]
+        if not state.tasks:
+            self.callback_event("partners_fixed", self)
 
     @replay.mutable
     def request_starting_partner(self, state, factory):
@@ -756,6 +774,8 @@ class FixMissingPartner(task.BaseTask):
         f = factory.discover(state.agent)
         f.add_callback(self.request_starting_partner_if_necessary)
         f.add_callback(state.agent.establish_partnership)
+        f.add_both(fiber.bridge_result,
+                   state.agent._partner_fixed, self, state.factory)
         return f
 
     @replay.immutable
@@ -913,6 +933,14 @@ class QueryStructureContractor(contractor.BaseContractor):
         # consolidate the bids. This way we will get the tree decomposition
         # of the graph for the arbitrary structure agent type
         partner_type = announcement.payload['partner_type']
+
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_result, state.agent.wait_for_structure)
+        f.add_callback(fiber.drop_result, self._query_partners, partner_type)
+        return f
+
+    @replay.immutable
+    def _query_partners(self, state, partner_type):
         factory = state.agent.query_partner_handler(partner_type)
         partners = state.agent.query_partners(factory)
 

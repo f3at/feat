@@ -1,12 +1,15 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat import everything
-from feat.common import time, first, serialization, defer
-from feat.test.integration import common
-from feat.common.text_helper import format_block
-from feat.agents.base import (recipient, dbtools, descriptor, agent, partners,
-                              replay, )
+from feat.agents.base import recipient, descriptor, agent, partners, replay
+from feat.agents.base import dbtools
 from feat.agents.common import monitor
+from feat.common import log, delay, first, serialization, defer, time
+from feat.common.text_helper import format_block
+
+from feat.interface.recipient import *
+
+from feat.test.integration import common
 
 
 @common.attr(skip="This is leftover after work of Pau left by mistake. " +
@@ -63,7 +66,7 @@ class SingleHostMonitorSimulation(common.SimulationTest):
 
 
 @descriptor.register('monitored_agent')
-class Descriptor(descriptor.Descriptor):
+class MonitoredDescriptor(descriptor.Descriptor):
     pass
 
 
@@ -93,7 +96,7 @@ class RandomAgent(agent.BaseAgent):
 
 
 @descriptor.register('bad-manager-agent')
-class Descriptor(descriptor.Descriptor):
+class BadManangerDescriptor(descriptor.Descriptor):
     pass
 
 
@@ -480,3 +483,160 @@ class SimulateMultipleMonitors(common.SimulationTest):
         yield defer.DeferredList(defers)
         yield self.wait_for_idle(20)
         self.assertEqual(1, self.count_agents('random-agent'))
+
+
+class TestMonitorPartnerships(common.SimulationTest):
+
+    timeout = 300
+
+    def setUp(self):
+        delay.time_scale = 1.0
+        config = everything.shard_agent.ShardAgentConfiguration()
+        config.doc_id = 'test-config'
+        config.hosts_per_shard = 1
+        dbtools.initial_data(config)
+        self.override_config('shard_agent', config)
+        return common.SimulationTest.setUp(self)
+
+    def prolog(self):
+        pass
+
+    @defer.inlineCallbacks
+    def testPartnerships(self):
+        drv = self.driver
+
+        def get_agent(agents, host):
+            for m in agents:
+                a = m.get_agent()
+                hosts = a.query_partners_with_role("all", "host")
+                if not hosts:
+                    continue
+                if hosts[0].recipient == IRecipient(host.get_agent()):
+                    return m
+            self.fail("Agent not found for host %s" % host)
+
+        def check_partners(m1, m2):
+            a1 = m1.get_agent()
+            a2 = m2.get_agent()
+            self.assertTrue(a1.find_partner(IRecipient(a2)))
+            self.assertTrue(a2.find_partner(IRecipient(a1)))
+
+        def check_not_partners(m1, m2):
+            a1 = m1.get_agent()
+            a2 = m2.get_agent()
+            self.assertEqual(a1.find_partner(IRecipient(a2)), None)
+            self.assertEqual(a2.find_partner(IRecipient(a1)), None)
+
+        agency1 = yield drv.spawn_agency()
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency1.start_agent(ha1_desc)
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency1.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        shards = list(drv.iter_agents("shard_agent"))
+        self.assertEqual(len(monitors), 2)
+        self.assertEqual(len(shards), 2)
+
+        sa1 = get_agent(shards, ha1)
+        ma1 = get_agent(monitors, ha1)
+
+        sa2 = get_agent(shards, ha2)
+        ma2 = get_agent(monitors, ha2)
+
+        check_partners(ma1, ma2)
+
+        ha3_desc = yield drv.descriptor_factory("host_agent")
+        ha3 = yield agency1.start_agent(ha3_desc)
+
+        yield self.wait_for_idle(20)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        shards = list(drv.iter_agents("shard_agent"))
+        self.assertEqual(len(monitors), 3)
+        self.assertEqual(len(shards), 3)
+
+        sa3 = get_agent(shards, ha3)
+        ma3 = get_agent(monitors, ha3)
+
+        check_partners(ma1, ma2)
+        check_partners(ma1, ma3)
+        check_partners(ma2, ma3)
+
+        sa1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        shards = list(drv.iter_agents("shard_agent"))
+        self.assertEqual(len(monitors), 3)
+        self.assertEqual(len(shards), 3)
+
+        sa1b = get_agent(shards, ha1)
+        ma1b = get_agent(monitors, ha1)
+
+        self.assertNotEqual(sa1, sa1b)
+        self.assertEqual(ma1, ma1b)
+        sa1 = sa1b
+
+        check_partners(ma1, ma2)
+        check_partners(ma1, ma3)
+        check_partners(ma2, ma3)
+
+        ha1.terminate()
+        sa1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        shards = list(drv.iter_agents("shard_agent"))
+        self.assertEqual(len(monitors), 3)
+        self.assertEqual(len(shards), 2)
+
+        sa2b = get_agent(shards, ha2)
+        ma2b = get_agent(monitors, ha2)
+
+        sa3b = get_agent(shards, ha3)
+        ma3b = get_agent(monitors, ha3)
+
+        self.assertEqual(sa2b, sa2)
+        self.assertEqual(ma2b, ma2)
+
+        self.assertEqual(sa3b, sa3)
+        self.assertEqual(ma3b, ma3)
+
+        check_not_partners(ma1, ma2)
+        check_not_partners(ma1, ma3)
+        check_partners(ma2, ma3)
+
+        ma1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        self.assertEqual(len(monitors), 2)
+
+        ma2 = get_agent(monitors, ha2)
+        ma3 = get_agent(monitors, ha3)
+
+        check_partners(ma2, ma3)
+
+        ha4_desc = yield drv.descriptor_factory("host_agent")
+        ha4 = yield agency1.start_agent(ha4_desc)
+
+        yield self.wait_for_idle(20)
+
+        monitors = list(drv.iter_agents("monitor_agent"))
+        shards = list(drv.iter_agents("shard_agent"))
+        self.assertEqual(len(monitors), 3)
+        self.assertEqual(len(shards), 3)
+
+        ma2 = get_agent(monitors, ha2)
+        ma3 = get_agent(monitors, ha3)
+        ma4 = get_agent(monitors, ha4)
+
+        check_partners(ma4, ma2)
+        check_partners(ma4, ma3)
+        check_partners(ma2, ma3)

@@ -1,13 +1,17 @@
+import os
 import sys
+import types
 import uuid
 
 from twisted.python import failure
 from zope.interface import implements
 
+from feat.common import log, defer, decorator, text_helper
+
+from feat.interface.log import *
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from feat.common import decorator, defer
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
 SECTION_BOUNDARY_TAG = "__section_boundary__"
@@ -60,6 +64,16 @@ def maybe_fiber(_function, *args, **kwargs):
             return defer.fail(result)
         else:
             return defer.succeed(result)
+
+
+def debug(result, template, *args):
+    print template % args
+    return result
+
+
+trace_fiber_calls = os.environ.get("FEAT_TRACE_FIBERS", "NO").upper() \
+                    in ("YES", "1", "TRUE")
+ignored_callback = set([drop_result, bridge_result, override_result, debug])
 
 
 @decorator.simple_function
@@ -488,14 +502,19 @@ class Fiber(object):
         return defer.passthru, None, None
 
     def _callback_wrapper(self, value, fiber, callback, args, kwargs):
+        global trace_fiber_calls
+        if trace_fiber_calls:
+            self._trace(value, fiber, callback, args, kwargs)
+
         section = WovenSection(descriptor=fiber)
         section.enter()
         try:
             result = callback(value, *args, **kwargs)
-            return section.exit(result)
         except:
             section.abort()
             raise
+        else:
+            return section.exit(result)
 
     def _serialize_callbacks(self, cb, eb, cba, cbk, eba, ebk):
         # FIXME: Should we deep clone ?
@@ -509,6 +528,22 @@ class Fiber(object):
 
     def _on_chain_cb(self, parent_param, trigger, param, d, default_trigger):
         return self._fire(d, trigger, param, default_trigger, parent_param)
+
+    def _trace(self, value, fiber, callback, args, kwargs):
+        global ignored_callback
+        while callback in ignored_callback:
+            callback, args = args[0], args[1:]
+
+        try:
+            file_path = callback.__code__.co_filename
+            line_num = callback.__code__.co_firstlineno
+        except AttributeError:
+            file_path = "unknown"
+            line_num = 0
+
+        text = text_helper.format_call(callback, value, *args, **kwargs)
+        log.logex("fiber", LogLevel.log, text, log_name=self.fiber_id,
+                  file_path=file_path, line_num=line_num)
 
 
 class FiberList(Fiber):

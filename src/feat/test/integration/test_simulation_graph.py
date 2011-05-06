@@ -403,7 +403,7 @@ class TestProblemResolving(common.SimulationTest, CommonMixin):
 
     configurable_attributes = ['hosts']
 
-    timeout = 20
+    timeout = 40
 
     @defer.inlineCallbacks
     def prolog(self):

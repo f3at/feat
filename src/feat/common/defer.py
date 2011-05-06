@@ -1,5 +1,5 @@
 from twisted.internet.defer import *
-from twisted.internet.defer import returnValue, passthru
+from twisted.internet.defer import returnValue, passthru, setDebugging
 
 
 def drop_result(_result, _method, *args, **kwargs):
@@ -16,6 +16,11 @@ def bridge_result(_result, _method, *args, **kwargs):
 
 def override_result(_result, _new_result):
     return _new_result
+
+
+def debug(result, template, *args):
+    print template % args
+    return result
 
 
 class Notifier(object):

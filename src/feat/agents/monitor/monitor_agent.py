@@ -7,7 +7,7 @@ import copy
 
 from feat.agents.base import (agent, contractor, partners, task, problem,
                               requester, message, replay, recipient, )
-from feat.agents.common import raage, host, rpc
+from feat.agents.common import raage, host, rpc, shard
 from feat.common import fiber, serialization, defer, time
 
 from feat.agents.common.monitor import *
@@ -16,6 +16,8 @@ from feat.interface.protocols import *
 
 @serialization.register
 class MonitoredPartner(partners.BasePartner):
+
+    type_name = 'monitor->agent'
 
     def __init__(self, *args, **kwargs):
         partners.BasePartner.__init__(self, *args, **kwargs)
@@ -36,9 +38,20 @@ class MonitoredPartner(partners.BasePartner):
 
 
 @serialization.register
+class MonitorPartner(MonitoredPartner):
+    type_name = 'monitor->monitor'
+
+
+@serialization.register
 class ShardPartner(MonitoredPartner):
 
     type_name = 'monitor->shard'
+
+    def initiate(self, agent):
+        f = MonitoredPartner.initiate(self, agent)
+        f.add_callback(fiber.drop_result, agent.call_next,
+                       agent.update_neighbour_monitors)
+        return f
 
 
 class Partners(partners.Partners):
@@ -50,10 +63,13 @@ class Partners(partners.Partners):
     default_handler = MonitoredPartner
 
     partners.has_one('shard', 'shard_agent', ShardPartner)
+    partners.has_many('monitors', 'monitor_agent', MonitorPartner)
 
 
 @agent.register('monitor_agent')
 class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
+
+    implements(shard.IShardNotificationHandler)
 
     partners_class = Partners
 
@@ -63,6 +79,8 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
+
+        shard.register_for_notifications(self)
 
         state.medium.register_interest(
             contractor.Service(MonitorContractor))
@@ -155,6 +173,51 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
             else:
                 # already solved
                 return AlreadySolvedDeath(self, partner.recipient.key)
+
+    def on_new_neighbour_shard(self, recipient):
+        #FIXME: We shouldn't do a full update in this case
+        return self.update_neighbour_monitors()
+
+    def on_neighbour_shard_gone(self, recipient):
+        #FIXME: We shouldn't do a full update in this case
+        return self.update_neighbour_monitors()
+
+    @replay.mutable
+    def update_neighbour_monitors(self, state):
+        f = self._get_monitors()
+        f.add_callback(self._update_monitors)
+        return f
+
+    def _get_monitors(self):
+        return shard.query_structure(self, 'monitor_agent', distance=1)
+
+    @replay.mutable
+    def _update_monitors(self, state, monitors):
+        recipients = set([p.recipient for p in monitors])
+        currents = set([p.recipient for p in state.partners.monitors])
+
+        old = currents - recipients
+        new = recipients - currents
+        fibers = []
+        for monitor in new:
+            fibers.append(self._add_monitor_partner(monitor))
+        for monitor in old:
+            fibers.append(self._remove_monitor_partner(monitor))
+        return fiber.FiberList(fibers).succeed()
+
+    def _add_monitor_partner(self, recipient):
+        self.debug("Partnering with new monitor %s", recipient)
+        return self.establish_partnership(recipient)
+
+    @replay.immutable
+    def _remove_monitor_partner(self, state, recipient):
+        self.debug("Leaving old monitor %s", recipient)
+        #FIXME: Shouldn't we have something like partners.unlink that do this ?
+        partner = self.find_partner(recipient)
+        if partner:
+            f = requester.say_goodbye(self, recipient, None)
+            f.add_callback(fiber.drop_result, self.remove_partner, partner)
+            return f
 
 
 @serialization.register
@@ -337,6 +400,7 @@ class HandleDeath(task.BaseTask):
         if len(accepted) == 0:
             self.debug('Noone took responsability, I will try to restart '
                        '%r agent myself', state.factory.descriptor_type)
+
             return self._restart_yourself()
         else:
             expiration_time = max(map(operator.attrgetter('expiration_time'),
