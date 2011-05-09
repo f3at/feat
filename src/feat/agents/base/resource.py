@@ -2,10 +2,8 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.common import (log, enum, serialization, error_handler,
-                         delay, fiber, defer, )
+from feat.common import (log, serialization, error_handler, fiber, )
 from feat.agents.base import replay
-from feat.agencies.common import StateMachineMixin, StateAssertationError
 from feat.common.container import ExpDict
 
 
@@ -175,7 +173,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def premodify(self, state, allocation_id, **delta):
         try:
             self._validate_params(delta)
-            allocation = self._find_allocation(allocation_id)
+            self._find_allocation(allocation_id)
             alloc_change = AllocationChange(self._next_id(),
                         allocation_id, **delta)
             self._append_modification(alloc_change)
@@ -299,7 +297,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def _append_modification(self, state, alloc_change):
         if not isinstance(alloc_change, AllocationChange):
             raise ValueError('Expected AllocationChange class,\
-                    got %r instead!' % modification.__class__, )
+                    got %r instead!' % alloc_change.__class__, )
 
         self._validate(state.totals, self._read_allocations().values() +
                 [Allocation(None, **alloc_change.delta)], state.modifications)

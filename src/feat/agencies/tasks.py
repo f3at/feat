@@ -5,7 +5,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.agencies import common, protocols
-from feat.common import (log, enum, defer, delay, error_handler, )
+from feat.common import (log, enum, defer, time, error_handler, )
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -68,7 +68,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._cancel_expiration_call()
 
         if self.task.timeout:
-            timeout = self.agent.get_time() + self.task.timeout
+            timeout = time.future(self.task.timeout)
             error = InitiatorExpired("Timeout exceeded waiting "
                                      "for task.initate()")
             self._expire_at(timeout, self._expired,
@@ -130,12 +130,12 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _completed(self, arg):
         if arg != NOT_DONE_YET or not self._cmp_state(TaskState.performing):
             self._set_state(TaskState.completed)
-            delay.callLater(0, self._terminate, arg)
+            time.callLater(0, self._terminate, arg)
 
     def _error(self, arg):
         self._error_handler(arg)
         self._set_state(TaskState.error)
-        delay.callLater(0, self._terminate, arg)
+        time.callLater(0, self._terminate, arg)
 
     def _expired(self, arg):
         self._set_state(TaskState.expired)

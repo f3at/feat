@@ -14,6 +14,7 @@ from feat.interface.recipient import *
 from feat.interface.agent import Access, Address, Storage
 
 
+@common.attr(timescale=0.05)
 class HostAgentTests(common.SimulationTest):
 
     NUM_PORTS = 999
@@ -81,6 +82,7 @@ class HostAgentTests(common.SimulationTest):
         self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
 
 
+@common.attr(timescale=0.05)
 class HostAgentDefinitionTests(common.SimulationTest):
 
     def prolog(self):
@@ -130,6 +132,7 @@ class HostAgentDefinitionTests(common.SimulationTest):
         check_resources(agent2._get_state().resources)
 
 
+@common.attr(timescale=0.05)
 class HostAgentRequerimentsTest(common.SimulationTest):
 
     def prolog(self):
@@ -194,6 +197,7 @@ class Descriptor2(descriptor.Descriptor):
     document_type = 'conditionerror-agent'
 
 
+@common.attr(timescale=0.05)
 class HostAgentCheckTest(common.SimulationTest):
 
     def prolog(self):
@@ -262,6 +266,7 @@ class Descriptor3(descriptor.Descriptor):
     pass
 
 
+@common.attr(timescale=0.05)
 class SimulationStartAgentContract(common.SimulationTest):
 
     @defer.inlineCallbacks

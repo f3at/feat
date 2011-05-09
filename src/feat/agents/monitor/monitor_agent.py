@@ -8,7 +8,7 @@ import copy
 from feat.agents.base import (agent, contractor, partners, task, problem,
                               requester, message, replay, recipient, )
 from feat.agents.common import raage, host, rpc
-from feat.common import fiber, serialization, defer
+from feat.common import fiber, serialization, defer, time
 
 from feat.agents.common.monitor import *
 from feat.interface.protocols import *
@@ -341,7 +341,7 @@ class HandleDeath(task.BaseTask):
         else:
             expiration_time = max(map(operator.attrgetter('expiration_time'),
                                       accepted))
-            time_left = max(0, expiration_time - state.agent.get_time())
+            time_left = time.left(expiration_time)
             state.timeout_call_id = state.agent.call_later(
                 time_left, self._timeout_waiting_for_restart)
             return task.NOT_DONE_YET

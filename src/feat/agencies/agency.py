@@ -3,7 +3,6 @@
 
 # Import standard library modules
 import copy
-import time
 import uuid
 import weakref
 
@@ -15,7 +14,7 @@ from zope.interface import implements
 from feat.agencies import common, dependency
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
-from feat.common import log, defer, fiber, serialization, journal, delay
+from feat.common import log, defer, fiber, serialization, journal, time
 from feat.common import manhole, error_handler, text_helper, container
 from feat.common.serialization import pytree
 
@@ -576,8 +575,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @replay.named_side_effect('SIDE EFFECT SKIPPED')
     def call_later(self, time_left, method, *args, **kwargs):
-        call = reactor.callLater(time_left, self._call, method,
-                                 *args, **kwargs)
+        call = time.callLater(time_left, self._call, method,
+                              *args, **kwargs)
         call_id = str(uuid.uuid1())
         self._store_delayed_call(call_id, call)
         return call_id
@@ -680,9 +679,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.log('Received message: %r', msg)
 
         # Check if it isn't expired message
-        ctime = self.get_time()
-        if msg.expiration_time < ctime:
-            self.log('Throwing away expired message')
+        time_left = time.left(msg.expiration_time)
+        if time_left < 0:
+            self.log('Throwing away expired message. Time left: %s, '
+                     'msg_class: %r', msg.get_msg_class(), time_left)
             return False
 
         # Check for known traversal ids:
@@ -694,7 +694,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                     "Message: %r", msg)
                 return False
             if t_id in self._traversal_ids:
-                self.log('Throwing away already known traversal id %r', t_id)
+                self.log('Throwing away already known traversal id %r, '
+                         'msg_class: %r', msg.get_msg_class(), t_id)
                 recp = msg.duplication_recipient()
                 if recp:
                     resp = msg.duplication_message()
@@ -721,8 +722,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                     return True
 
         self.warning("Couldn't find appropriate listener for message: "
-                     "%s.%s.%s", msg.protocol_type, msg.protocol_id,
-                     msg.__class__.__name__)
+                     "%s", msg.get_msg_class())
         return False
 
     def get_queue_name(self):
@@ -1011,7 +1011,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _store_delayed_call(self, call_id, call):
         if call.active():
             self.log('Storing delayed call with id %r', call_id)
-            self._delayed_calls.set(call_id, call, call.getTime() + 0.1)
+            self._delayed_calls.set(call_id, call, call.getTime() + 1)
 
     def _call(self, method, *args, **kwargs):
 
@@ -1067,7 +1067,7 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
     @serialization.freeze_tag('RetryingProtocol.give_up')
     def give_up(self):
         self.max_retries = self.attempt - 1
-        if self._delayed_call and not self._delayed_call.called:
+        if self._delayed_call and self._delayed_call.active():
             self._delayed_call.cancel()
             return defer.succeed(None)
         if self._initiator:
@@ -1115,7 +1115,7 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
         # do retry
         self.info('Will retry in %d seconds', self.delay)
-        self._delayed_call = delay.callLater(self.delay, self._bind)
+        self._delayed_call = time.callLater(self.delay, self._bind)
 
         # adjust the delay
         if self.max_delay is None:

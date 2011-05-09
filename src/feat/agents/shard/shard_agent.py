@@ -236,7 +236,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def look_for_neighbours(self, state):
-        f = self.discover_service(FindNeighboursManager, timeout=1)
+        f = self.discover_service(FindNeighboursManager, timeout=2)
         f.add_callback(
             lambda recp: self.initiate_protocol(FindNeighboursManager, recp))
         f.add_callback(FindNeighboursManager.notify_finish)

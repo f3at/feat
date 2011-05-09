@@ -9,7 +9,7 @@ from feat.process import couchdb, rabbitmq
 from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
 from feat.agents.base import agent, descriptor, replay
-from feat.common import serialization, fiber, delay
+from feat.common import serialization, fiber, time
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
@@ -26,6 +26,7 @@ class OptParseMock(object):
 class UnitTestCase(common.TestCase):
 
     def setUp(self):
+        common.TestCase.setUp(self)
         self.agency = agency.Agency()
 
     def testLoadConfig(self):
@@ -190,7 +191,8 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        delay.time_scale = 1.2
+        common.TestCase.setUp(self)
+
         try:
             self.db_process = couchdb.Process(self)
         except DependencyError:

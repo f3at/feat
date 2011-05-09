@@ -72,6 +72,7 @@ class DummyCollector(collector.BaseCollector):
         state.agent.add_notification(message.payload)
 
 
+@common.attr(timescale=0.05)
 class NotificationTest(common.SimulationTest):
 
     def prolog(self):

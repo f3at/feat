@@ -3,16 +3,15 @@
 import StringIO
 import uuid
 
-from zope.interface import implements
-
-from feat.common import log, manhole, defer, reflect
-from feat.agencies import agency, dependency
+from feat.common import log, manhole, defer, reflect, time
+from feat.agencies import agency
 from feat.agencies.emu import messaging, database
-from feat.interface.agency import ExecMode
-from feat.interface import recipient
 from feat.test import factories
-from feat.agents.base import document, descriptor, dbtools
+from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
+
+from feat.interface.agency import *
+from feat.interface.recipient import *
 
 
 class Commands(manhole.Manhole):
@@ -43,6 +42,10 @@ class Commands(manhole.Manhole):
         d = ag.initiate(self._messaging, self._database)
         d.addCallback(defer.override_result, ag)
         return d
+
+    @manhole.expose()
+    def wait_for_idle(self, timeout=20, freq=0.01):
+        return time.wait_for(self, self.is_idle, timeout, freq)
 
     @manhole.expose()
     def uuid(self):
@@ -106,7 +109,7 @@ class Commands(manhole.Manhole):
         running in simulation.
         """
         try:
-            recp = recipient.IRecipient(agent_id)
+            recp = IRecipient(agent_id)
             agent_id = recp.key
         except TypeError:
             pass

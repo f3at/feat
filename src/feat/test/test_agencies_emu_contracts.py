@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import time
 import uuid
 
 from feat.agencies.contracts import ContractorState
 from feat.agents.base import (descriptor, contractor, replay,
                               message, manager, recipient)
 from feat.interface import contracts, protocols
-from feat.common import delay, defer
+from feat.common import time, defer
 
 from . import common
 
@@ -103,6 +102,7 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
 
+@common.attr(timescale=0.01)
 class TestManager(common.TestCase, common.AgencyTestHelper):
 
     protocol_type = 'Contract'
@@ -112,6 +112,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
+        common.TestCase.setUp(self)
         common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.log("Descriptor: %r", desc)
@@ -170,7 +171,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return defer.DeferredList(defers)
 
     def testInitiateTimeout(self):
-        delay.time_scale = 0.01
         d = self.start_manager()
         d.addCallback(defer.drop_result, self.cb_after,
                       arg=None, obj=self.agent,
@@ -180,7 +180,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendAnnouncementAndWaitForExpired(self):
-        delay.time_scale = 0.01
         d = self.start_manager()
 
         d.addCallback(defer.drop_result, self.send_announce, self.manager)
@@ -204,7 +203,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendAnnouncementRecvBidsAndGoToClosed(self):
-        delay.time_scale = 0.01
         d = self.start_manager()
 
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
@@ -271,7 +269,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testGrantingFromClosedState(self):
-        delay.time_scale = 0.01
 
         @replay.immutable
         def closed_handler(s, state):
@@ -313,7 +310,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testTerminatingFromClosedState(self):
-        delay.time_scale = 0.01
 
         @replay.immutable
         def closed_handler(s, state):
@@ -352,7 +348,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testRefusingContractors(self):
-        delay.time_scale = 0.01
         d = self.start_manager()
 
         closed = self.medium.notify_finish()
@@ -383,7 +378,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testTimeoutAfterGrant(self):
-        delay.time_scale = 0.01
 
         @replay.immutable
         def bid_handler(s, state, bid):
@@ -406,7 +400,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testRecvCancellation(self):
-        delay.time_scale = 0.01
 
         @replay.immutable
         def closed_handler(s, state):
@@ -463,7 +456,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testContactorsFinishAckSent(self):
-        delay.time_scale = 0.01
 
         @replay.immutable
         def closed_handler(s, state):
@@ -550,6 +542,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
 
+@common.attr(timescale=0.01)
 class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     protocol_type = 'Contract'
@@ -559,6 +552,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
+        common.TestCase.setUp(self)
         common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
@@ -593,6 +587,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @common.attr(timescale=0.05)
     @defer.inlineCallbacks
     def testRecivingAnnouncementTwoTimes(self):
         '''
@@ -600,22 +595,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         correctly. Second announcement with same traversal id
         should be ignored.
         '''
-
-        def stub_time(time):
-
-            def give(res):
-
-                def method(s):
-                    return res
-
-                return method
-
-            self.stub_method(self.agency, 'get_time', give(time))
-
-        delay.time_scale = 1
-
-        stub_time(0)
-        expiration_time = 1
+        expiration_time = time.future(1)
         yield self.recv_announce(expiration_time, traversal_id='first')
 
         self.assertEqual(1, self._get_number_of_listeners())
@@ -629,12 +609,12 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(1, self._get_number_of_listeners())
         yield self._expire_contractor()
 
-        stub_time(2)
+        yield common.delay(None, 2)
         # now receive expired message
         yield self.recv_announce(expiration_time, traversal_id='first')
         self.assertEqual(0, self._get_number_of_listeners())
 
-        yield self.recv_announce(expiration_time + 3, traversal_id='first')
+        yield self.recv_announce(time.future(3), traversal_id='first')
         self.assertEqual(1, self._get_number_of_listeners())
         yield self._expire_contractor()
 
@@ -645,8 +625,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return len(self.agent._listeners.values())
 
     def testAnnounceExpiration(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.cb_after, obj=self.agent,\
@@ -684,7 +662,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         def send_delegated_bid(contractor):
             msg = message.Bid()
             msg.reply_to = self.endpoint
-            msg.expiration_time = time.time() + 10
+            msg.expiration_time = time.future(10)
             msg.protocol_type = self.protocol_type
             msg.protocol_id = self.protocol_id
             msg.message_id = str(uuid.uuid1())
@@ -709,8 +687,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testPuttingBidAndReachingTimeout(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid)
@@ -757,8 +733,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testGrantWithUpdater(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid, 1)
@@ -820,8 +794,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testSendingReportThanExpiring(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid)
@@ -872,8 +844,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testReceivingFromIncorrectState(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(self.recv_grant)
@@ -886,8 +856,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         return d
 
     def testReceivingUnknownMessage(self):
-        delay.time_scale = 0.01
-
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
         d.addCallback(lambda contractor:
@@ -930,8 +898,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     def _cancel_expiration_call_if_necessary(self):
         if self.contractor and self.medium._expiration_call and\
-                not (self.medium._expiration_call.called or
-                     self.medium._expiration_call.cancelled):
+            self.medium._expiration_call.active():
             self.warning("Canceling contractor expiration call in tearDown")
             self.medium._expiration_call.cancel()
 

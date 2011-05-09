@@ -54,6 +54,7 @@ class Dummy(serialization.Serializable, StateMachineMixin):
         self._set_state("done")
 
 
+@common.attr(timescale=0.05)
 class ReplayTest(common.SimulationTest):
 
     def prolog(self):

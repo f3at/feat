@@ -1,7 +1,6 @@
 import collections
 import functools
 import uuid
-import time as python_time
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -12,8 +11,7 @@ from twisted.scripts import trial
 from feat.agencies.emu import agency
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import message, recipient, agent
-from feat.common import log, defer, decorator, journal
-from feat.common import delay as delay_module
+from feat.common import log, defer, decorator, journal, time
 from feat.interface.generic import *
 
 # Import for registering stuff
@@ -31,16 +29,11 @@ except AttributeError:
 log.FluLogKeeper.init('test.log')
 
 
-def time():
-    #TODO: add time scaling
-    return python_time.time()
-
-
 def delay(value, delay):
     '''Returns a deferred whose callback will be triggered
     after the specified delay with the specified value.'''
     d = defer.Deferred()
-    delay_module.callLater(delay, d.callback, value)
+    time.callLater(delay, d.callback, value)
     return d
 
 
@@ -54,7 +47,7 @@ def delay_errback(failure, delay):
     '''Returns a deferred whose errback will be triggered
     after the specified delay with the specified value.'''
     d = defer.Deferred()
-    delay_module.callLater(delay, d.errback, failure)
+    time.callLater(delay, d.errback, failure)
     return d
 
 
@@ -135,6 +128,14 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             if value is not None:
                 setattr(self, attr, value)
 
+    def setUp(self):
+        # Scale time if configured
+        scale = util.acquireAttribute(self._parents, 'timescale', None)
+        if scale is not None:
+            time.scale(scale)
+        else:
+            time.reset()
+
     def getSlow(self):
         """
         Return whether this test has been marked as slow. Checks on the
@@ -147,21 +148,10 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
     @defer.inlineCallbacks
     def wait_for(self, check, timeout, freq=0.5):
-        assert callable(check)
-        waiting = 0
-
-        while True:
-            if check():
-                self.info('Check %r positive, continuing with the test.',
-                          check.__name__)
-                break
-            self.info('Check %r still negative, sleeping %r seconds.',
-                      check.__name__, freq)
-            waiting += freq
-            if waiting > timeout:
-                raise unittest.FailTest('Timeout error waiting for check %r.'
-                                        % check.__name__)
-            yield delay(None, freq)
+        try:
+            yield time.wait_for(self, check, timeout, freq)
+        except RuntimeError as e:
+            raise unittest.FailTest(str(e))
 
     def is_agency_idle(self, agency):
         return all([agent.is_idle() for agent in agency.get_agents()])
@@ -333,12 +323,12 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return obj
 
     def tearDown(self):
-        delay_module.time_scale = 1
+        time.reset()
 
     ### ITimeProvider Methods ###
 
     def get_time(self):
-        return time()
+        return time.time()
 
     ### Private Methods ###
 
@@ -510,7 +500,7 @@ class AgencyTestHelper(object):
         d = self.cb_after(arg=None, obj=self.agent, method='on_message')
 
         msg.reply_to = reply_to or self.endpoint
-        msg.expiration_time = expiration_time or (python_time.time() + 10)
+        msg.expiration_time = expiration_time or (time.future(10))
         msg.protocol_type = self.protocol_type
         msg.protocol_id = self.protocol_id
         msg.message_id = str(uuid.uuid1())
@@ -528,7 +518,7 @@ class AgencyTestHelper(object):
         msg.reply_to = recipient.IRecipient(reply_to)
         msg.message_id = str(uuid.uuid1())
         msg.protocol_id = original_msg.protocol_id
-        msg.expiration_time = python_time.time() + 10
+        msg.expiration_time = time.future(10)
         msg.protocol_type = original_msg.protocol_type
         msg.receiver_id = original_msg.sender_id
 

@@ -1,7 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat import everything
-from feat.common import delay, first, serialization, defer
+from feat.common import time, first, serialization, defer
 from feat.test.integration import common
 from feat.common.text_helper import format_block
 from feat.agents.base import (recipient, dbtools, descriptor, agent, partners,
@@ -9,6 +9,8 @@ from feat.agents.base import (recipient, dbtools, descriptor, agent, partners,
 from feat.agents.common import monitor
 
 
+@common.attr(skip="This is leftover after work of Pau left by mistake. " +
+             "To be deleted when Sebastien merges his work")
 @common.attr('slow')
 class SingleHostMonitorSimulation(common.SimulationTest):
 
@@ -16,7 +18,7 @@ class SingleHostMonitorSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
+        time.scale(0.8)
         setup = format_block("""
         load('feat.test.integration.monitor')
 
@@ -134,16 +136,16 @@ class BadManagerAgent(agent.BaseAgent):
         return state.times_called
 
 
+@common.attr(timescale=0.05)
 class RestartingSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.4
         setup = format_block("""
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))
         host = _.get_agent()
-        host.wait_for_ready()
+        wait_for_idle()
 
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))
@@ -163,11 +165,13 @@ class RestartingSimulation(common.SimulationTest):
         self.shard_medium = first(self.driver.iter_agents('shard_agent'))
         self.raage_medium = first(self.driver.iter_agents('raage_agent'))
 
+    @common.attr(timescale=0.2)
     @defer.inlineCallbacks
     def testShardAgentDied(self):
         shard_partner = self.monitor.query_partners('shard')
         self.assertEqual(1, shard_partner.instance_id)
         yield self.shard_medium.terminate_hard()
+        self.info('gere')
         self.assertEqual(0, self.count_agents('shard_agent'))
         yield self.monitor.handle_agent_death(recipient.IRecipient(
             self.shard_medium))
@@ -179,6 +183,7 @@ class RestartingSimulation(common.SimulationTest):
         shard_partner = self.monitor.query_partners('shard')
         self.assertEqual(2, shard_partner.instance_id)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testShardAgentAndItsHostDied(self):
         yield self.shard_medium.terminate_hard()
@@ -204,6 +209,7 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(1, self.count_agents('raage_agent'))
         self.assert_has_host('raage_agent')
 
+    @common.attr(timescale=0.05)
     @defer.inlineCallbacks
     def testRaageAndHisHostDie(self):
         self.assert_has_host('raage_agent')
@@ -270,6 +276,7 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(2, manager.get_times_called())
 
 
+@common.attr(timescale=0.05)
 class MonitoringMonitor(common.SimulationTest):
 
     def setUp(self):
@@ -282,7 +289,6 @@ class MonitoringMonitor(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.4
         setup = format_block("""
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))
@@ -402,6 +408,7 @@ class MonitoringMonitor(common.SimulationTest):
         return monitor.get_agent()
 
 
+@common.attr(timescale=0.05)
 class SimulateMultipleMonitors(common.SimulationTest):
 
     def setUp(self):
@@ -414,7 +421,6 @@ class SimulateMultipleMonitors(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.4
         setup = format_block("""
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))

@@ -6,7 +6,7 @@ from twisted.python import components
 from zope.interface import implements
 from twisted.internet import defer
 
-from feat.common import log, delay, serialization
+from feat.common import log, time, serialization
 from feat.agents.base import message, replay
 from feat.agencies import common, protocols
 
@@ -54,7 +54,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_protocol_id(requester.protocol_id)
 
         self._set_state(RequestState.requested)
-        self.expiration_time = self.agent.get_time() + requester.timeout
+        self.expiration_time = time.future(requester.timeout)
         self._expire_at(self.expiration_time, self.requester.closed,
                         RequestState.closed)
 
@@ -171,7 +171,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         reply = reply.clone()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
-        delay.callLater(0, self._terminate, None)
+        time.callLater(0, self._terminate, None)
 
     ### IListener Methods ###
 

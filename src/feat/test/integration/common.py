@@ -1,10 +1,9 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.trial.unittest import FailTest
-from twisted.internet import defer
 
 from feat.test import common
-from feat.common import text_helper, delay as delay_module
+from feat.common import text_helper, time, defer
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
@@ -12,7 +11,6 @@ from feat.agents.base import agent
 
 
 attr = common.attr
-time = common.time
 delay = common.delay
 delay_errback = common.delay_errback
 delay_callback = common.delay_callback
@@ -72,10 +70,14 @@ class SimulationTest(common.TestCase):
 
     overriden_configs = None
 
+    @defer.inlineCallbacks
     def setUp(self):
-        delay_module.time_scale = 1
+        yield common.TestCase.setUp(self)
         self.driver = driver.Driver()
-        return self.prolog()
+        yield self.prolog()
+
+    def prolog(self):
+        pass
 
     def process(self, script):
         d = self.cb_after(None, self.driver._parser, 'on_finish')

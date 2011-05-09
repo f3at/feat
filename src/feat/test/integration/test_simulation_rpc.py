@@ -49,6 +49,7 @@ class Agent(agent.BaseAgent, rpc.AgentMixin):
         pass
 
 
+@common.attr(timescale=0.05)
 class RPCTest(common.SimulationTest):
 
     def prolog(self):

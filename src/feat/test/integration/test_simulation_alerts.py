@@ -1,7 +1,7 @@
 from twisted.internet import defer
 from twisted.python import failure
 
-from feat.common import delay
+from feat.common import time
 from feat.common.text_helper import format_block
 
 from feat.test.integration import common
@@ -23,13 +23,12 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
         alert.AgentMixin.initiate(self, state)
 
 
+@common.attr(timescale=0.05)
 @common.attr('slow')
 class AlertAgentTest(common.SimulationTest):
 
+    @defer.inlineCallbacks
     def prolog(self):
-        # To do an actual production test call spawn_agency like:
-        # spawn_agency('feat.agents.alert.interface.IEmailSenderLabourFactory')
-        delay.time_scale = 0.4
         setup = format_block("""
         agency = spawn_agency()
 
@@ -42,7 +41,8 @@ class AlertAgentTest(common.SimulationTest):
         agent1 = m1.get_agent()
         agent2 = m2.get_agent()
         """)
-        return self.process(setup)
+        yield self.process(setup)
+        yield self.wait_for_idle(10)
 
     def testValidateProlog(self):
         self.assertEqual(1, self.count_agents('alert_test_agent'))

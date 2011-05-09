@@ -2,7 +2,7 @@ from zope.interface import implements
 
 from feat.agents.base import message
 from feat.agents.monitor import production
-from feat.common import journal, log
+from feat.common import journal, log, time
 
 from feat.agents.monitor.interface import *
 
@@ -19,7 +19,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.protocol = None
         self.calls = {}
         self.death = []
-        self.now = now or common.time()
+        self.now = now or time.time()
 
     ### Public Methods ###
 
@@ -56,7 +56,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 class TestMonitorProductionLabour(common.TestCase):
 
     def testPatient(self):
-        now = common.time()
+        now = time.time()
 
         patient = production.Patient(None, None, now, 5, 3)
         self.assertEqual((PatientState.alive, PatientState.alive),

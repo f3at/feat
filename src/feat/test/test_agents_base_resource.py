@@ -5,7 +5,7 @@ from zope.interface import implements
 
 from feat.test import common
 from feat.agents.base import resource, descriptor
-from feat.common import delay
+from feat.common import time
 from feat.interface import journal
 from feat.common import fiber
 
@@ -70,7 +70,7 @@ class DummyAgent(serialization.Serializable, common.DummyRecorderNode,
     implements(ITimeProvider)
 
     def __init__(self, test_case, allocations=None, current=None):
-        self.time = current if current is not None else common.time()
+        self.time = current if current is not None else time.time()
         common.DummyRecorderNode.__init__(self, test_case)
         common.Mock.__init__(self)
         self.descriptor = descriptor.Descriptor(allocations=allocations)
@@ -95,6 +95,7 @@ class DummyAgent(serialization.Serializable, common.DummyRecorderNode,
         return defer.succeed(allocation)
 
 
+@common.attr(timescale=0.01)
 class ResourcesTest(common.TestCase, Common):
 
     implements(journal.IRecorderNode)
@@ -102,7 +103,6 @@ class ResourcesTest(common.TestCase, Common):
     timeout = 1
 
     def setUp(self):
-        delay.time_scale = 0.01
 
         self.allocations = dict()
         self.agent = DummyAgent(self, self.allocations)

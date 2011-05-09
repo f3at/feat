@@ -1,24 +1,26 @@
 from feat import everything
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.common import defer, first, delay
+from feat.common import defer, first, time
 
 
+@common.attr(timescale=0.05)
 class StructuralPartners(common.SimulationTest):
 
     timeout = 30
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
         setup = format_block("""
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))
-        _.get_agent()
-        _.wait_for_ready()
+
+        wait_for_idle()
 
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'))
+
+        wait_for_idle()
         """)
 
         yield self.process(setup)
