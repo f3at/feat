@@ -82,6 +82,7 @@ class RemotePremodifyTest(common.SimulationTest, Common):
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
+
         self.host_agent = self.get_local('host_agent')
 
         self.req_agent = self.driver.find_agent(

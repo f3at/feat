@@ -6,12 +6,14 @@ from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
                               task, poster, notifier)
 from feat.agents.common import rpc, raage, host, monitor
-from feat.common import fiber, serialization, manhole, enum
-from feat.interface.protocols import InitiatorFailed
+from feat.common import fiber, defer, serialization, manhole, enum
+
+from feat.interface.protocols import *
+from feat.interface.contracts import *
 
 
 @serialization.register
-class HostPartner(partners.BasePartner):
+class HostPartner(agent.BasePartner):
 
     type_name = 'shard->host'
 
@@ -31,7 +33,7 @@ class HostPartner(partners.BasePartner):
 
 
 @serialization.register
-class ShardPartner(partners.BasePartner):
+class ShardPartner(agent.BasePartner):
 
     type_name = 'shard->neighbour'
 
@@ -42,21 +44,24 @@ class ShardPartner(partners.BasePartner):
             f.add_callback(self._store_alloc_id)
             return f
 
+    def startup(self):
+        agent.BaseAgent.startup(self)
+        self.startup_monitoring()
+
     def _store_alloc_id(self, alloc):
         assert isinstance(alloc, resource.Allocation)
         self.allocation_id = alloc and alloc.id
 
-    @fiber.woven
     def on_goodbye(self, agent, brothers):
-        f = fiber.succeed(self)
-        f.add_callback(partners.BasePartner.on_goodbye, agent)
-        f.add_both(fiber.drop_param, agent.become_king)
-        f.add_both(fiber.drop_param, agent.on_neighbour_gone, self.recipient)
-        f.add_both(fiber.drop_param, agent.look_for_neighbours)
-        return f
+        d = defer.succeed(self)
+        d.addCallback(partners.BasePartner.on_goodbye, agent)
+        d.addBoth(defer.drop_param, agent.become_king)
+        d.addBoth(defer.drop_param, agent.on_neighbour_gone, self.recipient)
+        d.addBoth(defer.drop_param, agent.look_for_neighbours)
+        return d
 
 
-class StructuralPartner(partners.BasePartner):
+class StructuralPartner(agent.BasePartner):
     '''
     Abstract base class for all the partners which should be started and
     managed by Shard Agent.
@@ -79,7 +84,8 @@ class StructuralPartner(partners.BasePartner):
         raise NotImplementedError('Should be overloaded')
 
     def on_goodbye(self, agent, brothers):
-        return agent.fix_shard_structure()
+        #FIXME: on_goodbye should return a deferred
+        return fiber.maybe_fiber(agent.fix_shard_structure)
 
     def on_died(self, agent, brothers, monitor):
         task = agent.request_restarting_partner(self.recipient.key, monitor)
@@ -102,7 +108,7 @@ class RaagePartner(StructuralPartner):
 
 
 @serialization.register
-class MonitorPartner(StructuralPartner):
+class MonitorPartner(monitor.PartnerMixin, StructuralPartner):
 
     type_name = 'shard->monitor'
 
@@ -115,8 +121,16 @@ class MonitorPartner(StructuralPartner):
         desc = monitor.Descriptor()
         return agent.save_document(desc)
 
+    def on_goodbye(self, agent, brothers):
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param,
+                      monitor.PartnerMixin.on_goodbye, self, agent, brothers)
+        d.addCallback(defer.drop_param,
+                      StructuralPartner.on_goodbye, self, agent, brothers)
+        return d
 
-class Partners(partners.Partners):
+
+class Partners(agent.Partners):
 
     partners.has_many('hosts', 'host_agent', HostPartner)
     partners.has_many('neighbours', 'shard_agent', ShardPartner)
@@ -189,6 +203,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.mutable
     def startup(self, state):
+        agent.BaseAgent.startup(self)
         f = self.look_for_neighbours()
         f.add_callback(fiber.drop_param, self.fix_shard_structure)
         return f
@@ -204,7 +219,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
                len(partner) == 0):
                 self.debug("fix_shard_structure() detected missing %r "
                            "partner, taking action.", partner_class)
-                task = self.initiate_task(FixMissingPartner, factory)
+                task = self.initiate_protocol(FixMissingPartner, factory)
                 state.tasks[factory] = task
         return self.wait_for_structure()
 
@@ -215,19 +230,19 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         return fiber.succeed(self)
 
     @replay.mutable
-    def _partner_fixed(self, state, task, factory):
+    def _partner_fixed(self, state, factory):
         del state.tasks[factory]
         if not state.tasks:
             self.callback_event("partners_fixed", self)
 
     @replay.mutable
     def request_starting_partner(self, state, factory):
-        task = self.initiate_task(StartPartner, factory)
+        task = self.initiate_protocol(StartPartner, factory)
         return fiber.wrap_defer(task.notify_finish)
 
     @replay.mutable
     def request_restarting_partner(self, state, agent_id, monitor=None):
-        task = self.initiate_task(RestartPartner, agent_id, monitor)
+        task = self.initiate_protocol(RestartPartner, agent_id, monitor)
         return task
 
     @manhole.expose()
@@ -236,7 +251,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def query_structure(self, state, partner_type, distance=1):
 
         def swallow_initiator_failed(fail):
-            fail.trap(InitiatorFailed)
+            fail.trap(ProtocolFailed)
             self.debug('query_structure failed with %r, returning empty '
                        'list', fail)
             return list()
@@ -245,9 +260,11 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             agent.error('Query distance is not supported yet. Right now '
                         'this parameter is ignored and defaults to 1')
             distance = 1
+
         manager = self.initiate_protocol(
             QueryStructureManager, state.partners.neighbours,
             partner_type, distance)
+
         f = manager.notify_finish()
         f.add_errback(swallow_initiator_failed)
         return f
@@ -438,6 +455,8 @@ class FindNeighboursContractor(contractor.BaseContractor):
 
     @replay.immutable
     def _granted_failed(self, state, failure):
+        #FIXME: guard against expiration, should use fiber cancellation
+        state.medium.ensure_state(ContractState.granted)
         state.medium._error_handler(failure)
         msg = message.Cancellation(reason=str(failure.value))
         state.medium.defect(msg)
@@ -445,6 +464,8 @@ class FindNeighboursContractor(contractor.BaseContractor):
 
     @replay.immutable
     def _finalize(self, state, _):
+        #FIXME: guard against expiration, should use fiber cancellation
+        state.medium.ensure_state(ContractState.granted)
         report = message.FinalReport()
         state.medium.finalize(report)
 
@@ -765,8 +786,8 @@ class JoinShardContractor(contractor.NestingContractor):
 
 class FixMissingPartner(task.BaseTask):
 
-    protocol_id = 'fix-missing-partner'
-    timeout = 15
+    protocol_id = 'shard_agent.fix-missing-partner'
+    timeout = 20
 
     @replay.entry_point
     def initiate(self, state, factory):
@@ -775,7 +796,7 @@ class FixMissingPartner(task.BaseTask):
         f.add_callback(self.request_starting_partner_if_necessary)
         f.add_callback(state.agent.establish_partnership)
         f.add_both(fiber.bridge_param,
-                   state.agent._partner_fixed, self, state.factory)
+                   state.agent._partner_fixed, state.factory)
         return f
 
     @replay.immutable
@@ -936,6 +957,9 @@ class QueryStructureContractor(contractor.BaseContractor):
 
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.agent.wait_for_structure)
+        # Ensure that nothing is called if the protocol timeout
+        f.add_callback(fiber.bridge_param, state.medium.ensure_state,
+                       ContractState.announced)
         f.add_callback(fiber.drop_param, self._query_partners, partner_type)
         return f
 

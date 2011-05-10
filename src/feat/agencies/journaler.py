@@ -300,7 +300,7 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
 
 
         insert_meta = "INSERT INTO metadata VALUES(?, ?)"
-        d.addCallback(defer.drop_result, self._db.runOperation,
+        d.addCallback(defer.drop_param, self._db.runOperation,
                       insert_meta, (u'encoding', self._encoding, ))
         d.addCallbacks(self._initiated_ok, self._error_handler)
         return d

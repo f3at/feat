@@ -15,13 +15,15 @@ from feat.interface.serialization import *
 from feat.interface.requests import *
 from feat.interface.requester import *
 from feat.interface.replier import *
+from feat.interface.recipient import *
 
 
 class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
                       common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                       common.TransientInitiatorMediumBase):
 
-    implements(IAgencyRequester, IListener, ISerializable)
+    implements(ISerializable, IAgencyRequester,
+               IAgencyProtocolInternal, IAgencyListenerInternal)
 
     log_category = "requester-medium"
     type_name = "requester-medium"
@@ -38,7 +40,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.agent = agency_agent
         self.factory = factory
-        self.recipients = recipients
+        self.recipients = IRecipients(recipients)
         self.expiration_time = None
         self.args = args
         self.kwargs = kwargs
@@ -47,7 +49,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.journal_protocol_created(self.factory, self,
                                             *self.args, **self.kwargs)
         requester = self.factory(self.agent.get_agent(), self)
-        self.agent.register_listener(self)
+        self.agent.register_protocol(self)
 
         self.requester = requester
         self.log_name = requester.__class__.__name__
@@ -55,8 +57,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._set_state(RequestState.requested)
         self.expiration_time = time.future(requester.timeout)
-        self._expire_at(self.expiration_time, self.requester.closed,
-                        RequestState.closed)
+        self._expire_at(self.expiration_time, RequestState.closed,
+                        self.requester.closed)
 
         self.call_next(self._call, requester.initiate,
                        *self.args, **self.kwargs)
@@ -80,7 +82,14 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_recipients(self):
         return self.recipients
 
-    ### IListener Methods ###
+    ### IAgencyProtocolInternal Methods ###
+
+    def get_agent_side(self):
+        return self.requester
+
+    # notify_finish() implemented in common.TransientInitiatorMediumBase
+
+    ### IAgencyListenerInternal Methods ###
 
     def on_message(self, msg):
         mapping = {
@@ -89,14 +98,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': RequestState.requested,
                  'method': self._on_reply}}
         self._event_handler(mapping, msg)
-
-    def get_session_id(self):
-        return self.session_id
-
-    def get_agent_side(self):
-        return self.requester
-
-    # notify_finish() implemented in common.TransientInitiatorMediumBase
 
     ### ISerializable Methods ###
 
@@ -118,8 +119,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
         self.log("Unregistering requester")
-        self.agent.unregister_listener(self.session_id)
+        self.agent.unregister_protocol(self)
         common.TransientInitiatorMediumBase._terminate(self, result)
+        return defer.succeed(self)
 
     def _on_reply(self, msg):
         d = self._call(self.requester.got_reply, msg)
@@ -131,7 +133,8 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.AgencyMiddleMixin,
                     common.TransientInterestedMediumBase):
 
-    implements(IAgencyReplier, IListener, ISerializable)
+    implements(ISerializable, IAgencyReplier,
+               IAgencyProtocolInternal, IAgencyListenerInternal)
 
     log_category = "replier-medium"
     type_name = "replier-medium"
@@ -173,7 +176,14 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._send_message(reply, self.request.expiration_time)
         time.callLater(0, self._terminate, None)
 
-    ### IListener Methods ###
+    ### IAgencyProtocolInternal Methods ###
+
+    def get_agent_side(self):
+        return self.replier
+
+    # notify_finish() implemented in common.TransientInterestedMediumBase
+
+    ### IAgencyListenerInternal Methods ###
 
     def on_message(self, msg):
         mapping = {
@@ -182,14 +192,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
              'state_after': RequestState.closed,
              'method': self.replier.requested}}
         self._event_handler(mapping, msg)
-
-    def get_session_id(self):
-        return self.session_id
-
-    def get_agent_side(self):
-        return self.replier
-
-    # notify_finish() implemented in common.TransientInterestedMediumBase
 
     ### ISerializable Methods ###
 
@@ -205,8 +207,9 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _terminate(self, result):
         self.debug('Terminate called')
-        self.agent.unregister_listener(self.session_id)
+        self.agent.unregister_protocol(self)
         common.TransientInterestedMediumBase._terminate(self, result)
+        return defer.succeed(self)
 
 
 class AgencyRequesterFactory(protocols.BaseInitiatorFactory):

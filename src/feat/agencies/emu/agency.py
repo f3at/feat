@@ -12,6 +12,6 @@ class Agency(agency.Agency):
         db = database.Database()
         journal = journaler.Journaler(self)
         d = journal.initiate()
-        d.addCallback(defer.drop_result, agency.Agency.initiate,
+        d.addCallback(defer.drop_param, agency.Agency.initiate,
                       self, mesg, db, journal)
         return d

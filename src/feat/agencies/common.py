@@ -5,19 +5,19 @@ import uuid
 from zope.interface import classProvides
 from twisted.python import failure
 
-from feat.common import (time, serialization, error_handler,
-                         log, defer, fiber, observer, )
+from feat.common import log, defer, fiber, observer, time
+from feat.common import serialization, error_handler
 from feat.agents.base import replay
 
 from feat.interface.protocols import *
 from feat.interface.serialization import *
 
 
-class StateAssertationError(RuntimeError):
+class CancelFiber(Exception):
     pass
 
 
-class CancelFiber(Exception):
+class StateAssertationError(RuntimeError):
     pass
 
 
@@ -124,16 +124,20 @@ class StateMachineMixin(object):
 class AgencyMiddleMixin(object):
     '''Responsible for formating messages, calling methods etc'''
 
+    guid = None
+
     protocol_id = None
-    session_id = None
     remote_id = None
 
     error_state = None
 
     def __init__(self, remote_id=None, protocol_id=None):
-        self.session_id = str(uuid.uuid1())
+        self.guid = str(uuid.uuid1())
         self._set_remote_id(remote_id)
         self._set_protocol_id(protocol_id)
+
+    def is_idle(self):
+        return False
 
     def _set_remote_id(self, remote_id):
         if self.remote_id is not None and self.remote_id != remote_id:
@@ -147,7 +151,7 @@ class AgencyMiddleMixin(object):
 
     def _send_message(self, msg, expiration_time=None, recipients=None,
                       remote_id=None):
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         msg.receiver_id = remote_id or self.remote_id
         msg.protocol_id = self.protocol_id
         if msg.expiration_time is None:
@@ -211,9 +215,9 @@ class ExpirationCallsMixin(object):
     def _get_time(self):
         raise NotImplemented('Should be define in the class using the mixin')
 
-    def _setup_expiration_call(self, expire_time, method, state=None,
-                                  *args, **kwargs):
-        self.log('Seting expiration call of method: %r.%r',
+    def _setup_expiration_call(self, expire_time, state,
+                               method, *args, **kwargs):
+        self.log('Setting expiration call of method: %r.%r',
                  self.__class__.__name__, method.__name__)
 
         time_left = time.left(expire_time)
@@ -234,10 +238,10 @@ class ExpirationCallsMixin(object):
             time_left, to_call, result)
         return result
 
-    def _expire_at(self, expire_time, method, state, *args, **kwargs):
-        d = self._setup_expiration_call(expire_time, method,
-                                           state, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate(InitiatorExpired(_)))
+    def _expire_at(self, expire_time, state, method, *args, **kwargs):
+        d = self._setup_expiration_call(expire_time, state,
+                                        method, *args, **kwargs)
+        d.addCallback(lambda _: self._terminate(ProtocolExpired(_)))
         return d
 
     @replay.side_effect
@@ -247,15 +251,6 @@ class ExpirationCallsMixin(object):
             self._expiration_call.cancel()
             self._expiration_call = None
 
-    def _run_and_terminate(self, method, *args, **kwargs):
-        '''
-        Used by contracts class for getting into failure cases.
-        '''
-        d = self._call(method, *args, **kwargs)
-        # Wrap the result in InitiatorFailed instance
-        d.addBoth(InitiatorFailed)
-        d.addCallback(self._terminate)
-
     def _terminate(self):
         self._cancel_expiration_call()
 
@@ -264,9 +259,9 @@ class ExpirationCallsMixin(object):
             self._expiration_call.reset(0)
             d = self.notify_finish()
             return d
-        else:
-            self.error('Expiration call %r is None or was already called or'
-                       'cancelled', self._expiration_call)
+        self.error('Expiration call %r is None or was already called '
+                   'or cancelled', self._expiration_call)
+        return defer.fail(ProtocolExpired())
 
 
 class InitiatorMediumBase(object):
@@ -280,7 +275,7 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
     def __init__(self):
         self._fnotifier = defer.Notifier()
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 
@@ -311,7 +306,7 @@ class TransientInterestedMediumBase(InterestedMediumBase):
     def _terminate(self, result):
         self.call_next(self._fnotifier.callback, 'finish', result)
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 

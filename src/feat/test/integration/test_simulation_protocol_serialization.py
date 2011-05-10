@@ -142,9 +142,9 @@ class ProtoSerializationTest(common.SimulationTest):
         for _ in range(count):
             agent1.initiate_protocol(factory, recip2)
 
-        yield medium1.wait_for_listeners_finish()
-        yield medium2.wait_for_listeners_finish()
-        yield medium1.wait_for_listeners_finish()
+        yield medium1.wait_for_protocols_finish()
+        yield medium2.wait_for_protocols_finish()
+        yield medium1.wait_for_protocols_finish()
 
         self.assertEqual(agent2.get_curr(), 0)
         self.assertEqual(agent2.get_max(), max)

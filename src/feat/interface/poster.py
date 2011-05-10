@@ -10,7 +10,7 @@ class IPosterFactory(protocols.IInitiatorFactory):
     L{IAgentPoster}. Used when initiating protocol.'''
 
 
-class IAgencyPoster(Interface):
+class IAgencyPoster(protocols.IAgencyProtocol):
     '''Agency part of a notification poster. Used by L{IAgentPoster}.'''
 
     def post(message, recipients=None, expiration_time=None):

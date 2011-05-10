@@ -14,11 +14,12 @@ def error_handler(self, f):
               f.getErrorMessage() or f)
 
     frames = traceback.extract_tb(f.getTracebackObject())
-    if len(frames) > 0:
-        log_error("Last traceback frame: %r", frames[-1])
     if log.verbose:
-        log_error("Full traceback below:\n%s",
-                  "".join(traceback.format_tb(f.getTracebackObject())))
+        if len(frames) > 0:
+            log_error("Full traceback below:\n%s",
+                      "".join(traceback.format_tb(f.getTracebackObject())))
+    elif len(frames) > 0:
+        log_error("Last traceback frame: %r", frames[-1])
 
 
 def first(iterator):

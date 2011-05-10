@@ -5,7 +5,7 @@ from twisted.internet import defer
 from feat import everything
 from feat.common import first
 from feat.test.integration import common
-from feat.interface.protocols import InitiatorFailed
+from feat.interface.protocols import ProtocolFailed
 from feat.common.text_helper import format_block
 from feat.agents.base import recipient, dbtools
 from feat.agents.common import host
@@ -22,7 +22,7 @@ def checkNoAllocated(test, a_id):
     test.assertEquals(a_id, None)
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 @common.attr('slow')
 class SingleHostAllocationSimulation(common.SimulationTest):
 
@@ -65,7 +65,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
-            yield x.wait_for_listeners_finish()
+            yield x.wait_for_protocols_finish()
         yield common.SimulationTest.tearDown(self)
 
     def testValidateProlog(self):
@@ -93,10 +93,10 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         categories = {}
         allocation_id, irecipient = \
                 yield self.req_agent.request_resource(resources, categories)
-        yield self.host_medium.wait_for_listeners_finish()
+        yield self.host_medium.wait_for_protocols_finish()
         checkAllocation(self, self.host_agent, resources)
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, InitiatorFailed)
+        self.assertFailure(d, ProtocolFailed)
         yield d
 
     @defer.inlineCallbacks
@@ -104,7 +104,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         resources = {'beers': 999}
         categories = {}
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, InitiatorFailed)
+        self.assertFailure(d, ProtocolFailed)
         yield d
 
     @defer.inlineCallbacks
@@ -112,11 +112,11 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         resources = {'host': 1}
         categories = {'address': Address.fixed}
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, InitiatorFailed)
+        self.assertFailure(d, ProtocolFailed)
         yield d
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 @common.attr('slow')
 class MultiHostAllocationSimulation(common.SimulationTest):
 
@@ -169,7 +169,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def _waitToFinish(self, _=None):
         for x in self.driver.iter_agents():
-            yield x.wait_for_listeners_finish()
+            yield x.wait_for_protocols_finish()
 
     @defer.inlineCallbacks
     def _startAllocation(self, resources, categories, count, sequencial=True):
@@ -240,7 +240,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         self._checkAllocations(resources, 3)
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 @common.attr('slow')
 class ContractNestingSimulation(common.SimulationTest):
 
@@ -311,7 +311,7 @@ class ContractNestingSimulation(common.SimulationTest):
         self.info("Starting test")
         resources = dict(host=1)
         d = self.req_agent.request_local_resource(resources, {})
-        self.assertFailure(d, InitiatorFailed)
+        self.assertFailure(d, ProtocolFailed)
         yield d
         self.assert_allocated('host', 0)
 

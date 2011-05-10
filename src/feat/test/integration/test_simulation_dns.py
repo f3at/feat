@@ -1,4 +1,3 @@
-from twisted.internet import defer
 from twisted.python import failure
 
 from feat.test.integration import common
@@ -6,7 +5,7 @@ from feat.test.integration import common
 from feat.agents.base import agent, descriptor, replay
 from feat.agents.common import dns
 from feat.agents.dns import dns_agent
-from feat.common import time
+from feat.common import defer
 from feat.common.text_helper import format_block
 
 from feat.interface.recipient import *
@@ -60,13 +59,14 @@ class Agent(agent.BaseAgent):
         return state.mapper.add_mapping(prefix, ip)
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.1)
 @common.attr('slow')
 class DNSAgentTest(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         d1 = descriptor_factory('dns_test_agent')
         d2 = descriptor_factory('dns_test_agent')
         d3 = descriptor_factory('dns_test_agent')

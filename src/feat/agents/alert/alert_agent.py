@@ -54,15 +54,20 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
 
         state.alerts = dict()
 
+    @replay.immutable
+    def startup(self, state):
+        state.labour.startup()
+
     @replay.mutable
     def append_alert(self, state, alert_msg, severity):
-        self.log("Received Alert: %s" % alert_msg)
         alert = state.alerts.get(alert_msg, None)
         if alert is None:
+            self.log("Received unknown alert: %s" % alert_msg)
             state.alerts[alert_msg] = severity
             state.labour.send(state.medium.get_configuration().mail_config,
                               alert_msg + ". Severity " + severity.name)
         else:
+            self.log("Received known alert: %s" % alert_msg)
             if severity > alert:
                 state.alerts[alert_msg] = severity
                 state.labour.send(state.medium.get_configuration().mail_config,

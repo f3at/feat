@@ -2,10 +2,12 @@ import warnings
 
 from twisted.internet.defer import *
 from twisted.internet.defer import returnValue, passthru, setDebugging
+from twisted.python import failure
 
 from feat.common import log
 
 from feat.interface.log import *
+from feat.interface.fiber import *
 
 
 def drop_result(_result, _method, *args, **kwargs):
@@ -56,6 +58,18 @@ def override_result(_param, _result):
     return _result
 
 
+def print_debug(_param, _template="", *args):
+    print _template % args
+    return _param
+
+
+def print_trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    print "%s%r" % (prefix, _param)
+    return _param
+
+
 def debug(_param, _template="", *args):
     log.logex("defer", LogLevel.debug, _template, args, log_name="debug")
     return _param
@@ -67,6 +81,31 @@ def trace(_param, _template="", *args):
     message = "%s%r" % (prefix, _param)
     log.logex("defer", LogLevel.debug, message, log_name="trace")
     return _param
+
+
+def maybeDeferred(f, *args, **kw):
+    """
+    Copied from twsited.internet.defer and add a check to detect fibers.
+    """
+    try:
+        result = f(*args, **kw)
+    except:
+        return fail(failure.Failure())
+
+    if IFiber.providedBy(result):
+        import traceback
+        frames = traceback.extract_stack()
+        msg = "%s returned a fiber instead of a deferred" % (f, )
+        if len(frames) > 1:
+            msg += "; called from %s" % (frames[-2], )
+        raise RuntimeError(msg)
+
+    if isinstance(result, Deferred):
+        return result
+    elif isinstance(result, failure.Failure):
+        return fail(result)
+    else:
+        return succeed(result)
 
 
 class Notifier(object):

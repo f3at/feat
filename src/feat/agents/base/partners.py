@@ -192,6 +192,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     log_category = "partners"
 
     default_handler = BasePartner
+    default_role = None
 
     _error_handler = error_handler
 
@@ -412,7 +413,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         # This is done outside the currect execution chain, as the
         # action performed may be arbitrary long running, and we don't want
         # to run into the timeout of goodbye request
-        state.agent.call_next(method, state.agent, blackbox)
+        state.agent.call_next(fiber.maybe_fiber, method, state.agent, blackbox)
 
     def _get_relation(self, name):
         try:

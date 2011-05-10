@@ -257,6 +257,7 @@ class Replay(log.FluLogKeeper, log.Logger):
         Factory(self, 'contractor-medium', AgencyContractor)
         Factory(self, 'manager-medium', AgencyManager)
         Factory(self, 'retrying-protocol', RetryingProtocol)
+        Factory(self, 'periodic-protocol', PeriodicProtocol)
         Factory(self, 'task-medium', AgencyTask)
         Factory(self, 'collector-medium', AgencyCollector)
         Factory(self, 'poster-medium', AgencyPoster)
@@ -472,7 +473,7 @@ class AgencyInterest(log.Logger):
     implements(ISerializable)
 
     def __eq__(self, other):
-        return self.factory == other.factory
+        return self.agent_factory == other.agent_factory
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -486,10 +487,10 @@ class AgencyInterest(log.Logger):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.factory, self.args, self.kwargs
+        return self.agent_factory, self.args, self.kwargs
 
     def recover(self, snapshot):
-        self.factory, self.args, self.kwargs = snapshot
+        self.agent_factory, self.args, self.kwargs = snapshot
 
     ### IAgencyInterest Method ###
 
@@ -551,24 +552,29 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
-    def initiate_protocol(self, factory, recipients, *args, **kwargs):
+    def initiate_protocol(self, factory, *args, **kwargs):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
+    @replay.named_side_effect('AgencyAgent.initiate_protocol')
+    def initiate_task(self, factory, *args, **kwargs):
         pass
 
     @serialization.freeze_tag('AgencyAgent.retrying_protocol')
     @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_protocol(self, factory, recipients, max_retries=None,
+    def retrying_protocol(self, factory, recipients=None, max_retries=None,
                          initial_delay=1, max_delay=None, *args, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.initiate_task')
-    @replay.named_side_effect('AgencyAgent.initiate_task')
-    def initiate_task(self, factory, *args, **kwargs):
+    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
+    @replay.named_side_effect('AgencyAgent.retrying_protocol')
+    def retrying_task(self, factory, recipients=None, max_retries=None,
+                         initial_delay=1, max_delay=None, *args, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.retrying_task')
-    @replay.named_side_effect('AgencyAgent.retrying_task')
-    def retrying_task(self, factory, max_retries=None, initial_delay=1,
-                      max_delay=None, *args, **kwargs):
+    @serialization.freeze_tag('AgencyAgent.periodic_protocol')
+    @replay.named_side_effect('AgencyAgent.periodic_protocol')
+    def periodic_protocol(self, factory, period, *args, **kwargs):
         pass
 
     @replay.named_side_effect('AgencyAgent.revoke_interest')
@@ -684,7 +690,7 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         pass
 
@@ -759,12 +765,26 @@ class RetryingProtocol(BaseReplayDummy):
     log_category="retrying-protocol"
     type_name="retrying-protocol"
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         raise RuntimeError('This should never get called')
 
-    @serialization.freeze_tag('RetryingProtocol.give_up')
-    def give_up(self):
+    @serialization.freeze_tag('RetryingProtocol.cancel')
+    def cancel(self):
+        pass
+
+
+class PeriodicProtocol(BaseReplayDummy):
+
+    log_category="periodic-protocol"
+    type_name="periodic-protocol"
+
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
+    def notify_finish(self):
+        raise RuntimeError('This should never get called')
+
+    @serialization.freeze_tag('PeriodicProtocol.cancel')
+    def cancel(self):
         pass
 
 
@@ -815,7 +835,7 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         pass
 
@@ -831,12 +851,16 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
     def ensure_state(self, states):
         pass
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         pass
 
-    @replay.named_side_effect('AgencyTask.finish')
-    def finish(self, arg):
+    @replay.named_side_effect('AgencyTask.terminate')
+    def finish(self, result=None):
+        '''Deprecated.'''
+
+    @replay.named_side_effect('AgencyTask.terminate')
+    def terminate(self, result=None):
         pass
 
     @replay.named_side_effect('AgencyTask.fail')

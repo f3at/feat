@@ -9,8 +9,10 @@ from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, manager, )
-from feat.interface.agent import AgencyAgentState
-from feat.agents.common.monitor import RestartStrategy
+from feat.agents.common import monitor
+
+from feat.interface.agent import *
+from feat.interface.agency import *
 
 
 registry = dict()
@@ -47,18 +49,33 @@ def update_descriptor(function):
     return decorated
 
 
+class BasePartner(partners.BasePartner):
+    pass
+
+
+@serialization.register
+class MonitorPartner(monitor.PartnerMixin, BasePartner):
+
+    type_name = "agent->monitor"
+
+
+class Partners(partners.Partners):
+
+    partners.has_many("monitors", "monitor_agent", MonitorPartner)
+
+
 class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
 class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
-                dependency.AgentDependencyMixin):
+                dependency.AgentDependencyMixin, monitor.AgentMixin):
 
     __metaclass__ = MetaAgent
 
     implements(agent.IAgent, generic.ITimeProvider)
 
-    partners_class = partners.Partners
+    partners_class = Partners
 
     log_category = "agent"
 
@@ -67,8 +84,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     categories = {'access': agent.Access.none,
                   'address': agent.Address.none,
                   'storage': agent.Storage.none}
-
-    restart_strategy = RestartStrategy.buryme
 
     # resources required to run the agent
     resources = {'epu': 1}
@@ -120,7 +135,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def get_full_id(self, state):
         desc = state.medium.get_descriptor()
-        return desc.doc_id + "/" + desc.instance_id
+        return desc.doc_id + u"/" + unicode(desc.instance_id)
 
     @replay.journaled
     def shutdown(self, state):
@@ -263,8 +278,16 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.medium.retrying_protocol(*args, **kwargs)
 
     @replay.immutable
+    def periodic_protocol(self, state, *args, **kwargs):
+        return state.medium.periodic_protocol(*args, **kwargs)
+
+    @replay.immutable
     def initiate_task(self, state, *args, **kwargs):
         return state.medium.initiate_task(*args, **kwargs)
+
+    @replay.immutable
+    def retrying_task(self, state, *args, **kwargs):
+        return state.medium.retrying_task(*args, **kwargs)
 
     @replay.immutable
     def register_interest(self, state, *args, **kwargs):
@@ -332,23 +355,18 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return method(desc, *args, **kwargs)
 
     @replay.journaled
-    def discover_service(self, state, factory, timeout=3, shard='lobby'):
-
-        def expire_handler(fail):
-            if fail.check(protocols.InitiatorFailed):
-                return fail.value.args[0]
-            else:
-                fail.raiseException()
-
-        initiator = manager.DiscoverService(factory, timeout)
+    def discover_service(self, state, string_or_factory,
+                         timeout=3, shard='lobby'):
+        initiator = manager.DiscoverService(string_or_factory, timeout)
         recp = recipient.Broadcast(shard=shard,
                                    protocol_id=initiator.protocol_id)
+
         f = fiber.succeed(initiator)
         f.add_callback(self.initiate_protocol, recp)
         # this contract will always finish in expired state as it is blindly
         # rejecting all it gets
         f.add_callback(manager.ServiceDiscoveryManager.notify_finish)
-        f.add_errback(expire_handler)
+        f.add_errback(self._expire_handler)
         return f
 
     @replay.immutable
@@ -362,3 +380,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def cancel_delayed_call(self, state, call_id):
         state.medium.cancel_delayed_call(call_id)
+
+    ### Private Methods ###
+
+    def _expire_handler(self, fail):
+        if fail.check(protocols.ProtocolFailed):
+            return fail.value.args[0]
+        else:
+            fail.raiseException()

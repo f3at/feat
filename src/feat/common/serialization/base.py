@@ -377,24 +377,34 @@ class Serializer(object):
 
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
-        try:
+        if freezing:
 
-            if freezing:
+            try:
                 snapshotable = ISnapshotable(value)
-                return self.flatten_instance(snapshotable, caps, freezing)
-            else:
-                serializable = ISerializable(value)
-                if self._externalizer:
-                    extid = self._externalizer.identify(serializable)
-                    if extid is not None:
-                        return self.flatten_external(extid, caps, freezing)
-                return self.flatten_instance(serializable, caps, freezing)
+            except TypeError:
+                raise TypeError("Freezing of type %s values "
+                                "not supported by %s. Value = %r."
+                                % (type(value).__name__,
+                                   reflect.canonical_name(self), value))
 
-        except TypeError:
-            raise TypeError("Type %s values not supported by serializer %s. "
-                            "Value = %r." % (type(value).__name__,
-                                             reflect.canonical_name(self),
-                                             value, ))
+            return self.flatten_instance(snapshotable, caps, freezing)
+
+        else:
+
+            try:
+                serializable = ISerializable(value)
+            except TypeError:
+                raise TypeError("Serialization of type %s values "
+                                "not supported by %s. Value = %r."
+                                % (type(value).__name__,
+                                   reflect.canonical_name(self), value))
+
+            if self._externalizer:
+                extid = self._externalizer.identify(serializable)
+                if extid is not None:
+                    return self.flatten_external(extid, caps, freezing)
+
+            return self.flatten_instance(serializable, caps, freezing)
 
     def flatten_unknown_key(self, value, caps, freezing):
         # Flatten enums

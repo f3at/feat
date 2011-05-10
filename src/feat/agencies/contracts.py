@@ -6,7 +6,7 @@ from twisted.python import components, failure
 from zope.interface import implements
 
 from feat.agents.base import message, recipient, replay
-from feat.common import log, enum, time, serialization
+from feat.common import log, enum, time, serialization, defer
 from feat.agencies import common, protocols
 
 from feat.agencies.interface import *
@@ -117,7 +117,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                     common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                     common.TransientInitiatorMediumBase):
 
-    implements(IAgencyManager, IListener, ISerializable)
+    implements(ISerializable, IAgencyManager,
+               IAgencyProtocolInternal, IAgencyListenerInternal)
 
     log_category = "manager-medium"
     type_name = "manager-medium"
@@ -134,8 +135,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.agent = agency_agent
         self.factory = factory
-        self.recipients = recipients
-        self.expected_bids = self._count_expected_bids(recipients)
+        self.recipients = IRecipients(recipients)
+        self.expected_bids = self._count_expected_bids(self.recipients)
         self.args = args
         self.kwargs = kwargs
 
@@ -147,7 +148,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.journal_protocol_created(self.factory, self,
                                             *self.args, **self.kwargs)
         manager = self.factory(self.agent.get_agent(), self)
-        self.agent.register_listener(self)
+        self.agent.register_protocol(self)
 
         self.manager = manager
         self.log_name = manager.__class__.__name__
@@ -155,10 +156,10 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self._set_state(ContractState.initiated)
         timeout = time.future(self.manager.initiate_timeout)
-        error = InitiatorExpired("Timeout exceeded waiting for "
+        error = ProtocolExpired("Timeout exceeded waiting for "
                                  "initate() to send the announcement")
-        self._expire_at(timeout, self._error_handler,
-                        ContractState.wtf, failure.Failure(error))
+        self._expire_at(timeout, ContractState.wtf,
+                        self._error_handler, failure.Failure(error))
 
         self.call_next(self._call, self.manager.initiate,
                        *self.args, **self.kwargs)
@@ -183,7 +184,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         bid = self._send_message(announce, exp_time)
 
         self._cancel_expiration_call()
-        self._setup_expiration_call(exp_time, self._on_announce_expire)
+        self._setup_expiration_call(exp_time, None, self._on_announce_expire)
 
         return bid
 
@@ -216,8 +217,8 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(ContractState.granted)
 
         expiration_time = time.future(self.manager.grant_timeout)
-        self._expire_at(expiration_time, self._on_grant_expire,
-                        ContractState.aborted)
+        self._expire_at(expiration_time, ContractState.aborted,
+                        self._on_grant_expire)
 
         # send a grant event to the contractors
         for bid, grant in grants:
@@ -275,7 +276,14 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_recipients(self):
         return self.recipients
 
-    ### IListener Methods ###
+    ### IAgencyProtocolInternal Methods ###
+
+    def get_agent_side(self):
+        return self.manager
+
+    # notify_finish() implemented in common.TransientInitiatorMediumBase
+
+    ### IAgencyListenerInternal Methods ###
 
     def on_message(self, msg):
         mapping = {
@@ -301,14 +309,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': ContractState.cancelled},
         }
         self._event_handler(mapping, msg)
-
-    def get_session_id(self):
-        return self.session_id
-
-    def get_agent_side(self):
-        return self.manager
-
-    # notify_finish() implemented in common.TransientInitiatorMediumBase
 
     ### ISerializable Methods ###
 
@@ -409,18 +409,24 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _close_announce_period(self):
         expiration_time = max(map(lambda bid: bid.expiration_time,
                                   self.contractors))
-        self._expire_at(expiration_time, self.manager.expired,
-                        ContractState.expired)
+        self._expire_at(expiration_time, ContractState.expired,
+                        self.manager.expired)
         self._set_state(ContractState.closed)
         self._call(self.manager.closed)
+
+    def _run_and_terminate(self, method, *args, **kwargs):
+        d = self._call(method, *args, **kwargs)
+        d.addBoth(ProtocolFailed)
+        d.addCallback(self._terminate)
 
     def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering manager")
-        self.agent.unregister_listener(self.session_id)
+        self.agent.unregister_protocol(self)
 
         common.TransientInitiatorMediumBase._terminate(self, result)
+        return defer.succeed(self)
 
     def _count_expected_bids(self, recipients):
         '''
@@ -441,7 +447,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                        common.TransientInterestedMediumBase):
 
-    implements(IAgencyContractor, IListener, ISerializable)
+    implements(ISerializable, IAgencyContractor,
+               IAgencyProtocolInternal, IAgencyListenerInternal)
 
     log_category = "contractor-medium"
     type_name = "contractor-medium"
@@ -498,8 +505,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.own_bid = self._send_message(bid, expiration_time)
 
         self._cancel_expiration_call()
-        self._expire_at(expiration_time, self.contractor.bid_expired,
-                        ContractState.expired)
+        self._expire_at(expiration_time, ContractState.expired,
+                        self.contractor.bid_expired)
 
         return self.own_bid
 
@@ -556,8 +563,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.report = self._send_message(report, expiration_time)
 
         self._cancel_expiration_call()
-        self._expire_at(expiration_time, self.contractor.aborted,
-                        ContractState.aborted)
+        self._expire_at(expiration_time, ContractState.aborted,
+                        self.contractor.aborted)
         return self.report
 
     @serialization.freeze_tag('AgencyContractor.update_manager_address')
@@ -569,7 +576,14 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                        self.recipients, recp)
             self.recipients = recp
 
-    ### IListener Methods ###
+    ### IAgencyProtocolInternal Methods ###
+
+    def get_agent_side(self):
+        return self.contractor
+
+    # notify_finish() implemented in common.TransientInterestedMediumBase
+
+    ### IAgencyListenerInternal Methods ###
 
     def on_message(self, msg):
         mapping = {
@@ -599,14 +613,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         }
         self._event_handler(mapping, msg)
 
-    def get_session_id(self):
-        return self.session_id
-
-    def get_agent_side(self):
-        return self.contractor
-
-    # notify_finish() implemented in common.TransientInterestedMediumBase
-
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -624,8 +630,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.log("Unregistering contractor")
         self._cancel_reporter()
-        self.agent.unregister_listener(self.session_id)
+        self.agent.unregister_protocol(self)
         common.TransientInterestedMediumBase._terminate(self, result)
+        return defer.succeed(self)
 
     ### Update reporter stuff ###
 
@@ -663,9 +670,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Hooks for messages comming in ###
 
     def _on_announce(self, announcement):
-        self._expire_at(announcement.expiration_time,
-                        self.contractor.announce_expired,
-                        ContractState.closed)
+        self._expire_at(announcement.expiration_time, ContractState.closed,
+                        self.contractor.announce_expired)
         self._call(self.contractor.announced, announcement)
 
     def _on_grant(self, grant):
@@ -674,8 +680,8 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         up reporter if necessary.
         '''
         self._cancel_expiration_call()
-        self._expire_at(grant.expiration_time, self.contractor.cancelled,
-                        ContractState.expired, grant)
+        self._expire_at(grant.expiration_time, ContractState.expired,
+                        self.contractor.cancelled, grant)
 
         self.grant = grant
         # this is necessary for nested contracts to work with handing
@@ -698,6 +704,11 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _on_cancel_in_completed(self, cancellation):
         self._run_and_terminate(self.contractor.aborted)
+
+    def _run_and_terminate(self, method, *args, **kwargs):
+        d = self._call(method, *args, **kwargs)
+        d.addBoth(ProtocolFailed)
+        d.addCallback(self._terminate)
 
 
 class AgencyManagerFactory(protocols.BaseInitiatorFactory):

@@ -1,21 +1,23 @@
 from zope.interface import implements
-from feat.common import log, serialization, reflect
-from feat.agents.base import protocol, replay, message
+
+from feat.agents.base import protocols, replay, message
+from feat.common import serialization, reflect
 
 from feat.interface.manager import *
+from feat.interface.protocols import *
 
 
-class Meta(type(replay.Replayable)):
+class MetaManager(type(replay.Replayable)):
 
     implements(IManagerFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
         serialization.register(cls)
-        super(Meta, cls).__init__(name, bases, dct)
+        super(MetaManager, cls).__init__(name, bases, dct)
 
 
-class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
+class BaseManager(protocols.BaseInitiator):
     """
     I am a base class for managers of contracts.
 
@@ -24,14 +26,10 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
                          contract; see L{feat.agents.contractor.BaseContractor}
     @type protocol_type: str
     """
-    __metaclass__ = Meta
+
+    __metaclass__ = MetaManager
 
     implements(IAgentManager)
-
-    announce = None
-    grant = None
-    report = None
-    agent = None
 
     log_category = "manager"
     protocol_type = "Contract"
@@ -40,22 +38,6 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
     initiate_timeout = 10
     announce_timeout = 10
     grant_timeout = 10
-
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
-    @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see: L{manager.IAgentManager}'''
 
     def bid(self, bid):
         '''@see: L{manager.IAgentManager}'''
@@ -78,12 +60,16 @@ class BaseManager(log.Logger, protocol.InitiatorBase, replay.Replayable):
 
 @serialization.register
 class DiscoverService(serialization.Serializable):
+
     implements(IManagerFactory)
 
-    def __init__(self, factory, timeout):
-        factory = IManagerFactory(factory)
-        self.protocol_type = factory.protocol_type
-        self.protocol_id = 'discover-' + factory.protocol_id
+    protocol_type = "Contract"
+
+    def __init__(self, identifier, timeout):
+        if not isinstance(identifier, str):
+            identifier = IInitiatorFactory(identifier).protocol_id
+
+        self.protocol_id = 'discover-' + identifier
         self.timeout = timeout
 
     def __call__(self, agent, medium):

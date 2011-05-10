@@ -4,11 +4,12 @@ import StringIO
 import uuid
 
 from feat.common import log, manhole, defer, reflect, time
-from feat.agencies import agency, journaler
+from feat.agencies import journaler
 from feat.agencies.emu import messaging, database
 from feat.test import factories
 from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
+from feat.simulation import agency
 
 from feat.interface.agency import *
 from feat.interface.recipient import *

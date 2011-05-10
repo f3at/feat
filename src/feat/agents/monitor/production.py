@@ -1,6 +1,7 @@
 from zope.interface import implements, classProvides
 
-from feat.agents.base import replay, collector, labour
+from feat.agencies import periodic
+from feat.agents.base import replay, collector, labour, task
 from feat.common import serialization
 
 from feat.agents.monitor.interface import *
@@ -9,33 +10,40 @@ from feat.interface.protocols import *
 
 class Patient(object):
 
-    def __init__(self, agent_id, instance_id,
+    implements(IPatient)
+
+    def __init__(self, agent_id, instance_id, payload,
                  beat_time, period=None, max_skip=None):
         self.agent_id = agent_id
         self.instance_id = instance_id
+        self.payload = payload
         self.period = period or DEFAULT_HEARTBEAT_PERIOD
         self.max_skip = max_skip or DEFAULT_MAX_SKIPPED_HEARTBEAT
         self.last_beat = beat_time
         self.last_state = PatientState.alive
         self.state = PatientState.alive
+        self.counter = 0
 
     def beat(self, beat_time):
+        self.counter += 1
         if beat_time > self.last_beat:
             self.last_beat = beat_time
 
     def check(self, ref_time):
         delta = ref_time - self.last_beat
-
         if delta > self.period:
             if delta > (self.max_skip * self.period):
                 state = PatientState.dead
-            else:
+            elif delta > (1.5 * self.period):
                 state = PatientState.dying
+            else:
+                state = PatientState.alive
         else:
             state = PatientState.alive
 
-        self.last_state, last_state = state, self.last_state
-        return last_state, state
+        self.last_state, self.state = self.state, state
+
+        return self.last_state, self.state
 
 
 @serialization.register
@@ -51,6 +59,7 @@ class HeartMonitor(labour.BaseLabour):
         self._patients = {}
         self._check_period = check_period or DEFAULT_CHECK_PERIOD
         self._next_check = None
+        self._task = None
 
     ### Public Methods ###
 
@@ -63,21 +72,36 @@ class HeartMonitor(labour.BaseLabour):
     ### IHeartMonitor Methods ###
 
     @replay.side_effect
-    def initiate(self):
-        agent = self.patron
-        agent.register_interest(HeartBeatCollector, self)
-        self._periodic_check()
+    def startup(self):
+        self.resume()
 
     @replay.side_effect
     def cleanup(self):
-        self._cancel_check()
+        self.pause()
 
     @replay.side_effect
-    def add_patient(self, agent_id, instance_id, period=None, max_skip=None):
+    def pause(self):
+        if self._task:
+            self._task.cancel()
+            self._task = None
+
+    @replay.side_effect
+    def resume(self):
+        if self._task is None:
+            agent = self.patron
+            agent.register_interest(HeartBeatCollector, self)
+            f = periodic.PeriodicProtocolFactory(CheckPatientTask,
+                                                 period=self._check_period,
+                                                 busy=False)
+            self._task = agent.initiate_protocol(f, self)
+
+    @replay.side_effect
+    def add_patient(self, agent_id, instance_id, payload=None,
+                    period=None, max_skip=None):
         self.debug("Start agent's %s/%s heart monitoring",
                    agent_id, instance_id)
         key = (agent_id, instance_id)
-        patient = Patient(agent_id, instance_id,
+        patient = Patient(agent_id, instance_id, payload,
                           self.patron.get_time(), period, max_skip)
         self._patients[key] = patient
 
@@ -93,7 +117,9 @@ class HeartMonitor(labour.BaseLabour):
         dead_patients = []
         ref_time = self.patron.get_time()
         for patient in self._patients.itervalues():
-            agent_id, instance_id = patient.agent_id, patient.instance_id
+            agent_id = patient.agent_id
+            instance_id = patient.instance_id
+            payload = patient.payload
             before, after = patient.check(ref_time)
             if before == after:
                 continue
@@ -102,11 +128,13 @@ class HeartMonitor(labour.BaseLabour):
                              agent_id, instance_id)
                 continue
             if after is PatientState.dead:
-                self.patron.on_heart_failed(agent_id, instance_id)
+                self.patron.on_heart_failed(agent_id, instance_id, payload)
                 dead_patients.append(patient)
         for patient in dead_patients:
             self.remove_patient(patient.agent_id, patient.instance_id)
 
+    def iter_patients(self):
+        return self._patients.itervalues()
 
     ### Private Methods ###
 
@@ -125,9 +153,17 @@ class HeartMonitor(labour.BaseLabour):
         self._next_check = None
 
 
+class CheckPatientTask(task.BaseTask):
+
+    protocol_id = "monitor_agent:check-patient"
+
+    def initiate(self, monitor):
+        monitor.check_patients()
+
+
 class HeartBeatCollector(collector.BaseCollector):
 
-    protocol_id = 'heart-beat'
+    protocol_id = "heart-beat"
     interest_type = InterestType.private
 
     @replay.mutable
@@ -136,7 +172,7 @@ class HeartBeatCollector(collector.BaseCollector):
 
     @replay.immutable
     def notified(self, state, msg):
-        agent_id, instance_id, index = msg.payload
-        self.log("Hard beat %d received from agent %s/%s",
-                 index, agent_id, instance_id)
+        agent_id, instance_id = msg.payload
+        self.log("Hard beat received from agent %s/%s",
+                 agent_id, instance_id)
         state.monitor.beat(agent_id, instance_id)

@@ -10,12 +10,12 @@ from feat.interface.protocols import InterestType
 
 
 @serialization.register
-class ShardPartner(partners.BasePartner):
+class ShardPartner(agent.BasePartner):
 
     type_name = 'raage->shard'
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
@@ -35,6 +35,12 @@ class ResourcesAllocationAgent(agent.BaseAgent, rpc.AgentMixin):
         state.medium.register_interest(
             contractor.Service(AllocationContractor))
         state.medium.register_interest(AllocationContractor)
+
+        return self.initiate_partners()
+
+    def startup(self):
+        agent.BaseAgent.startup(self)
+        self.startup_monitoring()
 
     @replay.immutable
     def get_list_of_hosts_in_shard(self, state):

@@ -120,7 +120,7 @@ class Agency(agency.Agency):
                                    encoding='zip')
 
         super_init = jour.initiate()
-        super_init.addBoth(defer.drop_result, agency.Agency.initiate,
+        super_init.addBoth(defer.drop_param, agency.Agency.initiate,
                            self, mesg, db, jour)
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.on_killed)

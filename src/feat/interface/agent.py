@@ -147,17 +147,18 @@ class IAgencyAgent(Interface):
     def revoke_interest(factory):
         '''Revokes any interest in a contract or a request.'''
 
-    def initiate_protocol(factory, recipients, *args, **kwargs):
+    def initiate_protocol(factory, *args, **kwargs):
         '''
         Initiates a contract or a request.
+        Arguments varies in function of the specified factory.
 
-        @type recipients: L{IRecipients}
         @rtype: L{IInitiator}
         @returns: Instance of protocols initiator
         '''
 
-    def retrying_protocol(self, factory, recipients, max_retries,
-                         initial_delay, max_delay, args, kwargs):
+    def retrying_protocol(self, factory, recipients=None,
+                          max_retries=None, initial_delay=1,
+                          max_delay=None, args=None, kwargs=None):
         '''
         Initiates the protocol which will get restart if it fails.
         The restart will be delayed with exponential growth.
@@ -170,26 +171,10 @@ class IAgencyAgent(Interface):
         @returns: L{RetryingProtocol}
         '''
 
-    def initiate_task(factory, *args, **kwargs):
+    def periodic_protocol(self, factory, period, *args, **kwargs):
         '''
-        Initiates a task
-
-        @rtype: L{IInitiator}
-        @returns: Instance of task initiator
-        '''
-
-    def retrying_task(self, factory, max_retries,
-                      initial_delay, max_delay, args, kwargs):
-        '''
-        Initiates the task which will get restart if it fails.
-        The restart will be delayed with exponential growth.
-
-        Extra params comparing to L{IAgencyAgent.initiate_task}:
-
-        @param max_retries: After how many retries to give up. Def. None: never
-        @param initial_delay: Delay before the first retry.
-        @param max_delay: Miximum delay to wait (above it it will not grow).
-        @returns: L{RetryingProtocol}
+        Will start specified protocol periodically.
+        @returns: L{PeriodicProtocol}
         '''
 
     def save_document(document):
@@ -245,7 +230,7 @@ class IAgencyAgent(Interface):
 
         1. Revoke all interests.
         2. Terminate all retrying protocols.
-        3. Kill all listeners (with making them expire instantly).
+        3. Kill all protocols (with making them expire instantly).
         4. Run the IAgent.shutdown() and wait for it to finish.
         5. Run the IAgent.unregister() - responsibility of this method to
            perform agent-side shutdown part common to all agents.

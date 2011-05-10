@@ -1,6 +1,7 @@
 from zope.interface import Interface, Attribute
 
 from feat.common import enum
+from feat.interface import protocols
 
 __all__ = ["ContractState", "IContractPeer"]
 
@@ -58,7 +59,7 @@ class ContractState(enum.Enum):
      aborted, wtf) = range(16)
 
 
-class IContractPeer(Interface):
+class IContractPeer(protocols.IAgencyProtocol):
     '''Define common interface between both peers of the contract protocol.'''
 
     agent = Attribute("Reference to the owner agent")

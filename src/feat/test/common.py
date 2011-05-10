@@ -402,7 +402,7 @@ class AgencyTestHelper(object):
 
     def setUp(self):
         self.agency = agency.Agency()
-        self.session_id = None
+        self.guid = None
         return self.agency.initiate()
 
     def setup_endpoint(self):
@@ -470,8 +470,8 @@ class AgencyTestHelper(object):
 
     def recv_announce(self, expiration_time=None, traversal_id=None):
         msg = message.Announcement()
-        self.session_id = str(uuid.uuid1())
-        msg.sender_id = self.session_id
+        self.guid = str(uuid.uuid1())
+        msg.sender_id = self.guid
         msg.traversal_id = traversal_id or str(uuid.uuid1())
 
         return self.recv_msg(msg, expiration_time=expiration_time)
@@ -479,23 +479,23 @@ class AgencyTestHelper(object):
     def recv_grant(self, _, update_report=None):
         msg = message.Grant()
         msg.update_report = update_report
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_rejection(self, _):
         msg = message.Rejection()
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_cancel(self, _, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_ack(self, _):
         msg = message.Acknowledgement()
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_notification(self, result=None, traversal_id=None):

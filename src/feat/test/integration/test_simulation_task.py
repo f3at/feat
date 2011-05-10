@@ -57,22 +57,23 @@ class Agent(agent.BaseAgent, notifier.AgentMixin):
         state.task_result1 = None
         state.task_result2 = None
 
-        t = state.medium.initiate_task(Task, 18)
+        t = state.medium.initiate_protocol(Task, 18)
         f = fiber.succeed(t)
         f.add_callback(Task.notify_finish)
         f.add_callback(self.set_result, "task_result1")
-        f.add_callback(fiber.drop_param, state.medium.initiate_task, Task, 42)
+        f.add_callback(fiber.drop_param,
+                       state.medium.initiate_protocol, Task, 42)
         f.add_callback(Task.notify_finish)
         f.add_callback(self.set_result, "task_result2")
         return f
 
     @replay.immutable
     def start_task(self, state, value):
-        return state.medium.initiate_task(Task, value)
+        return state.medium.initiate_protocol(Task, value)
 
     @replay.journaled
     def run_observed_task(self, state):
-        task = state.medium.initiate_task(WaitingTask)
+        task = state.medium.initiate_protocol(WaitingTask)
         state.observer = state.medium.observe(task.notify_finish)
         return state.observer
 

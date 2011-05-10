@@ -1,20 +1,19 @@
 from twisted.python.failure import Failure
-
 from zope.interface import implements
 
-from feat.common import log, reflect, serialization, fiber, error_handler
-from feat.agents.base import replay, protocol, message, recipient
+from feat.agents.base import replay, protocols, message, recipient
+from feat.common import reflect, serialization, fiber
 
-from feat.interface.requester import *
 from feat.interface.protocols import *
+from feat.interface.requester import *
 
 
-def say_goodbye(agent, recp, payload):
+def say_goodbye(agent, recp, payload=None):
     origin = agent.get_own_address()
     return _notify_partner(agent, recp, 'goodbye', origin, payload)
 
 
-def notify_died(agent, recp, origin, payload):
+def notify_died(agent, recp, origin, payload=None):
     return _notify_partner(agent, recp, 'died', origin, payload)
 
 
@@ -22,7 +21,7 @@ def notify_restarted(agent, recp, origin, new_address):
     return _notify_partner(agent, recp, 'restarted', origin, new_address)
 
 
-def notify_burried(agent, recp, origin, payload):
+def notify_burried(agent, recp, origin, payload=None):
     return _notify_partner(agent, recp, 'burried', origin, payload)
 
 
@@ -36,41 +35,26 @@ def ping(agent, recp):
 ### Private ###
 
 
-class Meta(type(replay.Replayable)):
+class MetaRequester(type(replay.Replayable)):
     implements(IRequesterFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
         serialization.register(cls)
-        super(Meta, cls).__init__(name, bases, dct)
+        super(MetaRequester, cls).__init__(name, bases, dct)
 
 
-class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
+class BaseRequester(protocols.BaseInitiator):
 
-    __metaclass__ = Meta
+    __metaclass__ = MetaRequester
+
     implements(IAgentRequester)
 
     log_category = "requester"
+
+    protocol_type = "Request"
+
     timeout = 0
-    protocol_id = None
-
-    _error_handler = error_handler
-
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
-    @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see: L{IAgentRequester}'''
 
     def got_reply(self, reply):
         '''@see: L{IAgentRequester}'''
@@ -111,18 +95,18 @@ class PartnershipProtocol(BaseRequester):
         msg = message.RequestMessage(payload=payload)
         state.medium.request(msg)
 
-    @replay.immutable
+    @replay.journaled
     def got_reply(self, state, reply):
-        payload = reply.payload
-        if isinstance(payload, Failure):
-            self._error_handler(payload)
-        return reply.payload
+        result = reply.payload["result"]
+        if isinstance(result, Failure):
+            self._error_handler(result)
+        return result
 
 
 def _notify_partner(agent, recp, notification_type, origin, payload):
 
     def _ignore_initiator_failed(fail):
-        if fail.check(InitiatorFailed):
+        if fail.check(ProtocolFailed):
             agent.log('Swallowing %r expection.', fail.value)
             return None
         else:

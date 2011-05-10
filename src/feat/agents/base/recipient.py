@@ -129,6 +129,9 @@ class Recipients(serialization.Serializable, pb.Copyable):
     def __len__(self):
         return len(self._recipients)
 
+    def __hash__(self):
+        return hash(self._recipients)
+
     def __eq__(self, other):
         for el1, el2 in zip(self._recipients, other._recipients):
             if el1 != el2:

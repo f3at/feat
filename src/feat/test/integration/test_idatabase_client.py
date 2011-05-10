@@ -190,7 +190,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.IntegrationTest.setUp(self)
+        yield common.IntegrationTest.setUp(self)
         if database is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)

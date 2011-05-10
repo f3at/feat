@@ -2,14 +2,14 @@ import smtplib
 
 from zope.interface import implements, classProvides
 
-from feat.agents.base import replay
+from feat.agents.base import replay, labour
 from feat.common import defer, serialization, log
 
 from feat.agents.alert.interface import *
 
 
 @serialization.register
-class Labour(log.Logger, serialization.Serializable):
+class Labour(labour.BaseLabour):
 
     classProvides(IEmailSenderLabourFactory)
     implements(IEmailSenderLabour)

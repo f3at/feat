@@ -89,6 +89,7 @@ class DNSAgent(agent.BaseAgent):
     @replay.journaled
     def startup(self, state):
         agent.BaseAgent.startup(self)
+        self.startup_monitoring()
         if state.labour.startup(state.port):
             self.info("Listening on UDP port %d", state.port)
             return

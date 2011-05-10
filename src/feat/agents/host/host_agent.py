@@ -29,18 +29,18 @@ DEFAULT_CATEGORIES = {'access': Access.none,
 
 
 @serialization.register
-class HostedPartner(partners.BasePartner):
+class HostedPartner(agent.BasePartner):
     '''
     This class is for agents we are partners with only because we started them.
     If your patnership is meant to represent sth more you should implement the
     appriopriate handler.
     '''
 
-    type_name = 'host->some_agent'
+    type_name = 'host->agent'
 
 
 @serialization.register
-class ShardPartner(partners.BasePartner):
+class ShardPartner(agent.BasePartner):
 
     type_name = 'host->shard'
 
@@ -75,7 +75,7 @@ class ShardPartner(partners.BasePartner):
         agent.callback_event('shard_agent_restarted', self.recipient)
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
     default_handler = HostedPartner
 
@@ -113,7 +113,10 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def startup(self, state):
-        return self.start_join_shard_manager()
+        agent.BaseAgent.startup(self)
+        f = self.start_join_shard_manager()
+        f.add_callback(fiber.drop_param, self.startup_monitoring)
+        return f
 
     @replay.journaled
     def start_join_shard_manager(self, state):
@@ -130,7 +133,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def resolve_missing_shard_agent_problem(self, state, host_recipients):
-        task = state.medium.initiate_task(
+        task = state.medium.initiate_protocol(
             problem.CollectiveSolver, MissingShard(self), host_recipients)
         return task.notify_finish()
 
@@ -139,7 +142,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
                                    agent_id, monitor):
         task = getattr(state, 'restart_shard_task', None)
         if task is None or task.finished():
-            state.restart_shard_task = state.medium.initiate_task(
+            state.restart_shard_task = state.medium.initiate_protocol(
                 problem.CollectiveSolver,
                 RestartShard(self, agent_id, monitor),
                 host_recipients)
@@ -181,8 +184,8 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
-        task = self.initiate_task(StartAgent, doc_id, allocation_id,
-                                  args=args, kwargs=kwargs)
+        task = self.initiate_protocol(StartAgent, doc_id, allocation_id,
+                                      args=args, kwargs=kwargs)
         return task.notify_finish()
 
     @replay.immutable
@@ -324,6 +327,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 class StartAgent(task.BaseTask):
 
     timeout = 10
+    protocol_id = "host_agent.start-agent"
 
     @replay.entry_point
     def initiate(self, state, doc_id, allocation_id,

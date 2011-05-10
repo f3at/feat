@@ -3,7 +3,7 @@ from zope.interface import implements
 from feat import everything
 from feat.agents.base import replay, descriptor, agent
 from feat.agents.common import shard
-from feat.common import defer, first, delay
+from feat.common import defer, first, time
 from feat.common.text_helper import format_block
 
 from feat.interface.recipient import *
@@ -53,7 +53,7 @@ class Agent(agent.BaseAgent):
         state.old_shards.append(recipient)
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 class StructuralPartners(common.SimulationTest):
 
     timeout = 30
@@ -106,10 +106,11 @@ class StructuralPartners(common.SimulationTest):
         self.assertEqual(1, self.count_agents('host_agent'))
 
 
+@common.attr(timescale=0.05)
 class TestShardNotification(common.SimulationTest):
 
     def prolog(self):
-        delay.time_scale = 0.4
+        pass
 
     @defer.inlineCallbacks
     def testNotifications(self):

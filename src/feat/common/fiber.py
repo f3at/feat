@@ -68,6 +68,18 @@ def override_result(_param, _result):
     return _result
 
 
+def print_debug(_param, _template="", *args):
+    print _template % args
+    return _param
+
+
+def print_trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    print "%s%r" % (prefix, _param)
+    return _param
+
+
 def debug(_param, _template="", *args):
     log.logex("fiber", LogLevel.debug, _template, args, log_name="debug")
     return _param
@@ -588,19 +600,14 @@ class Fiber(object):
 
     def _trace_call_param(self, _param, _, _attr_name, *args, **kwargs):
         _method = getattr(_param, _attr_name, None)
-        return self._trace_call(_method, *args, **kwargs)
+        if _method:
+            return self._trace_call(_method, *args, **kwargs)
 
     def _trace_inject_param(self, _param, _, _index, _method, *args, **kwargs):
         args = args[:_index] + (_param, ) + args[_index:]
         return self._trace_call(_method, *args, **kwargs)
 
-    def _trace_override_result(self, _param, _, _result):
-        return
-
-    def _trace_debug(self, _param, _, _template="", *args):
-        return
-
-    def _trace_trace(self, _param, _, _template="", *args):
+    def _trace_ignore(self, *args, **kwargs):
         return
 
     def _trace_call(self, _method, *args, **kwargs):
@@ -612,7 +619,8 @@ class Fiber(object):
             line_num = 0
 
         text = text_helper.format_call(_method, *args, **kwargs)
-        log.logex("fiber", LogLevel.log, text, log_name=self.fiber_id,
+        log_name = self.fiber_id[:27] + "..."
+        log.logex("fiber", LogLevel.log, text, log_name=log_name,
                   file_path=file_path, line_num=line_num)
 
     _trace_lookup = {drop_result: _trace_drop_param,
@@ -621,9 +629,12 @@ class Fiber(object):
                      bridge_param: _trace_bridge_param,
                      call_param: _trace_call_param,
                      inject_param: _trace_inject_param,
-                     override_result: _trace_override_result,
-                     debug: _trace_debug,
-                     trace: _trace_trace}
+                     override_result: _trace_ignore,
+                     print_debug: _trace_ignore,
+                     print_trace: _trace_ignore,
+                     debug: _trace_ignore,
+                     trace: _trace_ignore}
+
 
 class FiberList(Fiber):
     '''List of fiber.
@@ -753,5 +764,3 @@ class FiberList(Fiber):
                         callbackArgs=args, errbackArgs=args)
 
         return dl
-
-

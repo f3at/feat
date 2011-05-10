@@ -11,7 +11,7 @@ class ICollectorFactory(protocols.IInterest):
     It is passed as a parameter during registration of interest'''
 
 
-class IAgencyCollector(Interface):
+class IAgencyCollector(protocols.IAgencyProtocol):
     '''Agency part of a notification collector. Used by L{IAgentCollector}.'''
 
 

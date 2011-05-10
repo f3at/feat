@@ -1,11 +1,13 @@
 from zope.interface import implements
 
+from feat.agencies import periodic
 from feat.agents.base import message
 from feat.agents.monitor import pacemaker
-from feat.common import journal, log
+from feat.common import journal, log, defer
 
 from feat.agents.monitor.interface import *
 from feat.interface.agent import *
+from feat.interface.task import *
 
 from feat.test import common
 
@@ -29,10 +31,16 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.calls = {}
 
         self.messages = []
-        self.protocol = None
-        self.task = None
+
+        self.poster = None
+        self.canceled = False
 
     ### Public Methods ###
+
+    def start_task(self):
+        assert self.poster is not None
+        task = pacemaker.HeartBeatTask(self, self)
+        return task.initiate(self.poster)
 
     def do_calls(self):
         calls = self.calls.values()
@@ -42,17 +50,22 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 
     ### IAgent Methods ###
 
-    def initiate_protocol(self, factory, recipient, *args, **kwargs):
-        assert self.protocol is None
-        self.protocol = factory(self, self)
-        self.protocol.initiate(*args, **kwargs)
-        return self.protocol
+    def initiate_protocol(self, factory, *args, **kwargs):
+        if factory is pacemaker.HeartBeatPoster:
+            self.poster = pacemaker.HeartBeatPoster(self, self)
+            # Remove recipient
+            args = args[1:]
+            self.poster.initiate(*args, **kwargs)
+            return self.poster
 
-    def initiate_task(self, factory, *args, **kwargs):
-        assert self.task is None
-        self.task = factory(self, self)
-        self.task.initiate(*args, **kwargs)
-        return self.task
+        if isinstance(factory, periodic.PeriodicProtocolFactory):
+            if factory.factory is pacemaker.HeartBeatTask:
+                return self
+
+        raise Exception("Unexpected protocol")
+
+    def periodic_protocol(self, factory, period, *args, **kwargs):
+        raise Exception("Unexpected protocol")
 
     def get_full_id(self):
         return "%s/%s" % (self.descriptor.doc_id, self.descriptor.instance_id)
@@ -60,24 +73,13 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
     def get_descriptor(self):
         return self.descriptor
 
-    def get_time(self):
-        raise NotImplementedError()
-
-    def call_later(self, time, fun, *args, **kwargs):
-        payload = (time, fun, args, kwargs)
-        callid = id(payload)
-        self.calls[callid] = payload
-        return callid
-
-    def cancel_delayed_call(self, callid):
-        if callid in self.calls:
-            del self.calls[callid]
+    def _terminate(self, result):
+        pass
 
     ### Mediums Methods ###
 
-    def finish(self, task):
-        assert task is self.task
-        self.task = None
+    def cancel(self):
+        self.canceled = True
 
     def post(self, msg):
         self.messages.append(msg)
@@ -85,18 +87,18 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 
 class TestPacemaker(common.TestCase):
 
+    @defer.inlineCallbacks
     def testPacemaker(self):
         descriptor = DummyDescriptor("aid", "iid")
         patron = DummyPatron(self, descriptor)
         labour = pacemaker.Pacemaker(patron, "monitor", 3)
-        labour.initiate()
+        labour.startup()
 
-        self.assertTrue(isinstance(patron.protocol, pacemaker.HeartBeatPoster))
-        self.assertTrue(isinstance(patron.task, pacemaker.HeartBeatTask))
+        yield patron.start_task()
+
         self.assertEqual(len(patron.messages), 1)
         msg = patron.messages.pop()
-        self.assertEqual(msg.payload, ("aid", "iid", 0))
-        self.assertEqual(len(patron.calls), 1)
+        self.assertEqual(msg.payload, ("aid", "iid"))
         call = patron.calls.itervalues().next()
         self.assertEqual(call[0], 3)
 
@@ -104,14 +106,13 @@ class TestPacemaker(common.TestCase):
 
         self.assertEqual(len(patron.messages), 1)
         msg = patron.messages.pop()
-        self.assertEqual(msg.payload, ("aid", "iid", 1))
+        self.assertEqual(msg.payload, ("aid", "iid"))
         self.assertEqual(len(patron.calls), 1)
 
+        self.assertFalse(patron.canceled)
         labour.cleanup()
-        self.assertEqual(patron.task, None)
-        self.assertEqual(len(patron.calls), 0)
+        self.assertTrue(patron.canceled)
 
         # Double cleanup should work
         labour.cleanup()
-        self.assertEqual(patron.task, None)
-        self.assertEqual(len(patron.calls), 0)
+        self.assertTrue(patron.canceled)

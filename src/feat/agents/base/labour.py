@@ -7,7 +7,7 @@ class BaseLabour(log.Logger, serialization.Serializable):
         log.Logger.__init__(self, patron)
         self.patron = patron
 
-    def initiate(self):
+    def startup(self):
         """Overridden by sub-classes."""
 
     def cleanup(self):

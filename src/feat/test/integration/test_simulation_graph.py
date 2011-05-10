@@ -401,7 +401,8 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
 @attr('slow')
 class TestProblemResolving(common.SimulationTest, CommonMixin):
 
-    configurable_attributes = ['hosts']
+    configurable_attributes = ['hosts'] \
+                              + common.SimulationTest.configurable_attributes
 
     timeout = 40
 

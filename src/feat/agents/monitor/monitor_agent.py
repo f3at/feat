@@ -5,17 +5,22 @@ from zope.interface import implements, classProvides
 import operator
 import copy
 
-from feat.agents.base import (agent, contractor, partners, task, problem,
-                              requester, message, replay, recipient, )
-from feat.agents.common import raage, host, rpc, shard
-from feat.common import fiber, serialization, defer, time
+from feat.agents.base import agent, partners, document, replay, recipient
+from feat.agents.base import dependency, problem, task, contractor, requester
+from feat.agents.base import dbtools
+from feat.agents.common import raage, host, rpc, shard, monitor
+from feat.agents.common.monitor import RestartStrategy, RestartFailed
+from feat.agents.monitor import production, simulation
+from feat.common import fiber, serialization, defer, time, manhole
 
-from feat.agents.common.monitor import *
+from feat.agents.monitor.interface import *
+from feat.interface.agency import *
 from feat.interface.protocols import *
+from feat.interface.recipient import *
 
 
 @serialization.register
-class MonitoredPartner(partners.BasePartner):
+class MonitoredPartner(agent.BasePartner):
 
     type_name = 'monitor->agent'
 
@@ -26,20 +31,53 @@ class MonitoredPartner(partners.BasePartner):
     def initiate(self, agent):
         return self._update_instance_id(agent)
 
+    def on_goodbye(self, agent, _payload):
+        self.stop_monitoring(agent)
+
+    def on_died(self, agent, _payload, _monitor):
+        self.stop_monitoring(agent)
+
+    def on_buried(self, agent, _payload):
+        self.stop_monitoring(agent)
+
     def on_restarted(self, agent, moved):
+        self.stop_monitoring(agent)
         return self._update_instance_id(agent)
 
-    @fiber.woven
     def _update_instance_id(self, agent):
         f = agent.get_document(self.recipient.key)
-        f.add_callback(
-            lambda doc: setattr(self, 'instance_id', doc.instance_id))
+        f.add_callback(self._instance_id_changed, agent)
+        return f
+
+    def _instance_id_changed(self, doc, agent):
+        if self.instance_id is not None:
+            self.stop_monitoring(agent)
+        self.instance_id = doc.instance_id
+        self.start_monitoring(agent)
+
+    def start_monitoring(self, agent):
+        agent.add_patient(self)
+
+    def stop_monitoring(self, agent):
+        agent.remove_patient(self)
+
+
+@serialization.register
+class MonitorPartner(monitor.PartnerMixin, MonitoredPartner):
+
+    type_name = 'monitor->monitor'
+
+    def initiate(self, agent):
+        f = MonitoredPartner.initiate(self, agent)
+        f.add_callback(fiber.drop_param,
+                       monitor.PartnerMixin.initiate, self, agent)
         return f
 
 
 @serialization.register
-class MonitorPartner(MonitoredPartner):
-    type_name = 'monitor->monitor'
+class ForeignShardPartner(MonitoredPartner):
+
+    type_name = 'monitor->foreign_shard'
 
 
 @serialization.register
@@ -54,42 +92,115 @@ class ShardPartner(MonitoredPartner):
         return f
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
-    # makes all our partners include role=u'monitor'
-    # in the object representing us
+    #FIXME: Only partners with role "monitored" should use MonitoredPartner
+    default_handler = MonitoredPartner
     default_role = u'monitor'
 
-    default_handler = MonitoredPartner
-
     partners.has_one('shard', 'shard_agent', ShardPartner)
-    partners.has_many('monitors', 'monitor_agent', MonitorPartner)
+    partners.has_many('foreign_shards', 'shard_agent',
+                      ForeignShardPartner, role="foreigner")
+    partners.has_many('monitors', 'monitor_agent', MonitorPartner, "monitor")
+
+
+@document.register
+class MonitorAgentConfiguration(document.Document):
+
+    document_type = 'monitor_agent_conf'
+    document.field('doc_id', u'monitor_agent_conf', '_id')
+    document.field('heartbeat_period', None)
+    document.field('heartbeat_max_skip', None)
+    document.field('check_period', None)
+
+
+dbtools.initial_data(MonitorAgentConfiguration)
 
 
 @agent.register('monitor_agent')
 class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
 
-    implements(shard.IShardNotificationHandler)
+    implements(shard.IShardNotificationHandler, IDoctor)
 
     partners_class = Partners
 
     restart_strategy = RestartStrategy.monitor
+
+    dependency.register(IHeartMonitorFactory, production.HeartMonitor,
+                        ExecMode.production)
+    dependency.register(IHeartMonitorFactory, simulation.HeartMonitor,
+                        ExecMode.test)
+    dependency.register(IHeartMonitorFactory, simulation.HeartMonitor,
+                        ExecMode.simulation)
 
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
 
+        self._paused = False
+
         shard.register_for_notifications(self)
 
-        state.medium.register_interest(
-            contractor.Service(MonitorContractor))
-        state.medium.register_interest(MonitorContractor)
-        state.medium.register_interest(
-            problem.SolveProblemInterest(DeadAgent()))
+        solver = problem.SolveProblemInterest(DeadAgent())
+        service = contractor.Service("monitoring")
+        state.medium.register_interest(solver)
+        state.medium.register_interest(service)
+
+        state.heart_monitor = self.dependency(IHeartMonitorFactory, self)
 
         # agent_id -> HandleDeath instance
         state.handler_tasks = dict()
+
+        return self.initiate_partners()
+
+    @replay.immutable
+    def startup(self, state):
+        state.heart_monitor.startup()
+
+    @replay.mutable
+    def add_patient(self, state, partner):
+        recipient = partner.recipient
+        agent_id = recipient.key
+        instance_id = partner.instance_id
+        config = state.medium.get_configuration()
+        state.heart_monitor.add_patient(agent_id, instance_id,
+                                        payload=recipient,
+                                        period=config.heartbeat_period,
+                                        max_skip=config.heartbeat_max_skip)
+
+    @replay.mutable
+    def remove_patient(self, state, partner):
+        recipient = partner.recipient
+        agent_id = recipient.key
+        instance_id = partner.instance_id
+        state.heart_monitor.remove_patient(agent_id, instance_id)
+
+    def on_heart_failed(self, agent_id, instance_id, recipient):
+        self.info("Agent %s/%d is not responding, handle its death",
+                  agent_id, instance_id)
+        self.handle_agent_death(recipient)
+
+    @manhole.expose()
+    @replay.immutable
+    def get_monitoring_status(self, state):
+        result = {}
+        for patient in state.heart_monitor.iter_patients():
+            result[patient.payload] = {"state": patient.state,
+                                       "counter": patient.counter}
+        return result
+
+    @manhole.expose()
+    @replay.immutable
+    def pause(self, state):
+        self.debug("Pausing agent monitoring")
+        state.heart_monitor.pause()
+
+    @manhole.expose()
+    @replay.immutable
+    def resume(self, state):
+        self.debug("Resuming agent monitoring")
+        state.heart_monitor.resume()
 
     @replay.mutable
     def handle_agent_death(self, state, recp):
@@ -98,7 +209,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
         if task:
             return task.notify_finish()
         else:
-            task = self.initiate_task(HandleDeath, recp)
+            task = self.initiate_protocol(HandleDeath, recp)
             self._register_task(recp.key, task)
             return task.notify_finish()
 
@@ -167,7 +278,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
                     "which I'm not monitoring. This is weird!" % (agent_id, )))
             if partner.instance_id == instance_id:
                 # we didn't know, lets handle it
-                task = self.initiate_task(HandleDeath, partner.recipient)
+                task = self.initiate_protocol(HandleDeath, partner.recipient)
                 self._register_task(agent_id, task)
                 return task
             else:
@@ -193,7 +304,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
 
     @replay.mutable
     def _update_monitors(self, state, monitors):
-        recipients = set([p.recipient for p in monitors])
+        recipients = set([IRecipient(m) for m in monitors])
         currents = set([p.recipient for p in state.partners.monitors])
 
         old = currents - recipients
@@ -215,7 +326,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
         #FIXME: Shouldn't we have something like partners.unlink that do this ?
         partner = self.find_partner(recipient)
         if partner:
-            f = requester.say_goodbye(self, recipient, None)
+            f = requester.say_goodbye(self, recipient)
             f.add_callback(fiber.drop_param, self.remove_partner, partner)
             return f
 
@@ -250,7 +361,7 @@ class HandleDeath(task.BaseTask):
 
     problem_id = 'dead-agent'
 
-    protocol_id = 'handle-death'
+    protocol_id = 'tash:monitor.handle-death'
 
     # timeout for this task is dynamic
     timeout = None
@@ -285,7 +396,7 @@ class HandleDeath(task.BaseTask):
 
     @replay.mutable
     def restart_handeled(self, state):
-        state.medium.finish(None)
+        state.medium.terminate()
 
     @replay.mutable
     def _start_collective_solver(self, state):
@@ -302,8 +413,8 @@ class HandleDeath(task.BaseTask):
         # this object is going to be stored in the state of CollectiveSolver,
         # we need to deepcopy it not to share a refrence
         state.monitors = copy.deepcopy(monitors)
-        state.agent.initiate_task(problem.CollectiveSolver,
-                                  self, monitors)
+        state.agent.initiate_protocol(problem.CollectiveSolver,
+                                      self, monitors)
         return task.NOT_DONE_YET
 
     ### IProblem ###
@@ -341,6 +452,7 @@ class HandleDeath(task.BaseTask):
             self.debug('Agent %r is going to by burried according to his '
                        'last will.', state.factory.descriptor_type)
             f = self._send_burried_notifications()
+            f.add_callback(fiber.drop_param, state.medium.terminate, None)
             f.add_callback(fiber.override_result, self)
             return f
         else:
@@ -352,10 +464,13 @@ class HandleDeath(task.BaseTask):
     def _send_died_notifications(self, state):
         self.log("Sending 'died' notifications to the partners, which are: %r",
                  state.descriptor.partners)
+        state.so_took_reponsability = False
         fibers = list()
         for partner, brothers in self._iter_categorized_partners():
-            fibers.append(requester.notify_died(
-                state.agent, partner, state.recp, brothers))
+            f = requester.notify_died(
+                state.agent, partner, state.recp, brothers)
+            f.add_callback(self._on_died_response_handler)
+            fibers.append(f)
         f = fiber.FiberList(fibers, consumeErrors=True)
         f.succeed()
         return f
@@ -383,11 +498,22 @@ class HandleDeath(task.BaseTask):
             fibers.append(f)
         f = fiber.FiberList(fibers, consumeErrors=True)
         f.succeed()
-        f.add_callback(fiber.drop_param, state.medium.finish, new_address)
+        f.add_callback(fiber.drop_param, state.medium.terminate, new_address)
         return f
 
     @replay.mutable
-    def _ensure_someone_took_responsability(self, state, responses):
+    def _on_died_response_handler(self, state, response):
+        if state.so_took_reponsability:
+            self.log('Someone already took responsability, ignoring.')
+            return
+        if isinstance(response, partners.ResponsabilityAccepted):
+            state.so_took_reponsability = True
+            time_left = time.left(response.expiration_time)
+            state.timeout_call_id = state.agent.call_later(
+                time_left, self._timeout_waiting_for_restart)
+
+    @replay.mutable
+    def _ensure_someone_took_responsability(self, state, _responses):
         '''
         Called as a callback for sending *died* notifications to all the
         partners.
@@ -395,19 +521,11 @@ class HandleDeath(task.BaseTask):
         If yes, setup expiration call and wait for report.
         If no, initiate doing it on our own.
         '''
-        accepted = [response for _, response in responses
-                    if isinstance(response, partners.ResponsabilityAccepted)]
-        if len(accepted) == 0:
+        if not state.so_took_reponsability:
             self.debug('Noone took responsability, I will try to restart '
                        '%r agent myself', state.factory.descriptor_type)
-
             return self._restart_yourself()
         else:
-            expiration_time = max(map(operator.attrgetter('expiration_time'),
-                                      accepted))
-            time_left = time.left(expiration_time)
-            state.timeout_call_id = state.agent.call_later(
-                time_left, self._timeout_waiting_for_restart)
             return task.NOT_DONE_YET
 
     def _timeout_waiting_for_restart(self):
@@ -437,7 +555,7 @@ class HandleDeath(task.BaseTask):
         if self._cmp_strategy(RestartStrategy.local):
             self.info('Giving up, just sending burried notifications.')
             f = self._send_burried_notifications()
-            f.add_callback(fiber.drop_param, state.medium.finish, None)
+            f.add_callback(fiber.drop_param, state.medium.terminate, None)
             return f
         elif self._cmp_strategy(RestartStrategy.whereever):
             self.info('Trying to find an allocation anywhere in the cluster.')
@@ -445,15 +563,15 @@ class HandleDeath(task.BaseTask):
                 state.agent, resources=state.factory.resources,
                 categories=state.factory.categories, max_retries=3)
             f.add_callback(self._request_starting_agent)
-            f.add_callbacks(state.medium.finish,
-                            self._finding_allocation_failed)
+            f.add_callback(self._send_restarted_notifications)
+            f.add_errback(self._finding_allocation_failed)
             return f
         elif self._cmp_strategy(RestartStrategy.monitor):
             self.info('Taking over the role of the died monitor.')
             f = self._checkup_partners()
             f.add_callback(fiber.drop_param,
                            self._send_burried_notifications)
-            f.add_callback(fiber.drop_param, state.medium.finish, None)
+            f.add_callback(fiber.drop_param, state.medium.terminate, None)
             return f
         else:
             state.medium.fail(RestartFailed('Unknown restart strategy: %r' %
@@ -461,7 +579,7 @@ class HandleDeath(task.BaseTask):
 
     @replay.immutable
     def _finding_allocation_failed(self, state, fail):
-        fail.trap(InitiatorFailed)
+        fail.trap(ProtocolFailed)
         msg = ("Chaos monkey won this time! Despite 3 times trying we "
                "failed to find the allocation for the the %r. "
                "Just sending burried notifications." %
@@ -516,7 +634,8 @@ class HandleDeath(task.BaseTask):
     def _ping_success(self, state, _, partner):
         self.debug('Sending ping to the partner %r was successful. '
                    'Taking over the role of the monitor.', partner)
-        return state.agent.establish_partnership(partner)
+        return state.agent.establish_partnership(partner,
+                                                 partner_role="foreigner")
 
     @replay.mutable
     def _clear_host_partner(self, state):
@@ -563,41 +682,3 @@ class HandleDeath(task.BaseTask):
                       state.agent._unregister_task,
                       state.recp.key)
         return d
-
-
-class MonitorContractor(contractor.NestingContractor):
-
-    protocol_id = 'request-monitor'
-    interest_type = InterestType.private
-
-    announce_timeout = 10
-
-    @replay.entry_point
-    def announced(self, state, announcement):
-        msg = message.Bid()
-        state.medium.bid(msg)
-
-    @replay.entry_point
-    def granted(self, state, grant):
-        f = fiber.Fiber()
-        f.add_callback(fiber.drop_param, self._create_partner,
-                      grant)
-        f.add_callbacks(self._finalize, self._granted_failed)
-        return f.succeed()
-
-    @replay.mutable
-    def _create_partner(self, state, grant):
-        f = fiber.Fiber()
-        f.add_callback(state.agent.establish_partnership)
-        return f.succeed(grant.reply_to)
-
-    @replay.immutable
-    def _granted_failed(self, state, failure):
-        state.medium._error_handler(failure)
-        msg = message.Cancellation(reason=str(failure.value))
-        state.medium.defect(msg)
-
-    @replay.immutable
-    def _finalize(self, state, _):
-        report = message.FinalReport()
-        state.medium.finalize(report)

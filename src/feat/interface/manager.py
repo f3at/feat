@@ -55,9 +55,9 @@ class IAgencyManager(contracts.IContractPeer):
 
     def terminate(result=None):
         '''
-        Unregister the listener from the agency. This method is meant to be
+        Unregister the protocol from the agency. This method is meant to be
         used in nested contracts in case when the whole purpose of the managers
-        implemenetation is fetching the bids from nested contractors.
+        implementation is fetching the bids from nested contractors.
         All the bids which have not been handed over will get rejected.
 
         @param result: optional trigger value for the Deferred given

@@ -23,7 +23,7 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
         alert.AgentMixin.initiate(self, state)
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 @common.attr('slow')
 class AlertAgentTest(common.SimulationTest):
 

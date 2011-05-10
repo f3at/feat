@@ -147,7 +147,7 @@ def _side_effect_wrapper(callable, args, kwargs, name):
                 effect.set_result(result)
                 effect.commit()
                 return result
-            except:
+            except Exception, e:
                 #FIXME: handle exceptions in side effects
                 raise
 

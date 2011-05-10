@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import warnings
+
 from twisted.python import components, failure
 from zope.interface import implements
 
@@ -28,11 +30,13 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
                  common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                  common.TransientInitiatorMediumBase):
 
-    implements(IAgencyTask, ISerializable, IListener)
+    implements(ISerializable, IAgencyTask, IAgencyProtocolInternal)
 
     log_category = 'agency-task'
 
     type_name = 'task-medium'
+
+    idle = False # By default tasks are NOT idle
 
     _error_handler = error_handler
 
@@ -55,10 +59,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.journal_protocol_created(self.factory, self,
                                             *self.args, **self.kwargs)
         task = self.factory(self.agent.get_agent(), self)
-        # FIXME: register listener anyway for agency to be able to monitor
-        # the task termination. IListener should be renamed in a later
-        # refactoring to better match its role.
-        self.agent.register_listener(self)
+        self.agent.register_protocol(self)
 
         self.task = task
         self.log_name = self.task.__class__.__name__
@@ -69,30 +70,40 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         if self.task.timeout:
             timeout = time.future(self.task.timeout)
-            error = InitiatorExpired("Timeout exceeded waiting "
+            error = ProtocolExpired("Timeout exceeded waiting "
                                      "for task.initate()")
-            self._expire_at(timeout, self._expired,
-                    TaskState.expired, failure.Failure(error))
+            self._expire_at(timeout, TaskState.expired,
+                            self._expired, failure.Failure(error))
 
         self.call_next(self._initiate, *self.args, **self.kwargs)
 
         return task
 
-    ### IListener Methods ###
+    ### IAgencyProtocolInternal Methods ###
 
-    def on_message(self, mesg):
-        raise NotImplementedError("Task do not support full IListener")
-
-    def get_session_id(self):
-        return self.session_id
+    def is_idle(self):
+        return self.idle
 
     def get_agent_side(self):
         return self.task
 
+    def cleanup(self):
+        if self.timeout:
+            return common.ExpirationCallsMixin.cleanup()
+        #FIXME: calling expired anyway when no timeout is not the way
+        return self._call(self.task.expired)
+
     # notify_finish() implemented in common.TransientInitiatorMediumBase
 
-    @replay.named_side_effect('AgencyTask.finish')
-    def finish(self, arg):
+    @replay.named_side_effect('AgencyTask.terminate')
+    def finish(self, arg=None):
+        warnings.warn("AgencyTask.finish() is deprecated, "
+                      "please use AgencyTask.terminate()",
+                      DeprecationWarning, stacklevel=2)
+        self._completed(arg)
+
+    @replay.named_side_effect('AgencyTask.terminate')
+    def terminate(self, arg=None):
         self._completed(arg)
 
     @replay.named_side_effect('AgencyTask.fail')
@@ -145,17 +156,18 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def _terminate(self, result):
         common.ExpirationCallsMixin._terminate(self)
 
-        self.log("Unregistering task %s" % self.session_id)
-        self.agent.unregister_listener(self.session_id)
+        self.log("Unregistering task %s" % self.guid)
+        self.agent.unregister_protocol(self)
 
         common.TransientInitiatorMediumBase._terminate(self, result)
+        return defer.succeed(self)
 
 
 class AgencyTaskFactory(protocols.BaseInitiatorFactory):
     type_name = 'task-medium-factory'
     protocol_factory = AgencyTask
 
-    def __call__(self, agency_agent, _recipients, *args, **kwargs):
+    def __call__(self, agency_agent, *args, **kwargs):
         # Dropping recipients
         return self.protocol_factory(agency_agent, self._factory,
                                      *args, **kwargs)
