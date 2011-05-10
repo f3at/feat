@@ -12,8 +12,6 @@ from feat.interface.recipient import *
 from feat.test.integration import common
 
 
-@common.attr(skip="This is leftover after work of Pau left by mistake. " +
-             "To be deleted when Sebastien merges his work")
 @common.attr('slow')
 class SingleHostMonitorSimulation(common.SimulationTest):
 
@@ -23,8 +21,6 @@ class SingleHostMonitorSimulation(common.SimulationTest):
     def prolog(self):
         time.scale(0.8)
         setup = format_block("""
-        load('feat.test.integration.monitor')
-
         agency = spawn_agency()
 
         host_desc = descriptor_factory('host_agent')
