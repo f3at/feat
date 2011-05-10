@@ -58,6 +58,12 @@ def call_param(_param, _attr_name, *args, **kwargs):
     return _method(*args, **kwargs)
 
 
+def inject_param(_param, _index, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    args = args[:_index] + (_param, ) + args[_index:]
+    return _method(*args, **kwargs)
+
+
 def override_result(_param, _result):
     return _result
 
@@ -111,8 +117,6 @@ def maybe_fiber(_function, *args, **kwargs):
 
 trace_fiber_calls = os.environ.get("FEAT_TRACE_FIBERS", "NO").upper() \
                     in ("YES", "1", "TRUE")
-ignored_callback = set([drop_result, bridge_result, drop_param, bridge_param,
-                        call_param, override_result, debug, trace])
 
 
 @decorator.simple_function
@@ -540,15 +544,15 @@ class Fiber(object):
         # Deferred always need a callback, use pass through if not set
         return defer.passthru, None, None
 
-    def _callback_wrapper(self, value, fiber, callback, args, kwargs):
+    def _callback_wrapper(self, param, fiber, callback, args, kwargs):
         global trace_fiber_calls
         if trace_fiber_calls:
-            self._trace(value, fiber, callback, args, kwargs)
+            self._trace(param, callback, *args, **kwargs)
 
         section = WovenSection(descriptor=fiber)
         section.enter()
         try:
-            result = callback(value, *args, **kwargs)
+            result = callback(param, *args, **kwargs)
         except:
             section.abort()
             raise
@@ -568,22 +572,58 @@ class Fiber(object):
     def _on_chain_cb(self, parent_param, trigger, param, d, default_trigger):
         return self._fire(d, trigger, param, default_trigger, parent_param)
 
-    def _trace(self, value, fiber, callback, args, kwargs):
-        global ignored_callback
-        while callback in ignored_callback:
-            callback, args = args[0], args[1:]
+    def _trace(self, _param, _method, *args, **kwargs):
+        trace_fun = self._trace_lookup.get(_method, Fiber._trace_default)
+        trace_fun(self, _param, _method, *args, **kwargs)
 
+    def _trace_default(self, _param, _method, *args, **kwargs):
+        args = (_param, ) + args
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_drop_param(self, _param, _, _method, *args, **kwargs):
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_bridge_param(self, _param, _, _method, *args, **kwargs):
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_call_param(self, _param, _, _attr_name, *args, **kwargs):
+        _method = getattr(_param, _attr_name, None)
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_inject_param(self, _param, _, _index, _method, *args, **kwargs):
+        args = args[:_index] + (_param, ) + args[_index:]
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_override_result(self, _param, _, _result):
+        return
+
+    def _trace_debug(self, _param, _, _template="", *args):
+        return
+
+    def _trace_trace(self, _param, _, _template="", *args):
+        return
+
+    def _trace_call(self, _method, *args, **kwargs):
         try:
-            file_path = callback.__code__.co_filename
-            line_num = callback.__code__.co_firstlineno
+            file_path = _method.__code__.co_filename
+            line_num = _method.__code__.co_firstlineno
         except AttributeError:
             file_path = "unknown"
             line_num = 0
 
-        text = text_helper.format_call(callback, value, *args, **kwargs)
+        text = text_helper.format_call(_method, *args, **kwargs)
         log.logex("fiber", LogLevel.log, text, log_name=self.fiber_id,
                   file_path=file_path, line_num=line_num)
 
+    _trace_lookup = {drop_result: _trace_drop_param,
+                     drop_param: _trace_drop_param,
+                     bridge_result: _trace_bridge_param,
+                     bridge_param: _trace_bridge_param,
+                     call_param: _trace_call_param,
+                     inject_param: _trace_inject_param,
+                     override_result: _trace_override_result,
+                     debug: _trace_debug,
+                     trace: _trace_trace}
 
 class FiberList(Fiber):
     '''List of fiber.
@@ -713,3 +753,5 @@ class FiberList(Fiber):
                         callbackArgs=args, errbackArgs=args)
 
         return dl
+
+

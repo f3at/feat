@@ -46,6 +46,12 @@ def call_param(_param, _attr_name, *args, **kwargs):
     return _method(*args, **kwargs)
 
 
+def inject_param(_param, _index, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    args = args[:_index] + (_param, ) + args[_index:]
+    return _method(*args, **kwargs)
+
+
 def override_result(_param, _result):
     return _result
 

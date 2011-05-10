@@ -1,7 +1,7 @@
 from feat.agents.base import descriptor, replay, manager, message
-from feat.common import enum
+from feat.common import enum, fiber
 
-# To access from thi module
+# To access from this module
 from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
 from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 
@@ -34,9 +34,9 @@ class RestartStrategy(enum.Enum):
 
 def request_monitor(agent, shard=None):
     f = discover(agent, shard)
-    f.add_callback(lambda recp: agent.initiate_protocol(
-            MonitorManager, recp))
-    f.add_callback(lambda x: x.notify_finish())
+    f.add_callback(fiber.inject_param, 1,
+                   agent.initiate_protocol, MonitorManager)
+    f.add_callback(fiber.call_param, "notify_finish")
     return f
 
 
