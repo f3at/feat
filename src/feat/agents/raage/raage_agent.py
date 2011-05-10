@@ -60,12 +60,12 @@ class AllocationContractor(contractor.NestingContractor):
     def announced(self, state, announcement):
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result,
+        f.add_callback(fiber.drop_param,
                        self._ask_own_shard, announcement)
         f.add_callback(self._pick_best_bid)
         f.add_errback(self._nest_to_neighbours, announcement)
         f.add_callback(self._refuse_or_handover)
-        f.add_both(fiber.drop_result, self.terminate_nested_manager)
+        f.add_both(fiber.drop_param, self.terminate_nested_manager)
         return f.succeed()
 
     @replay.mutable
@@ -125,7 +125,7 @@ class HostAllocationManager(manager.BaseManager):
     @replay.immutable
     def wait_for_bids(self, state):
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result,
+        f.add_callback(fiber.drop_param,
                        state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
         f.add_callback(lambda _: state.medium.get_bids())

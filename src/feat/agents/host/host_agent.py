@@ -46,7 +46,7 @@ class ShardPartner(partners.BasePartner):
 
     def initiate(self, agent):
         f = agent.switch_shard(self.recipient.shard)
-        f.add_callback(fiber.drop_result, agent.callback_event,
+        f.add_callback(fiber.drop_param, agent.callback_event,
                        'joined_to_shard', None)
         return f
 
@@ -106,9 +106,9 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self._update_hostname)
-        f.add_callback(fiber.drop_result, self._load_definition, hostdef)
-        f.add_callback(fiber.drop_result, self.initiate_partners)
+        f.add_callback(fiber.drop_param, self._update_hostname)
+        f.add_callback(fiber.drop_param, self._load_definition, hostdef)
+        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f.succeed()
 
     @replay.journaled
@@ -119,7 +119,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def start_join_shard_manager(self, state):
         if state.partners.shard is None:
             f = common_shard.start_manager(self)
-            f.add_errback(fiber.drop_result, self.start_own_shard)
+            f.add_errback(fiber.drop_param, self.start_own_shard)
             return f
 
     @replay.journaled
@@ -160,7 +160,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         if partner:
             return fiber.succeed(partner)
         f = self.wait_for_event('joined_to_shard')
-        f.add_callback(fiber.drop_result, self.get_shard_partner)
+        f.add_callback(fiber.drop_param, self.get_shard_partner)
         return f
 
     @replay.journaled
@@ -172,10 +172,10 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             desc.shard = shard
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.medium.leave_shard, desc.shard)
-        f.add_callback(fiber.drop_result, self.update_descriptor,
+        f.add_callback(fiber.drop_param, state.medium.leave_shard, desc.shard)
+        f.add_callback(fiber.drop_param, self.update_descriptor,
                        save_change, shard)
-        f.add_callback(fiber.drop_result, state.medium.join_shard, shard)
+        f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
         return f.succeed()
 
     @manhole.expose()
@@ -337,11 +337,11 @@ class StartAgent(task.BaseTask):
         state.allocation_id = allocation_id
 
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, self._fetch_descriptor)
-        f.add_callback(fiber.drop_result, self._check_requirements)
-        f.add_callback(fiber.drop_result, self._update_shard_field)
-        f.add_callback(fiber.drop_result, self._validate_allocation)
-        f.add_callback(fiber.drop_result, getattr, state, 'descriptor')
+        f.add_callback(fiber.drop_param, self._fetch_descriptor)
+        f.add_callback(fiber.drop_param, self._check_requirements)
+        f.add_callback(fiber.drop_param, self._update_shard_field)
+        f.add_callback(fiber.drop_param, self._validate_allocation)
+        f.add_callback(fiber.drop_param, getattr, state, 'descriptor')
         f.add_callback(state.agent.medium_start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self._establish_partnership)
@@ -435,9 +435,9 @@ class RestartShard(problem.BaseProblem):
         partner = self.agent.query_partners('shard')
         f = fiber.succeed()
         if partner:
-            f.add_callback(fiber.drop_result, self.agent.remove_partner,
+            f.add_callback(fiber.drop_param, self.agent.remove_partner,
                            partner)
-        f.add_callback(fiber.drop_result, self.agent.restart_agent,
+        f.add_callback(fiber.drop_param, self.agent.restart_agent,
                        self.agent_id)
         f.add_callback(self._finalize)
         return f
@@ -545,7 +545,7 @@ class StartAgentReplier(replier.BaseReplier):
         doc_id = request.payload['doc_id']
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.agent.start_agent, doc_id,
+        f.add_callback(fiber.drop_param, state.agent.start_agent, doc_id,
                        a_id, *args, **kwargs)
         f.add_callback(self._send_reply)
         f.succeed(doc_id)
@@ -596,7 +596,7 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.entry_point
     def granted(self, state, grant):
         f = state.agent.confirm_allocation(state.alloc_id)
-        f.add_callback(fiber.drop_result, state.agent.start_agent,
+        f.add_callback(fiber.drop_param, state.agent.start_agent,
                        state.descriptor.doc_id, state.alloc_id)
         f.add_callbacks(self._finalize, self._starting_failed)
         return f
@@ -610,7 +610,7 @@ class StartAgentContractor(contractor.BaseContractor):
     def _starting_failed(self, state, fail):
         msg = message.Cancellation(reason=fail)
         f = self._release_allocation()
-        f.add_callback(fiber.drop_result, state.medium.defect,
+        f.add_callback(fiber.drop_param, state.medium.defect,
                        msg)
         return f
 

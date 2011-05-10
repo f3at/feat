@@ -180,12 +180,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
             self.debug(msg)
 
             if substitute:
-                f.add_callback(fiber.drop_result, state.partners.remove,
+                f.add_callback(fiber.drop_param, state.partners.remove,
                                substitute)
 
             f.chain(fiber.fail(partners.DoublePartnership(msg)))
             return f
-        f.add_callback(fiber.drop_result, self.initiate_protocol,
+        f.add_callback(fiber.drop_param, self.initiate_protocol,
                        requester.Propose, recp, allocation_id,
                        partner_allocation_id,
                        our_role, partner_role, substitute)

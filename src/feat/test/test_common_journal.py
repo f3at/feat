@@ -2,11 +2,10 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 from zope.interface import implements
 
-from feat.common import journal, fiber, serialization, reflect
+from feat.common import journal, fiber, defer, serialization, reflect
 from feat.common.serialization import pytree
 from feat.interface.journal import *
 from feat.interface.serialization import *
@@ -627,9 +626,6 @@ class TestJournaling(common.TestCase):
 
     def testNestedRecordedFunction(self):
 
-        def drop_result(_, fun, *args, **kwargs):
-            return fun(*args, **kwargs)
-
         def check_records(_, records):
             self.assertEqual(5, len(records))
             expected = [39, # ((3 + 5) + 7) + (3 + 5)) + ((3 + 5) + (3 + 5))
@@ -643,11 +639,11 @@ class TestJournaling(common.TestCase):
         obj = NestedRecordedDummy(root)
 
         d = defer.succeed(None)
-        d.addCallback(drop_result, obj.main, 3, 5)
-        d.addCallback(drop_result, obj.funA, 3, 5)
-        d.addCallback(drop_result, obj.funB, 3, 5)
-        d.addCallback(drop_result, obj.funC, 3, 5)
-        d.addCallback(drop_result, obj.funD, 3, 5)
+        d.addCallback(defer.drop_param, obj.main, 3, 5)
+        d.addCallback(defer.drop_param, obj.funA, 3, 5)
+        d.addCallback(defer.drop_param, obj.funB, 3, 5)
+        d.addCallback(defer.drop_param, obj.funC, 3, 5)
+        d.addCallback(defer.drop_param, obj.funD, 3, 5)
         d.addCallback(check_records, self.keeper.get_records())
 
         return d

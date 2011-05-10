@@ -168,7 +168,7 @@ class AgencyCollectorInterest(protocols.BaseInterest):
 
     def _pass_message(self, message):
         d = self.agency_collector.on_message(message)
-        d.addBoth(defer.drop_result, self._message_processed, message)
+        d.addBoth(defer.drop_param, self._message_processed, message)
 
 
 components.registerAdapter(AgencyCollectorInterest,

@@ -1,26 +1,66 @@
+import warnings
+
 from twisted.internet.defer import *
 from twisted.internet.defer import returnValue, passthru, setDebugging
 
+from feat.common import log
+
+from feat.interface.log import *
+
 
 def drop_result(_result, _method, *args, **kwargs):
-    assert callable(_method)
+    warnings.warn("defer.drop_result() is deprecated, "
+                  "please use defer.drop_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
     return _method(*args, **kwargs)
 
 
 def bridge_result(_result, _method, *args, **kwargs):
-    assert callable(_method)
+    warnings.warn("defer.bridge_result() is deprecated, "
+                  "please use defer.bridge_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
     d = maybeDeferred(_method, *args, **kwargs)
     d.addCallback(override_result, _result)
     return d
 
 
-def override_result(_result, _new_result):
-    return _new_result
+def drop_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
 
 
-def debug(result, template, *args):
-    print template % args
-    return result
+def bridge_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    d = maybeDeferred(_method, *args, **kwargs)
+    d.addCallback(override_result, _param)
+    return d
+
+
+def call_param(_param, _attr_name, *args, **kwargs):
+    _method = getattr(_param, _attr_name, None)
+    assert _method is not None, \
+           "%r do not have attribute %s" % (_param, _attr_name, )
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
+
+
+def override_result(_param, _result):
+    return _result
+
+
+def debug(_param, _template="", *args):
+    log.logex("defer", LogLevel.debug, _template, args, log_name="debug")
+    return _param
+
+
+def trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    message = "%s%r" % (prefix, _param)
+    log.logex("defer", LogLevel.debug, message, log_name="trace")
+    return _param
 
 
 class Notifier(object):

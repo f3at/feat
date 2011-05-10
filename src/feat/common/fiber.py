@@ -2,6 +2,7 @@ import os
 import sys
 import types
 import uuid
+import warnings
 
 from twisted.python import failure
 from zope.interface import implements
@@ -18,8 +19,68 @@ SECTION_BOUNDARY_TAG = "__section_boundary__"
 
 
 def drop_result(_result, _method, *args, **kwargs):
-    assert callable(_method), "method %r is not callable!" % (_method, )
+    warnings.warn("fiber.drop_result() is deprecated, "
+                  "please use fiber.drop_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
     return _method(*args, **kwargs)
+
+
+def bridge_result(_result, _method, *args, **kwargs):
+    warnings.warn("fiber.bridge_result() is deprecated, "
+                  "please use fiber.bridge_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(drop_result, _method, *args, **kwargs)
+    f.add_callback(override_result, _result)
+    return f.succeed()
+
+
+def drop_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
+
+
+def bridge_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(drop_param, _method, *args, **kwargs)
+    f.add_callback(override_result, _param)
+    return f.succeed()
+
+
+def call_param(_param, _attr_name, *args, **kwargs):
+    _method = getattr(_param, _attr_name, None)
+    assert _method is not None, \
+           "%r do not have attribute %s" % (_param, _attr_name, )
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
+
+
+def override_result(_param, _result):
+    return _result
+
+
+def debug(_param, _template="", *args):
+    log.logex("fiber", LogLevel.debug, _template, args, log_name="debug")
+    return _param
+
+
+def trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    message = "%s%r" % (prefix, _param)
+    log.logex("fiber", LogLevel.debug, message, log_name="trace")
+    return _param
+
+
+def succeed(param=None):
+    return Fiber().succeed(param)
+
+
+def fail(failure=None):
+    return Fiber().fail(failure)
 
 
 def wrap_defer(_method, *args, **kwargs):
@@ -28,26 +89,8 @@ def wrap_defer(_method, *args, **kwargs):
     supposed to return the Fiber.
     '''
     f = succeed()
-    f.add_callback(drop_result, _method, *args, **kwargs)
+    f.add_callback(drop_param, _method, *args, **kwargs)
     return f
-
-
-def bridge_result(_result, _method, *args, **kwargs):
-    assert callable(_method)
-    _method(*args, **kwargs)
-    return _result
-
-
-def override_result(_result, _new_result):
-    return _new_result
-
-
-def succeed(parma=None):
-    return Fiber().succeed(parma)
-
-
-def fail(failure=None):
-    return Fiber().fail(failure)
 
 
 def maybe_fiber(_function, *args, **kwargs):
@@ -66,14 +109,10 @@ def maybe_fiber(_function, *args, **kwargs):
             return defer.succeed(result)
 
 
-def debug(result, template, *args):
-    print template % args
-    return result
-
-
 trace_fiber_calls = os.environ.get("FEAT_TRACE_FIBERS", "NO").upper() \
                     in ("YES", "1", "TRUE")
-ignored_callback = set([drop_result, bridge_result, override_result, debug])
+ignored_callback = set([drop_result, bridge_result, drop_param, bridge_param,
+                        call_param, override_result, debug, trace])
 
 
 @decorator.simple_function

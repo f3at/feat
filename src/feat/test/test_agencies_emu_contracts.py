@@ -172,7 +172,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
     def testInitiateTimeout(self):
         d = self.start_manager()
-        d.addCallback(defer.drop_result, self.cb_after,
+        d.addCallback(defer.drop_param, self.cb_after,
                       arg=None, obj=self.agent,
                       method='unregister_listener')
         d.addCallback(self.assertUnregistered, contracts.ContractState.wtf)
@@ -182,8 +182,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
     def testSendAnnouncementAndWaitForExpired(self):
         d = self.start_manager()
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
 
         def asserts_on_msgs(results):
             for result in results:
@@ -207,7 +207,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         closed = self.cb_after(None, self.medium, '_on_announce_expire')
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
         d = self._consume_all()
         d.addCallback(self._put_bids, (1, 1, "skip", ))
         d.addCallback(lambda _: closed)
@@ -245,8 +245,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d = self.queues[0].get()
@@ -282,8 +282,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d.addCallback(self.cb_after, obj=self.manager, method='closed')
@@ -322,8 +322,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (3, 2, 1, ))
 
         d.addCallback(self.cb_after, obj=self.manager, method='closed')
@@ -353,8 +353,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         closed = self.medium.notify_finish()
         self.assertFailure(closed, protocols.InitiatorFailed)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         # None stands for Refusal
         d.addCallback(self._put_bids, ("refuse", "refuse", "refuse", ))
         d.addCallback(lambda _: closed)
@@ -386,8 +386,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'bid', bid_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         # None stands for Refusal
         d.addCallback(self._put_bids, (1, 2, 3, ))
 
@@ -411,8 +411,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (3, 2, 1, ))
         d.addCallback(lambda _: self.queues[2].get()) #just swallow
         d.addCallback(lambda _: self.queues[0].get())
@@ -467,8 +467,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         d = self.start_manager()
         self.stub_method(self.manager, 'closed', closed_handler)
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (3, 2, 1, ))
         d.addCallback(self._consume_all)
 
@@ -519,8 +519,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         closed = self.cb_after(None, self.medium, '_close_announce_period')
 
-        d.addCallback(defer.drop_result, self.send_announce, self.manager)
-        d.addCallback(defer.drop_result, self._consume_all)
+        d.addCallback(defer.drop_param, self.send_announce, self.manager)
+        d.addCallback(defer.drop_param, self._consume_all)
         d.addCallback(self._put_bids, (1, 1, 1, ))
         d.addCallback(lambda _: closed)
 

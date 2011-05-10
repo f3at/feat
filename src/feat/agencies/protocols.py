@@ -199,7 +199,7 @@ class DialogInterest(BaseInterest):
                                 *self.args, **self.kwargs)
         medium.initiate()
         listener = self.agency_agent.register_listener(medium)
-        medium.notify_finish().addBoth(defer.drop_result,
+        medium.notify_finish().addBoth(defer.drop_param,
                                        self._message_processed, message)
 
         self.agency_agent.call_next(listener.on_message, message)

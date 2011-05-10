@@ -35,20 +35,20 @@ class Agent(agent.BaseAgent):
             IAMQPClientFactory, self, exchange, port=port,
             exchange_type=exchange_type)
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.connection.connect)
+        f.add_callback(fiber.drop_param, state.connection.connect)
         return f
 
     @manhole.expose()
     @replay.journaled
     def push_msg(self, state, msg, key):
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.connection.publish, msg, key)
+        f.add_callback(fiber.drop_param, state.connection.publish, msg, key)
         return f
 
     @replay.journaled
     def shutdown(self, state):
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.connection.disconnect)
+        f.add_callback(fiber.drop_param, state.connection.disconnect)
         return f
 
     @replay.immutable

@@ -117,7 +117,7 @@ class NestingContractor(BaseContractor):
             NestedManagerFactory(self.protocol_id, time_left),
             recipients, announcement)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result,
+        f.add_callback(fiber.drop_param,
                        state.nested_manager.wait_for_bids)
         return f.succeed()
 
@@ -174,9 +174,9 @@ class NestedManager(manager.BaseManager):
     @replay.immutable
     def wait_for_bids(self, state):
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.medium.wait_for_state,
+        f.add_callback(fiber.drop_param, state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
-        f.add_callback(fiber.drop_result, state.medium.get_bids)
+        f.add_callback(fiber.drop_param, state.medium.get_bids)
         return f
 
     @replay.journaled

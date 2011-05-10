@@ -331,11 +331,11 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
         f = fiber.succeed()
         if allocation_id:
-            f.add_callback(fiber.drop_result,
+            f.add_callback(fiber.drop_param,
                            state.agent.check_allocation_exists,
                            allocation_id)
-        f.add_callback(fiber.drop_result, self.initiate_partner, partner)
-        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+        f.add_callback(fiber.drop_param, self.initiate_partner, partner)
+        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._append_partner, partner, substitute)
         return f
 
@@ -363,10 +363,10 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     def remove(self, state, partner):
         # FIXME: Two subsequent updates of descriptor.
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._remove_partner, partner)
         if partner.allocation_id:
-            f.add_callback(fiber.drop_result, state.agent.release_resource,
+            f.add_callback(fiber.drop_param, state.agent.release_resource,
                            partner.allocation_id)
         return f
 
@@ -389,9 +389,9 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         moved = (new_address != partner.recipient)
         f = fiber.succeed()
         partner.recipient = recipient.IRecipient(new_address)
-        f.add_callback(fiber.drop_result, self._call_next_cb,
+        f.add_callback(fiber.drop_param, self._call_next_cb,
                        partner.on_restarted, moved)
-        f.add_callback(fiber.drop_result, state.agent.update_descriptor,
+        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._update_partner,
                        partner)
         return f
@@ -402,8 +402,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         callback = getattr(partner, cb_name, None)
         assert callable(callback)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self.remove, partner)
-        f.add_callback(fiber.drop_result, self._call_next_cb,
+        f.add_callback(fiber.drop_param, self.remove, partner)
+        f.add_callback(fiber.drop_param, self._call_next_cb,
                        callback, blackbox)
         return f.succeed()
 

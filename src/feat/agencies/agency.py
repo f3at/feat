@@ -72,9 +72,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._agents.append(medium)
         run_startup = kwargs.pop('run_startup', True)
         d = defer.succeed(None)
-        d.addCallback(defer.drop_result, medium.initiate,
+        d.addCallback(defer.drop_param, medium.initiate,
                       *args, **kwargs)
-        d.addCallback(defer.bridge_result, medium.call_next, medium.startup,
+        d.addCallback(defer.bridge_param, medium.call_next, medium.startup,
                       startup_agent=run_startup)
         return d
 
@@ -281,22 +281,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         taking into account that it might meen performing asynchronous job.'''
         setter = lambda value, name: setattr(self, name, value)
         d = defer.Deferred()
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self.agency._messaging.get_connection, self)
         d.addCallback(setter, '_messaging')
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self.agency._database.get_connection)
         d.addCallback(setter, '_database')
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self._subscribe_for_descriptor_changes)
-        d.addCallback(defer.drop_result, self._store_instance_id)
-        d.addCallback(defer.drop_result, self._load_configuration)
+        d.addCallback(defer.drop_param, self._store_instance_id)
+        d.addCallback(defer.drop_param, self._load_configuration)
         d.addCallback(setter, '_configuration')
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self.join_shard, self._descriptor.shard)
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self.journal_agent_created)
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       self._call_initiate, *args, **kwargs)
         d.addCallback(defer.override_result, self)
 
@@ -308,9 +308,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def startup(self, startup_agent=True):
         d = defer.succeed(None)
         if startup_agent:
-            d.addCallback(defer.drop_result, self._call_startup)
+            d.addCallback(defer.drop_param, self._call_startup)
         # Not calling agent startup, for testing purpose only
-        d.addCallback(defer.drop_result, self._ready)
+        d.addCallback(defer.drop_param, self._ready)
         return d
 
     def snapshot_agent(self):
@@ -922,14 +922,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _call_initiate(self, *args, **kwargs):
         self._set_state(AgencyAgentState.initiating)
         d = defer.maybeDeferred(self.agent.initiate, *args, **kwargs)
-        d.addCallback(fiber.drop_result, self._set_state,
+        d.addCallback(fiber.drop_param, self._set_state,
                       AgencyAgentState.initiated)
         return d
 
     def _call_startup(self):
         self._set_state(AgencyAgentState.starting_up)
         d = defer.maybeDeferred(self.agent.startup)
-        d.addCallback(fiber.drop_result, self._ready)
+        d.addCallback(fiber.drop_param, self._ready)
         d.addCallback(fiber.override_result, self)
         d.addErrback(self._error_handler)
         return d

@@ -111,10 +111,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         allocation = self._find_allocation(allocation_id)
         f = fiber.succeed()
         if allocation_id in self._read_allocations():
-            f.add_callback(fiber.drop_result,
+            f.add_callback(fiber.drop_param,
                         self._remove_allocation_from_descriptor, allocation)
         else:
-            f.add_callback(fiber.drop_result,
+            f.add_callback(fiber.drop_param,
                         self._remove_modification, allocation_id)
         return f
 

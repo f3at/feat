@@ -457,5 +457,5 @@ class TestProblemResolving(common.SimulationTest, CommonMixin):
         d = defer.DeferredList(map(
             lambda x: x.resolve_missing_shard_agent_problem(recp),
             self.agents))
-        d.addCallback(defer.drop_result, self.wait_for_idle, 20)
+        d.addCallback(defer.drop_param, self.wait_for_idle, 20)
         return d

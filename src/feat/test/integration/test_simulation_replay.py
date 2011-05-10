@@ -26,7 +26,7 @@ class Agent(agent.BaseAgent):
         state.calls += 1
         dummy = self.creat_dummy(value + 1)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, dummy.wait_for_state, "done")
+        f.add_callback(fiber.drop_param, dummy.wait_for_state, "done")
         f.add_callback(getattr, "value")
         return f.succeed()
 

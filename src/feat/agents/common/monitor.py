@@ -52,13 +52,13 @@ class MonitorManager(manager.BaseManager):
 
     @replay.entry_point
     def initiate(self, state):
-        self.log("initiate manager")
+        self.log("Initiate manager")
         msg = message.Announcement()
         state.medium.announce(msg)
 
     @replay.entry_point
     def closed(self, state):
-        self.log("close manager")
+        self.log("Cose manager")
         bids = state.medium.get_bids()
         best_bid = bids[0]
         msg = message.Grant()

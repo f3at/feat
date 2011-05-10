@@ -61,7 +61,7 @@ class Agent(agent.BaseAgent, notifier.AgentMixin):
         f = fiber.succeed(t)
         f.add_callback(Task.notify_finish)
         f.add_callback(self.set_result, "task_result1")
-        f.add_callback(fiber.drop_result, state.medium.initiate_task, Task, 42)
+        f.add_callback(fiber.drop_param, state.medium.initiate_task, Task, 42)
         f.add_callback(Task.notify_finish)
         f.add_callback(self.set_result, "task_result2")
         return f

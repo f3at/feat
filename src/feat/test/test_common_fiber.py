@@ -190,10 +190,10 @@ class TestFiber(common.TestCase):
         f.add_callbacks(unexpected, check_errback, ebargs=(ValueError, ))
         deferreds.append(f.start())
 
-        # Test fiber.drop_result
+        # Test fiber.drop_param
 
         f = fiber.succeed(False)
-        f.add_callback(fiber.drop_result, check_true)
+        f.add_callback(fiber.drop_param, check_true)
         deferreds.append(f.start())
 
         # Test fiber.override_result
@@ -203,10 +203,10 @@ class TestFiber(common.TestCase):
         f.add_callback(check_true)
         deferreds.append(f.start())
 
-        # Test fiber.bridge_result
+        # Test fiber.bridge_param
 
         f = fiber.succeed(False)
-        f.add_callback(fiber.bridge_result, check_true)
+        f.add_callback(fiber.bridge_param, check_true)
         f.add_callback(check_false)
         deferreds.append(f.start())
 

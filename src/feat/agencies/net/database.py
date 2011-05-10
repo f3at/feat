@@ -62,7 +62,7 @@ class Database(log.FluLogKeeper, ChangeListener):
 
     def listen_changes(self, doc_ids, callback):
         d = ChangeListener.listen_changes(self, doc_ids, callback)
-        d.addCallback(defer.bridge_result, self._setup_notifier)
+        d.addCallback(defer.bridge_param, self._setup_notifier)
         return d
 
     def cancel_listener(self, listener_id):

@@ -368,7 +368,7 @@ class TestCase(common.TestCase):
         for cb, err in calllist:
             index += 1
             call, cargs, ckwargs = cb
-            if call == fiber.drop_result:
+            if call == fiber.drop_param:
                 call, cargs = cargs[0], cargs[1:]
             if call == expected:
                 self.info('Call %r found, checking args and kwargs', expected)

@@ -192,12 +192,12 @@ class SolveProblemContractor(contractor.BaseContractor):
     @replay.mutable
     def granted(self, state, grant):
         f = state.problem.wait_for_solution()
-        f.add_callback(fiber.bridge_result, state.medium.ensure_state,
+        f.add_callback(fiber.bridge_param, state.medium.ensure_state,
                        ContractState.granted)
         f.add_callback(state.problem.solve_for, grant.reply_to)
-        f.add_callback(fiber.drop_result, state.medium.ensure_state,
+        f.add_callback(fiber.drop_param, state.medium.ensure_state,
                        ContractState.granted)
-        f.add_callback(fiber.drop_result, self._finalize)
+        f.add_callback(fiber.drop_param, self._finalize)
         return f
 
     @replay.mutable

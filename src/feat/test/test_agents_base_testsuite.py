@@ -33,7 +33,7 @@ class DummyAgent(common.DummyAgent):
     @replay.mutable
     def perform_async_job(self, state):
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self.call_side_effect, 5)
+        f.add_callback(fiber.drop_param, self.call_side_effect, 5)
         f.add_callback(state.medium.join_shard, shard='a')
         return f.succeed()
 

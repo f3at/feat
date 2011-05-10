@@ -49,7 +49,7 @@ class ShardPartner(MonitoredPartner):
 
     def initiate(self, agent):
         f = MonitoredPartner.initiate(self, agent)
-        f.add_callback(fiber.drop_result, agent.call_next,
+        f.add_callback(fiber.drop_param, agent.call_next,
                        agent.update_neighbour_monitors)
         return f
 
@@ -216,7 +216,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
         partner = self.find_partner(recipient)
         if partner:
             f = requester.say_goodbye(self, recipient, None)
-            f.add_callback(fiber.drop_result, self.remove_partner, partner)
+            f.add_callback(fiber.drop_param, self.remove_partner, partner)
             return f
 
 
@@ -268,8 +268,8 @@ class HandleDeath(task.BaseTask):
 
         f = state.agent.get_document(state.recp.key)
         f.add_callback(self._store_descriptor)
-        f.add_callback(fiber.drop_result, self._determine_factory)
-        f.add_callback(fiber.drop_result, self._start_collective_solver)
+        f.add_callback(fiber.drop_param, self._determine_factory)
+        f.add_callback(fiber.drop_param, self._start_collective_solver)
         return f
 
     @replay.entry_point
@@ -325,7 +325,7 @@ class HandleDeath(task.BaseTask):
     @replay.journaled
     def solve_localy(self, state):
         f = self._retry()
-        f.add_callback(fiber.drop_result, self.notify_finish)
+        f.add_callback(fiber.drop_param, self.notify_finish)
         return f
 
     ### endof IProblem ###
@@ -383,7 +383,7 @@ class HandleDeath(task.BaseTask):
             fibers.append(f)
         f = fiber.FiberList(fibers, consumeErrors=True)
         f.succeed()
-        f.add_callback(fiber.drop_result, state.medium.finish, new_address)
+        f.add_callback(fiber.drop_param, state.medium.finish, new_address)
         return f
 
     @replay.mutable
@@ -418,7 +418,7 @@ class HandleDeath(task.BaseTask):
     @replay.mutable
     def _restart_yourself(self, state):
         f = self._clear_host_partner()
-        f.add_callback(fiber.drop_result,
+        f.add_callback(fiber.drop_param,
                        host.start_agent_in_shard,
                        state.agent, state.descriptor, state.descriptor.shard)
         f.add_callbacks(self._send_restarted_notifications,
@@ -437,7 +437,7 @@ class HandleDeath(task.BaseTask):
         if self._cmp_strategy(RestartStrategy.local):
             self.info('Giving up, just sending burried notifications.')
             f = self._send_burried_notifications()
-            f.add_callback(fiber.drop_result, state.medium.finish, None)
+            f.add_callback(fiber.drop_param, state.medium.finish, None)
             return f
         elif self._cmp_strategy(RestartStrategy.whereever):
             self.info('Trying to find an allocation anywhere in the cluster.')
@@ -451,9 +451,9 @@ class HandleDeath(task.BaseTask):
         elif self._cmp_strategy(RestartStrategy.monitor):
             self.info('Taking over the role of the died monitor.')
             f = self._checkup_partners()
-            f.add_callback(fiber.drop_result,
+            f.add_callback(fiber.drop_param,
                            self._send_burried_notifications)
-            f.add_callback(fiber.drop_result, state.medium.finish, None)
+            f.add_callback(fiber.drop_param, state.medium.finish, None)
             return f
         else:
             state.medium.fail(RestartFailed('Unknown restart strategy: %r' %
@@ -468,7 +468,7 @@ class HandleDeath(task.BaseTask):
                state.descriptor.document_type)
         exp = RestartFailed(msg)
         f = self._send_burried_notifications()
-        f.add_callback(fiber.drop_result, state.medium.fail, exp)
+        f.add_callback(fiber.drop_param, state.medium.fail, exp)
         return f
 
     @replay.mutable
@@ -478,7 +478,7 @@ class HandleDeath(task.BaseTask):
         # has been set to sth meaningfull (not in [None, 'lobby'])
         f = state.descriptor.set_shard(state.agent, None)
         f.add_callback(self._store_descriptor)
-        f.add_callback(fiber.drop_result, host.start_agent,
+        f.add_callback(fiber.drop_param, host.start_agent,
             state.agent, recp, state.descriptor, allocation_id)
         f.add_errback(self._starting_failed)
         # POSSIBLE FIXME: should we get protected from host agent changing
@@ -559,7 +559,7 @@ class HandleDeath(task.BaseTask):
     @replay.immutable
     def _bind_unregistering_self(self, state):
         d = self.notify_finish()
-        d.addCallback(defer.drop_result,
+        d.addCallback(defer.drop_param,
                       state.agent._unregister_task,
                       state.recp.key)
         return d
@@ -580,7 +580,7 @@ class MonitorContractor(contractor.NestingContractor):
     @replay.entry_point
     def granted(self, state, grant):
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self._create_partner,
+        f.add_callback(fiber.drop_param, self._create_partner,
                       grant)
         f.add_callbacks(self._finalize, self._granted_failed)
         return f.succeed()

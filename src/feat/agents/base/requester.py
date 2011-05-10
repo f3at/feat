@@ -179,7 +179,7 @@ class Propose(BaseRequester):
     def _release_allocation(self, state):
         f = fiber.succeed()
         if state.allocation_id:
-            return f.add_callback(fiber.drop_result,
+            return f.add_callback(fiber.drop_param,
                                   state.agent.release_resource,
                                   state.allocation_id)
         return f
