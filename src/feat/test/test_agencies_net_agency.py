@@ -6,6 +6,7 @@ from twisted.spread import jelly
 
 from feat.test import common
 from feat.process import couchdb, rabbitmq
+from feat.agencies import journaler
 from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
 from feat.agents.base import agent, descriptor, replay
@@ -63,7 +64,7 @@ class UnitTestCase(common.TestCase):
         self.agency.config['msg'] = dict(port=3000, host='localhost')
         self.agency.config['manhole'] = dict(public_key='file')
         env = dict()
-        env = self.agency._store_config(env)
+        self.agency._store_config(env)
         self.assertEqual('localhost', env['FEAT_MSG_HOST'])
         self.assertEqual('3000', env['FEAT_MSG_PORT'])
         self.assertEqual('file', env['FEAT_MANHOLE_PUBLIC_KEY'])
@@ -214,13 +215,12 @@ class IntegrationTestCase(common.TestCase):
         yield self.msg_process.restart()
         c = self.msg_process.get_config()
         msg_host, msg_port = '127.0.0.1', c['port']
+        jourfile = "%s.sqlite3" % (self._testMethodName, )
         self.agency = agency.Agency(
             msg_host=msg_host, msg_port=msg_port,
-            db_host=db_host, db_port=db_port, db_name=db_name)
+            db_host=db_host, db_port=db_port, db_name=db_name,
+            agency_journal=jourfile)
         yield self.agency.initiate()
-
-    def check_journal_entries(self):
-        self.assertEqual(len(self.agency._journal_entries), 0)
 
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):
@@ -237,7 +237,6 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
-        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
@@ -254,7 +253,6 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
-        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def testStartAgentFromStandalone(self):
@@ -281,7 +279,6 @@ class IntegrationTestCase(common.TestCase):
         for slave in self.agency._broker.slaves:
             mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
-        self.check_journal_entries()
 
     @defer.inlineCallbacks
     def tearDown(self):

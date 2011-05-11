@@ -3,11 +3,11 @@
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
-from feat.common import text_helper, time, defer
+from feat.common import text_helper, defer
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
-from feat.agents.base import agent
+from feat.agents.base.agent import registry_lookup
 
 
 attr = common.attr
@@ -65,15 +65,17 @@ def format_journal(journal, prefix=""):
 
 class SimulationTest(common.TestCase):
 
-    configurable_attributes = ['skip_replayability']
+    configurable_attributes = ['skip_replayability', 'jourfile']
     skip_replayability = False
+    jourfile = None
 
     overriden_configs = None
 
     @defer.inlineCallbacks
     def setUp(self):
         yield common.TestCase.setUp(self)
-        self.driver = driver.Driver()
+        self.driver = driver.Driver(jourfile=self.jourfile)
+        yield self.driver.initiate()
         yield self.prolog()
 
     def prolog(self):
@@ -94,17 +96,14 @@ class SimulationTest(common.TestCase):
     def set_local(self, name, value):
         self.driver._parser.set_local(value, name)
 
+    @defer.inlineCallbacks
     def get_agent_journal(self, agent):
-        for agency in self.driver._agencies:
-            for medium in agency._agents:
-                if agent.journal_id == medium.get_agent().journal_id:
-                    aid = agent.get_descriptor().doc_id
-                    return [entry for entry in agency._journal_entries
-                            if entry and entry[0] == aid]
-        return []
-
-    def format_agent_journal(self, agent, prefix=""):
-        return format_journal(self.get_agent_journal(agent), prefix)
+        aid = agent.get_descriptor().doc_id
+        entries = []
+        histories = yield self.driver._journaler.get_entries_for(aid)
+        for story in histories:
+            entries += story
+        defer.returnValue(entries)
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -112,30 +111,36 @@ class SimulationTest(common.TestCase):
             yield x.wait_for_listeners_finish()
         yield common.TestCase.tearDown(self)
         try:
-            if not self.skip_replayability:
-                self.info("Test finished, now validating replayability.")
-                for agency in self.driver._agencies:
-                    self._validate_replay_on_agency(agency)
-            else:
-                msg = ("\n\033[91mFIXME: \033[0mReplayability test "
-                      "skipped: %s\n" % self.skip_replayability)
-                print msg
+            yield self._check_replayability()
         finally:
             self.revert_overrides()
 
-    def _validate_replay_on_agency(self, agency):
-        for agent in agency._agents:
-            self._validate_replay_on_agent(agency, agent)
+    @defer.inlineCallbacks
+    def _check_replayability(self):
+        if not self.skip_replayability:
+            self.info("Test finished, now validating replayability.")
+            agent_ids = yield self.driver._journaler.get_agent_ids()
+            for aid in agent_ids:
+                histories = yield self.driver._journaler.get_entries_for(aid)
+                for entries in histories:
+                    self._validate_replay_on_agent(aid, entries)
+        else:
+            msg = ("\n\033[91mFIXME: \033[0mReplayability test "
+                  "skipped: %s\n" % self.skip_replayability)
+            print msg
 
-    def _validate_replay_on_agent(self, agency, agent):
-        aid = agent.get_descriptor().doc_id
+    def _validate_replay_on_agent(self, aid, entries):
+        agent = self.driver.find_agent(aid)
+        if agent is None:
+            self.warning(
+                'Agent with id %r not found. This usually means it was '
+                'terminated, during the test')
+            return
+
         self.log("Validating replay of %r with id: %s",
                  agent.agent.__class__.__name__, aid)
 
-        entries = [entry for entry in agency._journal_entries\
-                   if entry[0] == aid]
         self.log("Found %d entries of this agent.", len(entries))
-
         r = replay.Replay(iter(entries), aid)
         for entry in r:
             entry.apply()
@@ -182,7 +187,7 @@ class SimulationTest(common.TestCase):
     def override_config(self, agent_type, config):
         if self.overriden_configs is None:
             self.overriden_configs = dict()
-        factory = agent.registry_lookup(agent_type)
+        factory = registry_lookup(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
 
@@ -190,5 +195,5 @@ class SimulationTest(common.TestCase):
         if self.overriden_configs is None:
             return
         for key, value in self.overriden_configs.iteritems():
-            factory = agent.registry_lookup(key)
+            factory = registry_lookup(key)
             factory.configuration_doc_id = value

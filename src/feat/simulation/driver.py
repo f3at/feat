@@ -4,7 +4,7 @@ import StringIO
 import uuid
 
 from feat.common import log, manhole, defer, reflect, time
-from feat.agencies import agency
+from feat.agencies import agency, journaler
 from feat.agencies.emu import messaging, database
 from feat.test import factories
 from feat.agents.base import document, dbtools
@@ -39,7 +39,7 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        d = ag.initiate(self._messaging, self._database)
+        d = ag.initiate(self._messaging, self._database, self._journaler)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -155,13 +155,18 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     log_category = 'simulation-driver'
 
-    def __init__(self):
+    def __init__(self, jourfile=None):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
         self._database = database.Database()
+        jouropts = dict()
+        if jourfile:
+            jouropts['filename'] = jourfile
+            jouropts['encoding'] = 'zip'
+        self._journaler = journaler.Journaler(self, **jouropts)
 
         self._output = Output()
         self._parser = manhole.Parser(self, self._output, self,
@@ -170,11 +175,11 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._agencies = list()
         self._breakpoints = dict()
 
-        self._init_connections()
-
-    def _init_connections(self):
+    def initiate(self):
         self._database_connection = self._database.get_connection()
-        dbtools.push_initial_data(self._database_connection)
+        d1 = dbtools.push_initial_data(self._database_connection)
+        d2 = self._journaler.initiate()
+        return defer.DeferredList([d1, d2])
 
     def iter_agents(self, agent_type=None):
         for agency in self._agencies:

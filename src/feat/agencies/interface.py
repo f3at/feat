@@ -10,7 +10,7 @@ __all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
-           "IDatabaseDriver")
+           "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection")
 
 
 class DatabaseError(RuntimeError):
@@ -370,3 +370,91 @@ class IDatabaseDriver(Interface):
         @rtype: Deferred
         @return: Deferred which will fire when the listener is cancelled.
         '''
+
+
+class IJournaler(Interface):
+    """
+    Interface implemented by object responsible for storing/querying journal
+    entries. It also constructs the connections used by the agencies.
+    """
+
+    def get_connection(agency):
+        """
+        Creates the connection for the agency to push it's entries.
+        @param agency: The agency for which to create the journal entries.
+        @type agency: L{feat.interfaces.serialization.IExternalizer}
+        @return: Connection instance
+        @rtype: L{IJournalerConnection}
+        """
+
+    def prepare_record():
+        '''
+        Preconstruct a IRecord instance which is used as data container.
+        @rtype: L{IRecord}
+        '''
+
+    def get_agent_ids():
+        '''
+        Returns the Deferred triggered with list of agent_id for which
+        entries has been found in the journal.
+        @rtype: Deferred([agent_id])
+        '''
+
+    def get_entries_for(agent_id):
+        '''
+        Fetches the journal entries for the agent_id.
+        The format of history is as follows:
+        [history_of_instance1, history_of_instance2, ... ]
+        The history_of_instance is the list of journal entries.
+        Single entry has a format of:
+        [agent_id, instance_id, journal_id, function_id, fiber_id,
+        fiber_depth, args, kwargs, side_effects, result, timestamp]
+        @rtype: Deferred(history)
+        '''
+
+    def get_filename():
+        """
+        Return the filename to which this journaler stores entries.
+        """
+
+
+class IRecord(Interface):
+    '''
+    Interface implemented by the data container used to comunicate beetween
+    IJournalKeeper and IJournaler.
+    '''
+
+    def commit(**data):
+        '''
+        Commits the entry. The dictionary should contain the following keys:
+        agent_id           - id of the agent
+        instance_id        - id of the instance
+        journal_id         - serialized id of the IRecorder
+        function_id        - id of the journaled function called
+        args               - serialized arguments of the call
+        kwargs             - serialized keywords of the call
+        fiber_id           - id of the fiber
+        fiber_depth        - depth in the fiber
+        result             - serialized result of the call
+        side_effects       - serialized list of side effects produced
+                             by the call
+        '''
+
+
+class IJournalerConnection(Interface):
+    """
+    Interface implemented by connection from agency to journaler.
+    It acts as a factory for the IJournalEntries, and tracks the instances
+    it produces.
+    """
+
+    def new_entry(agent_id, journal_id, function_id, *args, **kwargs):
+        """
+        Create a new IAgencyJournalEntry for the given parameters.
+        @rtype: IAgencyJournalEntry
+        """
+
+    def get_filename():
+        """
+        Return the filename to which this connection stores.
+        """

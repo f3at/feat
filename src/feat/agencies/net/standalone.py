@@ -16,6 +16,7 @@ class Agency(agency.Agency):
         agency.Agency.__init__(self)
         # Add standalone-specific values
         self.config["agent"] = {"id": None, "args": None, "kwargs": None}
+        self.config["agency"] = {"journal": None}
         # Load configuration from environment and options
         self._load_config(os.environ, options)
         if self.config['agent']['id'] is None:
@@ -25,6 +26,7 @@ class Agency(agency.Agency):
 
     def initiate(self):
         reactor.callWhenRunning(self._run)
+        return defer.succeed(self)
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
@@ -41,7 +43,6 @@ class Agency(agency.Agency):
             args = json.unserialize(self.config['agent']['args'])
         if self.config['agent']['kwargs']:
             kwargs = json.unserialize(self.config['agent']['kwargs'])
-
         d = agency.Agency.initiate(self)
         d.addCallback(lambda _: self._database.get_connection())
         d.addCallback(lambda conn: conn.get_document(aid))

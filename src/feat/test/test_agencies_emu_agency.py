@@ -76,8 +76,10 @@ components.registerAdapter(DummyAgencyInterest,
 
 class TestDependencies(common.TestCase, common.AgencyTestHelper):
 
+    @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
     def testGettingModes(self):
         self.assertEqual(ExecMode.test, self.agency.get_mode('unknown'))
@@ -97,7 +99,8 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
@@ -190,8 +193,8 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.TestCase.setUp(self)
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
@@ -385,8 +388,9 @@ class TestRetryingProtocol(common.TestCase):
 
     timeout = 3
 
+    @defer.inlineCallbacks
     def setUp(self):
-        common.TestCase.setUp(self)
+        yield common.TestCase.setUp(self)
         self.medium = DummyMedium(self)
 
     @defer.inlineCallbacks

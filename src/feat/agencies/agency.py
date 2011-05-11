@@ -7,7 +7,6 @@ import uuid
 import weakref
 
 # Import external project modules
-from twisted.internet import reactor
 from zope.interface import implements
 
 # Import feat modules
@@ -16,7 +15,6 @@ from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import log, defer, fiber, serialization, journal, time
 from feat.common import manhole, error_handler, text_helper, container
-from feat.common.serialization import pytree
 
 # Import interfaces
 from interface import *
@@ -27,98 +25,6 @@ from feat.interface.journal import *
 from feat.interface.protocols import *
 from feat.interface.recipient import *
 from feat.interface.serialization import *
-
-
-class AgencyJournalSideEffect(object):
-
-    implements(IJournalSideEffect)
-
-    ### IJournalSideEffect ###
-
-    def __init__(self, serializer, record, function_id, *args, **kwargs):
-        self._serializer = serializer
-        self._record = record
-        self._fun_id = function_id
-        # FIXME: This is ugly hack introduced by the fact that we cannot
-        # serialize methods, hence if side effect param is a method it has
-        # to be skipped
-        if function_id != "SIDE EFFECT SKIPPED":
-            self._args = serializer.convert(args or None)
-            self._kwargs = serializer.convert(kwargs or None)
-        else:
-            self._args = None
-            self._kwargs = None
-        self._effects = []
-        self._result = None
-
-    ### IJournalSideEffect Methods ###
-
-    def add_effect(self, effect_id, *args, **kwargs):
-        assert self._record is not None
-        data = (effect_id,
-                self._serializer.convert(args),
-                self._serializer.convert(kwargs))
-        self._effects.append(data)
-
-    def set_result(self, result):
-        assert self._record is not None
-        self._result = self._serializer.convert(result)
-        return self
-
-    def commit(self):
-        assert self._record is not None
-        data = (self._fun_id, self._args, self._kwargs,
-                self._effects, self._result)
-        self._record.extend(data)
-        self._record = None
-        return self
-
-
-class AgencyJournalEntry(object):
-
-    implements(IJournalEntry)
-
-    def __init__(self, serializer, record, agent_id, journal_id,
-                 function_id, *args, **kwargs):
-        self._serializer = serializer
-        self._record = record
-        self._agent_id = agent_id
-        self._journal_id = journal_id
-        self._function_id = function_id
-        self._args = serializer.convert(args or None)
-        self._kwargs = serializer.convert(kwargs or None)
-        self._fiber_id = None
-        self._fiber_depth = None
-        self._result = None
-        self._side_effects = []
-
-    ### IJournalEntry Methods ###
-
-    def set_fiber_context(self, fiber_id, fiber_depth):
-        assert self._record is not None
-        self._fiber_id = fiber_id
-        self._fiber_depth = fiber_depth
-        return self
-
-    def set_result(self, result):
-        assert self._record is not None
-        self._result = self._serializer.freeze(result)
-        return self
-
-    def new_side_effect(self, function_id, *args, **kwargs):
-        assert self._record is not None
-        record = []
-        self._side_effects.append(record)
-        return AgencyJournalSideEffect(self._serializer, record,
-                                       function_id, *args, **kwargs)
-
-    def commit(self):
-        data = (self._agent_id, self._journal_id, self._function_id,
-                self._fiber_id, self._fiber_depth,
-                self._args, self._kwargs, self._side_effects, self._result)
-        self._record.extend(data)
-        self._record = None
-        return self
 
 
 class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
@@ -140,22 +46,22 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
         self._agents = []
 
-        self._journal_entries = list()
-        self.serializer = pytree.Serializer(externalizer=self)
         self.registry = weakref.WeakValueDictionary()
+        self._journaler = None
         self._database = None
         self._messaging = None
 
     ### Public Methods ###
 
-    def initiate(self, messaging, database):
+    def initiate(self, messaging, database, journaler):
         '''
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
         self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
-        return defer.succeed(None)
+        self._journaler = IJournaler(journaler).get_connection(self)
+        return defer.succeed(self)
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):
@@ -211,14 +117,13 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                 (j_id, self.registry[j_id], ))
         self.registry[j_id] = recorder
 
-    def journal_new_entry(self, agent_id, journal_id,
+    def journal_new_entry(self, agent_id, instance_id, journal_id,
                           function_id, *args, **kwargs):
-        record = []
-        self._journal_entries.append(record)
-        return AgencyJournalEntry(self.serializer, record, agent_id,
-                                  journal_id, function_id, *args, **kwargs)
+        return self._journaler.new_entry(agent_id, instance_id, journal_id,
+                                         function_id, *args, **kwargs)
 
-    def journal_agency_entry(self, agent_id, function_id, *args, **kwargs):
+    def journal_agency_entry(self, agent_id, instance_id, function_id,
+                             *args, **kwargs):
         if journal.add_effect(function_id, *args, **kwargs):
             return
 
@@ -228,7 +133,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         try:
 
             desc = section.descriptor
-            entry = self.journal_new_entry(agent_id, 'agency',
+            entry = self.journal_new_entry(agent_id, instance_id, 'agency',
                                            function_id, *args, **kwargs)
             entry.set_fiber_context(desc.fiber_id, desc.fiber_depth)
             entry.set_result(None)
@@ -238,24 +143,26 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
             section.abort()
 
-    def journal_protocol_created(self, agent_id, protocol_factory,
-                                 medium, *args, **kwargs):
-        self.journal_agency_entry(agent_id, 'protocol_created',
+    def journal_protocol_created(self, agent_id, instance_id,
+                                 protocol_factory, medium, *args, **kwargs):
+        self.journal_agency_entry(agent_id, instance_id, 'protocol_created',
                                   protocol_factory, medium, *args, **kwargs)
 
-    def journal_protocol_deleted(self, agent_id, protocol_instance, dummy_id):
-        self.journal_agency_entry(agent_id, 'protocol_deleted',
+    def journal_protocol_deleted(self, agent_id, instance_id,
+                                 protocol_instance, dummy_id):
+        self.journal_agency_entry(agent_id, instance_id, 'protocol_deleted',
                                   protocol_instance.journal_id, dummy_id)
 
-    def journal_agent_created(self, agent_id, agent_factory, dummy_id):
-        self.journal_agency_entry(agent_id, 'agent_created',
+    def journal_agent_created(self, agent_id, instance_id, agent_factory,
+                              dummy_id):
+        self.journal_agency_entry(agent_id, instance_id, 'agent_created',
                                   agent_factory, dummy_id)
 
-    def journal_agent_deleted(self, agent_id):
-        self.journal_agency_entry(agent_id, 'agent_deleted')
+    def journal_agent_deleted(self, agent_id, instance_id):
+        self.journal_agency_entry(agent_id, instance_id, 'agent_deleted')
 
-    def journal_agent_snapshot(self, agent_id, snapshot):
-        self.journal_agency_entry(agent_id, 'snapshot', snapshot)
+    def journal_agent_snapshot(self, agent_id, instance_id, snapshot):
+        self.journal_agency_entry(agent_id, instance_id, 'snapshot', snapshot)
 
     ### IExternalizer Methods ###
 
@@ -338,9 +245,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.journal_keeper = self
         self.agency = IAgency(agency)
         self._descriptor = descriptor
-
-        self.agency.journal_agent_created(descriptor.doc_id, factory,
-                                          self.snapshot())
+        # Our instance id. It is used to tell the difference between the
+        # journal entries comming from different agencies running the same
+        # agent. Our value will be stored in descriptor before calling anything
+        # on the agent side, although it needs to be set now to produce valid
+        # identifiers.
+        self._instance_id = descriptor.instance_id + 1
 
         self.agent = factory(self)
         self.log_name = self.agent.__class__.__name__
@@ -380,11 +290,13 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(setter, '_database')
         d.addCallback(defer.drop_result,
                       self._subscribe_for_descriptor_changes)
-        d.addCallback(defer.drop_result, self._increase_instance_id)
+        d.addCallback(defer.drop_result, self._store_instance_id)
         d.addCallback(defer.drop_result, self._load_configuration)
         d.addCallback(setter, '_configuration')
         d.addCallback(defer.drop_result,
                       self.join_shard, self._descriptor.shard)
+        d.addCallback(defer.drop_result,
+                      self.journal_agent_created)
         d.addCallback(defer.drop_result,
                       self._call_initiate, *args, **kwargs)
         d.addCallback(defer.override_result, self)
@@ -407,12 +319,20 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         listeners = [i.get_agent_side() for i in self._listeners.values()]
         return (self.agent, listeners, )
 
+    def journal_agent_created(self):
+        factory = type(self.agent)
+        self.agency.journal_agent_created(
+            self._descriptor.doc_id, self._instance_id,
+            factory, self.snapshot())
+
     def journal_snapshot(self):
         self.agency.journal_agent_snapshot(self._descriptor.doc_id,
+                                           self._instance_id,
                                            self.snapshot_agent())
 
     def journal_protocol_created(self, *args, **kwargs):
         self.agency.journal_protocol_created(self._descriptor.doc_id,
+                                             self._instance_id,
                                              *args, **kwargs)
 
     @serialization.freeze_tag('AgencyAgent.start_agent')
@@ -610,7 +530,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def generate_identifier(self, recorder):
         assert not getattr(self, 'indentifier_generated', False)
         self._identifier_generated = True
-        return (self._descriptor.doc_id, )
+        return (self._descriptor.doc_id, self._instance_id, )
 
     ### IJournalKeeper Methods ###
 
@@ -619,13 +539,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def new_entry(self, journal_id, function_id, *args, **kwargs):
         return self.agency.journal_new_entry(self._descriptor.doc_id,
+                                             self._instance_id,
                                              journal_id, function_id,
                                              *args, **kwargs)
 
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self._descriptor.doc_id
+        return (self._descriptor.doc_id, self._instance_id, )
 
     ### IAgencyAgentInternal Methods ###
 
@@ -646,8 +567,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.debug('Unregistering listener session_id: %r', session_id)
             listener = self._listeners[session_id]
             self.agency.journal_protocol_deleted(
-                self._descriptor.doc_id, listener.get_agent_side(),
-                listener.snapshot())
+                self._descriptor.doc_id, self._instance_id,
+                listener.get_agent_side(), listener.snapshot())
             del(self._listeners[session_id])
         else:
             self.error('Tried to unregister listener with session_id: %r, '
@@ -832,17 +753,18 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'suacide :(. Or you have a bug ;).')
         return self.terminate_hard()
 
-    def _increase_instance_id(self):
+    def _store_instance_id(self):
         '''
         Run at the initialization before calling any code at agent-side.
-        Ensures that only this instance holds the currect revision of the
-        descriptor document.
+        Ensures that descriptor holds our value, this effectively creates a
+        lock on the descriptor - if other instance is running somewhere out
+        there it would get the notification update and suacide.
         '''
 
-        def do_increase(desc):
-            desc.instance_id += 1
+        def do_set(desc):
+            desc.instance_id = self._instance_id
 
-        return self.update_descriptor(do_increase)
+        return self.update_descriptor(do_set)
 
     def _load_configuration(self):
 

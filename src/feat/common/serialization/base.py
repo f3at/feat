@@ -1,3 +1,4 @@
+import operator
 import copy
 import types
 
@@ -508,8 +509,11 @@ class Serializer(object):
     def flatten_dict_value(self, value, caps, freezing):
         self.check_capabilities(Capabilities.dict_values, value,
                                 caps, freezing)
+        items = value.items()
+        if freezing:
+            items = sorted(items, key=operator.itemgetter(0))
         return self.pack_dict, [self.flatten_item(i, caps, freezing)
-                                for i in value.iteritems()]
+                                for i in items]
 
     def flatten_str_key(self, value, caps, freezing):
         self.check_capabilities(Capabilities.str_keys, value,

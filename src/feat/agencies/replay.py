@@ -2,7 +2,7 @@ from zope.interface import implements, classProvides
 
 from feat.common import serialization, log, text_helper
 from feat.agents.base import replay
-from feat.common.serialization import pytree
+from feat.common.serialization import banana
 
 from feat.interface.agent import *
 from feat.interface.contractor import *
@@ -75,10 +75,14 @@ class JournalReplayEntry(object):
     def __init__(self, replay, record):
         self._replay = replay
 
-        (self.agent_id, self.journal_id, self.function_id,
-         self.fiber_id, self.fiber_depth,
-         self._args, self._kwargs,
-         self._side_effects, self.frozen_result) = record
+        # this needs to be consitent with output of the Journaler._decode()
+        (self.agent_id, self.instance_id, self.journal_id, self.function_id,
+         self.fiber_id, self.fiber_depth, self._args, self._kwargs,
+         self._side_effects, self.frozen_result, self._timestamp) = record
+
+        self.journal_id = self._replay.unserializer.convert(self.journal_id)
+        self._side_effects = self._replay.unserializer.convert(
+            self._side_effects)
 
         self._next_effect = 0
 
@@ -110,8 +114,12 @@ class JournalReplayEntry(object):
             frozen_result = self._replay.serializer.freeze(result)
 
             if frozen_result != self.frozen_result:
-                res = repr(frozen_result)
-                exp = repr(self.frozen_result)
+                # TODO: Think about compraring unfrozen (unserialized)
+                # results.
+                res = repr(self._replay.unserializer.convert(frozen_result))
+                exp = repr(self._replay.unserializer.convert(
+                    self.frozen_result))
+
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
                                   "do not match recorded one.\n"
@@ -144,7 +152,8 @@ class JournalReplayEntry(object):
                    header, self.function_id,
                    header, args,
                    header, kwargs,
-                   header, self.frozen_result,
+                   header, self._replay.unserializer.convert(
+                       self.frozen_result),
                    header, header + "  ",
                    ("\n  " + header).join(side_effects)))
 
@@ -232,8 +241,8 @@ class Replay(log.FluLogKeeper, log.Logger):
         log.Logger.__init__(self, self)
 
         self.journal = journal
-        self.unserializer = pytree.Unserializer(externalizer=self)
-        self.serializer = pytree.Serializer(externalizer=self)
+        self.unserializer = banana.Unserializer(externalizer=self)
+        self.serializer = banana.Serializer(externalizer=self)
 
         self.agent_id = agent_id
         Factory(self, 'agent-medium', AgencyAgent)
@@ -601,13 +610,13 @@ class AgencyAgent(BaseReplayDummy):
     def generate_identifier(self, recorder):
         assert not getattr(self, 'indentifier_generated', False)
         self._identifier_generated = True
-        return (self.replay.agent_id, )
+        return self._dummy_id
 
 
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.replay.agent_id
+        return self._dummy_id[0], self._dummy_id[1]
 
 
 class AgencyReplier(BaseReplayDummy, StateMachineSpecific):
