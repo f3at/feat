@@ -1,3 +1,4 @@
 graft tools
 graft doc
 include env
+include src/feat/agencies/net/amqp0-8.xml

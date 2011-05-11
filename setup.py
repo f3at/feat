@@ -15,4 +15,5 @@ setup(name='feat',
       scripts=['bin/feat',
                'src/feat/bin/host.py',
                'src/feat/bin/standalone.py'],
+      package_data={'': ['src/feat/agencies/net/amqp0-8.xm']},
 )
