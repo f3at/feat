@@ -43,6 +43,9 @@ rm -rf $RPM_BUILD_ROOT
 %{__mv} $RPM_BUILD_ROOT/%_usr/bin/host.py $RPM_BUILD_ROOT/%_usr/bin/feat-host
 %{__mv} $RPM_BUILD_ROOT/%_usr/bin/standalone.py $RPM_BUILD_ROOT/%_usr/bin/feat-standalone
 
+install -m 644 src/feat/agencies/net/amqp0-8.xml \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/net/amqp0-8.xml
+
 %files
 %defattr(-,root,root,-)
 %{python_sitelib}/*
@@ -52,6 +55,10 @@ rm -rf $RPM_BUILD_ROOT
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Wed May 11 2011 Xavier Queralt <xqueralt@flumotion.com>
+- 0.1.2-3
+- Add missing amqp0-8.xml file into the package
+
 * Fri Apr 1 2011 Sebastien Merle <sebastien@flumotion.com>
 - 0.1.2-1
 - Update for new release.
