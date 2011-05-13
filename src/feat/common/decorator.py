@@ -201,6 +201,9 @@ def parametrized_callable(decorator):
 
 def _function_mimicry(original, mimic):
     #FIXME: We should do better and to copy function signature too
+    if original.__dict__:
+        for key in original.__dict__:
+            setattr(mimic, key, original.__dict__[key])
     mimic.__name__ = original.__name__
     mimic.__doc__ = original.__doc__
     return mimic
