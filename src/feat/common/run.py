@@ -176,6 +176,13 @@ def startup(processType, processName, daemonize=False,
     @param daemonizeTo: The directory that the daemon should run in.
     @type  daemonizeTo: str
     """
+    pid = getPid(rundir, processType, processName)
+    if pid:
+        if checkPidRunning(pid):
+            log.error(processType,
+                "%s is running with pid %d" % (processName, pid))
+            sys.exit(1)
+
     log.info(processType, "Starting %s '%s'", processType, processName)
 
     if daemonize:
