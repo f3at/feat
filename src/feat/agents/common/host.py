@@ -72,6 +72,8 @@ class HostDef(document.Document):
     # The resources available for this host type.
     document.field('resources', {})
     document.field('categories', {})
+    # List of ports ranges used for allocating new ports
+    document.field('ports_ranges', {})
 
 
 def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):

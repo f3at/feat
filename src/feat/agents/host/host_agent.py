@@ -272,26 +272,26 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     @rpc.publish
     @replay.mutable
-    def allocate_ports(self, state, number):
+    def allocate_ports(self, state, number, group='misc'):
         try:
-            return state.port_allocator.reserve_ports(number)
+            return state.port_allocator.reserve_ports(number, group)
         except port_allocator.PortAllocationError as e:
             return fiber.fail(e)
 
     @rpc.publish
     @replay.mutable
-    def release_ports(self, state, ports):
-        return state.port_allocator.release_ports(ports)
+    def release_ports(self, state, ports, group='misc'):
+        return state.port_allocator.release_ports(ports, group)
 
     @rpc.publish
     @replay.mutable
-    def set_ports_used(self, state, ports):
-        return state.port_allocator.set_ports_used(ports)
+    def set_ports_used(self, state, ports, group='misc'):
+        return state.port_allocator.set_ports_used(ports, group)
 
     @rpc.publish
     @replay.immutable
-    def get_num_free_ports(self, state):
-        return state.port_allocator.num_free()
+    def get_num_free_ports(self, state, group='misc'):
+        return state.port_allocator.num_free(group)
 
     @rpc.publish
     def premodify_allocation(self, allocation_id, **delta):
@@ -630,7 +630,6 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _get_cost(self, state, bid):
         bid.payload['cost'] = 0
         return bid
-
 
 class StartAgentReplier(replier.BaseReplier):
 
