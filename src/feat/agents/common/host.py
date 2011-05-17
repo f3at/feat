@@ -26,6 +26,29 @@ class HostDef(document.Document):
     document.field('ports_ranges', {})
 
 
+def allocate_ports(agent, recp, port_num, group):
+    '''
+    Allocates a number of ports for a given group in a host agent
+
+    @param port_num: Number of ports to allocate
+    @type  port_num: int
+    @param group:    Group for the allocation
+    @type  group:    str
+    '''
+    return agent.call_remote(recp, "allocate_ports", port_num, group)
+
+def release_ports(agent, recp, ports, group):
+    '''
+    Releases a list of ports for a given group in a host agent
+
+    @param ports: List of ports numbers to release
+    @type  ports: list
+    @param group: Group for the allocation
+    @type  group: str
+    '''
+    return agent.call_remote(recp, "release_ports", ports, group)
+
+
 def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):
     '''
     Tells remote host agent to start agent identified by desc.
