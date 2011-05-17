@@ -56,6 +56,11 @@ def add_options(parser):
                       help="Add a resource to the host agent. "
                            "Format: RES_NAME:RES_MAX. Example: 'epu:42'.",
                       metavar="HOST_DEF_ID", action="append", default=[])
+    parser.add_option('-z', '--host-ports-ranges', dest="hostports",
+                      help="Add available port ranges by groups to the host agent. "
+                      "Format: GROUP_NAME:PORT_MIN:PORT_MAX. Example: "
+                      "'worker:1000:2000'.",
+                      metavar="HOST_DEF_ID", action="append", default=[])
     parser.add_option('-g', '--host-category', dest="hostcat",
                     help="Add a category to the host agent. "
                          "Format: CAT_NAME:CAT_VALUE.",
@@ -120,7 +125,6 @@ def check_category(catdef):
         return name, Storage.get(value)
     raise OptionError("Invalid host category: %s" % catdef)
 
-
 def bootstrap(parser=None, args=None, descriptors=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
@@ -148,6 +152,38 @@ def bootstrap(parser=None, args=None, descriptors=None):
         opts, args = check_options(opts, args)
 
         descriptors = descriptors or []
+        for name in opts.agents:
+            factory = descriptor.lookup(name)
+            if factory is None:
+                msg = "No descriptor factory found for agent %s" % name
+                raise run.OptionError(msg)
+            descriptors.append(factory())
+
+        if opts.hostres or opts.hostcat or opts.hostports:
+            hostdef = host.HostDef()
+            for resdef in opts.hostres:
+                parts = resdef.split(":", 1)
+                name = parts[0]
+                value = 1
+                if len(parts) > 1:
+                    try:
+                        value = int(parts[1])
+                    except ValueError:
+                        raise run.OptionError("Invalid host resource: %s"
+                                              % resdef)
+                hostdef.resources[name] = value
+
+            for catdef in opts.hostcat:
+                name, value = check_category(catdef)
+                hostdef.categories[name] = value
+
+            ports_ranges = []
+            for ports in opts.hostports:
+                group, start, stop = tuple(ports.split(":"))
+                ports_ranges.append((group, int(start), int(stop)))
+            hostdef.ports_ranges = ports_ranges
+
+        agency.set_host_def(hostdef)
         d = agency.initiate()
 
         if not opts.standalone:
