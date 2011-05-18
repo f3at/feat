@@ -55,7 +55,7 @@ class Commands(manhole.Manhole):
         return str(uuid.uuid1())
 
     @manhole.expose()
-    def descriptor_factory(self, document_type, shard=u'lobby'):
+    def descriptor_factory(self, document_type, shard=u'lobby', **kwargs):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
@@ -63,7 +63,7 @@ class Commands(manhole.Manhole):
         Second parameter is optional (default lobby). Usage:
         > descriptor_factory('shard_descriptor', 'some shard')
         """
-        desc = factories.build(document_type, shard=unicode(shard))
+        desc = factories.build(document_type, shard=unicode(shard), **kwargs)
         return self._database_connection.save_document(desc)
 
     @manhole.expose()
