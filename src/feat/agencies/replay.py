@@ -83,6 +83,7 @@ class JournalReplayEntry(object):
         self.journal_id = self._replay.unserializer.convert(self.journal_id)
         self._side_effects = self._replay.unserializer.convert(
             self._side_effects)
+        self.result = self._replay.unserializer.convert(self.frozen_result)
 
         self._next_effect = 0
 
@@ -117,8 +118,7 @@ class JournalReplayEntry(object):
                 # TODO: Think about compraring unfrozen (unserialized)
                 # results.
                 res = repr(self._replay.unserializer.convert(frozen_result))
-                exp = repr(self._replay.unserializer.convert(
-                    self.frozen_result))
+                exp = repr(self.result)
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "

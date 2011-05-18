@@ -41,15 +41,14 @@ class DBTests(common.TestCase):
         jour = journaler.Journaler(self, encoding='zip')
         yield jour.initiate()
         yield jour.insert_entry(**self._generate_data())
-        agent_ids = yield jour.get_agent_ids()
-        self.assertEqual([u'some id'], agent_ids)
-        histories = yield jour.get_entries_for('some id')
+        histories = yield jour.get_histories()
         self.assertIsInstance(histories, list)
-        self.assertEqual(1, len(histories))
-        history = histories[0]
-        self.assertIsInstance(history, list)
-        self.assertEqual(1, len(history))
-        unpacked = self._unpack(history[0])
+        self.assertIsInstance(histories[0], journaler.History)
+
+        entries = yield jour.get_entries(histories[0])
+        self.assertIsInstance(entries, list)
+        self.assertEqual(1, len(entries))
+        unpacked = self._unpack(entries[0])
         self.assertEqual('some id', unpacked['a_id'])
         self.assertEqual('some.canonical.name', unpacked['fun_id'])
         self.assertEqual(('some_id', 1, 0, ),
@@ -60,13 +59,10 @@ class DBTests(common.TestCase):
                          self.unserializer.convert(unpacked['sfx']))
 
         yield jour.insert_entry(**self._generate_data(function_id='other'))
-        histories = yield jour.get_entries_for('some id')
-        self.assertEqual(1, len(histories))
-        history = histories[0]
-        self.assertIsInstance(history, list)
-        self.assertEqual(2, len(history))
-        first = self._unpack(history[0])
-        second = self._unpack(history[1])
+        entries = yield jour.get_entries(histories[0])
+        self.assertEqual(2, len(entries))
+        first = self._unpack(entries[0])
+        second = self._unpack(entries[1])
         self.assertEqual('some.canonical.name', first['fun_id'])
         self.assertEqual('other', second['fun_id'])
 
@@ -118,5 +114,6 @@ class DBTests(common.TestCase):
             'fiber_depth': 1,
             'result': self.serializer.convert(None),
             'side_effects': self.serializer.convert(list())}
+
         defaults.update(opts)
         return defaults

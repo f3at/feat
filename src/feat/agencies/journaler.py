@@ -7,7 +7,7 @@ import types
 from zope.interface import implements
 from twisted.enterprise import adbapi
 
-from feat.common import log, text_helper, error_handler, defer
+from feat.common import log, text_helper, error_handler, defer, formatable
 from feat.common.serialization import banana
 
 from feat.interface.journal import *
@@ -36,6 +36,8 @@ class Journaler(log.Logger, log.LogProxy):
         self._encoding = encoding
         self._db = None
         self._filename = filename
+        # (agent_id, instance_id, ) -> history_id
+        self._history_id_cache = dict()
 
     def initiate(self):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
@@ -59,62 +61,101 @@ class Journaler(log.Logger, log.LogProxy):
     def prepare_record(self):
         return Record(self)
 
-    def get_agent_ids(self):
-        d = self._db.runQuery("SELECT DISTINCT agent_id FROM entries")
-        d.addCallback(lambda resp: map(operator.itemgetter(0), resp))
-        return d
+    def get_histories(self):
+        return History.fetch(self._db)
 
-    @defer.inlineCallbacks
-    def get_entries_for(self, agent_id):
+    def get_entries(self, history):
         '''
-        Returns a list of consitent histories for the given
-        agent_id. Each value is a history (list of entries) of an instance
-        of the agent.
+        Returns a list of journal entries  for the given history_id.
         '''
+        if not isinstance(history, History):
+            raise AttributeError(
+                'First paremeter is expected to be History instance, got %r'
+                % history)
+
         command = text_helper.format_block("""
-        SELECT DISTINCT instance_id
-               FROM entries
-               WHERE agent_id = ?
-               ORDER BY timestamp ASC
+        SELECT histories.agent_id,
+               histories.instance_id,
+               entries.journal_id,
+               entries.function_id,
+               entries.fiber_id,
+               entries.fiber_depth,
+               entries.args,
+               entries.kwargs,
+               entries.side_effects,
+               entries.result,
+               entries.timestamp
+          FROM entries
+          LEFT JOIN histories ON histories.id = entries.history_id
+          WHERE entries.history_id = ?
+          ORDER BY entries.rowid ASC
         """)
-        instance_ids = yield self._db.runQuery(command, (agent_id, ))
-
-        result = []
-        for instance_id in instance_ids:
-            command = text_helper.format_block("""
-            SELECT * FROM entries WHERE
-              agent_id = ? AND instance_id = ?
-            """)
-            fetch = yield self._db.runQuery(command,
-                                            (agent_id, instance_id[0], ))
-            result.append(self._decode(fetch))
-
-        defer.returnValue(result)
+        d = self._db.runQuery(command, (history.history_id, ))
+        d.addCallback(self._decode)
+        return d
 
     def insert_entry(self, **data):
         assert self.running
-        command = text_helper.format_block("""
-        INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                    strftime('\%f', 'now'))
-        """)
+
+        def do_insert(connection, history_id, data):
+            command = text_helper.format_block("""
+            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                        strftime('%s', 'now'))
+            """)
+            connection.execute(
+                command, (history_id,
+                          data['journal_id'], data['function_id'],
+                          data['fiber_id'], data['fiber_depth'],
+                          data['args'], data['kwargs'],
+                          data['side_effects'], data['result'], ))
+
+        def transaction(connection, data):
+            history_id = self._get_history_id(
+                connection, data['agent_id'], data['instance_id'])
+            do_insert(connection, history_id, data)
+
         data = self._encode(data)
-        d = self._db.runOperation(command,
-                                  (data['agent_id'], data['instance_id'],
-                                   data['journal_id'], data['function_id'],
-                                   data['fiber_id'], data['fiber_depth'],
-                                   data['args'], data['kwargs'],
-                                   data['side_effects'], data['result'], ))
-        return d
+        return self._db.runWithConnection(transaction, data)
 
     def get_filename(self):
         return self._filename
 
     ### Private ###
 
+    def _get_history_id(self, connection, agent_id, instance_id):
+        '''
+        Checks own cache for history_id for agent_id and instance_id.
+        If information is missing fetch it from database. If it is not there
+        create the new record.
+
+        BEWARE: This method runs in a thread.
+        '''
+        cache_key = (agent_id, instance_id, )
+        if cache_key in self._history_id_cache:
+            history_id = self._history_id_cache[cache_key]
+            return history_id
+        else:
+            command = text_helper.format_block("""
+            SELECT id FROM histories WHERE agent_id = ? AND instance_id = ?
+            """)
+            cursor = connection.cursor()
+            cursor.execute(command, (agent_id, instance_id, ))
+            res = cursor.fetchall()
+            if res:
+                history_id = res[0][0]
+                self._history_id_cache[cache_key] = history_id
+                return history_id
+            else:
+                command = 'INSERT INTO histories VALUES (NULL, ?, ?)'
+                cursor.execute(command, (agent_id, instance_id, ))
+                history_id = cursor.lastrowid
+                self._history_id_cache[cache_key] = history_id
+                return history_id
+
     def _decode(self, entries):
         '''
-        Takes the list of rows returned buy couchdb. Returns rows in readable
-        format.
+        Takes the list of rows returned by sqlite.
+        Returns rows in readable format.
         '''
 
         def decode_blobs(row):
@@ -168,47 +209,52 @@ class Journaler(log.Logger, log.LogProxy):
     def _create_schema(self, fail):
         fail.trap(sqlite3.OperationalError)
         self.log('Creating entries table.')
-        create_entries = text_helper.format_block("""
-        CREATE TABLE entries (
-          agent_id VARCHAR(36),
-          instance_id INTEGER,
-          journal_id BLOB,
-          function_id VARCHAR(200),
-          fiber_id VARCHAR(36),
-          fiber_depth INTEGER,
-          args BLOB,
-          kwargs BLOB,
-          side_effects BLOB,
-          result BLOB,
-          timestamp REAL
-        )
-        """)
-        create_metadata = text_helper.format_block("""
-        CREATE TABLE metadata (
-          name VARCHAR(100),
-          value VARCHAR(100)
-        )
-        """)
-        insert_metadata = text_helper.format_block("""
-        INSERT INTO metadata VALUES(?, ?)
-        """)
-        create_index1 = text_helper.format_block("""
-        CREATE INDEX agent_idx ON entries(agent_id)
-        """)
-        create_index2 = text_helper.format_block("""
-        CREATE INDEX instance_idx ON entries(agent_id, instance_id)
-        """)
+        commands = [
+            text_helper.format_block("""
+            CREATE TABLE entries (
+              history_id INTEGER NOT NULL,
+              journal_id BLOB,
+              function_id VARCHAR(200),
+              fiber_id VARCHAR(36),
+              fiber_depth INTEGER,
+              args BLOB,
+              kwargs BLOB,
+              side_effects BLOB,
+              result BLOB,
+              timestamp INTEGER
+            )
+            """),
+            text_helper.format_block("""
+            CREATE TABLE histories (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              agent_id VARCHAR(36),
+              instance_id INTEGER
+            )
+            """),
+            text_helper.format_block("""
+            CREATE TABLE metadata (
+              name VARCHAR(100),
+              value VARCHAR(100)
+            )
+            """),
+            text_helper.format_block("""
+            CREATE INDEX history_idx ON entries(history_id)
+            """),
+            text_helper.format_block("""
+            CREATE INDEX instance_idx ON histories(agent_id, instance_id)
+            """)]
 
-        d = self._db.runOperation(create_entries)
-        d.addCallback(defer.drop_result,
-                       self._db.runOperation, create_metadata)
-        d.addCallback(defer.drop_result,
-                       self._db.runOperation, insert_metadata,
-                       (u'encoding', self._encoding, ))
-        d.addCallback(defer.drop_result,
-                       self._db.runOperation, create_index1)
-        d.addCallback(defer.drop_result,
-                       self._db.runOperation, create_index2)
+        def run_all(connection, commands):
+            for command in commands:
+                self.log('Executing command:\n %s', command)
+                connection.execute(command)
+
+        d = self._db.runWithConnection(run_all, commands)
+
+
+        insert_meta = "INSERT INTO metadata VALUES(?, ?)"
+        d.addCallback(defer.drop_result, self._db.runOperation,
+                      insert_meta, (u'encoding', self._encoding, ))
         d.addCallbacks(self._initiated_ok, self._error_handler)
         return d
 
@@ -294,6 +340,28 @@ class AgencyJournalSideEffect(object):
         self._record.extend(data)
         self._record = None
         return self
+
+
+class History(formatable.Formatable):
+    '''
+    Mapping for objects in history database.
+    '''
+
+    formatable.field('history_id', None)
+    formatable.field('agent_id', None)
+    formatable.field('instance_id', None)
+
+    @classmethod
+    def fetch(cls, db):
+        d = db.runQuery(
+            "SELECT id, agent_id, instance_id FROM histories")
+        d.addCallback(cls._parse_resp)
+        return d
+
+    @classmethod
+    def _parse_resp(cls, resp):
+        columns = map(operator.attrgetter('name'), cls._fields)
+        return map(lambda row: cls(**dict(zip(columns, row))), resp)
 
 
 class AgencyJournalEntry(object):

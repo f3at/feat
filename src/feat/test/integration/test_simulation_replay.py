@@ -75,5 +75,3 @@ class ReplayTest(common.SimulationTest):
         agent = self.get_local('agent')
         result = yield agent.test_side_effect(42)
         self.assertEqual(result, 42 + 1 + 2 +3)
-        journal = yield self.get_agent_journal(agent)
-        self.assertEqual(len(journal), 4)

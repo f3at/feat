@@ -97,15 +97,6 @@ class SimulationTest(common.TestCase):
         self.driver._parser.set_local(value, name)
 
     @defer.inlineCallbacks
-    def get_agent_journal(self, agent):
-        aid = agent.get_descriptor().doc_id
-        entries = []
-        histories = yield self.driver._journaler.get_entries_for(aid)
-        for story in histories:
-            entries += story
-        defer.returnValue(entries)
-
-    @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
             yield x.wait_for_listeners_finish()
@@ -119,11 +110,10 @@ class SimulationTest(common.TestCase):
     def _check_replayability(self):
         if not self.skip_replayability:
             self.info("Test finished, now validating replayability.")
-            agent_ids = yield self.driver._journaler.get_agent_ids()
-            for aid in agent_ids:
-                histories = yield self.driver._journaler.get_entries_for(aid)
-                for entries in histories:
-                    self._validate_replay_on_agent(aid, entries)
+            histories = yield self.driver._journaler.get_histories()
+            for history in histories:
+                entries = yield self.driver._journaler.get_entries(history)
+                self._validate_replay_on_agent(history.agent_id, entries)
         else:
             msg = ("\n\033[91mFIXME: \033[0mReplayability test "
                   "skipped: %s\n" % self.skip_replayability)

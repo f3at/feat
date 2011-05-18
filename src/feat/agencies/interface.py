@@ -393,23 +393,26 @@ class IJournaler(Interface):
         @rtype: L{IRecord}
         '''
 
-    def get_agent_ids():
+    def get_histories():
         '''
-        Returns the Deferred triggered with list of agent_id for which
-        entries has been found in the journal.
-        @rtype: Deferred([agent_id])
+        Returns the Deferred triggered with list history objects stored in
+        journal.
+        @rtype: Deferred([L{feat.agencies.journal.History}])
         '''
 
-    def get_entries_for(agent_id):
+    def get_entries(history):
         '''
-        Fetches the journal entries for the agent_id.
-        The format of history is as follows:
-        [history_of_instance1, history_of_instance2, ... ]
-        The history_of_instance is the list of journal entries.
+        Fetches the journal entries for given history. History object contains
+        the information about the agent_id and instance_id.
+
+        The trigger value of returned Deferred is the list of journal entries.
         Single entry has a format of:
         [agent_id, instance_id, journal_id, function_id, fiber_id,
         fiber_depth, args, kwargs, side_effects, result, timestamp]
-        @rtype: Deferred(history)
+
+        @param history: History object interesting us.
+        @type history: L{feat.agencies.journal.History}
+        @rtype: Deferred(list)
         '''
 
     def get_filename():
