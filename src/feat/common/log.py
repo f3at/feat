@@ -127,9 +127,9 @@ class FluLogKeeper(object):
     @classmethod
     def init(cls, path=None):
         global flulog
-        if path:
-            sys.stderr = file(path, 'a')
         if not cls._initialized:
+            if path:
+                sys.stderr = file(path, 'a')
             from feat.extern.log import log as flulog
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')

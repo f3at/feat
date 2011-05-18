@@ -25,7 +25,6 @@ except AttributeError:
     # trial.getConfig() is only available when using flumotion-trial
     _getConfig = dict
 
-
 log.FluLogKeeper.init('test.log')
 
 
