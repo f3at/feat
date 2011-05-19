@@ -236,13 +236,14 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     log_category = 'replay-driver'
 
-    def __init__(self, journal, agent_id):
+    def __init__(self, journal, agent_id, inject_dummy_externals=False):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
         self.journal = journal
         self.unserializer = banana.Unserializer(externalizer=self)
         self.serializer = banana.Serializer(externalizer=self)
+        self.inject_dummy_externals = inject_dummy_externals
 
         self.agent_id = agent_id
         Factory(self, 'agent-medium', AgencyAgent)
@@ -391,7 +392,22 @@ class Replay(log.FluLogKeeper, log.Logger):
         raise RuntimeError("OOPS, this should not be used in replay")
 
     def lookup(self, identifier):
-        return self.registry.get(identifier, None)
+        found = self.registry.get(identifier, None)
+        if not found and self.inject_dummy_externals:
+            found = DummyExternal(identifier)
+        return found
+
+
+@serialization.register
+class DummyExternal(serialization.Serializable):
+
+    type_name = 'unknown-reference'
+
+    def __init__(self, identifier):
+        self._identifier = identifier
+
+    def __repr__(self):
+        return "unknown at this point"
 
 
 class BaseReplayDummy(log.LogProxy, log.Logger):
