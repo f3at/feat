@@ -17,6 +17,26 @@ JOURNAL_ENTRY_TAG = "__JOURNAL_ENTRY__"
 SIDE_EFFECT_TAG = "__SIDE_EFFECT__"
 
 
+def resolve_function(fun_id, function):
+    global _registry, _reverse
+
+    if function is None:
+        # Retrieve the function from the registry
+        function = _registry.get(fun_id)
+        if function is None:
+            raise AttributeError("No registered function found with "
+                                 "identifier '%s'." % (fun_id, ))
+
+    if fun_id is None:
+        # Retrieve the identifier from the registry
+        fun_id = _reverse.get(function)
+        if fun_id is None:
+            raise AttributeError("Function not register as recorded %r"
+                                 % (function, ))
+
+    return fun_id, function
+
+
 def replay(journal_entry, function, *args, **kwargs):
     '''
     Calls method in replay context so that no journal entries are created,
@@ -330,24 +350,7 @@ class Recorder(RecorderNode, annotate.Annotable):
         return section.exit(result)
 
     def _resolve_function(self, fun_id, function):
-        global _registry, _reverse
-
-        if function is None:
-            # Retrieve the function from the registry
-            function = _registry.get(fun_id)
-            if function is None:
-                raise AttributeError("No registered function found with "
-                                     "identifier '%s' to call with %r"
-                                     % (fun_id, self))
-
-        if fun_id is None:
-            # Retrieve the identifier from the registry
-            fun_id = _reverse.get(function)
-            if fun_id is None:
-                raise AttributeError("Function not register as recorded %r"
-                                     % (function, ))
-
-        return fun_id, function
+        return resolve_function(fun_id, function)
 
     def _call_fun(self, fun_id, function, args, kwargs):
         # Call the function

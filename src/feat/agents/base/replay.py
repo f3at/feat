@@ -69,6 +69,7 @@ immutable = guard.immutable
 journaled = mutable
 side_effect = journal.side_effect
 named_side_effect = journal.named_side_effect
+resolve_function = journal.resolve_function
 
 
 # Copy the replay function for calling methods in replay context

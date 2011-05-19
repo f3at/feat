@@ -20,6 +20,16 @@ def canonical_name(obj):
     return _canonical_type(obj.__class__)
 
 
+def named_function(name):
+    """Gets a fully named module-global object."""
+    name_parts = name.split('.')
+    module = named_object('.'.join(name_parts[:-1]))
+    func = getattr(module, name_parts[-1])
+    if hasattr(func, 'original_func'):
+        func = func.original_func
+    return func
+
+
 def named_module(name):
     """Returns a module given its name."""
     module = __import__(name)
