@@ -7,7 +7,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
                               problem, task, )
-from feat.agents.common import rpc, monitor
+from feat.agents.common import host, rpc, monitor
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
@@ -15,17 +15,6 @@ from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
 from feat.agencies.interface import NotFoundError
 from feat.interface.agent import Access, Address, Storage, CategoryError
-
-DEFAULT_RESOURCES = {"host": 1,
-                     "bandwidth": 100,
-                     "epu": 500,
-                     "core": 2,
-                     "mem": 1000}
-
-
-DEFAULT_CATEGORIES = {'access': Access.none,
-                      'address': Address.none,
-                      'storage': Storage.none}
 
 
 @serialization.register
@@ -102,8 +91,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
             problem.SolveProblemInterest(MissingShard))
         state.medium.register_interest(
             problem.SolveProblemInterest(RestartShard))
-        ports = state.medium.get_descriptor().port_range
-        state.port_allocator = port_allocator.PortAllocator(self, ports)
+        state.port_allocator = port_allocator.PortAllocator(self, [])
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self._update_hostname)
@@ -279,7 +267,8 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     @replay.immutable
     def _load_definition(self, state, hostdef=None):
         if not hostdef:
-            return self._apply_defaults()
+            self.info("No host definition specified, using default values")
+            hostdef = host.HostDef()
 
         if isinstance(hostdef, document.Document):
             return self._apply_definition(hostdef)
@@ -299,10 +288,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     def _apply_definition(self, hostdef):
         self._setup_resources(hostdef.resources)
         self._setup_categories(hostdef.categories)
-
-    def _apply_defaults(self):
-        self._setup_resources(DEFAULT_RESOURCES)
-        self._setup_categories(DEFAULT_CATEGORIES)
+        self._setup_ports_ranges(hostdef.ports_ranges)
 
     @replay.mutable
     def _setup_resources(self, state, resources):
@@ -327,6 +313,18 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
                   ", ".join(["%s=%s" % (n, v.name)
                              for n, v in categories.iteritems()]))
         state.categories = categories
+
+    @replay.mutable
+    def _setup_ports_ranges(self, state, ports_ranges):
+        if not ports_ranges:
+            self.warning("Host do not have any ports ranges defined")
+            return
+
+        self.info("Setting host ports ranges to: %s",
+                  ", ".join(["%s=%s:%s" % (g, s, e)
+                             for g, s, e  in ports_ranges]))
+        state.port_allocator.set_ports_groups(ports_ranges)
+
 
     @replay.immutable
     def check_requirements(self, state, doc):
@@ -557,6 +555,7 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _get_cost(self, state, bid):
         bid.payload['cost'] = 0
         return bid
+
 
 class StartAgentReplier(replier.BaseReplier):
 
