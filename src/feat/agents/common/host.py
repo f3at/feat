@@ -1,9 +1,8 @@
 from feat.agents.base import (requester, replay, message, document,
                               manager, descriptor, )
-from feat.common import fiber
-
-from feat.interface.recipient import IRecipient
+from feat.common import fiber, serialization
 from feat.interface.agent import Access, Address, Storage
+from feat.interface.recipient import IRecipient
 
 
 __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
@@ -63,6 +62,19 @@ class SpecialHostPartnerMixin(object):
 class NoHostFound(Exception):
     pass
 
+DEFAULT_RESOURCES = {"host": 1,
+                     "bandwidth": 100,
+                     "epu": 500,
+                     "core": 2,
+                     "mem": 1000}
+
+
+DEFAULT_CATEGORIES = {'access': Access.none,
+                      'address': Address.none,
+                      'storage': Storage.none}
+
+DEFAULT_PORTS_RANGES = [('misc', 8000, 9000)]
+
 
 @document.register
 class HostDef(document.Document):
@@ -70,9 +82,10 @@ class HostDef(document.Document):
     document_type = "hostdef"
 
     # The resources available for this host type.
-    document.field('resources', {})
-    document.field('categories', {})
+    document.field('resources', DEFAULT_RESOURCES)
+    document.field('categories', DEFAULT_CATEGORIES)
     # List of ports ranges used for allocating new ports
+    document.field('ports_ranges', DEFAULT_PORTS_RANGES)
     document.field('ports_ranges', {})
 
 
