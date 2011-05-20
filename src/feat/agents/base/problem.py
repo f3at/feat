@@ -223,6 +223,9 @@ class SolveProblemManagerFactory(serialization.Serializable):
 
 class SolveProblemManager(manager.BaseManager):
 
+    announce_timeout = 3
+    grant_timeout = 20
+
     @replay.entry_point
     def initiate(self, state, problem):
         state.problem = problem

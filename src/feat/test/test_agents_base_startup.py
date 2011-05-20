@@ -49,8 +49,10 @@ class DummyAgent(agent.BaseAgent, common.Mock):
 
 class TestStartupTask(common.TestCase, common.AgencyTestHelper):
 
+    @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
     @defer.inlineCallbacks
     def testAgentStartup(self):

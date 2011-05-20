@@ -28,6 +28,7 @@ class Descriptor(descriptor.Descriptor):
     document.field('field', None)
 
 
+@common.attr(timescale=0.05)
 class SimulateRunningAgentTwice(common.SimulationTest):
 
     @defer.inlineCallbacks

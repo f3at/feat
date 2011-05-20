@@ -41,6 +41,12 @@ class BaseMessage(formatable.Formatable):
         '''Returns a duplication message or None'''
         return None
 
+    def get_msg_class(self):
+        '''Helper giving formated information about which protocol does
+        this message belong to (for logging purpose only).'''
+        return "%s.%s.%s" % (self.protocol_type, self.protocol_id,
+                             type(self).__name__, )
+
     def __repr__(self):
         d = dict()
         for field in self._fields:

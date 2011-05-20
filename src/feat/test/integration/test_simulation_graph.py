@@ -5,7 +5,7 @@ from feat.test.integration import common
 from feat.agents.shard import shard_agent
 from feat.agents.base import dbtools
 from feat.agents.common import host
-from feat.common import defer, delay
+from feat.common import defer, time
 from feat.common.text_helper import format_block
 from feat.test.common import attr
 from feat.agents.base.recipient import IRecipient, dummy_agent
@@ -82,13 +82,13 @@ class CommonMixin(object):
         defer.returnValue(agent)
 
 
+@attr(timescale=0.05)
 class DivorceSimulation(common.SimulationTest, CommonMixin):
 
     timeout = 20
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.4
         script = format_block("""
         spawn_agency()
         _.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
@@ -188,15 +188,13 @@ class DivorceSimulation(common.SimulationTest, CommonMixin):
         self.assert_partners(self.agent2, tuple())
 
 
+@attr(timescale=0.2)
 @attr('slow')
 class GraphSimulation(common.SimulationTest, CommonMixin):
     '''
     This test case only checks the graph of shard agents.
     '''
     timeout = 20
-
-    def prolog(self):
-        delay.time_scale = 0.8
 
     @defer.inlineCallbacks
     def start_shard(self):
@@ -210,56 +208,6 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
         """) % dict(shard=a_id)
         yield self.process(script)
         defer.returnValue(self.get_local('agent'))
-
-    @defer.inlineCallbacks
-    def test_start_one(self):
-        agent = yield self.start_shard()
-        self.assertIsInstance(agent, shard_agent.ShardAgent)
-        self.assertEqual(set([]), self.partners_of(agent))
-
-    @defer.inlineCallbacks
-    def test_start_two(self):
-        agent1 = yield self.start_shard()
-        agent2 = yield self.start_shard()
-        self.assertEqual(set([self.shard_of(agent1)]),
-                         self.partners_of(agent2))
-        self.assertEqual(set([self.shard_of(agent2)]),
-                         self.partners_of(agent1))
-
-    @defer.inlineCallbacks
-    def test_start_three(self):
-        agent1 = yield self.start_shard()
-        agent2 = yield self.start_shard()
-        agent3 = yield self.start_shard()
-        self.assertEqual(set([self.shard_of(agent1), self.shard_of(agent2)]),
-                         self.partners_of(agent3))
-        self.assertEqual(set([self.shard_of(agent1), self.shard_of(agent3)]),
-                         self.partners_of(agent2))
-        self.assertEqual(set([self.shard_of(agent2), self.shard_of(agent3)]),
-                         self.partners_of(agent1))
-
-    @defer.inlineCallbacks
-    def test_start_four(self):
-        agent1 = yield self.start_shard()
-        agent2 = yield self.start_shard()
-        agent3 = yield self.start_shard()
-        agent4 = yield self.start_shard()
-        self.assertEqual(set([self.shard_of(agent1),
-                              self.shard_of(agent2),
-                              self.shard_of(agent3)]),
-                         self.partners_of(agent4))
-        self.assertEqual(set([self.shard_of(agent2),
-                              self.shard_of(agent3),
-                              self.shard_of(agent4)]),
-                         self.partners_of(agent1))
-        self.assertEqual(set([self.shard_of(agent1),
-                              self.shard_of(agent3),
-                              self.shard_of(agent4)]),
-                         self.partners_of(agent2))
-        self.assertEqual(set([self.shard_of(agent2),
-                              self.shard_of(agent1),
-                              self.shard_of(agent4)]),
-                         self.partners_of(agent3))
 
     def get_total_agents(self):
         return len(list(self.driver.iter_agents()))
@@ -319,6 +267,7 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
 
+@attr(timescale=0.2)
 @attr('slow')
 class TestHostsAndShards(common.SimulationTest, CommonMixin):
 
@@ -329,9 +278,6 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         dbtools.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
-
-    def prolog(self):
-        delay.time_scale = 0.2
 
     @attr(skip="at current buildbox it takes 3 minutes to run it.")
     @attr(timeout=100)
@@ -451,6 +397,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.driver.validate_shards()
 
 
+@attr(timescale=0.05)
 @attr('slow')
 class TestProblemResolving(common.SimulationTest, CommonMixin):
 
@@ -460,7 +407,6 @@ class TestProblemResolving(common.SimulationTest, CommonMixin):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
         self.agents = list()
         for x in range(self.hosts):
             agent = yield self.start_host(join_shard=False)

@@ -1,6 +1,6 @@
 from feat.test.integration import common
 from feat.agents.base import agent, descriptor, notifier, replay
-from feat.common import defer, text_helper, delay
+from feat.common import defer, text_helper, time
 
 
 @descriptor.register('notifier-agent')
@@ -17,6 +17,7 @@ class Agent(agent.BaseAgent, notifier.AgentMixin):
         notifier.AgentMixin.initiate(self, state)
 
 
+@common.attr(timescale=0.01)
 class TestNotifier(common.SimulationTest):
 
     timeout = 3
@@ -47,7 +48,6 @@ class TestNotifier(common.SimulationTest):
 
     @defer.inlineCallbacks
     def testTimeouts(self):
-        delay.time_scale = 0.2
         d = self.agent.wait_for_event('event', timeout=0.05)
         d2 = self.agent.wait_for_event('event', timeout=2)
         self.assertFailure(d, notifier.TimeoutError)

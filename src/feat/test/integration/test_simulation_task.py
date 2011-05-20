@@ -69,6 +69,7 @@ class Agent(agent.BaseAgent):
         return getattr(state, attr)
 
 
+@common.attr(timescale=0.05)
 class TaskAgentTest(common.SimulationTest):
 
     def prolog(self):

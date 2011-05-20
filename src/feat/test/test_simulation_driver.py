@@ -14,6 +14,7 @@ class TestDriver(common.TestCase):
 
     def setUp(self):
         self.driver = driver.Driver()
+        return self.driver.initiate()
 
     @defer.inlineCallbacks
     def testSpawnAgency(self):

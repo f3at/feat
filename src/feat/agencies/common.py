@@ -4,7 +4,7 @@ import uuid
 
 from twisted.python import failure
 
-from feat.common import delay, serialization, error_handler, log, defer
+from feat.common import time, serialization, error_handler, log, defer
 from feat.interface.protocols import InitiatorExpired, InitiatorFailed
 from feat.agents.base import replay
 
@@ -148,7 +148,7 @@ class AgencyMiddleMixin(object):
         msg.protocol_id = self.protocol_id
         if msg.expiration_time is None:
             if expiration_time is None:
-                expiration_time = self.agent.get_time() + 10
+                expiration_time = time.future(10)
             msg.expiration_time = expiration_time
 
         if not recipients:
@@ -212,9 +212,10 @@ class ExpirationCallsMixin(object):
         self.log('Seting expiration call of method: %r.%r',
                  self.__class__.__name__, method.__name__)
 
-        time_left = expire_time - self._get_time()
+        time_left = time.left(expire_time)
         if time_left < 0:
-            raise RuntimeError('Tried to call method in the past!')
+            raise RuntimeError('Tried to call method in the past! ETA: %r' %
+                               (time_left, ))
 
         def to_call(callback):
             if state:
@@ -225,7 +226,7 @@ class ExpirationCallsMixin(object):
             d.addCallback(callback.callback)
 
         result = defer.Deferred()
-        self._expiration_call = delay.callLater(
+        self._expiration_call = time.callLater(
             time_left, to_call, result)
         return result
 
@@ -237,8 +238,7 @@ class ExpirationCallsMixin(object):
 
     @replay.side_effect
     def _cancel_expiration_call(self):
-        if self._expiration_call and not (self._expiration_call.called or\
-                                          self._expiration_call.cancelled):
+        if self._expiration_call and self._expiration_call.active():
             self.log('Canceling expiration call')
             self._expiration_call.cancel()
             self._expiration_call = None
@@ -256,8 +256,7 @@ class ExpirationCallsMixin(object):
         self._cancel_expiration_call()
 
     def expire_now(self):
-        if self._expiration_call and not (self._expiration_call.called or\
-                                          self._expiration_call.cancelled):
+        if self._expiration_call and self._expiration_call.active():
             self._expiration_call.reset(0)
             d = self.notify_finish()
             return d

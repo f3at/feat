@@ -242,6 +242,10 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def apply_modification(self, change_id):
         return agent.BaseAgent.apply_modification(self, change_id)
 
+    @rpc.publish
+    def release_modification(self, change_id):
+        return agent.BaseAgent.release_modification(self, change_id)
+
 ### Private Methods ###
 
     @replay.side_effect

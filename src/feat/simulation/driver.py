@@ -3,16 +3,15 @@
 import StringIO
 import uuid
 
-from zope.interface import implements
-
-from feat.common import log, manhole, defer, reflect
-from feat.agencies import agency, dependency
+from feat.common import log, manhole, defer, reflect, time
+from feat.agencies import agency, journaler
 from feat.agencies.emu import messaging, database
-from feat.interface.agency import ExecMode
-from feat.interface import recipient
 from feat.test import factories
-from feat.agents.base import document, descriptor, dbtools
+from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
+
+from feat.interface.agency import *
+from feat.interface.recipient import *
 
 
 class Commands(manhole.Manhole):
@@ -40,9 +39,13 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        d = ag.initiate(self._messaging, self._database)
+        d = ag.initiate(self._messaging, self._database, self._journaler)
         d.addCallback(defer.override_result, ag)
         return d
+
+    @manhole.expose()
+    def wait_for_idle(self, timeout=20, freq=0.01):
+        return time.wait_for(self, self.is_idle, timeout, freq)
 
     @manhole.expose()
     def uuid(self):
@@ -52,7 +55,7 @@ class Commands(manhole.Manhole):
         return str(uuid.uuid1())
 
     @manhole.expose()
-    def descriptor_factory(self, document_type, shard=u'lobby'):
+    def descriptor_factory(self, document_type, shard=u'lobby', **kwargs):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
@@ -60,7 +63,7 @@ class Commands(manhole.Manhole):
         Second parameter is optional (default lobby). Usage:
         > descriptor_factory('shard_descriptor', 'some shard')
         """
-        desc = factories.build(document_type, shard=unicode(shard))
+        desc = factories.build(document_type, shard=unicode(shard), **kwargs)
         return self._database_connection.save_document(desc)
 
     @manhole.expose()
@@ -106,7 +109,7 @@ class Commands(manhole.Manhole):
         running in simulation.
         """
         try:
-            recp = recipient.IRecipient(agent_id)
+            recp = IRecipient(agent_id)
             agent_id = recp.key
         except TypeError:
             pass
@@ -152,13 +155,18 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     log_category = 'simulation-driver'
 
-    def __init__(self):
+    def __init__(self, jourfile=None):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
         self._database = database.Database()
+        jouropts = dict()
+        if jourfile:
+            jouropts['filename'] = jourfile
+            jouropts['encoding'] = 'zip'
+        self._journaler = journaler.Journaler(self, **jouropts)
 
         self._output = Output()
         self._parser = manhole.Parser(self, self._output, self,
@@ -167,11 +175,11 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._agencies = list()
         self._breakpoints = dict()
 
-        self._init_connections()
-
-    def _init_connections(self):
+    def initiate(self):
         self._database_connection = self._database.get_connection()
-        dbtools.push_initial_data(self._database_connection)
+        d1 = dbtools.push_initial_data(self._database_connection)
+        d2 = self._journaler.initiate()
+        return defer.DeferredList([d1, d2])
 
     def iter_agents(self, agent_type=None):
         for agency in self._agencies:

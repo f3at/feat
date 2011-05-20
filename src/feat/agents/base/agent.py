@@ -306,6 +306,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def apply_modification(self, state, change_id):
         return state.resources.apply_modification(change_id)
 
+    @replay.mutable
+    def release_modification(self, state, change_id):
+        return state.resources.release_modification(change_id)
+
     @replay.immutable
     def get_document(self, state, doc_id):
         return fiber.wrap_defer(state.medium.get_document, doc_id)

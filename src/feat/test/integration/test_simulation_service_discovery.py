@@ -1,6 +1,6 @@
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.common import defer
+from feat.common import defer, time
 from feat.agents.base import (agent, descriptor, manager, contractor,
                               recipient, replay, document, )
 
@@ -32,6 +32,7 @@ class Agent(agent.BaseAgent):
         return self.discover_service(Initiator)
 
 
+@common.attr(timescale=0.02)
 class ServiceDiscoverySimulation(common.SimulationTest):
 
     @defer.inlineCallbacks

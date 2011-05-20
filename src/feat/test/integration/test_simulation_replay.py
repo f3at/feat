@@ -54,6 +54,7 @@ class Dummy(serialization.Serializable, StateMachineMixin):
         self._set_state("done")
 
 
+@common.attr(timescale=0.05)
 class ReplayTest(common.SimulationTest):
 
     def prolog(self):
@@ -74,5 +75,3 @@ class ReplayTest(common.SimulationTest):
         agent = self.get_local('agent')
         result = yield agent.test_side_effect(42)
         self.assertEqual(result, 42 + 1 + 2 +3)
-        journal = self.get_agent_journal(agent)
-        self.assertEqual(len(journal), 4)

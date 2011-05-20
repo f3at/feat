@@ -1,18 +1,16 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.trial.unittest import FailTest
-from twisted.internet import defer
 
 from feat.test import common
-from feat.common import text_helper, delay as delay_module
+from feat.common import text_helper, defer
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
-from feat.agents.base import agent
+from feat.agents.base.agent import registry_lookup
 
 
 attr = common.attr
-time = common.time
 delay = common.delay
 delay_errback = common.delay_errback
 delay_callback = common.delay_callback
@@ -67,15 +65,21 @@ def format_journal(journal, prefix=""):
 
 class SimulationTest(common.TestCase):
 
-    configurable_attributes = ['skip_replayability']
+    configurable_attributes = ['skip_replayability', 'jourfile']
     skip_replayability = False
+    jourfile = None
 
     overriden_configs = None
 
+    @defer.inlineCallbacks
     def setUp(self):
-        delay_module.time_scale = 1
-        self.driver = driver.Driver()
-        return self.prolog()
+        yield common.TestCase.setUp(self)
+        self.driver = driver.Driver(jourfile=self.jourfile)
+        yield self.driver.initiate()
+        yield self.prolog()
+
+    def prolog(self):
+        pass
 
     def process(self, script):
         d = self.cb_after(None, self.driver._parser, 'on_finish')
@@ -92,48 +96,41 @@ class SimulationTest(common.TestCase):
     def set_local(self, name, value):
         self.driver._parser.set_local(value, name)
 
-    def get_agent_journal(self, agent):
-        for agency in self.driver._agencies:
-            for medium in agency._agents:
-                if agent.journal_id == medium.get_agent().journal_id:
-                    aid = agent.get_descriptor().doc_id
-                    return [entry for entry in agency._journal_entries
-                            if entry and entry[0] == aid]
-        return []
-
-    def format_agent_journal(self, agent, prefix=""):
-        return format_journal(self.get_agent_journal(agent), prefix)
-
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
             yield x.wait_for_listeners_finish()
         yield common.TestCase.tearDown(self)
         try:
-            if not self.skip_replayability:
-                self.info("Test finished, now validating replayability.")
-                for agency in self.driver._agencies:
-                    self._validate_replay_on_agency(agency)
-            else:
-                msg = ("\n\033[91mFIXME: \033[0mReplayability test "
-                      "skipped: %s\n" % self.skip_replayability)
-                print msg
+            yield self._check_replayability()
         finally:
             self.revert_overrides()
 
-    def _validate_replay_on_agency(self, agency):
-        for agent in agency._agents:
-            self._validate_replay_on_agent(agency, agent)
+    @defer.inlineCallbacks
+    def _check_replayability(self):
+        if not self.skip_replayability:
+            self.info("Test finished, now validating replayability.")
+            histories = yield self.driver._journaler.get_histories()
+            for history in histories:
+                entries = yield self.driver._journaler.get_entries(history)
+                self._validate_replay_on_agent(history.agent_id, entries)
+        else:
+            msg = ("\n\033[91mFIXME: \033[0mReplayability test "
+                  "skipped: %s\n" % self.skip_replayability)
+            print msg
 
-    def _validate_replay_on_agent(self, agency, agent):
-        aid = agent.get_descriptor().doc_id
+    def _validate_replay_on_agent(self, aid, entries):
+        agent = self.driver.find_agent(aid)
+        if agent is None:
+            self.warning(
+                'Agent with id %r not found. This usually means it was '
+                'terminated, during the test')
+            return
+
         self.log("Validating replay of %r with id: %s",
                  agent.agent.__class__.__name__, aid)
 
-        entries = [entry for entry in agency._journal_entries\
-                   if entry[0] == aid]
         self.log("Found %d entries of this agent.", len(entries))
-
         r = replay.Replay(iter(entries), aid)
         for entry in r:
             entry.apply()
@@ -180,7 +177,7 @@ class SimulationTest(common.TestCase):
     def override_config(self, agent_type, config):
         if self.overriden_configs is None:
             self.overriden_configs = dict()
-        factory = agent.registry_lookup(agent_type)
+        factory = registry_lookup(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
 
@@ -188,5 +185,5 @@ class SimulationTest(common.TestCase):
         if self.overriden_configs is None:
             return
         for key, value in self.overriden_configs.iteritems():
-            factory = agent.registry_lookup(key)
+            factory = registry_lookup(key)
             factory.configuration_doc_id = value

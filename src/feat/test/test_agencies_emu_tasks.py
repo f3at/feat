@@ -89,7 +89,8 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
         self.finished = None

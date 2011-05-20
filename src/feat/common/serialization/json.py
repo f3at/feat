@@ -1,4 +1,4 @@
-from feat.common import hacks
+from feat import hacks
 
 json = hacks.import_json()
 

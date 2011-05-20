@@ -100,6 +100,7 @@ class Agent(agent.BaseAgent):
         return requester.notify_restarted(self, recp, origin, new_address)
 
 
+@common.attr(timescale=0.05)
 class PartnershipTest(common.SimulationTest):
 
     @defer.inlineCallbacks

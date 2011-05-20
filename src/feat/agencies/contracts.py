@@ -6,7 +6,7 @@ from twisted.python import components, failure
 from zope.interface import implements
 
 from feat.agents.base import message, recipient, replay
-from feat.common import log, enum, delay, serialization
+from feat.common import log, enum, time, serialization
 from feat.agencies import common, protocols
 
 from feat.agencies.interface import *
@@ -154,7 +154,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_protocol_id(manager.protocol_id)
 
         self._set_state(ContractState.initiated)
-        timeout = self.agent.get_time() + self.manager.initiate_timeout
+        timeout = time.future(self.manager.initiate_timeout)
         error = InitiatorExpired("Timeout exceeded waiting for "
                                  "initate() to send the announcement")
         self._expire_at(timeout, self._error_handler,
@@ -179,7 +179,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._ensure_state(ContractState.initiated)
         self._set_state(ContractState.announced)
 
-        exp_time = self.agent.get_time() + self.manager.announce_timeout
+        exp_time = time.future(self.manager.announce_timeout)
         bid = self._send_message(announce, exp_time)
 
         self._cancel_expiration_call()
@@ -215,7 +215,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._cancel_expiration_call()
         self._set_state(ContractState.granted)
 
-        expiration_time = self.agent.get_time() + self.manager.grant_timeout
+        expiration_time = time.future(self.manager.grant_timeout)
         self._expire_at(expiration_time, self._on_grant_expire,
                         ContractState.aborted)
 
@@ -263,6 +263,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                                 ContractState.aborted,
                                 ContractState.wtf]):
             self._set_state(ContractState.terminated)
+            self._cancel_expiration_call()
             self.call_next(self._terminate, result)
 
     @replay.named_side_effect('AgencyManager.get_bids')
@@ -493,7 +494,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._ensure_state(ContractState.announced)
         self._set_state(ContractState.bid)
 
-        expiration_time = self.agent.get_time() + self.contractor.bid_timeout
+        expiration_time = time.future(self.contractor.bid_timeout)
         self.own_bid = self._send_message(bid, expiration_time)
 
         self._cancel_expiration_call()
@@ -513,7 +514,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(ContractState.delegated)
 
         self.bid = self._handover_message(bid)
-        delay.callLater(0, self._terminate, None)
+        time.callLater(0, self._terminate, None)
         return self.bid
 
     @replay.named_side_effect('AgencyContractor.refuse')
@@ -551,7 +552,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._ensure_state(ContractState.granted)
         self._set_state(ContractState.completed)
 
-        expiration_time = self.agent.get_time() + self.contractor.bid_timeout
+        expiration_time = time.future(self.contractor.bid_timeout)
         self.report = self._send_message(report, expiration_time)
 
         self._cancel_expiration_call()
@@ -629,8 +630,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Update reporter stuff ###
 
     def _cancel_reporter(self):
-        if self._reporter_call and not (self._reporter_call.called or\
-                                        self._reporter_call.cancelled):
+        if self._reporter_call and self._reporter_call.active():
             self._reporter_call.cancel()
             self.log("Canceling periodical reporter")
 
@@ -643,7 +643,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
             bind()
 
         def bind():
-            self._reporter_call = delay.callLater(frequency, send_report)
+            self._reporter_call = time.callLater(frequency, send_report)
 
         bind()
 
@@ -673,6 +673,10 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         Called upon receiving the grant. Than calls granted and sets
         up reporter if necessary.
         '''
+        self._cancel_expiration_call()
+        self._expire_at(grant.expiration_time, self.contractor.cancelled,
+                        ContractState.expired, grant)
+
         self.grant = grant
         # this is necessary for nested contracts to work with handing
         # the messages over

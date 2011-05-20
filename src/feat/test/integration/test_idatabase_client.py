@@ -177,6 +177,7 @@ class TestCase(object):
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
+        common.IntegrationTest.setUp(self)
         self.database = emu_database.Database()
         self.connection = self.database.get_connection()
 
@@ -189,6 +190,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
+        common.IntegrationTest.setUp(self)
         if database is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)

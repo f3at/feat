@@ -6,7 +6,7 @@ from feat.test.integration import common
 from feat.agents.base import agent, descriptor, replay
 from feat.agents.common import dns
 from feat.agents.dns import dns_agent
-from feat.common import delay
+from feat.common import time
 from feat.common.text_helper import format_block
 
 from feat.interface.recipient import *
@@ -60,11 +60,11 @@ class Agent(agent.BaseAgent):
         return state.mapper.add_mapping(prefix, ip)
 
 
+@common.attr(timescale=0.01)
 @common.attr('slow')
 class DNSAgentTest(common.SimulationTest):
 
     def prolog(self):
-        delay.time_scale = 0.4
         setup = format_block("""
         agency = spawn_agency()
         d1 = descriptor_factory('dns_test_agent')

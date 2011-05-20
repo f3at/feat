@@ -60,6 +60,20 @@ def check_categories(host, categories):
     return True
 
 
+def premodify_allocation(agent, host_agent_recipient, allocation_id, **delta):
+    return agent.call_remote(host_agent_recipient, "premodify_allocation",
+                             allocation_id, **delta)
+
+
+def apply_modification(agent, host_agent_recipient, change_id):
+    return agent.call_remote(host_agent_recipient, "apply_modification",
+                             change_id)
+
+
+def release_modification(agent, host_agent_recipient, change_id):
+    return agent.call_remote(host_agent_recipient, "release_modification",
+                             change_id)
+
 ### Private module stuff ###
 
 
@@ -94,7 +108,7 @@ class StartAgentManager(manager.BaseManager):
 class StartAgentRequester(requester.BaseRequester):
 
     protocol_id = 'start-agent'
-    timeout = 20
+    timeout = 10
 
     @replay.journaled
     def initiate(self, state, descriptor, allocation_id, *args, **kwargs):

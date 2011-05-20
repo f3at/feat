@@ -1,12 +1,12 @@
 import re
 
-from twisted.internet import reactor, defer
+from twisted.internet import reactor
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
-from feat.agencies import agency
+from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import log, manhole
+from feat.common import manhole, defer, time
 from feat.interface import agent
 from feat.interface.agency import ExecMode
 from feat.process import standalone
@@ -87,7 +87,8 @@ class Agency(agency.Agency):
                  msg_user=None, msg_password=None,
                  db_host=None, db_port=None, db_name=None,
                  public_key=None, private_key=None,
-                 authorized_keys=None, manhole_port=None):
+                 authorized_keys=None, manhole_port=None,
+                 agency_journal=None):
         agency.Agency.__init__(self)
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -98,7 +99,8 @@ class Agency(agency.Agency):
                           public_key=public_key,
                           private_key=private_key,
                           authorized_keys=authorized_keys,
-                          manhole_port=manhole_port)
+                          manhole_port=manhole_port,
+                          agency_journal=agency_journal)
 
         self._ssh = None
         self._broker = None
@@ -113,9 +115,13 @@ class Agency(agency.Agency):
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
+        jour = journaler.Journaler(self,
+                                   filename=self.config['agency']['journal'],
+                                   encoding='zip')
 
-        super_init = agency.Agency.initiate(self, mesg, db)
-
+        super_init = jour.initiate()
+        super_init.addBoth(defer.drop_result, agency.Agency.initiate,
+                           self, mesg, db, jour)
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.on_killed)
 
@@ -124,8 +130,12 @@ class Agency(agency.Agency):
                                 on_master_cb=self._ssh.start_listening,
                                 on_slave_cb=self._ssh.stop_listening,
                                 on_disconnected_cb=self._ssh.stop_listening)
-        return defer.DeferredList([super_init,
-                                   self._broker.initiate_broker()])
+        self._setup_snapshoter()
+        d = defer.DeferredList([super_init,
+                               self._broker.initiate_broker()],
+                               consumeErrors=True)
+        d.addCallback(defer.override_result, self)
+        return d
 
     def on_killed(self):
         d = agency.Agency.on_killed(self)
@@ -145,6 +155,7 @@ class Agency(agency.Agency):
     def shutdown(self):
         '''shutdown() -> Shutdown the agency in gentel manner (terminating
         all the agents).'''
+        self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
         d.addCallback(lambda _: self._disconnect())
         return d
@@ -179,8 +190,8 @@ class Agency(agency.Agency):
         return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
 
     def start_standalone_agent(self, descriptor, factory, *args, **kwargs):
-        cmd, cmd_args, cmd_env = factory.get_cmd_line(*args, **kwargs)
-        env = self._store_config(cmd_env)
+        cmd, cmd_args, env = factory.get_cmd_line(*args, **kwargs)
+        self._store_config(env)
         env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
         env['FEAT_AGENT_ARGS'] = json.serialize(args)
         env['FEAT_AGENT_KWARGS'] = json.serialize(kwargs)
@@ -189,7 +200,7 @@ class Agency(agency.Agency):
         d = self._broker.wait_event(recp.key, 'started')
         d.addCallback(lambda _: recp)
 
-        p = standalone.Process(self, cmd, cmd_args, cmd_env)
+        p = standalone.Process(self, cmd, cmd_args, env)
         p.restart()
 
         return d
@@ -221,7 +232,8 @@ class Agency(agency.Agency):
                      msg_user=None, msg_password=None,
                      db_host=None, db_port=None, db_name=None,
                      public_key=None, private_key=None,
-                     authorized_keys=None, manhole_port=None):
+                     authorized_keys=None, manhole_port=None,
+                     agency_journal=None):
 
         def get(value, default=None):
             if value is not None:
@@ -242,10 +254,13 @@ class Agency(agency.Agency):
                             authorized_keys=authorized_keys,
                             port=manhole_port)
 
+        agency_conf = dict(journal=agency_journal)
+
         self.config = dict()
         self.config['msg'] = msg_conf
         self.config['db'] = db_conf
         self.config['manhole'] = manhole_conf
+        self.config['agency'] = agency_conf
 
     def _store_config(self, env):
         '''
@@ -255,7 +270,6 @@ class Agency(agency.Agency):
             for kkey in self.config[key]:
                 var_name = "FEAT_%s_%s" % (key.upper(), kkey.upper(), )
                 env[var_name] = str(self.config[key][kkey])
-        return env
 
     def _load_config(self, env, options=None):
         '''
@@ -276,7 +290,6 @@ class Agency(agency.Agency):
                     self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value
 
-
         #Then override with options
         if options:
             for group_key, conf_group in self.config.items():
@@ -294,10 +307,16 @@ class Agency(agency.Agency):
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
 
-     ### Journaling Methods ###
+    def _setup_snapshoter(self):
+        self._snapshot_task = time.callLater(300, self._trigger_snapshot)
 
-    def journal_new_entry(self, agent_id, journal_id,
-                          function_id, *args, **kwargs):
-        record = []
-        return agency.AgencyJournalEntry(self.serializer, record, agent_id,
-                                  journal_id, function_id, *args, **kwargs)
+    def _trigger_snapshot(self):
+        self.log("Snapshoting all the agents.")
+        self.snapshot_agents()
+        self._snapshot_task = None
+        self._setup_snapshoter()
+
+    def _cancel_snapshoter(self):
+        if self._snapshot_task is not None and self._snapshot_task.active():
+            self._snapshot_task.cancel()
+        self._snapshot_task = None

@@ -11,7 +11,7 @@ from zope.interface import implements
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface import requests, protocols
 from feat.interface.agency import ExecMode
-from feat.common import delay, log
+from feat.common import time, log
 from feat.agencies import agency, protocols as aprotocols
 from feat.agencies.interface import *
 
@@ -76,8 +76,10 @@ components.registerAdapter(DummyAgencyInterest,
 
 class TestDependencies(common.TestCase, common.AgencyTestHelper):
 
+    @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
     def testGettingModes(self):
         self.assertEqual(ExecMode.test, self.agency.get_mode('unknown'))
@@ -97,7 +99,8 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
@@ -180,6 +183,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(0, len(self.agency._agents))
 
 
+@common.attr(timescale=0.01)
 class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3
@@ -189,7 +193,8 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
@@ -253,10 +258,9 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @common.attr(timeout=10)
     @defer.inlineCallbacks
     def testRequestTimeout(self):
-        delay.time_scale = 0.1
-
         d = self.queue.get()
         payload = 5
         self.requester =\
@@ -379,13 +383,15 @@ class DummyInitiator(common.Mock):
             return defer.fail(RuntimeError())
 
 
+@common.attr(timescale=0.01)
 class TestRetryingProtocol(common.TestCase):
 
     timeout = 3
 
+    @defer.inlineCallbacks
     def setUp(self):
+        yield common.TestCase.setUp(self)
         self.medium = DummyMedium(self)
-        delay.time_scale = 0.01
 
     @defer.inlineCallbacks
     def testRetriesForever(self):

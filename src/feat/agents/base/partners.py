@@ -5,7 +5,7 @@ import types
 from twisted.python import components
 
 from feat.common import (log, serialization, fiber, annotate, error_handler,
-                         formatable, )
+                         formatable, time, )
 from feat.agents.base import replay, recipient, requester
 
 from feat.interface.protocols import *

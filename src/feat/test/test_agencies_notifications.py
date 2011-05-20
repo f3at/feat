@@ -75,7 +75,8 @@ class TestCollector(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
         self.interest = self.agent.register_interest(DummyCollector)
@@ -110,13 +111,15 @@ class TestCollectorConcurrency(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.AgencyTestHelper.setUp(self)
+        yield common.TestCase.setUp(self)
+        yield common.AgencyTestHelper.setUp(self)
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
         self.interest = self.agent.register_interest(DummyConcurrentCollector)
         self.collector = self.interest.agency_collector.collector
         self.endpoint, self.queue = self.setup_endpoint()
 
+    @common.attr(timescale=0.05)
     @defer.inlineCallbacks
     def testConcurrency(self):
         self.assertTrue(self.interest.is_idle())

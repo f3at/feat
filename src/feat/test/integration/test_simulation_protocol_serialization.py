@@ -110,6 +110,7 @@ class PooledReplier(NormalReplier):
     concurrency = 3
 
 
+@common.attr(timescale=0.05)
 class ProtoSerializationTest(common.SimulationTest):
 
     timeout = 15

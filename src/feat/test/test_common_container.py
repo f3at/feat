@@ -6,7 +6,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.common.container import *
-from feat.common import serialization, journal
+from feat.common import serialization, journal, time
 from feat.common.serialization import base, pytree
 from feat.interface.generic import *
 from feat.interface.journal import *
@@ -22,7 +22,7 @@ class DummyTimeProvider(serialization.Serializable):
     implements(ITimeProvider)
 
     def __init__(self, current=None):
-        self.time = current if current is not None else common.time()
+        self.time = current if current is not None else time.time()
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -56,7 +56,7 @@ class ReplayableTimeProvider(replay.Replayable):
     implements(ITimeProvider)
 
     def init_state(self, state, _keeper, current=None):
-        state.time = current if current is not None else common.time()
+        state.time = current if current is not None else time.time()
         state.dict = ExpDict(self)
         state.queue = ExpQueue(self)
 

@@ -3,7 +3,7 @@
 from twisted.internet import defer
 
 from feat import everything
-from feat.common import delay, first
+from feat.common import first
 from feat.test.integration import common
 from feat.interface.protocols import InitiatorFailed
 from feat.common.text_helper import format_block
@@ -22,6 +22,7 @@ def checkNoAllocated(test, a_id):
     test.assertEquals(a_id, None)
 
 
+@common.attr(timescale=0.05)
 @common.attr('slow')
 class SingleHostAllocationSimulation(common.SimulationTest):
 
@@ -29,7 +30,6 @@ class SingleHostAllocationSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
         setup = format_block("""
         load('feat.test.integration.resource')
 
@@ -116,6 +116,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         yield d
 
 
+@common.attr(timescale=0.05)
 @common.attr('slow')
 class MultiHostAllocationSimulation(common.SimulationTest):
 
@@ -123,7 +124,6 @@ class MultiHostAllocationSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
         setup = format_block("""
         load('feat.test.integration.resource')
         host1_desc = descriptor_factory('host_agent')
@@ -136,18 +136,19 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         agency = spawn_agency()
         agency.start_agent(host1_desc, hostdef=hostdef)
         host = _.get_agent()
-        host.wait_for_ready()
+
+        wait_for_idle()
         host.start_agent(req_desc)
 
         # Second agency runs the host agent
         spawn_agency()
         _.start_agent(host2_desc, hostdef=hostdef)
-        _.get_agent()
-        _.wait_for_ready()
+        wait_for_idle()
 
         # Third is like second
         spawn_agency()
         _.start_agent(host3_desc, hostdef=hostdef)
+        wait_for_idle()
         """)
 
         hostdef = host.HostDef()
@@ -227,6 +228,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         yield self._waitToFinish()
         self._checkAllocations(resources, 2)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testAllocateAllHosts(self):
         resources = {'host': 1}
@@ -238,6 +240,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         self._checkAllocations(resources, 3)
 
 
+@common.attr(timescale=0.05)
 @common.attr('slow')
 class ContractNestingSimulation(common.SimulationTest):
 
@@ -253,7 +256,6 @@ class ContractNestingSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
-        delay.time_scale = 0.8
         setup = format_block("""
         # Host 1 will run Raage, Host, Shard and Requesting agents
         load('feat.test.integration.resource')
@@ -262,7 +264,8 @@ class ContractNestingSimulation(common.SimulationTest):
         req_desc = descriptor_factory('requesting_agent')
         agency.start_agent(host_desc, hostdef=hostdef1)
         host = _.get_agent()
-        host.wait_for_ready()
+
+        wait_for_idle()
         host.start_agent(req_desc)
 
         # Host 2 run only host agent
@@ -272,8 +275,7 @@ class ContractNestingSimulation(common.SimulationTest):
         # Host 3 will run Shard, Host and Raage
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
-        _.get_agent()
-        _.wait_for_ready()
+        wait_for_idle()
 
         # Host 4 will run only host agent
         spawn_agency()
@@ -316,6 +318,7 @@ class ContractNestingSimulation(common.SimulationTest):
                 yield self.req_agent.request_resource({'local': 1}, {})
         self.assert_allocated('local', 1)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testRequestFromOtherShard(self):
         self.info("Starting test")

@@ -7,7 +7,7 @@ from twisted.internet import error
 from twisted.web._newclient import ResponseDone
 
 from feat.agencies.database import Connection, ChangeListener
-from feat.common import log, defer, delay
+from feat.common import log, defer, time
 
 from feat.agencies.interface import *
 
@@ -99,7 +99,7 @@ class Database(log.FluLogKeeper, ChangeListener):
                        'This indicates missconfiguration or temporary '
                        'network problem. Will try to reconnect in %d seconds.',
                        self.retry, wait)
-            self.reconnector = delay.callLater(wait, self._setup_notifier)
+            self.reconnector = time.callLater(wait, self._setup_notifier)
             return
         else:
             # FIXME handle disconnection when network is down
