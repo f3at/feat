@@ -517,6 +517,10 @@ class AgencyAgent(BaseReplayDummy):
 
     ### IAgencyAgent Methods ###
 
+    @replay.named_side_effect('AgencyAgent.observe')
+    def observe(self, _method, *args, **kwargs):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
         pass

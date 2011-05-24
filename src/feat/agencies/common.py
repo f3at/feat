@@ -2,11 +2,15 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
+from zope.interface import classProvides
 from twisted.python import failure
 
-from feat.common import time, serialization, error_handler, log, defer
-from feat.interface.protocols import InitiatorExpired, InitiatorFailed
+from feat.common import (time, serialization, error_handler,
+                         log, defer, fiber, observer, )
 from feat.agents.base import replay
+
+from feat.interface.protocols import *
+from feat.interface.serialization import *
 
 
 class StateAssertationError(RuntimeError):
@@ -314,3 +318,11 @@ class TransientInterestedMediumBase(InterestedMediumBase):
     def call_next(self, *_):
         raise NotImplementedError("This method should be implemented outside "
                                   "of this mixin!")
+
+
+@serialization.register
+class Observer(observer.Observer):
+    classProvides(IRestorator)
+
+    active = replay.side_effect(observer.Observer.active)
+    get_result = replay.side_effect(observer.Observer.get_result)

@@ -1,5 +1,5 @@
 from twisted.internet.defer import *
-from twisted.internet.defer import returnValue
+from twisted.internet.defer import returnValue, passthru
 
 
 def drop_result(_result, _method, *args, **kwargs):

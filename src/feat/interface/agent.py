@@ -81,6 +81,28 @@ class IAgencyAgent(Interface):
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
 
+    def observe(callable, *args, **kwargs):
+        """
+        Observes the asynchronous method result.
+        The callable may return Fiber or Deferred.
+        Use it if you want to know keep the
+        information about the result of the fiber without keeping the
+        reference to the original object. This is usefull when dealing with
+        transient object like Tasks, Managers, etc. Examples:
+
+        observer = state.medium.observe(task.notify_finish)
+        ....
+        f = observer.notify_finish()
+        (do sth with f)
+
+        Synchronous methods:
+        if not observer.active():
+          res = oserver.get_result()
+
+        @type fiber: L{feat.interface.fiber.IFiber}
+        @rtype: L{feat.interface.fiber.IObserver}
+        """
+
     def get_descriptor():
         '''
         Return the copy of the descriptor.

@@ -13,8 +13,8 @@ from zope.interface import implements
 from feat.agencies import common, dependency
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
-from feat.common import log, defer, fiber, serialization, journal, time
-from feat.common import manhole, error_handler, text_helper, container
+from feat.common import (log, defer, fiber, serialization, journal, time,
+                         manhole, error_handler, text_helper, container, )
 
 # Import interfaces
 from interface import *
@@ -350,6 +350,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._terminate_procedure(generate_body)
 
     ### IAgencyAgent Methods ###
+
+    @replay.named_side_effect('AgencyAgent.observe')
+    def observe(self, _method, *args, **kwargs):
+        res = common.Observer(_method, *args, **kwargs)
+        self.call_next(res.initiate)
+        return res
 
     @manhole.expose()
     @replay.named_side_effect('AgencyAgent.get_descriptor')

@@ -1,14 +1,13 @@
 import sys
 import uuid
 
-from twisted.internet import defer
 from twisted.python import failure
 from zope.interface import implements
 
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from feat.common import decorator
+from feat.common import decorator, defer
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
 SECTION_BOUNDARY_TAG = "__section_boundary__"
