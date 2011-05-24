@@ -1,4 +1,4 @@
-PYTHON = /usr/bin/python2.6
+PYTHON = /usr/bin/python
 top_srcdir = .
 COVERAGE_MODULES = feat
 TOOLS = ../tools
