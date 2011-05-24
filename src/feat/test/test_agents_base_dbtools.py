@@ -1,6 +1,7 @@
 from twisted.internet import defer
 from feat.agents.base import dbtools, document
 from feat.test import common
+from feat.test.integration.common import SimulationTest
 
 
 @document.register
@@ -34,3 +35,28 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         other_id = filter(lambda x: x != u'special_id', ids)[0]
         normal = yield self.connection.get_document(other_id)
         self.assertEqual('default', normal.field1)
+
+    def testRevertingDocuments(self):
+        old = dbtools.get_current_initials()
+        dbtools.initial_data(SomeDocument)
+        current = dbtools.get_current_initials()
+        self.assertEqual(len(old) + 1, len(current))
+        dbtools.reset_documents(old)
+        current = dbtools.get_current_initials()
+        self.assertEqual(len(old), len(current))
+
+
+class IntegrationWithSimulation(SimulationTest):
+
+    def setUp(self):
+        dbtools.initial_data(SomeDocument)
+        return SimulationTest.setUp(self)
+
+    def testItWorks(self):
+        pass
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield SimulationTest.tearDown(self)
+        current = dbtools.get_current_initials()
+        self.assertFalse(isinstance(current[-1], SomeDocument))

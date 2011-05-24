@@ -7,6 +7,7 @@ from feat.common import text_helper, defer
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
+from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
 
@@ -70,6 +71,11 @@ class SimulationTest(common.TestCase):
     jourfile = None
 
     overriden_configs = None
+
+    def __init__(self, *args, **kwargs):
+        common.TestCase.__init__(self, *args, **kwargs)
+        initial_documents = dbtools.get_current_initials()
+        self.addCleanup(dbtools.reset_documents, initial_documents)
 
     @defer.inlineCallbacks
     def setUp(self):

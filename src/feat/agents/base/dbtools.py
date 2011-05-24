@@ -1,3 +1,4 @@
+import copy
 import optparse
 
 from twisted.internet import defer, reactor
@@ -11,7 +12,21 @@ from feat.common import log
 _documents = []
 
 
+def reset_documents(documents):
+    global _documents
+
+    _documents = documents
+
+
+def get_current_initials():
+    global _documents
+
+    return copy.deepcopy(_documents)
+
+
 def initial_data(doc):
+    global _documents
+
     if callable(doc) and issubclass(doc, document.Document):
         doc = doc()
     if not isinstance(doc, document.Document):
@@ -32,6 +47,8 @@ def create_connection(host, port, name):
 
 @defer.inlineCallbacks
 def push_initial_data(connection):
+    global _documents
+
     for doc in _documents:
         try:
             yield connection.save_document(doc)
