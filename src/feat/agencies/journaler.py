@@ -3,11 +3,14 @@
 import sqlite3
 import operator
 import types
+import signal
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
 
-from feat.common import log, text_helper, error_handler, defer, formatable
+from feat.common import (log, text_helper, error_handler, defer,
+                         formatable, enum, )
+from feat.agencies import common
 from feat.common.serialization import banana
 
 from feat.interface.journal import *
@@ -15,7 +18,18 @@ from feat.interface.serialization import *
 from feat.agencies.interface import *
 
 
-class Journaler(log.Logger, log.LogProxy):
+class State(enum.Enum):
+
+    '''
+    disconnected - there is no connection to database
+    flushing - connection has been established, but is not ready as we are
+               flushing the cached data
+    connected - connection is ready, entries can be insterted
+    '''
+    (disconnected, flushing, connected, ) = range(3)
+
+
+class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
     implements(IJournaler)
 
     log_category = 'journaler'
@@ -31,25 +45,30 @@ class Journaler(log.Logger, log.LogProxy):
         '''
         log.Logger.__init__(self, logger)
         log.LogProxy.__init__(self, logger)
+        common.StateMachineMixin.__init__(self, State.disconnected)
 
-        self.running = False
         self._encoding = encoding
         self._db = None
         self._filename = filename
         # (agent_id, instance_id, ) -> history_id
         self._history_id_cache = dict()
+        # list of data entries to be inserted [dict]
+        self._cache = list()
+
+        self._old_sighup_handler = None
+        self._sighup_installed = False
 
     def initiate(self):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
                                          cp_min=1, cp_max=1, cp_noisy=True,
                                          check_same_thread=False,
                                          timeout=3)
+        self._install_sighup()
         return self._check_schema()
 
     def close(self):
         self._db.close()
-        self.running = False
-
+        self._set_state(State.disconnected)
 
     ### IJournaler ###
 
@@ -95,7 +114,40 @@ class Journaler(log.Logger, log.LogProxy):
         return d
 
     def insert_entry(self, **data):
-        assert self.running
+
+        if not self._cmp_state(State.connected):
+            self.debug('Entry inserted in %r state, appending to cache.',
+                       self._get_machine_state())
+            self._cache.append(data)
+            return self.wait_for_state(State.connected)
+        else:
+            return self._insert_entry(**data)
+
+    def get_filename(self):
+        return self._filename
+
+    ### Private ###
+
+    def _install_sighup(self):
+        if self._sighup_installed:
+            return
+
+        def sighup(signum, frame):
+            self.log("Received SIGHUP, reopening the journal.")
+            self.close()
+            self.initiate()
+            if callable(self._old_sighup_handler):
+                self._old_sighup_handler(signum, frame)
+
+        self.log('Installing SIGHUP handler.')
+        handler = signal.signal(signal.SIGHUP, sighup)
+        if handler == signal.SIG_DFL or handler == signal.SIG_IGN:
+            self._old_sighup_handler = None
+        else:
+            self._old_sighup_handler = handler
+        self._sighup_installed = True
+
+    def _insert_entry(self, **data):
 
         def do_insert(connection, history_id, data):
             command = text_helper.format_block("""
@@ -116,11 +168,6 @@ class Journaler(log.Logger, log.LogProxy):
 
         data = self._encode(data)
         return self._db.runWithConnection(transaction, data)
-
-    def get_filename(self):
-        return self._filename
-
-    ### Private ###
 
     def _get_history_id(self, connection, agent_id, instance_id):
         '''
@@ -261,7 +308,18 @@ class Journaler(log.Logger, log.LogProxy):
     def _initiated_ok(self, *_):
         self.log('Journaler initiated correctly for the filename %r',
                  self._filename)
-        self.running = True
+        self._set_state(State.flushing)
+        return self._flush_next()
+
+    def _flush_next(self):
+        if not self._cache:
+            # no more entries, flushing compete
+            self._set_state(State.connected)
+        else:
+            data = self._cache.pop(0)
+            d = self._insert_entry(**data)
+            d.addCallback(defer.drop_result, self._flush_next)
+            return d
 
 
 class Record(object):

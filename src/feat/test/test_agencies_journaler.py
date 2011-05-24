@@ -1,3 +1,4 @@
+import signal
 import tempfile
 import os
 
@@ -29,12 +30,24 @@ class DBTests(common.TestCase):
     def testInitiateInMemory(self):
         jour = journaler.Journaler(self)
         self.assertEqual(':memory:', jour._filename)
-        self.assertFalse(jour.running)
+        self.assertEqual(journaler.State.disconnected,
+                         jour._get_machine_state())
 
         yield jour.initiate()
-        self.assertTrue(jour.running)
+        self.assertEqual(journaler.State.connected,
+                         jour._get_machine_state())
         yield jour.close()
-        self.assertFalse(jour.running)
+        self.assertEqual(journaler.State.disconnected,
+                         jour._get_machine_state())
+
+    @defer.inlineCallbacks
+    def testStoringEntriesWhileDisconnected(self):
+        jour = journaler.Journaler(self, encoding='zip')
+        d = jour.insert_entry(**self._generate_data())
+        yield jour.initiate()
+        yield d
+
+        self._assert_entries(1)
 
     @defer.inlineCallbacks
     def testStoringAndReadingEntries(self):
@@ -77,11 +90,12 @@ class DBTests(common.TestCase):
         jour = Journaler(self, filename=filename)
         yield jour.initiate()
         self.assertCalled(jour, '_create_schema', times=1)
-        self.assertTrue(jour.running)
+        self.assertEqual(journaler.State.connected, jour._get_machine_state())
         yield jour.close()
-        self.assertFalse(jour.running)
+        self.assertEqual(journaler.State.disconnected,
+                         jour._get_machine_state())
         yield jour.initiate()
-        self.assertTrue(jour.running)
+        self.assertEqual(journaler.State.connected, jour._get_machine_state())
         yield jour.close()
         self.assertCalled(jour, '_create_schema', times=1)
 
@@ -96,6 +110,26 @@ class DBTests(common.TestCase):
         yield jour.initiate()
         # stored value should win
         self.assertEqual('zip', jour._encoding)
+
+    @defer.inlineCallbacks
+    def testJourfileRotation(self):
+        filename = self._get_tmp_file()
+        jour = Journaler(self, filename=filename, encoding='zip')
+        yield jour.initiate()
+        yield jour.insert_entry(**self._generate_data())
+        self._assert_entries(1)
+
+        # now rotate the journal
+        newname = self._get_tmp_file()
+        os.rename(filename, newname)
+        ourpid = os.getpid()
+        os.kill(ourpid, signal.SIGHUP)
+
+        yield jour.insert_entry(**self._generate_data())
+        self._assert_entries(1)
+
+        self.assertTrue(os.path.exists(filename))
+        self.assertTrue(os.path.exists(newname))
 
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
@@ -117,3 +151,12 @@ class DBTests(common.TestCase):
 
         defaults.update(opts)
         return defaults
+
+    def _assert_entries(self, num):
+        histories = yield jour.get_histories()
+        self.assertIsInstance(histories, list)
+        self.assertIsInstance(histories[0], journaler.History)
+        entries = yield jour.get_entries(histories[0])
+        self.assertIsInstance(entries, list)
+        self.assertEqual(num, len(entries))
+        yield jour.close()
