@@ -1,6 +1,7 @@
 import collections
 import functools
 import uuid
+import signal
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -134,6 +135,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             time.scale(scale)
         else:
             time.reset()
+        self.addCleanup(self._reset_sighup_handler)
 
     def getSlow(self):
         """
@@ -343,6 +345,15 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             return self._assertAsync(param, check, value(*args, **kwargs))
 
         return check(value)
+
+    def _reset_sighup_handler(self):
+        '''
+        Journaler and LogKeeper may install their own SIGHUP handlers, which
+        are not later uninstalled. In case of running all the tests it results
+        in a huge number of method calls when the SIGHUP is received.
+        For this reason we clean the handler after each test.
+        '''
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
 
 
 class Mock(object):
