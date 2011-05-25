@@ -119,18 +119,26 @@ class SimulationTest(common.TestCase):
             histories = yield self.driver._journaler.get_histories()
             for history in histories:
                 entries = yield self.driver._journaler.get_entries(history)
-                self._validate_replay_on_agent(history.agent_id, entries)
+                self._validate_replay_on_agent(history, entries)
         else:
             msg = ("\n\033[91mFIXME: \033[0mReplayability test "
                   "skipped: %s\n" % self.skip_replayability)
             print msg
 
-    def _validate_replay_on_agent(self, aid, entries):
+    def _validate_replay_on_agent(self, history, entries):
+        aid = history.agent_id
         agent = self.driver.find_agent(aid)
         if agent is None:
             self.warning(
-                'Agent with id %r not found. This usually means it was '
-                'terminated, during the test')
+                'Agent with id %r not found. '
+                'This usually means it was terminated, during the test.', aid)
+            return
+        if agent._instance_id != history.instance_id:
+            self.warning(
+                'Agent instance id is %s, the journal entries are for '
+                'instance_id %s. This history will not get validated, as '
+                'now we dont have the real instance to compare the result '
+                'with.', agent._instance_id, history.instance_id)
             return
 
         self.log("Validating replay of %r with id: %s",
