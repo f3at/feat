@@ -106,6 +106,7 @@ def wait_for(logger, check, timeout, freq=0.5):
 
 _time_scale = None
 _python_time = hacks.import_time()
+clock = _python_time.clock
 
 
 def _get_scale():
