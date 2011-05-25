@@ -57,7 +57,6 @@ def extract_diff(str1, str2):
         result.append((str1[0:la], str2[0:lb]))
     la += ls
     lb += ls
-    print la, lb
     for a, b, s in i:
         a, b
         if s:

@@ -139,7 +139,8 @@ class JournalReplayEntry(object):
 
     def to_string(self, header=""):
         args, kwargs = self.get_arguments()
-        side_effects = [side_effect_as_string(*self._restore_side_effect(se))
+        side_effects = [side_effect_as_string(
+            *self.restore_side_effect(se, parse_args=True))
                         for se in self._side_effects]
         return ("%sinstance:  %r.\n"
                 "%sfunction:  %r.\n"
@@ -157,6 +158,20 @@ class JournalReplayEntry(object):
                    header, header + "  ",
                    ("\n  " + header).join(side_effects)))
 
+    def restore_side_effect(self, record, parse_args=False):
+        fun_id, raw_args, raw_kwargs, raw_effects, result = record
+        if parse_args:
+            args = self._replay.unserializer.convert(raw_args) or ()
+            kwargs = self._replay.unserializer.convert(raw_kwargs) or {}
+        else:
+            args = raw_args or ()
+            kwargs = raw_kwargs or {}
+        effects = [(effect_id,
+                    self._replay.unserializer.convert(effect_args),
+                    self._replay.unserializer.convert(effect_kwargs))
+                   for effect_id, effect_args, effect_kwargs in raw_effects]
+        return fun_id, args, kwargs, effects, result
+
     ### IJournalReplayEntry Methods ###
 
     def get_arguments(self):
@@ -173,25 +188,23 @@ class JournalReplayEntry(object):
             raise ReplayError("Unexpected side-effect %s"
                               % (unexpected_desc, ))
 
-        side_effect = self._side_effects[self._next_effect]
+        raw_side_effect = self._side_effects[self._next_effect]
         self._next_effect += 1
 
-        side_effect = self._restore_side_effect(side_effect)
+        side_effect = self.restore_side_effect(raw_side_effect)
         exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
-
-        expected_desc = side_effect_as_string(exp_fun_id,
-                    exp_args, exp_kwargs)
-
-        # FIXME: This is ugly hack introduced by the fact that we cannot
-        # serialize methods, hence if side effect param is a method it has
-        # to be skipped
-        ignore_args_and_kwargs = (function_id == "SIDE EFFECT SKIPPED")
 
         if exp_fun_id != function_id:
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
-        if not ignore_args_and_kwargs and exp_args != args:
+        args = self._replay.serializer.freeze(args)
+        if exp_args != args:
+            side_effect = self.restore_side_effect(raw_side_effect,
+                                                    parse_args=True)
+            exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
+            expected_desc = side_effect_as_string(exp_fun_id,
+                                                  exp_args, exp_kwargs)
             which = 0
             for exp, got in zip(exp_args, args):
                 if exp == got:
@@ -202,8 +215,12 @@ class JournalReplayEntry(object):
             raise ReplayError("Bad side-effect arguments in %s, expecting "
                               "%s. Different argument index %d."
                               % (unexpected_desc, expected_desc, which))
+        kwargs = self._replay.serializer.freeze(kwargs)
 
-        if not ignore_args_and_kwargs and exp_kwargs != kwargs:
+        if exp_kwargs != kwargs:
+            side_effect = self.restore_side_effect(raw_side_effect,
+                                                    parse_args=True)
+            expected_desc = side_effect_as_string(*side_effect[0:3])
             raise ReplayError("Bad side-effect keywords in %s, "
                               " expecting %s"
                               % (unexpected_desc, expected_desc))
@@ -213,18 +230,6 @@ class JournalReplayEntry(object):
                         *effect_args, **effect_kwargs)
 
         return self._replay.unserializer.convert(result)
-
-    ### Private Methods ###
-
-    def _restore_side_effect(self, record):
-        fun_id, raw_args, raw_kwargs, raw_effects, result = record
-        args = self._replay.unserializer.convert(raw_args) or ()
-        kwargs = self._replay.unserializer.convert(raw_kwargs) or {}
-        effects = [(effect_id,
-                    self._replay.unserializer.convert(effect_args),
-                    self._replay.unserializer.convert(effect_kwargs))
-                   for effect_id, effect_args, effect_kwargs in raw_effects]
-        return fun_id, args, kwargs, effects, result
 
 
 class Replay(log.FluLogKeeper, log.Logger):
@@ -590,11 +595,11 @@ class AgencyAgent(BaseReplayDummy):
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')
 
-    @replay.named_side_effect('SIDE EFFECT SKIPPED')
+    @replay.named_side_effect('AgencyAgency.call_next')
     def call_next(self, method, *args, **kwargs):
         pass
 
-    @replay.named_side_effect('SIDE EFFECT SKIPPED')
+    @replay.named_side_effect('AgencyAgency.call_later')
     def call_later(self, time_left, method, *args, **kwargs):
         pass
 

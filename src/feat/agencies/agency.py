@@ -489,11 +489,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
-    @replay.named_side_effect('SIDE EFFECT SKIPPED')
+    @replay.named_side_effect('AgencyAgency.call_next')
     def call_next(self, method, *args, **kwargs):
         return self.call_later(0, method, *args, **kwargs)
 
-    @replay.named_side_effect('SIDE EFFECT SKIPPED')
+    @replay.named_side_effect('AgencyAgency.call_later')
     def call_later(self, time_left, method, *args, **kwargs):
         call = time.callLater(time_left, self._call, method,
                               *args, **kwargs)

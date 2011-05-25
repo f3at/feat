@@ -7,6 +7,7 @@ from twisted.internet import reactor
 
 from feat import hacks
 from feat.common import defer
+from feat.agents.base import replay
 
 from twisted.internet.interfaces import IDelayedCall
 
@@ -24,6 +25,7 @@ def scale(factor):
     _time_scale = float(factor) * _debugger_scale()
 
 
+@replay.side_effect
 def time():
     '''
     Get current time.
@@ -31,7 +33,7 @@ def time():
              time scaling mechanism.
     @rtype: float
     '''
-    real_time = _python_time.time()
+    real_time = reactor.seconds()
     return real_time / _get_scale()
 
 

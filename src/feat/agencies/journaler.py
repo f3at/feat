@@ -307,15 +307,8 @@ class AgencyJournalSideEffect(object):
         self._serializer = serializer
         self._record = record
         self._fun_id = function_id
-        # FIXME: This is ugly hack introduced by the fact that we cannot
-        # serialize methods, hence if side effect param is a method it has
-        # to be skipped
-        if function_id != "SIDE EFFECT SKIPPED":
-            self._args = serializer.convert(args or None)
-            self._kwargs = serializer.convert(kwargs or None)
-        else:
-            self._args = serializer.convert(None)
-            self._kwargs = serializer.convert(None)
+        self._args = serializer.freeze(args or tuple())
+        self._kwargs = serializer.freeze(kwargs or dict())
         self._effects = []
         self._result = None
 
