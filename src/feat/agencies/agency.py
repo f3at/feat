@@ -94,7 +94,6 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         agent_id = medium.get_descriptor().doc_id
         self.debug('Unregistering agent id: %r', agent_id)
         self._agents.remove(medium)
-        self.journal_agent_deleted(agent_id)
 
         # FIXME: This shouldn't be necessary! Here we are manually getting
         # rid of things which should just be garbage collected (self.registry
@@ -844,12 +843,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Run code specific to the given shutdown
         d.addBoth(lambda _: body())
         # Tell the agency we are no more
-        d.addBoth(lambda _: self.agency.unregister_agent(self))
+        d.addBoth(lambda _: self._unregister_from_agency())
         # Close the messaging connection
         d.addBoth(lambda _: self._messaging.disconnect())
         # Close the database connection
         d.addBoth(lambda _: self._database.disconnect())
         return d
+
+    def _unregister_from_agency(self):
+        self.agency.journal_agent_deleted(self._descriptor.doc_id,
+                                          self._instance_id)
+        self.agency.unregister_agent(self)
 
     def terminate_hard(self):
         '''Kill the agent without notifying anybody.'''
