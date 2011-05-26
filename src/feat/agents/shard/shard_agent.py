@@ -432,8 +432,11 @@ class FindNeighboursContractor(contractor.BaseContractor):
     @replay.entry_point
     def granted(self, state, grant):
         recp = grant.payload['joining_agent']
+        f = fiber.succeed(canceller=state.medium.get_canceller())
         if grant.payload['solution_type'] == SolutionType.join:
-            f = state.agent.confirm_allocation(state.allocation_id)
+            f.add_callback(fiber.drop_param,
+                           state.agent.confirm_allocation,
+                           state.allocation_id)
             f.add_callback(fiber.drop_param,
                            state.agent.establish_partnership, recp,
                            state.allocation_id,
@@ -455,17 +458,13 @@ class FindNeighboursContractor(contractor.BaseContractor):
 
     @replay.immutable
     def _granted_failed(self, state, failure):
-        #FIXME: guard against expiration, should use fiber cancellation
-        state.medium.ensure_state(ContractState.granted)
-        state.medium._error_handler(failure)
+        self._error_handler(failure)
         msg = message.Cancellation(reason=str(failure.value))
         state.medium.defect(msg)
         return self._release_allocation()
 
     @replay.immutable
     def _finalize(self, state, _):
-        #FIXME: guard against expiration, should use fiber cancellation
-        state.medium.ensure_state(ContractState.granted)
         report = message.FinalReport()
         state.medium.finalize(report)
 
@@ -762,10 +761,12 @@ class JoinShardContractor(contractor.NestingContractor):
     announce_expired = release_preallocation
     rejected = release_preallocation
     expired = release_preallocation
+    cancelled = release_preallocation
 
     @replay.mutable
     def granted(self, state, grant):
-        f = fiber.succeed(state.preallocation_id)
+        f = fiber.succeed(state.preallocation_id,
+                          canceller=state.medium.get_canceller())
         f.add_callback(state.agent.confirm_allocation)
         f.add_callback(
             fiber.drop_param, state.agent.establish_partnership,
@@ -955,11 +956,8 @@ class QueryStructureContractor(contractor.BaseContractor):
         # of the graph for the arbitrary structure agent type
         partner_type = announcement.payload['partner_type']
 
-        f = fiber.succeed()
+        f = fiber.succeed(canceller=state.medium.get_canceller())
         f.add_callback(fiber.drop_param, state.agent.wait_for_structure)
-        # Ensure that nothing is called if the protocol timeout
-        f.add_callback(fiber.bridge_param, state.medium.ensure_state,
-                       ContractState.announced)
         f.add_callback(fiber.drop_param, self._query_partners, partner_type)
         return f
 

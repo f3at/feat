@@ -228,7 +228,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         yield self._waitToFinish()
         self._checkAllocations(resources, 2)
 
-    @common.attr(timescale=0.1)
+    @common.attr(timescale=0.5)
     @defer.inlineCallbacks
     def testAllocateAllHosts(self):
         resources = {'host': 1}

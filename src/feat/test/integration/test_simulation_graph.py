@@ -397,7 +397,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.driver.validate_shards()
 
 
-@attr(timescale=0.05)
+@attr(timescale=0.1)
 @attr('slow')
 class TestProblemResolving(common.SimulationTest, CommonMixin):
 

@@ -440,6 +440,10 @@ class StateMachineSpecific(object):
     def wait_for_state(self, state):
         raise RuntimeError('This should never be called!')
 
+    @replay.named_side_effect("StateMachineMixin.get_canceller")
+    def get_canceller(self):
+        pass
+
 
 class Factory(serialization.Serializable):
 
@@ -682,14 +686,7 @@ class AgencyProtocol(BaseReplayDummy, StateMachineSpecific):
         pass
 
 
-class AgencyStatefulProtocol(AgencyProtocol, StateMachineSpecific):
-
-    @serialization.freeze_tag('IAgencyStatefulProtocol.ensure_state')
-    def ensure_state(self, states):
-        pass
-
-
-class AgencyReplier(AgencyStatefulProtocol):
+class AgencyReplier(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyReplier)
 
@@ -704,7 +701,7 @@ class AgencyReplier(AgencyStatefulProtocol):
         pass
 
 
-class AgencyRequester(AgencyStatefulProtocol):
+class AgencyRequester(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyRequester)
 
@@ -722,7 +719,7 @@ class AgencyRequester(AgencyStatefulProtocol):
         pass
 
 
-class AgencyContractor(AgencyStatefulProtocol):
+class AgencyContractor(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyContractor)
 
@@ -759,7 +756,7 @@ class AgencyContractor(AgencyStatefulProtocol):
         pass
 
 
-class AgencyManager(AgencyStatefulProtocol):
+class AgencyManager(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyManager)
 
@@ -803,7 +800,7 @@ class AgencyManager(AgencyStatefulProtocol):
         pass
 
 
-class AgencyTask(AgencyStatefulProtocol):
+class AgencyTask(AgencyProtocol, StateMachineSpecific):
 
     type_name = "task-medium"
     log_category = "task-medium"

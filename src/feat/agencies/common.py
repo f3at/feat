@@ -12,9 +12,8 @@ from feat.agents.base import replay
 from feat.interface.protocols import *
 from feat.interface.serialization import *
 
-
-class CancelFiber(Exception):
-    pass
+from zope.interface import implements, classProvides
+from feat.interface.fiber import ICancellable, FiberCancelled
 
 
 class StateAssertationError(RuntimeError):
@@ -120,6 +119,60 @@ class StateMachineMixin(object):
         if isinstance(self, log.Logger):
             log.Logger.error(self, *args)
 
+    # Fiber Canceller
+
+    @replay.named_side_effect('StateMachineMixin.get_canceller')
+    def get_canceller(self):
+        return StateCanceller(self)
+
+
+@serialization.register
+class StateCanceller(object):
+
+    type_name = 'canceller'
+
+    classProvides(serialization.IRestorator)
+    implements(serialization.ISerializable, ICancellable)
+
+    def __init__(self, state_machine):
+        self.state = state_machine._get_machine_state()
+        self.sm = state_machine
+
+    ### ICancellable methods ###
+
+    def is_active(self):
+        if self.sm and self.state == self.sm._get_machine_state():
+            return True
+        else:
+            self.sm = None
+            return False
+
+    ### IRestorator Methods ###
+
+    @classmethod
+    def prepare(cls):
+        return None
+
+    @classmethod
+    def restore(cls, snapshot):
+        return cls.__new__(cls)
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return (self.state, self.sm)
+
+    ### Private Methods ###
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.state == other.state and \
+               self.sm == other.sm
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class AgencyMiddleMixin(object):
     '''Responsible for formating messages, calling methods etc'''
@@ -175,27 +228,14 @@ class AgencyMiddleMixin(object):
         return d
 
     def _error_handler(self, f):
-        if f.check(CancelFiber):
-            self.debug('Swallowing CancelFiber exception. This means that the'
-                       ' ensure_state() call detected incorrect state and '
-                       'fiber was terminated.')
-            return
+        if f.check(FiberCancelled):
+            self._terminate(ProtocolFailed("Fiber was cancelled because "
+                        "the state of the medium changed. This happens "
+                        "when constructing a fiber with a canceller."))
 
         error_handler(self, f)
         self._set_state(self.error_state)
         self._terminate(f)
-
-    @serialization.freeze_tag('IAgencyStatefulProtocol.ensure_state')
-    def ensure_state(self, states):
-        '''
-        Exposed in a public interface. Use this to mark a point in the fiber
-        where it should get cancelled if the state machine is not in expected
-        state.
-        '''
-        try:
-            self._ensure_state(states)
-        except StateAssertationError:
-            raise CancelFiber()
 
 
 class ExpirationCallsMixin(object):

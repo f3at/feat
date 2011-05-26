@@ -4,6 +4,7 @@
 
 from twisted.internet import defer
 from twisted.python import failure
+from zope.interface import implements
 
 from feat.common import fiber
 
@@ -152,6 +153,149 @@ def fiberListFun(trace):
     fl.succeed()
     fl.add_callback(merge)
     return fl
+
+
+class Canceler(object):
+
+    implements(ICancellable)
+
+    def __init__(self):
+        self.active = True
+
+    def is_active(self):
+        return self.active
+
+    def cancel(self):
+        self.active = False
+
+    def show(self, result):
+        return result
+
+
+class TestCancel(common.TestCase):
+
+    def check(self, result, expected):
+        self.assertEqual(result.type, expected)
+
+    def cb(self, result):
+        return result
+
+    @defer.inlineCallbacks
+    def test_one_canceller(self):
+
+        o = Canceler()
+        d = defer.Deferred()
+
+        f1 = fiber.Fiber(o)
+        f1.succeed("Trigger")
+
+        f2 = fiber.Fiber(o)
+        f2.add_callback(lambda _: d)
+
+        f3 = fiber.Fiber(o)
+        f3.add_callback(o.show)
+
+        f1.chain(f2.chain(f3))
+
+        deff = f1.start()
+        self.assertFailure(deff, FiberCancelled)
+        o.cancel()
+        d.callback(None)
+        yield deff
+
+    @defer.inlineCallbacks
+    def test_multiple_cancellers(self):
+
+        o1 = Canceler()
+        o2 = Canceler()
+        d = defer.Deferred()
+
+        f1 = fiber.Fiber(o1)
+        f1.succeed("Trigger")
+
+        f2 = fiber.Fiber(o2)
+        f2.add_callback(lambda _: d)
+
+        f3 = fiber.Fiber(o2)
+        f3.add_callback(o2.show)
+
+        f1.chain(f2.chain(f3))
+
+        deff = f1.start()
+        self.assertFailure(deff, FiberCancelled)
+        o2.cancel()
+        d.callback(None)
+        yield deff
+
+    @defer.inlineCallbacks
+    def test_cancel_at_end_of_subchain(self):
+
+        o1 = Canceler()
+        o2 = Canceler()
+        d = defer.Deferred()
+
+        f1 = fiber.Fiber(o1)
+        f1.succeed("Trigger")
+
+        f2 = fiber.Fiber(o2)
+        f2.add_callback(lambda _: d)
+
+        f3 = fiber.Fiber(o1)
+        f3.add_callback(o2.show)
+
+        f4 = fiber.Fiber(o1)
+        f4.add_callback(o1.show)
+
+        f1.chain(f2.chain(f3.chain(f4)))
+
+        deff = f1.start()
+        o2.cancel()
+        d.callback("success")
+        r = yield deff
+        self.assertEqual("success", r)
+
+    @defer.inlineCallbacks
+    def test_simple_fiber(self):
+
+        o1 = Canceler()
+        d = defer.Deferred()
+
+        f1 = fiber.Fiber(o1)
+        f1.add_callback(lambda _: d)
+        f1.add_callback(o1.show)
+        f1.succeed("Trigger")
+
+        deff = f1.start()
+        self.assertFailure(deff, FiberCancelled)
+        o1.cancel()
+        d.callback(None)
+        yield d
+
+    @defer.inlineCallbacks
+    def test_fiber_without_canceler(self):
+
+        o1 = Canceler()
+        d = defer.Deferred()
+
+        f = fiber.Fiber()
+        f.add_callback(self.cb)
+        f.succeed("Trigger")
+
+        f1 = fiber.Fiber(o1)
+        f1.add_callback(lambda _: d)
+        f1.add_callback(o1.show)
+
+        f2 = fiber.Fiber()
+        f2.add_callback(self.cb)
+
+        f.chain(f1.chain(f2))
+
+        deff = f.start()
+        self.assertFailure(deff, FiberCancelled)
+        o1.cancel()
+        d.callback("success")
+        r = yield deff
+        self.assertNotEqual("success", r)
 
 
 class TestFiber(common.TestCase):

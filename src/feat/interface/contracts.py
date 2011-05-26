@@ -63,8 +63,3 @@ class IContractPeer(protocols.IAgencyProtocol):
     '''Define common interface between both peers of the contract protocol.'''
 
     agent = Attribute("Reference to the owner agent")
-
-    def ensure_state():
-        '''
-        Cancel the fiber if the machine is currectly in incorrect state.
-        '''

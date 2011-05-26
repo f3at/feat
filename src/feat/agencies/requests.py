@@ -175,6 +175,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         reply = reply.clone()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
+        self._cancel_expiration_call()
         self._set_state(RequestState.closed)
         time.callLater(0, self._terminate, None)
 
@@ -217,6 +218,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### private ###
 
     def _requested(self, msg):
+        self._cancel_expiration_call()
         self._expire_at(msg.expiration_time, RequestState.closed,
                         self._on_expire)
         self._call(self.replier.requested, msg)

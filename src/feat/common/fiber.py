@@ -93,12 +93,12 @@ def trace(_param, _template="", *args):
     return _param
 
 
-def succeed(param=None):
-    return Fiber().succeed(param)
+def succeed(param=None, canceller=None):
+    return Fiber(canceller).succeed(param)
 
 
-def fail(failure=None):
-    return Fiber().fail(failure)
+def fail(failure=None, canceller=None):
+    return Fiber(canceller).fail(failure)
 
 
 def wrap_defer(_method, *args, **kwargs):
@@ -360,7 +360,7 @@ class Fiber(object):
 
     implements(IFiber, ISnapshotable)
 
-    def __init__(self):
+    def __init__(self, canceller = None):
         self._descriptor = None
         self.fiber_depth = None
         self.fiber_id = None
@@ -374,6 +374,7 @@ class Fiber(object):
         #   callable, tuple or None, dict or None)
         #  |Fiber]
         self._calls = []
+        self.canceller = canceller
 
     @property
     def trigger_type(self):
@@ -560,6 +561,12 @@ class Fiber(object):
         global trace_fiber_calls
         if trace_fiber_calls:
             self._trace(param, callback, *args, **kwargs)
+
+        if param is failure.Failure and param.check(FiberCancelled):
+            param.raiseException()
+
+        if self.canceller and not self.canceller.is_active():
+            raise FiberCancelled("Fiber cancelled")
 
         section = WovenSection(descriptor=fiber)
         section.enter()

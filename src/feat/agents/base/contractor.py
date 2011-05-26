@@ -1,7 +1,7 @@
 from zope.interface import implements
 
 from feat.agents.base import replay, manager, recipient, message, protocols
-from feat.common import reflect, serialization, fiber
+from feat.common import reflect, serialization, fiber, error_handler
 
 from feat.interface.contractor import *
 from feat.interface.contracts import *
@@ -37,6 +37,8 @@ class BaseContractor(protocols.BaseInterested):
 
     protocol_type = "Contract"
     protocol_id = None
+
+    _error_handler = error_handler
 
     interest_type = InterestType.private
 

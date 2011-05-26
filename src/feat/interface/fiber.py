@@ -4,7 +4,8 @@ from feat.common import enum
 
 __all__ = ["TriggerType", "FiberError",
            "FiberStartupError", "FiberTriggerError",
-           "IFiberDescriptor", "IFiber"]
+           "FiberCancelled", "IFiberDescriptor", "IFiber",
+           "ICancellable"]
 
 
 class TriggerType(enum.Enum):
@@ -26,6 +27,10 @@ class FiberStartupError(FiberError):
 
 
 class FiberTriggerError(FiberError):
+    pass
+
+
+class FiberCancelled(Exception):
     pass
 
 
@@ -132,3 +137,9 @@ class IFiber(IFiberDescriptor):
 
     def addBoth(callback, *args, **kwargs):
         pass
+
+
+class ICancellable(Interface):
+
+    def is_active():
+        '''Returns status of the fiber, cancelled or not'''
