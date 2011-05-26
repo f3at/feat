@@ -312,6 +312,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def delete_document(self, document):
         return self._database.delete_document(document)
 
+    @serialization.freeze_tag('AgencyAgency.query_view')
+    def query_view(self, factory, **options):
+        return self._database.query_view(factory, **options)
+
     @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):

@@ -223,6 +223,26 @@ class IAgencyAgent(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
+    def query_view(factory, **options):
+        '''
+        Queries the database view.
+
+        It only supports small part of CouchDB features. In production
+        implementation the options are just passed to the query. This means
+        that basicly everything is supported. In emu database implementation
+        the only supported option is:
+        - reduce C{boolean}: optionaly lets fetch the result of the map from
+          the map-reduce view (skips the reduce part).
+        In case you want to use more features of CouchDB you should implement
+        them feat.agencies.emu.database.Database, and test their intergration
+        in feat.test.integration.test_idatabase_client.
+
+        @param factory: View factory to query.
+        @type factory: L{feat.interface.view.IViewFactory}
+        @param options: Dictionary of parameters to pass to the query.
+        @return: C{list} of the results.
+        '''
+
     def terminate():
         '''
         Performs all the necessary steps to end the life of the agent in a

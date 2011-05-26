@@ -158,6 +158,7 @@ class BadManagerAgent(agent.BaseAgent):
 
 
 @common.attr(timescale=0.2)
+@common.attr('slow')
 class RestartingSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
@@ -308,6 +309,7 @@ class RestartingSimulation(common.SimulationTest):
 
 
 @common.attr(timescale=0.2)
+@common.attr('slow')
 class MonitoringMonitor(common.SimulationTest):
 
     def setUp(self):
@@ -445,6 +447,7 @@ class MonitoringMonitor(common.SimulationTest):
 
 
 @common.attr(timescale=0.2)
+@common.attr('slow')
 class SimulateMultipleMonitors(common.SimulationTest):
 
     def setUp(self):

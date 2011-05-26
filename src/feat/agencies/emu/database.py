@@ -3,17 +3,16 @@
 import copy
 import uuid
 import json
+import operator
 
 from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.common import log
-
-from feat.agencies.interface import (IDbConnectionFactory,
-                                     IDatabaseDriver,
-                                     ConflictError,
-                                     NotFoundError)
 from feat.agencies.database import Connection, ChangeListener
+
+from feat.agencies.interface import *
+from feat.interface.view import *
 
 
 class Database(log.FluLogKeeper, ChangeListener):
@@ -32,6 +31,8 @@ class Database(log.FluLogKeeper, ChangeListener):
 
         # id -> document
         self._documents = {}
+        # id -> view_name -> (key, value)
+        self._view_cache = {}
 
     ### IDbConnectionFactory
 
@@ -54,6 +55,7 @@ class Database(log.FluLogKeeper, ChangeListener):
             doc = self._set_id_and_revision(doc, doc_id)
 
             self._documents[doc['_id']] = doc
+            self._expire_cache(doc['_id'])
 
             r = Response(ok=True, id=doc['_id'], rev=doc['_rev'])
             self._trigger_change(doc['_id'], doc['_rev'])
@@ -93,6 +95,7 @@ class Database(log.FluLogKeeper, ChangeListener):
                 raise NotFoundError('deleted')
             doc['_rev'] = self._generate_id()
             doc['_deleted'] = True
+            self._expire_cache(doc['_id'])
             self.log('Marking document %r as deleted', doc_id)
             self._trigger_change(doc['_id'], doc['_rev'])
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
@@ -101,7 +104,70 @@ class Database(log.FluLogKeeper, ChangeListener):
 
         return d
 
+    def query_view(self, factory, **options):
+        factory = IViewFactory(factory)
+        use_reduce = factory.use_reduce and options.get('reduce', True)
+        iterator = (self._perform_map(doc, factory)
+                    for doc in self._iterdocs())
+        d = defer.succeed(iterator)
+        d.addCallback(self._flatten)
+        if use_reduce:
+            d.addCallback(self._perform_reduce, factory)
+        return d
+
     ### private
+
+    def _flatten(self, iterator):
+        '''
+        iterator here gives as lists of tuples. Method flattens the structure
+        to a single list of tuples.
+        '''
+        resp = list()
+        for entry in iterator:
+            resp += entry
+        return resp
+
+    def _perform_map(self, doc, factory):
+        cached = self._get_cache(doc['_id'], factory.name)
+        if cached:
+            return cached
+        res = list(factory.map(doc))
+        self._set_cache(doc['_id'], factory.name, res)
+        return res
+
+    def _perform_reduce(self, map_results, factory):
+        '''
+        map_results here is a list of tuples (key, value)
+        '''
+        keys = map(operator.itemgetter(0), map_results)
+        values = map(operator.itemgetter(1), map_results)
+        if not values:
+            return []
+        if callable(factory.reduce):
+            result = factory.reduce(keys, values)
+        elif factory.reduce == '_sum':
+            result = sum(values)
+        elif factory.reduce == '_count':
+            result = len(values)
+
+        return [(None, result, )]
+
+    def _iterdocs(self):
+        for did, doc in self._documents.iteritems():
+            if doc.get('_deleted', False):
+                continue
+            yield doc
+
+    def _get_cache(self, doc_id, view_name):
+        return self._view_cache.get(doc_id, {}).get(view_name, None)
+
+    def _set_cache(self, doc_id, view_name, value):
+        if doc_id not in self._view_cache:
+            self._view_cache[doc_id] = dict()
+        self._view_cache[doc_id][view_name] = value
+
+    def _expire_cache(self, doc_id):
+        self._view_cache.pop(doc_id, None)
 
     def _set_id_and_revision(self, doc, doc_id):
         doc_id = doc_id or doc.get('_id', None)

@@ -3,7 +3,7 @@ import optparse
 
 from twisted.internet import defer, reactor
 
-from feat.agents.base import document
+from feat.agents.base import document, view
 from feat.agencies.net import database, agency
 from feat.agencies.interface import ConflictError
 from feat.common import log
@@ -55,6 +55,9 @@ def push_initial_data(connection):
         except ConflictError:
             log.error('script', 'Document with id %s already exists!',
                       doc.doc_id)
+
+    design = view.generate_design_doc()
+    yield connection.save_document(design)
 
 
 DEFAULT_DB_HOST = agency.DEFAULT_DB_HOST

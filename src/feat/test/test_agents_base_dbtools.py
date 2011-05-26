@@ -27,12 +27,14 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
             SomeDocument(doc_id=u'special_id', field1=u'special'))
 
         yield dbtools.push_initial_data(self.connection)
-        self.assertEqual(2, len(self.db._documents))
+        # 3 = 2 (registered documents) + 1 (design document)
+        self.assertEqual(3, len(self.db._documents))
         special = yield self.connection.get_document('special_id')
         self.assertIsInstance(special, SomeDocument)
         self.assertEqual('special', special.field1)
         ids = self.db._documents.keys()
-        other_id = filter(lambda x: x != u'special_id', ids)[0]
+        other_id = filter(lambda x: x not in ('special_id', "_design/feat"),
+                          ids)[0]
         normal = yield self.connection.get_document(other_id)
         self.assertEqual('default', normal.field1)
 

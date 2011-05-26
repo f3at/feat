@@ -605,6 +605,10 @@ class AgencyAgent(BaseReplayDummy):
     def delete_document(self, document):
         raise RuntimeError('This should never be called!')
 
+    @serialization.freeze_tag('AgencyAgency.query_view')
+    def query_view(self, factory, **options):
+        return self._database.query_view(factory, **options)
+
     @serialization.freeze_tag('AgencyAgency.get_document')
     def get_document(self, document_id):
         raise RuntimeError('This should never be called!')

@@ -12,6 +12,7 @@ from feat.agents.base import document
 
 from feat.agencies.interface import IDatabaseClient, IDatabaseDriver
 from feat.interface.generic import *
+from feat.interface.view import *
 
 
 class ChangeListener(log.Logger):
@@ -113,6 +114,12 @@ class Connection(log.Logger):
         d.addCallback(set_listener_id)
         return d
 
+    def query_view(self, factory, **options):
+        factory = IViewFactory(factory)
+        d = self.database.query_view(factory, **options)
+        d.addCallback(self._parse_view_results, factory, options)
+        return d
+
     def disconnect(self):
         if self.listener_id:
             self.database.cancel_listener(self.listener_id)
@@ -120,6 +127,14 @@ class Connection(log.Logger):
             self.change_cb = None
 
     ### private
+
+    def _parse_view_results(self, rows, factory, options):
+        '''
+        rows here should be a list of tuples (key, value)
+        rendered by the view
+        '''
+        reduced = factory.use_reduce and options.get('reduce', True)
+        return map(lambda row: factory.parse(row[0], row[1], reduced), rows)
 
     def _on_change(self, doc_id, rev):
         self.log('Change notification received doc_id: %r, rev: %r',

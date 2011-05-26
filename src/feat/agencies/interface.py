@@ -329,6 +329,14 @@ class IDatabaseClient(Interface):
                           by this session.
         '''
 
+    def query_view(factory, **options):
+        '''
+        @param factory: View factory to query.
+        @type factory: L{feat.interface.view.IViewFactory}
+        @param options: Dictionary of parameters to pass to the query.
+        @return: C{list} of results.
+        '''
+
     def disconnect():
         '''
         Disconnect from database server.
@@ -389,6 +397,11 @@ class IDatabaseDriver(Interface):
         @param listener_id: Id returned buy listen_changes() method
         @rtype: Deferred
         @return: Deferred which will fire when the listener is cancelled.
+        '''
+
+    def query_view(factory, **options):
+        '''
+        Query the view. See L{IDatabaseClient.query_view}.
         '''
 
 

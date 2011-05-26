@@ -11,7 +11,7 @@ except ImportError as e:
     import_error = e
 
 from feat.agencies.emu import database as emu_database
-from feat.agents.base import document
+from feat.agents.base import document, view
 from feat.agencies.interface import ConflictError, NotFoundError
 from feat.process import couchdb
 from feat.process.base import DependencyError
@@ -21,13 +21,111 @@ from . import common
 from feat.test.common import attr
 
 
-@serialization.register
+@document.register
 class DummyDocument(document.Document):
 
+    document_type = 'dummy'
+
     document.field('field', None)
+    document.field('value', 0)
+
+
+class SummingView(view.FormatableView):
+
+    name = 'some_view'
+    use_reduce = True
+
+    view.field('value', None)
+
+    def map(doc):
+        if doc['.type'] == 'dummy':
+            yield None, {"value": doc['value']}
+
+    def reduce(keys, values):
+        value = 0
+        for row in values:
+            value += row['value']
+        return value
+
+
+class CountingView(view.BaseView):
+
+    name = 'counting_view'
+    use_reduce = True
+
+    def map(doc):
+        if doc['.type'] == 'dummy':
+            yield doc['_id'], 1
+
+    reduce = "_count"
 
 
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testQueryingViews(self):
+        # create design document
+        views = (SummingView, CountingView, )
+        design_doc = view.DesignDocument.generate_from_views(views)
+        yield self.connection.save_document(design_doc)
+
+        # check formatable view returning empty list
+        resp = yield self.connection.query_view(SummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertFalse(resp)
+
+        # check reducing view returning empty result
+        resp = yield self.connection.query_view(CountingView)
+        self.assertFalse(resp)
+
+        # safe first document
+        doc1 = yield self.connection.save_document(DummyDocument(value=2))
+
+        # check summing views
+        resp = yield self.connection.query_view(SummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertEqual(1, len(resp))
+        self.assertIsInstance(resp[0], SummingView)
+        self.assertEqual(2, resp[0].value)
+
+        # now check counting view
+        resp = yield self.connection.query_view(CountingView)
+        self.assertEqual(1, resp[0])
+
+        # use summing view with reduce
+        resp = yield self.connection.query_view(SummingView)
+        self.assertEqual([2], resp)
+
+        # save second document
+        doc2 = yield self.connection.save_document(DummyDocument(value=3))
+
+        # check SummingView without reduce
+        resp = yield self.connection.query_view(SummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertEqual(2, len(resp))
+        self.assertIsInstance(resp[0], SummingView)
+        self.assertIn(resp[0].value, (2, 3, ))
+        self.assertIsInstance(resp[1], SummingView)
+        self.assertIn(resp[1].value, (2, 3, ))
+
+        # check that reduce works as well
+        resp = yield self.connection.query_view(SummingView)
+        self.assertEqual([5], resp)
+
+        # finnally check the counting view works as expected
+        resp = yield self.connection.query_view(CountingView)
+        self.assertEqual(2, resp[0])
+
+        # change value of first doc and check that sum changed
+        doc1.value = 10
+        doc1 = yield self.connection.save_document(doc1)
+        resp = yield self.connection.query_view(SummingView)
+        self.assertEqual([13], resp)
+
+        # now delete it
+        yield self.connection.delete_document(doc1)
+        resp = yield self.connection.query_view(SummingView)
+        self.assertEqual([3], resp)
 
     @defer.inlineCallbacks
     def testSavingAndGettingTheDocument(self):
