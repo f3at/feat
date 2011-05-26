@@ -577,14 +577,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def register_protocol(self, protocol):
         protocol = IAgencyProtocolInternal(protocol)
-        self.debug('Registering protocol guid: %r', protocol.guid)
+        self.log('Registering protocol guid: %r', protocol.guid)
         assert protocol.guid not in self._protocols
         self._protocols[protocol.guid] = protocol
         return protocol
 
     def unregister_protocol(self, protocol):
         if protocol.guid in self._protocols:
-            self.debug('Unregistering protocol guid: %r', protocol.guid)
+            self.log('Unregistering protocol guid: %r', protocol.guid)
             protocol = self._protocols[protocol.guid]
             self.agency.journal_protocol_deleted(
                 self._descriptor.doc_id, self._instance_id,
