@@ -9,8 +9,7 @@ __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
            'HostDef', 'NoHostFound']
 
 
-@serialization.register
-class NoHostFound(Exception, serialization.Serializable):
+class NoHostFound(Exception):
     pass
 
 

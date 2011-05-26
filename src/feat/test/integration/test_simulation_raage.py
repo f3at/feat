@@ -271,6 +271,7 @@ class ContractNestingSimulation(common.SimulationTest):
         # Host 2 run only host agent
         spawn_agency()
         _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef1)
+        wait_for_idle()
 
         # Host 3 will run Shard, Host and Raage
         spawn_agency()
