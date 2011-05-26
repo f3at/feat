@@ -4,7 +4,7 @@ from twisted.internet.defer import *
 from twisted.internet.defer import returnValue, passthru, setDebugging
 from twisted.python import failure
 
-from feat.common import log
+from feat.common import log, decorator
 
 from feat.interface.log import *
 from feat.interface.fiber import *
@@ -106,6 +106,27 @@ def maybeDeferred(f, *args, **kw):
         return fail(result)
     else:
         return succeed(result)
+
+
+@decorator.simple_function
+def ensure_async(function_original):
+    """
+    A function decorated with this will always return a defer.Deferred
+    even when returning synchronous result or raise an exception.
+    """
+
+    def wrapper(*args, **kwargs):
+        try:
+            result = function_original(*args, **kwargs)
+            if isinstance(result, Deferred):
+                return result
+            d = Deferred()
+            d.callback(result)
+            return d
+        except:
+            return fail()
+
+    return wrapper
 
 
 class Notifier(object):

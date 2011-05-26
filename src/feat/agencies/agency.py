@@ -353,7 +353,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.log('Canceling delayed call with id %r (active: %s)',
                  call_id, call.active())
         if not call.active():
-            self.warning('Tried to cancel nonactive call id: %r', call_id)
+            self.log('Tried to cancel nonactive call id: %r', call_id)
             return
         call.cancel()
 

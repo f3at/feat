@@ -1,6 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import types
+
 
 class MetaEnum(type):
 
@@ -13,8 +15,9 @@ class MetaEnum(type):
         cls._values = {} # {int: Enum}
         cls._items = {}  # {Enum: str}
         for key, value in namespace.items():
-            if not key.startswith("_"):
-                cls.add(key, value)
+            if not isinstance(value, types.FunctionType):
+                if not key.startswith("_"):
+                    cls.add(key, value)
 
     def add(cls, name, value):
         if not isinstance(value, int):

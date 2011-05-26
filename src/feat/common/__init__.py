@@ -2,24 +2,11 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import traceback
 
-from feat.common import log
+from feat.common import log, error
 
 
-def error_handler(self, f):
-
-    def log_error(format, *args):
-        self.logex(log.LogLevel.error, format, args, depth=3)
-
-    log_error("Error processing: %s %s", type(f.value),
-              f.getErrorMessage() or f)
-
-    frames = traceback.extract_tb(f.getTracebackObject())
-    if log.verbose:
-        if len(frames) > 0:
-            log_error("Full traceback below:\n%s",
-                      "".join(traceback.format_tb(f.getTracebackObject())))
-    elif len(frames) > 0:
-        log_error("Last traceback frame: %r", frames[-1])
+def error_handler(logger, f):
+    error.handle_failure(logger, f, "Error processing")
 
 
 def first(iterator):
