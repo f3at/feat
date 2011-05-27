@@ -70,6 +70,10 @@ class Messaging(log.Logger, log.FluLogKeeper):
         que = self._getQueue(queue)
         ex._unbind(key, que)
 
+    def disconnect(self):
+        # nothing to do here
+        pass
+
     # private
 
     def _getExchange(self, name):

@@ -338,6 +338,14 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     @wait_for_channel
+    def disconnect(self):
+        # Both methods needs to be called. Closes channel locally the other
+        # one sends channel close. Yes, it is very bizzare.
+        d = self.channel.channel_close()
+        d.addCallback(self.channel.close)
+        return d
+
+    @wait_for_channel
     def defineExchange(self, name, exchange_type="direct"):
         d = self.channel.exchange_declare(
             exchange=name, type=exchange_type, durable=True,

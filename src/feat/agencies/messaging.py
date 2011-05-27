@@ -86,6 +86,7 @@ class Connection(log.Logger):
         if self._consumeDeferred and not self._consumeDeferred.called:
             ex = FinishConnection("Disconnecting")
             self._consumeDeferred.errback(ex)
+        self._messaging.disconnect()
 
     def personal_binding(self, key, shard=None):
         if not shard:

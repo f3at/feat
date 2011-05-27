@@ -62,7 +62,7 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
                                          cp_min=1, cp_max=1, cp_noisy=True,
                                          check_same_thread=False,
-                                         timeout=3)
+                                         timeout=10)
         self._install_sighup()
         return self._check_schema()
 

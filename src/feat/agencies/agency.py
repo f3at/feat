@@ -855,6 +855,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                                           self._instance_id)
         self.agency.unregister_agent(self)
 
+    @manhole.expose()
     def terminate_hard(self):
         '''Kill the agent without notifying anybody.'''
 

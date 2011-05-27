@@ -89,6 +89,7 @@ class Connection(log.Logger):
     def get_document(self, id):
         d = self.database.open_doc(id)
         d.addCallback(self.unserializer.convert)
+        d.addCallback(self._notice_doc_revision)
         return d
 
     def reload_document(self, doc):
@@ -124,7 +125,7 @@ class Connection(log.Logger):
         self.log('Change notification received doc_id: %r, rev: %r',
                  doc_id, rev)
         key = (doc_id, rev, )
-        known = self.known_revisions.pop(key, False)
+        known = self.known_revisions.get(key, False)
         if known:
             self.log('Ignoring change notification, it is ours.')
         elif callable(self.change_cb):
@@ -135,6 +136,10 @@ class Connection(log.Logger):
         doc.rev = unicode(resp.get('rev', None))
         # store information about rev and doc_id in ExpDict for 1 second
         # so that we can ignore change callback which we trigger
+        self._notice_doc_revision(doc)
+        return doc
+
+    def _notice_doc_revision(self, doc):
         self.known_revisions.set((doc.doc_id, doc.rev, ), True,
                                  expiration=5, relative=True)
         return doc
