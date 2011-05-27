@@ -192,6 +192,13 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             return self._master.callRemote(
                 'start_agent', raw_desc, *args, **kwargs)
 
+    def find_agent(self, agent_id):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            return self.agency.find_agent(agent_id)
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('find_agent', agent_id)
+
 
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 

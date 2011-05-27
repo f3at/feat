@@ -1,6 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
+import operator
 
 from feat import everything
 from feat.agents.base import recipient, descriptor, agent, partners, replay
@@ -219,8 +220,15 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('host_agent'))
         self.assert_has_host('shard_agent')
+        shard_agent = first(self.driver.iter_agents('shard_agent')).get_agent()
+        hosts = shard_agent.query_partners('hosts')
+        _, used = shard_agent.list_resource()
+        self.assertEqual(2, used['hosts'])
+        recp = map(operator.attrgetter('recipient'), hosts)
+        self.assertEqual(2, len(hosts))
         for host in self.hosts[1:3]:
             self.assertTrue(host.query_partners('shard') is not None)
+            self.assertIn(recipient.IRecipient(host), recp)
 
     @defer.inlineCallbacks
     def testRaageDies(self):
@@ -1186,7 +1194,7 @@ class TestRealMonitoring(common.SimulationTest):
         # death should be detected and agent restarted
 
         yield common.delay(None, 10)
-        yield self.wait_for_idle(10)
+        yield self.wait_for_idle(20)
 
         a2b, a3b = self.get_agent("dummy_local_agent", ha2)
         self.assertEqual(a2.get_agent().get_full_id(),
@@ -1317,7 +1325,7 @@ class TestRealMonitoring(common.SimulationTest):
         # death should be detected and agent restarted
 
         yield common.delay(None, 10)
-        yield self.wait_for_idle(10)
+        yield self.wait_for_idle(20)
 
         agents = self.get_agent("dummy_whereever_agent", ha2)
         agents.remove(a2)

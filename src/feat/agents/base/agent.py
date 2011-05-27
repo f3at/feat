@@ -227,6 +227,21 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return self.establish_partnership(recp, partner.allocation_id,
                                           alloc_id, substitute=partner)
 
+    @manhole.expose()
+    @replay.journaled
+    def breakup(self, state, recp):
+        '''breakup(recp) -> Order the agent to break the partnership with
+        the given recipient'''
+        recp = recipient.IRecipient(recp)
+        partner = self.find_partner(recp)
+        if partner:
+            f = requester.say_goodbye(self, recp)
+            f.add_callback(fiber.drop_param, self.remove_partner, partner)
+            return f
+        else:
+            self.warning('We were trying to break up with agent recp %r.,'
+                         'but aparently he is not our partner!.', recp)
+
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,
                        role=None, substitute=None):

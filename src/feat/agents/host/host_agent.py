@@ -38,6 +38,9 @@ class HostedPartner(agent.BasePartner):
 
     type_name = 'host->agent'
 
+    def on_restarted(self, agent, migrated):
+        agent.call_next(agent.check_if_agency_hosts, self.recipient)
+
 
 @serialization.register
 class ShardPartner(agent.BasePartner):
@@ -117,6 +120,17 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         f = self.start_join_shard_manager()
         f.add_callback(fiber.drop_param, self.startup_monitoring)
         return f
+
+    @replay.journaled
+    def check_if_agency_hosts(self, state, recp):
+        '''
+        Called after partner has been restarted. It checks our agency
+        is in charge of this agent. If not it removes the partnership.
+        '''
+        if not state.medium.check_if_hosted(recp.key):
+            self.debug('Detected that agent with recp %r has moved to '
+                       'different agency, we are breaking up.')
+            return self.breakup(recp)
 
     @replay.journaled
     def start_join_shard_manager(self, state):
@@ -441,10 +455,29 @@ class RestartShard(problem.BaseProblem):
         if partner:
             f.add_callback(fiber.drop_param, self.agent.remove_partner,
                            partner)
+        f.add_callback(fiber.drop_param, self._cleanup_partners)
         f.add_callback(fiber.drop_param, self.agent.restart_agent,
                        self.agent_id)
         f.add_callback(self._finalize)
         return f
+
+    def _cleanup_partners(self):
+        f = self.agent.get_document(self.agent_id)
+        f.add_callback(self._do_remove_partners)
+        return f
+
+    def _do_remove_partners(self, desc):
+        # remove from the shard agents descriptor the partnership to ourselves
+        # and/or to the old agent who was hosting him
+        own = self.agent.get_own_address()
+        filtered_partners = list()
+        for partner in desc.partners:
+            if partner.recipient == own or partner.role == 'host':
+                desc.allocations.pop(partner.allocation_id, None)
+            else:
+                filtered_partners.append(partner)
+        desc.partners = filtered_partners
+        return self.agent.save_document(desc)
 
     def _finalize(self, recp):
         self.agent.callback_event('shard_agent_restarted', recp)

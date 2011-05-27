@@ -232,6 +232,18 @@ class Agency(agency.Agency):
     # Manhole inspection methods
 
     @manhole.expose()
+    def find_agent_locally(self, agent_id):
+        '''find_agent_locally(agent_id_or_descriptor) -> Same as find_agent
+        but only checks in scope of this agency.'''
+        return agency.Agency.find_agent(self, agent_id)
+
+    @manhole.expose()
+    def find_agent(self, agent_id):
+        '''find_agent(agent_id_or_descriptor) -> Gives medium class of the
+        agent if the agency hosts it.'''
+        return self._broker.find_agent(agent_id)
+
+    @manhole.expose()
     @defer.inlineCallbacks
     def list_slaves(self):
         '''list_slaves() -> Print information about the slave agencies.'''

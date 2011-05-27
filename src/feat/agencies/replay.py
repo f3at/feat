@@ -550,6 +550,10 @@ class AgencyAgent(BaseReplayDummy):
     def start_agent(self, desc):
         pass
 
+    @replay.named_side_effect('AgencyAgent.check_if_hosted')
+    def check_if_hosted(self, agent_id):
+        pass
+
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
     def initiate_protocol(self, factory, *args, **kwargs):

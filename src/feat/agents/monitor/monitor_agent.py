@@ -323,12 +323,7 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
     @replay.immutable
     def _remove_monitor_partner(self, state, recipient):
         self.debug("Leaving old monitor %s", recipient)
-        #FIXME: Shouldn't we have something like partners.unlink that do this ?
-        partner = self.find_partner(recipient)
-        if partner:
-            f = requester.say_goodbye(self, recipient)
-            f.add_callback(fiber.drop_param, self.remove_partner, partner)
-            return f
+        return self.breakup(recipient)
 
 
 @serialization.register
@@ -535,7 +530,7 @@ class HandleDeath(task.BaseTask):
 
     @replay.mutable
     def _restart_yourself(self, state):
-        f = self._clear_host_partner()
+        f = fiber.succeed()
         f.add_callback(fiber.drop_param,
                        host.start_agent_in_shard,
                        state.agent, state.descriptor, state.descriptor.shard)
@@ -559,7 +554,12 @@ class HandleDeath(task.BaseTask):
             return f
         elif self._cmp_strategy(RestartStrategy.whereever):
             self.info('Trying to find an allocation anywhere in the cluster.')
-            f = raage.retrying_allocate_resource(
+            # first we need to clear the host partner, it is necessary, because
+            # agent will bind to different exchange after the restart, so
+            # he will never receive the notification about burring his previous
+            # host
+            f = self._clear_host_partner()
+            f.add_callback(fiber.drop_param, raage.retrying_allocate_resource,
                 state.agent, resources=state.factory.resources,
                 categories=state.factory.categories, max_retries=3)
             f.add_callback(self._request_starting_agent)
