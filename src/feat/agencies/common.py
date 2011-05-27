@@ -185,7 +185,7 @@ class AgencyMiddleMixin(object):
         self._set_state(self.error_state)
         self._terminate(f)
 
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
+    @serialization.freeze_tag('IAgencyStatefulProtocol.ensure_state')
     def ensure_state(self, states):
         '''
         Exposed in a public interface. Use this to mark a point in the fiber
@@ -286,10 +286,6 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
         else:
             self.log("Firing callback of notifier with result: %r.", result)
             self.call_next(self._fnotifier.callback, 'finish', result)
-
-    def call_next(self, *_):
-        raise NotImplementedError("This method should be implemented outside "
-                                  "of this mixin!")
 
 
 class InterestedMediumBase(object):

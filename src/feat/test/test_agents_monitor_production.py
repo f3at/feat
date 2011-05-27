@@ -32,15 +32,26 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
             fun(*args, **kwargs)
 
     def initiate_protocol(self, factory, *args, **kwargs):
-        if isinstance(factory, periodic.PeriodicProtocolFactory):
-            if factory.factory is production.CheckPatientTask:
-                self._start_task(factory.period, factory.factory, args, kwargs)
-                return self
-        raise Exception("Unexpected protocol")
+        if factory is production.HeartBeatCollector:
+            self.protocol = production.HeartBeatCollector(self, self)
+            # Remove recipient
+            args = args[1:]
+            self.protocol.initiate(*args, **kwargs)
+            return self.protocol
+
+        if factory is production.CheckPatientTask:
+            self.task = production.CheckPatientTask(self, self)
+            self.task.initiate(*args, **kwargs)
+            return self.task
+
+        raise Exception("Unexpected protocol %r" % factory)
 
     def cancel(self):
         if self.call:
             self.cancel_delayed_call(self.call)
+
+    def terminate(self):
+        pass
 
     ### IDoctor Methods ###
 
@@ -53,6 +64,12 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         return self.now
 
     def call_later(self, time, fun, *args, **kwargs):
+        payload = (time, fun, args, kwargs)
+        callid = id(payload)
+        self.calls[callid] = payload
+        return callid
+
+    def call_later_ex(self, time, fun, args=(), kwargs={}, busy=True):
         payload = (time, fun, args, kwargs)
         callid = id(payload)
         self.calls[callid] = payload

@@ -117,7 +117,7 @@ class AgentMixin(object):
 
 class SetupMonitoringTask(task.BaseTask):
 
-    idle = True
+    busy = False
     protocol_id = "setup-monitoring"
 
     def __init__(self, *args, **kwargs):

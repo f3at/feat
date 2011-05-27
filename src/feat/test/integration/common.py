@@ -105,8 +105,8 @@ class SimulationTest(common.TestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
-            yield x.wait_for_protocols_finish()
             yield x._cancel_long_running_protocols()
+            yield x.wait_for_protocols_finish()
 
         yield common.TestCase.tearDown(self)
         try:

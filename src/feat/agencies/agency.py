@@ -29,200 +29,6 @@ from feat.interface.recipient import *
 from feat.interface.serialization import *
 
 
-class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
-             dependency.AgencyDependencyMixin):
-
-    log_category = 'agency'
-
-    __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
-                                        type(log.FluLogKeeper)), {})
-
-    implements(IAgency, IExternalizer, ITimeProvider)
-
-    _error_handler = error_handler
-
-    def __init__(self):
-        log.FluLogKeeper.__init__(self)
-        log.Logger.__init__(self, self)
-        dependency.AgencyDependencyMixin.__init__(self, ExecMode.test)
-
-        self._agents = []
-
-        self.registry = weakref.WeakValueDictionary()
-        self._journaler = None
-        self._database = None
-        self._messaging = None
-
-    ### Public Methods ###
-
-    def initiate(self, messaging, database, journaler):
-        '''
-        Asynchronous part of agency initialization. Needs to be called before
-        agency is used for anything.
-        '''
-        self._database = IDbConnectionFactory(database)
-        self._messaging = IConnectionFactory(messaging)
-        self._journaler = IJournaler(journaler).get_connection(self)
-        return defer.succeed(self)
-
-    @manhole.expose()
-    def start_agent(self, descriptor, *args, **kwargs):
-        factory = IAgentFactory(registry_lookup(descriptor.document_type))
-        self.log('I will start: %r agent. Args: %r, Kwargs: %r',
-                 factory, args, kwargs)
-        medium = AgencyAgent(self, factory, descriptor)
-        self._agents.append(medium)
-        run_startup = kwargs.pop('run_startup', True)
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param, medium.initiate,
-                      *args, **kwargs)
-        d.addCallback(defer.bridge_param, medium.call_next, medium.startup,
-                      startup_agent=run_startup)
-        return d
-
-    def shutdown(self):
-        '''Called when the agency is ordered to shutdown all the agents..'''
-        d = defer.DeferredList([x._terminate() for x in self._agents])
-        d.addCallback(lambda _: self._messaging.disconnect())
-        return d
-
-    def on_killed(self):
-        '''Called when the agency process is terminating. (SIGTERM)'''
-        d = defer.DeferredList([x.on_killed() for x in self._agents])
-        d.addCallback(lambda _: self._messaging.disconnect())
-        return d
-
-    def unregister_agent(self, medium):
-        agent_id = medium.get_descriptor().doc_id
-        self.debug('Unregistering agent id: %r', agent_id)
-        self._agents.remove(medium)
-
-        # FIXME: This shouldn't be necessary! Here we are manually getting
-        # rid of things which should just be garbage collected (self.registry
-        # is a WeekRefDict). It doesn't happpen supposingly
-        for key in self.registry.keys():
-            if key[0] == agent_id:
-                self.debug("Manualy removing recorder id %r, instance: %r",
-                           key, self.registry[key])
-                del(self.registry[key])
-
-    ### Journaling Methods ###
-
-    def register(self, recorder):
-        j_id = recorder.journal_id
-        self.log('Registering recorder: %r, id: %r',
-                 recorder.__class__.__name__, j_id)
-        if j_id in self.registry:
-            raise RuntimeError(
-                'Journal id %r already in registry, it points to %r object' %\
-                (j_id, self.registry[j_id], ))
-        self.registry[j_id] = recorder
-
-    def journal_new_entry(self, agent_id, instance_id, journal_id,
-                          function_id, *args, **kwargs):
-        return self._journaler.new_entry(agent_id, instance_id, journal_id,
-                                         function_id, *args, **kwargs)
-
-    def journal_agency_entry(self, agent_id, instance_id, function_id,
-                             *args, **kwargs):
-        if journal.add_effect(function_id, *args, **kwargs):
-            return
-
-        section = fiber.WovenSection()
-        section.enter()
-
-        try:
-
-            desc = section.descriptor
-            entry = self.journal_new_entry(agent_id, instance_id, 'agency',
-                                           function_id, *args, **kwargs)
-            entry.set_fiber_context(desc.fiber_id, desc.fiber_depth)
-            entry.set_result(None)
-            entry.commit()
-
-        finally:
-
-            section.abort()
-
-    def journal_protocol_created(self, agent_id, instance_id,
-                                 protocol_factory, medium, *args, **kwargs):
-        self.journal_agency_entry(agent_id, instance_id, 'protocol_created',
-                                  protocol_factory, medium, *args, **kwargs)
-
-    def journal_protocol_deleted(self, agent_id, instance_id,
-                                 protocol_instance, dummy_id):
-        self.journal_agency_entry(agent_id, instance_id, 'protocol_deleted',
-                                  protocol_instance.journal_id, dummy_id)
-
-    def journal_agent_created(self, agent_id, instance_id, agent_factory,
-                              dummy_id):
-        self.journal_agency_entry(agent_id, instance_id, 'agent_created',
-                                  agent_factory, dummy_id)
-
-    def journal_agent_deleted(self, agent_id, instance_id):
-        self.journal_agency_entry(agent_id, instance_id, 'agent_deleted')
-
-    def journal_agent_snapshot(self, agent_id, instance_id, snapshot):
-        self.journal_agency_entry(agent_id, instance_id, 'snapshot', snapshot)
-
-    ### IExternalizer Methods ###
-
-    def identify(self, instance):
-        if (IRecorder.providedBy(instance) and
-            instance.journal_id in self.registry):
-            return instance.journal_id
-
-    def lookup(self, _):
-        raise RuntimeError("OOPS, this should never be called "
-                           "in production code!!")
-
-    ### ITimeProvider Methods ###
-
-    def get_time(self):
-        return time.time()
-
-    ### Introspection and Manhole Methods ###
-
-    @manhole.expose()
-    def find_agent(self, desc):
-        agent_id = (desc.doc_id
-                    if isinstance(desc, descriptor.Descriptor)
-                    else desc)
-        self.log("I'm trying to find the agent with id: %s", agent_id)
-        try:
-            return next(x for x in self._agents
-                        if x._descriptor.doc_id == agent_id)
-        except StopIteration:
-            return None
-
-    @manhole.expose()
-    def snapshot_agents(self):
-        # Reset the registry, so that snapshot contains
-        # full objects not just the references
-        self.registry = weakref.WeakValueDictionary()
-        for agent in self._agents:
-            agent.journal_snapshot()
-
-    @manhole.expose()
-    def list_agents(self):
-        '''list_agents() -> List agents hosted by the agency.'''
-        t = text_helper.Table(fields=("Agent ID", "Agent class", ),
-                              lengths=(40, 25, ))
-
-        return t.render((a._descriptor.doc_id, a.log_name, )\
-                        for a in self._agents)
-
-    @manhole.expose()
-    def get_nth_agent(self, n):
-        '''get_nth_agent(n) -> Get the agent by his index in the list.'''
-        return self._agents[n]
-
-    @manhole.expose()
-    def get_agents(self):
-        '''get_agents() -> Get the list of agents hosted by this agency.'''
-        return self._agents
-
-
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin,
                   common.StateMachineMixin):
@@ -511,7 +317,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def call_later(self, time_left, method, *args, **kwargs):
         return self.call_later_ex(time_left, method, args, kwargs)
 
-    @replay.named_side_effect('SIDE EFFECT SKIPPED')
+    @replay.named_side_effect('AgencyAgency.call_later_ex')
     def call_later_ex(self, time_left, method,
                       args=None, kwargs=None, busy=True):
         args = args or []
@@ -530,6 +336,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.warning('Tried to cancel nonexisting call id: %r', call_id)
             return
 
+        self.log('Canceling delayed call with id %r (active: %s)',
+                 call_id, call.active())
         if not call.active():
             self.warning('Tried to cancel nonactive call id: %r', call_id)
             return
@@ -542,7 +350,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### ITimeProvider Methods ###
 
-    @replay.named_side_effect('AgencyAgent.get_time')
     def get_time(self):
         return self.agency.get_time()
 
@@ -589,7 +396,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.agency.journal_protocol_deleted(
                 self._descriptor.doc_id, self._instance_id,
                 protocol.get_agent_side(), protocol.snapshot())
-            del(self._protocols[protocol.guid])
+            del self._protocols[protocol.guid]
         else:
             self.error('Tried to unregister protocol with guid: %r, '
                         'but not found!', protocol.guid)
@@ -762,7 +569,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             resp += "\nbusy calls: \n"
             t = text_helper.Table(fields=["Call"], lengths = [60])
             resp += t.render((str(call), ) \
-                             for call in self._delayed_calls.itervalues())
+                             for busy, call in self._delayed_calls.itervalues()
+                             if busy and call.active())
 
         if not self.has_all_interests_idle():
             resp += "\nInterests not idle: \n"
@@ -869,7 +677,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             next_update()
 
     def _terminate_procedure(self, body):
-        self.log("in _terminate_procedure()")
         assert callable(body)
 
         if self._terminating:
@@ -991,7 +798,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self._delayed_calls.set(call_id, (busy, call), call.getTime() + 1)
 
     def _cancel_all_delayed_calls(self):
-        for _busy, call in self._delayed_calls.itervalues():
+        for call_id, (_busy, call) in self._delayed_calls.iteritems():
+            self.log('Canceling delayed call with id %r (active: %s)',
+                     call_id, call.active())
             if call.active():
                 call.cancel()
         self._delayed_calls.clear()
@@ -1163,6 +972,8 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
     ### ITimeProvider Methods ###
 
+    @serialization.freeze_tag('Agency.get_time')
+    @replay.named_side_effect('Agency.get_time')
     def get_time(self):
         return time.time()
 

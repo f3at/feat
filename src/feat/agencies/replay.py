@@ -115,8 +115,6 @@ class JournalReplayEntry(object):
             frozen_result = self._replay.serializer.freeze(result)
 
             if frozen_result != self.frozen_result:
-                # TODO: Think about compraring unfrozen (unserialized)
-                # results.
                 res = repr(self._replay.unserializer.convert(frozen_result))
                 exp = repr(self.result)
 
@@ -166,10 +164,10 @@ class JournalReplayEntry(object):
         else:
             args = raw_args or ()
             kwargs = raw_kwargs or {}
-        effects = [(effect_id,
+        effects = ((effect_id,
                     self._replay.unserializer.convert(effect_args),
                     self._replay.unserializer.convert(effect_kwargs))
-                   for effect_id, effect_args, effect_kwargs in raw_effects]
+                   for effect_id, effect_args, effect_kwargs in raw_effects)
         return fun_id, args, kwargs, effects, result
 
     ### IJournalReplayEntry Methods ###
@@ -195,6 +193,8 @@ class JournalReplayEntry(object):
         exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
 
         if exp_fun_id != function_id:
+            expected_desc = side_effect_as_string(exp_fun_id,
+                                                  exp_args, exp_kwargs)
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
@@ -613,6 +613,10 @@ class AgencyAgent(BaseReplayDummy):
     def call_later(self, time_left, method, *args, **kwargs):
         pass
 
+    @replay.named_side_effect('AgencyAgency.call_later_ex')
+    def call_later_ex(self, time_left, method, args, kwargs, busy=True):
+        pass
+
     @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
     def cancel_delayed_call(self, call_id):
         pass
@@ -627,7 +631,7 @@ class AgencyAgent(BaseReplayDummy):
 
     ### ITimeProvider Methods ###
 
-    @replay.named_side_effect('AgencyAgent.get_time')
+    @replay.named_side_effect('Agency.get_time')
     def get_time(self):
         pass
 
@@ -650,7 +654,34 @@ class AgencyAgent(BaseReplayDummy):
         return self._dummy_id[0], self._dummy_id[1]
 
 
-class AgencyReplier(BaseReplayDummy, StateMachineSpecific):
+class AgencyProtocol(BaseReplayDummy, StateMachineSpecific):
+
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
+    def notify_finish(self):
+        pass
+
+    @replay.named_side_effect('AgencyAgency.call_next')
+    def call_next(self, method, *args, **kwargs):
+        pass
+
+    @replay.named_side_effect('AgencyAgency.call_later')
+    def call_later(self, time_left, method, *args, **kwargs):
+        pass
+
+    @replay.named_side_effect('AgencyAgency.call_later_ex')
+    def call_later_ex(self, time_left, method,
+                      args=None, kwargs=None, busy=True):
+        pass
+
+
+class AgencyStatefulProtocol(AgencyProtocol, StateMachineSpecific):
+
+    @serialization.freeze_tag('IAgencyStatefulProtocol.ensure_state')
+    def ensure_state(self, states):
+        pass
+
+
+class AgencyReplier(AgencyStatefulProtocol):
 
     implements(IAgencyReplier)
 
@@ -664,12 +695,8 @@ class AgencyReplier(BaseReplayDummy, StateMachineSpecific):
     def reply(self, reply):
         pass
 
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
-    def ensure_state(self, states):
-        pass
 
-
-class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
+class AgencyRequester(AgencyStatefulProtocol):
 
     implements(IAgencyRequester)
 
@@ -682,20 +709,12 @@ class AgencyRequester(BaseReplayDummy, StateMachineSpecific):
     def request(self, request):
         pass
 
-    @serialization.freeze_tag('AgencyContractor.ensure_state')
-    def ensure_state(self, states):
-        pass
-
     @replay.named_side_effect('AgencyRequester.get_recipients')
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        pass
 
-
-class AgencyContractor(BaseReplayDummy, StateMachineSpecific):
+class AgencyContractor(AgencyStatefulProtocol):
 
     implements(IAgencyContractor)
 
@@ -731,64 +750,8 @@ class AgencyContractor(BaseReplayDummy, StateMachineSpecific):
     def update_manager_address(self, recp):
         pass
 
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
-    def ensure_state(self, states):
-        pass
 
-
-class AgencyCollector(BaseReplayDummy):
-
-    implements(IAgencyCollector)
-
-    log_category = "collector-medium"
-    type_name = "collector-medium"
-
-    ### IAgencyCollector Methods ###
-
-
-class AgencyPoster(BaseReplayDummy):
-
-    implements(IAgencyPoster)
-
-    log_category = "poster-medium"
-    type_name = "poster-medium"
-
-    ### IAgencyPoster Methods ###
-
-    @replay.named_side_effect('AgencyPoster.post')
-    def post(self, message):
-        pass
-
-
-class RetryingProtocol(BaseReplayDummy):
-
-    log_category="retrying-protocol"
-    type_name="retrying-protocol"
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        raise RuntimeError('This should never get called')
-
-    @serialization.freeze_tag('RetryingProtocol.cancel')
-    def cancel(self):
-        pass
-
-
-class PeriodicProtocol(BaseReplayDummy):
-
-    log_category="periodic-protocol"
-    type_name="periodic-protocol"
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        raise RuntimeError('This should never get called')
-
-    @serialization.freeze_tag('PeriodicProtocol.cancel')
-    def cancel(self):
-        pass
-
-
-class AgencyManager(BaseReplayDummy, StateMachineSpecific):
+class AgencyManager(AgencyStatefulProtocol):
 
     implements(IAgencyManager)
 
@@ -827,33 +790,17 @@ class AgencyManager(BaseReplayDummy, StateMachineSpecific):
     def get_bids(self):
         pass
 
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
-    def ensure_state(self, states):
-        pass
-
     @replay.named_side_effect('AgencyManager.get_recipients')
     def get_recipients(self):
         pass
 
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        pass
 
-
-class AgencyTask(BaseReplayDummy, StateMachineSpecific):
+class AgencyTask(AgencyStatefulProtocol):
 
     type_name = "task-medium"
     log_category = "task-medium"
 
     implements(IAgencyTask)
-
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
-    def ensure_state(self, states):
-        pass
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        pass
 
     @replay.named_side_effect('AgencyTask.terminate')
     def finish(self, result=None):
@@ -869,4 +816,48 @@ class AgencyTask(BaseReplayDummy, StateMachineSpecific):
 
     @replay.named_side_effect('AgencyTask.finished')
     def finished(self):
+        pass
+
+
+class AgencyCollector(AgencyProtocol):
+
+    implements(IAgencyCollector)
+
+    log_category = "collector-medium"
+    type_name = "collector-medium"
+
+    ### IAgencyCollector Methods ###
+
+
+class AgencyPoster(AgencyProtocol):
+
+    implements(IAgencyPoster)
+
+    log_category = "poster-medium"
+    type_name = "poster-medium"
+
+    ### IAgencyPoster Methods ###
+
+    @replay.named_side_effect('AgencyPoster.post')
+    def post(self, message):
+        pass
+
+
+class RetryingProtocol(AgencyProtocol):
+
+    log_category="retrying-protocol"
+    type_name="retrying-protocol"
+
+    @serialization.freeze_tag('RetryingProtocol.cancel')
+    def cancel(self):
+        pass
+
+
+class PeriodicProtocol(AgencyProtocol):
+
+    log_category="periodic-protocol"
+    type_name="periodic-protocol"
+
+    @serialization.freeze_tag('PeriodicProtocol.cancel')
+    def cancel(self):
         pass

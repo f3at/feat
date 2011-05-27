@@ -861,7 +861,7 @@ class TestRealMonitoring(common.SimulationTest):
         monitor_conf = monitor_agent.MonitorAgentConfiguration()
         monitor_conf.heartbeat_period = 2
         monitor_conf.heartbeat_max_skip = 3
-        monitor_conf.check_period = 0.5
+        monitor_conf.check_period = 0.2
         dbtools.initial_data(monitor_conf)
         self.override_config('monitor_agent', monitor_conf)
         return common.SimulationTest.setUp(self)

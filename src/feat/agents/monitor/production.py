@@ -90,10 +90,8 @@ class HeartMonitor(labour.BaseLabour):
         if self._task is None:
             agent = self.patron
             agent.register_interest(HeartBeatCollector, self)
-            f = periodic.PeriodicProtocolFactory(CheckPatientTask,
-                                                 period=self._check_period,
-                                                 busy=False)
-            self._task = agent.initiate_protocol(f, self)
+            self._task = agent.initiate_protocol(CheckPatientTask, self,
+                                                 self._check_period)
 
     @replay.side_effect
     def add_patient(self, agent_id, instance_id, payload=None,
@@ -153,12 +151,16 @@ class HeartMonitor(labour.BaseLabour):
         self._next_check = None
 
 
-class CheckPatientTask(task.BaseTask):
+class CheckPatientTask(task.StealthPeriodicTask):
 
     protocol_id = "monitor_agent:check-patient"
 
-    def initiate(self, monitor):
-        monitor.check_patients()
+    def initiate(self, monitor, period):
+        self._monitor = monitor
+        return task.StealthPeriodicTask.initiate(self, period)
+
+    def run(self):
+        self._monitor.check_patients()
 
 
 class HeartBeatCollector(collector.BaseCollector):

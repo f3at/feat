@@ -29,18 +29,13 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 
         self.descriptor = descriptor
         self.calls = {}
+        self.cid = 0
 
         self.messages = []
 
         self.poster = None
-        self.canceled = False
 
     ### Public Methods ###
-
-    def start_task(self):
-        assert self.poster is not None
-        task = pacemaker.HeartBeatTask(self, self)
-        return task.initiate(self.poster)
 
     def do_calls(self):
         calls = self.calls.values()
@@ -58,11 +53,12 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
             self.poster.initiate(*args, **kwargs)
             return self.poster
 
-        if isinstance(factory, periodic.PeriodicProtocolFactory):
-            if factory.factory is pacemaker.HeartBeatTask:
-                return self
+        if factory is pacemaker.HeartBeatTask:
+            self.task = pacemaker.HeartBeatTask(self, self)
+            self.task.initiate(*args, **kwargs)
+            return self.task
 
-        raise Exception("Unexpected protocol")
+        raise Exception("Unexpected protocol %r" % factory)
 
     def periodic_protocol(self, factory, period, *args, **kwargs):
         raise Exception("Unexpected protocol")
@@ -78,8 +74,19 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 
     ### Mediums Methods ###
 
-    def cancel(self):
-        self.canceled = True
+    def call_next(self, fun, *args, **kwargs):
+        self.cid += 1
+        self.calls[self.cid] = (0, fun, args, kwargs)
+        return self.cid
+
+    def call_later_ex(self, time, fun, args=(), kwargs={}, busy=True):
+        self.cid += 1
+        self.calls[self.cid] = (time, fun, args, kwargs)
+        return self.cid
+
+    def cancel_delayed_call(self, dc):
+        if dc in self.calls:
+            del self.calls[dc]
 
     def post(self, msg):
         self.messages.append(msg)
@@ -87,14 +94,11 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
 
 class TestPacemaker(common.TestCase):
 
-    @defer.inlineCallbacks
     def testPacemaker(self):
         descriptor = DummyDescriptor("aid", "iid")
         patron = DummyPatron(self, descriptor)
         labour = pacemaker.Pacemaker(patron, "monitor", 3)
         labour.startup()
-
-        yield patron.start_task()
 
         self.assertEqual(len(patron.messages), 1)
         msg = patron.messages.pop()
@@ -109,10 +113,4 @@ class TestPacemaker(common.TestCase):
         self.assertEqual(msg.payload, ("aid", "iid"))
         self.assertEqual(len(patron.calls), 1)
 
-        self.assertFalse(patron.canceled)
         labour.cleanup()
-        self.assertTrue(patron.canceled)
-
-        # Double cleanup should work
-        labour.cleanup()
-        self.assertTrue(patron.canceled)

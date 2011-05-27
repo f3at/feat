@@ -21,7 +21,6 @@ class Pacemaker(labour.BaseLabour):
         labour.BaseLabour.__init__(self, IAgent(patron))
         self._monitor = monitor
         self._period = period or DEFAULT_HEARTBEAT_PERIOD
-        self._task = None
 
     @replay.side_effect
     def startup(self):
@@ -31,19 +30,14 @@ class Pacemaker(labour.BaseLabour):
                    "with %s sec period",
                    agent.get_full_id(), self._monitor, self._period)
 
-        poster = agent.initiate_protocol(HeartBeatPoster, self._monitor)
-
-        f = periodic.PeriodicProtocolFactory(HeartBeatTask,
-                                             period=self._period,
-                                             busy=False)
-        self._task = agent.initiate_protocol(f, poster)
+        poster = agent.initiate_protocol(HeartBeatPoster,
+                                         self._monitor)
+        agent.initiate_protocol(HeartBeatTask, poster, self._period)
 
     @replay.side_effect
     def cleanup(self):
         self.debug("Stopping agent %s pacemaker for monitor %s",
                    self.patron.get_full_id(), self._monitor)
-        if self._task is not None:
-            self._task.cancel()
 
     def __hash__(self):
         return hash(self._monitor)
@@ -91,11 +85,13 @@ class HeartBeatPoster(poster.BasePoster):
         return desc.doc_id, desc.instance_id
 
 
-class HeartBeatTask(task.BaseTask):
+class HeartBeatTask(task.StealthPeriodicTask):
 
-    timeout = 5
-    protocol_id = "heart-beat"
+    protocol_id = "pacemaker:heart-beat"
 
-    @replay.mutable
-    def initiate(self, state, poster):
-        poster.notify()
+    def initiate(self, poster, period):
+        self._poster = poster
+        return task.StealthPeriodicTask.initiate(self, period)
+
+    def run(self):
+        self._poster.notify()

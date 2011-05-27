@@ -39,7 +39,8 @@ def add_options(parser):
     group = optparse.OptionGroup(parser, "Agency options")
     group.add_option('-j', '--jourfile',
                      action="store", dest="agency_journal",
-                     help=("journal filename (default: %s)" % DEFAULT_JOURFILE),
+                     help=("journal filename (default: %s)"
+                           % DEFAULT_JOURFILE),
                      default=DEFAULT_JOURFILE)
     group.add_option('-S', '--socket-path', dest="agency_socket_path",
                      help="path to the unix socket used by the agency",

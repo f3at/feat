@@ -30,8 +30,13 @@ class BaseTask(protocols.BaseInitiator):
 
     protocol_type = "Task"
     protocol_id = None
+    busy = True # Busy tasks will not be idle
 
     timeout = 10
+
+    @replay.immutable
+    def cancel(self, state):
+        state.medium.terminate()
 
     def expired(self):
         '''@see L{IAgentTask}'''
@@ -39,3 +44,47 @@ class BaseTask(protocols.BaseInitiator):
     @replay.immutable
     def finished(self, state):
         return state.medium.finished()
+
+
+class StealthPeriodicTask(BaseTask):
+
+    busy = False
+    timeout = None
+
+    def initiate(self, period):
+        self._period = period
+        self._call = None
+
+        self._run()
+
+        return NOT_DONE_YET
+
+    def expired(self):
+        self.cancel()
+
+    @replay.immutable
+    def cancel(self, state):
+        self._cancel()
+        state.medium.terminate()
+
+    def run(self):
+        """Overridden in sub-classes."""
+
+    ### Private Methods ###
+
+    def _run(self):
+        self.run()
+        self._schedule()
+
+    @replay.immutable
+    def _cancel(self, state):
+        if self._call is not None:
+            state.medium.cancel_delayed_call(self._call)
+            self._call = None
+
+    @replay.immutable
+    def _schedule(self, state):
+        self._cancel()
+        self._call = state.medium.call_later_ex(self._period,
+                                                self._run,
+                                                busy=False)

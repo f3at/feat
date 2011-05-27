@@ -7,7 +7,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.agencies import common, protocols
-from feat.common import (log, enum, defer, time, error_handler, )
+from feat.common import log, enum, defer, time, serialization, error_handler
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -30,13 +30,12 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
                  common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                  common.TransientInitiatorMediumBase):
 
-    implements(ISerializable, IAgencyTask, IAgencyProtocolInternal)
+    implements(ISerializable, IAgencyTask, IAgencyProtocolInternal,
+               ILongRunningProtocol)
 
     log_category = 'agency-task'
 
     type_name = 'task-medium'
-
-    idle = False # By default tasks are NOT idle
 
     _error_handler = error_handler
 
@@ -50,8 +49,18 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         self.agent = agency_agent
         self.factory = factory
+        self.task = None
         self.args = args
         self.kwargs = kwargs
+
+    def call_later(self, *args, **kwargs):
+        return self.agent.call_later(*args, **kwargs)
+
+    def call_later_ex(self, *args, **kwargs):
+        return self.agent.call_later_ex(*args, **kwargs)
+
+    def cancel_delayed_call(self, call_id):
+        return self.agent.cancel_delayed_call(call_id)
 
     ### IAgencyTask Methods ###
 
@@ -82,18 +91,21 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### IAgencyProtocolInternal Methods ###
 
     def is_idle(self):
-        return self.idle
+        return not self.factory.busy
+
+    def cancel(self):
+        if self.factory.busy:
+            return
+        return self._call(self.task.cancel)
 
     def get_agent_side(self):
         return self.task
 
     def cleanup(self):
-        if self.timeout:
-            return common.ExpirationCallsMixin.cleanup()
+        if self.factory and self.factory.timeout:
+            return common.ExpirationCallsMixin.expire_now()
         #FIXME: calling expired anyway when no timeout is not the way
         return self._call(self.task.expired)
-
-    # notify_finish() implemented in common.TransientInitiatorMediumBase
 
     @replay.named_side_effect('AgencyTask.terminate')
     def finish(self, arg=None):
