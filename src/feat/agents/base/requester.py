@@ -13,16 +13,17 @@ def say_goodbye(agent, recp, payload=None):
     return _notify_partner(agent, recp, 'goodbye', origin, payload)
 
 
-def notify_died(agent, recp, origin, payload=None):
-    return _notify_partner(agent, recp, 'died', origin, payload)
+def notify_died(agent, recp, origin, payload=None, retrying=False):
+    return _notify_partner(agent, recp, 'died', origin, payload, retrying)
 
 
-def notify_restarted(agent, recp, origin, new_address):
-    return _notify_partner(agent, recp, 'restarted', origin, new_address)
+def notify_restarted(agent, recp, origin, new_address, retrying=True):
+    return _notify_partner(agent, recp, 'restarted', origin, new_address,
+                           retrying)
 
 
-def notify_burried(agent, recp, origin, payload=None):
-    return _notify_partner(agent, recp, 'burried', origin, payload)
+def notify_burried(agent, recp, origin, payload=None, retrying=True):
+    return _notify_partner(agent, recp, 'burried', origin, payload, retrying)
 
 
 def ping(agent, recp):
@@ -102,8 +103,13 @@ class PartnershipProtocol(BaseRequester):
             self._error_handler(result)
         return result
 
+    @replay.journaled
+    def closed(self, state):
+        self.log('Notification expired')
 
-def _notify_partner(agent, recp, notification_type, origin, payload):
+
+def _notify_partner(agent, recp, notification_type, origin, payload,
+                    retrying=False):
 
     def _ignore_initiator_failed(fail):
         if fail.check(ProtocolFailed):
@@ -114,9 +120,14 @@ def _notify_partner(agent, recp, notification_type, origin, payload):
             fail.raiseException()
 
     f = fiber.succeed(PartnershipProtocol)
-    f.add_callback(agent.initiate_protocol, recp, notification_type,
-                   origin, payload)
-    f.add_callback(PartnershipProtocol.notify_finish)
+    if retrying:
+        f.add_callback(agent.retrying_protocol, recp,
+                       args=(notification_type, origin, payload, ),
+                       max_retries=5, initial_delay=1)
+    else:
+        f.add_callback(agent.initiate_protocol, recp, notification_type,
+                       origin, payload)
+    f.add_callback(fiber.call_param, 'notify_finish')
     f.add_errback(_ignore_initiator_failed)
     return f
 

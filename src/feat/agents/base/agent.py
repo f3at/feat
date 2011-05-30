@@ -362,6 +362,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return fiber.wrap_defer(state.medium.get_document, doc_id)
 
     @replay.immutable
+    def delete_document(self, state, doc):
+        return fiber.wrap_defer(state.medium.delete_document, doc)
+
+    @replay.immutable
     def save_document(self, state, doc):
         return fiber.wrap_defer(state.medium.save_document, doc)
 

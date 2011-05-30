@@ -156,7 +156,13 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
 
     @manhole.expose()
     def get_agent(self, agent_type, index=0):
-        '''get_agent(agent_type, index=0) -> Returns the medium class for the
+        '''get_agent(agent_type, index=0) -> Returns the agent instance for the
+        given agent_type. Optional index tells which one to give.'''
+        return self.get_medium(agent_type, index).get_agent()
+
+    @manhole.expose()
+    def get_medium(self, agent_type, index=0):
+        '''get_medium(agent_type, index=0) -> Returns the medium class for the
         given agent_type. Optional index tells which one to give.'''
         mediums = list(x for x in self.agency._agents
                        if x.get_descriptor().document_type == agent_type)
@@ -175,7 +181,7 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
         if factory is None:
             raise RuntimeError('No descriptor factory found for agent %s')
         desc = factory()
-        host_medium = self.get_agent('host_agent')
+        host_medium = self.get_medium('host_agent')
         agent = host_medium.get_agent()
         d = host_medium.save_document(desc)
         d.addCallback(
@@ -186,7 +192,7 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
     def restart_agent(self, agent_id, **kwargs):
         '''restart_agent(agent_id, **kwargs) -> tells the host agent running
         in this agency to restart the agent.'''
-        host_medium = self.get_agent('host_agent')
+        host_medium = self.get_medium('host_agent')
         agent = host_medium.get_agent()
         d = host_medium.get_document(agent_id)
         # This is done like this on purpose, we want to ensure that document

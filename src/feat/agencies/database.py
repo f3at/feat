@@ -140,6 +140,8 @@ class Connection(log.Logger):
         return doc
 
     def _notice_doc_revision(self, doc):
+        self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
+                 doc.doc_id, doc.rev)
         self.known_revisions.set((doc.doc_id, doc.rev, ), True,
                                  expiration=5, relative=True)
         return doc

@@ -96,6 +96,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       self.agency._database.get_connection)
         d.addCallback(setter, '_database')
         d.addCallback(defer.drop_param,
+                      self._reload_descriptor)
+        d.addCallback(defer.drop_param,
                       self._subscribe_for_descriptor_changes)
         d.addCallback(defer.drop_param, self._store_instance_id)
         d.addCallback(defer.drop_param, self._load_configuration)
@@ -610,6 +612,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'restarted on some other machine and need to commit '
                      'suacide :(. Or you have a bug ;).')
         return self.terminate_hard()
+
+    def _reload_descriptor(self):
+
+        def setter(value):
+            self._descriptor = value
+
+        d = self.reload_document(self._descriptor)
+        d.addCallback(setter)
+        return d
 
     def _store_instance_id(self):
         '''

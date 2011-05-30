@@ -11,7 +11,7 @@ from feat.agents.base import dbtools
 from feat.agents.common import raage, host, rpc, shard, monitor
 from feat.agents.common.monitor import RestartStrategy, RestartFailed
 from feat.agents.monitor import production, simulation
-from feat.common import fiber, serialization, defer, time, manhole
+from feat.common import fiber, serialization, defer, time, manhole, text_helper
 
 from feat.agents.monitor.interface import *
 from feat.interface.agency import *
@@ -109,9 +109,9 @@ class MonitorAgentConfiguration(document.Document):
 
     document_type = 'monitor_agent_conf'
     document.field('doc_id', u'monitor_agent_conf', '_id')
-    document.field('heartbeat_period', None)
-    document.field('heartbeat_max_skip', None)
-    document.field('check_period', None)
+    document.field('heartbeat_period', DEFAULT_HEARTBEAT_PERIOD)
+    document.field('heartbeat_max_skip', DEFAULT_MAX_SKIPPED_HEARTBEAT)
+    document.field('check_period', DEFAULT_CHECK_PERIOD)
 
 
 dbtools.initial_data(MonitorAgentConfiguration)
@@ -180,6 +180,16 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
         self.info("Agent %s/%d is not responding, handle its death",
                   agent_id, instance_id)
         self.handle_agent_death(recipient)
+
+    @manhole.expose()
+    @replay.immutable
+    def show_status(self, state):
+        tab = text_helper.Table(
+            fields=('agent_id', 'shard', 'counter', 'state', ),
+            lengths=(35, 45, 15, 20, ))
+        iterator = self.get_monitoring_status().iteritems()
+        return tab.render((k.key, k.shard, v['counter'], v['state'].name, )
+                           for k, v in iterator)
 
     @manhole.expose()
     @replay.immutable
@@ -479,6 +489,8 @@ class HandleDeath(task.BaseTask):
             fibers.append(requester.notify_burried(
                 state.agent, partner, state.recp, brothers))
         f = fiber.FiberList(fibers, consumeErrors=True)
+        f.add_callback(fiber.drop_param, state.agent.delete_document,
+                       state.descriptor)
         f.succeed()
         return f
 
