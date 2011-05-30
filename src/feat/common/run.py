@@ -99,6 +99,8 @@ class bootstrap(object):
         add_options(parser)
         agency.add_options(parser)
         self.opts, self.args = parser.parse_args(args=self.args)
+        self.opts.agency_journal = os.path.join(self.opts.logdir,
+                                                self.opts.agency_journal)
 
     def _check_opts(self):
         if self.opts.daemonizeTo and not self.opts.daemonize:
