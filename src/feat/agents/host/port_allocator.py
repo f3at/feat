@@ -52,12 +52,14 @@ class PortAllocator(serialization.Serializable, log.Logger):
         @param group: group of the allocated the ports (eg: 'streaming')
         @type  group: str
         """
+        self.debug("Reserving %r from %r", num_ports, group)
         ret = []
         start, _, _ = self._get_group_status(group)
         bitmap = self._ports_to_bitmap(group)
         while num_ports > 0:
             if not False in bitmap:
-                raise PortAllocationError('Could not allocate port')
+                raise PortAllocationError(
+                    'Could not allocate %r ports to group %r' % (num_ports, group))
             i = bitmap.index(False)
             ret.append(start + i)
             bitmap[i] = True
@@ -92,6 +94,7 @@ class PortAllocator(serialization.Serializable, log.Logger):
         @param group: group of the allocated the ports (eg: 'streaming')
         @type  group: str
         """
+        self.debug("Releasing %r from %r", ports, group)
         start, stop, _ = self._get_group_status(group)
         bitmap = self._ports_to_bitmap(group)
         for p in ports:
