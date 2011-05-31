@@ -1,4 +1,5 @@
 import smtplib
+from email.mime.text import MIMEText
 
 from zope.interface import implements, classProvides
 
@@ -36,9 +37,13 @@ class Labour(labour.BaseLabour):
         """Nothing to recover."""
 
     @replay.side_effect
-    def send(self, config, msg):
+    def send(self, config, msg_body):
         server = smtplib.SMTP(config.SMTP)
         server.starttls()
         server.login(config.username, config.password)
-        server.sendmail(config.fromaddr, config.toaddrs, msg)
+        msg = MIMEText(msg_body)
+        msg['Subject'] = msg_body
+        msg['From'] = config.fromaddr
+        msg['To'] = config.toaddrs
+        server.sendmail(config.fromaddr, config.toaddrs, msg.as_string())
         server.quit()
