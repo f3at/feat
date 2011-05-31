@@ -769,7 +769,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         to finish processing.
         '''
         d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addBoth(self.wait_for_protocols_finish)
+        d.addBoth(defer.drop_param, self.wait_for_listeners_finish)
         return d
 
     def _iter_interests(self):
