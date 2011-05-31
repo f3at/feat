@@ -740,7 +740,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         '''Kill the agent without notifying anybody.'''
 
         def generate_body():
-            '''nothing to do'''
+            d = defer.succeed(None)
+            # run IAgent.killed() and wait for the listeners to finish the job
+            d.addBoth(self._run_and_wait, self.agent.killed)
+            return d
 
         return self._terminate_procedure(generate_body)
 
