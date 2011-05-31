@@ -17,17 +17,26 @@ from feat.interface.agent import Access, Address, Storage
 @common.attr(timescale=0.05)
 class HostAgentTests(common.SimulationTest):
 
-    NUM_PORTS = 999
+    NUM_PORTS = 1000
 
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('host_agent')
-        medium = agency.start_agent(desc1, run_startup=False)
+        medium = agency.start_agent(desc1, hostdef=hostdef, run_startup=False)
         agent = medium.get_agent()
         desc2 = medium.get_descriptor()
         """)
+
+        hostdef = host.HostDef()
+        hostdef.doc_id = "someid"
+        hostdef.ports_ranges = [('manager', 5000, 6000),
+                                ('streamer', 9000, 10000)]
+
+        self.driver.save_document(hostdef)
+        self.set_local("hostdef", hostdef)
+
         return self.process(setup)
 
     def testValidateProlog(self):
@@ -62,25 +71,29 @@ class HostAgentTests(common.SimulationTest):
     @defer.inlineCallbacks
     def testAllocatePorts(self):
         agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
+        ports = yield agent.allocate_ports(10, 'manager')
+        self.assertEqual(agent.get_num_free_ports('manager'),
+                         self.NUM_PORTS - 10)
         self.assertEqual(len(ports), 10)
 
     @defer.inlineCallbacks
     def testAllocatePortsAndRelease(self):
         agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
+        ports = yield agent.allocate_ports(10, 'manager')
+        self.assertEqual(agent.get_num_free_ports('manager'),
+                         self.NUM_PORTS - 10)
+        agent.release_ports(ports, 'manager')
+        self.assertEqual(agent.get_num_free_ports('manager'), self.NUM_PORTS)
 
     def testSetPortsUsed(self):
         agent = self.get_local('agent')
-        ports = range(5000, 5010)
-        agent.set_ports_used(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
+        ports = range(5001, 5011)
+        agent.set_ports_used(ports, 'manager')
+        self.assertEqual(agent.get_num_free_ports('manager'),
+                         self.NUM_PORTS - 10)
+        agent.release_ports(ports, 'manager')
+        self.assertEqual(agent.get_num_free_ports('manager'),
+                         self.NUM_PORTS)
 
 
 @common.attr(timescale=0.05)
