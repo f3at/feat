@@ -11,7 +11,8 @@ __all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
-           "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection")
+           "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection",
+           "IJournalWriter")
 
 
 class DatabaseError(RuntimeError):
@@ -475,6 +476,30 @@ class IJournalerConnection(Interface):
         Create a new IAgencyJournalEntry for the given parameters.
         @rtype: IAgencyJournalEntry
         """
+
+    def get_filename():
+        """
+        Return the filename to which this connection stores.
+        """
+
+
+class IJournalWriter(Interface):
+    '''
+    Layer responsible for persisitng the jounal entries.
+    '''
+
+    def get_histories():
+        pass
+
+    def get_entries(history):
+        '''
+        Returns a list of journal entries  for the given history_id.
+        '''
+
+    def insert_entries(entries):
+        '''
+        Write the entries to the transport.
+        '''
 
     def get_filename():
         """

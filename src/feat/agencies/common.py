@@ -52,7 +52,7 @@ class StateMachineMixin(object):
             self._notifier.callback(state, self)
 
     def _cmp_state(self, states):
-        if not isinstance(states, list):
+        if not isinstance(states, (list, tuple, )):
             states = [states]
         return self.state in states
 

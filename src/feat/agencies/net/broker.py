@@ -71,12 +71,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.log("Disconnecting broker %r.", self)
         if self._cmp_state(BrokerRole.master):
             d = self.listener.stopListening()
-            d.addCallback(lambda _: self.factory.disconnect())
+            d.addCallback(defer.drop_param, self.factory.disconnect)
         elif self._cmp_state(BrokerRole.slave):
             d = defer.maybeDeferred(self.factory.disconnect)
         elif self._cmp_state(BrokerRole.disconnected):
             return defer.succeed(None)
-        d.addCallback(lambda _: self.become_disconnected())
+        d.addCallback(defer.drop_param, self.become_disconnected)
         return d
 
     def remove_stale_socket(self):
@@ -179,9 +179,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     def _event_key(self, *args):
         return tuple(args)
 
-
-    #starting agent
-
     def start_agent(self, desc, *args, **kwargs):
         self._ensure_connected()
         if self._cmp_state(BrokerRole.master):
@@ -198,6 +195,13 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             return self.agency.find_agent(agent_id)
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('find_agent', agent_id)
+
+    def get_journal_writer(self):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            return self.agency.get_journal_writer()
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('get_journal_writer')
 
 
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
@@ -230,6 +234,9 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
     def remote_start_agent(self, raw_desc, *args, **kwargs):
         desc = self._unserializer.convert(raw_desc)
         return self.broker.start_agent(desc, *args, **kwargs)
+
+    def remote_get_journal_writer(self):
+        return self.broker.get_journal_writer()
 
     def clientConnectionMade(self, broker):
         self.debug('Client connection made to the server: %r', broker)

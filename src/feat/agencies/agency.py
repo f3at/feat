@@ -123,6 +123,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_param, self._ready)
         return d
 
+    @manhole.expose()
+    def get_agent_id(self):
+        return self._descriptor.doc_id
+
     def get_full_id(self):
         desc = self._descriptor
         return desc.doc_id + u"/" + unicode(desc.instance_id)
@@ -860,8 +864,13 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._agents = []
 
         self.registry = weakref.WeakValueDictionary()
+        # IJournaler
         self._journaler = None
+        # IJournalerConnection
+        self._jourconn = None
+        # IDbConnectionFactory
         self._database = None
+        # IConnectionFactory
         self._messaging = None
 
     ### Public Methods ###
@@ -873,7 +882,8 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         '''
         self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
-        self._journaler = IJournaler(journaler).get_connection(self)
+        self._journaler = IJournaler(journaler)
+        self._jourconn = self._journaler.get_connection(self)
         return defer.succeed(self)
 
     @manhole.expose()
@@ -932,7 +942,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
     def journal_new_entry(self, agent_id, instance_id, journal_id,
                           function_id, *args, **kwargs):
-        return self._journaler.new_entry(agent_id, instance_id, journal_id,
+        return self._jourconn.new_entry(agent_id, instance_id, journal_id,
                                          function_id, *args, **kwargs)
 
     def journal_agency_entry(self, agent_id, instance_id, function_id,

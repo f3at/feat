@@ -167,7 +167,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         if jourfile:
             jouropts['filename'] = jourfile
             jouropts['encoding'] = 'zip'
-        self._journaler = journaler.Journaler(self, **jouropts)
+        self._jourwriter = journaler.SqliteWriter(self, **jouropts)
+        self._journaler = journaler.Journaler(self)
 
         self._output = Output()
         self._parser = manhole.Parser(self, self._output, self,
@@ -179,7 +180,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def initiate(self):
         self._database_connection = self._database.get_connection()
         d1 = dbtools.push_initial_data(self._database_connection)
-        d2 = self._journaler.initiate()
+        d2 = self._jourwriter.initiate()
+        self._journaler.configure_with(self._jourwriter)
         return defer.DeferredList([d1, d2])
 
     def iter_agents(self, agent_type=None):

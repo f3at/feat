@@ -138,30 +138,55 @@ class Agency(agency.Agency):
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
-        jour = journaler.Journaler(self,
-                                   filename=self.config['agency']['journal'],
-                                   encoding='zip')
+        jour = journaler.Journaler(self)
+        self._journal_writer = None
 
-        super_init = jour.initiate()
-        super_init.addBoth(defer.drop_param, agency.Agency.initiate,
-                           self, mesg, db, jour)
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.on_killed)
 
         self._ssh = ssh.ListeningPort(self, **self.config['manhole'])
         socket_path = self.config['agency']['socket_path']
         self._broker = broker.Broker(self, socket_path,
-                                on_master_cb=self._ssh.start_listening,
-                                on_slave_cb=self._ssh.stop_listening,
-                                on_disconnected_cb=self._ssh.stop_listening)
+                                on_master_cb=self.on_become_master,
+                                on_slave_cb=self.on_become_slave,
+                                on_disconnected_cb=self.on_broker_disconnect)
         self._setup_snapshoter()
-        d = defer.DeferredList([super_init,
-                               self._broker.initiate_broker()],
-                               consumeErrors=True)
-        d.addCallback(defer.override_result, self)
+
+        d = defer.succeed(None)
+        d.addBoth(defer.drop_param, agency.Agency.initiate,
+                  self, mesg, db, jour)
+        d.addBoth(defer.drop_param, self._broker.initiate_broker)
+        d.addBoth(defer.override_result, self)
         return d
 
+    def on_become_master(self):
+        self._ssh.start_listening()
+        self._journal_writer = journaler.SqliteWriter(
+            self, filename=self.config['agency']['journal'], encoding='zip')
+        self._journaler.configure_with(self._journal_writer)
+        self._journal_writer.initiate()
+
+    def on_become_slave(self):
+        self._ssh.stop_listening()
+        self._journal_writer = journaler.BrokerProxyWriter(self._broker)
+        self._journaler.configure_with(self._journal_writer)
+        self._journal_writer.initiate()
+
+    def on_broker_disconnect(self):
+        self._ssh.stop_listening()
+        if self._journal_writer:
+            self._journal_writer.close()
+            self._journal_writer = None
+        self._journaler.close()
+
+    def get_journal_writer(self):
+        '''Called by the broker internals to establish the bridge between
+        JournalWriters'''
+        return self._journal_writer
+
     def on_killed(self):
+        if self._journal_writer:
+            self._journal_writer.close()
         d = agency.Agency.on_killed(self)
         d.addCallback(lambda _: self._disconnect)
         return d
@@ -171,8 +196,7 @@ class Agency(agency.Agency):
         '''full_shutdown() -> Terminate all the slave agencies and shutdowns
         itself.'''
         d = self._broker.shutdown_slaves()
-        d.addCallback(lambda _: self.shutdown())
-#        d.addCallback(lambda _: reactor.stop())
+        d.addCallback(defer.drop_param, self.shutdown)
         return d
 
     @manhole.expose()
@@ -181,13 +205,13 @@ class Agency(agency.Agency):
         all the agents).'''
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
-        d.addCallback(lambda _: self._disconnect())
+        d.addCallback(defer.drop_param, self._disconnect)
         return d
 
     def _disconnect(self):
         d = defer.succeed(None)
-        d.addCallback(lambda _: self._broker.disconnect())
-        d.addCallback(lambda _: self._ssh.stop_listening())
+        d.addCallback(defer.drop_param, self._broker.disconnect)
+        d.addCallback(defer.drop_param, self._ssh.stop_listening)
         return d
 
     @manhole.expose()
