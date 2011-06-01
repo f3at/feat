@@ -130,7 +130,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
 
 class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
-                    common.AgencyMiddleMixin,
+                    common.ExpirationCallsMixin, common.AgencyMiddleMixin,
                     common.TransientInterestedMediumBase):
 
     implements(ISerializable, IAgencyReplier,
@@ -148,6 +148,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.AgencyMiddleMixin.__init__(self, message.sender_id,
                                           message.protocol_id)
         common.TransientInterestedMediumBase.__init__(self)
+        common.ExpirationCallsMixin.__init__(self)
 
         self.agent = agency_agent
         self.factory = factory
@@ -174,6 +175,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         reply = reply.clone()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
+        self._set_state(RequestState.closed)
         time.callLater(0, self._terminate, None)
 
     ### IAgencyProtocolInternal Methods ###
@@ -189,8 +191,8 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         mapping = {
             message.RequestMessage:\
             {'state_before': RequestState.requested,
-             'state_after': RequestState.closed,
-             'method': self.replier.requested}}
+             'state_after': RequestState.requested,
+             'method': self._requested}}
         self._event_handler(mapping, msg)
 
     ### ISerializable Methods ###
@@ -206,10 +208,21 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Overridden Methods ###
 
     def _terminate(self, result):
+        common.ExpirationCallsMixin._terminate(self)
         self.debug('Terminate called')
         self.agent.unregister_protocol(self)
         common.TransientInterestedMediumBase._terminate(self, result)
         return defer.succeed(self)
+
+    ### private ###
+
+    def _requested(self, msg):
+        self._expire_at(msg.expiration_time, RequestState.closed,
+                        self._on_expire)
+        self._call(self.replier.requested, msg)
+
+    def _on_expire(self):
+        pass
 
 
 class AgencyRequesterFactory(protocols.BaseInitiatorFactory):
