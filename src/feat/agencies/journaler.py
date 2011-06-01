@@ -22,11 +22,52 @@ class State(enum.Enum):
 
     '''
     disconnected - there is no connection to database
-    flushing - connection has been established, but is not ready as we are
-               flushing the cached data
     connected - connection is ready, entries can be insterted
     '''
-    (disconnected, flushing, connected, ) = range(3)
+    (disconnected, connected, ) = range(2)
+
+
+class EntriesCache(object):
+    '''
+    Helper class storing the data and giving the back in transactional way.
+    '''
+
+    def __init__(self):
+        self._cache = list()
+        self._fetched = None
+
+    def append(self, entry):
+        self._cache.append(entry)
+
+    def fetch(self):
+        '''
+        Gives all the data it has stored, and remembers what it has given.
+        Later we need to call commit() to actually remove the data from the
+        cache.
+        '''
+        if self._fetched is not None:
+            raise RuntimeError('fetch() was called but the previous one has '
+                               'not yet been applied. Not supported')
+        if self._cache:
+            self._fetched = len(self._cache)
+        return self._cache[0:self._fetched]
+
+    def commit(self):
+        '''
+        Actually remove data returned by fetch() from the cache.
+        '''
+        if self._fetched is None:
+            raise RuntimeError('commit() was called but nothing was fetched')
+        self._cache = self._cache[self._fetched:]
+        self._fetched = None
+
+    def rollback(self):
+        if self._fetched is None:
+            raise RuntimeError('rollback() was called but nothing was fetched')
+        self._fetched = None
+
+    def __len__(self):
+        return len(self._cache)
 
 
 class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
@@ -52,8 +93,10 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._filename = filename
         # (agent_id, instance_id, ) -> history_id
         self._history_id_cache = dict()
-        # list of data entries to be inserted [dict]
-        self._cache = list()
+        self._cache = EntriesCache()
+        # the semaphore is used to always have at most running
+        # .perform_instert() method
+        self._semaphore = defer.DeferredSemaphore(1)
 
         self._old_sighup_handler = None
         self._sighup_installed = False
@@ -114,14 +157,8 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         return d
 
     def insert_entry(self, **data):
-
-        if not self._cmp_state(State.connected):
-            self.debug('Entry inserted in %r state, appending to cache.',
-                       self._get_machine_state())
-            self._cache.append(data)
-            return self.wait_for_state(State.connected)
-        else:
-            return self._insert_entry(**data)
+        self._cache.append(data)
+        return self._flush_next()
 
     def get_filename(self):
         return self._filename
@@ -146,58 +183,6 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         else:
             self._old_sighup_handler = handler
         self._sighup_installed = True
-
-    def _insert_entry(self, **data):
-
-        def do_insert(connection, history_id, data):
-            command = text_helper.format_block("""
-            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        strftime('%s', 'now'))
-            """)
-            connection.execute(
-                command, (history_id,
-                          data['journal_id'], data['function_id'],
-                          data['fiber_id'], data['fiber_depth'],
-                          data['args'], data['kwargs'],
-                          data['side_effects'], data['result'], ))
-
-        def transaction(connection, data):
-            history_id = self._get_history_id(
-                connection, data['agent_id'], data['instance_id'])
-            do_insert(connection, history_id, data)
-
-        data = self._encode(data)
-        return self._db.runWithConnection(transaction, data)
-
-    def _get_history_id(self, connection, agent_id, instance_id):
-        '''
-        Checks own cache for history_id for agent_id and instance_id.
-        If information is missing fetch it from database. If it is not there
-        create the new record.
-
-        BEWARE: This method runs in a thread.
-        '''
-        cache_key = (agent_id, instance_id, )
-        if cache_key in self._history_id_cache:
-            history_id = self._history_id_cache[cache_key]
-            return history_id
-        else:
-            command = text_helper.format_block("""
-            SELECT id FROM histories WHERE agent_id = ? AND instance_id = ?
-            """)
-            cursor = connection.cursor()
-            cursor.execute(command, (agent_id, instance_id, ))
-            res = cursor.fetchall()
-            if res:
-                history_id = res[0][0]
-                self._history_id_cache[cache_key] = history_id
-                return history_id
-            else:
-                command = 'INSERT INTO histories VALUES (NULL, ?, ?)'
-                cursor.execute(command, (agent_id, instance_id, ))
-                history_id = cursor.lastrowid
-                self._history_id_cache[cache_key] = history_id
-                return history_id
 
     def _decode(self, entries):
         '''
@@ -308,17 +293,80 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
     def _initiated_ok(self, *_):
         self.log('Journaler initiated correctly for the filename %r',
                  self._filename)
-        self._set_state(State.flushing)
+        self._set_state(State.connected)
         return self._flush_next()
 
-    def _flush_next(self):
-        if not self._cache:
-            # no more entries, flushing compete
-            self._set_state(State.connected)
+    def _perform_inserts(self, cache):
+
+        def do_insert(connection, history_id, data):
+            command = text_helper.format_block("""
+            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                        strftime('%s', 'now'))
+            """)
+            connection.execute(
+                command, (history_id,
+                          data['journal_id'], data['function_id'],
+                          data['fiber_id'], data['fiber_depth'],
+                          data['args'], data['kwargs'],
+                          data['side_effects'], data['result'], ))
+
+        def transaction(connection, cache):
+            entries = cache.fetch()
+            if not entries:
+                return
+            entries = map(self._encode, entries)
+            try:
+                for data in entries:
+                    history_id = self._get_history_id(
+                        connection, data['agent_id'], data['instance_id'])
+                    do_insert(connection, history_id, data)
+                cache.commit()
+            except:
+                cache.rollback()
+                raise
+
+        return self._db.runWithConnection(transaction, cache)
+
+    def _get_history_id(self, connection, agent_id, instance_id):
+        '''
+        Checks own cache for history_id for agent_id and instance_id.
+        If information is missing fetch it from database. If it is not there
+        create the new record.
+
+        BEWARE: This method runs in a thread.
+        '''
+        cache_key = (agent_id, instance_id, )
+        if cache_key in self._history_id_cache:
+            history_id = self._history_id_cache[cache_key]
+            return history_id
         else:
-            data = self._cache.pop(0)
-            d = self._insert_entry(**data)
-            d.addCallback(defer.drop_result, self._flush_next)
+            command = text_helper.format_block("""
+            SELECT id FROM histories WHERE agent_id = ? AND instance_id = ?
+            """)
+            cursor = connection.cursor()
+            cursor.execute(command, (agent_id, instance_id, ))
+            res = cursor.fetchall()
+            if res:
+                history_id = res[0][0]
+                self._history_id_cache[cache_key] = history_id
+                return history_id
+            else:
+                command = 'INSERT INTO histories VALUES (NULL, ?, ?)'
+                cursor.execute(command, (agent_id, instance_id, ))
+                history_id = cursor.lastrowid
+                self._history_id_cache[cache_key] = history_id
+                return history_id
+
+    def _flush_next(self):
+        if not self._cmp_state(State.connected):
+            d = self.wait_for_state(State.connected)
+            d.addCallback(defer.drop_param, self._flush_next)
+            return d
+        if len(self._cache) == 0:
+            return defer.succeed(None)
+        else:
+            d = self._semaphore.run(self._perform_inserts, self._cache)
+            d.addCallback(defer.drop_param, self._flush_next)
             return d
 
 

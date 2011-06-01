@@ -43,11 +43,13 @@ class DBTests(common.TestCase):
     @defer.inlineCallbacks
     def testStoringEntriesWhileDisconnected(self):
         jour = journaler.Journaler(self, encoding='zip')
-        d = jour.insert_entry(**self._generate_data())
+        num = 10
+        defers = map(lambda _: jour.insert_entry(**self._generate_data()),
+                     range(num))
         yield jour.initiate()
-        yield d
+        yield defer.DeferredList(defers)
 
-        self._assert_entries(1)
+        self._assert_entries(num)
 
     @defer.inlineCallbacks
     def testStoringAndReadingEntries(self):
