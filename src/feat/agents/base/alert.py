@@ -7,7 +7,7 @@ from feat.interface.protocols import *
 
 class Severity(enum.Enum):
 
-    low, medium, high = range(3)
+    low, medium, high, recover = range(4)
 
 
 class AgentMixin(object):

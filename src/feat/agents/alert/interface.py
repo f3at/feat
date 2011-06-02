@@ -1,19 +1,28 @@
 from zope.interface import Interface
 
-__all__ = ["IEmailSenderLabourFactory", "IEmailSenderLabour"]
+__all__ = ["IEmailSenderLabourFactory", "INagiosSenderLabourFactory",
+           "IAlertSenderLabour"]
 
 
 class IEmailSenderLabourFactory(Interface):
 
     def __call__(config):
         '''
-        @returns: L{IEmailSenderLabour}
+        @returns: L{IAlertSenderLabour}
         '''
 
 
-class IEmailSenderLabour(Interface):
+class INagiosSenderLabourFactory(Interface):
 
-    def send(config, msg):
+    def __call__(config):
         '''
-        Sends a an email
+        @returns: L{IAlertSenderLabour}
+        '''
+
+
+class IAlertSenderLabour(Interface):
+
+    def send(config, msg, severity):
+        '''
+        Sends an alert
         '''
