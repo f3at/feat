@@ -4,7 +4,7 @@ from email.mime.text import MIMEText
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import defer, serialization, log
+from feat.common import serialization
 
 from feat.agents.alert.interface import *
 
@@ -13,31 +13,12 @@ from feat.agents.alert.interface import *
 class Labour(labour.BaseLabour):
 
     classProvides(IEmailSenderLabourFactory)
-    implements(IEmailSenderLabour)
-
-    def __init__(self, logger):
-        log.Logger.__init__(self, logger)
-
-    def __eq__(self, other):
-        if isinstance(other, type(self)):
-            return True
-        return NotImplemented
-
-    def __ne__(self, other):
-        if isinstance(other, type(self)):
-            return False
-        return NotImplemented
-
-    ### ISerializable Methods ###
-
-    def snapshot(self):
-        """Nothing to serialize."""
-
-    def recover(self, snapshot):
-        """Nothing to recover."""
+    implements(IAlertSenderLabour)
 
     @replay.side_effect
-    def send(self, config, msg_body):
+    def send(self, config, msg_body, severity):
+        config = config.mail_config
+        msg_body = '[Alert %s] %s' % (severity.name, msg_body)
         server = smtplib.SMTP(config.SMTP)
         server.starttls()
         server.login(config.username, config.password)
