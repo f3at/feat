@@ -2,6 +2,7 @@ import optparse
 import re
 
 from twisted.internet import reactor
+from zope.interface import implements
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
@@ -12,6 +13,7 @@ from feat.interface import agent
 from feat.interface.agency import ExecMode
 from feat.process import standalone
 from feat.common.serialization import json
+from feat.gateway import gateway
 
 from feat.agencies.net import messaging
 from feat.agencies.net import database
@@ -26,6 +28,7 @@ DEFAULT_DB_HOST = "localhost"
 DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
 DEFAULT_JOURFILE = 'journal.sqlite3'
+DEFAULT_GW_PORT = 7777
 
 # Only for command-line options
 DEFAULT_MH_PUBKEY = "public.key"
@@ -92,12 +95,21 @@ def add_options(parser):
                      default=DEFAULT_MH_PORT)
     parser.add_option_group(group)
 
+    # gateway specific
+    group = optparse.OptionGroup(parser, "Gateway options")
+    group.add_option('-w', '--gateway-port', type="int", dest='gateway_port',
+                     help="port for the gateway to listen", metavar="PORT",
+                     default=DEFAULT_GW_PORT)
+    parser.add_option_group(group)
+
 
 def check_options(opts, args):
     return opts, args
 
 
 class Agency(agency.Agency):
+
+    implements(gateway.IResolver)
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -110,7 +122,8 @@ class Agency(agency.Agency):
                  db_host=None, db_port=None, db_name=None,
                  public_key=None, private_key=None,
                  authorized_keys=None, manhole_port=None,
-                 agency_journal=None, socket_path=None):
+                 agency_journal=None, socket_path=None,
+                 gateway_port=None):
         agency.Agency.__init__(self)
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -123,13 +136,19 @@ class Agency(agency.Agency):
                           authorized_keys=authorized_keys,
                           manhole_port=manhole_port,
                           agency_journal=agency_journal,
-                          socket_path=socket_path)
+                          socket_path=socket_path,
+                          gateway_port=gateway_port)
 
         self._ssh = None
         self._broker = None
+        self._gateway = None
 
         # this is default mode for the dependency modules
         self._set_default_mode(ExecMode.production)
+
+    @property
+    def gateway_port(self):
+        return self._gateway and self._gateway.port
 
     def initiate(self):
         mesg = messaging.Messaging(
@@ -165,12 +184,14 @@ class Agency(agency.Agency):
             self, filename=self.config['agency']['journal'], encoding='zip')
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
+        self._start_master_gateway(self.config["gateway"]["port"])
 
     def on_become_slave(self):
         self._ssh.stop_listening()
         self._journal_writer = journaler.BrokerProxyWriter(self._broker)
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
+        self._start_slave_gateway()
 
     def on_broker_disconnect(self):
         self._ssh.stop_listening()
@@ -178,6 +199,8 @@ class Agency(agency.Agency):
             self._journal_writer.close()
             self._journal_writer = None
         self._journaler.close()
+        #FIXME: we may stop the gateway here, but then we should handle
+        #       asynchronous server shutdown when it's restarted
 
     def get_journal_writer(self):
         '''Called by the broker internals to establish the bridge between
@@ -253,7 +276,12 @@ class Agency(agency.Agency):
 
         return d
 
-    # Manhole inspection methods
+    ### gateway.IResolver ###
+
+    def resolve(self, recipient):
+        pass
+
+    ### Manhole inspection methods ###
 
     @manhole.expose()
     def find_agent_locally(self, agent_id):
@@ -293,7 +321,8 @@ class Agency(agency.Agency):
                      db_host=None, db_port=None, db_name=None,
                      public_key=None, private_key=None,
                      authorized_keys=None, manhole_port=None,
-                     agency_journal=None, socket_path=None):
+                     agency_journal=None, socket_path=None,
+                     gateway_port=None):
 
         def get(value, default=None):
             if value is not None:
@@ -317,11 +346,14 @@ class Agency(agency.Agency):
         agency_conf = dict(journal=agency_journal,
                            socket_path=socket_path)
 
+        gateway_conf = dict(port=get(gateway_port, DEFAULT_GW_PORT))
+
         self.config = dict()
         self.config['msg'] = msg_conf
         self.config['db'] = db_conf
         self.config['manhole'] = manhole_conf
         self.config['agency'] = agency_conf
+        self.config['gateway'] = gateway_conf
 
     def _store_config(self, env):
         '''
@@ -381,3 +413,33 @@ class Agency(agency.Agency):
         if self._snapshot_task is not None and self._snapshot_task.active():
             self._snapshot_task.cancel()
         self._snapshot_task = None
+
+    def _start_slave_gateway(self):
+
+        def startit(_):
+            self.info("Starting slave gateway")
+            self._gateway = gateway.Gateway(self, 0)
+            return self._gateway.initialise()
+
+        d = self._stop_gateway()
+        d.addCallback(startit)
+        return d
+
+    def _start_master_gateway(self, port):
+
+        def startit(_):
+            self.info("Starting master gateway on port %d", port)
+            self._gateway = gateway.Gateway(self, port)
+            return self._gateway.initialise()
+
+        d = self._stop_gateway()
+        d.addCallback(startit)
+        return d
+
+    def _stop_gateway(self):
+        if self._gateway is not None:
+            self.info("Stopping gateway on port %d", self._gateway.port)
+            d = self._gateway.cleanup()
+            self._gateway = None
+            return d
+        return defer.succeed(self)
