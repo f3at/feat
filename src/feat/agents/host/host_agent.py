@@ -263,11 +263,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def release_modification(self, change_id):
         return agent.BaseAgent.release_modification(self, change_id)
 
-### Private Methods ###
+    ### Private Methods ###
 
-    @replay.side_effect
-    def _discover_hostname(self):
-        return unicode(socket.gethostbyaddr(socket.gethostname())[0])
+    @replay.immutable
+    def _discover_hostname(self, state):
+        return state.medium.get_hostname()
 
     @agent.update_descriptor
     def _update_hostname(self, state, desc, hostname=None):

@@ -235,6 +235,7 @@ class Agency(agency.Agency):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
+        d.addCallback(defer.drop_param, self._gateway.cleanup)
         return d
 
     @manhole.expose()
@@ -278,8 +279,15 @@ class Agency(agency.Agency):
 
     ### gateway.IResolver ###
 
-    def resolve(self, recipient):
-        pass
+    @manhole.expose()
+    @defer.inlineCallbacks
+    def resolve(self, recp):
+        '''resolve(recp): Return (host, port, should_redirect) tuple.
+        '''
+        agent_id = recipient.IRecipinet(recp).key
+        found = self.find_agent(agent_id)
+        if found is agency.AgencyAgent:
+            pass
 
     ### Manhole inspection methods ###
 
@@ -291,17 +299,17 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def find_agent(self, agent_id):
-        '''find_agent(agent_id_or_descriptor) -> Gives medium class of the
-        agent if the agency hosts it.'''
+        '''find_agent(agent_id_or_descriptor) -> Gives medium class or its
+        pb refrence of the agent if this agency hosts it.'''
         return self._broker.find_agent(agent_id)
 
     @manhole.expose()
     @defer.inlineCallbacks
     def list_slaves(self):
         '''list_slaves() -> Print information about the slave agencies.'''
-        num = len(self._broker.slaves)
+        slaves = list(self._broker.iter_slaves())
         resp = []
-        for slave, i in zip(self._broker.slaves, range(num)):
+        for slave, i in zip(slaves, range(len(slaves))):
             resp += ["#### Slave %d ####" % i]
             table = yield slave.callRemote('list_agents')
             resp += [table]
@@ -399,6 +407,22 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+    @defer.inlineCallbacks
+    def _find_agent(self, agent_id):
+        '''
+        Specific to master agency, called by the broker.
+        Will return AgencyAgent if agent is hosted by master agency,
+        PB.Reference if it runs in stanadlone or None if it was not found.
+        '''
+        local = self.find_agent_locally(agent_id)
+        if local:
+            defer.returnValue(local)
+        for slave in self._broker.iter_slaves():
+            found = yield slave.callRemote('find_agent_locally', agent_id)
+            if found:
+                defer.returnValue(found)
+        defer.returnValue(None)
 
     def _setup_snapshoter(self):
         self._snapshot_task = time.callLater(300, self._trigger_snapshot)

@@ -36,7 +36,6 @@ class Gateway(log.FluLogKeeper, log.Logger):
             return d
         return defer.succeed(self)
 
-
     @property
     def port(self):
         return self._port

@@ -6,6 +6,7 @@ import copy
 import uuid
 import weakref
 import warnings
+import socket
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -16,7 +17,8 @@ from feat.agencies import common, dependency, retrying, periodic
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import (log, defer, fiber, serialization, journal, time,
-                         manhole, error_handler, text_helper, container, )
+                         manhole, error_handler, text_helper, container,
+                         first, )
 
 # Import interfaces
 from interface import *
@@ -178,6 +180,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         res = common.Observer(_method, *args, **kwargs)
         self.call_next(res.initiate)
         return res
+
+    @replay.named_side_effect('AgencyAgent.get_hostname')
+    def get_hostname(self):
+        return self.agency.get_hostname()
 
     @manhole.expose()
     @replay.named_side_effect('AgencyAgent.get_descriptor')
@@ -876,6 +882,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._database = None
         # IConnectionFactory
         self._messaging = None
+        self._hostname = None
 
     ### Public Methods ###
 
@@ -884,6 +891,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
+        self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
         self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
         self._journaler = IJournaler(journaler)
@@ -904,6 +912,10 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d.addCallback(defer.bridge_param, medium.call_next, medium.startup,
                       startup_agent=run_startup)
         return d
+
+    @manhole.expose()
+    def get_hostname(self):
+        return self._hostname
 
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
@@ -1019,11 +1031,8 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                     if isinstance(desc, descriptor.Descriptor)
                     else desc)
         self.log("I'm trying to find the agent with id: %s", agent_id)
-        try:
-            return next(x for x in self._agents
-                        if x._descriptor.doc_id == agent_id)
-        except StopIteration:
-            return None
+        return first(x for x in self._agents
+                     if x._descriptor.doc_id == agent_id)
 
     @manhole.expose()
     def snapshot_agents(self):

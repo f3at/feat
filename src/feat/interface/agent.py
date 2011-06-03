@@ -103,6 +103,11 @@ class IAgencyAgent(Interface):
         @rtype: L{feat.interface.fiber.IObserver}
         """
 
+    def get_hostname():
+        '''
+        Return the host name we run on.
+        '''
+
     def get_descriptor():
         '''
         Return the copy of the descriptor.

@@ -526,6 +526,10 @@ class AgencyAgent(BaseReplayDummy):
     def observe(self, _method, *args, **kwargs):
         pass
 
+    @replay.named_side_effect('AgencyAgent.get_hostname')
+    def get_hostname(self):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
         pass

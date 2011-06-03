@@ -89,6 +89,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     # Master specific
 
+    def iter_slaves(self):
+        return self.slaves.__iter__()
+
     def shutdown_slaves(self):
 
         def error_handler(f):
@@ -192,7 +195,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     def find_agent(self, agent_id):
         self._ensure_connected()
         if self._cmp_state(BrokerRole.master):
-            return self.agency.find_agent(agent_id)
+            return self.agency._find_agent(agent_id)
         elif self._cmp_state(BrokerRole.slave):
             return self._master.callRemote('find_agent', agent_id)
 
@@ -230,6 +233,9 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
     def remote_fail_event(self, failure, *args):
         return self.broker.fail_event(failure, *args)
+
+    def remote_find_agent(self, agent_id):
+        return self.broker.find_agent(agent_id)
 
     def remote_start_agent(self, raw_desc, *args, **kwargs):
         desc = self._unserializer.convert(raw_desc)
