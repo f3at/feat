@@ -37,6 +37,7 @@ class Status(enum.Enum):
     CREATED = http.CREATED
     ACCEPTED = http.ACCEPTED
     NO_CONTENT = http.NO_CONTENT
+    MOVED_PERMANENTLY = http.MOVED_PERMANENTLY
     BAD_REQUEST = http.BAD_REQUEST
     UNAUTHORIZED = http.UNAUTHORIZED
     FORBIDDEN = http.FORBIDDEN
@@ -161,6 +162,15 @@ class ServiceUnavailableError(HTTPError):
     default_status_code = Status.SERVICE_UNAVAILABLE
 
 
+class MovedPermanently(HTTPError):
+    default_error_name = "Service Moved Permanently"
+    default_status_code = Status.MOVED_PERMANENTLY
+
+    def __init__(self, *args, **kwargs):
+        self.location = kwargs.pop("location", None)
+        HTTPError.__init__(self, *args, **kwargs)
+
+
 ### Interfaces ###
 
 
@@ -260,6 +270,23 @@ def parse(url, default_port=None, default_https_port=None):
     if path == "":
         path = "/"
     return scheme, host, port, path, query
+
+
+def compose(path, host=None, port=None, scheme=None):
+    if host is None:
+        # Relative url
+        return path
+
+    result = []
+    result.append(scheme or "http")
+    result.append("://")
+    result.append(str(host))
+    if port and port != 80:
+        result.append(":")
+        result.append(str(port))
+    result.append(path)
+
+    return "".join(result)
 
 
 def mime2tuple(mime):

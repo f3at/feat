@@ -1,4 +1,5 @@
 from cStringIO import StringIO
+import sys
 import time
 
 from zope.interface import Interface, Attribute, implements
@@ -74,7 +75,7 @@ class IWebResource(Interface):
         May raise or fire a WebError with an error code.
         """
 
-    def render_error(error, request, response):
+    def render_error(request, response, error):
         """
         Render an error.
         Can return a Deferred
@@ -295,8 +296,9 @@ class ResourceMixin(object):
 
         return handler(request, response, location)
 
-    def render_error(self, error, request, response):
-        pass
+    def render_error(self, request, response, error):
+        #FIXME: doing so destroy the original stack trace
+        return error
 
 
 class LeafResourceMixin(ResourceMixin):
@@ -305,7 +307,7 @@ class LeafResourceMixin(ResourceMixin):
 
     def locate_resource(self, request, location, remaining):
         if remaining and (remaining != (u'', )):
-            raise http.NotFoundError()
+            return None
         return self
 
 
@@ -336,6 +338,9 @@ class BasicResource(BaseResource):
     def locate_resource(self, request, location, remaining):
         if not remaining or remaining == (u'', ):
             return self
+        return self.locate_child(request, location, remaining)
+
+    def locate_child(self, request, location, remaining):
         next = remaining[0]
         if next in self._childs:
             return self._childs[next], remaining[1:]
@@ -362,7 +367,7 @@ class Server(log.FluLogKeeper, log.Logger):
 
         self._listener = None
 
-    def initialize(self):
+    def initiate(self):
         assert self._listener is None
         self.info("Initializing HTTP server...")
         site = server.Site(RootResourceWrapper(self))
@@ -749,7 +754,7 @@ class Server(log.FluLogKeeper, log.Logger):
             # Error has been resolved
             return self._terminate(request, response)
 
-        return self._render_error(error, request, response, resource)
+        return self._render_error(request, response, resource, error)
 
     def _prepare_error(self, exception, request, response):
         if isinstance(exception, http.NotAuthorizedError):
@@ -783,6 +788,13 @@ class Server(log.FluLogKeeper, log.Logger):
                 response.set_header('Allow', value)
                 response.set_status(http.Status.NOT_ALLOWED)
 
+        elif isinstance(exception, http.MovedPermanently):
+
+            if response.can_update_headers:
+                response.set_header('Location', exception.location)
+                response.set_status(http.Status.MOVED_PERMANENTLY)
+                return None
+
         elif isinstance(exception, http.HTTPError):
 
             if response.can_update_headers:
@@ -812,14 +824,14 @@ class Server(log.FluLogKeeper, log.Logger):
 
         return exception
 
-    def _render_error(self, error, request, response, resource):
+    def _render_error(self, request, response, resource, error):
         if response.has_started_writing:
             # Nothing we can do now
             return self._terminate(request, response)
 
         response._try_reset()
 
-        d = resource.render_error(error, request, response)
+        d = resource.render_error(request, response, error)
 
         if isinstance(d, defer.Deferred):
             d.addCallback(self._error_rendered, request, response, error)
@@ -828,6 +840,14 @@ class Server(log.FluLogKeeper, log.Logger):
         return self._error_rendered(d, request, response, error)
 
     def _error_rendered(self, data, request, response, error):
+        if data is error:
+            # Trying to keep the backtrace
+            exc_info = sys.exc_info()
+            if exc_info and exc_info[0]:
+                raise exc_info[0], exc_info[1], exc_info[2]
+            else:
+                raise error
+
         if not response.has_started_writing:
             d = self._write_data(data, response)
             if isinstance(d, defer.Deferred):

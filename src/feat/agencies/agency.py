@@ -884,6 +884,8 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._messaging = None
         self._hostname = None
 
+        self._agency_id = str(uuid.uuid1())
+
     ### Public Methods ###
 
     def initiate(self, messaging, database, journaler):
@@ -897,6 +899,27 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._journaler = IJournaler(journaler)
         self._jourconn = self._journaler.get_connection(self)
         return defer.succeed(self)
+
+    @property
+    def agency_id(self):
+        return self._agency_id
+
+    def iter_agents(self):
+        return iter(self._agents)
+
+    def iter_agencies(self):
+        return iter([self])
+
+    def get_agency(self, agency_id):
+        if agency_id == self.agency_id:
+            return self
+        return None
+
+    def get_agent(self, agent_id):
+        for agent in self._agents:
+            if agent.get_agent_id() == agent_id:
+                return agent
+        return None
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):

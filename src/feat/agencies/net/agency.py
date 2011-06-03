@@ -2,7 +2,6 @@ import optparse
 import re
 
 from twisted.internet import reactor
-from zope.interface import implements
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
@@ -109,8 +108,6 @@ def check_options(opts, args):
 
 class Agency(agency.Agency):
 
-    implements(gateway.IResolver)
-
     @classmethod
     def from_config(cls, env, options=None):
         agency = cls()
@@ -177,6 +174,22 @@ class Agency(agency.Agency):
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
+
+    ### public ###
+
+    @property
+    def role(self):
+        return self._broker.state
+
+    @manhole.expose()
+    def locate_agency(self, agency_id):
+        return defer.succeed(None)
+
+    @manhole.expose()
+    def locate_agent(self, agent_id):
+        '''locate_agent(agent_id): Return (host, port, should_redirect) tuple.
+        '''
+        return defer.succeed(None)
 
     def on_become_master(self):
         self._ssh.start_listening()
@@ -276,18 +289,6 @@ class Agency(agency.Agency):
         p.restart()
 
         return d
-
-    ### gateway.IResolver ###
-
-    @manhole.expose()
-    @defer.inlineCallbacks
-    def resolve(self, recp):
-        '''resolve(recp): Return (host, port, should_redirect) tuple.
-        '''
-        agent_id = recipient.IRecipinet(recp).key
-        found = self.find_agent(agent_id)
-        if found is agency.AgencyAgent:
-            pass
 
     ### Manhole inspection methods ###
 
@@ -443,7 +444,7 @@ class Agency(agency.Agency):
         def startit(_):
             self.info("Starting slave gateway")
             self._gateway = gateway.Gateway(self, 0)
-            return self._gateway.initialise()
+            return self._gateway.initiate()
 
         d = self._stop_gateway()
         d.addCallback(startit)
@@ -454,7 +455,7 @@ class Agency(agency.Agency):
         def startit(_):
             self.info("Starting master gateway on port %d", port)
             self._gateway = gateway.Gateway(self, port)
-            return self._gateway.initialise()
+            return self._gateway.initiate()
 
         d = self._stop_gateway()
         d.addCallback(startit)

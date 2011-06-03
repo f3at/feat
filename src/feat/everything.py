@@ -17,3 +17,6 @@ from feat.common.serialization import adapters
 
 # Internal imports for agency
 from feat.agencies import contracts, requests, tasks, notifications
+
+# Imports for gateway
+from feat.gateway import adapters

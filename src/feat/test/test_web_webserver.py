@@ -305,9 +305,9 @@ class DummyResource(webserver.BasicResource, DelayableMixin):
         return self.call(self._render_delay, self.do_render_resource,
                          request, response, location)
 
-    def render_error(self, error, request, response):
+    def render_error(self, request, response, error):
         return self.call(self._error_delay, self.do_render_error,
-                         error, request, response)
+                         request, response, error)
 
     def do_locate_resource(self, req, loc, rem):
         if self._locate_error is not None:
@@ -321,7 +321,7 @@ class DummyResource(webserver.BasicResource, DelayableMixin):
             raise self._render_error
         return self._render_content
 
-    def do_render_error(self, error, request, response):
+    def do_render_error(self, request, response, error):
         if self._error_status is not None:
             response.set_status(self._error_status)
         if self._error_error is not None:
@@ -394,7 +394,8 @@ class TestWebServer(common.TestCase):
               is_async=None, status=None, content=None,
               mime=None, encoding=None, language=None,
               allowed_encodings=None, allowed_languages=None,
-              allowed_methods=None, www_auth=None):
+              allowed_methods=None, www_auth=None,
+              location=None):
 
         def not_expected(failure):
             self.fail("Request should not fail")
@@ -439,6 +440,10 @@ class TestWebServer(common.TestCase):
                 self.assertTrue("www-authenticate" in request.response_headers)
                 header = request.response_headers["www-authenticate"]
                 self.assertEqual(header, www_auth)
+            if location is not None:
+                self.assertTrue("location" in request.response_headers)
+                header = request.response_headers["location"]
+                self.assertEqual(header, location)
 
         request = DummyPrivateRequest(uri)
 
@@ -490,6 +495,7 @@ class TestWebServer(common.TestCase):
     def testSyncLocateSyncRender(self):
         yield self.check_good_values(self.check_sync)
         yield self.check_not_found(self.check_sync)
+        yield self.check_moved(self.check_sync)
         yield self.check_errors(self.check_sync)
         yield self.check_authentication(self.check_sync)
         yield self.check_authentication_errors(self.check_sync)
@@ -521,6 +527,7 @@ class TestWebServer(common.TestCase):
     def testSyncLocateAsyncRender(self):
         yield self.check_good_values(self.check_async)
         yield self.check_not_found(self.check_sync)
+        yield self.check_moved(self.check_sync)
         yield self.check_errors(self.check_async)
         yield self.check_authentication(self.check_async)
         yield self.check_authentication_errors(self.check_sync)
@@ -532,6 +539,7 @@ class TestWebServer(common.TestCase):
     def testAsyncLocateSyncRender(self):
         yield self.check_good_values(self.check_async)
         yield self.check_not_found(self.check_async)
+        yield self.check_moved(self.check_async)
         yield self.check_errors(self.check_async)
         yield self.check_authentication(self.check_async)
         yield self.check_authentication_errors(self.check_async)
@@ -543,6 +551,7 @@ class TestWebServer(common.TestCase):
     def testAsyncLocateAsyncRender(self):
         yield self.check_good_values(self.check_async)
         yield self.check_not_found(self.check_async)
+        yield self.check_moved(self.check_async)
         yield self.check_errors(self.check_async)
         yield self.check_authentication(self.check_async)
         yield self.check_authentication_errors(self.check_async)
@@ -554,6 +563,7 @@ class TestWebServer(common.TestCase):
     def testFullAsync(self):
         yield self.check_good_values(self.check_async)
         yield self.check_not_found(self.check_async)
+        yield self.check_moved(self.check_async)
         yield self.check_errors(self.check_async)
         yield self.check_authentication(self.check_async)
         yield self.check_authentication_errors(self.check_async)
@@ -566,6 +576,7 @@ class TestWebServer(common.TestCase):
     def testMixedAsync(self):
         yield self.check_good_values(self.check_any)
         yield self.check_not_found(self.check_any)
+        yield self.check_moved(self.check_any)
         yield self.check_errors(self.check_any)
         yield self.check_authentication(self.check_any)
         yield self.check_authentication_errors(self.check_any)
@@ -724,6 +735,16 @@ class TestWebServer(common.TestCase):
         yield checker("/bad/locate/overridden/dummy", IE, "OVERRIDDEN")
         yield checker("/bad/locate/overridden/dummy/", IE, "OVERRIDDEN")
 
+    def check_moved(self, checker):
+        MP = http.Status.MOVED_PERMANENTLY
+
+        yield self.check_sync("/bad/locate/moved/", MP, "",
+                              location="http://localhost/dummy")
+        yield self.check_sync("/bad/locate/moved/away", MP, "",
+                              location="http://localhost/dummy")
+        yield self.check_sync("/bad/locate/moved/away/", MP, "",
+                              location="http://localhost/dummy")
+
     @defer.inlineCallbacks
     def check_errors(self, checker):
         OK = http.Status.OK
@@ -733,6 +754,7 @@ class TestWebServer(common.TestCase):
         NI = http.Status.NOT_IMPLEMENTED
         IE = http.Status.INTERNAL_SERVER_ERROR
         GO = http.Status.GONE
+        MP = http.Status.MOVED_PERMANENTLY
 
         yield checker("/bad/locate", OK, "LOCATE")
         yield checker("/bad/locate/", OK, "LOCATE")
@@ -740,6 +762,7 @@ class TestWebServer(common.TestCase):
         # locate is raising the error so the resource on itself is good
         yield checker("/bad/locate/not_found", OK, "SHOULD WORK")
         yield checker("/bad/locate/overridden", OK, "SHOULD WORK")
+        yield checker("/bad/locate/moved", OK, "MOVED")
 
         yield checker("/bad/render", OK, "RENDER")
         yield checker("/bad/render/", OK, "RENDER")
@@ -888,6 +911,11 @@ class TestWebServer(common.TestCase):
                             locate_error=error,
                             error_content="OVERRIDDEN", **extra)
         locate["overridden"] = lov
+
+        error = http.MovedPermanently(location="http://localhost/dummy")
+        lmp = DummyResource(render_content="MOVED",
+                            locate_error=error, **extra)
+        locate["moved"] = lmp
 
         rnf = DummyResource(render_error=http.NotFoundError(), **extra)
 
