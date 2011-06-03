@@ -907,9 +907,6 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     def iter_agents(self):
         return iter(self._agents)
 
-    def iter_agencies(self):
-        return iter([self])
-
     def get_agency(self, agency_id):
         if agency_id == self.agency_id:
             return self

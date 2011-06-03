@@ -339,23 +339,27 @@ class Agency(agency.Agency):
         pb refrence of the agent if this agency hosts it.'''
         return self._broker.find_agent(agent_id)
 
+    def iter_agency_ids(self):
+        return self._broker.iter_agency_ids()
+
     @manhole.expose()
     @defer.inlineCallbacks
     def list_slaves(self):
         '''list_slaves() -> Print information about the slave agencies.'''
         slaves = list(self._broker.iter_slaves())
         resp = []
-        for slave, i in zip(slaves, range(len(slaves))):
-            resp += ["#### Slave %d ####" % i]
+        for slave_id, slave in self._broker.slaves.iteritems():
+            resp += ["#### Slave %s ####" % slave_id]
             table = yield slave.callRemote('list_agents')
             resp += [table]
             resp += []
         defer.returnValue("\n".join(resp))
 
     @manhole.expose()
-    def get_nth_slave(self, n):
-        '''get_nth_slave(n) -> Give the reference to the nth slave agency.'''
-        return self._broker.slaves[n]
+    def get_slave(self, slave_id):
+        '''get_slave(slave_id) -> Give the reference to the nth slave
+        agency.'''
+        return self._broker.slaves[slave_id]
 
     # Config manipulation (standalone agencies receive the configuration
     # in the environment).
