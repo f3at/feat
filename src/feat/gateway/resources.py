@@ -58,18 +58,17 @@ class Agencies(BaseResource):
         agency = self.model.get_agency(agency_id)
         if agency is not None:
             return Agency(agency), remaining[1:]
+
+        # Only the master agency knows the other ones
+        self._ensure_master(request)
+
         d = self.model.locate_agency(agency_id)
         d.addCallback(self._agency_located, request, location, remaining)
         return d
 
     def render_resource(self, request, response, location):
         # Only the master agency knows the other ones
-        result = self.model.locate_master()
-        if result is not None:
-            host, port, is_remote = result
-            if is_remote:
-                url = http.compose(request.path, host=host, port=port)
-                raise http.MovedPermanently(location=url)
+        self._ensure_master(request)
 
         # Force mime-type to html
         response.set_mime_type("text/html")
@@ -91,6 +90,14 @@ class Agencies(BaseResource):
         response.writelines(doc)
 
     ### private ###
+
+    def _ensure_master(self, request):
+        result = self.model.locate_master()
+        if result is not None:
+            host, port, is_remote = result
+            if is_remote:
+                url = http.compose(request.path, host=host, port=port)
+                raise http.MovedPermanently(location=url)
 
     def _agency_located(self, result, request, location, remaining):
         if result is None:

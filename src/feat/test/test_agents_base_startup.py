@@ -14,6 +14,11 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
+class DummyException(Exception):
+    pass
+
+
+
 @agent.register('startup-test')
 class DummyAgent(agent.BaseAgent, common.Mock):
 
@@ -33,7 +38,7 @@ class DummyAgent(agent.BaseAgent, common.Mock):
     @common.Mock.record
     def startup(self):
         if self.startup_fail:
-            raise BaseException('')
+            raise DummyException('')
         return self._started_defer
 
     @common.Mock.stub

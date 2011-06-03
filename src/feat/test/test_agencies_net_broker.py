@@ -41,15 +41,15 @@ class BrokerTest(common.TestCase):
         self.assert_role(master, broker.BrokerRole.disconnected)
 
     @defer.inlineCallbacks
-    def testIterSlaves(self):
+    def testIterAgencyIds(self):
         for x in self.brokers:
             yield x.initiate_broker()
-        mas = list(self.brokers[0].iter_slaves())
+        mas = list(self.brokers[0].iter_agency_ids())
         self.assertEqual(3, len(mas))
         self.assert_role(self.brokers[1], broker.BrokerRole.slave)
-        sla = list(self.brokers[1].iter_slaves())
+        sla = list(self.brokers[1].iter_agency_ids())
         self.assertEqual(1, len(sla))
-        sla = list(self.brokers[2].iter_slaves())
+        sla = list(self.brokers[2].iter_agency_ids())
         self.assertEqual(1, len(sla))
 
     @defer.inlineCallbacks

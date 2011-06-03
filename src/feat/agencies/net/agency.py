@@ -21,6 +21,7 @@ from feat.agencies.net import database
 from feat.interface.agent import *
 from feat.interface.agency import *
 from feat.agencies.interface import *
+from feat.agencies.net.broker import BrokerRole
 
 
 DEFAULT_SOCKET_PATH = None # Use broker default
@@ -157,9 +158,11 @@ class Agency(agency.Agency):
         # this is default mode for the dependency modules
         self._set_default_mode(ExecMode.production)
 
-    @property
-    def gateway_port(self):
+    @manhole.expose()
+    def get_gateway_port(self):
         return self._gateway and self._gateway.port
+
+    gateway_port = property(get_gateway_port)
 
     def initiate(self):
         mesg = messaging.Messaging(
@@ -196,10 +199,23 @@ class Agency(agency.Agency):
         return self._broker.state
 
     def locate_master(self):
-        return None
+        return (self.get_hostname(), self.config["gateway"]["port"],
+                self._broker.state != BrokerRole.master)
 
-    @manhole.expose()
     def locate_agency(self, agency_id):
+
+        def pack_result(port, remote):
+            return self.get_hostname(), port, remote
+
+        if agency_id == self.agency_id:
+            return defer.succeed(pack_result(self.gateway_port, False))
+
+        for slave_id, slave in self._broker.slaves.iteritems():
+            if slave_id == agency_id:
+                d = slave.callRemote('get_gateway_port')
+                d.addCallback(pack_result, True)
+                return d
+
         return defer.succeed(None)
 
     def on_become_master(self):

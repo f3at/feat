@@ -68,4 +68,9 @@ Merging notes
    should inherit from agent.BasePartner. partners.Partners and
    partners.BasePartner SHOULD NOT BE USED ANYMORE.
 
-5. BE SURE to call initiate_partners inside your agent initate method.
+5. BE SURE to call initiate_partners inside your agent initiate method.
+
+6. A first basic version of REST API for the agent cluster has been added.
+   To use it just connect to the port 7777 of a machine running feat with
+   a web browser. For now it only shows basic information but navigation
+   between agencies is already supported.

@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from twisted.internet import defer
-
 from feat.agents.base import (descriptor, replay, task)
 from feat.agencies.tasks import TaskState, NOT_DONE_YET
-from feat.common import serialization
+from feat.common import defer
 from feat.interface import protocols
 
 from feat.test import common
@@ -59,6 +57,10 @@ class TimeoutTask(BaseTestTask):
         return d
 
 
+class DummyException(Exception):
+    pass
+
+
 class ErrorTask(BaseTestTask):
 
     protocol_id = 'error-task'
@@ -68,7 +70,7 @@ class ErrorTask(BaseTestTask):
 
     @common.Mock.record
     def initiate(self):
-        raise BaseException('ErrorTask')
+        raise DummyException('ErrorTask')
 
 
 class SuccessTask(BaseTestTask):
@@ -126,7 +128,7 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
         d = self.cb_after(arg=None, obj=self.agent,
                           method="unregister_protocol")
         d.addCallback(self.assertState, TaskState.error)
-        self.assertFailure(self.finished, BaseException)
+        self.assertFailure(self.finished, DummyException)
         return d
 
     def testInitiateSuccess(self):
@@ -154,7 +156,7 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         yield self.cb_after(None, self.agent, 'initiate_protocol')
         self.assertEqual(task.attempt, task.max_retries+1)
-        self.assertFailure(self.finished, BaseException)
+        self.assertFailure(self.finished, DummyException)
 
     @defer.inlineCallbacks
     def testAsyncTasks(self):
