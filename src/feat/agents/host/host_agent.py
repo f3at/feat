@@ -9,7 +9,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               problem, task, )
 from feat.agents.common import rpc
 from feat.agents.common import shard as common_shard
-from feat.agents.common.host import check_categories
+from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
@@ -559,15 +559,6 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _get_cost(self, state, bid):
         bid.payload['cost'] = 0
         return bid
-
-
-@descriptor.register("host_agent")
-class Descriptor(descriptor.Descriptor):
-
-    # Hostname of the machine, updated when an agent is started
-    document.field('hostname', None)
-    # Range used for allocating new ports
-    document.field('port_range', (5000, 5999, ))
 
 
 class StartAgentReplier(replier.BaseReplier):

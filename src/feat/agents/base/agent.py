@@ -49,6 +49,7 @@ def update_descriptor(function):
     return decorated
 
 
+@serialization.register
 class BasePartner(partners.BasePartner):
     pass
 

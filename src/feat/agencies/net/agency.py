@@ -2,20 +2,25 @@ import optparse
 import re
 
 from twisted.internet import reactor
+from zope.interface import implements
+from twisted.spread import pb
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
 from feat.common import manhole, defer, time
-from feat.interface import agent
-from feat.interface.agency import ExecMode
 from feat.process import standalone
 from feat.common.serialization import json
 from feat.gateway import gateway
+from feat.utils import locate
 
 from feat.agencies.net import messaging
 from feat.agencies.net import database
+
+from feat.interface.agent import *
+from feat.interface.agency import *
+from feat.agencies.interface import *
 
 
 DEFAULT_SOCKET_PATH = None # Use broker default
@@ -106,7 +111,16 @@ def check_options(opts, args):
     return opts, args
 
 
+class AgencyAgent(agency.AgencyAgent):
+
+    @manhole.expose()
+    def get_gateway_port(self):
+        return self.agency.gateway_port
+
+
 class Agency(agency.Agency):
+
+    agency_agent_factory = AgencyAgent
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -185,12 +199,6 @@ class Agency(agency.Agency):
     def locate_agency(self, agency_id):
         return defer.succeed(None)
 
-    @manhole.expose()
-    def locate_agent(self, agent_id):
-        '''locate_agent(agent_id): Return (host, port, should_redirect) tuple.
-        '''
-        return defer.succeed(None)
-
     def on_become_master(self):
         self._ssh.start_listening()
         self._journal_writer = journaler.SqliteWriter(
@@ -263,7 +271,7 @@ class Agency(agency.Agency):
         """
         This method will be run only on the master agency.
         """
-        factory = agent.IAgentFactory(
+        factory = IAgentFactory(
             registry_lookup(descriptor.document_type))
         if factory.standalone:
             return self.start_standalone_agent(descriptor, factory,
@@ -289,6 +297,35 @@ class Agency(agency.Agency):
         p.restart()
 
         return d
+
+    @manhole.expose()
+    @defer.inlineCallbacks
+    def locate_agent(self, recp):
+        '''locate_agent(recp): Return (host, port, should_redirect) tuple.
+        '''
+        if recipient.IRecipient.providedBy(recp):
+            agent_id = recp.key
+        else:
+            agent_id = recp
+        self.info('Looking for %r', agent_id)
+        found = yield self.find_agent(agent_id)
+        self.info('Found result %r', found)
+        if isinstance(found, agency.AgencyAgent):
+            host = self.get_hostname()
+            port = self.gateway_port
+            defer.returnValue((host, port, False, ))
+        elif isinstance(found, pb.RemoteReference):
+            host = self.get_hostname()
+            port = yield found.callRemote('get_gateway_port')
+            defer.returnValue((host, port, True, ))
+        else: # None
+            db = self._database.get_connection()
+            host = yield locate.locate(db, agent_id)
+            port = self.config["gateway"]["port"]
+            if host is None:
+                defer.returnValue(None)
+            else:
+                defer.returnValue((host, port, True, ))
 
     ### Manhole inspection methods ###
 

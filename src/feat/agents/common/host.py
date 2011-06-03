@@ -1,4 +1,5 @@
-from feat.agents.base import requester, replay, message, document, manager
+from feat.agents.base import (requester, replay, message, document,
+                              manager, descriptor, )
 from feat.common import fiber, serialization
 
 from feat.interface.recipient import IRecipient
@@ -6,7 +7,7 @@ from feat.interface.agent import Access, Address, Storage
 
 
 __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
-           'HostDef', 'NoHostFound']
+           'HostDef', 'NoHostFound', 'Descriptor']
 
 
 class NoHostFound(Exception):
@@ -120,3 +121,12 @@ class StartAgentRequester(requester.BaseRequester):
 
     def got_reply(self, reply):
         return reply.payload['agent']
+
+
+@descriptor.register("host_agent")
+class Descriptor(descriptor.Descriptor):
+
+    # Hostname of the machine, updated when an agent is started
+    document.field('hostname', None)
+    # Range used for allocating new ports
+    document.field('port_range', (5000, 5999, ))
