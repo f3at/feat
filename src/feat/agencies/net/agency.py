@@ -195,6 +195,9 @@ class Agency(agency.Agency):
     def role(self):
         return self._broker.state
 
+    def locate_master(self):
+        return None
+
     @manhole.expose()
     def locate_agency(self, agency_id):
         return defer.succeed(None)

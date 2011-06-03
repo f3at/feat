@@ -7,6 +7,10 @@ class IModel(Interface):
 
 class IRoot(IModel):
 
+    def locate_master(self):
+        """Returns a tuple with host, port
+        and if redirection is needed or None"""
+
     def iter_agents():
         """Iterates over the known agents."""
 
@@ -50,3 +54,11 @@ class IAgent(IModel):
 
     def iter_resources():
         """Iterates over agent's resources."""
+
+
+class IPartner(IModel):
+
+    partner_type = Attribute("Partner's type")
+    agent_id = Attribute("Partner's agent identifier")
+    shard_id = Attribute("Partner's shard identifier")
+    role = Attribute("Partner's role")

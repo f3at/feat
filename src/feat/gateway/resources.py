@@ -1,9 +1,16 @@
+import cgi
+
 from feat.gateway import models
 from feat.web import http, webserver
 
 
 class BaseResource(webserver.BasicResource):
-    pass
+
+    def create_url(self, request, child):
+        base = request.path
+        if base[-1] == "/":
+            return base + child
+        return base + "/" + child
 
 
 class Root(BaseResource):
@@ -17,11 +24,17 @@ class Root(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
-        return ("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                "<H1>F3EAT Gateway</H1><UL>"
-                "<LI><H2><A href='agencies'>Agencies</A></H2></LI>"
-                "<LI><H2><A href='agents'>Agents</A></H2></LI>"
-                "</UL></BODY></HTML>")
+
+        agencies_url = self.create_url(request, "agencies")
+        agents_url = self.create_url(request, "agents")
+
+        doc = ["<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
+                "<H2>F3EAT Gateway</H2><UL>"
+                "<LI><H2><A href='", agencies_url, "'>Agencies</A></H2></LI>"
+                "<LI><H2><A href='", agents_url, "'>Agents</A></H2></LI>"
+                "</UL></BODY></HTML>"]
+
+        response.writelines(doc)
 
     def render_error(self, request, response, e):
         response.set_mime_type("text/html")
@@ -50,28 +63,39 @@ class Agencies(BaseResource):
         return d
 
     def render_resource(self, request, response, location):
+        # Only the master agency knows the other ones
+        result = self.model.locate_master()
+        if result is not None:
+            host, port, is_remote = result
+            if is_remote:
+                url = http.compose(request.path, host=host, port=port)
+                raise http.MovedPermanently(location=url)
+
         # Force mime-type to html
         response.set_mime_type("text/html")
-        response.write("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>")
-        response.write("<H1>Agencies</H1><TABLE border='1'>")
-        response.write("<TR><TH>Identifier</TH><TH>Role</TH></TR>")
-        for agency in self.model.iter_agencies():
-            agency_model = models.IAgency(agency)
-            response.write("<TR><TD><A href='agencies/")
-            response.write(agency_model.agency_id)
-            response.write("'>")
-            response.write(agency_model.agency_id)
-            response.write("</TD><TD>")
-            response.write(agency.role.name)
-            response.write("</TD></TR>")
-        response.write("</TABLE></BODY></HTML>")
+
+        doc = ["<HTML><HEAD>"
+               "<TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
+               "<H2>Agencies</H2>"
+               "<TABLE border='0'>"]
+
+        for agency_id in self.model.iter_agency_ids():
+            agency_url = self.create_url(request, agency_id)
+            doc.extend(["<TR><TD><A href='", agency_url, "'>",
+                        agency_id, "</A>"
+                        "</TD></TR>"])
+
+        doc.extend(["</TABLE>"
+                    "</BODY></HTML>"])
+
+        response.writelines(doc)
 
     ### private ###
 
     def _agency_located(self, result, request, location, remaining):
         if result is None:
             return None
-        host, port, _is_local = result
+        host, port, _is_remote = result
         url = http.compose(request.path, host=host, port=port)
         raise http.MovedPermanently(location=url)
 
@@ -94,29 +118,37 @@ class Agents(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
-        response.write("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>")
-        response.write("<H1>Agents</H1><TABLE border='1'>")
-        response.write("<TR><TH>Identifier</TH>")
-        response.write("<TH>Instance</TH><TH>Type</TH></TR>")
+
+        doc = ["<HTML><HEAD>",
+               "<TITLE>F3AT Gateway</TITLE>",
+               "</HEAD><BODY>",
+               "<H2>Agents</H2>",
+               "<TABLE border='1'>",
+               "<TR><TH>Identifier</TH><TH>Instance</TH><TH>Type</TH></TR>"]
+
         for agent in self.model.iter_agents():
             agent_model = models.IAgent(agent)
-            response.write("<TR><TD><A href='agents/")
-            response.write(agent_model.agent_id)
-            response.write("'>")
-            response.write(agent_model.agent_id)
-            response.write("</TD><TD>")
-            response.write(str(agent_model.instance_id))
-            response.write("</TD><TD>")
-            response.write(agent_model.agent_type)
-            response.write("</TD></TR>")
-        response.write("</TABLE></BODY></HTML>")
+            agent_url = self.create_url(request, agent_model.agent_id)
+            doc.extend(["<TR><TD><A href='", agent_url, "'>",
+                        agent_model.agent_id, "</A>",
+                        "</TD><TD>",
+                        str(agent_model.instance_id),
+                        "</TD><TD>",
+                        agent_model.agent_type,
+                        "</TD></TR>"])
+
+        doc.extend(["</TABLE>"
+                    "</BODY></HTML>"])
+
+        response.writelines(doc)
+
 
     ### private ###
 
     def _agent_located(self, result, request, location, remaining):
         if result is None:
             return None
-        host, port, _is_local = result
+        host, port, _is_remote = result
         url = http.compose(request.path, host=host, port=port)
         raise http.MovedPermanently(location=url)
 
@@ -130,13 +162,62 @@ class Agency(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
-        response.write("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>")
-        response.write("<H1>Agency ")
-        response.write(self.model.agency_id)
-        response.write("</H1></BODY></HTML>")
+
+        agent_url = self.create_url(request, self.model.agency_id)
+
+        doc = ["<HTML><HEAD>",
+               "<TITLE>F3AT Gateway</TITLE>",
+               "</HEAD><BODY>",
+               "<H2>Agency</H2>",
+               "<TABLE>",
+               "<TR><TD><B>Identifier:</B></TD><TD>",
+               self.model.agency_id,
+               "</TD></TR>",
+               "<TR><TD><B>Role:</B></TD><TD>",
+               self.model.role.name,
+               "</TD></TR>",
+               "</TABLE>",
+               "</BODY></HTML>"]
+
+        response.writelines(doc)
 
 
 class Agent(BaseResource):
+
+    def __init__(self, model):
+        BaseResource.__init__(self)
+        self.model = models.IAgent(model)
+        self["partners"] = Partners(model)
+
+    def render_resource(self, request, response, location):
+        # Force mime-type to html
+        response.set_mime_type("text/html")
+
+        partners_url = self.create_url(request, "partners")
+
+        doc = ["<HTML><HEAD>",
+               "<TITLE>F3AT Gateway</TITLE>",
+               "</HEAD><BODY>",
+               "<H2>Agent</H2>",
+               "<TABLE>",
+               "<TR><TD><B>Agent Type:</B></TD><TD>",
+               self.model.agent_type,
+               "</TD></TR>",
+               "<TR><TD><B>Agent Id:</B></TD><TD>",
+               self.model.agent_id,
+               "</TD></TR>",
+               "<TR><TD><B>Instance Id:</B></TD><TD>",
+               str(self.model.instance_id),
+               "</TD></TR>",
+               "</TABLE>",
+               "<UL>",
+               "<LI><H4><A href='", partners_url, "'>Partners</A></H4></LI>"
+               "</BODY></HTML>"]
+
+        response.writelines(doc)
+
+
+class Partners(BaseResource):
 
     def __init__(self, model):
         BaseResource.__init__(self)
@@ -145,9 +226,28 @@ class Agent(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
-        response.write("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>")
-        response.write("<H1>Agent ")
-        response.write(self.model.agent_id)
-        response.write(" ")
-        response.write(self.model.agent_type)
-        response.write("</H1></BODY></HTML>")
+
+        doc = ["<HTML><HEAD>",
+               "<TITLE>F3AT Gateway</TITLE>",
+               "</HEAD><BODY>",
+               "<H2>Partners</H2>",
+               "<TABLE>",
+               "<TR><TH>Relation</TH><TH>Role</TH>"
+               "<TH>Agent Id</TH><TH>Shard Id</TH></TR>"]
+
+        for partner in self.model.iter_partners():
+            partner_model = models.IPartner(partner)
+            agent_url = "/agents/" + partner_model.agent_id
+            partner_type = cgi.escape(partner_model.partner_type)
+            doc.extend(["<TR>",
+                        "<TD>", partner_type, "</TD>",
+                        "<TD>", str(partner_model.role), "</TD>",
+                        "<TD><A href='", agent_url, "'>",
+                        partner_model.agent_id, "</A></TD>",
+                        "<TD>", partner_model.shard_id, "</TD>",
+                        "</TR>"])
+
+        doc.extend(["</TABLE>",
+                    "</BODY></HTML>"])
+
+        response.writelines(doc)
