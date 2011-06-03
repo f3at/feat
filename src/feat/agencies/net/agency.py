@@ -307,9 +307,7 @@ class Agency(agency.Agency):
             agent_id = recp.key
         else:
             agent_id = recp
-        self.info('Looking for %r', agent_id)
         found = yield self.find_agent(agent_id)
-        self.info('Found result %r', found)
         if isinstance(found, agency.AgencyAgent):
             host = self.get_hostname()
             port = self.gateway_port
