@@ -695,7 +695,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             save_d.addCallbacks(callback=saved, callbackArgs=(result, d),
                                 errback=error, errbackArgs=(d, ))
             save_d.addBoth(next_update)
-        except:
+        except Exception:
             d.errback()
             next_update()
 

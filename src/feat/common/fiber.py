@@ -114,7 +114,7 @@ def wrap_defer(_method, *args, **kwargs):
 def maybe_fiber(_function, *args, **kwargs):
     try:
         result = _function(*args, **kwargs)
-    except:
+    except Exception:
         return defer.fail(failure.Failure())
     else:
         if IFiber.providedBy(result):
@@ -572,7 +572,7 @@ class Fiber(object):
         section.enter()
         try:
             result = callback(param, *args, **kwargs)
-        except:
+        except Exception:
             section.abort()
             raise
         else:

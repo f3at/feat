@@ -515,7 +515,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                         connection, data['agent_id'], data['instance_id'])
                     do_insert(connection, history_id, data)
                 cache.commit()
-            except:
+            except Exception:
                 cache.rollback()
                 raise
 

@@ -89,7 +89,7 @@ def maybeDeferred(f, *args, **kw):
     """
     try:
         result = f(*args, **kw)
-    except:
+    except Exception:
         return fail(failure.Failure())
 
     if IFiber.providedBy(result):
