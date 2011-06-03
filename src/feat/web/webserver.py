@@ -848,7 +848,7 @@ class Server(log.FluLogKeeper, log.Logger):
             else:
                 raise error
 
-        if not response.has_started_writing:
+        if data and not response.has_started_writing:
             d = self._write_data(data, response)
             if isinstance(d, defer.Deferred):
                 d.addCallback(defer.drop_param,
@@ -1502,7 +1502,7 @@ class RootResourceWrapper(log.Logger):
         raise http.NotImplementedError()
 
     def render(self, priv_request):
-        self._server._process_request(priv_request)
+        return self._server._process_request(priv_request)
 
 
 ### private ###

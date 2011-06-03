@@ -19,7 +19,7 @@ class IRoot(IModel):
     def locate_agency(agency_id):
         """Locate an agency form its identifier.
         Returns a deferred fired with a tuple of host name,
-        port and if the agency is local, or None if not located."""
+        port and if redirect is needed, or None if not located."""
 
     def get_agent(agent_id):
         """Returns an agent medium or None."""
@@ -27,7 +27,7 @@ class IRoot(IModel):
     def locate_agent(agent_id):
         """Locate an agent form its identifier.
         Returns a deferred fired with a tuple of host name,
-        port and if the agent is local, or None if not located."""
+        port and if redirect is needed, or None if not located."""
 
 
 class IAgency(IModel):

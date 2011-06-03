@@ -30,4 +30,4 @@ class Gateway(log.FluLogKeeper, log.Logger):
 
     @property
     def port(self):
-        return self._port
+        return self._server.port
