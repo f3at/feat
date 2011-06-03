@@ -1,12 +1,11 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import time
 import uuid
 
 from twisted.internet import reactor
 from zope.interface import implements
 
-from feat.common import log, container, defer
+from feat.common import log, container, defer, time
 from feat.common.serialization import json
 from feat.agents.base import document
 

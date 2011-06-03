@@ -272,6 +272,7 @@ class TestCase(object):
         return check
 
 
+@common.attr(timescale=0.01)
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
