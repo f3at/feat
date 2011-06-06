@@ -33,6 +33,36 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     # Public API
 
     @replay.immutable
+    def get_usage(self, state):
+
+        def update(d, delta):
+            for k, v in delta.iteritems():
+                if k not in d:
+                    d[k] = v
+                else:
+                    d[k] += v
+
+        # Compute current deltas per resources
+        deltas = {}
+        for alloc in state.modifications.itervalues():
+            if isinstance(alloc, Allocation):
+                update(deltas, alloc.resources)
+            elif isinstance(alloc, AllocationChange):
+                update(deltas, alloc.delta)
+
+        # Compute current allocation per resources
+        allocated = {}
+        for alloc in state.agent.get_descriptor().allocations.itervalues():
+            update(allocated, alloc.resources)
+
+        result = {}
+        for name, total in state.totals.iteritems():
+            pre = deltas.get(name, 0)
+            curr = allocated.get(name, 0)
+            result[name] = (total, curr, pre)
+        return result
+
+    @replay.immutable
     def get_totals(self, state):
         return copy.copy(state.totals)
 

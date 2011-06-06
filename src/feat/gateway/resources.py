@@ -195,12 +195,14 @@ class Agent(BaseResource):
         BaseResource.__init__(self)
         self.model = models.IAgent(model)
         self["partners"] = Partners(model)
+        self["resources"] = Resources(model)
 
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
 
         partners_url = self.create_url(request, "partners")
+        resources_url = self.create_url(request, "resources")
 
         doc = ["<HTML><HEAD>",
                "<TITLE>F3AT Gateway</TITLE>",
@@ -216,9 +218,13 @@ class Agent(BaseResource):
                "<TR><TD><B>Instance Id:</B></TD><TD>",
                str(self.model.instance_id),
                "</TD></TR>",
+               "<TR><TD><B>Status:</B></TD><TD>",
+               self.model.agent_status.name,
+               "</TD></TR>",
                "</TABLE>",
                "<UL>",
                "<LI><H4><A href='", partners_url, "'>Partners</A></H4></LI>"
+               "<LI><H4><A href='", resources_url, "'>Resources</A></H4></LI>"
                "</BODY></HTML>"]
 
         response.writelines(doc)
@@ -252,6 +258,38 @@ class Partners(BaseResource):
                         "<TD><A href='", agent_url, "'>",
                         partner_model.agent_id, "</A></TD>",
                         "<TD>", partner_model.shard_id, "</TD>",
+                        "</TR>"])
+
+        doc.extend(["</TABLE>",
+                    "</BODY></HTML>"])
+
+        response.writelines(doc)
+
+
+class Resources(BaseResource):
+
+    def __init__(self, model):
+        BaseResource.__init__(self)
+        self.model = models.IAgent(model)
+
+    def render_resource(self, request, response, location):
+        # Force mime-type to html
+        response.set_mime_type("text/html")
+
+        doc = ["<HTML><HEAD>",
+               "<TITLE>F3AT Gateway</TITLE>",
+               "</HEAD><BODY>",
+               "<H2>Resources</H2>",
+               "<TABLE>",
+               "<TR><TH>Name</TH><TH>Total</TH>"
+               "<TH>Allocated</TH><TH>Pre-allocated</TH></TR>"]
+
+        for name, (total, allocated, pending) in self.model.iter_resources():
+            doc.extend(["<TR>",
+                        "<TD>", name, "</TD>",
+                        "<TD>", str(total), "</TD>",
+                        "<TD>", str(allocated), "</TD>",
+                        "<TD>", str(pending), "</TD>",
                         "</TR>"])
 
         doc.extend(["</TABLE>",

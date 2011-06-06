@@ -54,6 +54,10 @@ class Agent(object):
     def agent_type(self):
         return self._agent.descriptor_type
 
+    @property
+    def agent_status(self):
+        return self._agent.get_status()
+
     def iter_attributes(self):
         return iter([])
 
@@ -61,7 +65,7 @@ class Agent(object):
         return iter(self._agent.query_partners("all"))
 
     def iter_resources(self):
-        return iter([])
+        return self._agent.get_resource_usage().iteritems()
 
 
 @adapter.register(partners.BasePartner, models.IPartner)

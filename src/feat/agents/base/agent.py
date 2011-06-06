@@ -107,6 +107,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
 
+    @replay.immutable
+    def get_status(self, state):
+        return state.medium.state
+
     ### IAgent Methods ###
 
     @replay.immutable
@@ -320,6 +324,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def check_allocation_exists(self, state, allocation_id):
         return state.resources.get_allocation(allocation_id)
+
+    @manhole.expose()
+    @replay.immutable
+    def get_resource_usage(self, state):
+        return state.resources.get_usage()
 
     @replay.immutable
     def list_resource(self, state):

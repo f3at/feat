@@ -45,6 +45,7 @@ class IAgent(IModel):
     agency_id = Attribute("Agent's identifier")
     instance_id = Attribute("Agent's instance number")
     agent_type = Attribute("")
+    agent_status = Attribute("")
 
     def iter_attributes():
         """Iterates over agent's attributes."""
