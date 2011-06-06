@@ -33,7 +33,7 @@ class DummyAgent(common.DummyAgent):
     @replay.mutable
     def perform_async_job(self, state):
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self.call_side_effect, 5)
+        f.add_callback(fiber.drop_param, self.call_side_effect, 5)
         f.add_callback(state.medium.join_shard, shard='a')
         return f.succeed()
 
@@ -85,7 +85,7 @@ class TestHamsterball(testsuite.TestCase):
     def testCallingSideEffect(self):
         agent = self.ball.load(self.instance)
         expectations = [
-            testsuite.side_effect('AgencyAgent.get_time', 'result')]
+            testsuite.side_effect('Agency.get_time', 'result')]
         output, state = self.ball.call(expectations, agent.call_side_effect)
         self.assertEqual('result', output)
         self.assertEqual('result', state.time)
@@ -93,8 +93,8 @@ class TestHamsterball(testsuite.TestCase):
     def testUnconsumedSideEffects(self):
         agent = self.ball.load(self.instance)
         expectations = [
-            testsuite.side_effect('AgencyAgent.get_time', 'result'),
-            testsuite.side_effect('AgencyAgent.get_time', 'result2')]
+            testsuite.side_effect('Agency.get_time', 'result'),
+            testsuite.side_effect('Agency.get_time', 'result2')]
         self.assertRaises(ReplayError, self.ball.call, expectations,
                           agent.call_side_effect)
 
@@ -112,7 +112,7 @@ class TestHamsterball(testsuite.TestCase):
         agent = self.ball.load(self.instance)
         output, state = self.ball.call(None, agent.perform_async_job)
         expectations = [
-            testsuite.side_effect('AgencyAgent.get_time', 'result')]
+            testsuite.side_effect('Agency.get_time', 'result')]
         output, state = self.ball.call(expectations, agent.some_immutable)
         self.assertFalse('var' in state.__dict__)
         self.assertFiberTriggered(output, fiber.TriggerType.succeed, 'var')

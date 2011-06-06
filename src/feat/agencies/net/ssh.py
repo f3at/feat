@@ -12,7 +12,8 @@ from twisted.internet.error import CannotListenError
 from twisted.internet import reactor
 from twisted.conch.insults import insults
 
-from feat.common import log, manhole
+from feat.common import log, manhole, reflect, first
+from feat.agents.base import descriptor
 
 
 class ListeningPort(log.Logger):
@@ -141,10 +142,65 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
         return llist[index]
 
     @manhole.expose()
-    def shutdown():
+    def shutdown(self):
         """shutdown() -> Perfrom full agency shutdown. Cleanup slave agency and
         agents descriptor."""
-        return self.agency.full_shutdown()
+        d = self.agency.full_shutdown()
+        d.addBoth(lambda _: reactor.stop())
+        return d
+
+    @manhole.expose()
+    def import_module(self, module):
+        '''import_module(canonical_name) -> Load the given module to memory.'''
+        return reflect.named_module(module)
+
+    @manhole.expose()
+    def get_agent(self, agent_type, index=0):
+        '''get_agent(agent_type, index=0) -> Returns the agent instance for the
+        given agent_type. Optional index tells which one to give.'''
+        return self.get_medium(agent_type, index).get_agent()
+
+    @manhole.expose()
+    def get_medium(self, agent_type, index=0):
+        '''get_medium(agent_type, index=0) -> Returns the medium class for the
+        given agent_type. Optional index tells which one to give.'''
+        mediums = list(x for x in self.agency._agents
+                       if x.get_descriptor().document_type == agent_type)
+        try:
+            return mediums[index]
+        except KeyError:
+            raise RuntimeError(
+                'Requested medium class of %s with index %d, but found only '
+                '%d mediumf of this type' % (agent_type, index, len(mediums)))
+
+    @manhole.expose()
+    def spawn_agent(self, agent_type, **kwargs):
+        '''spawn_agent(agent_type, **kwargs) -> tells the host agent running
+        in this agency to spawn a new agent of the given type.'''
+        factory = descriptor.lookup(agent_type)
+        if factory is None:
+            raise RuntimeError('No descriptor factory found for agent %s')
+        desc = factory()
+        host_medium = self.get_medium('host_agent')
+        agent = host_medium.get_agent()
+        d = host_medium.save_document(desc)
+        d.addCallback(
+            lambda desc: agent.start_agent(desc.doc_id, **kwargs))
+        return d
+
+    @manhole.expose()
+    def restart_agent(self, agent_id, **kwargs):
+        '''restart_agent(agent_id, **kwargs) -> tells the host agent running
+        in this agency to restart the agent.'''
+        host_medium = self.get_medium('host_agent')
+        agent = host_medium.get_agent()
+        d = host_medium.get_document(agent_id)
+        # This is done like this on purpose, we want to ensure that document
+        # exists before passing it to the agent (even though he would handle
+        # this himself).
+        d.addCallback(
+            lambda desc: agent.start_agent(desc.doc_id, **kwargs))
+        return d
 
 
 class SSHAvatar(avatar.ConchUser):

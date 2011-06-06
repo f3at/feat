@@ -87,7 +87,7 @@ class TestCollector(common.TestCase, common.AgencyTestHelper):
     def testRecivingNotification(self):
         yield self.recv_notification()
         yield self.wait_agency_for_idle(self.agency, 10)
-        self.assertEqual(0, len(self.agent._listeners))
+        self.assertEqual(0, len(self.agent._protocols))
         self.assertCalled(self.collector, "notified", 1)
 
     @defer.inlineCallbacks

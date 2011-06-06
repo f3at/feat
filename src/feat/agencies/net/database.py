@@ -10,6 +10,7 @@ from feat.agencies.database import Connection, ChangeListener
 from feat.common import log, defer, time
 
 from feat.agencies.interface import *
+from feat.interface.view import *
 
 
 from feat import extern
@@ -17,6 +18,11 @@ from feat import extern
 sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
 from paisley.changes import ChangeNotifier
 from paisley.client import CouchDB
+
+
+DEFAULT_DB_HOST = "localhost"
+DEFAULT_DB_PORT = 5984
+DEFAULT_DB_NAME = "feat"
 
 
 class Database(log.FluLogKeeper, ChangeListener):
@@ -62,12 +68,20 @@ class Database(log.FluLogKeeper, ChangeListener):
 
     def listen_changes(self, doc_ids, callback):
         d = ChangeListener.listen_changes(self, doc_ids, callback)
-        d.addCallback(defer.bridge_result, self._setup_notifier)
+        d.addCallback(defer.bridge_param, self._setup_notifier)
         return d
 
     def cancel_listener(self, listener_id):
         ChangeListener.cancel_listener(self, listener_id)
         return self._setup_notifier()
+
+    def query_view(self, factory, **options):
+        factory = IViewFactory(factory)
+        d = self._paisley_call(self.paisley.openView,
+                               self.db_name, DESIGN_DOC_ID, factory.name,
+                               **options)
+        d.addCallback(self._parse_view_result)
+        return d
 
     ### paisleys ChangeListener interface
 
@@ -107,6 +121,12 @@ class Database(log.FluLogKeeper, ChangeListener):
             return self._setup_notifier()
 
     ### private
+
+    def _parse_view_result(self, resp):
+        assert "rows" in resp
+
+        for row in resp["rows"]:
+            yield row["key"], row["value"]
 
     def _setup_notifier(self):
         doc_ids = self._extract_doc_ids()

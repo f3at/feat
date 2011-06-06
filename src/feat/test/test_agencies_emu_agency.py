@@ -4,16 +4,17 @@
 import uuid
 import time
 
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 from twisted.python import components
 from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
-from feat.interface import requests, protocols
 from feat.interface.agency import ExecMode
-from feat.common import time, log
-from feat.agencies import agency, protocols as aprotocols
+from feat.agencies import protocols
+
 from feat.agencies.interface import *
+from feat.interface.requests import *
+from feat.interface.protocols import *
 
 from . import common
 
@@ -56,21 +57,20 @@ class DummyReplier(replier.BaseReplier):
 
 class DummyInterest(object):
 
-    implements(protocols.IInterest)
+    implements(IInterest)
 
     def __init__(self):
         self.protocol_type = "Contract"
         self.protocol_id = "some-contract"
-        self.interest_type = protocols.InterestType.public
+        self.interest_type = InterestType.public
         self.initiator = message.Announcement
 
 
-class DummyAgencyInterest(aprotocols.DialogInterest):
+class DummyAgencyInterest(protocols.DialogInterest):
     pass
 
 
-components.registerAdapter(DummyAgencyInterest,
-                           protocols.IInterest,
+components.registerAdapter(DummyAgencyInterest, IInterest,
                            IAgencyInterestInternalFactory)
 
 
@@ -160,7 +160,6 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         in case we decide to do sth else'''
         key = (self.agent.get_descriptor()).doc_id
         msg = message.RequestMessage()
-        msg.session_id = str(uuid.uuid1())
         return self.recv_msg(msg, self.endpoint, key)
 
     @defer.inlineCallbacks
@@ -171,7 +170,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
                                      args=(None, ))
         yield d
 
-        self.assertEqual(1, len(self.agent._listeners))
+        self.assertEqual(1, len(self.agent._protocols))
         yield self.agent._terminate()
 
         self.assertCalled(self.agent.agent, 'shutdown')
@@ -223,35 +222,34 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(payload, message.payload)
             self.assertTrue(message.expiration_time is not None)
 
-            session_id = message.sender_id
-            self.assertEqual(session_id, str(session_id))
+            guid = message.sender_id
+            self.assertEqual(guid, str(guid))
 
-            self.assertEqual(requests.RequestState.requested,\
-                                 self.medium.state)
-            return session_id, message
+            self.assertEqual(RequestState.requested, self.medium.state)
+            return guid, message
 
         d.addCallback(assertsOnMessage)
 
-        def assertsOnAgency((session_id, msg, )):
-            self.log('%r', self.agent._listeners.keys())
-            self.assertTrue(session_id in self.agent._listeners.keys())
-            listener = self.agent._listeners[session_id]
-            self.assertEqual('AgencyRequester', listener.__class__.__name__)
-            return session_id, msg
+        def assertsOnAgency((guid, msg, )):
+            self.log('%r', self.agent._protocols.keys())
+            self.assertTrue(guid in self.agent._protocols.keys())
+            protocol = self.agent._protocols[guid]
+            self.assertEqual('AgencyRequester', protocol.__class__.__name__)
+            return guid, msg
 
         d.addCallback(assertsOnAgency)
 
-        def mimicReceivingResponse((session_id, msg, )):
+        def mimicReceivingResponse((guid, msg, )):
             response = message.ResponseMessage()
             self.reply(response, self.endpoint, msg)
 
-            return session_id
+            return guid
 
         d.addCallback(mimicReceivingResponse)
         d.addCallback(lambda _: self.finished)
 
-        def assertGotResponseAndTerminated(session_id):
-            self.assertFalse(session_id in self.agent._listeners.keys())
+        def assertGotResponseAndTerminated(guid):
+            self.assertFalse(guid in self.agent._protocols.keys())
             self.assertTrue(self.requester.got_response)
 
         d.addCallback(assertGotResponseAndTerminated)
@@ -268,17 +266,16 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
                                          self.endpoint, payload)
         self.medium = self.requester._get_medium()
         self.finished = self.requester.notify_finish()
-        self.assertFailure(self.finished, protocols.InitiatorFailed)
+        self.assertFailure(self.finished, ProtocolFailed)
 
         d.addCallback(self.cb_after, obj=self.agent,
-                      method='unregister_listener')
+                      method='unregister_protocol')
 
         def assertTerminatedWithNoResponse(_):
-            session_id = self.medium.session_id
-            self.assertFalse(session_id in self.agent._listeners.keys())
+            guid = self.medium.guid
+            self.assertFalse(guid in self.agent._protocols.keys())
             self.assertFalse(self.requester.got_response())
-            self.assertEqual(requests.RequestState.closed,
-                             self.medium.state)
+            self.assertEqual(RequestState.closed, self.medium.state)
 
         d.addCallback(assertTerminatedWithNoResponse)
         d.addCallback(lambda _: self.finished)
@@ -330,101 +327,20 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.finished =\
             sender.initiate_protocol(DummyRequester,
                                          receiver, 1)
-        requester = (sender._listeners.values()[0]).requester
+        requester = (sender._protocols.values()[0]).requester
 
         yield self.cb_after(arg=requester,
                           obj=requester._get_medium(), method='_terminate')
 
         self.assertTrue(requester.got_response)
-        self.assertEqual(0, len(sender._listeners))
+        self.assertEqual(0, len(sender._protocols))
 
-        self.assertEqual(0, len(receiver._listeners))
+        self.assertEqual(0, len(receiver._protocols))
         self.assertEqual(1, receiver.agent.got_payload)
 
     def _build_req_msg(self, recp):
         r = message.RequestMessage()
-        r.session_id = str(uuid.uuid1())
+        r.guid = str(uuid.uuid1())
         r.traversal_id = str(uuid.uuid1())
         r.payload = 10
         return r
-
-
-class DummyMedium(common.Mock, log.Logger, log.LogProxy):
-
-    def __init__(self, testcase, success_at_try=None):
-        log.Logger.__init__(self, testcase)
-        log.LogProxy.__init__(self, testcase)
-
-        self.number_called = 0
-        self.success_at_try = success_at_try
-
-    def initiate_protocol(self, factory, *args, **kwargs):
-        self.number_called += 1
-        self.info('called %d time', self.number_called)
-        if self.success_at_try is not None and\
-            self.success_at_try < self.number_called:
-            return factory(True)
-        else:
-            return factory(False)
-
-    def call_next(self, _method, *args, **kwargs):
-        reactor.callLater(0, _method, *args, **kwargs)
-
-
-class DummyInitiator(common.Mock):
-
-    def __init__(self, should_work):
-        self.should_work = should_work
-
-    def notify_finish(self):
-        if self.should_work:
-            return defer.succeed(None)
-        else:
-            return defer.fail(RuntimeError())
-
-
-@common.attr(timescale=0.01)
-class TestRetryingProtocol(common.TestCase):
-
-    timeout = 3
-
-    @defer.inlineCallbacks
-    def setUp(self):
-        yield common.TestCase.setUp(self)
-        self.medium = DummyMedium(self)
-
-    @defer.inlineCallbacks
-    def testRetriesForever(self):
-        d = self.cb_after(None, self.medium, 'initiate_protocol')
-        instance = self._start_instance(None, 1, None)
-        yield d
-        yield self.cb_after(None, self.medium, 'initiate_protocol')
-        yield self.cb_after(None, self.medium, 'initiate_protocol')
-        yield self.cb_after(None, self.medium, 'initiate_protocol')
-        yield self.cb_after(None, self.medium, 'initiate_protocol')
-        instance.give_up()
-        self.assertEqual(5, self.medium.number_called)
-
-    @defer.inlineCallbacks
-    def testMaximumNumberOfRetries(self):
-        instance = self._start_instance(3, 1, None)
-        d = instance.notify_finish()
-        self.assertFailure(d, RuntimeError)
-        yield d
-        self.assertEqual(4, self.medium.number_called)
-        self.assertEqual(8, instance.delay)
-
-    @defer.inlineCallbacks
-    def testMaximumDelay(self):
-        instance = self._start_instance(3, 1, 2)
-        d = instance.notify_finish()
-        self.assertFailure(d, RuntimeError)
-        yield d
-        self.assertEqual(4, self.medium.number_called)
-        self.assertEqual(2, instance.delay)
-
-    def _start_instance(self, max_retries, initial_delay, max_delay):
-        instance = agency.RetryingProtocol(
-            self.medium, DummyInitiator, None, tuple(), dict(),
-            max_retries, initial_delay, max_delay)
-        return instance.initiate()

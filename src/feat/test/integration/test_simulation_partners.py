@@ -138,7 +138,7 @@ class PartnershipTest(common.SimulationTest):
         yield self._establish_partnership()
 
         yield self.initiator._terminate()
-        yield self.receiver.wait_for_listeners_finish()
+        yield self.receiver.wait_for_protocols_finish()
 
         self.assertEqual(1, len(self.agency._agents))
         self.assertEqual(0, len(self.receiver.get_descriptor().partners))
@@ -148,7 +148,7 @@ class PartnershipTest(common.SimulationTest):
         yield self._establish_partnership()
 
         yield self.receiver._terminate()
-        yield self.initiator.wait_for_listeners_finish()
+        yield self.initiator.wait_for_protocols_finish()
 
         self.assertEqual(1, len(self.agency._agents))
         self.assertEqual(0, len(self.initiator.get_descriptor().partners))
@@ -173,13 +173,13 @@ class PartnershipTest(common.SimulationTest):
         self.assert_partners(agents, [2, 2, 2])
 
         yield self.initiator._terminate()
-        yield agents[1].wait_for_listeners_finish()
-        yield agents[2].wait_for_listeners_finish()
+        yield agents[1].wait_for_protocols_finish()
+        yield agents[2].wait_for_protocols_finish()
 
         self.assert_partners(agents, [2, 1, 1])
 
         yield self.receiver._terminate()
-        yield agents[2].wait_for_listeners_finish()
+        yield agents[2].wait_for_protocols_finish()
         self.assert_partners(agents, [2, 1, 0])
 
     @defer.inlineCallbacks

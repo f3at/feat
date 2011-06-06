@@ -1,6 +1,6 @@
-from zope.interface import Interface, Attribute
-
 from feat.common import enum
+
+from feat.interface import protocols
 
 __all__ = ["RequestState", "IRequestPeer"]
 
@@ -17,10 +17,5 @@ class RequestState(enum.Enum):
     none, requested, closed, wtf = range(4)
 
 
-class IRequestPeer(Interface):
+class IRequestPeer(protocols.IAgencyProtocol):
     '''Define common interface between both peers of the request protocol.'''
-
-    def ensure_state():
-        '''
-        Cancel the fiber if the machine is currectly in incorrect state.
-        '''

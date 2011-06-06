@@ -1,3 +1,4 @@
+import uuid
 import os
 
 from twisted.spread import pb
@@ -6,13 +7,14 @@ from twisted.python import failure
 
 from feat.test import common
 from feat.agencies.net import broker
-from feat.common import log, manhole
+from feat.common import log, manhole, first
 
 
 class DummyAgency(log.LogProxy, manhole.Manhole):
 
     def __init__(self, testcase):
         log.LogProxy.__init__(self, testcase)
+        self.agency_id = str(uuid.uuid1())
 
     @manhole.expose()
     def echo(self, text):
@@ -39,6 +41,18 @@ class BrokerTest(common.TestCase):
         self.assert_role(master, broker.BrokerRole.disconnected)
 
     @defer.inlineCallbacks
+    def testIterAgencyIds(self):
+        for x in self.brokers:
+            yield x.initiate_broker()
+        mas = list(self.brokers[0].iter_agency_ids())
+        self.assertEqual(3, len(mas))
+        self.assert_role(self.brokers[1], broker.BrokerRole.slave)
+        sla = list(self.brokers[1].iter_agency_ids())
+        self.assertEqual(1, len(sla))
+        sla = list(self.brokers[2].iter_agency_ids())
+        self.assertEqual(1, len(sla))
+
+    @defer.inlineCallbacks
     def testInitiateMasterAndSlave(self):
         master = self.brokers[0]
         yield master.initiate_broker()
@@ -54,7 +68,8 @@ class BrokerTest(common.TestCase):
         self.assertEquals(1, len(master.slaves))
         self.assertEquals(1, len(master.factory.connections))
 
-        result = yield master.slaves[0].callRemote('echo', "hello world!")
+        slave = first(master.iter_slaves())
+        result = yield slave.callRemote('echo', "hello world!")
         self.assertEqual("hello world!", result)
 
     @defer.inlineCallbacks

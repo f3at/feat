@@ -2,9 +2,10 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["InterestType", "IInitiatorFactory", "IAgencyInterest",
-           "IInterest", "IInitiator", "IInterested", "InitiatorFailed",
-           "InitiatorExpired"]
+__all__ = ["ProtocolFailed", "ProtocolExpired", "ProtocolCancelled",
+           "InterestType", "IInitiatorFactory", "IAgencyInterest",
+           "IInterest", "IAgentProtocol", "IInitiator", "IInterested",
+           "IAgencyProtocol"]
 
 
 class InterestType(enum.Enum):
@@ -15,6 +16,20 @@ class InterestType(enum.Enum):
     '''
 
     (private, public) = range(2)
+
+
+class ProtocolFailed(Exception):
+    '''The protocol failed.'''
+
+
+class ProtocolExpired(ProtocolFailed):
+    '''A protocol peer has been terminated by the expiration call.'''
+
+
+class ProtocolCancelled(ProtocolFailed):
+    '''
+    A protocol has been canceled.
+    '''
 
 
 class IInitiatorFactory(Interface):
@@ -41,6 +56,19 @@ class IAgencyInterest(Interface):
         pass
 
 
+class IAgencyProtocol(Interface):
+    '''Base interface for all agency-side protocol mediumns.'''
+
+    def is_idle(self):
+        '''Returns if the protocol is idle.'''
+
+    def terminate(result=None):
+        '''Called to terminate the protocol with the given result.'''
+
+    def fail(failure):
+        '''Called by agent-side when a protocol has failed or canceled.'''
+
+
 class IInterest(Interface):
     '''This class represent an interest in a type of protocol.
     It defines a protocol type, a protocol identifier and can be called
@@ -58,11 +86,17 @@ class IInterest(Interface):
         '''Creates an instance assuming the interested role.'''
 
 
-class IInitiator(Interface):
-    '''Represent the side of a protocol initiating the dialog.'''
+class IAgentProtocol(Interface):
 
     def initiate(*args, **kwargs):
-        '''Initiate initiator. Should be call before anything else.'''
+        '''Initiate protocol.'''
+
+    def cancel():
+        '''Called by agent-side or agency-side to cancel the protocol.'''
+
+
+class IInitiator(IAgentProtocol):
+    '''Represent the side of a protocol initiating the dialog.'''
 
     def wait_for_state(*states):
         '''Returns a Deferred that will be fired when the initiator
@@ -72,35 +106,8 @@ class IInitiator(Interface):
         '''Returns a Deferred that will be fired
         when the initiator finishes.'''
 
-    def get_expiration_time():
-        '''
-        Returns number of seconds since epoch when the expiration call for
-        current state will fire.
-        '''
 
-
-class InitiatorFailed(Exception):
-    '''
-    The intiating side of the dialog did not finish with successful status
-    '''
-
-
-class InitiatorExpired(InitiatorFailed):
-    '''
-    A protocol peer has been terminated by the expiration call.
-    '''
-
-
-class IInterested(Interface):
+class IInterested(IAgentProtocol):
     '''Represent the side of a protocol interested in a dialog.'''
 
     protocol_id = Attribute("Protocol id")
-
-    def initiate(*args, **kwargs):
-        '''Initiate the interested protocol.'''
-
-    def get_expiration_time():
-        '''
-        Returns number of seconds since epoch when the expiration call for
-        current state will fire.
-        '''

@@ -14,7 +14,6 @@ PROCESS_TYPE = 'feat'
 SERVICE_NAME = 'host'
 LOGDIR = '/var/log/feat'
 RUNDIR = '/var/log/feat'
-JOURFILE = 'journal.sqlite3'
 
 
 class OptionError(Exception):
@@ -51,10 +50,6 @@ def add_options(parser):
                       action="store", dest="logdir",
                       help=("agent log directory (default: %s)" % LOGDIR),
                       default=LOGDIR)
-    group.add_option('-j', '--jourfile',
-                      action="store", dest="agency_journal",
-                      help=("journal filename (default: %s)" % JOURFILE),
-                      default=JOURFILE)
     group.add_option('-R', '--rundir',
                       action="store", dest="rundir",
                       help=("agent run directory (default: %s)" % RUNDIR),
@@ -99,6 +94,8 @@ class bootstrap(object):
         add_options(parser)
         agency.add_options(parser)
         self.opts, self.args = parser.parse_args(args=self.args)
+        self.opts.agency_journal = os.path.join(self.opts.logdir,
+                                                self.opts.agency_journal)
 
     def _check_opts(self):
         if self.opts.daemonizeTo and not self.opts.daemonize:

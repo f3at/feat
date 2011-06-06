@@ -1,7 +1,6 @@
 Merging notes
 -------------
 
-
 1. There is a significant change in how we handle scaling time in tests. Unfortunately this means going through all the simulation you have and updating them. On bright side of this, is that when you're done your test should run in about 30% of time it takes now.
 
 The feat.common.delay has been removed. Instead use feat.common.time. In places where you had: ::

@@ -1,16 +1,17 @@
 import os
 import optparse
+import operator
 
 from twisted.internet import defer
-from twisted.spread import jelly
+from twisted.spread import jelly, pb
 
 from feat.test import common
 from feat.process import couchdb, rabbitmq
-from feat.agencies import journaler
+from feat.agencies import journaler, agency as base_agency
 from feat.agencies.net import agency, database
 from feat.agents.host import host_agent
 from feat.agents.base import agent, descriptor, replay
-from feat.common import serialization, fiber, time
+from feat.common import serialization, fiber, time, first
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
@@ -238,6 +239,26 @@ class IntegrationTestCase(common.TestCase):
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
 
+        agent_ids = [host_a.get_own_address().key, part[0].recipient.key]
+        # check that journaling works as it should
+        yield self.assert_journal_contains(agent_ids)
+
+        # now test the find_agent logic
+        host = yield self.agency.find_agent(agent_ids[0])
+        self.assertIsInstance(host, base_agency.AgencyAgent)
+        stand = yield self.agency.find_agent(agent_ids[1])
+        self.assertIsInstance(stand, pb.RemoteReference)
+
+        slave = first(self.agency._broker.iter_slaves())
+        self.assertIsInstance(slave, pb.RemoteReference)
+        host = yield slave.callRemote('find_agent', agent_ids[0])
+        self.assertIsInstance(host, base_agency.AgencyAgent)
+        stand = yield slave.callRemote('find_agent', agent_ids[1])
+        self.assertIsInstance(stand, pb.RemoteReference)
+
+        not_found = yield slave.callRemote('find_agent', 'unknown id')
+        self.assertIs(None, not_found)
+
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
         desc = host_agent.Descriptor(shard=u'lobby')
@@ -253,6 +274,9 @@ class IntegrationTestCase(common.TestCase):
 
         part = host_a.query_partners('all')
         self.assertEqual(1, len(part))
+
+        yield self.assert_journal_contains(
+            [host_a.get_own_address().key, part[0].recipient.key])
 
     @defer.inlineCallbacks
     def testStartAgentFromStandalone(self):
@@ -276,12 +300,24 @@ class IntegrationTestCase(common.TestCase):
         self.assertEqual(1, len(part))
 
         self.assertEqual(2, len(self.agency._broker.slaves))
-        for slave in self.agency._broker.slaves:
+        agent_ids = [host_a.get_own_address().key]
+        for slave in self.agency._broker.iter_slaves():
             mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
+            doc_id = yield mediums[0].callRemote('get_agent_id')
+            agent_ids.append(doc_id)
+
+        yield self.assert_journal_contains(agent_ids)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()
+
+    @defer.inlineCallbacks
+    def assert_journal_contains(self, agent_ids):
+        jour = self.agency._journaler
+        resp = yield jour.get_histories()
+        ids_got = map(operator.attrgetter('agent_id'), resp)
+        self.assertEqual(set(agent_ids), set(ids_got))

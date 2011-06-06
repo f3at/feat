@@ -82,13 +82,14 @@ class DNSAgent(agent.BaseAgent):
         muc.bind_to_lobby()
 
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.labour.initiate)
-        f.add_callback(fiber.drop_result, self.initiate_partners)
+        f.add_callback(fiber.drop_param, state.labour.initiate)
+        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f
 
     @replay.journaled
     def startup(self, state):
         agent.BaseAgent.startup(self)
+        self.startup_monitoring()
         if state.labour.startup(state.port):
             self.info("Listening on UDP port %d", state.port)
             return

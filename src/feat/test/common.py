@@ -1,6 +1,7 @@
 import collections
 import functools
 import uuid
+import signal
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -134,6 +135,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             time.scale(scale)
         else:
             time.reset()
+        self.addCleanup(self._reset_sighup_handler)
 
     def getSlow(self):
         """
@@ -344,6 +346,15 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return check(value)
 
+    def _reset_sighup_handler(self):
+        '''
+        Journaler and LogKeeper may install their own SIGHUP handlers, which
+        are not later uninstalled. In case of running all the tests it results
+        in a huge number of method calls when the SIGHUP is received.
+        For this reason we clean the handler after each test.
+        '''
+        signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
 
 class Mock(object):
 
@@ -391,7 +402,7 @@ class AgencyTestHelper(object):
 
     def setUp(self):
         self.agency = agency.Agency()
-        self.session_id = None
+        self.guid = None
         return self.agency.initiate()
 
     def setup_endpoint(self):
@@ -459,8 +470,8 @@ class AgencyTestHelper(object):
 
     def recv_announce(self, expiration_time=None, traversal_id=None):
         msg = message.Announcement()
-        self.session_id = str(uuid.uuid1())
-        msg.sender_id = self.session_id
+        self.guid = str(uuid.uuid1())
+        msg.sender_id = self.guid
         msg.traversal_id = traversal_id or str(uuid.uuid1())
 
         return self.recv_msg(msg, expiration_time=expiration_time)
@@ -468,23 +479,23 @@ class AgencyTestHelper(object):
     def recv_grant(self, _, update_report=None):
         msg = message.Grant()
         msg.update_report = update_report
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_rejection(self, _):
         msg = message.Rejection()
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_cancel(self, _, reason=""):
         msg = message.Cancellation()
         msg.reason = reason
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_ack(self, _):
         msg = message.Acknowledgement()
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         return self.recv_msg(msg).addCallback(lambda ret: _)
 
     def recv_notification(self, result=None, traversal_id=None):

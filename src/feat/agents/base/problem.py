@@ -90,7 +90,7 @@ class BaseProblem(serialization.Serializable):
 class CollectiveSolver(task.BaseTask):
 
     protocol_id = 'problem-solver'
-    timeout = None
+    timeout = 60
 
     @replay.mutable
     def initiate(self, state, problem, brothers):
@@ -120,7 +120,7 @@ class CollectiveSolver(task.BaseTask):
     def _prepare_retry(self, state, failure, original_list):
         '''
         Here we prepare to ask another brother to resolve our problem.
-        The failure here is always InitiatorFailed. If contract finished
+        The failure here is always ProtocolFailed. If contract finished
         without getting a bid (resolver is not there) we are removing the guy
         from our local list. If we just run into the timeout, we will retry
         in the same setup.
@@ -191,13 +191,12 @@ class SolveProblemContractor(contractor.BaseContractor):
 
     @replay.mutable
     def granted(self, state, grant):
-        f = state.problem.wait_for_solution()
-        f.add_callback(fiber.bridge_result, state.medium.ensure_state,
-                       ContractState.granted)
+        # make the fiber cancellable
+        f = fiber.Fiber(state.medium.get_canceller())
+        f.add_callback(fiber.drop_param, state.problem.wait_for_solution)
         f.add_callback(state.problem.solve_for, grant.reply_to)
-        f.add_callback(fiber.drop_result, state.medium.ensure_state,
-                       ContractState.granted)
-        f.add_callback(fiber.drop_result, self._finalize)
+        f.add_callback(fiber.drop_param, self._finalize)
+        f.succeed()
         return f
 
     @replay.mutable
@@ -244,7 +243,7 @@ class SolveProblemManager(manager.BaseManager):
     def expired(self, state):
         # We didn't receive the bid. The host is not there. It needs to be
         # removed from the list. We return it from here, it will
-        # get wrapped in InitiatorFailed and removed by the logic of
+        # get wrapped in ProtocolFailed and removed by the logic of
         # HostAgent._prepare_retry
         return state.medium.get_recipients()
 

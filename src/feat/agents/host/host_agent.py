@@ -9,7 +9,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               problem, task, )
 from feat.agents.common import rpc
 from feat.agents.common import shard as common_shard
-from feat.agents.common.host import check_categories
+from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
 from feat.common import fiber, manhole, serialization
@@ -29,24 +29,27 @@ DEFAULT_CATEGORIES = {'access': Access.none,
 
 
 @serialization.register
-class HostedPartner(partners.BasePartner):
+class HostedPartner(agent.BasePartner):
     '''
     This class is for agents we are partners with only because we started them.
     If your patnership is meant to represent sth more you should implement the
     appriopriate handler.
     '''
 
-    type_name = 'host->some_agent'
+    type_name = 'host->agent'
+
+    def on_restarted(self, agent, migrated):
+        agent.call_next(agent.check_if_agency_hosts, self.recipient)
 
 
 @serialization.register
-class ShardPartner(partners.BasePartner):
+class ShardPartner(agent.BasePartner):
 
     type_name = 'host->shard'
 
     def initiate(self, agent):
         f = agent.switch_shard(self.recipient.shard)
-        f.add_callback(fiber.drop_result, agent.callback_event,
+        f.add_callback(fiber.drop_param, agent.callback_event,
                        'joined_to_shard', None)
         return f
 
@@ -75,7 +78,7 @@ class ShardPartner(partners.BasePartner):
         agent.callback_event('shard_agent_restarted', self.recipient)
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
     default_handler = HostedPartner
 
@@ -106,20 +109,34 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, self._update_hostname)
-        f.add_callback(fiber.drop_result, self._load_definition, hostdef)
-        f.add_callback(fiber.drop_result, self.initiate_partners)
+        f.add_callback(fiber.drop_param, self._update_hostname)
+        f.add_callback(fiber.drop_param, self._load_definition, hostdef)
+        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f.succeed()
 
     @replay.journaled
     def startup(self, state):
-        return self.start_join_shard_manager()
+        agent.BaseAgent.startup(self)
+        f = self.start_join_shard_manager()
+        f.add_callback(fiber.drop_param, self.startup_monitoring)
+        return f
+
+    @replay.journaled
+    def check_if_agency_hosts(self, state, recp):
+        '''
+        Called after partner has been restarted. It checks our agency
+        is in charge of this agent. If not it removes the partnership.
+        '''
+        if not state.medium.check_if_hosted(recp.key):
+            self.debug('Detected that agent with recp %r has moved to '
+                       'different agency, we are breaking up.')
+            return self.breakup(recp)
 
     @replay.journaled
     def start_join_shard_manager(self, state):
         if state.partners.shard is None:
             f = common_shard.start_manager(self)
-            f.add_errback(fiber.drop_result, self.start_own_shard)
+            f.add_errback(fiber.drop_param, self.start_own_shard)
             return f
 
     @replay.journaled
@@ -130,7 +147,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def resolve_missing_shard_agent_problem(self, state, host_recipients):
-        task = state.medium.initiate_task(
+        task = state.medium.initiate_protocol(
             problem.CollectiveSolver, MissingShard(self), host_recipients)
         return task.notify_finish()
 
@@ -139,7 +156,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
                                    agent_id, monitor):
         task = getattr(state, 'restart_shard_task', None)
         if task is None or task.finished():
-            state.restart_shard_task = state.medium.initiate_task(
+            state.restart_shard_task = state.medium.initiate_protocol(
                 problem.CollectiveSolver,
                 RestartShard(self, agent_id, monitor),
                 host_recipients)
@@ -160,7 +177,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         if partner:
             return fiber.succeed(partner)
         f = self.wait_for_event('joined_to_shard')
-        f.add_callback(fiber.drop_result, self.get_shard_partner)
+        f.add_callback(fiber.drop_param, self.get_shard_partner)
         return f
 
     @replay.journaled
@@ -172,17 +189,17 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
             desc.shard = shard
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.medium.leave_shard, desc.shard)
-        f.add_callback(fiber.drop_result, self.update_descriptor,
+        f.add_callback(fiber.drop_param, state.medium.leave_shard, desc.shard)
+        f.add_callback(fiber.drop_param, self.update_descriptor,
                        save_change, shard)
-        f.add_callback(fiber.drop_result, state.medium.join_shard, shard)
+        f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
         return f.succeed()
 
     @manhole.expose()
     @replay.journaled
     def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
-        task = self.initiate_task(StartAgent, doc_id, allocation_id,
-                                  args=args, kwargs=kwargs)
+        task = self.initiate_protocol(StartAgent, doc_id, allocation_id,
+                                      args=args, kwargs=kwargs)
         return task.notify_finish()
 
     @replay.immutable
@@ -246,11 +263,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
     def release_modification(self, change_id):
         return agent.BaseAgent.release_modification(self, change_id)
 
-### Private Methods ###
+    ### Private Methods ###
 
-    @replay.side_effect
-    def _discover_hostname(self):
-        return unicode(socket.gethostbyaddr(socket.gethostname())[0])
+    @replay.immutable
+    def _discover_hostname(self, state):
+        return state.medium.get_hostname()
 
     @agent.update_descriptor
     def _update_hostname(self, state, desc, hostname=None):
@@ -324,6 +341,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 class StartAgent(task.BaseTask):
 
     timeout = 10
+    protocol_id = "host_agent.start-agent"
 
     @replay.entry_point
     def initiate(self, state, doc_id, allocation_id,
@@ -337,11 +355,11 @@ class StartAgent(task.BaseTask):
         state.allocation_id = allocation_id
 
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, self._fetch_descriptor)
-        f.add_callback(fiber.drop_result, self._check_requirements)
-        f.add_callback(fiber.drop_result, self._update_shard_field)
-        f.add_callback(fiber.drop_result, self._validate_allocation)
-        f.add_callback(fiber.drop_result, getattr, state, 'descriptor')
+        f.add_callback(fiber.drop_param, self._fetch_descriptor)
+        f.add_callback(fiber.drop_param, self._check_requirements)
+        f.add_callback(fiber.drop_param, self._update_shard_field)
+        f.add_callback(fiber.drop_param, self._validate_allocation)
+        f.add_callback(fiber.drop_param, getattr, state, 'descriptor')
         f.add_callback(state.agent.medium_start_agent, *args, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self._establish_partnership)
@@ -435,12 +453,31 @@ class RestartShard(problem.BaseProblem):
         partner = self.agent.query_partners('shard')
         f = fiber.succeed()
         if partner:
-            f.add_callback(fiber.drop_result, self.agent.remove_partner,
+            f.add_callback(fiber.drop_param, self.agent.remove_partner,
                            partner)
-        f.add_callback(fiber.drop_result, self.agent.restart_agent,
+        f.add_callback(fiber.drop_param, self._cleanup_partners)
+        f.add_callback(fiber.drop_param, self.agent.restart_agent,
                        self.agent_id)
         f.add_callback(self._finalize)
         return f
+
+    def _cleanup_partners(self):
+        f = self.agent.get_document(self.agent_id)
+        f.add_callback(self._do_remove_partners)
+        return f
+
+    def _do_remove_partners(self, desc):
+        # remove from the shard agents descriptor the partnership to ourselves
+        # and/or to the old agent who was hosting him
+        own = self.agent.get_own_address()
+        filtered_partners = list()
+        for partner in desc.partners:
+            if partner.recipient == own or partner.role == 'host':
+                desc.allocations.pop(partner.allocation_id, None)
+            else:
+                filtered_partners.append(partner)
+        desc.partners = filtered_partners
+        return self.agent.save_document(desc)
 
     def _finalize(self, recp):
         self.agent.callback_event('shard_agent_restarted', recp)
@@ -524,15 +561,6 @@ class HostAllocationContractor(contractor.BaseContractor):
         return bid
 
 
-@descriptor.register("host_agent")
-class Descriptor(descriptor.Descriptor):
-
-    # Hostname of the machine, updated when an agent is started
-    document.field('hostname', None)
-    # Range used for allocating new ports
-    document.field('port_range', (5000, 5999, ))
-
-
 class StartAgentReplier(replier.BaseReplier):
 
     protocol_id = 'start-agent'
@@ -545,7 +573,7 @@ class StartAgentReplier(replier.BaseReplier):
         doc_id = request.payload['doc_id']
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result, state.agent.start_agent, doc_id,
+        f.add_callback(fiber.drop_param, state.agent.start_agent, doc_id,
                        a_id, *args, **kwargs)
         f.add_callback(self._send_reply)
         f.succeed(doc_id)
@@ -596,7 +624,7 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.entry_point
     def granted(self, state, grant):
         f = state.agent.confirm_allocation(state.alloc_id)
-        f.add_callback(fiber.drop_result, state.agent.start_agent,
+        f.add_callback(fiber.drop_param, state.agent.start_agent,
                        state.descriptor.doc_id, state.alloc_id)
         f.add_callbacks(self._finalize, self._starting_failed)
         return f
@@ -610,7 +638,7 @@ class StartAgentContractor(contractor.BaseContractor):
     def _starting_failed(self, state, fail):
         msg = message.Cancellation(reason=fail)
         f = self._release_allocation()
-        f.add_callback(fiber.drop_result, state.medium.defect,
+        f.add_callback(fiber.drop_param, state.medium.defect,
                        msg)
         return f
 

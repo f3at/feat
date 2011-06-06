@@ -1,31 +1,61 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
+import operator
+
 from feat import everything
-from feat.common import time, first, serialization, defer
-from feat.test.integration import common
-from feat.common.text_helper import format_block
-from feat.agents.base import (recipient, dbtools, descriptor, agent, partners,
-                              replay, )
+from feat.agents.base import recipient, descriptor, agent, partners, replay
+from feat.agents.base import dbtools
 from feat.agents.common import monitor
+from feat.common import first, serialization, defer, time, fiber
+from feat.common.text_helper import format_block
+
+from feat.interface.recipient import *
+from feat.agents.monitor.interface import *
+
+from feat.test.integration import common
+from feat.agents.monitor import monitor_agent
 
 
-@common.attr(skip="This is leftover after work of Pau left by mistake. " +
-             "To be deleted when Sebastien merges his work")
+@agent.register('dummy_monitor_agent')
+class DummyMonitorAgent(agent.BaseAgent):
+
+    @replay.mutable
+    def start_monitoring(self, state):
+        self.startup_monitoring()
+
+
+@descriptor.register('dummy_monitor_agent')
+class DummyMonitorDescriptor(descriptor.Descriptor):
+    pass
+
+
+@agent.register('dummy_monitored_agent')
+class DummyMonitoredAgent(agent.BaseAgent):
+
+    def startup(self):
+        agent.BaseAgent.startup(self)
+        self.startup_monitoring()
+
+
+@descriptor.register('dummy_monitored_agent')
+class DummyMonitoredDescriptor(descriptor.Descriptor):
+    pass
+
+
 @common.attr('slow')
+@common.attr(timescale=0.1)
 class SingleHostMonitorSimulation(common.SimulationTest):
 
     timeout = 20
 
     @defer.inlineCallbacks
     def prolog(self):
-        time.scale(0.8)
         setup = format_block("""
-        load('feat.test.integration.monitor')
-
         agency = spawn_agency()
 
         host_desc = descriptor_factory('host_agent')
-        req_desc = descriptor_factory('request_monitor_agent')
+        req_desc = descriptor_factory('dummy_monitor_agent')
 
         host_medium = agency.start_agent(host_desc)
         host_agent = host_medium.get_agent()
@@ -46,34 +76,25 @@ class SingleHostMonitorSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
-            yield x.wait_for_listeners_finish()
+            yield x.wait_for_protocols_finish()
         yield common.SimulationTest.tearDown(self)
 
     def testValidateProlog(self):
         self.assertEqual(1, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(1, self.count_agents('monitor_agent'))
-        self.assertEqual(1, self.count_agents('request_monitor_agent'))
+        self.assertEqual(1, self.count_agents('dummy_monitor_agent'))
 
     @defer.inlineCallbacks
     def testPartnerMonitor(self):
-        yield self.req_agent.request_monitor()
+        self.req_agent.start_monitoring()
+        yield self.wait_for_idle(10)
         partners = self.monitor_agent.get_descriptor().partners
-        self.assertEqual(3, len(partners))
-
-
-@descriptor.register('monitored_agent')
-class Descriptor(descriptor.Descriptor):
-    pass
-
-
-@agent.register('monitored_agent')
-class MonitoredAgent(agent.BaseAgent):
-    pass
+        self.assertEqual(4, len(partners)) # host, shard, raag, dummy
 
 
 @descriptor.register('random-agent')
-class Descriptor(descriptor.Descriptor):
+class RandomDescriptor(descriptor.Descriptor):
     pass
 
 
@@ -93,7 +114,7 @@ class RandomAgent(agent.BaseAgent):
 
 
 @descriptor.register('bad-manager-agent')
-class Descriptor(descriptor.Descriptor):
+class BadManangerDescriptor(descriptor.Descriptor):
     pass
 
 
@@ -136,22 +157,26 @@ class BadManagerAgent(agent.BaseAgent):
         return state.times_called
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.2)
+@common.attr('slow')
 class RestartingSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
+        agency1.start_agent(descriptor_factory('host_agent'))
         host = _.get_agent()
         wait_for_idle()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
+        agency2.start_agent(descriptor_factory('host_agent'))
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency3 = spawn_agency()
+        agency3.disable_protocol('setup-monitoring', 'Task')
+        agency3.start_agent(descriptor_factory('host_agent'))
         """)
         yield self.process(setup)
         yield self.wait_for_idle(10)
@@ -196,8 +221,15 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('host_agent'))
         self.assert_has_host('shard_agent')
+        shard_agent = first(self.driver.iter_agents('shard_agent')).get_agent()
+        hosts = shard_agent.query_partners('hosts')
+        _, used = shard_agent.list_resource()
+        self.assertEqual(2, used['hosts'])
+        recp = map(operator.attrgetter('recipient'), hosts)
+        self.assertEqual(2, len(hosts))
         for host in self.hosts[1:3]:
             self.assertTrue(host.query_partners('shard') is not None)
+            self.assertIn(recipient.IRecipient(host), recp)
 
     @defer.inlineCallbacks
     def testRaageDies(self):
@@ -209,7 +241,7 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(1, self.count_agents('raage_agent'))
         self.assert_has_host('raage_agent')
 
-    @common.attr(timescale=0.05)
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testRaageAndHisHostDie(self):
         self.assert_has_host('raage_agent')
@@ -276,7 +308,8 @@ class RestartingSimulation(common.SimulationTest):
         self.assertEqual(2, manager.get_times_called())
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.2)
+@common.attr('slow')
 class MonitoringMonitor(common.SimulationTest):
 
     def setUp(self):
@@ -290,16 +323,19 @@ class MonitoringMonitor(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
+        agency1.start_agent(descriptor_factory('host_agent'))
         host = _.get_agent()
         host.wait_for_ready()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
+        agency2.start_agent(descriptor_factory('host_agent'))
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency3 = spawn_agency()
+        agency3.disable_protocol('setup-monitoring', 'Task')
+        agency3.start_agent(descriptor_factory('host_agent'))
         last_host = _.get_agent()
         """)
         yield self.process(setup)
@@ -378,7 +414,8 @@ class MonitoringMonitor(common.SimulationTest):
         yield self.process(script)
         random_medium = first(self.driver.iter_agents('random-agent'))
         yield self.monitors[1].establish_partnership(
-            recipient.IRecipient(random_medium), our_role=u'monitor')
+                                 recipient.IRecipient(random_medium),
+                                 our_role=u'monitor', partner_role="monitored")
 
         yield self.monitor_mediums[1].terminate_hard()
         yield self.host_mediums[2].terminate_hard()
@@ -391,8 +428,9 @@ class MonitoringMonitor(common.SimulationTest):
         self.assertEqual(1, self.count_agents('random-agent'))
         random_medium = first(self.driver.iter_agents('random-agent'))
         self.assertEqual(second_shard, random_medium.get_descriptor().shard)
-        monitors = [x for x in random_medium.get_descriptor().partners\
+        monitors = [x for x in random_medium.get_descriptor().partners
                     if x.role == u'monitor']
+
         self.assertEqual(1, len(monitors))
         self.assertEqual(monitors[0].recipient,
                          recipient.IRecipient(self.monitor_mediums[0]))
@@ -408,7 +446,8 @@ class MonitoringMonitor(common.SimulationTest):
         return monitor.get_agent()
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.2)
+@common.attr('slow')
 class SimulateMultipleMonitors(common.SimulationTest):
 
     def setUp(self):
@@ -422,19 +461,22 @@ class SimulateMultipleMonitors(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
+        agency1.start_agent(descriptor_factory('host_agent'))
         host = _.get_agent()
         host.wait_for_ready()
         host.start_agent(descriptor_factory('random-agent'))
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
+        agency2.start_agent(descriptor_factory('host_agent'))
         _.get_agent()
         _.wait_for_ready()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency3 = spawn_agency()
+        agency3.disable_protocol('setup-monitoring', 'Task')
+        agency3.start_agent(descriptor_factory('host_agent'))
         last_host = _.get_agent()
         """)
         yield self.process(setup)
@@ -480,3 +522,1047 @@ class SimulateMultipleMonitors(common.SimulationTest):
         yield defer.DeferredList(defers)
         yield self.wait_for_idle(20)
         self.assertEqual(1, self.count_agents('random-agent'))
+
+
+@common.attr(timescale=0.2)
+class TestMonitorPartnerships(common.SimulationTest):
+
+    timeout = 30
+
+    configurable_attributes = ['hosts_per_shard'] \
+                              + common.SimulationTest.configurable_attributes
+
+    def get_agents(self, name):
+        return list(self.driver.iter_agents(name))
+
+    def count_agents(self, name):
+        return len(self.get_agents(name))
+
+    def get_agent(self, name, host):
+        for m in self.get_agents(name):
+            a = m.get_agent()
+            hosts = a.query_partners_with_role("all", "host")
+            if not hosts:
+                continue
+            if hosts[0].recipient == IRecipient(host.get_agent()):
+                return m
+        self.fail("Agent not found for host %s" % host)
+
+    def check_partners(self, m1, m2):
+        a1 = m1.get_agent()
+        a2 = m2.get_agent()
+        self.assertTrue(a1.find_partner(IRecipient(a2)))
+        self.assertTrue(a2.find_partner(IRecipient(a1)))
+
+    def check_not_partners(self, m1, m2):
+        a1 = m1.get_agent()
+        a2 = m2.get_agent()
+        self.assertEqual(a1.find_partner(IRecipient(a2)), None)
+        self.assertEqual(a2.find_partner(IRecipient(a1)), None)
+
+    def setUp(self):
+        if self.hosts_per_shard:
+            config = everything.shard_agent.ShardAgentConfiguration()
+            config.doc_id = 'test-config'
+            config.hosts_per_shard = self.hosts_per_shard
+            dbtools.initial_data(config)
+            self.override_config('shard_agent', config)
+        return common.SimulationTest.setUp(self)
+
+    def prolog(self):
+        pass
+
+    @common.attr(hosts_per_shard=2)
+    @defer.inlineCallbacks
+    def testMonitorAgentPartnerships(self):
+        drv = self.driver
+
+        agency1 = yield drv.spawn_agency()
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency1.start_agent(ha1_desc)
+
+        yield self.wait_for_idle(20)
+
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency1.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        ha3_desc = yield drv.descriptor_factory("host_agent")
+        ha3 = yield agency1.start_agent(ha3_desc)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+
+        ma1 = self.get_agent("monitor_agent", ha1)
+        ma2 = self.get_agent("monitor_agent", ha3)
+
+        da1_desc = yield drv.descriptor_factory("dummy_monitored_agent")
+        yield drv.save_document(da1_desc)
+
+        da2_desc = yield drv.descriptor_factory("dummy_monitored_agent")
+        yield drv.save_document(da2_desc)
+
+        da3_desc = yield drv.descriptor_factory("dummy_monitored_agent")
+        yield drv.save_document(da3_desc)
+
+        yield defer.DeferredList([ha1.get_agent().start_agent(da1_desc),
+                                  ha2.get_agent().start_agent(da2_desc),
+                                  ha3.get_agent().start_agent(da3_desc)])
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("dummy_monitored_agent"), 3)
+
+        da1 = self.get_agent("dummy_monitored_agent", ha1)
+        da2 = self.get_agent("dummy_monitored_agent", ha2)
+        da3 = self.get_agent("dummy_monitored_agent", ha3)
+
+        self.check_partners(ma1, da1)
+        self.check_partners(ma1, da2)
+        self.check_partners(ma2, da3)
+
+        ma1.terminate()
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+
+        ma1b = self.get_agent("monitor_agent", ha1)
+
+        self.check_partners(ma1b, da1)
+        self.check_partners(ma1b, da2)
+        self.check_partners(ma2, da3)
+
+    @common.attr(hosts_per_shard=1)
+    @defer.inlineCallbacks
+    def testMonitorMonitorPartnerships(self):
+        drv = self.driver
+
+        agency1 = yield drv.spawn_agency()
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency1.start_agent(ha1_desc)
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency1.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+
+        sa1 = self.get_agent("shard_agent", ha1)
+        ma1 = self.get_agent("monitor_agent", ha1)
+
+        sa2 = self.get_agent("shard_agent", ha2)
+        ma2 = self.get_agent("monitor_agent", ha2)
+
+        self.check_partners(ma1, ma2)
+
+        ha3_desc = yield drv.descriptor_factory("host_agent")
+        ha3 = yield agency1.start_agent(ha3_desc)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 3)
+        self.assertEqual(self.count_agents("shard_agent"), 3)
+
+        sa3 = self.get_agent("shard_agent", ha3)
+        ma3 = self.get_agent("monitor_agent", ha3)
+
+        self.check_partners(ma1, ma2)
+        self.check_partners(ma1, ma3)
+        self.check_partners(ma2, ma3)
+
+        sa1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 3)
+        self.assertEqual(self.count_agents("shard_agent"), 3)
+
+        # we have to terminate all structural agents or we will have
+        # a never ending retrying protocol for setting up monitoring
+        sa1b = self.get_agent("shard_agent", ha1)
+        ma1b = self.get_agent("monitor_agent", ha1)
+        ra1 = self.get_agent("raage_agent", ha1)
+
+        self.assertNotEqual(sa1, sa1b)
+        self.assertEqual(ma1, ma1b)
+        sa1 = sa1b
+
+        self.check_partners(ma1, ma2)
+        self.check_partners(ma1, ma3)
+        self.check_partners(ma2, ma3)
+
+        ha1.terminate()
+        sa1.terminate()
+        ra1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 3)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+
+        sa2b = self.get_agent("shard_agent", ha2)
+        ma2b = self.get_agent("monitor_agent", ha2)
+
+        sa3b = self.get_agent("shard_agent", ha3)
+        ma3b = self.get_agent("monitor_agent", ha3)
+
+        self.assertEqual(sa2b, sa2)
+        self.assertEqual(ma2b, ma2)
+
+        self.assertEqual(sa3b, sa3)
+        self.assertEqual(ma3b, ma3)
+
+        self.check_not_partners(ma1, ma2)
+        self.check_not_partners(ma1, ma3)
+        self.check_partners(ma2, ma3)
+
+        ma1.terminate()
+
+        yield self.wait_for_idle(30)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+
+        ma2 = self.get_agent("monitor_agent", ha2)
+        ma3 = self.get_agent("monitor_agent", ha3)
+
+        self.check_partners(ma2, ma3)
+
+        ha4_desc = yield drv.descriptor_factory("host_agent")
+        ha4 = yield agency1.start_agent(ha4_desc)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("monitor_agent"), 3)
+        self.assertEqual(self.count_agents("shard_agent"), 3)
+
+        ma2 = self.get_agent("monitor_agent", ha2)
+        ma3 = self.get_agent("monitor_agent", ha3)
+        ma4 = self.get_agent("monitor_agent", ha4)
+
+        self.check_partners(ma4, ma2)
+        self.check_partners(ma4, ma3)
+        self.check_partners(ma2, ma3)
+
+        yield self.wait_for_idle(20)
+
+
+@serialization.register
+class DummyPartner(agent.BasePartner):
+
+    type_name = 'dummy:monitor->agent'
+
+    def initiate(self, agent):
+        agent.add_call(self.recipient, "initiate")
+
+    def on_goodbye(self, agent, payload=None):
+        agent.add_call(self.recipient, "goodbye")
+
+    def on_died(self, agent, payload, monitor):
+        agent.add_call(self.recipient, "died")
+
+    def on_restarted(self, agent, migrated):
+        agent.add_call(self.recipient, "restarted")
+
+    def on_burried(self, agent, payload=None):
+        agent.add_call(self.recipient, "buried")
+
+
+@serialization.register
+class DummyMonitorPartner(monitor.PartnerMixin, DummyPartner):
+
+    type_name = 'dummy:monitor->monitor'
+
+    def initiate(self, agent):
+        return self._f(DummyPartner.initiate,
+                       monitor.PartnerMixin.initiate,
+                       self, agent)
+
+    def on_goodbye(self, agent, payload=None):
+        return self._f(DummyPartner.on_goodbye,
+                       monitor.PartnerMixin.on_goodbye,
+                       self, agent, payload=payload)
+
+    def on_burried(self, agent, payload, monitor):
+        return self._f(DummyPartner.on_burried,
+                       monitor.PartnerMixin.on_burried,
+                       self, agent, payload, monitor)
+
+    def _f(self, f1, f2, *args, **kwargs):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param, f1, *args, **kwargs)
+        f.add_callback(fiber.drop_param, f2, *args, **kwargs)
+        return f
+
+
+class DummyPartners(agent.Partners):
+
+    default_handler = DummyPartner
+
+    partners.has_many('monitors', 'monitor_agent', DummyMonitorPartner)
+
+
+class DummyAgent(agent.BaseAgent):
+
+    partners_class = DummyPartners
+
+    @replay.mutable
+    def initiate(self, state):
+        agent.BaseAgent.initiate(self)
+        state.calls = {}
+        return self.initiate_partners()
+
+    def startup(self):
+        agent.BaseAgent.startup(self)
+        self.startup_monitoring()
+
+    @replay.mutable
+    def add_call(self, state, recipient, name):
+        if recipient.key not in state.calls:
+            state.calls[recipient.key] = []
+        state.calls[recipient.key].append(name)
+
+    @replay.immutable
+    def get_calls(self, state):
+        return copy.deepcopy(state.calls)
+
+
+@agent.register("dummy_buryme_agent")
+class DummyBuryMeAgent(DummyAgent):
+
+    restart_strategy = monitor.RestartStrategy.buryme
+
+
+@descriptor.register("dummy_buryme_agent")
+class DummyBuryMeDescriptor(descriptor.Descriptor):
+    pass
+
+
+@agent.register('dummy_local_agent')
+class DummyLocalAgent(DummyAgent):
+
+    restart_strategy = monitor.RestartStrategy.local
+
+
+@descriptor.register('dummy_local_agent')
+class DummyLocalDescriptor(descriptor.Descriptor):
+    pass
+
+
+@agent.register('dummy_whereever_agent')
+class DummyWhereeverAgent(DummyAgent):
+
+    restart_strategy = monitor.RestartStrategy.whereever
+
+
+@descriptor.register('dummy_whereever_agent')
+class DummyWhereeverDescriptor(descriptor.Descriptor):
+    pass
+
+
+@common.attr(timescale=0.4)
+class TestRealMonitoring(common.SimulationTest):
+
+    def setUp(self):
+        # Overriding monitor configuration
+        monitor_conf = monitor_agent.MonitorAgentConfiguration()
+        monitor_conf.heartbeat_period = 2
+        monitor_conf.heartbeat_max_skip = 3
+        monitor_conf.check_period = 0.2
+        dbtools.initial_data(monitor_conf)
+        self.override_config('monitor_agent', monitor_conf)
+        return common.SimulationTest.setUp(self)
+
+    def tearDown(self):
+        for m in self.driver.iter_agents("monitor_agent"):
+            a = m.get_agent()
+            a.pause()
+        return  common.SimulationTest.tearDown(self)
+
+    @defer.inlineCallbacks
+    def wait_monitored(self, agency_agent, agency_monitor, timeout):
+
+        def check():
+            for partner in agency_monitor.get_agent().query_partners("all"):
+                if partner.recipient == IRecipient(agency_agent.get_agent()):
+                    return True
+            return False
+
+        yield self.wait_for(check, timeout)
+
+    def get_agents(self, name):
+        return list(self.driver.iter_agents(name))
+
+    def count_agents(self, name):
+        return len(self.get_agents(name))
+
+    def get_agent(self, name, host):
+        result = []
+        for m in self.get_agents(name):
+            a = m.get_agent()
+            hosts = a.query_partners_with_role("all", "host")
+            if not hosts:
+                continue
+            if hosts[0].recipient == IRecipient(host.get_agent()):
+                result.append(m)
+        if result:
+            return result
+        self.fail("Agent not found for host %s" % host)
+
+    def count_partners(self, agency_agent):
+        return len(list(agency_agent.get_agent().query_partners("all")))
+
+    def make_partners(self, agency_agent1, agency_agent2):
+        recipient = IRecipient(agency_agent2.get_agent())
+        return agency_agent1.get_agent().establish_partnership(recipient)
+
+    def check_status(self, agency_monitor, entry_count,
+                     default=PatientState.alive, exceptions={}):
+        status = agency_monitor.get_agent().get_monitoring_status()
+        self.assertEqual(len(status), entry_count)
+        for k, s in status.items():
+            expected = exceptions.get(k, default)
+            self.assertEqual(expected, s["state"])
+
+    def check_calls(self, agency_agent1, partner, *expected):
+        recipient = IRecipient(partner.get_agent())
+        key = recipient.key
+        calls = agency_agent1.get_agent().get_calls()[key]
+        self.assertEqual(tuple(calls), expected)
+
+    def check_no_call(self, agency_agent1, partner):
+        recipient = IRecipient(partner.get_agent())
+        key = recipient.key, recipient.shard
+        self.assertFalse(key in agency_agent1.get_agent().get_calls())
+
+    def check_host(self, agency_agent, agency_host):
+        agent = agency_agent.get_agent()
+        hosts = [IRecipient(h)
+                 for h in agent.query_partners_with_role("all", "host")]
+        self.assertTrue(IRecipient(agent) in hosts)
+
+    @common.attr(hosts_per_shard=2)
+    @defer.inlineCallbacks
+    def testBurryMe(self):
+        drv = self.driver
+
+        components = ("feat.agents.monitor.interface.IHeartMonitorFactory",
+                      "feat.agents.monitor.interface.IPacemakerFactory")
+        agency = yield drv.spawn_agency(*components)
+        ha_desc = yield drv.descriptor_factory("host_agent")
+        ha = yield agency.start_agent(ha_desc)
+
+        yield self.wait_for_idle(20)
+
+        # Checking shard structure
+
+        self.assertEqual(self.count_agents("monitor_agent"), 1)
+        self.assertEqual(self.count_agents("raage_agent"), 1)
+        self.assertEqual(self.count_agents("shard_agent"), 1)
+        sa, = self.get_agent("shard_agent", ha)
+        ra, = self.get_agent("raage_agent", ha)
+        ma, = self.get_agent("monitor_agent", ha)
+
+        # Waiting everything is monitored
+
+        yield self.wait_monitored(ha, ma, 10)
+        yield self.wait_monitored(sa, ma, 10)
+        yield self.wait_monitored(ra, ma, 10)
+
+        self.assertEqual(self.count_partners(ma), 3)
+        self.check_status(ma, 3)
+
+        # Starting "bury me" agents
+
+        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        yield drv.save_document(desc)
+        yield ha.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        yield drv.save_document(desc)
+        yield ha.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        yield drv.save_document(desc)
+        yield ha.get_agent().start_agent(desc.doc_id)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("dummy_buryme_agent"), 3)
+
+        a1, a2, a3 = self.get_agent("dummy_buryme_agent", ha)
+
+        # Waiting them to be monitored
+
+        yield self.wait_monitored(a1, ma, 10)
+        yield self.wait_monitored(a2, ma, 10)
+        yield self.wait_monitored(a3, ma, 10)
+
+        # Make them partners to check callbacks
+
+        yield self.make_partners(a1, a2)
+
+        self.assertEqual(self.count_partners(ma), 6)
+        self.check_status(ma, 6)
+
+        # wait a full three heart beats and half, everything should be fine
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        self.assertEqual(self.count_partners(ma), 6)
+        self.check_status(ma, 6)
+
+        # Kill the one with partnership
+
+        yield a1.terminate_hard()
+
+        # Nothing yet changed
+
+        self.assertEqual(self.count_partners(ma), 6)
+        self.check_status(ma, 6)
+
+        # Waiting more than 3 hard beats, death should be detected
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        self.assertEqual(self.count_partners(ma), 5)
+        self.check_status(ma, 5)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate", "buried")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)
+
+        # Kill the one without partnership
+
+        yield a3.terminate_hard()
+
+        # Waiting more than 3 hard beats
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        self.assertEqual(self.count_partners(ma), 4)
+        self.check_status(ma, 4)
+
+        self.check_no_call(a3, a2)
+
+        self.wait_for_idle(10)
+
+    @common.attr(hosts_per_shard=1)
+    @defer.inlineCallbacks
+    def testLocal(self):
+        drv = self.driver
+
+        components = ("feat.agents.monitor.interface.IHeartMonitorFactory",
+                      "feat.agents.monitor.interface.IPacemakerFactory")
+        agency = yield drv.spawn_agency(*components)
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency.start_agent(ha1_desc)
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        # Checking shard structure
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+        self.assertEqual(self.count_agents("raage_agent"), 2)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+        sa1, = self.get_agent("shard_agent", ha1)
+        sa2, = self.get_agent("shard_agent", ha2)
+        ra1, = self.get_agent("raage_agent", ha1)
+        ra2, = self.get_agent("raage_agent", ha2)
+        ma1, = self.get_agent("monitor_agent", ha1)
+        ma2, = self.get_agent("monitor_agent", ha2)
+
+        # Waiting everything is monitored
+
+        yield self.wait_monitored(ha1, ma1, 10)
+        yield self.wait_monitored(sa1, ma1, 10)
+        yield self.wait_monitored(ra1, ma1, 10)
+
+        yield self.wait_monitored(ha2, ma2, 10)
+        yield self.wait_monitored(sa2, ma2, 10)
+        yield self.wait_monitored(ra2, ma2, 10)
+
+        # Monitor agents are monitoring each-others
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 4)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 4)
+
+        # Starting "local" agents
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha1.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("dummy_local_agent"), 3)
+
+        a1, = self.get_agent("dummy_local_agent", ha1)
+        a2, a3 = self.get_agent("dummy_local_agent", ha2)
+
+        # Waiting them to be monitored
+
+        yield self.wait_monitored(a1, ma1, 10)
+        yield self.wait_monitored(a2, ma2, 10)
+        yield self.wait_monitored(a3, ma2, 10)
+
+        # Make them partners to check callbacks
+
+        yield self.make_partners(a1, a2)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # wait a full three heart beats and half, everything should be fine
+
+        yield common.delay(None, 10)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Kill the one with partnership
+
+        yield a1.terminate_hard()
+
+        # Nothing yet changed
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        a1b, = self.get_agent("dummy_local_agent", ha1)
+        self.assertEqual(a1.get_agent().get_agent_id(),
+                         a1b.get_agent().get_agent_id())
+        self.assertNotEqual(a1.get_agent().get_instance_id(),
+                            a1b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(a1.get_agent()).shard,
+                         IRecipient(a1b.get_agent()).shard)
+
+        yield self.wait_monitored(a1b, ma1, 10)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate", "died", "restarted")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)
+
+        # Kill the other one
+
+        yield a3.terminate_hard()
+
+        # Nothing yet changed
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(20)
+
+        a2b, a3b = self.get_agent("dummy_local_agent", ha2)
+        self.assertEqual(a2.get_agent().get_full_id(),
+                         a2b.get_agent().get_full_id())
+        self.assertEqual(a3.get_agent().get_agent_id(),
+                         a3b.get_agent().get_agent_id())
+        self.assertNotEqual(a3.get_agent().get_instance_id(),
+                            a3b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(a3.get_agent()).shard,
+                         IRecipient(a3b.get_agent()).shard)
+
+        yield self.wait_monitored(a3b, ma2, 10)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate", "died", "restarted")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)
+
+        self.wait_for_idle(10)
+
+    @common.attr(hosts_per_shard=1)
+    @defer.inlineCallbacks
+    def testWhereEver(self):
+        drv = self.driver
+
+        components = ("feat.agents.monitor.interface.IHeartMonitorFactory",
+                      "feat.agents.monitor.interface.IPacemakerFactory")
+        agency = yield drv.spawn_agency(*components)
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency.start_agent(ha1_desc)
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        # Checking shard structure
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+        self.assertEqual(self.count_agents("raage_agent"), 2)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+        sa1, = self.get_agent("shard_agent", ha1)
+        sa2, = self.get_agent("shard_agent", ha2)
+        ra1, = self.get_agent("raage_agent", ha1)
+        ra2, = self.get_agent("raage_agent", ha2)
+        ma1, = self.get_agent("monitor_agent", ha1)
+        ma2, = self.get_agent("monitor_agent", ha2)
+
+        # Waiting everything is monitored
+
+        yield self.wait_monitored(ha1, ma1, 10)
+        yield self.wait_monitored(sa1, ma1, 10)
+        yield self.wait_monitored(ra1, ma1, 10)
+
+        yield self.wait_monitored(ha2, ma2, 10)
+        yield self.wait_monitored(sa2, ma2, 10)
+        yield self.wait_monitored(ra2, ma2, 10)
+
+        # Monitor agents are monitoring each-others
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 4)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 4)
+
+        # Starting "local" agents
+
+        desc = yield drv.descriptor_factory("dummy_whereever_agent")
+        yield drv.save_document(desc)
+        yield ha1.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_whereever_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_whereever_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("dummy_whereever_agent"), 3)
+
+        a1, = self.get_agent("dummy_whereever_agent", ha1)
+        a2, a3 = self.get_agent("dummy_whereever_agent", ha2)
+
+        # Waiting them to be monitored
+
+        yield self.wait_monitored(a1, ma1, 10)
+        yield self.wait_monitored(a2, ma2, 10)
+        yield self.wait_monitored(a3, ma2, 10)
+
+        # Make them partners to check callbacks
+
+        yield self.make_partners(a1, a2)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # wait a full three heart beats and half, everything should be fine
+
+        yield common.delay(None, 10)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Kill the one with partnership alongside the host
+
+        yield ha1.terminate_hard()
+        yield a1.terminate_hard()
+
+        # Nothing yet changed
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(20)
+
+        agents = self.get_agent("dummy_whereever_agent", ha2)
+        agents.remove(a2)
+        agents.remove(a3)
+        a1b, = agents
+        self.assertEqual(a1.get_agent().get_agent_id(),
+                         a1b.get_agent().get_agent_id())
+        self.assertNotEqual(a1.get_agent().get_instance_id(),
+                            a1b.get_agent().get_instance_id())
+        self.assertNotEqual(IRecipient(a1.get_agent()).shard,
+                            IRecipient(a1b.get_agent()).shard)
+
+        yield self.wait_monitored(a1b, ma1, 10)
+
+        a1 = a1b
+
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 6)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate", "died", "restarted")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)
+
+        # Kill the other one
+
+        yield a3.terminate_hard()
+
+        # Nothing yet changed
+
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 6)
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        agents = self.get_agent("dummy_whereever_agent", ha2)
+        agents.remove(a1)
+        agents.remove(a2)
+        a3b, = agents
+        self.assertEqual(a3.get_agent().get_agent_id(),
+                         a3b.get_agent().get_agent_id())
+        self.assertNotEqual(a3.get_agent().get_instance_id(),
+                            a3b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(a3.get_agent()).shard,
+                         IRecipient(a3b.get_agent()).shard)
+
+        yield self.wait_monitored(a3b, ma2, 10)
+
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 6)
+
+        self.check_no_call(a1, a3)
+        self.check_no_call(a2, a3)
+
+    @common.attr(hosts_per_shard=1)
+    @defer.inlineCallbacks
+    def testMonitorDeath(self):
+        drv = self.driver
+
+        components = ("feat.agents.monitor.interface.IHeartMonitorFactory",
+                      "feat.agents.monitor.interface.IPacemakerFactory")
+        agency = yield drv.spawn_agency(*components)
+        ha1_desc = yield drv.descriptor_factory("host_agent")
+        ha1 = yield agency.start_agent(ha1_desc)
+        ha2_desc = yield drv.descriptor_factory("host_agent")
+        ha2 = yield agency.start_agent(ha2_desc)
+
+        yield self.wait_for_idle(20)
+
+        # Checking shard structure
+
+        self.assertEqual(self.count_agents("monitor_agent"), 2)
+        self.assertEqual(self.count_agents("raage_agent"), 2)
+        self.assertEqual(self.count_agents("shard_agent"), 2)
+        sa1, = self.get_agent("shard_agent", ha1)
+        sa2, = self.get_agent("shard_agent", ha2)
+        ra1, = self.get_agent("raage_agent", ha1)
+        ra2, = self.get_agent("raage_agent", ha2)
+        ma1, = self.get_agent("monitor_agent", ha1)
+        ma2, = self.get_agent("monitor_agent", ha2)
+
+        # Waiting everything is monitored
+
+        yield self.wait_monitored(ha1, ma1, 10)
+        yield self.wait_monitored(sa1, ma1, 10)
+        yield self.wait_monitored(ra1, ma1, 10)
+
+        yield self.wait_monitored(ha2, ma2, 10)
+        yield self.wait_monitored(sa2, ma2, 10)
+        yield self.wait_monitored(ra2, ma2, 10)
+
+        # Monitor agents are monitoring each-others
+        self.assertEqual(self.count_partners(ma1), 4)
+        self.assertEqual(self.count_partners(ma2), 4)
+        self.check_status(ma1, 4)
+        self.check_status(ma2, 4)
+
+        # Starting "local" agents
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha1.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        desc = yield drv.descriptor_factory("dummy_local_agent")
+        yield drv.save_document(desc)
+        yield ha2.get_agent().start_agent(desc.doc_id)
+
+        yield self.wait_for_idle(20)
+
+        self.assertEqual(self.count_agents("dummy_local_agent"), 3)
+
+        a1, = self.get_agent("dummy_local_agent", ha1)
+        a2, a3 = self.get_agent("dummy_local_agent", ha2)
+
+        # Waiting them to be monitored
+
+        yield self.wait_monitored(a1, ma1, 10)
+        yield self.wait_monitored(a2, ma2, 10)
+        yield self.wait_monitored(a3, ma2, 10)
+
+        # Make them partners to check callbacks
+
+        yield self.make_partners(a1, a2)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # wait a full three heart beats and half, everything should be fine
+
+        yield common.delay(None, 10)
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        # Kill a monitor
+
+        yield ma1.terminate_hard()
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        ma1b, = self.get_agent("monitor_agent", ha1)
+        self.assertEqual(ma1.get_agent().get_agent_id(),
+                         ma1b.get_agent().get_agent_id())
+        self.assertNotEqual(ma1.get_agent().get_instance_id(),
+                            ma1b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(ma1.get_agent()).shard,
+                         IRecipient(ma1b.get_agent()).shard)
+
+        yield self.wait_monitored(ma1b, ma2, 10)
+
+        ma1 = ma1b
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)
+
+        # Kill an agent alongside of the monitor
+
+        yield ma1.terminate_hard()
+        yield a1.terminate_hard()
+
+        # Waiting more than 3 hard beats
+        # death should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        ma1b, = self.get_agent("monitor_agent", ha1)
+        self.assertEqual(ma1.get_agent().get_agent_id(),
+                         ma1b.get_agent().get_agent_id())
+        self.assertNotEqual(ma1.get_agent().get_instance_id(),
+                            ma1b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(ma1.get_agent()).shard,
+                         IRecipient(ma1b.get_agent()).shard)
+
+        yield self.wait_monitored(ma1b, ma2, 10)
+
+        ma1 = ma1b
+
+        # Waiting more than 3 hard beats
+        # death of dummy agent should be detected and agent restarted
+
+        yield common.delay(None, 10)
+        yield self.wait_for_idle(10)
+
+        a1b, = self.get_agent("dummy_local_agent", ha1)
+        self.assertEqual(a1.get_agent().get_agent_id(),
+                         a1b.get_agent().get_agent_id())
+        self.assertNotEqual(a1.get_agent().get_instance_id(),
+                            a1b.get_agent().get_instance_id())
+        self.assertEqual(IRecipient(a1.get_agent()).shard,
+                         IRecipient(a1b.get_agent()).shard)
+
+        yield self.wait_monitored(a1b, ma1, 10)
+
+        a1 = a1b
+
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 6)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 6)
+
+        self.check_calls(a1, a2, "initiate")
+        self.check_calls(a2, a1, "initiate", "died", "restarted")
+        self.check_no_call(a3, a1)
+        self.check_no_call(a3, a2)
+        self.check_no_call(a1, a3)

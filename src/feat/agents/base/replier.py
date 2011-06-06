@@ -1,47 +1,33 @@
 from zope.interface import implements
 
-from feat.interface import replier, protocols
-from feat.common import log, reflect, serialization, fiber
-from feat.agents.base import message, replay
+from feat.agents.base import message, replay, protocols
+from feat.common import reflect, serialization, fiber
+
+from feat.interface.protocols import *
+from feat.interface.replier import *
 
 
-class Meta(type(replay.Replayable)):
-    implements(replier.IReplierFactory)
+class MetaReplier(type(replay.Replayable)):
+    implements(IReplierFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
         serialization.register(cls)
-        super(Meta, cls).__init__(name, bases, dct)
+        super(MetaReplier, cls).__init__(name, bases, dct)
 
 
-class BaseReplier(log.Logger, replay.Replayable):
+class BaseReplier(protocols.BaseInterested):
 
-    __metaclass__ = Meta
+    __metaclass__ = MetaReplier
 
-    implements(replier.IAgentReplier)
+    implements(IAgentReplier)
 
     initiator = message.RequestMessage
-    interest_type = protocols.InterestType.private
+    interest_type = InterestType.private
 
     log_category = "replier"
     protocol_type = "Request"
     protocol_id = None
-
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
-    @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see: L{replier.IAgentReplier}'''
 
     def requested(self, request):
         '''@see: L{replier.IAgentReplier}'''
@@ -65,8 +51,8 @@ class PartnershipProtocol(BaseReplier):
         return f
 
     @replay.immutable
-    def _send_reply(self, state, payload):
-        msg = message.ResponseMessage(payload=payload)
+    def _send_reply(self, state, result):
+        msg = message.ResponseMessage(payload={"result": result})
         state.medium.reply(msg)
 
 
@@ -80,7 +66,7 @@ class ProposalReceiver(BaseReplier):
         f.add_callback(state.agent.create_partner, request.reply_to,
                        role=request.payload['role'],
                        allocation_id=request.payload['allocation_id'])
-        f.add_callback(fiber.drop_result, self._send_ok)
+        f.add_callback(fiber.drop_param, self._send_ok)
         f.add_errback(self._send_failed)
         return f.succeed(request.payload['partner_class'])
 

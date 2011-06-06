@@ -1,7 +1,12 @@
-from zope.interface import implements
+import uuid
 
-from feat.common import log, defer, container
+from twisted.python import components
+from zope.interface import implements, classProvides
+
+from feat.agencies import common
 from feat.agents.base import replay
+from feat.common import log, defer, time
+from feat.common import container, serialization, error_handler
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -59,16 +64,18 @@ class BaseInterest(log.Logger):
     type_name = "agent-interest"
     log_category = "agent-interest"
 
-    factory = None
+    agency_agent = None
+    agent_factory = None
+
     binding = None
 
-    def __init__(self, factory, *args, **kwargs):
-        self.factory = factory
+    def __init__(self, agent_factory, *args, **kwargs):
+        self.agent_factory = agent_factory
         self.args = args
         self.kwargs = kwargs
-        self.agency_agent = None
+
         self._lobby_binding = None
-        self._concurrency = getattr(factory, "concurrency", None)
+        self._concurrency = getattr(agent_factory, "concurrency", None)
         self._queue = None
         self._active = 0
         self._notifier = defer.Notifier()
@@ -78,7 +85,7 @@ class BaseInterest(log.Logger):
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
-        return (self.factory == other.factory
+        return (self.agent_factory == other.agent_factory
                 and self.args == other.args
                 and self.kwargs == other.kwargs)
 
@@ -120,7 +127,7 @@ class BaseInterest(log.Logger):
             self._queue.clear()
 
     def schedule_message(self, message):
-        if not isinstance(message, self.factory.initiator):
+        if not isinstance(message, self.agent_factory.initiator):
             return False
 
         if self._queue is not None:
@@ -135,13 +142,13 @@ class BaseInterest(log.Logger):
         return True
 
     def bind(self, shard=None):
-        if self.factory.interest_type == InterestType.public:
-            prot_id = self.factory.protocol_id
+        if self.agent_factory.interest_type == InterestType.public:
+            prot_id = self.agent_factory.protocol_id
             self.binding = self.agency_agent.create_binding(prot_id, shard)
             return self.binding
 
     def revoke(self):
-        if self.factory.interest_type == InterestType.public:
+        if self.agent_factory.interest_type == InterestType.public:
             self.binding.revoke()
 
     ### IAgencyInterest Method ###
@@ -149,7 +156,7 @@ class BaseInterest(log.Logger):
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
         assert self._lobby_binding is None
-        prot_id = self.factory.protocol_id
+        prot_id = self.agent_factory.protocol_id
         binding = self.agency_agent.create_binding(prot_id, 'lobby')
         self._lobby_binding = binding
 
@@ -161,7 +168,7 @@ class BaseInterest(log.Logger):
     ### ISerializable Methods ###
 
     def snapshot(self):
-        return self.factory, self.args, self.kwargs
+        return self.agent_factory, self.args, self.kwargs
 
     ### Protected Methods ###
 
@@ -194,12 +201,12 @@ class DialogInterest(BaseInterest):
         self.debug('Instantiating %s protocol %s',
                    message.protocol_type, message.protocol_id)
 
-        medium_factory = IAgencyInterestedFactory(self.factory)
+        medium_factory = IAgencyInterestedFactory(self.agent_factory)
         medium = medium_factory(self.agency_agent, message,
                                 *self.args, **self.kwargs)
         medium.initiate()
-        listener = self.agency_agent.register_listener(medium)
-        medium.notify_finish().addBoth(defer.drop_result,
+        protocol = self.agency_agent.register_protocol(medium)
+        medium.notify_finish().addBoth(defer.drop_param,
                                        self._message_processed, message)
 
-        self.agency_agent.call_next(listener.on_message, message)
+        self.agency_agent.call_next(protocol.on_message, message)

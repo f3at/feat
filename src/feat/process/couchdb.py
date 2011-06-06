@@ -18,6 +18,9 @@ class Process(base.Base):
         self.config['log'] = os.path.join(workspace, 'couch_test.log')
         self.config['local_ini'] = os.path.join(workspace, 'local.ini')
         self.config['host'] = '127.0.0.1'
+        import feat
+        couchpy = os.path.join(feat.__path__[0], 'bin', 'couchpy')
+        self.config['couchpy'] = couchpy
 
     @replay.side_effect
     def prepare_workspace(self):

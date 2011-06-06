@@ -14,21 +14,8 @@ class ITaskFactory(protocols.IInitiatorFactory):
     when initiating a task.'''
 
 
-class IAgencyTask(Interface):
+class IAgencyTask(protocols.IAgencyProtocol):
     '''Agency part of a task manager'''
-
-    def finish(arg):
-        '''
-        Close the task in case the initiate() returned NOT_DONE_YET.
-        @param arg: Trigger value for the tasks deferred.
-        '''
-
-    def fail(failure):
-        '''
-        Close the task with the error state in case the initiate() returned
-        NOT_DONE_YET.
-        @param failure: failure to errback the tasks deferred.
-        '''
 
     def finished():
         '''

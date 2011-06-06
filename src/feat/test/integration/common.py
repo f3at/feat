@@ -7,6 +7,7 @@ from feat.common import text_helper, defer
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
+from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
 
@@ -71,6 +72,11 @@ class SimulationTest(common.TestCase):
 
     overriden_configs = None
 
+    def __init__(self, *args, **kwargs):
+        common.TestCase.__init__(self, *args, **kwargs)
+        initial_documents = dbtools.get_current_initials()
+        self.addCleanup(dbtools.reset_documents, initial_documents)
+
     @defer.inlineCallbacks
     def setUp(self):
         yield common.TestCase.setUp(self)
@@ -99,7 +105,9 @@ class SimulationTest(common.TestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         for x in self.driver.iter_agents():
-            yield x.wait_for_listeners_finish()
+            yield x._cancel_long_running_protocols()
+            yield x.wait_for_protocols_finish()
+
         yield common.TestCase.tearDown(self)
         try:
             yield self._check_replayability()
@@ -113,18 +121,26 @@ class SimulationTest(common.TestCase):
             histories = yield self.driver._journaler.get_histories()
             for history in histories:
                 entries = yield self.driver._journaler.get_entries(history)
-                self._validate_replay_on_agent(history.agent_id, entries)
+                self._validate_replay_on_agent(history, entries)
         else:
             msg = ("\n\033[91mFIXME: \033[0mReplayability test "
                   "skipped: %s\n" % self.skip_replayability)
             print msg
 
-    def _validate_replay_on_agent(self, aid, entries):
+    def _validate_replay_on_agent(self, history, entries):
+        aid = history.agent_id
         agent = self.driver.find_agent(aid)
         if agent is None:
             self.warning(
-                'Agent with id %r not found. This usually means it was '
-                'terminated, during the test')
+                'Agent with id %r not found. '
+                'This usually means it was terminated, during the test.', aid)
+            return
+        if agent._instance_id != history.instance_id:
+            self.warning(
+                'Agent instance id is %s, the journal entries are for '
+                'instance_id %s. This history will not get validated, as '
+                'now we dont have the real instance to compare the result '
+                'with.', agent._instance_id, history.instance_id)
             return
 
         self.log("Validating replay of %r with id: %s",

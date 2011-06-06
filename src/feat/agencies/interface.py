@@ -3,14 +3,16 @@
 
 from zope.interface import Interface, Attribute
 
-__all__ = ("IListener", "IConnectionFactory", "IAgencyAgentInternal",
+__all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
+           "IConnectionFactory", "IAgencyAgentInternal",
            "IAgencyInitiatorFactory", "IAgencyInterestFactory",
-           "IAgencyInterestInternalFactory",
+           "IAgencyInterestInternalFactory", "ILongRunningProtocol",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
-           "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection")
+           "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection",
+           "IJournalWriter")
 
 
 class DatabaseError(RuntimeError):
@@ -32,18 +34,17 @@ class NotFoundError(DatabaseError):
     '''
 
 
-class IListener(Interface):
-    '''Represents sth which can be registered in AgencyAgent to
-    listen for message'''
+class IAgencyProtocolInternal(Interface):
+    '''Represents a protocol which can be registered in AgencyAgent.'''
 
-    def on_message(message):
-        '''hook called when message arrives'''
+    guid = Attribute("Protocol globally unique identifier.")
 
-    def get_session_id():
-        '''
-        @returns: session_id to bound to
-        @rtype: string
-        '''
+    def cleanup(self):
+        '''Called by the agency when terminating,
+        it should cancel the protocol. Returns a deferred.'''
+
+    def is_idle(self):
+        '''Returns if the protocol is in idle state.'''
 
     def get_agent_side():
         '''
@@ -52,9 +53,15 @@ class IListener(Interface):
 
     def notify_finish():
         '''
-        @returns: Deferred which will be run
+        @returns: Deferred which will be runs
                   after the protocol has finished
         '''
+
+
+class IAgencyListenerInternal(Interface):
+
+    def on_message(message):
+        '''hook called when message arrives'''
 
 
 class IAgencyAgentInternal(Interface):
@@ -66,11 +73,11 @@ class IAgencyAgentInternal(Interface):
     def create_binding(prot_id, shard):
         pass
 
-    def register_listener(medium):
-        pass
+    def register_protocol(protocol):
+        '''@type protocol: IAgencyProtocolInternal'''
 
-    def unregister_listener(session_id):
-        pass
+    def unregister_protocol(protocol):
+        '''@type protocol: IAgencyProtocolInternal'''
 
     def send_msg(recipients, msg, handover=False):
         pass
@@ -133,6 +140,19 @@ class IAgencyInterestedFactory(Interface):
     def __call__(agency_agent, message):
         '''Creates a new agency interested
         for the specified agent-side factory.'''
+
+
+class ILongRunningProtocol(Interface):
+    '''Long running protocol that could be cancelled.'''
+
+    def is_idle():
+        '''Returns if the protocol is idle.'''
+
+    def cancel():
+        '''Cancel the protocol.'''
+
+    def notify_finish():
+        '''Returns a deferred fired when the protocol finishes.'''
 
 
 class IConnectionFactory(Interface):
@@ -309,6 +329,14 @@ class IDatabaseClient(Interface):
                           by this session.
         '''
 
+    def query_view(factory, **options):
+        '''
+        @param factory: View factory to query.
+        @type factory: L{feat.interface.view.IViewFactory}
+        @param options: Dictionary of parameters to pass to the query.
+        @return: C{list} of results.
+        '''
+
     def disconnect():
         '''
         Disconnect from database server.
@@ -369,6 +397,11 @@ class IDatabaseDriver(Interface):
         @param listener_id: Id returned buy listen_changes() method
         @rtype: Deferred
         @return: Deferred which will fire when the listener is cancelled.
+        '''
+
+    def query_view(factory, **options):
+        '''
+        Query the view. See L{IDatabaseClient.query_view}.
         '''
 
 
@@ -456,6 +489,30 @@ class IJournalerConnection(Interface):
         Create a new IAgencyJournalEntry for the given parameters.
         @rtype: IAgencyJournalEntry
         """
+
+    def get_filename():
+        """
+        Return the filename to which this connection stores.
+        """
+
+
+class IJournalWriter(Interface):
+    '''
+    Layer responsible for persisitng the jounal entries.
+    '''
+
+    def get_histories():
+        pass
+
+    def get_entries(history):
+        '''
+        Returns a list of journal entries  for the given history_id.
+        '''
+
+    def insert_entries(entries):
+        '''
+        Write the entries to the transport.
+        '''
 
     def get_filename():
         """

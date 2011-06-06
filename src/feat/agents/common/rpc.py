@@ -77,6 +77,9 @@ class AgentMixin(object):
 class RPCRequesterFactory(serialization.Serializable):
     implements(requester.IRequesterFactory)
 
+    protocol_type = 'Request'
+    protocol_id = 'rpc'
+
     def __init__(self, timeout):
         self.timeout = timeout
         self.protocol_id = RPCRequester.protocol_id

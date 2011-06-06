@@ -1,7 +1,9 @@
 from zope.interface import implements
-from feat.common import log, serialization, reflect
-from feat.agents.base import protocol, replay
 
+from feat.agents.base import protocols, replay
+from feat.common import serialization, reflect
+
+from feat.interface.protocols import *
 from feat.interface.task import *
 
 
@@ -15,7 +17,7 @@ class Meta(type(replay.Replayable)):
         super(Meta, cls).__init__(name, bases, dct)
 
 
-class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
+class BaseTask(protocols.BaseInitiator):
     """
     I am a base class for managers of tasks
     """
@@ -25,26 +27,16 @@ class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
     implements(IAgentTask)
 
     log_category = "task"
+
     protocol_type = "Task"
     protocol_id = None
+    busy = True # Busy tasks will not be idle
 
     timeout = 10
 
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
     @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see L{IAgentTask}'''
+    def cancel(self, state):
+        state.medium.terminate()
 
     def expired(self):
         '''@see L{IAgentTask}'''
@@ -53,6 +45,46 @@ class BaseTask(log.Logger, protocol.InitiatorBase, replay.Replayable):
     def finished(self, state):
         return state.medium.finished()
 
+
+class StealthPeriodicTask(BaseTask):
+
+    busy = False
+    timeout = None
+
+    def initiate(self, period):
+        self._period = period
+        self._call = None
+
+        self._run()
+
+        return NOT_DONE_YET
+
+    def expired(self):
+        self.cancel()
+
     @replay.immutable
-    def get_expiration_time(self, state):
-        return state.medium.get_expiration_time()
+    def cancel(self, state):
+        self._cancel()
+        state.medium.terminate()
+
+    def run(self):
+        """Overridden in sub-classes."""
+
+    ### Private Methods ###
+
+    def _run(self):
+        self.run()
+        self._schedule()
+
+    @replay.immutable
+    def _cancel(self, state):
+        if self._call is not None:
+            state.medium.cancel_delayed_call(self._call)
+            self._call = None
+
+    @replay.immutable
+    def _schedule(self, state):
+        self._cancel()
+        self._call = state.medium.call_later_ex(self._period,
+                                                self._run,
+                                                busy=False)

@@ -1,3 +1,4 @@
+import signal
 import tempfile
 import os
 
@@ -7,13 +8,13 @@ from feat.agencies import journaler
 from feat.common.serialization import banana
 
 
-class Journaler(journaler.Journaler, common.Mock):
+class SqliteWriter(journaler.SqliteWriter, common.Mock):
 
     def __init__(self, *args, **kwargs):
         common.Mock.__init__(self)
-        journaler.Journaler.__init__(self, *args, **kwargs)
+        journaler.SqliteWriter.__init__(self, *args, **kwargs)
 
-    _create_schema = common.Mock.record(journaler.Journaler._create_schema)
+    _create_schema = common.Mock.record(journaler.SqliteWriter._create_schema)
 
 
 class DBTests(common.TestCase):
@@ -28,18 +29,45 @@ class DBTests(common.TestCase):
     @defer.inlineCallbacks
     def testInitiateInMemory(self):
         jour = journaler.Journaler(self)
-        self.assertEqual(':memory:', jour._filename)
-        self.assertFalse(jour.running)
+        writer = journaler.SqliteWriter(self)
+        jour.configure_with(writer)
 
-        yield jour.initiate()
-        self.assertTrue(jour.running)
+        self.assertEqual(journaler.State.connected,
+                         jour._get_machine_state())
+
+        filename = yield jour.get_filename()
+        self.assertEqual(':memory:', filename)
+        self.assertEqual(journaler.State.disconnected,
+                         writer._get_machine_state())
+
+        yield writer.initiate()
+        self.assertEqual(journaler.State.connected,
+                         writer._get_machine_state())
+
         yield jour.close()
-        self.assertFalse(jour.running)
+        self.assertEqual(journaler.State.disconnected,
+                         jour._get_machine_state())
+
+    @defer.inlineCallbacks
+    def testStoringEntriesWhileDisconnected(self):
+        jour = journaler.Journaler(self)
+        writer = journaler.SqliteWriter(self, encoding='zip')
+        num = 10
+        defers = map(lambda _: jour.insert_entry(**self._generate_data()),
+                     range(num))
+        yield writer.initiate()
+        yield jour.configure_with(writer)
+        yield defer.DeferredList(defers)
+
+        yield self._assert_entries(jour, num)
 
     @defer.inlineCallbacks
     def testStoringAndReadingEntries(self):
-        jour = journaler.Journaler(self, encoding='zip')
-        yield jour.initiate()
+        jour = journaler.Journaler(self)
+        writer = journaler.SqliteWriter(self, encoding='zip')
+        yield writer.initiate()
+        yield jour.configure_with(writer)
+
         yield jour.insert_entry(**self._generate_data())
         histories = yield jour.get_histories()
         self.assertIsInstance(histories, list)
@@ -74,28 +102,74 @@ class DBTests(common.TestCase):
     @defer.inlineCallbacks
     def testInitiateOnDisk(self):
         filename = self._get_tmp_file()
-        jour = Journaler(self, filename=filename)
-        yield jour.initiate()
-        self.assertCalled(jour, '_create_schema', times=1)
-        self.assertTrue(jour.running)
+        jour = journaler.Journaler(self)
+        writer = SqliteWriter(self, filename=filename)
+        yield writer.initiate()
+        yield jour.configure_with(writer)
+        self.assertCalled(writer, '_create_schema', times=1)
+        self.assertEqual(journaler.State.connected,
+                         jour._get_machine_state())
+        self.assertEqual(journaler.State.connected,
+                         writer._get_machine_state())
+        yield writer.close()
+        self.assertEqual(journaler.State.disconnected,
+                         writer._get_machine_state())
+        self.assertEqual(journaler.State.connected,
+                         jour._get_machine_state())
+        yield writer.initiate()
+        self.assertEqual(journaler.State.connected,
+                         writer._get_machine_state())
         yield jour.close()
-        self.assertFalse(jour.running)
-        yield jour.initiate()
-        self.assertTrue(jour.running)
-        yield jour.close()
-        self.assertCalled(jour, '_create_schema', times=1)
+        yield writer.close()
+        self.assertCalled(writer, '_create_schema', times=1)
 
     @defer.inlineCallbacks
     def testLoadingCorrectEncoding(self):
         filename = self._get_tmp_file()
-        jour = Journaler(self, filename=filename, encoding='zip')
-        yield jour.initiate()
-        yield jour.close()
 
-        jour = Journaler(self, filename=filename, encoding='sth else')
-        yield jour.initiate()
+        writer = SqliteWriter(self, filename=filename, encoding='zip')
+        yield writer.initiate()
+        yield writer.close()
+
+        writer = SqliteWriter(self, filename=filename, encoding='sth else')
+        yield writer.initiate()
         # stored value should win
-        self.assertEqual('zip', jour._encoding)
+        self.assertEqual('zip', writer._encoding)
+
+    @defer.inlineCallbacks
+    @common.attr(timeout=10)
+    def testJourfileRotation(self):
+        self._rotate_called = 0
+
+        def on_rotate():
+            self._rotate_called += 1
+
+        filename = self._get_tmp_file()
+        jour = journaler.Journaler(self)
+        writer = journaler.SqliteWriter(
+            self, filename=filename, encoding='zip', on_rotate=on_rotate)
+        yield writer.initiate()
+        d = jour.insert_entry(**self._generate_data())
+        yield jour.configure_with(writer)
+        yield d
+        yield self._assert_entries(jour, 1)
+
+        ourpid = os.getpid()
+
+        # now rotate the journal 3 times
+        for x in range(3):
+            newname = self._get_tmp_file()
+            os.rename(filename, newname)
+            os.kill(ourpid, signal.SIGHUP)
+
+            yield self._assert_entries(jour, 0)
+            yield jour.insert_entry(**self._generate_data())
+            yield self._assert_entries(jour, 1)
+
+            self.assertTrue(os.path.exists(filename))
+            self.assertTrue(os.path.exists(newname))
+
+        self.assertEqual(3, self._rotate_called)
 
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
@@ -117,3 +191,13 @@ class DBTests(common.TestCase):
 
         defaults.update(opts)
         return defaults
+
+    @defer.inlineCallbacks
+    def _assert_entries(self, jour, num):
+        histories = yield jour.get_histories()
+        self.assertIsInstance(histories, list)
+        if num > 0:
+            self.assertIsInstance(histories[0], journaler.History)
+            entries = yield jour.get_entries(histories[0])
+            self.assertIsInstance(entries, list)
+            self.assertEqual(num, len(entries))

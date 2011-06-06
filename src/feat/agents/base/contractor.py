@@ -1,23 +1,23 @@
 from zope.interface import implements
 
-from feat.common import log, reflect, serialization, fiber
-from feat.agents.base import message, replay, manager, recipient
+from feat.agents.base import replay, manager, recipient, message, protocols
+from feat.common import reflect, serialization, fiber, error_handler
 
 from feat.interface.contractor import *
 from feat.interface.contracts import *
 from feat.interface.protocols import *
 
 
-class Meta(type(replay.Replayable)):
+class MetaContractor(type(replay.Replayable)):
     implements(IContractorFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
         serialization.register(cls)
-        super(Meta, cls).__init__(name, bases, dct)
+        super(MetaContractor, cls).__init__(name, bases, dct)
 
 
-class BaseContractor(log.Logger, replay.Replayable):
+class BaseContractor(protocols.BaseInterested):
     """
     I am a base class for contractors of contracts.
 
@@ -26,35 +26,24 @@ class BaseContractor(log.Logger, replay.Replayable):
                          see L{feat.agents.manager.BaseManager}
     @type protocol_type: str
     """
-    __metaclass__ = Meta
+
+    __metaclass__ = MetaContractor
 
     implements(IAgentContractor)
 
     initiator = message.Announcement
 
     log_category = "contractor"
+
     protocol_type = "Contract"
     protocol_id = None
+
+    _error_handler = error_handler
+
     interest_type = InterestType.private
 
     bid_timeout = 10
     ack_timeout = 10
-
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
-    @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see: L{contractor.IAgentContractor}'''
 
     def announced(self, announcement):
         '''@see: L{contractor.IAgentContractor}'''
@@ -117,7 +106,7 @@ class NestingContractor(BaseContractor):
             NestedManagerFactory(self.protocol_id, time_left),
             recipients, announcement)
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_result,
+        f.add_callback(fiber.drop_param,
                        state.nested_manager.wait_for_bids)
         return f.succeed()
 
@@ -137,6 +126,8 @@ class NestingContractor(BaseContractor):
 class NestedManagerFactory(serialization.Serializable):
 
     implements(manager.IManagerFactory)
+
+    protocol_type = "Contract"
 
     def __init__(self, protocol_id, time_left):
         self.time_left = time_left
@@ -174,9 +165,9 @@ class NestedManager(manager.BaseManager):
     @replay.immutable
     def wait_for_bids(self, state):
         f = fiber.succeed()
-        f.add_callback(fiber.drop_result, state.medium.wait_for_state,
+        f.add_callback(fiber.drop_param, state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
-        f.add_callback(fiber.drop_result, state.medium.get_bids)
+        f.add_callback(fiber.drop_param, state.medium.get_bids)
         return f
 
     @replay.journaled
@@ -192,12 +183,14 @@ class NestedManager(manager.BaseManager):
 class Service(serialization.Serializable):
     implements(IContractorFactory)
 
-    def __init__(self, factory):
-        factory = IContractorFactory(factory)
-        self.protocol_id = 'discover-' + factory.protocol_id
-        self.protocol_type = factory.protocol_type
-        self.initiator = factory.initiator
-        self.interest_type = InterestType.public
+    protocol_type = "Contract"
+    interest_type = InterestType.public
+    initiator = message.Announcement
+
+    def __init__(self, identifier):
+        if not isinstance(identifier, str):
+            identifier = IInterest(identifier).protocol_id
+        self.protocol_id = 'discover-' + identifier
 
     def __call__(self, agent, medium):
         instance = ServiceDiscoveryContractor(agent, medium)
@@ -207,10 +200,7 @@ class Service(serialization.Serializable):
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
-        return self.protocol_id == other.protocol_id and\
-               self.protocol_type == other.protocol_type and\
-               self.initiator == other.initiator and\
-               self.interest_type == other.interest_type
+        return self.protocol_id == other.protocol_id
 
     def __ne__(self, other):
         if type(self) != type(other):

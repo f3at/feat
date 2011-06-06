@@ -60,9 +60,6 @@ class Agency(agency.Agency):
         return self._broker.fail_event(
             failure, self.config['agent']['id'], 'started')
 
-    def get_agent(self):
-        return self._agents[0]
-
     @manhole.expose()
     def kill(self):
         '''kill() -> Terminate the process of the standalone.'''

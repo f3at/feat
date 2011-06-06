@@ -397,13 +397,14 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.driver.validate_shards()
 
 
-@attr(timescale=0.05)
+@attr(timescale=0.1)
 @attr('slow')
 class TestProblemResolving(common.SimulationTest, CommonMixin):
 
-    configurable_attributes = ['hosts']
+    configurable_attributes = ['hosts'] \
+                              + common.SimulationTest.configurable_attributes
 
-    timeout = 20
+    timeout = 40
 
     @defer.inlineCallbacks
     def prolog(self):
@@ -457,5 +458,5 @@ class TestProblemResolving(common.SimulationTest, CommonMixin):
         d = defer.DeferredList(map(
             lambda x: x.resolve_missing_shard_agent_problem(recp),
             self.agents))
-        d.addCallback(defer.drop_result, self.wait_for_idle, 20)
+        d.addCallback(defer.drop_param, self.wait_for_idle, 20)
         return d

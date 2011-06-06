@@ -9,8 +9,10 @@ from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (resource, recipient, replay, requester,
                               replier, partners, dependency, manager, )
-from feat.interface.agent import AgencyAgentState
-from feat.agents.common.monitor import RestartStrategy
+from feat.agents.common import monitor
+
+from feat.interface.agent import *
+from feat.interface.agency import *
 
 
 registry = dict()
@@ -47,18 +49,34 @@ def update_descriptor(function):
     return decorated
 
 
+@serialization.register
+class BasePartner(partners.BasePartner):
+    pass
+
+
+@serialization.register
+class MonitorPartner(monitor.PartnerMixin, BasePartner):
+
+    type_name = "agent->monitor"
+
+
+class Partners(partners.Partners):
+
+    partners.has_many("monitors", "monitor_agent", MonitorPartner)
+
+
 class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
 class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
-                dependency.AgentDependencyMixin):
+                dependency.AgentDependencyMixin, monitor.AgentMixin):
 
     __metaclass__ = MetaAgent
 
     implements(agent.IAgent, generic.ITimeProvider)
 
-    partners_class = partners.Partners
+    partners_class = Partners
 
     log_category = "agent"
 
@@ -67,8 +85,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     categories = {'access': agent.Access.none,
                   'address': agent.Address.none,
                   'storage': agent.Storage.none}
-
-    restart_strategy = RestartStrategy.buryme
 
     # resources required to run the agent
     resources = {'epu': 1}
@@ -90,6 +106,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         state.medium = agent.IAgencyAgent(medium)
         state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
+
+    @replay.immutable
+    def get_status(self, state):
+        return state.medium.state
 
     ### IAgent Methods ###
 
@@ -120,7 +140,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def get_full_id(self, state):
         desc = state.medium.get_descriptor()
-        return desc.doc_id + "/" + desc.instance_id
+        return desc.doc_id + u"/" + unicode(desc.instance_id)
 
     @replay.journaled
     def shutdown(self, state):
@@ -180,12 +200,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
             self.debug(msg)
 
             if substitute:
-                f.add_callback(fiber.drop_result, state.partners.remove,
+                f.add_callback(fiber.drop_param, state.partners.remove,
                                substitute)
 
             f.chain(fiber.fail(partners.DoublePartnership(msg)))
             return f
-        f.add_callback(fiber.drop_result, self.initiate_protocol,
+        f.add_callback(fiber.drop_param, self.initiate_protocol,
                        requester.Propose, recp, allocation_id,
                        partner_allocation_id,
                        our_role, partner_role, substitute)
@@ -212,6 +232,21 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return self.establish_partnership(recp, partner.allocation_id,
                                           alloc_id, substitute=partner)
 
+    @manhole.expose()
+    @replay.journaled
+    def breakup(self, state, recp):
+        '''breakup(recp) -> Order the agent to break the partnership with
+        the given recipient'''
+        recp = recipient.IRecipient(recp)
+        partner = self.find_partner(recp)
+        if partner:
+            f = requester.say_goodbye(self, recp)
+            f.add_callback(fiber.drop_param, self.remove_partner, partner)
+            return f
+        else:
+            self.warning('We were trying to break up with agent recp %r.,'
+                         'but aparently he is not our partner!.', recp)
+
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,
                        role=None, substitute=None):
@@ -234,6 +269,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         '''query_partners(name_or_class) ->
               Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
+
+    @manhole.expose()
+    @replay.immutable
+    def query_partners_with_role(self, state, name, role):
+        return state.partners.query_with_role(name, role)
 
     @replay.immutable
     def find_partner(self, state, recp_or_agent_id):
@@ -258,8 +298,20 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return state.medium.retrying_protocol(*args, **kwargs)
 
     @replay.immutable
+    def periodic_protocol(self, state, *args, **kwargs):
+        return state.medium.periodic_protocol(*args, **kwargs)
+
+    @replay.immutable
     def initiate_task(self, state, *args, **kwargs):
         return state.medium.initiate_task(*args, **kwargs)
+
+    @replay.immutable
+    def retrying_task(self, state, *args, **kwargs):
+        return state.medium.retrying_task(*args, **kwargs)
+
+    @replay.immutable
+    def register_interest(self, state, *args, **kwargs):
+        return state.medium.register_interest(*args, **kwargs)
 
     @replay.mutable
     def preallocate_resource(self, state, **params):
@@ -272,6 +324,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def check_allocation_exists(self, state, allocation_id):
         return state.resources.get_allocation(allocation_id)
+
+    @manhole.expose()
+    @replay.immutable
+    def get_resource_usage(self, state):
+        return state.resources.get_usage()
 
     @replay.immutable
     def list_resource(self, state):
@@ -315,6 +372,14 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return fiber.wrap_defer(state.medium.get_document, doc_id)
 
     @replay.immutable
+    def delete_document(self, state, doc):
+        return fiber.wrap_defer(state.medium.delete_document, doc)
+
+    @replay.immutable
+    def query_view(self, state, factory, **options):
+        return fiber.wrap_defer(state.medium.query_view, factory, **options)
+
+    @replay.immutable
     def save_document(self, state, doc):
         return fiber.wrap_defer(state.medium.save_document, doc)
 
@@ -323,23 +388,18 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         return method(desc, *args, **kwargs)
 
     @replay.journaled
-    def discover_service(self, state, factory, timeout=3, shard='lobby'):
-
-        def expire_handler(fail):
-            if fail.check(protocols.InitiatorFailed):
-                return fail.value.args[0]
-            else:
-                fail.raiseException()
-
-        initiator = manager.DiscoverService(factory, timeout)
+    def discover_service(self, state, string_or_factory,
+                         timeout=3, shard='lobby'):
+        initiator = manager.DiscoverService(string_or_factory, timeout)
         recp = recipient.Broadcast(shard=shard,
                                    protocol_id=initiator.protocol_id)
+
         f = fiber.succeed(initiator)
         f.add_callback(self.initiate_protocol, recp)
         # this contract will always finish in expired state as it is blindly
         # rejecting all it gets
         f.add_callback(manager.ServiceDiscoveryManager.notify_finish)
-        f.add_errback(expire_handler)
+        f.add_errback(self._expire_handler)
         return f
 
     @replay.immutable
@@ -353,3 +413,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def cancel_delayed_call(self, state, call_id):
         state.medium.cancel_delayed_call(call_id)
+
+    ### Private Methods ###
+
+    def _expire_handler(self, fail):
+        if fail.check(protocols.ProtocolFailed):
+            return fail.value.args[0]
+        else:
+            fail.raiseException()

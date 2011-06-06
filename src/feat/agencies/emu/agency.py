@@ -10,8 +10,10 @@ class Agency(agency.Agency):
     def initiate(self):
         mesg = messaging.Messaging()
         db = database.Database()
+        writer = journaler.SqliteWriter(self)
         journal = journaler.Journaler(self)
-        d = journal.initiate()
-        d.addCallback(defer.drop_result, agency.Agency.initiate,
+        journal.configure_with(writer)
+        d = writer.initiate()
+        d.addCallback(defer.drop_param, agency.Agency.initiate,
                       self, mesg, db, journal)
         return d

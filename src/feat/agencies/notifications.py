@@ -146,12 +146,13 @@ class AgencyCollectorInterest(protocols.BaseInterest):
 
     ### Overridden IAgencyInterestInternalFactory Methods ###
 
-    def __call__(self, agency_agent):
+    def __call__(self, agency_agent, *args, **kwargs):
         protocols.BaseInterest.__call__(self, agency_agent)
         # We create the agent-side factory right away
         self.debug('Instantiating collector protocol')
 
-        medium = AgencyCollector(self.agency_agent, self.factory)
+        medium = AgencyCollector(self.agency_agent, self.agent_factory,
+                                 *args, **kwargs)
         medium.initiate()
 
         self.agency_collector = medium
@@ -168,7 +169,7 @@ class AgencyCollectorInterest(protocols.BaseInterest):
 
     def _pass_message(self, message):
         d = self.agency_collector.on_message(message)
-        d.addBoth(defer.drop_result, self._message_processed, message)
+        d.addBoth(defer.drop_param, self._message_processed, message)
 
 
 components.registerAdapter(AgencyCollectorInterest,

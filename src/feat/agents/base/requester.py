@@ -1,29 +1,29 @@
 from twisted.python.failure import Failure
-
 from zope.interface import implements
 
-from feat.common import log, reflect, serialization, fiber, error_handler
-from feat.agents.base import replay, protocol, message, recipient
+from feat.agents.base import replay, protocols, message, recipient
+from feat.common import reflect, serialization, fiber
 
-from feat.interface.requester import *
 from feat.interface.protocols import *
+from feat.interface.requester import *
 
 
-def say_goodbye(agent, recp, payload):
+def say_goodbye(agent, recp, payload=None):
     origin = agent.get_own_address()
     return _notify_partner(agent, recp, 'goodbye', origin, payload)
 
 
-def notify_died(agent, recp, origin, payload):
-    return _notify_partner(agent, recp, 'died', origin, payload)
+def notify_died(agent, recp, origin, payload=None, retrying=False):
+    return _notify_partner(agent, recp, 'died', origin, payload, retrying)
 
 
-def notify_restarted(agent, recp, origin, new_address):
-    return _notify_partner(agent, recp, 'restarted', origin, new_address)
+def notify_restarted(agent, recp, origin, new_address, retrying=True):
+    return _notify_partner(agent, recp, 'restarted', origin, new_address,
+                           retrying)
 
 
-def notify_burried(agent, recp, origin, payload):
-    return _notify_partner(agent, recp, 'burried', origin, payload)
+def notify_burried(agent, recp, origin, payload=None, retrying=True):
+    return _notify_partner(agent, recp, 'burried', origin, payload, retrying)
 
 
 def ping(agent, recp):
@@ -36,41 +36,26 @@ def ping(agent, recp):
 ### Private ###
 
 
-class Meta(type(replay.Replayable)):
+class MetaRequester(type(replay.Replayable)):
     implements(IRequesterFactory)
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
         serialization.register(cls)
-        super(Meta, cls).__init__(name, bases, dct)
+        super(MetaRequester, cls).__init__(name, bases, dct)
 
 
-class BaseRequester(log.Logger, protocol.InitiatorBase, replay.Replayable):
+class BaseRequester(protocols.BaseInitiator):
 
-    __metaclass__ = Meta
+    __metaclass__ = MetaRequester
+
     implements(IAgentRequester)
 
     log_category = "requester"
+
+    protocol_type = "Request"
+
     timeout = 0
-    protocol_id = None
-
-    _error_handler = error_handler
-
-    def __init__(self, agent, medium):
-        log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
-
-    def init_state(self, state, agent, medium):
-        state.agent = agent
-        state.medium = medium
-
-    @replay.immutable
-    def restored(self, state):
-        replay.Replayable.restored(self)
-        log.Logger.__init__(self, state.medium)
-
-    def initiate(self):
-        '''@see: L{IAgentRequester}'''
 
     def got_reply(self, reply):
         '''@see: L{IAgentRequester}'''
@@ -111,18 +96,23 @@ class PartnershipProtocol(BaseRequester):
         msg = message.RequestMessage(payload=payload)
         state.medium.request(msg)
 
-    @replay.immutable
+    @replay.journaled
     def got_reply(self, state, reply):
-        payload = reply.payload
-        if isinstance(payload, Failure):
-            self._error_handler(payload)
-        return reply.payload
+        result = reply.payload["result"]
+        if isinstance(result, Failure):
+            self._error_handler(result)
+        return result
+
+    @replay.journaled
+    def closed(self, state):
+        self.log('Notification expired')
 
 
-def _notify_partner(agent, recp, notification_type, origin, payload):
+def _notify_partner(agent, recp, notification_type, origin, payload,
+                    retrying=False):
 
     def _ignore_initiator_failed(fail):
-        if fail.check(InitiatorFailed):
+        if fail.check(ProtocolFailed):
             agent.log('Swallowing %r expection.', fail.value)
             return None
         else:
@@ -130,9 +120,14 @@ def _notify_partner(agent, recp, notification_type, origin, payload):
             fail.raiseException()
 
     f = fiber.succeed(PartnershipProtocol)
-    f.add_callback(agent.initiate_protocol, recp, notification_type,
-                   origin, payload)
-    f.add_callback(PartnershipProtocol.notify_finish)
+    if retrying:
+        f.add_callback(agent.retrying_protocol, recp,
+                       args=(notification_type, origin, payload, ),
+                       max_retries=5, initial_delay=1)
+    else:
+        f.add_callback(agent.initiate_protocol, recp, notification_type,
+                       origin, payload)
+    f.add_callback(fiber.call_param, 'notify_finish')
     f.add_errback(_ignore_initiator_failed)
     return f
 
@@ -179,7 +174,7 @@ class Propose(BaseRequester):
     def _release_allocation(self, state):
         f = fiber.succeed()
         if state.allocation_id:
-            return f.add_callback(fiber.drop_result,
+            return f.add_callback(fiber.drop_param,
                                   state.agent.release_resource,
                                   state.allocation_id)
         return f

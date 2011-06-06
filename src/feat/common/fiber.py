@@ -1,22 +1,112 @@
+import os
 import sys
+import types
 import uuid
+import warnings
 
-from twisted.internet import defer
 from twisted.python import failure
 from zope.interface import implements
 
+from feat.common import log, defer, decorator, text_helper
+
+from feat.interface.log import *
 from feat.interface.fiber import *
 from feat.interface.serialization import *
 
-from feat.common import decorator
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
 SECTION_BOUNDARY_TAG = "__section_boundary__"
 
 
 def drop_result(_result, _method, *args, **kwargs):
-    assert callable(_method), "method %r is not callable!" % (_method, )
+    warnings.warn("fiber.drop_result() is deprecated, "
+                  "please use fiber.drop_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
     return _method(*args, **kwargs)
+
+
+def bridge_result(_result, _method, *args, **kwargs):
+    warnings.warn("fiber.bridge_result() is deprecated, "
+                  "please use fiber.bridge_param()",
+                  DeprecationWarning)
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(drop_result, _method, *args, **kwargs)
+    f.add_callback(override_result, _result)
+    return f.succeed()
+
+
+def drop_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
+
+
+def bridge_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(drop_param, _method, *args, **kwargs)
+    f.add_callback(override_result, _param)
+    return f.succeed()
+
+
+def keep_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(_method, *args, **kwargs)
+    f.add_callback(override_result, _param)
+    return f.succeed(_param)
+
+
+def call_param(_param, _attr_name, *args, **kwargs):
+    _method = getattr(_param, _attr_name, None)
+    assert _method is not None, \
+           "%r do not have attribute %s" % (_param, _attr_name, )
+    assert callable(_method), "method %r is not callable" % (_method, )
+    return _method(*args, **kwargs)
+
+
+def inject_param(_param, _index, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    args = args[:_index] + (_param, ) + args[_index:]
+    return _method(*args, **kwargs)
+
+
+def override_result(_param, _result):
+    return _result
+
+
+def print_debug(_param, _template="", *args):
+    print _template % args
+    return _param
+
+
+def print_trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    print "%s%r" % (prefix, _param)
+    return _param
+
+
+def debug(_param, _template="", *args):
+    log.logex("fiber", LogLevel.debug, _template, args, log_name="debug")
+    return _param
+
+
+def trace(_param, _template="", *args):
+    prefix = _template % args
+    prefix = prefix + ": " if prefix else prefix
+    message = "%s%r" % (prefix, _param)
+    log.logex("fiber", LogLevel.debug, message, log_name="trace")
+    return _param
+
+
+def succeed(param=None, canceller=None):
+    return Fiber(canceller).succeed(param)
+
+
+def fail(failure=None, canceller=None):
+    return Fiber(canceller).fail(failure)
 
 
 def wrap_defer(_method, *args, **kwargs):
@@ -25,32 +115,14 @@ def wrap_defer(_method, *args, **kwargs):
     supposed to return the Fiber.
     '''
     f = succeed()
-    f.add_callback(drop_result, _method, *args, **kwargs)
+    f.add_callback(drop_param, _method, *args, **kwargs)
     return f
-
-
-def bridge_result(_result, _method, *args, **kwargs):
-    assert callable(_method)
-    _method(*args, **kwargs)
-    return _result
-
-
-def override_result(_result, _new_result):
-    return _new_result
-
-
-def succeed(parma=None):
-    return Fiber().succeed(parma)
-
-
-def fail(failure=None):
-    return Fiber().fail(failure)
 
 
 def maybe_fiber(_function, *args, **kwargs):
     try:
         result = _function(*args, **kwargs)
-    except:
+    except Exception:
         return defer.fail(failure.Failure())
     else:
         if IFiber.providedBy(result):
@@ -61,6 +133,10 @@ def maybe_fiber(_function, *args, **kwargs):
             return defer.fail(result)
         else:
             return defer.succeed(result)
+
+
+trace_fiber_calls = os.environ.get("FEAT_TRACE_FIBERS", "NO").upper() \
+                    in ("YES", "1", "TRUE")
 
 
 @decorator.simple_function
@@ -292,7 +368,7 @@ class Fiber(object):
 
     implements(IFiber, ISnapshotable)
 
-    def __init__(self):
+    def __init__(self, canceller = None):
         self._descriptor = None
         self.fiber_depth = None
         self.fiber_id = None
@@ -306,6 +382,7 @@ class Fiber(object):
         #   callable, tuple or None, dict or None)
         #  |Fiber]
         self._calls = []
+        self.canceller = canceller
 
     @property
     def trigger_type(self):
@@ -488,15 +565,26 @@ class Fiber(object):
         # Deferred always need a callback, use pass through if not set
         return defer.passthru, None, None
 
-    def _callback_wrapper(self, value, fiber, callback, args, kwargs):
+    def _callback_wrapper(self, param, fiber, callback, args, kwargs):
+        global trace_fiber_calls
+        if trace_fiber_calls:
+            self._trace(param, callback, *args, **kwargs)
+
+        if param is failure.Failure and param.check(FiberCancelled):
+            param.raiseException()
+
+        if self.canceller and not self.canceller.is_active():
+            raise FiberCancelled("Fiber cancelled")
+
         section = WovenSection(descriptor=fiber)
         section.enter()
         try:
-            result = callback(value, *args, **kwargs)
-            return section.exit(result)
-        except:
+            result = callback(param, *args, **kwargs)
+        except Exception:
             section.abort()
             raise
+        else:
+            return section.exit(result)
 
     def _serialize_callbacks(self, cb, eb, cba, cbk, eba, ebk):
         # FIXME: Should we deep clone ?
@@ -510,6 +598,57 @@ class Fiber(object):
 
     def _on_chain_cb(self, parent_param, trigger, param, d, default_trigger):
         return self._fire(d, trigger, param, default_trigger, parent_param)
+
+    def _trace(self, _param, _method, *args, **kwargs):
+        trace_fun = self._trace_lookup.get(_method, Fiber._trace_default)
+        trace_fun(self, _param, _method, *args, **kwargs)
+
+    def _trace_default(self, _param, _method, *args, **kwargs):
+        args = (_param, ) + args
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_drop_param(self, _param, _, _method, *args, **kwargs):
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_bridge_param(self, _param, _, _method, *args, **kwargs):
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_call_param(self, _param, _, _attr_name, *args, **kwargs):
+        _method = getattr(_param, _attr_name, None)
+        if _method:
+            return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_inject_param(self, _param, _, _index, _method, *args, **kwargs):
+        args = args[:_index] + (_param, ) + args[_index:]
+        return self._trace_call(_method, *args, **kwargs)
+
+    def _trace_ignore(self, *args, **kwargs):
+        return
+
+    def _trace_call(self, _method, *args, **kwargs):
+        try:
+            file_path = _method.__code__.co_filename
+            line_num = _method.__code__.co_firstlineno
+        except AttributeError:
+            file_path = "unknown"
+            line_num = 0
+
+        text = text_helper.format_call(_method, *args, **kwargs)
+        log_name = self.fiber_id[:27] + "..."
+        log.logex("fiber", LogLevel.log, text, log_name=log_name,
+                  file_path=file_path, line_num=line_num)
+
+    _trace_lookup = {drop_result: _trace_drop_param,
+                     drop_param: _trace_drop_param,
+                     bridge_result: _trace_bridge_param,
+                     bridge_param: _trace_bridge_param,
+                     call_param: _trace_call_param,
+                     inject_param: _trace_inject_param,
+                     override_result: _trace_ignore,
+                     print_debug: _trace_ignore,
+                     print_trace: _trace_ignore,
+                     debug: _trace_ignore,
+                     trace: _trace_ignore}
 
 
 class FiberList(Fiber):

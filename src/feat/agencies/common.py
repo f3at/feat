@@ -2,18 +2,21 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
+from zope.interface import classProvides
 from twisted.python import failure
 
-from feat.common import time, serialization, error_handler, log, defer
-from feat.interface.protocols import InitiatorExpired, InitiatorFailed
+from feat.common import log, defer, fiber, observer, time
+from feat.common import serialization, error_handler
 from feat.agents.base import replay
+
+from feat.interface.protocols import *
+from feat.interface.serialization import *
+
+from zope.interface import implements, classProvides
+from feat.interface.fiber import ICancellable, FiberCancelled
 
 
 class StateAssertationError(RuntimeError):
-    pass
-
-
-class CancelFiber(Exception):
     pass
 
 
@@ -48,7 +51,7 @@ class StateMachineMixin(object):
             self._notifier.callback(state, self)
 
     def _cmp_state(self, states):
-        if not isinstance(states, list):
+        if not isinstance(states, (list, tuple, )):
             states = [states]
         return self.state in states
 
@@ -116,20 +119,78 @@ class StateMachineMixin(object):
         if isinstance(self, log.Logger):
             log.Logger.error(self, *args)
 
+    # Fiber Canceller
+
+    @replay.named_side_effect('StateMachineMixin.get_canceller')
+    def get_canceller(self):
+        return StateCanceller(self)
+
+
+@serialization.register
+class StateCanceller(object):
+
+    type_name = 'canceller'
+
+    classProvides(serialization.IRestorator)
+    implements(serialization.ISerializable, ICancellable)
+
+    def __init__(self, state_machine):
+        self.state = state_machine._get_machine_state()
+        self.sm = state_machine
+
+    ### ICancellable methods ###
+
+    def is_active(self):
+        if self.sm and self.state == self.sm._get_machine_state():
+            return True
+        else:
+            self.sm = None
+            return False
+
+    ### IRestorator Methods ###
+
+    @classmethod
+    def prepare(cls):
+        return None
+
+    @classmethod
+    def restore(cls, snapshot):
+        return cls.__new__(cls)
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return (self.state, self.sm)
+
+    ### Private Methods ###
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.state == other.state and \
+               self.sm == other.sm
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 
 class AgencyMiddleMixin(object):
     '''Responsible for formating messages, calling methods etc'''
 
+    guid = None
+
     protocol_id = None
-    session_id = None
     remote_id = None
 
     error_state = None
 
     def __init__(self, remote_id=None, protocol_id=None):
-        self.session_id = str(uuid.uuid1())
+        self.guid = str(uuid.uuid1())
         self._set_remote_id(remote_id)
         self._set_protocol_id(protocol_id)
+
+    def is_idle(self):
+        return False
 
     def _set_remote_id(self, remote_id):
         if self.remote_id is not None and self.remote_id != remote_id:
@@ -143,7 +204,7 @@ class AgencyMiddleMixin(object):
 
     def _send_message(self, msg, expiration_time=None, recipients=None,
                       remote_id=None):
-        msg.sender_id = self.session_id
+        msg.sender_id = self.guid
         msg.receiver_id = remote_id or self.remote_id
         msg.protocol_id = self.protocol_id
         if msg.expiration_time is None:
@@ -167,27 +228,14 @@ class AgencyMiddleMixin(object):
         return d
 
     def _error_handler(self, f):
-        if f.check(CancelFiber):
-            self.debug('Swallowing CancelFiber exception. This means that the'
-                       ' ensure_state() call detected incorrect state and '
-                       'fiber was terminated.')
-            return
+        if f.check(FiberCancelled):
+            self._terminate(ProtocolFailed("Fiber was cancelled because "
+                        "the state of the medium changed. This happens "
+                        "when constructing a fiber with a canceller."))
 
         error_handler(self, f)
         self._set_state(self.error_state)
         self._terminate(f)
-
-    @serialization.freeze_tag('AgencyMiddleMixin.ensure_state')
-    def ensure_state(self, states):
-        '''
-        Exposed in a public interface. Use this to mark a point in the fiber
-        where it should get cancelled if the state machine is not in expected
-        state.
-        '''
-        try:
-            self._ensure_state(states)
-        except StateAssertationError:
-            raise CancelFiber()
 
 
 class ExpirationCallsMixin(object):
@@ -207,9 +255,9 @@ class ExpirationCallsMixin(object):
     def _get_time(self):
         raise NotImplemented('Should be define in the class using the mixin')
 
-    def _setup_expiration_call(self, expire_time, method, state=None,
-                                  *args, **kwargs):
-        self.log('Seting expiration call of method: %r.%r',
+    def _setup_expiration_call(self, expire_time, state,
+                               method, *args, **kwargs):
+        self.log('Setting expiration call of method: %r.%r',
                  self.__class__.__name__, method.__name__)
 
         time_left = time.left(expire_time)
@@ -230,10 +278,10 @@ class ExpirationCallsMixin(object):
             time_left, to_call, result)
         return result
 
-    def _expire_at(self, expire_time, method, state, *args, **kwargs):
-        d = self._setup_expiration_call(expire_time, method,
-                                           state, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate(InitiatorExpired(_)))
+    def _expire_at(self, expire_time, state, method, *args, **kwargs):
+        d = self._setup_expiration_call(expire_time, state,
+                                        method, *args, **kwargs)
+        d.addCallback(lambda _: self._terminate(ProtocolExpired(_)))
         return d
 
     @replay.side_effect
@@ -243,15 +291,6 @@ class ExpirationCallsMixin(object):
             self._expiration_call.cancel()
             self._expiration_call = None
 
-    def _run_and_terminate(self, method, *args, **kwargs):
-        '''
-        Used by contracts class for getting into failure cases.
-        '''
-        d = self._call(method, *args, **kwargs)
-        # Wrap the result in InitiatorFailed instance
-        d.addBoth(InitiatorFailed)
-        d.addCallback(self._terminate)
-
     def _terminate(self):
         self._cancel_expiration_call()
 
@@ -260,9 +299,9 @@ class ExpirationCallsMixin(object):
             self._expiration_call.reset(0)
             d = self.notify_finish()
             return d
-        else:
-            self.error('Expiration call %r is None or was already called or'
-                       'cancelled', self._expiration_call)
+        self.error('Expiration call %r is None or was already called '
+                   'or cancelled', self._expiration_call)
+        return defer.fail(ProtocolExpired())
 
 
 class InitiatorMediumBase(object):
@@ -276,7 +315,7 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
     def __init__(self):
         self._fnotifier = defer.Notifier()
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 
@@ -287,10 +326,6 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
         else:
             self.log("Firing callback of notifier with result: %r.", result)
             self.call_next(self._fnotifier.callback, 'finish', result)
-
-    def call_next(self, *_):
-        raise NotImplementedError("This method should be implemented outside "
-                                  "of this mixin!")
 
 
 class InterestedMediumBase(object):
@@ -307,10 +342,18 @@ class TransientInterestedMediumBase(InterestedMediumBase):
     def _terminate(self, result):
         self.call_next(self._fnotifier.callback, 'finish', result)
 
-    @serialization.freeze_tag('IListener.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         return self._fnotifier.wait('finish')
 
     def call_next(self, *_):
         raise NotImplementedError("This method should be implemented outside "
                                   "of this mixin!")
+
+
+@serialization.register
+class Observer(observer.Observer):
+    classProvides(IRestorator)
+
+    active = replay.side_effect(observer.Observer.active)
+    get_result = replay.side_effect(observer.Observer.get_result)

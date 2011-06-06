@@ -40,7 +40,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.listener = None
         self.socket_path = socket_path or self.default_socket_path
         self.factory = None
-        self.slaves = list()
+        # agency_id -> pb.RemoteReference to Agency
+        self.slaves = dict()
         self.notifier = defer.Notifier()
 
         self.on_master_cb = on_master_cb
@@ -71,12 +72,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.log("Disconnecting broker %r.", self)
         if self._cmp_state(BrokerRole.master):
             d = self.listener.stopListening()
-            d.addCallback(lambda _: self.factory.disconnect())
+            d.addCallback(defer.drop_param, self.factory.disconnect)
         elif self._cmp_state(BrokerRole.slave):
             d = defer.maybeDeferred(self.factory.disconnect)
         elif self._cmp_state(BrokerRole.disconnected):
             return defer.succeed(None)
-        d.addCallback(lambda _: self.become_disconnected())
+        d.addCallback(defer.drop_param, self.become_disconnected)
         return d
 
     def remove_stale_socket(self):
@@ -89,6 +90,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     # Master specific
 
+    def iter_slaves(self):
+        return self.slaves.itervalues()
+
     def shutdown_slaves(self):
 
         def error_handler(f):
@@ -99,22 +103,27 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
                 f.raiseException()
 
         def kill_slave(slave):
+            self.log('slave is %r', slave)
             d = slave.callRemote('kill')
             d.addErrback(error_handler)
             return d
 
         self._ensure_state(BrokerRole.master)
-        return defer.DeferredList([kill_slave(x) for x in self.slaves])
+        return defer.DeferredList([kill_slave(x) for x in self.iter_slaves()])
 
-    def append_slave(self, slave):
-        self.slaves.append(slave)
+    def append_slave(self, slave_id, slave):
+        self.slaves[slave_id] = slave
 
-    def remove_slave(self, slave):
-        self.log('Removing slave agency.')
-        try:
-            self.slaves.remove(slave)
-        except ValueError:
-            self.error("Slave %r not found. Slaves: %r", slave, self.slaves)
+    def remove_slave(self, slave_id):
+
+        def do_remove(slave):
+            self.log('Removing slave agency.')
+            try:
+                del(self.slaves[slave_id])
+            except ValueError:
+                self.error("Slave %r not found. ID: %r, Slaves: %r",
+                           slave, slave_id, self.slaves)
+        return do_remove
 
     def become_master(self):
         self._set_state(BrokerRole.master)
@@ -179,9 +188,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     def _event_key(self, *args):
         return tuple(args)
 
-
-    #starting agent
-
     def start_agent(self, desc, *args, **kwargs):
         self._ensure_connected()
         if self._cmp_state(BrokerRole.master):
@@ -192,6 +198,29 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             return self._master.callRemote(
                 'start_agent', raw_desc, *args, **kwargs)
 
+    def find_agent(self, agent_id):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            return self.agency._find_agent(agent_id)
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('find_agent', agent_id)
+
+    def get_journal_writer(self):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            return self.agency.get_journal_writer()
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('get_journal_writer')
+
+    def iter_agency_ids(self):
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            res = [self.agency.agency_id] + self.slaves.keys()
+            return res.__iter__()
+        elif self._cmp_state(BrokerRole.slave):
+            res = [self.agency.agency_id]
+            return res.__iter__()
+
 
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
@@ -201,15 +230,14 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
         log.Logger.__init__(self, broker)
         pb.PBServerFactory.__init__(self, self)
         self.broker = broker
-        self.slaves = list()
         self.connections = list()
 
         self._unserializer = banana.Unserializer()
 
-    def remote_handshake(self, slave):
+    def remote_handshake(self, slave, agency_id):
         self.debug('Appending slave agency: %r', slave)
-        self.broker.append_slave(slave)
-        slave.notifyOnDisconnect(self.broker.remove_slave)
+        self.broker.append_slave(agency_id, slave)
+        slave.notifyOnDisconnect(self.broker.remove_slave(agency_id))
 
     def remote_wait_event(self, *args):
         return self.broker.wait_event(*args)
@@ -220,9 +248,15 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
     def remote_fail_event(self, failure, *args):
         return self.broker.fail_event(failure, *args)
 
+    def remote_find_agent(self, agent_id):
+        return self.broker.find_agent(agent_id)
+
     def remote_start_agent(self, raw_desc, *args, **kwargs):
         desc = self._unserializer.convert(raw_desc)
         return self.broker.start_agent(desc, *args, **kwargs)
+
+    def remote_get_journal_writer(self):
+        return self.broker.get_journal_writer()
 
     def clientConnectionMade(self, broker):
         self.debug('Client connection made to the server: %r', broker)
@@ -266,7 +300,8 @@ class SlaveFactory(pb.PBClientFactory, log.Logger):
 
         d = self.getRootObject()
         d.addCallback(self.broker.become_slave)
-        d.addCallback(lambda x: x.callRemote('handshake', self.agency))
+        d.addCallback(lambda x: x.callRemote('handshake', self.agency,
+                                             self.agency.agency_id))
         d.addCallback(self.deferred.callback)
 
     def clientConnectionLost(self, connector, reason, reconnecting=0):

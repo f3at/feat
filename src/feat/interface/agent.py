@@ -81,6 +81,33 @@ class IAgencyAgent(Interface):
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
 
+    def observe(callable, *args, **kwargs):
+        """
+        Observes the asynchronous method result.
+        The callable may return Fiber or Deferred.
+        Use it if you want to know keep the
+        information about the result of the fiber without keeping the
+        reference to the original object. This is usefull when dealing with
+        transient object like Tasks, Managers, etc. Examples:
+
+        observer = state.medium.observe(task.notify_finish)
+        ....
+        f = observer.notify_finish()
+        (do sth with f)
+
+        Synchronous methods:
+        if not observer.active():
+          res = oserver.get_result()
+
+        @type fiber: L{feat.interface.fiber.IFiber}
+        @rtype: L{feat.interface.fiber.IObserver}
+        """
+
+    def get_hostname():
+        '''
+        Return the host name we run on.
+        '''
+
     def get_descriptor():
         '''
         Return the copy of the descriptor.
@@ -125,17 +152,18 @@ class IAgencyAgent(Interface):
     def revoke_interest(factory):
         '''Revokes any interest in a contract or a request.'''
 
-    def initiate_protocol(factory, recipients, *args, **kwargs):
+    def initiate_protocol(factory, *args, **kwargs):
         '''
         Initiates a contract or a request.
+        Arguments varies in function of the specified factory.
 
-        @type recipients: L{IRecipients}
         @rtype: L{IInitiator}
         @returns: Instance of protocols initiator
         '''
 
-    def retrying_protocol(self, factory, recipients, max_retries,
-                         initial_delay, max_delay, args, kwargs):
+    def retrying_protocol(self, factory, recipients=None,
+                          max_retries=None, initial_delay=1,
+                          max_delay=None, args=None, kwargs=None):
         '''
         Initiates the protocol which will get restart if it fails.
         The restart will be delayed with exponential growth.
@@ -148,26 +176,10 @@ class IAgencyAgent(Interface):
         @returns: L{RetryingProtocol}
         '''
 
-    def initiate_task(factory, *args, **kwargs):
+    def periodic_protocol(self, factory, period, *args, **kwargs):
         '''
-        Initiates a task
-
-        @rtype: L{IInitiator}
-        @returns: Instance of task initiator
-        '''
-
-    def retrying_task(self, factory, max_retries,
-                      initial_delay, max_delay, args, kwargs):
-        '''
-        Initiates the task which will get restart if it fails.
-        The restart will be delayed with exponential growth.
-
-        Extra params comparing to L{IAgencyAgent.initiate_task}:
-
-        @param max_retries: After how many retries to give up. Def. None: never
-        @param initial_delay: Delay before the first retry.
-        @param max_delay: Miximum delay to wait (above it it will not grow).
-        @returns: L{RetryingProtocol}
+        Will start specified protocol periodically.
+        @returns: L{PeriodicProtocol}
         '''
 
     def save_document(document):
@@ -216,6 +228,26 @@ class IAgencyAgent(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
+    def query_view(factory, **options):
+        '''
+        Queries the database view.
+
+        It only supports small part of CouchDB features. In production
+        implementation the options are just passed to the query. This means
+        that basicly everything is supported. In emu database implementation
+        the only supported option is:
+        - reduce C{boolean}: optionaly lets fetch the result of the map from
+          the map-reduce view (skips the reduce part).
+        In case you want to use more features of CouchDB you should implement
+        them feat.agencies.emu.database.Database, and test their intergration
+        in feat.test.integration.test_idatabase_client.
+
+        @param factory: View factory to query.
+        @type factory: L{feat.interface.view.IViewFactory}
+        @param options: Dictionary of parameters to pass to the query.
+        @return: C{list} of the results.
+        '''
+
     def terminate():
         '''
         Performs all the necessary steps to end the life of the agent in a
@@ -223,7 +255,7 @@ class IAgencyAgent(Interface):
 
         1. Revoke all interests.
         2. Terminate all retrying protocols.
-        3. Kill all listeners (with making them expire instantly).
+        3. Kill all protocols (with making them expire instantly).
         4. Run the IAgent.shutdown() and wait for it to finish.
         5. Run the IAgent.unregister() - responsibility of this method to
            perform agent-side shutdown part common to all agents.

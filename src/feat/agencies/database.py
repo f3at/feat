@@ -1,17 +1,17 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import time
 import uuid
 
 from twisted.internet import reactor
 from zope.interface import implements
 
-from feat.common import log, container, defer
+from feat.common import log, container, defer, time
 from feat.common.serialization import json
 from feat.agents.base import document
 
 from feat.agencies.interface import IDatabaseClient, IDatabaseDriver
 from feat.interface.generic import *
+from feat.interface.view import *
 
 
 class ChangeListener(log.Logger):
@@ -89,6 +89,7 @@ class Connection(log.Logger):
     def get_document(self, id):
         d = self.database.open_doc(id)
         d.addCallback(self.unserializer.convert)
+        d.addCallback(self._notice_doc_revision)
         return d
 
     def reload_document(self, doc):
@@ -112,6 +113,12 @@ class Connection(log.Logger):
         d.addCallback(set_listener_id)
         return d
 
+    def query_view(self, factory, **options):
+        factory = IViewFactory(factory)
+        d = self.database.query_view(factory, **options)
+        d.addCallback(self._parse_view_results, factory, options)
+        return d
+
     def disconnect(self):
         if self.listener_id:
             self.database.cancel_listener(self.listener_id)
@@ -120,11 +127,19 @@ class Connection(log.Logger):
 
     ### private
 
+    def _parse_view_results(self, rows, factory, options):
+        '''
+        rows here should be a list of tuples (key, value)
+        rendered by the view
+        '''
+        reduced = factory.use_reduce and options.get('reduce', True)
+        return map(lambda row: factory.parse(row[0], row[1], reduced), rows)
+
     def _on_change(self, doc_id, rev):
         self.log('Change notification received doc_id: %r, rev: %r',
                  doc_id, rev)
         key = (doc_id, rev, )
-        known = self.known_revisions.pop(key, False)
+        known = self.known_revisions.get(key, False)
         if known:
             self.log('Ignoring change notification, it is ours.')
         elif callable(self.change_cb):
@@ -135,6 +150,12 @@ class Connection(log.Logger):
         doc.rev = unicode(resp.get('rev', None))
         # store information about rev and doc_id in ExpDict for 1 second
         # so that we can ignore change callback which we trigger
+        self._notice_doc_revision(doc)
+        return doc
+
+    def _notice_doc_revision(self, doc):
+        self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
+                 doc.doc_id, doc.rev)
         self.known_revisions.set((doc.doc_id, doc.rev, ), True,
                                  expiration=5, relative=True)
         return doc

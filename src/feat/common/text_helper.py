@@ -3,6 +3,8 @@
 import difflib
 import re
 
+from feat.common import reflect
+
 
 class Table(object):
 
@@ -57,7 +59,6 @@ def extract_diff(str1, str2):
         result.append((str1[0:la], str2[0:lb]))
     la += ls
     lb += ls
-    print la, lb
     for a, b, s in i:
         a, b
         if s:
@@ -76,3 +77,13 @@ def format_diff(str1, str2, header="\n", first_header=""):
         sep = header
         result += sep + "Got '%s'" % b
     return result
+
+
+def format_args(*args, **kwargs):
+    return ", ".join([repr(a) for a in args]
+                     + ["%r=%r" % i for i in kwargs.iteritems()])
+
+
+def format_call(callback, *args, **kwargs):
+    return "%s(%s)" % (reflect.canonical_name(callback),
+                       format_args(*args, **kwargs))

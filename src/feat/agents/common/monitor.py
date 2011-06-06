@@ -1,19 +1,27 @@
-from feat.agents.base import descriptor, replay, manager, message
-from feat.common import enum
+from twisted.python import failure
 
-# To access from thi module
+from feat.agencies import retrying
+from feat.agents.base import descriptor, replay, task, partners, dependency
+from feat.common import enum, fiber
+
+# To access from this module
 from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
 from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 
+from feat.interface.agency import *
 
-__all__ = ['Descriptor', 'MonitorManager',
-           'discover', 'request_monitor',
-           'RestartFailed', 'RestartStrategy',
+
+__all__ = ['Descriptor', 'RestartFailed', 'RestartStrategy',
+           'PartnerMixin', 'AgentMixin',
            'IPacemakerFactory', 'IPacemaker',
            'Pacemaker', 'FakePacemaker']
 
 
 class RestartFailed(Exception):
+    pass
+
+
+class MonitoringFailed(Exception):
     pass
 
 
@@ -32,38 +40,111 @@ class RestartStrategy(enum.Enum):
     buryme, local, whereever, monitor = range(4)
 
 
-def request_monitor(agent, shard=None):
-    f = discover(agent, shard)
-    f.add_callback(lambda recp: agent.initiate_protocol(
-            MonitorManager, recp))
-    f.add_callback(lambda x: x.notify_finish())
-    return f
-
-
 def discover(agent, shard=None):
     shard = shard or agent.get_own_address().shard
-    return agent.discover_service(MonitorManager, timeout=1, shard=shard)
+    return agent.discover_service("monitoring", timeout=1, shard=shard)
 
 
-class MonitorManager(manager.BaseManager):
+class PartnerMixin(object):
+    '''When used as a base class for a partner that do not redefine
+    on_goodbye(), this class should be appear before any BasePartner subclass
+    in the list of super classes. If not, the BasePartner on_goodbye() will
+    be called and nothing will happen.
+    See feat.agents.base.agent.BasePartner.'''
 
-    protocol_id = 'request-monitor'
-    announce_timeout = 6
+    def initiate(self, agent):
+        f = agent.get_document("monitor_agent_conf")
+        f.add_callback(self._start_heartbeat, agent)
+        return f
+
+    def on_goodbye(self, agent, payload):
+        agent.stop_heartbeat(self.recipient)
+        agent.lookup_monitor()
+
+    def on_buried(self, agent, payload):
+        agent.stop_heartbeat(self.recipient)
+        agent.lookup_monitor()
+
+    def _start_heartbeat(self, doc, agent):
+        return agent.start_heartbeat(self.recipient, doc.heartbeat_period)
+
+
+class AgentMixin(object):
+
+    restart_strategy = RestartStrategy.buryme
+
+    dependency.register(IPacemakerFactory, Pacemaker, ExecMode.production)
+    dependency.register(IPacemakerFactory, FakePacemaker, ExecMode.test)
+    dependency.register(IPacemakerFactory, FakePacemaker, ExecMode.simulation)
+
+    @replay.immutable
+    def startup_monitoring(self, state):
+        if not state.partners.monitors:
+            self.lookup_monitor()
+
+    @replay.mutable
+    def cleanup_monitoring(self, state):
+        self._lazy_mixin_init()
+        for pacemaker in state.pacemakers.values():
+            pacemaker.cleanup()
+        state.pacemakers.clear()
+
+    @replay.mutable
+    def start_heartbeat(self, state, monitor, period):
+        self._lazy_mixin_init()
+        pacemaker = self.dependency(IPacemakerFactory, self, monitor, period)
+        pacemaker.startup()
+        state.pacemakers[monitor.key] = pacemaker
+
+    @replay.mutable
+    def stop_heartbeat(self, state, monitor):
+        self._lazy_mixin_init()
+        del state.pacemakers[monitor.key]
+
+    @replay.immutable
+    def lookup_monitor(self, state):
+        Factory = retrying.RetryingProtocolFactory
+        factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
+        self.initiate_protocol(factory)
+
+    ### Private Methods ###
+
+    @replay.mutable
+    def _lazy_mixin_init(self, state):
+        if not hasattr(state, "pacemakers"):
+            state.pacemakers = {} # {AGENT_ID: IPacemaker}
+
+
+class SetupMonitoringTask(task.BaseTask):
+
+    busy = False
+    protocol_id = "setup-monitoring"
+
+    def __init__(self, *args, **kwargs):
+        task.BaseTask.__init__(self, *args, **kwargs)
 
     @replay.entry_point
-    def initiate(self, state):
-        self.log("initiate manager")
-        msg = message.Announcement()
-        state.medium.announce(msg)
+    def initiate(self, state, shard=None):
+        self.debug("Looking up a monitor for %s %s",
+                   state.agent.descriptor_type, state.agent.get_full_id())
+        f = fiber.succeed(state.agent)
+        f.add_callback(discover, shard)
+        f.add_callback(self._start_monitoring)
+        return f
 
-    @replay.entry_point
-    def closed(self, state):
-        self.log("close manager")
-        bids = state.medium.get_bids()
-        best_bid = bids[0]
-        msg = message.Grant()
-        params = (best_bid, msg)
-        state.medium.grant(params)
+    @replay.journaled
+    def _start_monitoring(self, state, monitors):
+        if not monitors:
+            raise MonitoringFailed("No monitor agent found in shard for %s %s"
+                                   % (state.agent.descriptor_type,
+                                      state.agent.get_full_id()))
+
+        monitor = monitors[0]
+        self.info("Monitor found for %s %s: %s", state.agent.descriptor_type,
+                  state.agent.get_full_id(), monitor.key)
+        f = state.agent.establish_partnership(monitor)
+        f.add_errback(failure.Failure.trap, partners.DoublePartnership)
+        return f
 
 
 @descriptor.register("monitor_agent")

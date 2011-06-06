@@ -7,6 +7,7 @@ from feat.common import journal, log, time
 from feat.agents.monitor.interface import *
 
 from feat.test import common
+from feat.agencies import periodic
 
 
 class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
@@ -20,6 +21,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.calls = {}
         self.death = []
         self.now = now or time.time()
+        self.call = None
 
     ### Public Methods ###
 
@@ -28,6 +30,28 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.calls.clear()
         for _time, fun, args, kwargs in calls:
             fun(*args, **kwargs)
+
+    def initiate_protocol(self, factory, *args, **kwargs):
+        if factory is production.HeartBeatCollector:
+            self.protocol = production.HeartBeatCollector(self, self)
+            # Remove recipient
+            args = args[1:]
+            self.protocol.initiate(*args, **kwargs)
+            return self.protocol
+
+        if factory is production.CheckPatientTask:
+            self.task = production.CheckPatientTask(self, self)
+            self.task.initiate(*args, **kwargs)
+            return self.task
+
+        raise Exception("Unexpected protocol %r" % factory)
+
+    def cancel(self):
+        if self.call:
+            self.cancel_delayed_call(self.call)
+
+    def terminate(self):
+        pass
 
     ### IDoctor Methods ###
 
@@ -45,12 +69,24 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.calls[callid] = payload
         return callid
 
+    def call_later_ex(self, time, fun, args=(), kwargs={}, busy=True):
+        payload = (time, fun, args, kwargs)
+        callid = id(payload)
+        self.calls[callid] = payload
+        return callid
+
     def cancel_delayed_call(self, callid):
         if callid in self.calls:
             del self.calls[callid]
 
-    def on_heart_failed(self, agent_id, instance_id):
+    def on_heart_failed(self, agent_id, instance_id, payload):
         self.death.append((agent_id, instance_id))
+
+    def _start_task(self, period, factory, args, kwargs):
+        task = factory(self, self)
+        task.initiate(*args, **kwargs)
+        self.call = self.call_later(period, self._start_task,
+                                    period, factory, args, kwargs)
 
 
 class TestMonitorProductionLabour(common.TestCase):
@@ -58,32 +94,32 @@ class TestMonitorProductionLabour(common.TestCase):
     def testPatient(self):
         now = time.time()
 
-        patient = production.Patient(None, None, now, 5, 3)
+        patient = production.Patient(None, None, None, now, 5, 3)
         self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now))
         self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now + 4))
-        self.assertEqual((PatientState.alive, PatientState.dying),
+        self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now + 6))
-        self.assertEqual((PatientState.dying, PatientState.dying),
+        self.assertEqual((PatientState.alive, PatientState.dying),
                          patient.check(now + 14))
         self.assertEqual((PatientState.dying, PatientState.dead),
                          patient.check(now + 16))
 
-        patient = production.Patient(None, None, now, 5, 3)
+        patient = production.Patient(None, None, None, now, 5, 3)
         self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now))
         patient.beat(now + 5)
         self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now + 6))
         self.assertEqual((PatientState.alive, PatientState.dying),
-                         patient.check(now + 11))
+                         patient.check(now + 13))
         patient.beat(now + 12)
         self.assertEqual((PatientState.dying, PatientState.alive),
                          patient.check(now + 15))
-        self.assertEqual((PatientState.alive, PatientState.dying),
+        self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now + 18))
-        self.assertEqual((PatientState.dying, PatientState.dying),
+        self.assertEqual((PatientState.alive, PatientState.dying),
                          patient.check(now + 23))
         self.assertEqual((PatientState.dying, PatientState.dying),
                          patient.check(now + 23))
@@ -94,14 +130,14 @@ class TestMonitorProductionLabour(common.TestCase):
     def testHartMonitor(self):
         patron = DummyPatron(self)
         monitor = production.HeartMonitor(patron, 2)
-        monitor.initiate()
+        monitor.startup()
         self.assertTrue(isinstance(patron.protocol,
                                    production.HeartBeatCollector))
         self.assertEqual(len(patron.calls), 1)
         self.assertEqual(patron.death, [])
 
-        monitor.add_patient("aid1", "iid1", 5, 3)
-        monitor.add_patient("aid2", "iid2", 5, 3)
+        monitor.add_patient("aid1", "iid1", period=5, max_skip=3)
+        monitor.add_patient("aid2", "iid2", period=5, max_skip=3)
 
         # 6 seconds without heart-beats
         patron.now += 3
@@ -115,9 +151,9 @@ class TestMonitorProductionLabour(common.TestCase):
         self.assertEqual(patron.death, [])
 
         # Both send heart-beat
-        hb1 = message.Notification(payload=("aid1", "iid1", 0))
+        hb1 = message.Notification(payload=("aid1", "iid1"))
         patron.protocol.notified(hb1)
-        hb2 = message.Notification(payload=("aid2", "iid2", 0))
+        hb2 = message.Notification(payload=("aid2", "iid2"))
         patron.protocol.notified(hb2)
         self.assertEqual(patron.death, [])
         patron.do_calls()
@@ -129,7 +165,7 @@ class TestMonitorProductionLabour(common.TestCase):
         self.assertEqual(patron.death, [])
 
         # Only one send heart-beat
-        hb1 = message.Notification(payload=("aid1", "iid1", 1))
+        hb1 = message.Notification(payload=("aid1", "iid1"))
         patron.protocol.notified(hb1)
 
         # One died
@@ -139,7 +175,7 @@ class TestMonitorProductionLabour(common.TestCase):
 
         # Send heart beat for a dead agent
         patron.now += 5
-        hb2 = message.Notification(payload=("aid2", "iid2", 1))
+        hb2 = message.Notification(payload=("aid2", "iid2"))
         patron.protocol.notified(hb2)
         patron.do_calls()
         self.assertEqual(patron.death, [("aid2", "iid2")])
