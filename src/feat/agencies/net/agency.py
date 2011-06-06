@@ -181,11 +181,12 @@ class Agency(agency.Agency):
                                       self.on_killed)
 
         mc = self.config['manhole']
+        ssh_port = int(mc["port"]) if mc["port"] is not None else None
         self._ssh = ssh.ListeningPort(self,
                                       public_key=mc["public_key"],
                                       private_key=mc["private_key"],
                                       authorized_keys=mc["authorized_keys"],
-                                      port=int(mc["port"]))
+                                      port=ssh_port)
 
         socket_path = self.config['agency']['socket_path']
         self._broker = broker.Broker(self, socket_path,
