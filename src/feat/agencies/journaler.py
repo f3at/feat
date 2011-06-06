@@ -248,6 +248,12 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
 
     def _set_writer(self, writer):
         self._writer = writer
+        if isinstance(self._writer, pb.RemoteReference):
+            self._writer.notifyOnDisconnect(self._on_disconnect)
+
+    def _on_disconnect(self, writer):
+        self._set_state(State.disconnected)
+        self._set_writer(None)
 
 
 class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
