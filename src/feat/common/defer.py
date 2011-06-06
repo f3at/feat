@@ -40,6 +40,13 @@ def bridge_param(_param, _method, *args, **kwargs):
     return d
 
 
+def keep_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    d = maybeDeferred(_method, _param, *args, **kwargs)
+    d.addCallback(override_result, _param)
+    return d
+
+
 def call_param(_param, _attr_name, *args, **kwargs):
     _method = getattr(_param, _attr_name, None)
     assert _method is not None, \

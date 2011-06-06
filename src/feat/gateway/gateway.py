@@ -1,24 +1,50 @@
+from twisted.internet import error as terror
+
 from feat.common import log, defer
 from feat.gateway import resources
 from feat.web import webserver
+
+
+class NoPortAvailableError(Exception):
+    pass
 
 
 class Gateway(log.FluLogKeeper, log.Logger):
 
     log_category = "gateway"
 
-    def __init__(self, root, port=None):
+    def __init__(self, root, port_range=None):
         log.Logger.__init__(self, self)
         self._root = root
 
-        self._port = port
+        self._ports = port_range
         self._server = None
 
-    def initiate(self):
-        self.debug("Initializing gateway on port %d", self._port)
-        self._server = webserver.Server(self._port, resources.Root(self._root))
+    def initiate_master(self):
+        port = self._ports[0]
+        self.log("Initializing master gateway on port %d", port)
+        self._server = webserver.Server(port, resources.Root(self._root))
         self._server.initiate()
-        self.debug("Gateway initialized on port %d", self.port)
+        self.info("Master gateway started on port %d", self.port)
+
+    def initiate_slave(self):
+        min, max = self._ports
+        for port in xrange(min + 1, max):
+            try:
+
+                self.log("Initializing slave gateway on port %d", port)
+                server = webserver.Server(port, resources.Root(self._root))
+                server.initiate()
+                self._server = server
+                self.info("Slave gateway started on port %d", self.port)
+                return
+
+            except terror.CannotListenError:
+
+                self.log("Port %d not available for slave gateway", port)
+                continue
+
+        raise NoPortAvailableError("No port available for slave gateway")
 
     def cleanup(self):
         if self._server:
@@ -30,4 +56,4 @@ class Gateway(log.FluLogKeeper, log.Logger):
 
     @property
     def port(self):
-        return self._server.port
+        return self._server and self._server.port

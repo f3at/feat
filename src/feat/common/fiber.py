@@ -50,6 +50,14 @@ def bridge_param(_param, _method, *args, **kwargs):
     return f.succeed()
 
 
+def keep_param(_param, _method, *args, **kwargs):
+    assert callable(_method), "method %r is not callable" % (_method, )
+    f = Fiber()
+    f.add_callback(_method, *args, **kwargs)
+    f.add_callback(override_result, _param)
+    return f.succeed(_param)
+
+
 def call_param(_param, _attr_name, *args, **kwargs):
     _method = getattr(_param, _attr_name, None)
     assert _method is not None, \

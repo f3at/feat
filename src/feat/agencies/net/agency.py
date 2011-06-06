@@ -1,7 +1,7 @@
 import optparse
 import re
 
-from twisted.internet import reactor
+from twisted.internet import reactor, error
 from zope.interface import implements
 from twisted.spread import pb
 
@@ -33,13 +33,16 @@ DEFAULT_DB_HOST = "localhost"
 DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
 DEFAULT_JOURFILE = 'journal.sqlite3'
-DEFAULT_GW_PORT = 7777
+DEFAULT_GW_PORT = 5500
 
 # Only for command-line options
 DEFAULT_MH_PUBKEY = "public.key"
 DEFAULT_MH_PRIVKEY = "private.key"
 DEFAULT_MH_AUTH = "authorized_keys"
 DEFAULT_MH_PORT = 6000
+
+
+GATEWAY_PORT_COUNT = 100
 
 
 def add_options(parser):
@@ -177,12 +180,19 @@ class Agency(agency.Agency):
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.on_killed)
 
-        self._ssh = ssh.ListeningPort(self, **self.config['manhole'])
+        mc = self.config['manhole']
+        self._ssh = ssh.ListeningPort(self,
+                                      public_key=mc["public_key"],
+                                      private_key=mc["private_key"],
+                                      authorized_keys=mc["authorized_keys"],
+                                      port=int(mc["port"]))
+
         socket_path = self.config['agency']['socket_path']
         self._broker = broker.Broker(self, socket_path,
                                 on_master_cb=self.on_become_master,
                                 on_slave_cb=self.on_become_slave,
                                 on_disconnected_cb=self.on_broker_disconnect)
+
         self._setup_snapshoter()
 
         d = defer.succeed(None)
@@ -225,7 +235,7 @@ class Agency(agency.Agency):
             on_rotate=self._force_snapshot_agents)
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
-        self._start_master_gateway(self.config["gateway"]["port"])
+        self._start_master_gateway()
 
     def on_become_slave(self):
         self._ssh.stop_listening()
@@ -240,8 +250,6 @@ class Agency(agency.Agency):
             self._journal_writer.close()
             self._journal_writer = None
         self._journaler.close()
-        #FIXME: we may stop the gateway here, but then we should handle
-        #       asynchronous server shutdown when it's restarted
 
     def get_journal_writer(self):
         '''Called by the broker internals to establish the bridge between
@@ -274,9 +282,9 @@ class Agency(agency.Agency):
 
     def _disconnect(self):
         d = defer.succeed(None)
-        d.addCallback(defer.drop_param, self._broker.disconnect)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
         d.addCallback(defer.drop_param, self._gateway.cleanup)
+        d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
 
     @manhole.expose()
@@ -503,31 +511,13 @@ class Agency(agency.Agency):
         self._snapshot_task = None
 
     def _start_slave_gateway(self):
+        master_port = int(self.config["gateway"]["port"])
+        range = (master_port, master_port + GATEWAY_PORT_COUNT)
+        self._gateway = gateway.Gateway(self, range)
+        self._gateway.initiate_slave()
 
-        def startit(_):
-            self.info("Starting slave gateway")
-            self._gateway = gateway.Gateway(self, 0)
-            return self._gateway.initiate()
-
-        d = self._stop_gateway()
-        d.addCallback(startit)
-        return d
-
-    def _start_master_gateway(self, port):
-
-        def startit(_):
-            self.info("Starting master gateway on port %d", port)
-            self._gateway = gateway.Gateway(self, port)
-            return self._gateway.initiate()
-
-        d = self._stop_gateway()
-        d.addCallback(startit)
-        return d
-
-    def _stop_gateway(self):
-        if self._gateway is not None:
-            self.info("Stopping gateway on port %d", self._gateway.port)
-            d = self._gateway.cleanup()
-            self._gateway = None
-            return d
-        return defer.succeed(self)
+    def _start_master_gateway(self):
+        master_port = int(self.config["gateway"]["port"])
+        range = (master_port, master_port + GATEWAY_PORT_COUNT)
+        self._gateway = gateway.Gateway(self, range)
+        self._gateway.initiate_master()
