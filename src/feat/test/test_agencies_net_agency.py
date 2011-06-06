@@ -301,7 +301,7 @@ class IntegrationTestCase(common.TestCase):
 
         self.assertEqual(2, len(self.agency._broker.slaves))
         agent_ids = [host_a.get_own_address().key]
-        for slave in self.agency._broker.slaves.itervalues():
+        for slave in self.agency._broker.iter_slaves():
             mediums = yield slave.callRemote('get_agents')
             self.assertEqual(1, len(mediums))
             doc_id = yield mediums[0].callRemote('get_agent_id')

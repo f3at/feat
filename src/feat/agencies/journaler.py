@@ -258,7 +258,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     _error_handler = error_handler
 
-    def __init__(self, logger, filename=":memory:", encoding=None):
+    def __init__(self, logger, filename=":memory:", encoding=None,
+                 on_rotate=None):
         '''
         @param encoding: Optional encoding to be used for blob fields.
         @type encoding: Should be a valid parameter for str.encode() method.
@@ -272,8 +273,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._encoding = encoding
         self._db = None
         self._filename = filename
-        # (agent_id, instance_id, ) -> history_id
-        self._history_id_cache = dict()
+        self._reset_history_id_cache()
         self._cache = EntriesCache()
         # the semaphore is used to always have at most running
         # .perform_instert() method
@@ -281,6 +281,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         self._old_sighup_handler = None
         self._sighup_installed = False
+
+        self._on_rotate_cb = on_rotate
 
     def initiate(self):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
@@ -346,6 +348,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     ### Private ###
 
+    def _reset_history_id_cache(self):
+        # (agent_id, instance_id, ) -> history_id
+        self._history_id_cache = dict()
+
     def _install_sighup(self):
         if self._sighup_installed:
             return
@@ -357,6 +363,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             self.log("Received SIGHUP, reopening the journal.")
             self.close()
             self.initiate()
+            if callable(self._on_rotate_cb):
+                self._on_rotate_cb()
 
         self.log('Installing SIGHUP handler.')
         handler = signal.signal(signal.SIGHUP, sighup)
@@ -476,9 +484,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         insert_meta = "INSERT INTO metadata VALUES('%s', '%s')"
         commands += [insert_meta % (u'encoding', self._encoding, )]
 
-        insert_history = "INSERT INTO histories VALUES(%d, '%s', %d)"
-        for (a_id, i_id), h_id in self._history_id_cache.iteritems():
-            commands += [insert_history % (h_id, a_id, i_id)]
+        self._reset_history_id_cache()
+        # insert_history = "INSERT INTO histories VALUES(%d, '%s', %d)"
+        # for (a_id, i_id), h_id in self._history_id_cache.iteritems():
+        #     commands += [insert_history % (h_id, a_id, i_id)]
 
         d = self._db.runWithConnection(run_all, commands)
         d.addCallbacks(self._initiated_ok, self._error_handler)

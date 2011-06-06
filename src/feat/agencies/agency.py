@@ -31,6 +31,10 @@ from feat.interface.recipient import *
 from feat.interface.serialization import *
 
 
+# How many entries should be between two snapshot at minimum
+MIN_ENTRIES_PER_SNAPSHOT = 1000
+
+
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   dependency.AgencyAgentDependencyMixin,
                   common.StateMachineMixin):
@@ -83,6 +87,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # traversal_id -> True
         self._traversal_ids = container.ExpDict(self)
 
+        self._entries_since_snapshot = 0
 
     ### Public Methods ###
 
@@ -144,10 +149,21 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self._descriptor.doc_id, self._instance_id,
             factory, self.snapshot())
 
+    def check_if_should_snapshot(self, force=False):
+        if force or self._entries_since_snapshot > MIN_ENTRIES_PER_SNAPSHOT:
+            self.journal_snapshot()
+        else:
+            self.log('Skipping snapshot, number of entries %d < %d',
+                     self._entries_since_snapshot, MIN_ENTRIES_PER_SNAPSHOT)
+
     def journal_snapshot(self):
-        self.agency.journal_agent_snapshot(self._descriptor.doc_id,
-                                           self._instance_id,
-                                           self.snapshot_agent())
+        # Remove all the entries for the agent from  the registry,
+        # so that snapshot contains full objects not just the references
+        agent_id = self._descriptor.doc_id
+        self.agency.remove_agent_recorders(agent_id)
+        self._entries_since_snapshot = 0
+        self.agency.journal_agent_snapshot(
+            agent_id, self._instance_id, self.snapshot_agent())
 
     def journal_protocol_created(self, *args, **kwargs):
         self.agency.journal_protocol_created(self._descriptor.doc_id,
@@ -386,6 +402,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.agency.register(recorder)
 
     def new_entry(self, journal_id, function_id, *args, **kwargs):
+        self._entries_since_snapshot += 1
         return self.agency.journal_new_entry(self._descriptor.doc_id,
                                              self._instance_id,
                                              journal_id, function_id,
@@ -958,10 +975,13 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         # FIXME: This shouldn't be necessary! Here we are manually getting
         # rid of things which should just be garbage collected (self.registry
         # is a WeekRefDict). It doesn't happpen supposingly
+        self.remove_agent_recorders(agent_id)
+
+    def remove_agent_recorders(self, agent_id):
         for key in self.registry.keys():
             if key[0] == agent_id:
-                self.debug("Manualy removing recorder id %r, instance: %r",
-                           key, self.registry[key])
+                self.log("Removing recorder id %r, instance: %r",
+                         key, self.registry[key])
                 del(self.registry[key])
 
     ### Journaling Methods ###
@@ -1055,12 +1075,11 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                      if x._descriptor.doc_id == agent_id)
 
     @manhole.expose()
-    def snapshot_agents(self):
-        # Reset the registry, so that snapshot contains
-        # full objects not just the references
-        self.registry = weakref.WeakValueDictionary()
+    def snapshot_agents(self, force=False):
+        '''snapshot_agents(force=False): snapshot agents if number of entries
+        from last snapshot if greater than 1000. Use force=True to override.'''
         for agent in self._agents:
-            agent.journal_snapshot()
+            agent.check_if_should_snapshot(force)
 
     @manhole.expose()
     def list_agents(self):

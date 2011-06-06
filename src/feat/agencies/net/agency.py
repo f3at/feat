@@ -221,7 +221,8 @@ class Agency(agency.Agency):
     def on_become_master(self):
         self._ssh.start_listening()
         self._journal_writer = journaler.SqliteWriter(
-            self, filename=self.config['agency']['journal'], encoding='zip')
+            self, filename=self.config['agency']['journal'], encoding='zip',
+            on_rotate=self._force_snapshot_agents)
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
         self._start_master_gateway(self.config["gateway"]["port"])
@@ -491,6 +492,10 @@ class Agency(agency.Agency):
         self.snapshot_agents()
         self._snapshot_task = None
         self._setup_snapshoter()
+
+    def _force_snapshot_agents(self):
+        self.log("Journal has been rotated, forcing snapshot of agents")
+        self.snapshot_agents(force=True)
 
     def _cancel_snapshoter(self):
         if self._snapshot_task is not None and self._snapshot_task.active():

@@ -139,10 +139,15 @@ class DBTests(common.TestCase):
     @defer.inlineCallbacks
     @common.attr(timeout=10)
     def testJourfileRotation(self):
+        self._rotate_called = 0
+
+        def on_rotate():
+            self._rotate_called += 1
+
         filename = self._get_tmp_file()
         jour = journaler.Journaler(self)
         writer = journaler.SqliteWriter(
-            self, filename=filename, encoding='zip')
+            self, filename=filename, encoding='zip', on_rotate=on_rotate)
         yield writer.initiate()
         d = jour.insert_entry(**self._generate_data())
         yield jour.configure_with(writer)
@@ -163,6 +168,8 @@ class DBTests(common.TestCase):
 
             self.assertTrue(os.path.exists(filename))
             self.assertTrue(os.path.exists(newname))
+
+        self.assertEqual(3, self._rotate_called)
 
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
