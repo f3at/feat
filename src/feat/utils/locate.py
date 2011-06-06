@@ -1,5 +1,5 @@
 from feat.common import defer, log, first
-from feat.agents.base import descriptor
+from feat.agents.base import descriptor, dbtools
 from feat.agents.common import host
 
 from feat.agencies.interface import *
@@ -29,3 +29,21 @@ def locate(connection, agent_id):
         log.log('locate',
                 'Host with id %r not found, returning None', agent_id)
         defer.returnValue(None)
+
+
+def script():
+    with dbtools.dbscript() as (d, args):
+
+        @defer.inlineCallbacks
+        def body(connection):
+            if len(args) < 1:
+                log.error('script', "USAGE: locate.py <agent_id>")
+                return
+            agent_id = args[0]
+            try:
+                host = yield locate(connection, agent_id)
+            except Exception as e:
+                log.error('script', 'ERROR: %r', e)
+            log.info('script', 'Agent runs at host: %r', host)
+
+        d.addCallback(body)

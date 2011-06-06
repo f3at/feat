@@ -4,7 +4,7 @@ import optparse
 from twisted.internet import defer, reactor
 
 from feat.agents.base import document, view
-from feat.agencies.net import database, agency
+from feat.agencies.net import database
 from feat.agencies.interface import ConflictError
 from feat.common import log
 
@@ -60,9 +60,9 @@ def push_initial_data(connection):
     yield connection.save_document(design)
 
 
-DEFAULT_DB_HOST = agency.DEFAULT_DB_HOST
-DEFAULT_DB_PORT = agency.DEFAULT_DB_PORT
-DEFAULT_DB_NAME = agency.DEFAULT_DB_NAME
+DEFAULT_DB_HOST = database.DEFAULT_DB_HOST
+DEFAULT_DB_PORT = database.DEFAULT_DB_PORT
+DEFAULT_DB_NAME = database.DEFAULT_DB_NAME
 
 
 def parse_options():
@@ -93,15 +93,32 @@ def create_db(connection):
 
 
 def script():
-    opts, args = parse_options()
-    connection = create_connection(opts.db_host, opts.db_port, opts.db_name)
+    with dbscript() as (d, args):
 
-    log.FluLogKeeper.init()
-    log.FluLogKeeper.set_debug('5')
-    log.info('script', "Using host: %s, port: %s, db_name; %s",
-             opts.db_host, opts.db_port, opts.db_name)
-    log.info('script', "I will push %d documents.", len(_documents))
-    d = create_db(connection)
-    d.addCallbacks(lambda _: push_initial_data(connection))
-    d.addCallbacks(lambda _: reactor.stop())
-    reactor.run()
+        def body(connection):
+            log.info('script', "I will push %d documents.", len(_documents))
+            d = create_db(connection)
+            d.addCallback(lambda _: push_initial_data(connection))
+            return d
+
+        d.addCallback(body)
+
+
+class dbscript(object):
+
+    def __enter__(self):
+        opts, args = parse_options()
+        self.connection = create_connection(
+            opts.db_host, opts.db_port, opts.db_name)
+
+        log.FluLogKeeper.init()
+        log.FluLogKeeper.set_debug('5')
+        log.info('script', "Using host: %s, port: %s, db_name; %s",
+                 opts.db_host, opts.db_port, opts.db_name)
+        self._deferred = defer.Deferred()
+        return self._deferred, args
+
+    def __exit__(self, type, value, traceback):
+        self._deferred.addBoth(lambda _: reactor.stop())
+        reactor.callWhenRunning(self._deferred.callback, self.connection)
+        reactor.run()
