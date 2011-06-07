@@ -918,8 +918,8 @@ class RestartPartner(AbstractStartPartner):
 
     @replay.immutable
     def _notify_monitor(self, state, recp):
-        return state.agent.call_remote(state.monitor, 'restart_complete',
-                                       recp)
+        return monitor.notify_restart_complete(
+            state.agent, state.monitor, recp)
 
 
 class QueryStructureManager(manager.BaseManager):

@@ -18,7 +18,6 @@ class DummyException(Exception):
     pass
 
 
-
 @agent.register('startup-test')
 class DummyAgent(agent.BaseAgent, common.Mock):
 

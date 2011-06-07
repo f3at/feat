@@ -7,7 +7,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
                               problem, task, )
-from feat.agents.common import rpc
+from feat.agents.common import rpc, monitor
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
@@ -481,7 +481,7 @@ class RestartShard(problem.BaseProblem):
 
     def _finalize(self, recp):
         self.agent.callback_event('shard_agent_restarted', recp)
-        return self.agent.call_remote(self.monitor, 'restart_complete', recp)
+        return monitor.notify_restart_complete(self.agent, self.monitor, recp)
 
 
 class HostAllocationContractor(contractor.BaseContractor):

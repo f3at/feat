@@ -11,10 +11,24 @@ from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 from feat.interface.agency import *
 
 
-__all__ = ['Descriptor', 'RestartFailed', 'RestartStrategy',
+__all__ = ['notify_restart_completed',
+           'Descriptor', 'RestartFailed', 'RestartStrategy',
            'PartnerMixin', 'AgentMixin',
            'IPacemakerFactory', 'IPacemaker',
            'Pacemaker', 'FakePacemaker']
+
+
+def notify_restart_complete(agent, monitor, recp):
+    '''
+    Use this for finalizing custom restart procedure of some agent. If
+    his partner accepted responsibility in on_died() callback, he needs
+    to notify the monitor agent the the restart procedure is complete.
+    @param agent: Agent performing the restart
+    @param monitor: IRecipient of the monitor agent who sent us the
+                    on_died() notification
+    @param recp: IRecipient of the agent who died and got restarted.
+    '''
+    return agent.call_remote(monitor, 'restart_complete', recp)
 
 
 class RestartFailed(Exception):
