@@ -10,6 +10,7 @@ __all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
+           "NotConnectedError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
            "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection",
            "IJournalWriter")
@@ -33,6 +34,12 @@ class NotFoundError(DatabaseError):
     or has been deleted.
     '''
 
+
+class NotConnectedError(Exception):
+    '''
+    Raised when we ned connection refused trying to perform a request to
+    database.
+    '''
 
 class IAgencyProtocolInternal(Interface):
     '''Represents a protocol which can be registered in AgencyAgent.'''

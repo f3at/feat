@@ -12,13 +12,14 @@ except ImportError as e:
 
 from feat.agencies.emu import database as emu_database
 from feat.agents.base import document, view
-from feat.agencies.interface import ConflictError, NotFoundError
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization
 
 from . import common
 from feat.test.common import attr
+
+from feat.agencies.interface import *
 
 
 @document.register
@@ -310,6 +311,16 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
     def tearDown(self):
         self.connection.disconnect()
         return self.process.terminate()
+
+    @defer.inlineCallbacks
+    def testGettingDocsWhileDisconnected(self):
+        doc = DummyDocument(field=u'sth')
+        doc = yield self.connection.save_document(doc)
+        yield self.process.terminate(keep_workdir=True)
+        d = self.connection.get_document(doc.doc_id)
+        self.assertFailure(d, NotConnectedError)
+        yield d
+        yield self.process.restart()
 
     @defer.inlineCallbacks
     def testDisconnection(self):

@@ -159,7 +159,7 @@ class Database(log.FluLogKeeper, ChangeListener):
 
     def _paisley_call(self, method, *args, **kwargs):
         # It is necessarry to acquire the lock to perform the http request
-        # because we won't to be sure that we are not in the middle of sth
+        # because we need to be sure that we are not in the middle of sth
         # while analizing the change notification
         d = self.semaphore.run(method, *args, **kwargs)
         d.addErrback(self._error_handler)
@@ -179,5 +179,7 @@ class Database(log.FluLogKeeper, ChangeListener):
                 raise NotImplementedError(
                     'Behaviour for response code %d not define yet, FIXME!' %
                     status)
+        elif failure.check(error.ConnectionRefusedError):
+            raise NotConnectedError("Database connection refused.")
         else:
             failure.raiseException()
