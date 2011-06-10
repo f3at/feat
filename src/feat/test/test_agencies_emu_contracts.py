@@ -202,6 +202,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         return d
 
+    @common.attr(timescale=0.02)
     def testSendAnnouncementRecvBidsAndGoToClosed(self):
         d = self.start_manager()
 
