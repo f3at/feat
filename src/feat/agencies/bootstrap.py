@@ -149,8 +149,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
         d.addCallback(operator.methodcaller('save_document', host_desc))
         d.addCallbacks(agency.start_agent, agency._error_handler,
                        callbackKeywords=host_kwargs)
-        d.addCallbacks(lambda medium:
-                       medium.wait_for_state(AgencyAgentState.ready))
+        d.addCallback(lambda medium:
+                      medium.wait_for_state(AgencyAgentState.ready))
         # Starting the other agents
 
         for desc in descriptors:

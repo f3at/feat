@@ -5,15 +5,17 @@ from zope.interface import implements
 from feat.common import log
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.interface import IConnectionFactory
+from feat.agencies import common
 
 
-class Messaging(log.Logger, log.FluLogKeeper):
+class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
 
     implements(IConnectionFactory)
 
     log_category = "messaging"
 
     def __init__(self):
+        common.ConnectionManager.__init__(self)
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
@@ -21,6 +23,7 @@ class Messaging(log.Logger, log.FluLogKeeper):
         self._queues = {}
         # name -> exchange
         self._exchanges = {}
+        self._on_connected()
 
     def is_idle(self):
         return all(q.is_idle() for q in self._queues.itervalues())

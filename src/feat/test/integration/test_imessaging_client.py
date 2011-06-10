@@ -3,7 +3,7 @@
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
-from feat.test.common import attr, delay, StubAgent
+from feat.test.common import attr, delay, StubAgent, Mock
 from feat.agencies.emu import messaging as emu_messaging
 from feat.agents.base import message
 from feat.process import rabbitmq
@@ -122,6 +122,17 @@ class TestCase(object):
             self.assertEqual(0, len(agent.messages))
 
 
+class CallbacksReceiver(Mock):
+
+    @Mock.stub
+    def on_connect(self):
+        pass
+
+    @Mock.stub
+    def on_disconnect(self):
+        pass
+
+
 class RabbitSpecific(object):
     """
     This testcase is specific for RabbitMQ integration, as simulation of
@@ -131,14 +142,23 @@ class RabbitSpecific(object):
     def disconnect_client(self):
         return self.messaging._connector.disconnect()
 
+    def setup_receiver(self):
+        mock = CallbacksReceiver()
+        self.messaging.add_disconnected_cb(mock.on_disconnect)
+        self.messaging.add_reconnected_cb(mock.on_connect)
+        return mock
+
     @attr(number_of_agents=10)
     @defer.inlineCallbacks
     def testReconnect(self):
+        mock = self.setup_receiver()
         d1 = self.cb_after(None, self.agents[0], "on_message")
         yield self.connections[1].publish(message=m("first message"),
                                           **self._agent(0))
         yield d1
         yield self.disconnect_client()
+        yield common.delay(None, 0.1)
+        self.assertCalled(mock, 'on_disconnect', times=1)
 
         d2 = self.cb_after(None, self.agents[0], "on_message")
         yield self.connections[1].publish(message=m("second message"),
@@ -148,11 +168,11 @@ class RabbitSpecific(object):
         self.assertEqual(2, len(self.agents[0].messages))
         self.assertEqual("first message", unwrap(self.agents[0].messages[0]))
         self.assertEqual("second message", unwrap(self.agents[0].messages[1]))
+        self.assertCalled(mock, 'on_connect', times=1)
 
     @attr(number_of_agents=3, timeout=50)
     @defer.inlineCallbacks
     def testMultipleReconnects(self):
-        raise SkipTest('Skipping the test because buildbot is too lazy')
 
         def wait_for_msgs():
             return defer.DeferredList(map(
@@ -176,6 +196,7 @@ class RabbitSpecific(object):
                     unwrap(agent.messages[-1]).startswith("%s," % attempt))
 
         number_of_reconnections = 5
+        mock = self.setup_receiver()
 
         yield self.process.rabbitmqctl_dump(
             'list_bindings exchange_name queue_name')
@@ -188,6 +209,9 @@ class RabbitSpecific(object):
                      index, number_of_reconnections)
 
             yield self.disconnect_client()
+            yield common.delay(None, 0.1)
+            self.assertCalled(mock, 'on_disconnect', times=index)
+            self.assertCalled(mock, 'on_connect', times=index-1)
             yield self.process.rabbitmqctl_dump(
                 'list_queues name messages '
                 'messages_ready consumers')

@@ -10,12 +10,13 @@ from zope.interface import implements
 
 from feat.common import log
 from feat.agencies.database import Connection, ChangeListener
+from feat.agencies import common
 
 from feat.agencies.interface import *
 from feat.interface.view import *
 
 
-class Database(log.FluLogKeeper, ChangeListener):
+class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -26,6 +27,7 @@ class Database(log.FluLogKeeper, ChangeListener):
     log_category = "database"
 
     def __init__(self):
+        common.ConnectionManager.__init__(self)
         log.FluLogKeeper.__init__(self)
         ChangeListener.__init__(self, self)
 
@@ -33,6 +35,8 @@ class Database(log.FluLogKeeper, ChangeListener):
         self._documents = {}
         # id -> view_name -> (key, value)
         self._view_cache = {}
+
+        self._on_connected()
 
     ### IDbConnectionFactory
 

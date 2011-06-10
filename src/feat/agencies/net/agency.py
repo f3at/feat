@@ -9,7 +9,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, defer, time
+from feat.common import manhole, defer, time, text_helper
 from feat.process import standalone
 from feat.common.serialization import json
 from feat.gateway import gateway
@@ -353,6 +353,28 @@ class Agency(agency.Agency):
                 defer.returnValue(None)
             else:
                 defer.returnValue((host, port, True, ))
+
+    @manhole.expose()
+    def reconfigure_messaging(self, msg_host, msg_port):
+        '''reconfigure_messaging(host, port) -> force messaging reconnector
+        to the connect to the (host, port)'''
+        self._messaging.reconfigure(msg_host, msg_port)
+
+    @manhole.expose()
+    def reconfigure_database(self, host, port, name='feat'):
+        '''reconfigure_database(host, port, name=\'feat\') -> force database
+        reconnector to connect to the (host, port, db_name)'''
+        self._database.reconfigure(host, port, name)
+
+    @manhole.expose()
+    def show_connections(self):
+        t = text_helper.Table(
+            fields=("Connection", "Connected", "Host", "Port", "Reconnect in"),
+            lengths=(20, 15, 30, 10, 15))
+
+        iterator = (x.show_status()
+                    for x in (self._messaging, self._database))
+        return t.render(iterator)
 
     ### Manhole inspection methods ###
 

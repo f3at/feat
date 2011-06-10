@@ -44,6 +44,14 @@ class DummyAgent(agent.BaseAgent, common.Mock):
     def unregister(self):
         pass
 
+    @common.Mock.stub
+    def on_disconnect(self):
+        pass
+
+    @common.Mock.stub
+    def on_reconnect(self):
+        pass
+
     def set_started(self):
         self._started_defer.callback(self)
 
@@ -51,7 +59,7 @@ class DummyAgent(agent.BaseAgent, common.Mock):
         return self._started_defer
 
 
-class TestStartupTask(common.TestCase, common.AgencyTestHelper):
+class TestAgentCallbacks(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -85,3 +93,35 @@ class TestStartupTask(common.TestCase, common.AgencyTestHelper):
         medium = yield self.agency.start_agent(desc, startup_fail=True)
         yield medium.wait_for_state(AgencyAgentState.terminated)
 
+    @defer.inlineCallbacks
+    def testAgencyDisconnects(self):
+        medium = yield self.agency.start_agent(self.desc)
+        agent = medium.get_agent()
+        agent.set_started()
+        yield medium.wait_for_state(AgencyAgentState.ready)
+
+        self.agency._messaging._on_disconnected()
+        yield medium.wait_for_state(AgencyAgentState.disconnected)
+
+        yield common.delay(None, 0.01)
+        self.assertCalled(agent, 'on_disconnect')
+
+        self.agency._messaging._on_connected()
+        yield medium.wait_for_state(AgencyAgentState.ready)
+        yield common.delay(None, 0.01)
+
+        self.assertCalled(agent, 'on_disconnect')
+        self.assertCalled(agent, 'on_reconnect')
+
+        self.agency._messaging._on_disconnected()
+        self.agency._database._on_disconnected()
+        yield common.delay(None, 0.01)
+        self.assertCalled(agent, 'on_disconnect', times=2)
+
+        self.agency._messaging._on_connected()
+        yield common.delay(None, 0.01)
+        self.assertCalled(agent, 'on_reconnect', times=1)
+
+        self.agency._database._on_connected()
+        yield common.delay(None, 0.02)
+        self.assertCalled(agent, 'on_reconnect', times=2)
