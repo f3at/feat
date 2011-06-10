@@ -94,7 +94,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def initiate(self, *args, **kwargs):
         '''Establishes the connections to database and messaging platform,
         taking into account that it might meen performing asynchronous job.'''
+        run_startup = kwargs.pop('run_startup', True)
+
         setter = lambda value, name: setattr(self, name, value)
+
         d = defer.Deferred()
         d.addCallback(defer.drop_param,
                       self.agency._messaging.get_connection, self)
@@ -115,19 +118,13 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       self.journal_agent_created)
         d.addCallback(defer.drop_param,
                       self._call_initiate, *args, **kwargs)
+        d.addCallback(defer.drop_param, self.call_next, self._call_startup,
+                      call_startup=run_startup)
         d.addCallback(defer.override_result, self)
 
         # Ensure the execution chain is broken
         self.call_next(d.callback, None)
 
-        return d
-
-    def startup(self, startup_agent=True):
-        d = defer.succeed(None)
-        if startup_agent:
-            d.addCallback(defer.drop_param, self._call_startup)
-        # Not calling agent startup, for testing purpose only
-        d.addCallback(defer.drop_param, self._ready)
         return d
 
     @manhole.expose()
@@ -725,10 +722,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _terminate_procedure(self, body):
         assert callable(body)
 
-        if self._terminating:
-            # Already terminating
+        if self._cmp_state(AgencyAgentState.terminating):
             return
-        self._terminating = True
+        self._set_state(AgencyAgentState.terminating)
 
         # Revoke all queued protocols
         [i.clear_queue() for i in self._iter_interests()]
@@ -740,7 +736,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.succeed(None)
 
         # Cancel all long running protocols
-        d.addBoth(lambda _: self._cancel_long_running_protocols())
+        d.addBoth(defer.drop_param, self._cancel_long_running_protocols)
         # Cancel all delayed calls
         d.addBoth(self._cancel_all_delayed_calls)
         # Kill all protocols
@@ -748,13 +744,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Again, just in case
         d.addBoth(self._cancel_all_delayed_calls)
         # Run code specific to the given shutdown
-        d.addBoth(lambda _: body())
+        d.addBoth(defer.drop_param, body)
         # Tell the agency we are no more
-        d.addBoth(lambda _: self._unregister_from_agency())
+        d.addBoth(defer.drop_param, self._unregister_from_agency)
         # Close the messaging connection
-        d.addBoth(lambda _: self._messaging.disconnect())
+        d.addBoth(defer.drop_param, self._messaging.disconnect)
         # Close the database connection
-        d.addBoth(lambda _: self._database.disconnect())
+        d.addBoth(defer.drop_param, self._database.disconnect)
+        d.addBoth(defer.drop_param,
+                  self._set_state, AgencyAgentState.terminated)
         return d
 
     def _unregister_from_agency(self):
@@ -826,20 +824,23 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       AgencyAgentState.initiated)
         return d
 
-    def _call_startup(self):
+    def _call_startup(self, call_startup=True):
         self._set_state(AgencyAgentState.starting_up)
-        d = defer.maybeDeferred(self.agent.startup)
-        d.addCallback(fiber.drop_param, self._ready)
-        d.addCallback(fiber.override_result, self)
-        d.addErrback(self._error_handler)
+        d = defer.succeed(None)
+        if call_startup:
+            d.addCallback(defer.drop_param, self.agent.startup)
+        d.addCallback(fiber.drop_param, self._become_ready)
+        d.addErrback(self._startup_error)
         return d
 
-    def _ready(self):
+    def _become_ready(self):
         self._set_state(AgencyAgentState.ready)
 
-    def _error_handler(self, e):
-        self._set_state(AgencyAgentState.error)
-        error_handler(self, e)
+    def _startup_error(self, fail):
+        self._error_handler(fail)
+        self.error("Agent raised an error from startup() method. "
+                   "He needs to get punished.")
+        self.terminate()
 
     def _store_delayed_call(self, call_id, call, busy):
         if call.active():
@@ -942,12 +943,10 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                  factory, args, kwargs)
         medium = self.agency_agent_factory(self, factory, descriptor)
         self._agents.append(medium)
-        run_startup = kwargs.pop('run_startup', True)
+
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, medium.initiate,
                       *args, **kwargs)
-        d.addCallback(defer.bridge_param, medium.call_next, medium.startup,
-                      startup_agent=run_startup)
         return d
 
     @manhole.expose()

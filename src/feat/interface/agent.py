@@ -63,15 +63,18 @@ class IAgentFactory(Interface):
 
 class AgencyAgentState(enum.Enum):
     '''
-    not_initiated - Agent is not initialized
-    initiating    - Agent is currently initializing
-    initiated     - Initialize done
-    starting_up   - Agent starting up
-    ready         - Agent is ready
-    error         - Agent has throw an exception
+    not_initiated - Agent is not yet initialized.
+    initiating    - Agent is currently initializing.
+    initiated     - Initialize done.
+    starting_up   - Agent is starting up.
+    ready         - Agent has finished starting up and is ready.
+    disconnected  - Triggered when agency looses database or messaging
+                    connection.
+    terminating   - Agent is going through termination procedure.
+    terminated    - Agent is terminated and unregistered.
     '''
-    (not_initiated, initiating, initiated,
-     starting_up, started, ready, error) = range(7)
+    (not_initiated, initiating, initiated, starting_up,
+     ready, disconnected, terminating, terminated) = range(8)
 
 
 class IAgencyAgent(Interface):
@@ -299,8 +302,10 @@ class IAgencyAgent(Interface):
 
 
 class IAgent(Interface):
-    '''Agent interface. It uses the L{IAgencyAgent} given at initialization
-    time in order to perform its task.'''
+    '''
+    Agent interface exposed to the agency. Methods defined here are called
+    by the AgencyAgent on different stages of life of the agent.
+    '''
 
     def initiate(*args, **kwargs):
         '''
@@ -310,24 +315,6 @@ class IAgent(Interface):
 
     def startup():
         '''Called when initiate has finished'''
-
-    def get_descriptor():
-        '''Returns a copy of the agent descriptos.'''
-
-    def get_agent_id():
-        '''Returns a global unique identifier for the agent.
-        Do not change when the agent is restarted.'''
-
-    def get_instance_id():
-        '''Returns the agent instance identifier.
-        Changes when the agent is restarted.
-        It's unique only for the agent.'''
-
-    def get_full_id():
-        '''Return a global unique identifier for this agent instance.
-        It's a combination of agent_id and instance_id:
-          full_id = agent_id + "/" + instance_id
-        '''
 
     def shutdown():
         """
@@ -340,4 +327,15 @@ class IAgent(Interface):
         '''
         Called as part of the SIGTERM handler. This type of shutdown assumes
         that the monitoring agent will restart us somewhere.
+        '''
+
+    def on_disconnect():
+        '''
+        Called when agency gets disconnected from messaging or database
+        server.
+        '''
+
+    def on_reconnect():
+        '''
+        Called when both connections to messaging and database are restored.
         '''

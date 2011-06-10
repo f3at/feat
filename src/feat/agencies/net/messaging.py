@@ -119,6 +119,9 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
                                  cb.__class__)
         self._connection_lost_cbs.append(cb)
 
+    def is_connected(self):
+        return self.client is not None
+
     def _reset_client(self):
         self.client = None
         self._wait_for_client = defer.Deferred()

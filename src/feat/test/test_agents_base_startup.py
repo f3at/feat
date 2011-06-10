@@ -57,32 +57,31 @@ class TestStartupTask(common.TestCase, common.AgencyTestHelper):
     def setUp(self):
         yield common.TestCase.setUp(self)
         yield common.AgencyTestHelper.setUp(self)
+        self.desc = yield self.doc_factory(Descriptor)
 
     @defer.inlineCallbacks
     def testAgentStartup(self):
-        desc = yield self.doc_factory(Descriptor)
-        dummy = yield self.agency.start_agent(desc)
-        self.assertCalled(dummy.get_agent(), 'initiate')
-        self.assertCalled(dummy.get_agent(), 'startup', times=0)
-        self.assertEqual(dummy.get_machine_state(),
+        medium = yield self.agency.start_agent(self.desc)
+        agent = medium.get_agent()
+        self.assertCalled(agent, 'initiate')
+        self.assertCalled(agent, 'startup', times=0)
+        self.assertEqual(medium.get_machine_state(),
                          AgencyAgentState.initiated)
-        dummy.get_agent().set_started()
-        yield dummy.wait_for_state(AgencyAgentState.ready)
-        self.assertCalled(dummy.get_agent(), 'startup', times=1)
+        medium.get_agent().set_started()
+        yield medium.wait_for_state(AgencyAgentState.ready)
+        self.assertCalled(medium.get_agent(), 'startup', times=1)
 
     @defer.inlineCallbacks
     def testAgentNoStartup(self):
-        desc = yield self.doc_factory(descriptor.Descriptor)
-        dummy = yield self.agency.start_agent(desc, run_startup=False)
-        yield dummy.wait_for_state(AgencyAgentState.ready)
-        self.assertCalled(dummy.get_agent(), 'startup', times=0)
-        self.assertEqual(dummy.get_machine_state(),
-                         AgencyAgentState.ready)
+        medium = yield self.agency.start_agent(self.desc, run_startup=False)
+        agent = medium.get_agent()
+        yield medium.wait_for_state(AgencyAgentState.ready)
+        self.assertCalled(agent, 'startup', times=0)
+        self.assertEqual(medium.get_machine_state(), AgencyAgentState.ready)
 
     @defer.inlineCallbacks
     def testAgentFails(self):
         desc = yield self.doc_factory(Descriptor)
-        dummy = yield self.agency.start_agent(desc, startup_fail=True)
-        yield dummy.wait_for_state(AgencyAgentState.error)
-        self.assertEqual(dummy.get_machine_state(),
-                         AgencyAgentState.error)
+        medium = yield self.agency.start_agent(desc, startup_fail=True)
+        yield medium.wait_for_state(AgencyAgentState.terminated)
+
