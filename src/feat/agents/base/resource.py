@@ -2,9 +2,69 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.common import (log, serialization, error_handler, fiber, )
+from feat.common import (log, serialization, error_handler, fiber, manhole, )
 from feat.agents.base import replay
 from feat.common.container import ExpDict
+
+
+class AgentMixin(object):
+
+    def initiate(self, state):
+        state.resources = Resources(self)
+
+    @replay.mutable
+    def preallocate_resource(self, state, **params):
+        return state.resources.preallocate(**params)
+
+    @replay.mutable
+    def allocate_resource(self, state, **params):
+        return state.resources.allocate(**params)
+
+    @replay.immutable
+    def check_allocation_exists(self, state, allocation_id):
+        return state.resources.get_allocation(allocation_id)
+
+    @manhole.expose()
+    @replay.immutable
+    def get_resource_usage(self, state):
+        return state.resources.get_usage()
+
+    @replay.immutable
+    def list_resource(self, state):
+        allocated = state.resources.allocated()
+        totals = state.resources.get_totals()
+        return totals, allocated
+
+    @replay.mutable
+    def confirm_allocation(self, state, allocation_id):
+        return state.resources.confirm(allocation_id)
+
+    @replay.immutable
+    def allocation_used(self, state, allocation_id):
+        '''
+        Checks if allocation is used by any of the partners.
+        If allocation does not exist returns False.
+        @param allocation_id: ID of the allocation
+        @returns: True/False
+        '''
+        return len(filter(lambda x: x.allocation_id == allocation_id,
+                          state.partners.all)) > 0
+
+    @replay.mutable
+    def release_resource(self, state, allocation_id):
+        return state.resources.release(allocation_id)
+
+    @replay.mutable
+    def premodify_allocation(self, state, allocation_id, **delta):
+        return state.resources.premodify(allocation_id, **delta)
+
+    @replay.mutable
+    def apply_modification(self, state, change_id):
+        return state.resources.apply_modification(change_id)
+
+    @replay.mutable
+    def release_modification(self, state, change_id):
+        return state.resources.release_modification(change_id)
 
 
 @serialization.register

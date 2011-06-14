@@ -86,7 +86,8 @@ class Partners(agent.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
+class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
+                resource.AgentMixin):
 
     partners_class = Partners
 
@@ -95,6 +96,7 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
         notifier.AgentMixin.initiate(self, state)
+        resource.AgentMixin.initiate(self, state)
 
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(StartAgentContractor)
@@ -252,16 +254,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @rpc.publish
     def premodify_allocation(self, allocation_id, **delta):
-        return agent.BaseAgent.premodify_allocation(self,
+        return resource.AgentMixin.premodify_allocation(self,
                 allocation_id, **delta)
 
     @rpc.publish
     def apply_modification(self, change_id):
-        return agent.BaseAgent.apply_modification(self, change_id)
+        return resource.AgentMixin.apply_modification(self, change_id)
 
     @rpc.publish
     def release_modification(self, change_id):
-        return agent.BaseAgent.release_modification(self, change_id)
+        return resource.AgentMixin.release_modification(self, change_id)
 
     ### Private Methods ###
 

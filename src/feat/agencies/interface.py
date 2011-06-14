@@ -41,6 +41,7 @@ class NotConnectedError(Exception):
     database.
     '''
 
+
 class IAgencyProtocolInternal(Interface):
     '''Represents a protocol which can be registered in AgencyAgent.'''
 

@@ -161,7 +161,8 @@ dbtools.initial_data(ShardAgentConfiguration)
 
 
 @agent.register('shard_agent')
-class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
+class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
+                 resource.AgentMixin):
 
     partners_class = Partners
 
@@ -172,6 +173,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
         notifier.AgentMixin.initiate(self, state)
+        resource.AgentMixin.initiate(self, state)
 
         config = state.medium.get_configuration()
 
@@ -298,7 +300,7 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @rpc.publish
     def release_resource(self, alloc_id):
-        return agent.BaseAgent.release_resource(self, alloc_id)
+        return resource.AgentMixin.release_resource(self, alloc_id)
 
     @manhole.expose()
     @replay.mutable

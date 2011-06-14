@@ -7,7 +7,7 @@ from zope.interface import implements
 
 from feat.common import log, decorator, serialization, fiber, manhole
 from feat.interface import generic, agent, protocols
-from feat.agents.base import (resource, recipient, replay, requester,
+from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor
 
@@ -104,7 +104,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     def init_state(self, state, medium):
         state.medium = agent.IAgencyAgent(medium)
-        state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
 
     @replay.immutable
@@ -312,60 +311,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     @replay.immutable
     def register_interest(self, state, *args, **kwargs):
         return state.medium.register_interest(*args, **kwargs)
-
-    @replay.mutable
-    def preallocate_resource(self, state, **params):
-        return state.resources.preallocate(**params)
-
-    @replay.mutable
-    def allocate_resource(self, state, **params):
-        return state.resources.allocate(**params)
-
-    @replay.immutable
-    def check_allocation_exists(self, state, allocation_id):
-        return state.resources.get_allocation(allocation_id)
-
-    @manhole.expose()
-    @replay.immutable
-    def get_resource_usage(self, state):
-        return state.resources.get_usage()
-
-    @replay.immutable
-    def list_resource(self, state):
-        allocated = state.resources.allocated()
-        totals = state.resources.get_totals()
-        return totals, allocated
-
-    @replay.mutable
-    def confirm_allocation(self, state, allocation_id):
-        return state.resources.confirm(allocation_id)
-
-    @replay.immutable
-    def allocation_used(self, state, allocation_id):
-        '''
-        Checks if allocation is used by any of the partners.
-        If allocation does not exist returns False.
-        @param allocation_id: ID of the allocation
-        @returns: True/False
-        '''
-        return len(filter(lambda x: x.allocation_id == allocation_id,
-                          state.partners.all)) > 0
-
-    @replay.mutable
-    def release_resource(self, state, allocation_id):
-        return state.resources.release(allocation_id)
-
-    @replay.mutable
-    def premodify_allocation(self, state, allocation_id, **delta):
-        return state.resources.premodify(allocation_id, **delta)
-
-    @replay.mutable
-    def apply_modification(self, state, change_id):
-        return state.resources.apply_modification(change_id)
-
-    @replay.mutable
-    def release_modification(self, state, change_id):
-        return state.resources.release_modification(change_id)
 
     @replay.immutable
     def get_document(self, state, doc_id):

@@ -59,13 +59,14 @@ class Partners(partners.Partners):
 
 
 @agent.register('partner-agent')
-class Agent(agent.BaseAgent):
+class Agent(agent.BaseAgent, resource.AgentMixin):
 
     partners_class = Partners
 
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
+        resource.AgentMixin.initiate(self, state)
 
         state.resources.define('foo', 2)
         state.received_brothers = list()
