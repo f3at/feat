@@ -1,15 +1,16 @@
 import optparse
 import re
+import types
 
-from twisted.internet import reactor, error
-from zope.interface import implements
+from twisted.internet import reactor
 from twisted.spread import pb
 
 from feat.agents.base.agent import registry_lookup
-from feat.agents.base import recipient
+from feat.agents.base import recipient, descriptor
+from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, defer, time, text_helper
+from feat.common import manhole, defer, time, text_helper, first
 from feat.process import standalone
 from feat.common.serialization import json
 from feat.gateway import gateway
@@ -161,11 +162,54 @@ class Agency(agency.Agency):
         # this is default mode for the dependency modules
         self._set_default_mode(ExecMode.production)
 
-    @manhole.expose()
-    def get_gateway_port(self):
-        return self._gateway and self._gateway.port
+        # hostdef to pass to the Host Agent we run
+        self._hostdef = None
 
-    gateway_port = property(get_gateway_port)
+        # flag saying that we are in the process of starting the Host Agent,
+        # it's used not to do this more than once
+        self._starting_host = False
+        # flag set when we enter the agency shutdown. It's used not to trigger
+        # starting new host agent while we are shutting down the agency
+        self._shutting_down = False
+        # list of agent types or descriptors to spawn when the host agent
+        # is ready. Format (agent_type_or_desc, args, kwargs)
+        self._to_spawn = list()
+        # semaphore preventing multiple entries into logic spawning agents
+        # by host agent
+        self._flushing_sem = defer.DeferredSemaphore(1)
+
+    @manhole.expose()
+    def spawn_agent(self, desc, *args, **kwargs):
+        '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
+        agent running in this agency to spawn a new agent of the given type.'''
+        self._to_spawn.append((desc, args, kwargs, ))
+        return self._flush_agents_to_spawn()
+
+    def _flush_agents_to_spawn(self):
+        return self._flushing_sem.run(self._flush_agents_body)
+
+    @defer.inlineCallbacks
+    def _flush_agents_body(self):
+        medium = self._get_host_medium()
+        if medium is None:
+            msg = "Host Agent not ready yet, agent will be spawned later."
+            defer.returnValue(msg)
+        yield medium.wait_for_state(AgencyAgentState.ready)
+        agent = medium.get_agent()
+        while True:
+            try:
+                to_spawn = self._to_spawn.pop(0)
+            except IndexError:
+                break
+            desc, args, kwargs = to_spawn
+            if not isinstance(desc, descriptor.Descriptor):
+                factory = descriptor.lookup(desc)
+                if factory is None:
+                    raise ValueError(
+                        'No descriptor factory found for agent %r' % desc)
+                desc = factory()
+            desc = yield medium.save_document(desc)
+            yield agent.start_agent(desc, *args, **kwargs)
 
     def initiate(self):
         mesg = messaging.Messaging(
@@ -205,6 +249,21 @@ class Agency(agency.Agency):
 
     ### public ###
 
+    def set_host_def(self, hostdef):
+        '''
+        Sets the hostdef param which will get passed to the Host Agent which
+        the agency starts if it becomes the master.
+        '''
+        if not isinstance(hostdef,
+                          (host.HostDef, unicode, str, types.NoneType)):
+            raise AttributeError("Expected attribute 1 to be a HostDef or "
+                                 "a document id got %r instead." %
+                                 (hostdef, ))
+        if self._hostdef is not None:
+            self.info("Overwriting previous hostdef, which was %r",
+                      self._hostdef)
+        self._hostdef = hostdef
+
     @property
     def role(self):
         return self._broker.state
@@ -237,6 +296,7 @@ class Agency(agency.Agency):
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
         self._start_master_gateway()
+        return self._start_host_agent_if_necessary()
 
     def on_become_slave(self):
         self._ssh.stop_listening()
@@ -276,6 +336,7 @@ class Agency(agency.Agency):
     def shutdown(self):
         '''shutdown() -> Shutdown the agency in gentel manner (terminating
         all the agents).'''
+        self._shutting_down = True
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
         d.addCallback(defer.drop_param, self._disconnect)
@@ -287,6 +348,10 @@ class Agency(agency.Agency):
         d.addCallback(defer.drop_param, self._gateway.cleanup)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
+
+    def unregister_agent(self, medium):
+        agency.Agency.unregister_agent(self, medium)
+        self._start_host_agent_if_necessary()
 
     @manhole.expose()
     def start_agent(self, descriptor, *args, **kwargs):
@@ -379,6 +444,12 @@ class Agency(agency.Agency):
     ### Manhole inspection methods ###
 
     @manhole.expose()
+    def get_gateway_port(self):
+        return self._gateway and self._gateway.port
+
+    gateway_port = property(get_gateway_port)
+
+    @manhole.expose()
     def find_agent_locally(self, agent_id):
         '''find_agent_locally(agent_id_or_descriptor) -> Same as find_agent
         but only checks in scope of this agency.'''
@@ -397,7 +468,6 @@ class Agency(agency.Agency):
     @defer.inlineCallbacks
     def list_slaves(self):
         '''list_slaves() -> Print information about the slave agencies.'''
-        slaves = list(self._broker.iter_slaves())
         resp = []
         for slave_id, slave in self._broker.slaves.iteritems():
             resp += ["#### Slave %s ####" % slave_id]
@@ -498,6 +568,57 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+    def _start_host_agent_if_necessary(self):
+        '''
+        This method starts saves the host agent descriptor and runs it.
+        To make this happen following conditions needs to be fulfilled:
+        - it is a master agency,
+        - we are not starting a host agent already,
+        - we are not terminating,
+        - and last but not least, we dont have a host agent running.
+        '''
+
+        def set_flag(value):
+            self._starting_host = value
+
+        if self.role != BrokerRole.master:
+            # we are not the master agency
+            return
+
+        if self._shutting_down:
+            # the agency is about to terminate itself
+            return
+
+        if self._get_host_agent():
+            # we already have host agent
+            return
+
+        if self._starting_host:
+            # agency if already starting the host agent
+            return
+
+        set_flag(True)
+        self.info('Starting host agent')
+        desc = host.Descriptor(shard=u'lobby')
+        conn = self._database.get_connection()
+
+        d = defer.Deferred()
+        d.addCallback(defer.drop_param, self.wait_connected)
+        d.addCallback(defer.drop_param, conn.save_document, desc)
+        d.addCallback(self.start_agent)
+        d.addBoth(defer.bridge_param, set_flag, False)
+        d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
+
+        time.callLater(0, d.callback, None)
+
+    def _get_host_agent(self):
+        medium = self._get_host_medium()
+        return medium and medium.get_agent()
+
+    def _get_host_medium(self):
+        return first((x for x in self._agents
+                      if x.get_descriptor().document_type == 'host_agent'))
 
     @defer.inlineCallbacks
     def _find_agent(self, agent_id):

@@ -168,7 +168,9 @@ class Propose(BaseRequester):
     def closed(self, state):
         self.warning('Our proposal to agent %r has been ignored. How rude!',
                      state.medium.get_recipients())
-        return self._release_allocation()
+        f = self._release_allocation()
+        f.add_callback(fiber.override_result, None)
+        return f
 
     @replay.mutable
     def _release_allocation(self, state):

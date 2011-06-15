@@ -5,7 +5,7 @@ import optparse
 from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
-from feat.common import log, run
+from feat.common import log, run, defer
 from feat.interface.agent import (Access, Address, Storage,
                                  AgencyAgentState, )
 
@@ -140,21 +140,11 @@ def bootstrap(parser=None, args=None, descriptors=None):
                 name, value = check_category(catdef)
                 hostdef.categories[name] = value
 
+        agency.set_host_def(hostdef)
         d = agency.initiate()
-        d.addCallback(run.get_db_connection)
-
-        # Starting the host agent
-        host_desc = everything.host_agent.Descriptor(shard=u'lobby')
-        host_kwargs = dict(hostdef=hostdef)
-        d.addCallback(operator.methodcaller('save_document', host_desc))
-        d.addCallbacks(agency.start_agent, agency._error_handler,
-                       callbackKeywords=host_kwargs)
-        d.addCallback(lambda medium:
-                      medium.wait_for_state(AgencyAgentState.ready))
-        # Starting the other agents
 
         for desc in descriptors:
             log.debug("feat", "Starting agent with descriptor %r", desc)
-            d.addCallback(start_agent, desc)
+            d.addCallback(defer.drop_param, agency.spawn_agent, desc)
 
         return d

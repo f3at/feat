@@ -1004,6 +1004,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                          key, self.registry[key])
                 del(self.registry[key])
 
+    def is_idle(self):
+        return all([x.is_idle() for x in self._agents])
+
     ### Journaling Methods ###
 
     def register(self, recorder):

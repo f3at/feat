@@ -174,21 +174,6 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
                 '%d mediumf of this type' % (agent_type, index, len(mediums)))
 
     @manhole.expose()
-    def spawn_agent(self, agent_type, **kwargs):
-        '''spawn_agent(agent_type, **kwargs) -> tells the host agent running
-        in this agency to spawn a new agent of the given type.'''
-        factory = descriptor.lookup(agent_type)
-        if factory is None:
-            raise RuntimeError('No descriptor factory found for agent %s')
-        desc = factory()
-        host_medium = self.get_medium('host_agent')
-        agent = host_medium.get_agent()
-        d = host_medium.save_document(desc)
-        d.addCallback(
-            lambda desc: agent.start_agent(desc.doc_id, **kwargs))
-        return d
-
-    @manhole.expose()
     def restart_agent(self, agent_id, **kwargs):
         '''restart_agent(agent_id, **kwargs) -> tells the host agent running
         in this agency to restart the agent.'''

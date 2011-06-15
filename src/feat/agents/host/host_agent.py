@@ -136,10 +136,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
 
     @replay.journaled
     def start_join_shard_manager(self, state):
+        f = fiber.succeed()
         if state.partners.shard is None:
-            f = common_shard.start_manager(self)
+            f.add_callback(fiber.drop_param, common_shard.start_manager, self)
             f.add_errback(fiber.drop_param, self.start_own_shard)
-            return f
+        return f
 
     @replay.journaled
     def start_own_shard(self, state, shard=None):
