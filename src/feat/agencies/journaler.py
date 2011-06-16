@@ -8,6 +8,7 @@ import signal
 from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb, jelly
+from twisted.internet import reactor
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole, )
@@ -378,6 +379,9 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         if self._sighup_installed:
             return
 
+        def run_sighup_from_thread(signum, frame):
+            reactor.callFromThread(sighup, signum, frame)
+
         def sighup(signum, frame):
             if callable(self._old_sighup_handler):
                 self._old_sighup_handler(signum, frame)
@@ -389,7 +393,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                 self._on_rotate_cb()
 
         self.log('Installing SIGHUP handler.')
-        handler = signal.signal(signal.SIGHUP, sighup)
+        handler = signal.signal(signal.SIGHUP, run_sighup_from_thread)
         if handler == signal.SIG_DFL or handler == signal.SIG_IGN:
             self._old_sighup_handler = None
         else:
