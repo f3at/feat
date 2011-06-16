@@ -461,6 +461,11 @@ class IJournaler(Interface):
         Return the filename to which this journaler stores entries.
         """
 
+    def is_idle():
+        """
+        Returns bool saying if there are pending entries to get flushed.
+        """
+
 
 class IRecord(Interface):
     '''
@@ -525,4 +530,9 @@ class IJournalWriter(Interface):
     def get_filename():
         """
         Return the filename to which this connection stores.
+        """
+
+    def is_idle():
+        """
+        Returns bool saying if there are pending entries to get flushed.
         """

@@ -118,6 +118,8 @@ class SimulationTest(common.TestCase):
     def _check_replayability(self):
         if not self.skip_replayability:
             self.info("Test finished, now validating replayability.")
+            yield self.wait_for(self.driver._journaler.is_idle, 10, 0.01)
+
             histories = yield self.driver._journaler.get_histories()
             for history in histories:
                 entries = yield self.driver._journaler.get_entries(history)

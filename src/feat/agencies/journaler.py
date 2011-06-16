@@ -144,6 +144,13 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
     def get_filename(self):
         return self._writer.get_filename()
 
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        if self._writer:
+            return self._writer.is_idle()
+        return True
+
     ### private ###
 
     def _schedule_flush(self):
@@ -225,6 +232,10 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     def get_filename(self):
         return self._writer.callRemote('get_filename')
 
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
 
     ### private ###
 
@@ -351,6 +362,11 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     @manhole.expose()
     def get_filename(self):
         return self._filename
+
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
 
     ### Private ###
 
