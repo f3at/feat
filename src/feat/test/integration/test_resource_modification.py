@@ -59,7 +59,7 @@ class RequestingAgent(agent.BaseAgent, rpc.AgentMixin):
         return host.release_modification(agent, recp, change_id)
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.1)
 class RemotePremodifyTest(common.SimulationTest, Common):
 
     @defer.inlineCallbacks

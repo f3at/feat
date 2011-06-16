@@ -306,6 +306,7 @@ class ContractNestingSimulation(common.SimulationTest):
         self.assertEqual(2, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('raage_agent'))
 
+    @common.attr(timescale=0.2)
     @defer.inlineCallbacks
     def testRequestLocalResource(self):
         self.info("Starting test")
