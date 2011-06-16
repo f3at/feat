@@ -128,7 +128,8 @@ class DNSAgentTest(common.SimulationTest):
                 result = yield dns_agent.lookup_address(name, "127.0.0.1")
                 for ip, ttl in result:
                     self.assertEqual(exp_ttl, ttl)
-                self.assertEqual(expected, [ip for ip, _ttl in result])
+                self.assertEqual(set(expected),
+                                 set([ip for ip, _ttl in result]))
 
         agent1 = self.get_local("agent1")
         agent2 = self.get_local("agent2")
@@ -195,7 +196,8 @@ class DNSAgentTest(common.SimulationTest):
                 result = yield dns_agent.lookup_address(name, "127.0.0.1")
                 for ip, ttl in result:
                     self.assertEqual(exp_ttl, ttl)
-                self.assertEqual(expected, [ip for ip, _ttl in result])
+                self.assertEqual(set(expected),
+                                 set([ip for ip, _ttl in result]))
 
         agent1 = self.get_local("agent1")
         agent2 = self.get_local("agent2")

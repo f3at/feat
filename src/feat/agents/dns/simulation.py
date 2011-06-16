@@ -12,6 +12,9 @@ class Labour(labour.BaseLabour):
     classProvides(IDNSServerLabourFactory)
     implements(IDNSServerLabour)
 
+    def __init__(self, patron, resolver, slaves, suffix):
+        labour.BaseLabour.__init__(self, patron)
+
     @replay.side_effect
     def initiate(self):
         """Nothing."""
@@ -21,4 +24,7 @@ class Labour(labour.BaseLabour):
         return True
 
     def cleanup(self):
+        """Nothing."""
+
+    def notify_slaves(self):
         """Nothing."""
