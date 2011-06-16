@@ -1,21 +1,11 @@
 from zope.interface import Interface
 
-__all__ = ["IDNSServerPatron", "IDNSServerLabourFactory", "IDNSServerLabour"]
-
-
-class IDNSServerPatron(Interface):
-
-    def lookup_address(self, name, address):
-        '''Lookups IPs for specified name resolution for client
-        with specified address.'''
-
-    def lookup_ns(self, name):
-        '''@return: a name server and a TTL.'''
+__all__ = ["IDNSServerLabourFactory", "IDNSServerLabour"]
 
 
 class IDNSServerLabourFactory(Interface):
 
-    def __call__(agent):
+    def __call__(patron, resolver, slaves, suffix):
         '''
         @returns: L{IManagerLabour}
         '''
@@ -32,3 +22,6 @@ class IDNSServerLabour(Interface):
 
     def cleanup():
         '''Cleanup the labour, stop listening for DNS queries.'''
+
+    def notify_slaves(self):
+        '''Notify slaves for zones updates'''
