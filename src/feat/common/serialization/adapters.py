@@ -94,6 +94,12 @@ class FailureAdapter(Failure, BaseAdapter, base.Serializable):
         self.__dict__.update(failure.__dict__)
         self.cleanFailure()
 
+    def trap(self, *errorTypes):
+        error = self.check(*errorTypes)
+        if not error:
+            self.raiseException()
+        return error
+
     def __eq__(self, other):
         if not isinstance(other, Failure):
             return NotImplemented

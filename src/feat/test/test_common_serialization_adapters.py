@@ -4,8 +4,8 @@
 
 from twisted.python import failure
 
-from feat.common import serialization, adapter
-from feat.common.serialization import base, sexp
+from feat.common import serialization, adapter, defer
+from feat.common.serialization import base, sexp, adapters
 
 from feat.interface.serialization import *
 
@@ -18,6 +18,14 @@ class DummyError(Exception):
         Exception.__init__(self, *args)
         self.custom = custom
         self.value = values
+
+
+class SomeException(Exception):
+    pass
+
+
+class OtherException(Exception):
+    pass
 
 
 class TestAdapters(common.TestCase):
@@ -67,3 +75,15 @@ class TestAdapters(common.TestCase):
         self.assertEqual(type(result1b), type(result1a))
         self.assertEqual(type(result1a).__bases__[0], failure.Failure)
         self.assertEqual(type(result1b).__bases__[0], failure.Failure)
+
+    def testTrapingFailureAdapter(self):
+        f = failure.Failure(SomeException("not trapped"))
+        adapter = ISerializable(f)
+        self.assertIsInstance(adapter, adapters.FailureAdapter)
+
+        d = defer.Deferred()
+        d.addErrback(adapters.FailureAdapter.trap, OtherException)
+
+        d.errback(adapter)
+        self.assertFailure(d, SomeException)
+        return d
