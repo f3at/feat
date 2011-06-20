@@ -517,10 +517,8 @@ class HostAllocationContractor(contractor.BaseContractor):
         bid = message.Bid()
         bid.payload['allocation_id'] = state.preallocation_id
 
-        f = fiber.Fiber()
-        f.add_callback(self._get_cost)
-        f.add_callback(state.medium.bid)
-        return f.succeed(bid)
+        bid = self._get_cost(bid)
+        state.medium.bid(bid)
 
     @replay.immutable
     def _refuse(self, state, reason):

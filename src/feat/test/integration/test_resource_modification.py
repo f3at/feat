@@ -45,6 +45,7 @@ class RequestingAgent(agent.BaseAgent, rpc.AgentMixin):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
+        return self.initiate_partners()
 
     @replay.journaled
     def call_premodify(self, state, agent, recp, allocation_id, **delta):
@@ -66,6 +67,7 @@ class RemotePremodifyTest(common.SimulationTest, Common):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
 
         host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent_mod')
@@ -82,6 +84,7 @@ class RemotePremodifyTest(common.SimulationTest, Common):
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
+        yield self.wait_for_idle(10)
 
         self.host_agent = self.get_local('host_agent')
 

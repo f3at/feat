@@ -53,6 +53,7 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
         interest.bind_to_lobby()
         state.labour = self.dependency(IEmailSenderLabourFactory, self)
         state.alerts = dict()
+        return self.initiate_partners()
 
     @replay.immutable
     def startup(self, state):

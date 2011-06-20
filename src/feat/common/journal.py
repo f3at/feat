@@ -9,7 +9,8 @@ from feat.interface.serialization import *
 from feat.common.serialization.base import MetaSerializable
 from feat.common.annotate import MetaAnnotable
 
-from feat.common import decorator, annotate, reflect, fiber, serialization
+from feat.common import decorator, fiber, error
+from feat.common import annotate, reflect, serialization
 
 RECORDING_TAG = "__RECORDING__"
 RECMODE_TAG = "__RECMODE__"
@@ -150,7 +151,10 @@ def _side_effect_wrapper(callable, args, kwargs, name):
                 effect.commit()
                 return result
             except Exception, e:
-                #FIXME: handle exceptions in side effects
+                #FIXME: handle exceptions in side effects properly
+                error.handle_exception(None, e,
+                                       "Exception raised by side-effect %s",
+                                       reflect.canonical_name(callable))
                 raise
 
     # Not in a replayable section, maybe in another side-effect
@@ -342,6 +346,8 @@ class Recorder(RecorderNode, annotate.Annotable):
                 raise
 
             result = fiber.fail(e)
+            error.handle_exception(self, e, "Exception inside recorded "
+                                   "function %s", fun_id)
 
         finally:
 

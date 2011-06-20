@@ -172,7 +172,9 @@ class Registry(object):
 
 class Externalizer(object):
     '''Simplistic implementation of L{IExternalizer}.
-    WARNING, by default it uses id() for identifying instances.'''
+    WARNING, by default it uses id() for identifying instances,
+    IT WILL NOT WORK IF THE INSTANCE GOT SERIALIZED/UNSERIALIZED
+    because it's id() would change..'''
 
     implements(IExternalizer)
 
@@ -181,14 +183,16 @@ class Externalizer(object):
 
     def add(self, instance):
         identifier = self.get_identifier(instance)
-        self._registry[identifier] = ISerializable(instance)
+        self._registry[identifier] = instance
 
     def remove(self, instance):
         identifier = self.get_identifier(instance)
         del self._registry[identifier]
 
     def get_identifier(self, instance):
-        return instance.type_name, id(instance)
+        if ISerializable.providedBy(instance):
+            return instance.type_name, id(instance)
+        return id(instance)
 
     ### IExternalizer Methods ###
 
@@ -302,6 +306,7 @@ class Serializer(object):
     pack_frozen_instance = None
     pack_frozen_function = None
     pack_frozen_method = None
+    pack_frozen_external = None
 
     def __init__(self, converter_caps=None, freezer_caps=None,
                  post_converter=None, externalizer=None, registry=None):
@@ -375,6 +380,11 @@ class Serializer(object):
         if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
+        if self._externalizer:
+            extid = self._externalizer.identify(value)
+            if extid is not None:
+                return self.flatten_external(extid, caps, freezing)
+
         # Checks if value support the current required protocol
         # Could be ISnapshotable or ISerializable
         if freezing:
@@ -398,11 +408,6 @@ class Serializer(object):
                                 "not supported by %s. Value = %r."
                                 % (type(value).__name__,
                                    reflect.canonical_name(self), value))
-
-            if self._externalizer:
-                extid = self._externalizer.identify(serializable)
-                if extid is not None:
-                    return self.flatten_external(extid, caps, freezing)
 
             return self.flatten_instance(serializable, caps, freezing)
 
@@ -604,7 +609,10 @@ class Serializer(object):
     def flatten_external(self, value, caps, freezing):
         self.check_capabilities(Capabilities.external_values, value,
                                 caps, freezing)
-        return self.pack_external, [self.flatten_value(value, caps, freezing)]
+        flatened = [self.flatten_value(value, caps, freezing)]
+        if not freezing:
+            return self.pack_external, flatened
+        return self.pack_frozen_external, flatened
 
     ### Setup lookup tables ###
 

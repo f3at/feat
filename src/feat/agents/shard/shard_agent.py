@@ -121,12 +121,28 @@ class MonitorPartner(monitor.PartnerMixin, StructuralPartner):
         desc = monitor.Descriptor()
         return agent.save_document(desc)
 
+    def initiate(self, agent):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param,
+                       StructuralPartner.initiate, self, agent)
+        f.add_callback(fiber.drop_param,
+                       monitor.PartnerMixin.initiate, self, agent)
+        return f
+
     def on_goodbye(self, agent, brothers):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param,
                       monitor.PartnerMixin.on_goodbye, self, agent, brothers)
         d.addCallback(defer.drop_param,
                       StructuralPartner.on_goodbye, self, agent, brothers)
+        return d
+
+    def on_buried(self, agent, brothers):
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param,
+                      monitor.PartnerMixin.on_buried, self, agent, brothers)
+        d.addCallback(defer.drop_param,
+                      StructuralPartner.on_buried, self, agent, brothers)
         return d
 
 

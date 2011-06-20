@@ -27,6 +27,7 @@ class Agent(agent.BaseAgent, notifier.AgentMixin,
         notifier.AgentMixin.initiate(self)
         test_common.Mock.__init__(self)
         state.medium.register_interest(LateReplier)
+        return self.initiate_partners()
 
     @test_common.Mock.stub
     def called():
@@ -75,6 +76,7 @@ class ProtoFiberCancelTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('test_prop_agent')
         medium = agency.start_agent(desc)
         agent = medium.get_agent()

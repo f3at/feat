@@ -726,8 +726,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             save_d.addCallbacks(callback=saved, callbackArgs=(result, d),
                                 errback=error, errbackArgs=(d, ))
             save_d.addBoth(next_update)
-        except Exception:
-            d.errback()
+        except Exception as e:
+            d.errback(e)
             next_update()
 
     def _terminate_procedure(self, body):

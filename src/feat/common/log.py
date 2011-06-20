@@ -22,6 +22,11 @@ def get_default():
     return _default_keeper
 
 
+def create_logger(category="feat"):
+    global _default_keeper
+    return Logger(_default_keeper, log_category=category)
+
+
 def logex(category, level, format, args=(), depth=1, log_name=None,
           file_path=None, line_num=None):
     global _default_keeper
@@ -62,11 +67,14 @@ class Logger(object):
     log_name = None
     log_category = "feat"
 
-    def __init__(self, logger):
-        if logger:
-            self._logger = ILogKeeper(logger)
+    def __init__(self, log_keeper, log_category=None):
+        if log_keeper:
+            self._logger = ILogKeeper(log_keeper)
         else:
             self._logger = VoidLogKeeper()
+
+        if log_category is not None:
+            self.log_category = log_category
 
     ### ILoggable Methods ###
 

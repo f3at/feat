@@ -9,8 +9,8 @@ from feat.test import common
 from feat.process import couchdb, rabbitmq
 from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, database
-from feat.agents.base import agent, descriptor, dbtools, partners
-from feat.common import first
+from feat.agents.base import agent, descriptor, dbtools, partners, replay
+from feat.common import first, serialization, fiber
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
@@ -124,6 +124,10 @@ class StandaloneAgent(agent.BaseAgent):
         env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
         return command, args, env
 
+    def initiate(self):
+        agent.BaseAgent.initiate(self)
+        return self.initiate_partners()
+
 
 @descriptor.register('standalone')
 class Descriptor(descriptor.Descriptor):
@@ -155,11 +159,48 @@ class StandaloneAgentWithArgs(agent.BaseAgent):
             raise Exception("Unexpected arguments or keyword in initiate()"
                             ": %r %r" % (args, kwargs))
         agent.BaseAgent.initiate(self)
+        return self.initiate_partners()
 
 
 @descriptor.register('standalone_with_args')
 class DescriptorWithArgs(descriptor.Descriptor):
     pass
+
+
+@agent.register('standalone-master')
+class MasterAgent(StandaloneAgent):
+    """
+    This agents job is to start another standalone agent from his standalone
+    agency to check that we recreate 3 processes (1 master + 2 standalones).
+    """
+
+    @staticmethod
+    def get_cmd_line():
+        command, args, env = StandaloneAgent.get_cmd_line()
+        src_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..'))
+        logfile = os.path.join(src_path, 'master.log')
+        args = ['-i', 'feat.test.test_agencies_net_agency',
+                '-l', logfile]
+        return command, args, env
+
+    @replay.entry_point
+    def initiate(self, state):
+        StandaloneAgent.initiate(self)
+
+        desc = Descriptor(shard=u'lobby')
+        f = fiber.Fiber()
+        f.add_callback(fiber.bridge_param, self.initiate_partners)
+        f.add_callback(state.medium.save_document)
+        f.add_callback(state.medium.start_agent)
+        f.add_callback(self.establish_partnership)
+        return f.succeed(desc)
+
+
+@serialization.register
+class MasterDescriptor(descriptor.Descriptor):
+
+    document_type = 'standalone-master'
 
 
 @common.attr('slow')

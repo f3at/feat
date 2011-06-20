@@ -34,6 +34,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         load('feat.test.integration.resource')
 
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
 
         host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
@@ -61,12 +62,6 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         self.host_agent = self.get_local('host_agent')
         self.req_agent = self.driver.find_agent(
             self.get_local('req_desc')).get_agent()
-
-    @defer.inlineCallbacks
-    def tearDown(self):
-        for x in self.driver.iter_agents():
-            yield x.wait_for_protocols_finish()
-        yield common.SimulationTest.tearDown(self)
 
     def testValidateProlog(self):
         self.assertEqual(1, self.count_agents('host_agent'))
@@ -134,6 +129,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         # First agency will eventually run Host, Shard, Raage and
         # Requesting agent
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(host1_desc, hostdef=hostdef)
         host = _.get_agent()
 
@@ -141,13 +137,15 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         host.start_agent(req_desc)
 
         # Second agency runs the host agent
-        spawn_agency()
-        _.start_agent(host2_desc, hostdef=hostdef)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(host2_desc, hostdef=hostdef)
         wait_for_idle()
 
         # Third is like second
-        spawn_agency()
-        _.start_agent(host3_desc, hostdef=hostdef)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(host3_desc, hostdef=hostdef)
         wait_for_idle()
         """)
 
@@ -169,6 +167,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def _waitToFinish(self, _=None):
         for x in self.driver.iter_agents():
+            yield x._cancel_long_running_protocols()
             yield x.wait_for_protocols_finish()
 
     @defer.inlineCallbacks
@@ -260,6 +259,7 @@ class ContractNestingSimulation(common.SimulationTest):
         # Host 1 will run Raage, Host, Shard and Requesting agents
         load('feat.test.integration.resource')
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
         agency.start_agent(host_desc, hostdef=hostdef1)
@@ -269,18 +269,21 @@ class ContractNestingSimulation(common.SimulationTest):
         host.start_agent(req_desc)
 
         # Host 2 run only host agent
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef1)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef1)
         wait_for_idle()
 
         # Host 3 will run Shard, Host and Raage
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
         wait_for_idle()
 
         # Host 4 will run only host agent
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
         """)
 
         # host definition in first shard (no space to allocate)

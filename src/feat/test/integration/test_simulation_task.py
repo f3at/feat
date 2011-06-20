@@ -51,6 +51,7 @@ class Agent(agent.BaseAgent, notifier.AgentMixin):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         notifier.AgentMixin.initiate(self)
+        return self.initiate_partners()
 
     @replay.mutable
     def run_tasks(self, state):
@@ -97,6 +98,7 @@ class TaskAgentTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         medium = agency.start_agent(descriptor_factory('task-agent'))
         agent = medium.get_agent()
         """)

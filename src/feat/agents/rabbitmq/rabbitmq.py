@@ -7,6 +7,7 @@ class RabbitMQAgent(agent.BaseAgent):
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
+        return self.initiate_partners()
 
 
 

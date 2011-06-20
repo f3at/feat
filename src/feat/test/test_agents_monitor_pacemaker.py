@@ -3,7 +3,7 @@ from zope.interface import implements
 from feat.agencies import periodic
 from feat.agents.base import message
 from feat.agents.monitor import pacemaker
-from feat.common import journal, log, defer
+from feat.common import journal, log, defer, time
 
 from feat.agents.monitor.interface import *
 from feat.interface.agent import *
@@ -34,6 +34,8 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.messages = []
 
         self.poster = None
+
+        self.time = time.time()
 
     ### Public Methods ###
 
@@ -69,6 +71,9 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
     def get_descriptor(self):
         return self.descriptor
 
+    def get_time(self):
+        return self.time
+
     def _terminate(self, result):
         pass
 
@@ -102,7 +107,7 @@ class TestPacemaker(common.TestCase):
 
         self.assertEqual(len(patron.messages), 1)
         msg = patron.messages.pop()
-        self.assertEqual(msg.payload, ("aid", "iid"))
+        self.assertEqual(msg.payload, ("aid", patron.time, 0))
         call = patron.calls.itervalues().next()
         self.assertEqual(call[0], 3)
 
@@ -110,7 +115,7 @@ class TestPacemaker(common.TestCase):
 
         self.assertEqual(len(patron.messages), 1)
         msg = patron.messages.pop()
-        self.assertEqual(msg.payload, ("aid", "iid"))
+        self.assertEqual(msg.payload, ("aid", patron.time, 1))
         self.assertEqual(len(patron.calls), 1)
 
         labour.cleanup()

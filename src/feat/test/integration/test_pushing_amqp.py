@@ -36,6 +36,7 @@ class Agent(agent.BaseAgent):
             exchange_type=exchange_type)
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.connection.connect)
+        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f
 
     @manhole.expose()
@@ -83,6 +84,7 @@ class TestWithRabbit(common.SimulationTest):
         setup = format_block("""
         spawn_agency('feat.agents.base.amqp.interface.IAMQPClientFactory')
         agency = _
+        agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
         agency.start_agent(_, '127.0.0.1', %(port)s, %(exchange)s, %(type)s)
         """) % dict(port=self.rabbit.get_config()['port'],
@@ -93,6 +95,7 @@ class TestWithRabbit(common.SimulationTest):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.agent.terminate()
+        yield self.wait_for_idle(10)
         yield self.server.disconnect()
         yield self.rabbit.terminate()
         yield common.SimulationTest.tearDown(self)
@@ -122,8 +125,8 @@ class SimulationWithoutRabbit(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency()
-        agency = _
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
         agency.start_agent(_, '127.0.0.1', %(port)s, %(exchange)s, %(type)s)
         """) % dict(port=1234,

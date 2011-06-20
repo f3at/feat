@@ -43,6 +43,10 @@ class Descriptor(descriptor.Descriptor):
 @agent.register('querying-view-agent')
 class Agent(agent.BaseAgent):
 
+    def initiate(self):
+        agent.BaseAgent.initiate(self)
+        return self.initiate_partners()
+
     @replay.journaled
     def query(self, state, **options):
         return self.query_view(SummingView, **options)
@@ -62,8 +66,9 @@ class ViewTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         desc = descriptor_factory('querying-view-agent')
-        spawn_agency()
-        medium = _.start_agent(desc)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        medium = agency.start_agent(desc)
         wait_for_idle()
         """)
         return self.process(setup)

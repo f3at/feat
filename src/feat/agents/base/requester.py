@@ -10,26 +10,52 @@ from feat.interface.requester import *
 
 def say_goodbye(agent, recp, payload=None):
     origin = agent.get_own_address()
-    return _notify_partner(agent, recp, 'goodbye', origin, payload)
+    return notify_partner(agent, recp, 'goodbye', origin, payload,
+                          consume_error=True)
 
 
 def notify_died(agent, recp, origin, payload=None, retrying=False):
-    return _notify_partner(agent, recp, 'died', origin, payload, retrying)
+    return notify_partner(agent, recp, 'died', origin, payload, retrying)
 
 
 def notify_restarted(agent, recp, origin, new_address, retrying=True):
-    return _notify_partner(agent, recp, 'restarted', origin, new_address,
-                           retrying)
+    return notify_partner(agent, recp, 'restarted', origin, new_address,
+                            retrying)
 
 
-def notify_burried(agent, recp, origin, payload=None, retrying=True):
-    return _notify_partner(agent, recp, 'burried', origin, payload, retrying)
+def notify_buried(agent, recp, origin, payload=None, retrying=True):
+    return notify_partner(agent, recp, 'buried', origin, payload, retrying)
 
 
 def ping(agent, recp):
     f = fiber.succeed(Ping)
     f.add_callback(agent.initiate_protocol, recp)
     f.add_callback(Ping.notify_finish)
+    return f
+
+
+def notify_partner(agent, recp, notification_type, origin, payload,
+                   retrying=False, consume_error=False):
+
+    def _ignore_initiator_failed(fail):
+        if fail.check(ProtocolFailed):
+            agent.log('Swallowing %r expection.', fail.value)
+            return None
+        else:
+            agent.log('Reraising exception %r', fail)
+            fail.raiseException()
+
+    f = fiber.succeed(PartnershipProtocol)
+    if retrying:
+        f.add_callback(agent.retrying_protocol, recp,
+                       args=(notification_type, origin, payload, ),
+                       max_retries=5, initial_delay=1)
+    else:
+        f.add_callback(agent.initiate_protocol, recp, notification_type,
+                       origin, payload)
+    f.add_callback(fiber.call_param, 'notify_finish')
+    if consume_error:
+        f.add_errback(_ignore_initiator_failed)
     return f
 
 
@@ -80,7 +106,7 @@ class PartnershipProtocol(BaseRequester):
     timeout = 3
     protocol_id = 'partner-notification'
 
-    known_types = ['goodbye', 'died', 'restarted', 'burried']
+    known_types = ['goodbye', 'died', 'restarted', 'buried']
 
     @replay.entry_point
     def initiate(self, state, notification_type, origin, blackbox=None):
@@ -106,30 +132,6 @@ class PartnershipProtocol(BaseRequester):
     @replay.journaled
     def closed(self, state):
         self.log('Notification expired')
-
-
-def _notify_partner(agent, recp, notification_type, origin, payload,
-                    retrying=False):
-
-    def _ignore_initiator_failed(fail):
-        if fail.check(ProtocolFailed):
-            agent.log('Swallowing %r expection.', fail.value)
-            return None
-        else:
-            agent.log('Reraising exception %r', fail)
-            fail.raiseException()
-
-    f = fiber.succeed(PartnershipProtocol)
-    if retrying:
-        f.add_callback(agent.retrying_protocol, recp,
-                       args=(notification_type, origin, payload, ),
-                       max_retries=5, initial_delay=1)
-    else:
-        f.add_callback(agent.initiate_protocol, recp, notification_type,
-                       origin, payload)
-    f.add_callback(fiber.call_param, 'notify_finish')
-    f.add_errback(_ignore_initiator_failed)
-    return f
 
 
 class Propose(BaseRequester):

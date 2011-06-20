@@ -26,6 +26,7 @@ class PosterAgent(agent.BaseAgent):
         agent.BaseAgent.initiate(self)
         recip = IRecipient(desc)
         state.poster = state.medium.initiate_protocol(DummyPoster, recip)
+        return self.initiate_partners()
 
     @replay.immutable
     def post(self, state, *args, **kwargs):
@@ -45,6 +46,7 @@ class CollectorAgent(agent.BaseAgent):
         agent.BaseAgent.initiate(self)
         state.medium.register_interest(DummyCollector)
         state.notifications = []
+        return self.initiate_partners()
 
     @replay.immutable
     def get_notifications(self, state):
@@ -78,6 +80,7 @@ class NotificationTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         cdesc1 = descriptor_factory('collector_test_agent')
         cdesc2 = descriptor_factory('collector_test_agent')
         pdesc1 = descriptor_factory('poster_test_agent')

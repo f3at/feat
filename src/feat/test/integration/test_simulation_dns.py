@@ -25,6 +25,7 @@ class Agent(agent.BaseAgent):
         state.prefix = prefix
         state.ip = ip
         state.mapper = dns.new_mapper(self)
+        return self.initiate_partners()
 
     @replay.mutable
     def register(self, state):

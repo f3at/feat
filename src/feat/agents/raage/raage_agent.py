@@ -60,8 +60,6 @@ class AllocationContractor(contractor.NestingContractor):
     protocol_id = 'request-allocation'
     interest_type = InterestType.private
 
-    announce_timeout = 10
-
     @replay.entry_point
     def announced(self, state, announcement):
 
@@ -122,7 +120,7 @@ class HostAllocationManager(manager.BaseManager):
     '''
 
     protocol_id = 'allocate-resources'
-    announce_timeout = 5
+    announce_timeout = 2
 
     @replay.mutable
     def initiate(self, state, announcement):

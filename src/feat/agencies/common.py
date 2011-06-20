@@ -317,6 +317,7 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
 
     @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
+        #FIXME: Should fail if already terminated
         return self._fnotifier.wait('finish')
 
     def _terminate(self, result):

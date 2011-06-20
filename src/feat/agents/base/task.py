@@ -1,7 +1,7 @@
 from zope.interface import implements
 
 from feat.agents.base import protocols, replay
-from feat.common import serialization, reflect
+from feat.common import serialization, reflect, defer, error
 
 from feat.interface.protocols import *
 from feat.interface.task import *
@@ -68,13 +68,17 @@ class StealthPeriodicTask(BaseTask):
         state.medium.terminate()
 
     def run(self):
-        """Overridden in sub-classes."""
+        """Overridden in sub-classes. The time of the asynchnours job
+        perfromed here is not substracted from the period."""
 
     ### Private Methods ###
 
     def _run(self):
-        self.run()
-        self._schedule()
+        d = defer.maybeDeferred(self.run)
+        d.addErrback(defer.inject_param, 1, error.handle_failure, self,
+                     "Failure during stealth task execution")
+        d.addCallback(self._schedule)
+        return d
 
     @replay.immutable
     def _cancel(self, state):
@@ -83,7 +87,7 @@ class StealthPeriodicTask(BaseTask):
             self._call = None
 
     @replay.immutable
-    def _schedule(self, state):
+    def _schedule(self, state, _=None):
         self._cancel()
         self._call = state.medium.call_later_ex(self._period,
                                                 self._run,

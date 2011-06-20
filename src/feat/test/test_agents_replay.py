@@ -155,11 +155,11 @@ class TestCombined(common.TestCase):
         d = self.assertAsyncFailure(None, ReentrantCallError,
                                     obj.reentrance_sync_error)
 
-        d = self.assertAsyncFailure(d, [ReentrantCallError],
-                                    obj.reentrance_async_error1)
-
-        d = self.assertAsyncFailure(d, [ReentrantCallError],
-                                    obj.reentrance_async_error2)
+#        d = self.assertAsyncFailure(d, [ReentrantCallError],
+#                                    obj.reentrance_async_error1)
+#
+#        d = self.assertAsyncFailure(d, [ReentrantCallError],
+#                                    obj.reentrance_async_error2)
 
         return d
 

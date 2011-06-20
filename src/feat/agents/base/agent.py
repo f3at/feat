@@ -5,7 +5,7 @@ import types
 
 from zope.interface import implements
 
-from feat.common import log, decorator, serialization, fiber, manhole
+from feat.common import log, decorator, serialization, fiber, defer, manhole
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
@@ -58,6 +58,30 @@ class BasePartner(partners.BasePartner):
 class MonitorPartner(monitor.PartnerMixin, BasePartner):
 
     type_name = "agent->monitor"
+
+    def initiate(self, agent):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param,
+                       BasePartner.initiate, self, agent)
+        f.add_callback(fiber.drop_param,
+                       monitor.PartnerMixin.initiate, self, agent)
+        return f
+
+    def on_goodbye(self, agent, brothers):
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param,
+                      monitor.PartnerMixin.on_goodbye, self, agent, brothers)
+        d.addCallback(defer.drop_param,
+                      BasePartner.on_goodbye, self, agent, brothers)
+        return d
+
+    def on_buried(self, agent, brothers):
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param,
+                      monitor.PartnerMixin.on_buried, self, agent, brothers)
+        d.addCallback(defer.drop_param,
+                      BasePartner.on_buried, self, agent, brothers)
+        return d
 
 
 class Partners(partners.Partners):
@@ -114,8 +138,8 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     @replay.immutable
     def initiate(self, state):
-        state.medium.register_interest(replier.PartnershipProtocol)
-        state.medium.register_interest(replier.ProposalReceiver)
+#        state.medium.register_interest(replier.PartnershipProtocol)
+#        state.medium.register_interest(replier.ProposalReceiver)
         state.medium.register_interest(replier.Ping)
 
     @replay.immutable
@@ -194,6 +218,12 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         results = [x.initiate(self) for x in desc.partners]
         fibers = [x for x in results if isinstance(x, fiber.Fiber)]
         f = fiber.FiberList(fibers)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.PartnershipProtocol)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.ProposalReceiver)
         return f.succeed()
 
     @manhole.expose()
@@ -257,12 +287,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         recp = recipient.IRecipient(recp)
         partner = self.find_partner(recp)
         if partner:
-            f = requester.say_goodbye(self, recp)
-            f.add_callback(fiber.drop_param, self.remove_partner, partner)
-            return f
+            return state.partners.breakup(partner)
         else:
             self.warning('We were trying to break up with agent recp %r.,'
-                         'but aparently he is not our partner!.', recp)
+                         'but apparently he is not our partner!.', recp)
 
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,

@@ -330,7 +330,7 @@ class PaisleySpecific(object):
         yield self.wait_for(self._len_changes(1), 2, freq=0.01)
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):

@@ -168,6 +168,10 @@ class Serializer(base.Serializer):
         base.Serializer.__init__(self, post_converter=post_converter,
                                  externalizer=externalizer)
 
+    def pack_frozen_external(self, value):
+        identifier, = value
+        return identifier
+
     def pack_frozen_instance(self, value):
         content, = value
         return content

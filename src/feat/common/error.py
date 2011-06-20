@@ -3,8 +3,41 @@ import StringIO
 
 from twisted.python.failure import Failure
 
-from feat.common import log
+from feat.common import log, decorator, reflect
 from feat.extern.log import log as xlog
+
+
+@decorator.simple_function
+def log_errors(function):
+    """Logs the exceptions raised by the decorated function
+    without interfering. For debugging purpose."""
+
+    def wrapper(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except BaseException as e:
+            handle_exception(None, e, "Exception in function %s",
+                             reflect.canonical_name(function))
+            raise
+
+    return wrapper
+
+
+@decorator.simple_function
+def print_errors(function):
+    """Prints the exceptions raised by the decorated function
+    without interfering. For debugging purpose."""
+
+    def wrapper(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except BaseException as e:
+            print ("Exception raise calling %s: %s"
+                   % (reflect.canonical_name(function),
+                      get_exception_message(e)))
+            raise
+
+    return wrapper
 
 
 class FeatError(Exception):
@@ -141,7 +174,9 @@ def clean_traceback(tb):
     return '\n'.join(map(cleanup, tb.split('\n')))
 
 
-def handle_failure(logger, failure, template, *args, **kwargs):
+def handle_failure(source, failure, template, *args, **kwargs):
+    logger = _get_logger(source)
+
     info = kwargs.get("info", None)
     debug = kwargs.get("debug", None)
     msg = get_failure_message(failure)
@@ -160,7 +195,9 @@ def handle_failure(logger, failure, template, *args, **kwargs):
             logger.debug("Additional Debug:\n%s", debug)
 
 
-def handle_exception(logger, exception, template, *args, **kwargs):
+def handle_exception(source, exception, template, *args, **kwargs):
+    logger = _get_logger(source)
+
     info = kwargs.get("info", None)
     debug = kwargs.get("debug", None)
     msg = get_exception_message(exception)
@@ -177,3 +214,12 @@ def handle_exception(logger, exception, template, *args, **kwargs):
             logger.info("Additional Information:\n%s", debug)
         if debug:
             logger.debug("Additional Debug:\n%s", debug)
+
+
+### private ###
+
+
+def _get_logger(maybe_logger):
+    if maybe_logger is None or not log.ILogger.providedBy(maybe_logger):
+        return log.create_logger()
+    return log.ILogger(maybe_logger)

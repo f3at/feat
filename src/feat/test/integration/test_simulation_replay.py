@@ -20,6 +20,7 @@ class Agent(agent.BaseAgent):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         state.calls = 0
+        return self.initiate_partners()
 
     @replay.entry_point
     def test_side_effect(self, state, value):
@@ -60,6 +61,7 @@ class ReplayTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('replay_test_agent')
         medium = agency.start_agent(desc)
         agent = medium.get_agent()

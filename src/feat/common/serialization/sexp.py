@@ -67,6 +67,10 @@ class Serializer(base.Serializer):
     def pack_external(self, value):
         return [EXTERNAL_ATOM] + value
 
+    def pack_frozen_external(self, value):
+        content, = value
+        return content
+
     def pack_frozen_instance(self, value):
         content, = value
         return content

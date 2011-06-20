@@ -45,6 +45,7 @@ class TestDriver(common.TestCase):
     def testStartAgent(self):
         test = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('descriptor'))
         """)
         d = self.cb_after(None, self.driver._parser, 'on_finish')

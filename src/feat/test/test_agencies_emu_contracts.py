@@ -102,7 +102,7 @@ class DummyManager(manager.BaseManager, common.Mock):
         pass
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class TestManager(common.TestCase, common.AgencyTestHelper):
 
     protocol_type = 'Contract'
@@ -543,7 +543,7 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         return d
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class TestContractor(common.TestCase, common.AgencyTestHelper):
 
     protocol_type = 'Contract'

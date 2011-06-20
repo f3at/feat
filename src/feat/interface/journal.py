@@ -25,8 +25,9 @@ class ReentrantCallError(RuntimeError):
     pass
 
 
-class ReplayError(RuntimeError):
-    pass
+class ReplayError(BaseException):
+    """Inherit from BaseException to not be caught
+    by journal exception handler."""
 
 
 class IJournalSideEffect(Interface):

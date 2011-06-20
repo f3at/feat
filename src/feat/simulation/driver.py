@@ -184,6 +184,26 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._journaler.configure_with(self._jourwriter)
         return defer.DeferredList([d1, d2])
 
+    @defer.inlineCallbacks
+    def destroy(self):
+        '''
+        Called from tearDown of simulation tests. Cleans up everything.
+        '''
+        defers = list()
+        for x in self.iter_agents():
+            defers.append(x.terminate_hard())
+        yield defer.DeferredList(defers)
+        self._journaler.close()
+        self._jourwriter.close()
+        del(self._journaler)
+        del(self._jourwriter)
+        del(self._messaging)
+        del(self._database)
+        del(self._agencies)
+        del(self._breakpoints)
+        del(self._parser)
+        del(self._output)
+
     def iter_agents(self, agent_type=None):
         for agency in self._agencies:
             for agent in agency._agents:

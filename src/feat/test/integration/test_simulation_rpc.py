@@ -23,6 +23,7 @@ class Agent(agent.BaseAgent, rpc.AgentMixin):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
         state.value = None
+        return self.initiate_partners()
 
     @replay.immutable
     def get_value(self, state):
@@ -55,6 +56,7 @@ class RPCTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('rpc_test_agent')
         desc2 = descriptor_factory('rpc_test_agent')
         m1 = agency.start_agent(desc1)

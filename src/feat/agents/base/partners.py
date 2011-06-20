@@ -135,6 +135,11 @@ class BasePartner(serialization.Serializable):
                         of the agent.
         '''
 
+    def on_breakup(self, agent):
+        '''
+        Called when we have successfully broken up with the partner.
+        '''
+
     def on_died(self, agent, payload, monitor):
         '''
         Called by the monitoring agent, when he detects that the partner has
@@ -153,7 +158,7 @@ class BasePartner(serialization.Serializable):
                          changed
         '''
 
-    def on_burried(self, agent, payload=None):
+    def on_buried(self, agent, payload=None):
         '''
         Called when all the hope is lost. Noone took the responsability for
         handling the agents death, and monitoring agent failed to restart it.
@@ -371,13 +376,20 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                            partner.allocation_id)
         return f
 
+    @replay.mutable
+    def breakup(self, state, partner):
+        brothers = self.query(type(partner))
+        f = requester.say_goodbye(state.agent, partner.recipient, brothers)
+        f.add_callback(fiber.drop_param, self._do_breakup, partner)
+        return f
+
     # handlers for incoming notifications from/about partners
 
     def _on_goodbye(self, partner, blackbox, sender):
         return self._remove_and_trigger_cb(partner, 'on_goodbye', blackbox)
 
-    def _on_burried(self, partner, blackbox, sender):
-        return self._remove_and_trigger_cb(partner, 'on_burried', blackbox)
+    def _on_buried(self, partner, blackbox, sender):
+        return self._remove_and_trigger_cb(partner, 'on_buried', blackbox)
 
     @replay.immutable
     def _on_died(self, state, partner, blackbox, sender):
@@ -387,11 +399,11 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def _on_restarted(self, state, partner, new_address, sender):
-        moved = (new_address != partner.recipient)
+        old = partner.recipient if new_address != partner.recipient else None
         f = fiber.succeed()
         partner.recipient = recipient.IRecipient(new_address)
         f.add_callback(fiber.drop_param, self._call_next_cb,
-                       partner.on_restarted, moved)
+                       partner.on_restarted, old)
         f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._update_partner,
                        partner)
@@ -399,21 +411,25 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     # private
 
-    def _remove_and_trigger_cb(self, partner, cb_name, blackbox):
+    def _do_breakup(self, partner):
+        return self._remove_and_trigger_cb(partner, 'on_breakup')
+
+    def _remove_and_trigger_cb(self, partner, cb_name, *args, **kwargs):
         callback = getattr(partner, cb_name, None)
         assert callable(callback)
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self.remove, partner)
         f.add_callback(fiber.drop_param, self._call_next_cb,
-                       callback, blackbox)
+                       callback, *args, **kwargs)
         return f.succeed()
 
     @replay.immutable
-    def _call_next_cb(self, state, method, blackbox):
+    def _call_next_cb(self, state, method, *args, **kwargs):
         # This is done outside the currect execution chain, as the
         # action performed may be arbitrary long running, and we don't want
         # to run into the timeout of goodbye request
-        state.agent.call_next(fiber.maybe_fiber, method, state.agent, blackbox)
+        state.agent.call_next(fiber.maybe_fiber, method,
+                              state.agent, *args, **kwargs)
 
     def _get_relation(self, name):
         try:

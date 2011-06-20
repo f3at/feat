@@ -12,6 +12,10 @@ from feat.agencies.interface import ConflictError
 @agent.register('some-stupid-agent')
 class SomeAgent(agent.BaseAgent):
 
+    def initiate(self):
+        agent.BaseAgent.initiate(self)
+        return self.initiate_partners()
+
     @replay.mutable
     def do_sth_in_desc(self, state):
 
@@ -35,7 +39,9 @@ class SimulateRunningAgentTwice(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
         agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('some-stupid-agent')
         """)
         yield self.process(setup)

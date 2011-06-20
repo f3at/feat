@@ -5,7 +5,7 @@
 import itertools
 import types
 
-from zope.interface import Interface
+from zope.interface import Interface, implements
 from zope.interface.interface import InterfaceClass
 
 from twisted.python.reflect import qual
@@ -25,6 +25,19 @@ class DummyEnum(enum.Enum):
 
 class DummyInterface(Interface):
     pass
+
+
+class SnapshotableDummy(object):
+
+    implements(ISnapshotable)
+
+    def __init__(self, value):
+        self.value = value
+
+    ### ISnapshotable ###
+
+    def snapshot(self):
+        return self.value
 
 
 @serialization.register
@@ -152,8 +165,11 @@ class ConverterTest(common.TestCase):
     def setUp(self):
         self.ext_val = SerializableDummy()
         self.ext_val.str = "externalized" # Just for it be different
+        self.ext_snap_val = SnapshotableDummy(42)
+
         self.externalizer = base.Externalizer()
         self.externalizer.add(self.ext_val)
+        self.externalizer.add(self.ext_snap_val)
 
     def tearDown(self):
         self.externalizer.remove(self.ext_val)

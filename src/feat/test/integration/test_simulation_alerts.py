@@ -21,6 +21,7 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         alert.AgentMixin.initiate(self)
+        return self.initiate_partners()
 
 
 @common.attr(timescale=0.1)
@@ -31,6 +32,7 @@ class AlertAgentTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
 
         d1 = descriptor_factory('alert_test_agent')
         d2 = descriptor_factory('alert_agent')

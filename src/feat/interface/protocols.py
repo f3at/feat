@@ -2,7 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["ProtocolFailed", "ProtocolExpired", "ProtocolCancelled",
+__all__ = ["ProtocolFailed", "ProtocolNotCriticalError",
+           "ProtocolExpired", "ProtocolCancelled",
            "InterestType", "IInitiatorFactory", "IAgencyInterest",
            "IInterest", "IAgentProtocol", "IInitiator", "IInterested",
            "IAgencyProtocol"]
@@ -22,11 +23,15 @@ class ProtocolFailed(Exception):
     '''The protocol failed.'''
 
 
-class ProtocolExpired(ProtocolFailed):
+class ProtocolNotCriticalError(ProtocolFailed):
+    '''Not critical error that should not be logged as error.'''
+
+
+class ProtocolExpired(ProtocolNotCriticalError):
     '''A protocol peer has been terminated by the expiration call.'''
 
 
-class ProtocolCancelled(ProtocolFailed):
+class ProtocolCancelled(ProtocolNotCriticalError):
     '''
     A protocol has been canceled.
     '''
