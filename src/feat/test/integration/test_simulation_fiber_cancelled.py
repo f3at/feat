@@ -24,7 +24,7 @@ class Agent(agent.BaseAgent, notifier.AgentMixin,
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
+        notifier.AgentMixin.initiate(self)
         test_common.Mock.__init__(self)
         state.medium.register_interest(LateReplier)
 

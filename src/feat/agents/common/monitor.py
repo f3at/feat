@@ -11,7 +11,7 @@ from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 from feat.interface.agency import *
 
 
-__all__ = ['notify_restart_completed',
+__all__ = ['notify_restart_complete',
            'Descriptor', 'RestartFailed', 'RestartStrategy',
            'PartnerMixin', 'AgentMixin',
            'IPacemakerFactory', 'IPacemaker',

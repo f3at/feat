@@ -1,6 +1,6 @@
 import uuid
 
-from feat.common import serialization, fiber, defer
+from feat.common import serialization, fiber, defer, journal
 from feat.agents.base import replay
 
 
@@ -95,15 +95,7 @@ class AgentNotifier(serialization.Serializable):
 
 class AgentMixin(object):
 
-    # FIXME: Here it would be better to use @replay.mutable
-    # but it fails with:
-
-    # Failed to register function <function initiate at 0x9dfde2c> with
-    # name 'feat.agents.host.host_agent.HostAgent.initiate' it is already
-    # used by function <function initiate at 0x9e216f4>
-
-    # This is probably a bug in annotations
-
+    @replay.mutable
     def initiate(self, state):
         state.notifier = AgentNotifier(self)
 

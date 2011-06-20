@@ -95,8 +95,8 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     def initiate(self, state, hostdef=None):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
-        resource.AgentMixin.initiate(self, state)
+        notifier.AgentMixin.initiate(self)
+        resource.AgentMixin.initiate(self)
 
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(StartAgentContractor)

@@ -66,7 +66,7 @@ class Agent(agent.BaseAgent, resource.AgentMixin):
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
-        resource.AgentMixin.initiate(self, state)
+        resource.AgentMixin.initiate(self)
 
         state.resources.define('foo', 2)
         state.received_brothers = list()

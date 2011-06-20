@@ -20,7 +20,7 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
     @replay.entry_point
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
-        alert.AgentMixin.initiate(self, state)
+        alert.AgentMixin.initiate(self)
 
 
 @common.attr(timescale=0.1)

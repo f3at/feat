@@ -2,7 +2,6 @@ from feat.common import reflect
 
 _CLASS_ANNOTATIONS_ATTR = "_class_annotations"
 _ATTRIBUTE_INJECTIONS_ATTR = "_attribute_injections"
-_DEFAULT_ANNOTATION_ORDER = 100
 
 
 class AnnotationError(Exception):

@@ -77,6 +77,8 @@ class MetaError3(object):
 
 class Dummy(object):
 
+    name = reflect.class_canonical_name(depth=1)
+
     def spam(self):
         pass
 
@@ -140,3 +142,7 @@ class TestIntrospection(common.TestCase):
 
     def testNone(self):
         self.assertEqual(None, reflect.canonical_name(None))
+
+    def testGettingCanonicalNameFromClass(self):
+        self.assertEqual('feat.test.test_common_reflect.Dummy',
+                         Dummy.name)

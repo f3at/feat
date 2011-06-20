@@ -112,20 +112,23 @@ def test_mixin(fun):
 
 class MixinTestBase(annotate.Annotable):
 
-    values = []
+    values = None
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
-        values = []
-        for base in bases:
+        values = dict()
+        for base in [cls] + list(bases):
             parent_values = getattr(base, "values", None)
             if parent_values:
-                values.extend(parent_values)
+                values.update(parent_values)
         cls.values = values
 
     @classmethod
     def _register(cls, value):
-        cls.values.append(value)
+        if cls.values is None:
+            cls.values = dict()
+        assert value not in cls.values, "Values are: %r" % (cls.values, )
+        cls.values[value] = cls
 
     @test_mixin
     def first_annotation(self):
@@ -138,6 +141,10 @@ class MixinTestMixin(object):
     def mixin_annotation(self):
         pass
 
+    @test_mixin
+    def overloaded_annotation(self):
+        '''this is to test overloading annotated methods'''
+
 
 class MixinTestDummy(MixinTestBase, MixinTestMixin):
 
@@ -145,17 +152,40 @@ class MixinTestDummy(MixinTestBase, MixinTestMixin):
     def second_annotation(self):
         pass
 
+    @test_mixin
+    def overloaded_annotation(self):
+        '''this is to test overloading annotated methods'''
+
 
 class TestAnnotation(common.TestCase):
 
     def testMixin(self):
-        self.assertEqual(MixinTestBase.values,
+        self.assertEqual(MixinTestBase.values.keys(),
                          [MixinTestBase.first_annotation.__func__])
-        self.assertEqual(MixinTestDummy.values,
-                         [MixinTestBase.first_annotation.__func__,
-                          MixinTestDummy.second_annotation.__func__,
-                          MixinTestMixin.mixin_annotation.__func__])
-        self.assertRaises(AttributeError, getattr, MixinTestMixin, "values")
+        self.assertEqual(set(MixinTestDummy.values.keys()),
+                         set([MixinTestBase.first_annotation.__func__,
+                              MixinTestDummy.second_annotation.__func__,
+                              MixinTestDummy.overloaded_annotation.__func__,
+                              MixinTestMixin.mixin_annotation.__func__,
+                              MixinTestMixin.overloaded_annotation.__func__]))
+
+        # now check that the _register call has been done with correct cls
+        # as the parameter
+        self.assertFalse(hasattr(MixinTestMixin, "values"))
+
+        def get_cls(fun):
+            return MixinTestDummy.values.get(fun)
+
+        self.assertEqual(MixinTestBase,
+                         get_cls(MixinTestBase.first_annotation.__func__))
+        self.assertEqual(MixinTestDummy,
+                         get_cls(MixinTestDummy.second_annotation.__func__))
+        self.assertEqual(MixinTestDummy,
+                    get_cls(MixinTestDummy.overloaded_annotation.__func__))
+        self.assertEqual(MixinTestDummy,
+                    get_cls(MixinTestMixin.overloaded_annotation.__func__))
+        self.assertEqual(MixinTestDummy,
+                         get_cls(MixinTestMixin.mixin_annotation.__func__))
 
     def testMetaErrors(self):
         self.assertTrue(bad_annotation_method_fail)

@@ -524,7 +524,7 @@ class SimulateMultipleMonitors(common.SimulationTest):
         self.assertEqual(1, self.count_agents('random-agent'))
 
 
-@common.attr(timescale=0.2)
+@common.attr('slow', timescale=0.2)
 class TestMonitorPartnerships(common.SimulationTest):
 
     timeout = 30
@@ -864,7 +864,7 @@ class DummyWhereeverDescriptor(descriptor.Descriptor):
     pass
 
 
-@common.attr(timescale=0.4)
+@common.attr('slow', timescale=0.4)
 class TestRealMonitoring(common.SimulationTest):
 
     def setUp(self):

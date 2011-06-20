@@ -172,8 +172,8 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     def initiate(self, state):
         agent.BaseAgent.initiate(self)
         rpc.AgentMixin.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
-        resource.AgentMixin.initiate(self, state)
+        notifier.AgentMixin.initiate(self)
+        resource.AgentMixin.initiate(self)
 
         config = state.medium.get_configuration()
 

@@ -9,6 +9,7 @@ from feat.common.container import ExpDict
 
 class AgentMixin(object):
 
+    @replay.mutable
     def initiate(self, state):
         state.resources = Resources(self)
 
