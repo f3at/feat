@@ -5,7 +5,8 @@ import types
 
 from zope.interface import implements
 
-from feat.common import log, decorator, serialization, fiber, defer, manhole
+from feat.common import (log, decorator, serialization, fiber, defer,
+                         manhole, mro, )
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
@@ -93,8 +94,9 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
-                dependency.AgentDependencyMixin, monitor.AgentMixin):
+class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
+                manhole.Manhole, dependency.AgentDependencyMixin,
+                monitor.AgentMixin):
 
     __metaclass__ = MetaAgent
 
@@ -136,15 +138,37 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     ### IAgent Methods ###
 
-    @replay.immutable
-    def initiate(self, state):
-#        state.medium.register_interest(replier.PartnershipProtocol)
-#        state.medium.register_interest(replier.ProposalReceiver)
-        state.medium.register_interest(replier.Ping)
+    @replay.journaled
+    def initiate_agent(self, state, **keywords):
+        f = self.call_mro('initiate', **keywords)
+        f.add_callback(fiber.drop_param, self._initiate_partners)
+        return f
+
+    @replay.journaled
+    def startup_agent(self, state):
+        return self.call_mro('startup')
+
+    @replay.journaled
+    def shutdown_agent(self, state):
+        return self.call_mro('shutdown')
+
+    @replay.journaled
+    def on_agent_killed(self, state):
+        return self.call_mro('on_killed')
+
+    @replay.journaled
+    def on_agent_disconnect(self, state):
+        return self.call_mro('on_disconnect')
+
+    @replay.journaled
+    def on_agent_reconnect(self, state):
+        return self.call_mro('on_reconnect')
+
+    ### Methods called as a result of agency calls ###
 
     @replay.immutable
-    def startup(self, state):
-        pass
+    def initiate(self, state):
+        state.medium.register_interest(replier.Ping)
 
     @replay.journaled
     def shutdown(self, state):
@@ -155,8 +179,11 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         f = fiber.FiberList(fibers)
         return f.succeed()
 
+    def startup(self):
+        pass
+
     def on_killed(self):
-        self.info('Agents on_killed called.')
+        pass
 
     def on_disconnect(self):
         pass
@@ -164,7 +191,7 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def on_reconnect(self):
         pass
 
-    ### End of IAgent methods ###
+    ### Public methods ###
 
     @replay.immutable
     def get_descriptor(self, state):
@@ -211,20 +238,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def wait_for_ready(self, state):
         return fiber.wrap_defer(state.medium.wait_for_state,
                                 AgencyAgentState.ready)
-
-    @replay.journaled
-    def initiate_partners(self, state):
-        desc = self.get_descriptor()
-        results = [x.initiate(self) for x in desc.partners]
-        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
-        f = fiber.FiberList(fibers)
-        f.add_callback(fiber.drop_param,
-                       state.medium.register_interest,
-                       replier.PartnershipProtocol)
-        f.add_callback(fiber.drop_param,
-                       state.medium.register_interest,
-                       replier.ProposalReceiver)
-        return f.succeed()
 
     @manhole.expose()
     def propose_to(self, recp, partner_role=None, our_role=None):
@@ -412,3 +425,17 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
             return fail.value.args[0]
         else:
             fail.raiseException()
+
+    @replay.journaled
+    def _initiate_partners(self, state):
+        desc = self.get_descriptor()
+        results = [x.initiate(self) for x in desc.partners]
+        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        f = fiber.FiberList(fibers)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.PartnershipProtocol)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.ProposalReceiver)
+        return f.succeed()

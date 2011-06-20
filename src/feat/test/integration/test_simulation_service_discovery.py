@@ -25,9 +25,7 @@ class Agent(agent.BaseAgent):
 
     @replay.journaled
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.medium.register_interest(contractor.Service(Interest))
-        return self.initiate_partners()
 
     def discover(self):
         return self.discover_service(Initiator)

@@ -180,10 +180,6 @@ class ConditionAgent(agent.BaseAgent):
                   'address': Address.fixed,
                   'storage': Storage.static}
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
 
 @document.register
 class Descriptor(descriptor.Descriptor):
@@ -197,10 +193,6 @@ class ConditionAgent2(agent.BaseAgent):
     categories = {'access': Access.none,
                   'address': Address.dynamic,
                   'storage': Storage.none}
-
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
 
 
 @document.register
@@ -264,10 +256,6 @@ class HostAgentCheckTest(common.SimulationTest):
 
 @agent.register('contract-running-agent')
 class RequestingAgent(agent.BaseAgent):
-
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
 
     @replay.mutable
     def request(self, state, shard):

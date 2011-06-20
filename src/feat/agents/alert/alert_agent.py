@@ -48,12 +48,10 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         interest = state.medium.register_interest(AlertsCollector)
         interest.bind_to_lobby()
         state.labour = self.dependency(IEmailSenderLabourFactory, self)
         state.alerts = dict()
-        return self.initiate_partners()
 
     @replay.immutable
     def startup(self, state):

@@ -10,12 +10,7 @@ class Descriptor(descriptor.Descriptor):
 
 @agent.register('notifier-agent')
 class Agent(agent.BaseAgent, notifier.AgentMixin):
-
-    @replay.entry_point
-    def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self)
-        return self.initiate_partners()
+    pass
 
 
 @common.attr(timescale=0.05)

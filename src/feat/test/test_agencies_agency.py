@@ -29,7 +29,6 @@ class DummyAgent(agent.BaseAgent, common.Mock):
     @common.Mock.record
     def initiate(self, startup_fail=False):
         self.startup_fail = startup_fail
-        return self.initiate_partners()
 
     @common.Mock.stub
     def shutdown(self):

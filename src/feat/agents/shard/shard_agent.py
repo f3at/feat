@@ -45,7 +45,6 @@ class ShardPartner(agent.BasePartner):
             return f
 
     def startup(self):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
 
     def _store_alloc_id(self, alloc):
@@ -184,13 +183,8 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
 
     restart_strategy = monitor.RestartStrategy.local
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-        notifier.AgentMixin.initiate(self)
-        resource.AgentMixin.initiate(self)
-
         config = state.medium.get_configuration()
 
         state.resources.define('hosts', config.hosts_per_shard)
@@ -217,11 +211,8 @@ class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
         state.role = None
         self.become_king()
 
-        return self.initiate_partners()
-
     @replay.mutable
     def startup(self, state):
-        agent.BaseAgent.startup(self)
         f = self.look_for_neighbours()
         f.add_callback(fiber.drop_param, self.fix_shard_structure)
         return f

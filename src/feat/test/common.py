@@ -563,8 +563,7 @@ class DummyAgent(agent.BaseAgent, Mock):
 
     @Mock.record
     def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
+        pass
 
     @Mock.stub
     def shutdown(self):

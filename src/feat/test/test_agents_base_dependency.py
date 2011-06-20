@@ -72,10 +72,6 @@ class AgentWithDependency(agent.BaseAgent):
         SomeInterface, 'feat.test.test_agents_base_dependency.production',
         ExecMode.production)
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
 
 @descriptor.register('blah_blah')
 class Descriptor(descriptor.Descriptor):

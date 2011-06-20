@@ -21,15 +21,10 @@ class Agent(agent.BaseAgent):
 
     implements(shard.IShardNotificationHandler)
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-
         self.clear()
-
         shard.register_for_notifications(self)
-
-        return self.initiate_partners()
 
     @replay.mutable
     def clear(self, state):

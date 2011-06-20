@@ -47,12 +47,6 @@ class Descriptor(descriptor.Descriptor):
 @agent.register('task-agent')
 class Agent(agent.BaseAgent, notifier.AgentMixin):
 
-    @replay.entry_point
-    def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self)
-        return self.initiate_partners()
-
     @replay.mutable
     def run_tasks(self, state):
         state.task_result1 = None

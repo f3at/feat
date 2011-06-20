@@ -21,13 +21,10 @@ class Descriptor(descriptor.Descriptor):
 class Agent(agent.BaseAgent, notifier.AgentMixin,
         test_common.Mock):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self)
         test_common.Mock.__init__(self)
         state.medium.register_interest(LateReplier)
-        return self.initiate_partners()
 
     @test_common.Mock.stub
     def called():

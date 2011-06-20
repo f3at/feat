@@ -307,35 +307,45 @@ class IAgent(Interface):
     by the AgencyAgent on different stages of life of the agent.
     '''
 
-    def initiate(*args, **kwargs):
+    def initiate_agent(**kwargs):
         '''
         Called after the agent is registered to an agency.
-        Args and keywords are passed to IAgency.start_agent().
+        Keywords are passed to IAgency.start_agent(). This method calls
+        initiate() methods of every class in MRO. The keywords are passed
+        to initiate method with matching names (for this reason there is no
+        positional arguments).
         '''
 
-    def startup():
-        '''Called when initiate has finished'''
+    def startup_agent():
+        '''
+        Called when initiate_agent has finished.
+        Calls startup() methods from MRO in reverse-mro order.
+        '''
 
-    def shutdown():
+    def shutdown_agent():
         """
         Called after agency decides to terminate the agent.
         Agent code should take care to notify all it's his contractors
         that the collaboration is over.
+        Calls shutdown() methods from MRO in reverse-mro order.
         """
 
-    def on_killed():
+    def on_agent_killed():
         '''
         Called as part of the SIGTERM handler. This type of shutdown assumes
         that the monitoring agent will restart us somewhere.
+        Calls on_killed() methods from MRO in reverse-mro order.
         '''
 
-    def on_disconnect():
+    def on_agent_disconnect():
         '''
         Called when agency gets disconnected from messaging or database
         server.
+        Calls on_disconnect() methods from MRO in reverse-mro order.
         '''
 
-    def on_reconnect():
+    def on_agent_reconnect():
         '''
         Called when both connections to messaging and database are restored.
+        Calls on_reconnect() methods from MRO  in reverse-mro order.
         '''

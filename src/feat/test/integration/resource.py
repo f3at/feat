@@ -6,10 +6,6 @@ from feat.common import manhole
 @agent.register('requesting_agent')
 class RequestingAgent(agent.BaseAgent):
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     @manhole.expose()
     @replay.mutable
     def request_resource(self, state, resources, categories):

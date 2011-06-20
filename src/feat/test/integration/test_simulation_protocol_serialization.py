@@ -20,14 +20,12 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("protoser_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.medium.register_interest(NormalReplier)
         state.medium.register_interest(SerializedReplier)
         state.medium.register_interest(PooledReplier)
         self.reset()
-        return self.initiate_partners()
 
     @replay.immutable
     def get_count(self, state):

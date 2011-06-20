@@ -56,8 +56,6 @@ class DNSAgent(agent.BaseAgent):
     @replay.mutable
     def initiate(self, state, port=None, ns_ttl=None, aa_ttl=None,
                  ns=None, suffix=None):
-        agent.BaseAgent.initiate(self)
-
         config = state.medium.get_configuration()
 
         state.port = port or config.port
@@ -83,12 +81,10 @@ class DNSAgent(agent.BaseAgent):
 
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.labour.initiate)
-        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f
 
     @replay.journaled
     def startup(self, state):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
         if state.labour.startup(state.port):
             self.info("Listening on UDP port %d", state.port)

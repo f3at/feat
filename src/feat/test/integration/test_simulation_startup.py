@@ -12,10 +12,6 @@ from feat.agencies.interface import ConflictError
 @agent.register('some-stupid-agent')
 class SomeAgent(agent.BaseAgent):
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     @replay.mutable
     def do_sth_in_desc(self, state):
 

@@ -27,16 +27,13 @@ class Agent(agent.BaseAgent):
                         'feat.agents.base.amqp.simulation.AMQPClient',
                         ExecMode.test)
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state, host, port, exchange, exchange_type):
-        agent.BaseAgent.initiate(self)
-
         state.connection = self.dependency(
             IAMQPClientFactory, self, exchange, port=port,
             exchange_type=exchange_type)
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.connection.connect)
-        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f
 
     @manhole.expose()
@@ -86,7 +83,9 @@ class TestWithRabbit(common.SimulationTest):
         agency = _
         agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
-        agency.start_agent(_, '127.0.0.1', %(port)s, %(exchange)s, %(type)s)
+        agency.start_agent(_, host='127.0.0.1', port=%(port)s, \
+                           exchange=%(exchange)s, \
+                           exchange_type=%(type)s)
         """) % dict(port=self.rabbit.get_config()['port'],
                     exchange="'exchange'", type="'direct'")
         yield self.process(setup)
@@ -128,7 +127,9 @@ class SimulationWithoutRabbit(common.SimulationTest):
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
-        agency.start_agent(_, '127.0.0.1', %(port)s, %(exchange)s, %(type)s)
+        agency.start_agent(_, host='127.0.0.1', port=%(port)s, \
+                           exchange=%(exchange)s, \
+                           exchange_type=%(type)s)
         """) % dict(port=1234,
                     exchange="'exchange'", type="'direct'")
         yield self.process(setup)

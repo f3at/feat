@@ -164,11 +164,8 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
 
     need_local_monitoring = False # We handle monitors on our own
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-
         self._paused = False
 
         shard.register_for_notifications(self)
@@ -189,8 +186,6 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
 
         # agent_id -> HandleDeath instance
         state.handler_tasks = dict()
-
-        return self.initiate_partners()
 
     @replay.mutable
     def startup(self, state):

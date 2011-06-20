@@ -19,13 +19,11 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("dns_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state, prefix, ip):
-        agent.BaseAgent.initiate(self)
         state.prefix = prefix
         state.ip = ip
         state.mapper = dns.new_mapper(self)
-        return self.initiate_partners()
 
     @replay.mutable
     def register(self, state):
@@ -73,9 +71,9 @@ class DNSAgentTest(common.SimulationTest):
         d3 = descriptor_factory('dns_test_agent')
         d4 = descriptor_factory('dns_agent')
         d5 = descriptor_factory('dns_agent')
-        m1 = agency.start_agent(d1, 'foo.bar', '192.168.0.1')
-        m2 = agency.start_agent(d2, 'spam.beans', '192.168.0.2')
-        m3 = agency.start_agent(d3, 'spam.beans', '192.168.0.3')
+        m1 = agency.start_agent(d1, prefix='foo.bar', ip='192.168.0.1')
+        m2 = agency.start_agent(d2, prefix='spam.beans', ip='192.168.0.2')
+        m3 = agency.start_agent(d3, prefix='spam.beans', ip='192.168.0.3')
         m4 = agency.start_agent(d4, suffix='test.lan', ns='my.ns1.lan')
         m5 = agency.start_agent(d5, suffix='test.lan', \
                                 ns='my.ns2.lan', ns_ttl=42)

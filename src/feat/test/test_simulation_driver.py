@@ -56,7 +56,7 @@ class TestDriver(common.TestCase):
         self.assertEqual(1, len(ag._agents))
         agent = ag._agents[0]
         self.assertIsInstance(agent.agent, common.DummyAgent)
-        self.assertCalled(agent.agent, 'initiate')
+        self.assertCalled(agent.agent, 'initiate', times=1)
 
     def testBreakpoints(self):
 

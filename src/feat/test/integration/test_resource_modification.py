@@ -41,12 +41,6 @@ class Descriptor(descriptor.Descriptor):
 @agent.register('requesting_agent_mod')
 class RequestingAgent(agent.BaseAgent, rpc.AgentMixin):
 
-    @replay.mutable
-    def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-        return self.initiate_partners()
-
     @replay.journaled
     def call_premodify(self, state, agent, recp, allocation_id, **delta):
         return host.premodify_allocation(agent, recp, allocation_id, **delta)

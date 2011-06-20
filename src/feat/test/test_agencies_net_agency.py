@@ -124,10 +124,6 @@ class StandaloneAgent(agent.BaseAgent):
         env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
         return command, args, env
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
 
 @descriptor.register('standalone')
 class Descriptor(descriptor.Descriptor):
@@ -141,10 +137,10 @@ class StandaloneAgentWithArgs(agent.BaseAgent):
     partners_class = StandalonePartners
 
     @staticmethod
-    def get_cmd_line(*args, **kwargs):
-        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+    def get_cmd_line(**kwargs):
+        if kwargs != {"foo": 4, "bar": 5}:
             raise Exception("Unexpected arguments or keyword in get_cmd_line()"
-                            ": %r %r" % (args, kwargs))
+                            ": %r" % (kwargs, ))
         src_path = os.path.abspath(os.path.join(
             os.path.dirname(__file__), '..', '..'))
         command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
@@ -154,12 +150,10 @@ class StandaloneAgentWithArgs(agent.BaseAgent):
         env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
         return command, args, env
 
-    def initiate(self, *args, **kwargs):
-        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+    def initiate(self, foo, bar):
+        if foo != 4 or bar != 5:
             raise Exception("Unexpected arguments or keyword in initiate()"
                             ": %r %r" % (args, kwargs))
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
 
 
 @descriptor.register('standalone_with_args')
@@ -300,7 +294,7 @@ class IntegrationTestCase(common.TestCase):
 
         # this will be called in the other process
         yield self.agency.spawn_agent('standalone_with_args',
-                                      None, 1, 2, 3, foo=4, bar=5)
+                                      None, foo=4, bar=5)
 
         yield self.wait_for_standalone()
         part = host_a.query_partners_with_role('all', 'standalone')

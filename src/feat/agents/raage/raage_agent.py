@@ -27,19 +27,13 @@ class ResourcesAllocationAgent(agent.BaseAgent, rpc.AgentMixin):
 
     restart_strategy = monitor.RestartStrategy.local
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-
         state.medium.register_interest(
             contractor.Service(AllocationContractor))
         state.medium.register_interest(AllocationContractor)
 
-        return self.initiate_partners()
-
     def startup(self):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
 
     @replay.immutable
@@ -62,7 +56,6 @@ class AllocationContractor(contractor.NestingContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
-
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param,
                        self._ask_own_shard, announcement)

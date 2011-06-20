@@ -63,15 +63,11 @@ class Agent(agent.BaseAgent, resource.AgentMixin):
 
     partners_class = Partners
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        resource.AgentMixin.initiate(self)
-
         state.resources.define('foo', 2)
         state.received_brothers = list()
         state.migrated = False
-        return self.initiate_partners()
 
     @replay.mutable
     def done_migrated(self, state):

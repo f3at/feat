@@ -20,10 +20,6 @@ from feat.agents.monitor import monitor_agent
 @agent.register('dummy_monitor_agent')
 class DummyMonitorAgent(agent.BaseAgent):
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     @replay.mutable
     def start_monitoring(self, state):
         self.startup_monitoring()
@@ -37,12 +33,7 @@ class DummyMonitorDescriptor(descriptor.Descriptor):
 @agent.register('dummy_monitored_agent')
 class DummyMonitoredAgent(agent.BaseAgent):
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     def startup(self):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
 
 
@@ -114,10 +105,6 @@ class RandomAgent(agent.BaseAgent):
 
     resources = {'epu': 10}
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     @replay.immutable
     def get_monitors(self, state):
         return state.partners.all_with_role(u'monitor')
@@ -154,9 +141,7 @@ class BadManagerAgent(agent.BaseAgent):
 
     @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.times_called = 0
-        return self.initiate_partners()
 
     @replay.mutable
     def called(self, state):
@@ -846,12 +831,9 @@ class DummyAgent(agent.BaseAgent):
 
     @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.calls = {}
-        return self.initiate_partners()
 
     def startup(self):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
 
     @replay.mutable

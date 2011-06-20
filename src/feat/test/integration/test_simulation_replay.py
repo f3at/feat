@@ -16,11 +16,9 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("replay_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.calls = 0
-        return self.initiate_partners()
 
     @replay.entry_point
     def test_side_effect(self, state, value):

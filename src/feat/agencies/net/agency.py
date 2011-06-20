@@ -209,7 +209,7 @@ class Agency(agency.Agency):
                         'No descriptor factory found for agent %r' % desc)
                 desc = factory()
             desc = yield medium.save_document(desc)
-            yield agent.start_agent(desc, *args, **kwargs)
+            yield agent.start_agent(desc, **kwargs)
 
     def initiate(self):
         mesg = messaging.Messaging(
@@ -354,33 +354,31 @@ class Agency(agency.Agency):
         self._start_host_agent_if_necessary()
 
     @manhole.expose()
-    def start_agent(self, descriptor, *args, **kwargs):
+    def start_agent(self, descriptor, **kwargs):
         """
         Starting an agent is delegated to the broker, who makes sure that
         this method will be eventually run on the master agency.
         """
-        return self._broker.start_agent(descriptor, *args, **kwargs)
+        return self._broker.start_agent(descriptor, **kwargs)
 
-    def actually_start_agent(self, descriptor, *args, **kwargs):
+    def actually_start_agent(self, descriptor, **kwargs):
         """
         This method will be run only on the master agency.
         """
         factory = IAgentFactory(
             registry_lookup(descriptor.document_type))
         if factory.standalone:
-            return self.start_standalone_agent(descriptor, factory,
-                                               *args, **kwargs)
+            return self.start_standalone_agent(descriptor, factory, **kwargs)
         else:
-            return self.start_agent_locally(descriptor, *args, **kwargs)
+            return self.start_agent_locally(descriptor, **kwargs)
 
-    def start_agent_locally(self, descriptor, *args, **kwargs):
-        return agency.Agency.start_agent(self, descriptor, *args, **kwargs)
+    def start_agent_locally(self, descriptor, **kwargs):
+        return agency.Agency.start_agent(self, descriptor, **kwargs)
 
-    def start_standalone_agent(self, descriptor, factory, *args, **kwargs):
-        cmd, cmd_args, env = factory.get_cmd_line(*args, **kwargs)
+    def start_standalone_agent(self, descriptor, factory, **kwargs):
+        cmd, cmd_args, env = factory.get_cmd_line(**kwargs)
         self._store_config(env)
         env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
-        env['FEAT_AGENT_ARGS'] = json.serialize(args)
         env['FEAT_AGENT_KWARGS'] = json.serialize(kwargs)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
 

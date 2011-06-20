@@ -43,10 +43,6 @@ class Descriptor(descriptor.Descriptor):
 @agent.register('querying-view-agent')
 class Agent(agent.BaseAgent):
 
-    def initiate(self):
-        agent.BaseAgent.initiate(self)
-        return self.initiate_partners()
-
     @replay.journaled
     def query(self, state, **options):
         return self.query_view(SummingView, **options)
