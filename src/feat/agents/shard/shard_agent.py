@@ -51,13 +51,12 @@ class ShardPartner(agent.BasePartner):
         assert isinstance(alloc, resource.Allocation)
         self.allocation_id = alloc and alloc.id
 
-    def on_goodbye(self, agent, brothers):
-        d = defer.succeed(self)
-        d.addCallback(partners.BasePartner.on_goodbye, agent)
-        d.addBoth(defer.drop_param, agent.become_king)
-        d.addBoth(defer.drop_param, agent.on_neighbour_gone, self.recipient)
-        d.addBoth(defer.drop_param, agent.look_for_neighbours)
-        return d
+    def on_goodbye(self, agent):
+        f = fiber.succeed()
+        f.add_both(fiber.drop_param, agent.become_king)
+        f.add_both(fiber.drop_param, agent.on_neighbour_gone, self.recipient)
+        f.add_both(fiber.drop_param, agent.look_for_neighbours)
+        return f
 
 
 class StructuralPartner(agent.BasePartner):
@@ -82,11 +81,10 @@ class StructuralPartner(agent.BasePartner):
         '''
         raise NotImplementedError('Should be overloaded')
 
-    def on_goodbye(self, agent, brothers):
-        #FIXME: on_goodbye should return a deferred
+    def on_goodbye(self, agent):
         return fiber.maybe_fiber(agent.fix_shard_structure)
 
-    def on_died(self, agent, brothers, monitor):
+    def on_died(self, agent, monitor):
         task = agent.request_restarting_partner(self.recipient.key, monitor)
         return partners.accept_responsability(task)
 
@@ -119,30 +117,6 @@ class MonitorPartner(monitor.PartnerMixin, StructuralPartner):
     def prepare_descriptor(cls, agent):
         desc = monitor.Descriptor()
         return agent.save_document(desc)
-
-    def initiate(self, agent):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param,
-                       StructuralPartner.initiate, self, agent)
-        f.add_callback(fiber.drop_param,
-                       monitor.PartnerMixin.initiate, self, agent)
-        return f
-
-    def on_goodbye(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_goodbye, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      StructuralPartner.on_goodbye, self, agent, brothers)
-        return d
-
-    def on_buried(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_buried, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      StructuralPartner.on_buried, self, agent, brothers)
-        return d
 
 
 class Partners(agent.Partners):

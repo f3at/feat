@@ -60,30 +60,6 @@ class MonitorPartner(monitor.PartnerMixin, BasePartner):
 
     type_name = "agent->monitor"
 
-    def initiate(self, agent):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param,
-                       BasePartner.initiate, self, agent)
-        f.add_callback(fiber.drop_param,
-                       monitor.PartnerMixin.initiate, self, agent)
-        return f
-
-    def on_goodbye(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_goodbye, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      BasePartner.on_goodbye, self, agent, brothers)
-        return d
-
-    def on_buried(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_buried, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      BasePartner.on_buried, self, agent, brothers)
-        return d
-
 
 class Partners(partners.Partners):
 
@@ -174,8 +150,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def shutdown(self, state):
         desc = self.get_descriptor()
         self.info('Agent shutdown, partners: %r', desc.partners)
-        results = [x.on_shutdown(self) for x in desc.partners]
-        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        fibers = [x.call_mro('on_shutdown', agent=self)
+                   for x in desc.partners]
         f = fiber.FiberList(fibers)
         return f.succeed()
 
@@ -429,7 +405,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @replay.journaled
     def _initiate_partners(self, state):
         desc = self.get_descriptor()
-        results = [x.initiate(self) for x in desc.partners]
+        results = [state.partners.initiate_partner(x) for x in desc.partners]
         fibers = [x for x in results if isinstance(x, fiber.Fiber)]
         f = fiber.FiberList(fibers)
         f.add_callback(fiber.drop_param,

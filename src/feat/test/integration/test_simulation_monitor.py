@@ -778,16 +778,16 @@ class DummyPartner(agent.BasePartner):
     def initiate(self, agent):
         agent.add_call(self.recipient, "initiate")
 
-    def on_goodbye(self, agent, payload=None):
+    def on_goodbye(self, agent):
         agent.add_call(self.recipient, "goodbye")
 
-    def on_died(self, agent, payload, monitor):
+    def on_died(self, agent, brothers, monitor):
         agent.add_call(self.recipient, "died")
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent):
         agent.add_call(self.recipient, "restarted")
 
-    def on_buried(self, agent, payload=None):
+    def on_buried(self, agent):
         agent.add_call(self.recipient, "buried")
 
 
@@ -795,27 +795,6 @@ class DummyPartner(agent.BasePartner):
 class DummyMonitorPartner(monitor.PartnerMixin, DummyPartner):
 
     type_name = 'dummy:monitor->monitor'
-
-    def initiate(self, agent):
-        return self._f(DummyPartner.initiate,
-                       monitor.PartnerMixin.initiate,
-                       self, agent)
-
-    def on_goodbye(self, agent, payload=None):
-        return self._f(DummyPartner.on_goodbye,
-                       monitor.PartnerMixin.on_goodbye,
-                       self, agent, payload=payload)
-
-    def on_buried(self, agent, payload, monitor):
-        return self._f(DummyPartner.on_buried,
-                       monitor.PartnerMixin.on_buried,
-                       self, agent, payload, monitor)
-
-    def _f(self, f1, f2, *args, **kwargs):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param, f1, *args, **kwargs)
-        f.add_callback(fiber.drop_param, f2, *args, **kwargs)
-        return f
 
 
 class DummyPartners(agent.Partners):

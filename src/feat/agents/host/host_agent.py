@@ -38,7 +38,7 @@ class HostedPartner(agent.BasePartner):
 
     type_name = 'host->agent'
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
 
 
@@ -74,7 +74,7 @@ class ShardPartner(agent.BasePartner):
             recipients, self.recipient.key, monitor)
         return partners.accept_responsability(task)
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent):
         agent.callback_event('shard_agent_restarted', self.recipient)
 
 

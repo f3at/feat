@@ -50,11 +50,11 @@ class PartnerMixin(object):
         f.add_callback(self._start_heartbeat, agent)
         return f
 
-    def on_goodbye(self, agent, payload):
+    def on_goodbye(self, agent):
         agent.stop_heartbeat(self.recipient)
         agent.lookup_monitor()
 
-    def on_buried(self, agent, payload):
+    def on_buried(self, agent):
         agent.stop_heartbeat(self.recipient)
         agent.lookup_monitor()
 

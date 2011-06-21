@@ -2,7 +2,7 @@ from twisted.python.failure import Failure
 from zope.interface import implements
 
 from feat.agents.base import replay, protocols, message, recipient
-from feat.common import reflect, serialization, fiber
+from feat.common import reflect, serialization, fiber, error_handler
 
 from feat.interface.protocols import *
 from feat.interface.requester import *
@@ -82,6 +82,8 @@ class BaseRequester(protocols.BaseInitiator):
     protocol_type = "Request"
 
     timeout = 0
+
+    _error_handler = error_handler
 
     def got_reply(self, reply):
         '''@see: L{IAgentRequester}'''

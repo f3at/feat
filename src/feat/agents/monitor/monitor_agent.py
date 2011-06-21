@@ -33,16 +33,16 @@ class MonitoredPartner(agent.BasePartner):
         f.add_callback(fiber.drop_param, agent.add_monitored, self)
         return f
 
-    def on_goodbye(self, agent, _payload):
+    def on_goodbye(self, agent):
         agent.remove_monitored(self)
 
     def on_breakup(self, agent):
         agent.remove_monitored(self)
 
-    def on_died(self, agent, _payload, _monitor):
+    def on_died(self, agent):
         agent.remove_monitored(self)
 
-    def on_buried(self, agent, _payload):
+    def on_buried(self, agent):
         agent.remove_monitored(self)
 
     def on_restarted(self, agent, old_recipient):
@@ -65,30 +65,6 @@ class MonitorPartner(monitor.PartnerMixin, MonitoredPartner):
 
     type_name = 'monitor->monitor'
 
-    def initiate(self, agent):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param,
-                       MonitoredPartner.initiate, self, agent)
-        f.add_callback(fiber.drop_param,
-                       monitor.PartnerMixin.initiate, self, agent)
-        return f
-
-    def on_goodbye(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_goodbye, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      MonitoredPartner.on_goodbye, self, agent, brothers)
-        return d
-
-    def on_buried(self, agent, brothers):
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param,
-                      monitor.PartnerMixin.on_buried, self, agent, brothers)
-        d.addCallback(defer.drop_param,
-                      MonitoredPartner.on_buried, self, agent, brothers)
-        return d
-
 
 @serialization.register
 class ForeignShardPartner(MonitoredPartner):
@@ -102,10 +78,7 @@ class ShardPartner(MonitoredPartner):
     type_name = 'monitor->shard'
 
     def initiate(self, agent):
-        f = MonitoredPartner.initiate(self, agent)
-        f.add_callback(fiber.drop_param, agent.call_next,
-                       agent.update_neighbour_monitors)
-        return f
+        agent.call_next(agent.update_neighbour_monitors)
 
 
 class Partners(agent.Partners):

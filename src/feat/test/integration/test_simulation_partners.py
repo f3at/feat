@@ -39,8 +39,8 @@ class ResponsablePartner(partners.BasePartner):
         assert recipient.IRecipient.providedBy(monitor)
         return 'ACCEPT_RESPONSABILITY'
 
-    def on_restarted(self, agent, moved):
-        assert moved
+    def on_restarted(self, agent, old_recipient):
+        assert old_recipient
         assert self.recipient.shard == 'shard'
         agent.done_migrated()
 
