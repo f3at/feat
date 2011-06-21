@@ -183,7 +183,13 @@ class SExpConvertersTest(common_serialization.ConverterTest):
 
         ### External References ###
 
-        if not freezing:
+        if freezing:
+            identifier = ["tuple", self.ext_val.type_name, id(self.ext_val)]
+            yield (type(self.ext_val), [self.ext_val],
+                   list, [identifier], False)
+            yield (type(self.ext_snap_val), [self.ext_snap_val],
+                   int, [id(self.ext_snap_val)], False)
+        else:
             identifier = ["tuple", self.ext_val.type_name, id(self.ext_val)]
             yield (common_serialization.SerializableDummy, [self.ext_val],
                    list, [["external", identifier]], False)

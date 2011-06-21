@@ -95,6 +95,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def cancel(self):
         if self.factory.busy:
+            # Busy task cannot be canceled
             return
         return self._call(self.task.cancel)
 
@@ -114,6 +115,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
                       DeprecationWarning, stacklevel=2)
         self._completed(arg)
 
+    @serialization.freeze_tag('AgencyTask.terminate')
     @replay.named_side_effect('AgencyTask.terminate')
     def terminate(self, arg=None):
         self._completed(arg)

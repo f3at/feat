@@ -147,7 +147,7 @@ class DummyPeriodicalMedium(common.Mock, CallLaterMixin,
         self.current = None
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class TestRetryingProtocol(common.TestCase):
 
     timeout = 20

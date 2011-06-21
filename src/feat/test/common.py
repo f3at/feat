@@ -135,6 +135,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             time.scale(scale)
         else:
             time.reset()
+        self.info("Test running with timescale: %r", time._get_scale())
         self.addCleanup(self._reset_sighup_handler)
 
     def getSlow(self):
@@ -560,7 +561,7 @@ class DummyAgent(agent.BaseAgent, Mock):
         agent.BaseAgent.__init__(self, medium)
         Mock.__init__(self)
 
-    @Mock.stub
+    @Mock.record
     def initiate(self):
         pass
 

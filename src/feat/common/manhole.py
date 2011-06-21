@@ -37,7 +37,10 @@ class Manhole(annotate.Annotable, pb.Referenceable):
         cls._exposed = dict()
         for base in bases:
             base_exposed = getattr(base, '_exposed', dict())
-            cls._exposed.update(copy.deepcopy(base_exposed))
+            for lvl, methods in base_exposed.iteritems():
+                if lvl not in cls._exposed:
+                    cls._exposed[lvl] = dict()
+                cls._exposed[lvl].update(methods)
 
     @classmethod
     def _register_exposed(cls, function, security_level):

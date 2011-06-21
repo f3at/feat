@@ -12,13 +12,15 @@ except ImportError as e:
 
 from feat.agencies.emu import database as emu_database
 from feat.agents.base import document, view
-from feat.agencies.interface import ConflictError, NotFoundError
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization
+from feat.agencies.common import ConnectionState
 
 from . import common
-from feat.test.common import attr
+from feat.test.common import attr, Mock
+
+from feat.agencies.interface import *
 
 
 @document.register
@@ -272,7 +274,63 @@ class TestCase(object):
         return check
 
 
-@common.attr(timescale=0.01)
+class CallbacksReceiver(Mock):
+
+    @Mock.stub
+    def on_connect(self):
+        pass
+
+    @Mock.stub
+    def on_disconnect(self):
+        pass
+
+
+class PaisleySpecific(object):
+
+    def setup_receiver(self):
+        mock = CallbacksReceiver()
+        self.database.add_disconnected_cb(mock.on_disconnect)
+        self.database.add_reconnected_cb(mock.on_connect)
+        return mock
+
+    @defer.inlineCallbacks
+    def testGettingDocsWhileDisconnected(self):
+        doc = DummyDocument(field=u'sth')
+        doc = yield self.connection.save_document(doc)
+        yield self.process.terminate(keep_workdir=True)
+        d = self.connection.get_document(doc.doc_id)
+        self.assertFailure(d, NotConnectedError)
+        yield d
+        yield self.process.restart()
+
+    @defer.inlineCallbacks
+    def testDisconnection(self):
+        self.changes = list()
+        mock = self.setup_receiver()
+        yield self.database.wait_for_state(ConnectionState.connected)
+
+        my_doc = DummyDocument(field=u'whatever', doc_id=u"my_doc")
+        my_doc = yield self.connection.save_document(my_doc)
+        yield self.connection.changes_listener((my_doc.doc_id, ),
+                                               self.change_cb)
+
+        yield self.process.terminate(keep_workdir=True)
+        yield self.database.wait_for_state(ConnectionState.disconnected)
+        yield common.delay(None, 0.1)
+        self.assertCalled(mock, 'on_disconnect', times=1)
+
+        yield self.process.restart()
+        yield self.database.wait_for_state(ConnectionState.connected)
+        yield common.delay(None, 0.1)
+        self.assertCalled(mock, 'on_connect', times=1)
+
+        other_connection = self.database.get_connection()
+        my_doc.field = u'sth different'
+        yield other_connection.save_document(my_doc)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+
+
+@common.attr(timescale=0.05)
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
@@ -282,7 +340,8 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
 
 @attr('slow')
-class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
+class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
+                             PaisleySpecific):
 
     timeout = 3
     slow = True
@@ -310,20 +369,3 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase):
     def tearDown(self):
         self.connection.disconnect()
         return self.process.terminate()
-
-    @defer.inlineCallbacks
-    def testDisconnection(self):
-        self.changes = list()
-
-        my_doc = DummyDocument(field=u'whatever', doc_id=u"my_doc")
-        my_doc = yield self.connection.save_document(my_doc)
-        yield self.connection.changes_listener((my_doc.doc_id, ),
-                                               self.change_cb)
-
-        yield self.process.terminate(keep_workdir=True)
-        yield self.process.restart()
-
-        other_connection = self.database.get_connection()
-        my_doc.field = u'sth different'
-        yield other_connection.save_document(my_doc)
-        yield self.wait_for(self._len_changes(1), 2, freq=0.01)

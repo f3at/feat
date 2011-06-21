@@ -1,10 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-import uuid
-
-from feat.common import defer, enum
-from feat.agents.base import replay, poster, message, recipient, collector
+from feat.common import enum
+from feat.agents.base import replay, poster, message, recipient
 from feat.interface.protocols import *
 
 
@@ -15,9 +12,7 @@ class Severity(enum.Enum):
 
 class AgentMixin(object):
 
-    # FIXME this should be marked as @replay.mutable after we get rid of
-    # bug in annotations/recorded calls
-
+    @replay.mutable
     def initiate(self, state):
         state.alerter = self._new_alert(self)
 

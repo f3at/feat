@@ -25,20 +25,20 @@ class Agent(agent.BaseAgent):
 
     @replay.journaled
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.medium.register_interest(contractor.Service(Interest))
 
     def discover(self):
         return self.discover_service(Initiator)
 
 
-@common.attr(timescale=0.02)
+@common.attr(timescale=0.03)
 class ServiceDiscoverySimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('discoverer-agent'))
         agent1 = _.get_agent()
         agency.start_agent(descriptor_factory('discoverer-agent'))
@@ -48,6 +48,8 @@ class ServiceDiscoverySimulation(common.SimulationTest):
         agent3 = _.get_agent()
         """)
         yield self.process(setup)
+        yield self.wait_for_idle(10)
+
         self.agents = list()
         self.agents.append(self.get_local('agent1'))
         self.agents.append(self.get_local('agent2'))

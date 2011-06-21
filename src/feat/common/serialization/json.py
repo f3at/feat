@@ -121,6 +121,10 @@ class Serializer(base.Serializer):
     def pack_dereference(self, data):
         return [DEREFERENCE_ATOM, data]
 
+    def pack_frozen_external(self, data):
+        snapshot, = data
+        return snapshot
+
     def pack_frozen_instance(self, data):
         snapshot, = data
         return snapshot

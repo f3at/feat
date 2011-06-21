@@ -16,9 +16,8 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("replay_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.calls = 0
 
     @replay.entry_point
@@ -60,6 +59,7 @@ class ReplayTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('replay_test_agent')
         medium = agency.start_agent(desc)
         agent = medium.get_agent()

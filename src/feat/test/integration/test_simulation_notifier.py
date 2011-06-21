@@ -10,14 +10,10 @@ class Descriptor(descriptor.Descriptor):
 
 @agent.register('notifier-agent')
 class Agent(agent.BaseAgent, notifier.AgentMixin):
-
-    @replay.entry_point
-    def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
+    pass
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class TestNotifier(common.SimulationTest):
 
     timeout = 3
@@ -25,8 +21,10 @@ class TestNotifier(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = text_helper.format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('notifier-agent'), run_startup=False)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('notifier-agent'), \
+                           run_startup=False)
         """)
         yield self.process(setup)
         self.agent = self.get_local('_').get_agent()

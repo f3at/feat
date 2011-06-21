@@ -182,7 +182,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.assertEqual(0, len(self.agency._agents))
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class TestRequests(common.TestCase, common.AgencyTestHelper):
 
     timeout = 3

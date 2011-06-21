@@ -9,11 +9,11 @@ from twisted.internet import reactor, protocol
 from zope.interface import implements
 from twisted.internet import defer
 
-from feat.common import log, enum, error_handler
+from feat.common import log, enum, error_handler, time
 from feat.common.serialization import banana
 from feat.agencies.interface import IConnectionFactory, IDbConnectionFactory
 from feat.agencies.messaging import Connection, Queue
-from feat.agencies.common import StateMachineMixin
+from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
 
 
@@ -54,12 +54,17 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
 
     protocol = MessagingClient
     initialDelay = 0.1
+    maxDelay = 300
 
     log_category = 'amq-factory'
 
-    def __init__(self, messaging, delegate, user, password):
+    def __init__(self, messaging, delegate, user, password,
+                 on_connected=None, on_disconnected=None):
         log.Logger.__init__(self, messaging)
         log.LogProxy.__init__(self, messaging)
+
+        self._on_connected = on_connected
+        self._on_disconnected = on_disconnected
 
         self._messaging = messaging
         self._user = user
@@ -83,6 +88,8 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self.client = client
         if not self._wait_for_client.called:
             self._wait_for_client.callback(client)
+        if callable(self._on_connected):
+            self._on_connected()
 
     def clientConnectionLost(self, connector, reason):
         self._reset_client()
@@ -94,6 +101,12 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         for cb in self._connection_lost_cbs:
             cb()
         self._connection_lost_cbs = list()
+        if callable(self._on_disconnected):
+            self._on_disconnected()
+
+    def get_eta_to_reconnect(self):
+        if self._callID:
+            return time.left(self._callID.getTime())
 
     def get_client(self):
 
@@ -119,32 +132,50 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
                                  cb.__class__)
         self._connection_lost_cbs.append(cb)
 
+    def is_connected(self):
+        return self.client is not None
+
     def _reset_client(self):
         self.client = None
         self._wait_for_client = defer.Deferred()
 
 
-class Messaging(log.Logger, log.FluLogKeeper):
+class Messaging(ConnectionManager, log.Logger, log.FluLogKeeper):
 
     implements(IConnectionFactory)
 
     log_category = "messaging"
 
     def __init__(self, host, port, user='guest', password='guest'):
+        ConnectionManager.__init__(self)
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
 
-        self._host = host
-        self._port = port
         self._user = user
         self._password = password
+        self._host = None
+        self._port = None
 
         self._factory = AMQFactory(self, TwistedDelegate(),
-                                   self._user, self._password)
+                                   self._user, self._password,
+                                   on_connected=self._on_connected,
+                                   on_disconnected=self._on_disconnected)
 
+        self._configure(host, port)
+
+    def reconfigure(self, host, port):
+        self.disconnect()
+        self._configure(host, port)
+
+    def show_status(self):
+        eta = self._factory.get_eta_to_reconnect()
+        return "Messaging", self.is_connected(), self._host, self._port, eta
+
+    def _configure(self, host, port):
+        self._host = host
+        self._port = port
         self._connector = reactor.connectTCP(self._host, self._port,
                                              self._factory)
-
         self.log('Connector created: %r', self._connector)
 
     def disconnect(self):

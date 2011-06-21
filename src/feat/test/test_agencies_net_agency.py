@@ -7,13 +7,14 @@ from twisted.spread import jelly, pb
 
 from feat.test import common
 from feat.process import couchdb, rabbitmq
-from feat.agencies import journaler, agency as base_agency
+from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, database
-from feat.agents.host import host_agent
-from feat.agents.base import agent, descriptor, replay
-from feat.common import serialization, fiber, time, first
+from feat.agents.base import agent, descriptor, dbtools, partners, replay
+from feat.common import first, serialization, fiber
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
+
+from feat.interface.agent import *
 
 
 jelly.globalSecurity.allowModules(__name__)
@@ -100,8 +101,15 @@ class UnitTestCase(common.TestCase):
         self.assertEqual(options.manhole_port, agency.DEFAULT_MH_PORT)
 
 
+class StandalonePartners(partners.Partners):
+
+    default_role = u'standalone'
+
+
 @agent.register('standalone')
 class StandaloneAgent(agent.BaseAgent):
+
+    partners_class = StandalonePartners
 
     standalone = True
 
@@ -126,12 +134,13 @@ class Descriptor(descriptor.Descriptor):
 class StandaloneAgentWithArgs(agent.BaseAgent):
 
     standalone = True
+    partners_class = StandalonePartners
 
     @staticmethod
-    def get_cmd_line(*args, **kwargs):
-        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+    def get_cmd_line(**kwargs):
+        if kwargs != {"foo": 4, "bar": 5}:
             raise Exception("Unexpected arguments or keyword in get_cmd_line()"
-                            ": %r %r" % (args, kwargs))
+                            ": %r" % (kwargs, ))
         src_path = os.path.abspath(os.path.join(
             os.path.dirname(__file__), '..', '..'))
         command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
@@ -141,11 +150,10 @@ class StandaloneAgentWithArgs(agent.BaseAgent):
         env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
         return command, args, env
 
-    def initiate(self, *args, **kwargs):
-        if args != (1, 2, 3) or kwargs != {"foo": 4, "bar": 5}:
+    def initiate(self, foo, bar):
+        if foo != 4 or bar != 5:
             raise Exception("Unexpected arguments or keyword in initiate()"
                             ": %r %r" % (args, kwargs))
-        agent.BaseAgent.initiate(self)
 
 
 @descriptor.register('standalone_with_args')
@@ -176,6 +184,7 @@ class MasterAgent(StandaloneAgent):
 
         desc = Descriptor(shard=u'lobby')
         f = fiber.Fiber()
+        f.add_callback(fiber.bridge_param, self.initiate_partners)
         f.add_callback(state.medium.save_document)
         f.add_callback(state.medium.start_agent)
         f.add_callback(self.establish_partnership)
@@ -190,6 +199,28 @@ class MasterDescriptor(descriptor.Descriptor):
 
 @common.attr('slow')
 class IntegrationTestCase(common.TestCase):
+
+    configurable_attributes = ['run_rabbit', 'run_couch']
+    run_rabbit = True
+    run_couch = True
+
+    @defer.inlineCallbacks
+    def _run_and_configure_db(self):
+        yield self.db_process.restart()
+        c = self.db_process.get_config()
+        db_host, db_port, db_name = c['host'], c['port'], 'test'
+        db = database.Database(db_host, db_port, db_name)
+        self.db = db.get_connection()
+        yield dbtools.create_db(self.db)
+        yield dbtools.push_initial_data(self.db)
+        defer.returnValue((db_host, db_port, db_name, ))
+
+    @defer.inlineCallbacks
+    def _run_and_configure_msg(self):
+        yield self.msg_process.restart()
+        c = self.msg_process.get_config()
+        msg_host, msg_port = '127.0.0.1', c['port']
+        defer.returnValue((msg_host, msg_port, ))
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -206,17 +237,20 @@ class IntegrationTestCase(common.TestCase):
             raise SkipTest("No RabbitMQ server found.")
 
 
-        yield self.db_process.restart()
-        c = self.db_process.get_config()
-        db_host, db_port, db_name = c['host'], c['port'], 'test'
-        db = database.Database(db_host, db_port, db_name)
-        self.db = db.get_connection()
-        yield self.db.create_database()
+        if self.run_couch:
+            db_host, db_port, db_name = yield self._run_and_configure_db()
+        else:
 
-        yield self.msg_process.restart()
-        c = self.msg_process.get_config()
-        msg_host, msg_port = '127.0.0.1', c['port']
+            db_host, db_name = '127.0.0.1', 'test'
+            db_port = self.db_process.get_free_port()
+
+        if self.run_rabbit:
+            msg_host, msg_port = yield self._run_and_configure_msg()
+        else:
+            msg_host, msg_port = '127.0.0.1', self.msg_process.get_free_port()
+
         jourfile = "%s.sqlite3" % (self._testMethodName, )
+
         self.agency = agency.Agency(
             msg_host=msg_host, msg_port=msg_port,
             db_host=db_host, db_port=db_port, db_name=db_name,
@@ -225,19 +259,13 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):
-        desc = host_agent.Descriptor(shard=u'lobby')
-        desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, run_startup=False)
-        self.assertEqual(1, len(self.agency._agents))
-        host_a = self.agency._agents[0].get_agent()
+        yield self.wait_for_host_agent(10)
+        host_a = self.agency._get_host_agent()
 
-        # this will be called in the other process
-        desc = Descriptor()
-        desc = yield self.db.save_document(desc)
-        yield host_a.start_agent(desc.doc_id)
+        yield self.agency.spawn_agent("standalone")
 
-        part = host_a.query_partners('all')
-        self.assertEqual(1, len(part))
+        yield self.wait_for_standalone()
+        part = host_a.query_partners_with_role('all', 'standalone')
 
         agent_ids = [host_a.get_own_address().key, part[0].recipient.key]
         # check that journaling works as it should
@@ -261,56 +289,61 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
-        desc = host_agent.Descriptor(shard=u'lobby')
-        desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, run_startup=False)
-        self.assertEqual(1, len(self.agency._agents))
-        host_a = self.agency._agents[0].get_agent()
+        yield self.wait_for_host_agent(10)
+        host_a = self.agency._get_host_agent()
 
         # this will be called in the other process
-        desc = DescriptorWithArgs()
-        desc = yield self.db.save_document(desc)
-        yield host_a.start_agent(desc.doc_id, None, 1, 2, 3, foo=4, bar=5)
+        yield self.agency.spawn_agent('standalone_with_args',
+                                      None, foo=4, bar=5)
 
-        part = host_a.query_partners('all')
+        yield self.wait_for_standalone()
+        part = host_a.query_partners_with_role('all', 'standalone')
         self.assertEqual(1, len(part))
 
         yield self.assert_journal_contains(
             [host_a.get_own_address().key, part[0].recipient.key])
 
+    @common.attr(run_rabbit=False, run_couch=False)
     @defer.inlineCallbacks
-    def testStartAgentFromStandalone(self):
-        desc = host_agent.Descriptor(shard=u'lobby')
-        desc = yield self.db.save_document(desc)
-        yield self.agency.start_agent(desc, run_startup=False)
-        self.assertEqual(1, len(self.agency._agents))
-        host_a = self.agency._agents[0].get_agent()
+    def testStartupWithoutConnections(self):
+        '''
+        This testcase runs the agency with missconfigured connections.
+        It reconfigures it, and asserts that host agent has been started
+        normally. Than it simulates host agent being burried (by deleting
+        the descriptor) and asserts that the new host agent has been started.
+        '''
+        self.assertEqual(None, self.agency._get_host_medium())
+        self.info("Starting rabbit")
+        msg_host, msg_port = yield self._run_and_configure_msg()
+        self.info("Starting couch")
+        db_host, db_port, db_name = yield self._run_and_configure_db()
+        self.info("Reconfiguring the agency")
+        self.agency.reconfigure_messaging(msg_host, msg_port)
+        self.agency.reconfigure_database(db_host, db_port, db_name)
 
-        def is_idle():
-            return all([x.is_idle() for x in self.agency._agents])
+        yield self.wait_for_host_agent(10)
+        medium = self.agency._get_host_medium()
+        yield medium.wait_for_state(AgencyAgentState.ready)
 
-        yield self.wait_for(is_idle, timeout=30)
+        yield self.wait_for(self.agency.is_idle, 20)
 
-        # this will be called in the other process
-        desc = MasterDescriptor(shard=u'lobby')
-        desc = yield self.db.save_document(desc)
-        yield host_a.start_agent(desc.doc_id)
+        # now delete the host agents descriptor to look what happens
+        agent_id = medium.get_descriptor().doc_id
+        desc = yield self.db.get_document(agent_id)
+        yield self.db.delete_document(desc)
 
-        part = host_a.query_partners('all')
-        self.assertEqual(1, len(part))
+        yield medium.wait_for_state(AgencyAgentState.terminated)
 
-        self.assertEqual(2, len(self.agency._broker.slaves))
-        agent_ids = [host_a.get_own_address().key]
-        for slave in self.agency._broker.iter_slaves():
-            mediums = yield slave.callRemote('get_agents')
-            self.assertEqual(1, len(mediums))
-            doc_id = yield mediums[0].callRemote('get_agent_id')
-            agent_ids.append(doc_id)
+        yield self.wait_for_host_agent(10)
+        new_medium = self.agency._get_host_medium()
+        yield new_medium.wait_for_state(AgencyAgentState.ready)
+        new_agent_id = new_medium.get_descriptor().doc_id
 
-        yield self.assert_journal_contains(agent_ids)
+        self.assertNotEqual(new_agent_id, agent_id)
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield self.wait_for(self.agency.is_idle, 20)
         yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()
@@ -320,4 +353,26 @@ class IntegrationTestCase(common.TestCase):
         jour = self.agency._journaler
         resp = yield jour.get_histories()
         ids_got = map(operator.attrgetter('agent_id'), resp)
-        self.assertEqual(set(agent_ids), set(ids_got))
+        set1 = set(agent_ids)
+        set2 = set(ids_got)
+        self.assertTrue(set1.issubset(set2),
+                        "%r is not subset of %r" % (set1, set2, ))
+
+    def wait_for_host_agent(self, timeout):
+
+        def check():
+            medium = self.agency._get_host_medium()
+            return medium is not None
+
+        return self.wait_for(check, timeout)
+
+    def wait_for_standalone(self, timeout=20):
+
+        host_a = self.agency._get_host_agent()
+        self.assertIsNot(host_a, None)
+
+        def has_partner():
+            part = host_a.query_partners_with_role('all', 'standalone')
+            return len(part) == 1
+
+        return self.wait_for(has_partner, timeout)

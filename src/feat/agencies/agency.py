@@ -91,10 +91,13 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Public Methods ###
 
-    def initiate(self, *args, **kwargs):
+    def initiate(self, **kwargs):
         '''Establishes the connections to database and messaging platform,
         taking into account that it might meen performing asynchronous job.'''
+        run_startup = kwargs.pop('run_startup', True)
+
         setter = lambda value, name: setattr(self, name, value)
+
         d = defer.Deferred()
         d.addCallback(defer.drop_param,
                       self.agency._messaging.get_connection, self)
@@ -114,20 +117,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_param,
                       self.journal_agent_created)
         d.addCallback(defer.drop_param,
-                      self._call_initiate, *args, **kwargs)
+                      self._call_initiate, **kwargs)
+        d.addCallback(defer.drop_param, self.call_next, self._call_startup,
+                      call_startup=run_startup)
         d.addCallback(defer.override_result, self)
+        d.addErrback(self._startup_error)
 
         # Ensure the execution chain is broken
         self.call_next(d.callback, None)
 
-        return d
-
-    def startup(self, startup_agent=True):
-        d = defer.succeed(None)
-        if startup_agent:
-            d.addCallback(defer.drop_param, self._call_startup)
-        # Not calling agent startup, for testing purpose only
-        d.addCallback(defer.drop_param, self._ready)
         return d
 
     @manhole.expose()
@@ -171,8 +169,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                                              *args, **kwargs)
 
     @serialization.freeze_tag('AgencyAgent.start_agent')
-    def start_agent(self, desc, *args, **kwargs):
-        return self.agency.start_agent(desc, *args, **kwargs)
+    def start_agent(self, desc, **kwargs):
+        return self.agency.start_agent(desc, **kwargs)
 
     @replay.named_side_effect('AgencyAgent.check_if_hosted')
     def check_if_hosted(self, agent_id):
@@ -184,7 +182,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         def generate_body():
             d = defer.succeed(None)
             # run IAgent.killed() and wait for the protocols to finish the job
-            d.addBoth(self._run_and_wait, self.agent.killed)
+            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
             return d
 
         return self._terminate_procedure(generate_body)
@@ -617,6 +615,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         resp += "#" * 60
         return resp
 
+    def on_disconnect(self):
+        if self._cmp_state(AgencyAgentState.ready):
+            self._set_state(AgencyAgentState.disconnected)
+            self.call_next(self.agent.on_agent_disconnect)
+
+    def on_reconnect(self):
+        if self._cmp_state(AgencyAgentState.disconnected):
+            self._set_state(AgencyAgentState.ready)
+            self.call_next(self.agent.on_agent_reconnect)
+
     ### Private Methods ###
 
     def _initiate_protocol(self, factory, args, kwargs):
@@ -718,17 +726,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             save_d.addCallbacks(callback=saved, callbackArgs=(result, d),
                                 errback=error, errbackArgs=(d, ))
             save_d.addBoth(next_update)
-        except Exception:
-            d.errback()
+        except Exception as e:
+            d.errback(e)
             next_update()
 
     def _terminate_procedure(self, body):
         assert callable(body)
 
-        if self._terminating:
-            # Already terminating
+        if self._cmp_state(AgencyAgentState.terminating):
             return
-        self._terminating = True
+        self._set_state(AgencyAgentState.terminating)
 
         # Revoke all queued protocols
         [i.clear_queue() for i in self._iter_interests()]
@@ -740,7 +747,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.succeed(None)
 
         # Cancel all long running protocols
-        d.addBoth(lambda _: self._cancel_long_running_protocols())
+        d.addBoth(defer.drop_param, self._cancel_long_running_protocols)
         # Cancel all delayed calls
         d.addBoth(self._cancel_all_delayed_calls)
         # Kill all protocols
@@ -748,13 +755,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Again, just in case
         d.addBoth(self._cancel_all_delayed_calls)
         # Run code specific to the given shutdown
-        d.addBoth(lambda _: body())
+        d.addBoth(defer.drop_param, body)
         # Tell the agency we are no more
-        d.addBoth(lambda _: self._unregister_from_agency())
+        d.addBoth(defer.drop_param, self._unregister_from_agency)
         # Close the messaging connection
-        d.addBoth(lambda _: self._messaging.disconnect())
+        d.addBoth(defer.drop_param, self._messaging.disconnect)
         # Close the database connection
-        d.addBoth(lambda _: self._database.disconnect())
+        d.addBoth(defer.drop_param, self._database.disconnect)
+        d.addBoth(defer.drop_param,
+                  self._set_state, AgencyAgentState.terminated)
         return d
 
     def _unregister_from_agency(self):
@@ -786,7 +795,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             d = defer.succeed(None)
             # Run IAgent.shutdown() and wait for
             # the protocols to finish the job
-            d.addBoth(self._run_and_wait, self.agent.shutdown)
+            d.addBoth(self._run_and_wait, self.agent.shutdown_agent)
             # Delete the descriptor
             d.addBoth(lambda _: self.delete_document(self._descriptor))
             # TODO: delete the queue
@@ -819,27 +828,31 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                                 for x in self._protocols.values()])
         return d
 
-    def _call_initiate(self, *args, **kwargs):
+    def _call_initiate(self, **kwargs):
         self._set_state(AgencyAgentState.initiating)
-        d = defer.maybeDeferred(self.agent.initiate, *args, **kwargs)
+        d = defer.maybeDeferred(self.agent.initiate_agent, **kwargs)
         d.addCallback(fiber.drop_param, self._set_state,
                       AgencyAgentState.initiated)
         return d
 
-    def _call_startup(self):
+    def _call_startup(self, call_startup=True):
         self._set_state(AgencyAgentState.starting_up)
-        d = defer.maybeDeferred(self.agent.startup)
-        d.addCallback(fiber.drop_param, self._ready)
-        d.addCallback(fiber.override_result, self)
-        d.addErrback(self._error_handler)
+        d = defer.succeed(None)
+        if call_startup:
+            d.addCallback(defer.drop_param, self.agent.startup_agent)
+        d.addCallback(fiber.drop_param, self._become_ready)
+        d.addErrback(self._startup_error)
         return d
 
-    def _ready(self):
+    def _become_ready(self):
         self._set_state(AgencyAgentState.ready)
 
-    def _error_handler(self, e):
-        self._set_state(AgencyAgentState.error)
-        error_handler(self, e)
+    def _startup_error(self, fail):
+        self._error_handler(fail)
+        self.error("Agent raised an error while starting up. "
+                   "He will be punished by terminating. Medium state while "
+                   "that happend: %r", self._get_machine_state())
+        self.terminate()
 
     def _store_delayed_call(self, call_id, call, busy):
         if call.active():
@@ -870,7 +883,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
 
 class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
-             dependency.AgencyDependencyMixin):
+             dependency.AgencyDependencyMixin, common.ConnectionManager):
 
     log_category = 'agency'
 
@@ -887,6 +900,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         dependency.AgencyDependencyMixin.__init__(self, ExecMode.test)
+        common.ConnectionManager.__init__(self)
 
         self._agents = []
 
@@ -903,6 +917,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
 
         self._agency_id = str(uuid.uuid1())
 
+        self.add_reconnected_cb(self._notify_agents_about_reconnection)
+        self.add_disconnected_cb(self._notify_agents_about_disconnection)
+
     ### Public Methods ###
 
     def initiate(self, messaging, database, journaler):
@@ -915,6 +932,12 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._messaging = IConnectionFactory(messaging)
         self._journaler = IJournaler(journaler)
         self._jourconn = self._journaler.get_connection(self)
+
+        self._messaging.add_disconnected_cb(self._on_disconnected)
+        self._messaging.add_reconnected_cb(self._check_msg_and_db_state)
+        self._database.add_disconnected_cb(self._on_disconnected)
+        self._database.add_reconnected_cb(self._check_msg_and_db_state)
+        self._check_msg_and_db_state()
         return defer.succeed(self)
 
     @property
@@ -936,18 +959,14 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         return None
 
     @manhole.expose()
-    def start_agent(self, descriptor, *args, **kwargs):
+    def start_agent(self, descriptor, **kwargs):
         factory = IAgentFactory(registry_lookup(descriptor.document_type))
-        self.log('I will start: %r agent. Args: %r, Kwargs: %r',
-                 factory, args, kwargs)
+        self.log('I will start: %r agent. Kwargs: %r', factory, kwargs)
         medium = self.agency_agent_factory(self, factory, descriptor)
         self._agents.append(medium)
-        run_startup = kwargs.pop('run_startup', True)
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param, medium.initiate,
-                      *args, **kwargs)
-        d.addCallback(defer.bridge_param, medium.call_next, medium.startup,
-                      startup_agent=run_startup)
+
+        d = self.wait_connected()
+        d.addCallback(defer.drop_param, medium.initiate, **kwargs)
         return d
 
     @manhole.expose()
@@ -970,7 +989,6 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         agent_id = medium.get_descriptor().doc_id
         self.debug('Unregistering agent id: %r', agent_id)
         self._agents.remove(medium)
-        self.journal_agent_deleted(agent_id)
 
         # FIXME: This shouldn't be necessary! Here we are manually getting
         # rid of things which should just be garbage collected (self.registry
@@ -983,6 +1001,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                 self.log("Removing recorder id %r, instance: %r",
                          key, self.registry[key])
                 del(self.registry[key])
+
+    def is_idle(self):
+        return all([x.is_idle() for x in self._agents])
 
     ### Journaling Methods ###
 
@@ -1084,10 +1105,11 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     @manhole.expose()
     def list_agents(self):
         '''list_agents() -> List agents hosted by the agency.'''
-        t = text_helper.Table(fields=("Agent ID", "Agent class", ),
-                              lengths=(40, 25, ))
+        t = text_helper.Table(fields=("Agent ID", "Agent class", "State"),
+                              lengths=(40, 25, 15))
 
-        return t.render((a._descriptor.doc_id, a.log_name, )\
+        return t.render((a._descriptor.doc_id, a.log_name,
+                         a._get_machine_state().name)
                         for a in self._agents)
 
     @manhole.expose()
@@ -1099,3 +1121,21 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     def get_agents(self):
         '''get_agents() -> Get the list of agents hosted by this agency.'''
         return self._agents
+
+    ### private ###
+
+    def _notify_agents_about_disconnection(self):
+        for medium in self.iter_agents():
+            medium.on_disconnect()
+
+    def _notify_agents_about_reconnection(self):
+        for medium in self.iter_agents():
+            medium.on_reconnect()
+
+    def _check_msg_and_db_state(self):
+        all_connected = self._messaging.is_connected() and \
+                        self._database.is_connected()
+        if not all_connected:
+            self._on_disconnected()
+        else:
+            self._on_connected()

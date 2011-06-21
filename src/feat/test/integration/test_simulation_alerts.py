@@ -16,11 +16,7 @@ class Descriptor(descriptor.Descriptor):
 
 @agent.register('alert_test_agent')
 class Agent(agent.BaseAgent, alert.AgentMixin):
-
-    @replay.entry_point
-    def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        alert.AgentMixin.initiate(self, state)
+    pass
 
 
 @common.attr(timescale=0.1)
@@ -31,6 +27,7 @@ class AlertAgentTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
 
         d1 = descriptor_factory('alert_test_agent')
         d2 = descriptor_factory('alert_agent')

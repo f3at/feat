@@ -60,6 +60,13 @@ def class_locals(depth, tag=None):
     return locals
 
 
+def class_canonical_name(depth):
+    frame = sys._getframe(depth)
+    module = frame.f_locals['__module__']
+    class_name = frame.f_code.co_name
+    return '.'.join([module, class_name])
+
+
 def inside_class_definition(depth):
     frame = sys._getframe(depth)
     locals = frame.f_locals

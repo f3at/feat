@@ -5,7 +5,7 @@ import uuid
 from zope.interface import classProvides
 from twisted.python import failure
 
-from feat.common import log, defer, fiber, observer, time
+from feat.common import log, defer, fiber, observer, time, enum
 from feat.common import serialization, error_handler
 from feat.agents.base import replay
 
@@ -317,6 +317,7 @@ class TransientInitiatorMediumBase(InitiatorMediumBase):
 
     @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
+        #FIXME: Should fail if already terminated
         return self._fnotifier.wait('finish')
 
     def _terminate(self, result):
@@ -357,3 +358,52 @@ class Observer(observer.Observer):
 
     active = replay.side_effect(observer.Observer.active)
     get_result = replay.side_effect(observer.Observer.get_result)
+
+
+class ConnectionState(enum.Enum):
+
+    connected, disconnected = range(2)
+
+
+class ConnectionManager(StateMachineMixin):
+    '''
+    Base for classes having connected/disconnected state. Exposes methods
+    to change the state and register callbacks.
+    '''
+
+    def __init__(self):
+        StateMachineMixin.__init__(self, ConnectionState.disconnected)
+        self._disconnected_cbs = list()
+        self._reconnected_cbs = list()
+
+    def add_disconnected_cb(self, method):
+        self._check_callable(method)
+        self._disconnected_cbs.append(method)
+
+    def add_reconnected_cb(self, method):
+        self._check_callable(method)
+        self._reconnected_cbs.append(method)
+
+    def wait_connected(self):
+        return self.wait_for_state(ConnectionState.connected)
+
+    def is_connected(self):
+        return self._cmp_state(ConnectionState.connected)
+
+    def _on_connected(self):
+        if self._cmp_state(ConnectionState.disconnected):
+            self._set_state(ConnectionState.connected)
+            return self._notify(self._reconnected_cbs)
+
+    def _on_disconnected(self):
+        if self._cmp_state(ConnectionState.connected):
+            self._set_state(ConnectionState.disconnected)
+            return self._notify(self._disconnected_cbs)
+
+    def _notify(self, callbacks):
+        defers = map(lambda cb: defer.maybeDeferred(cb), callbacks)
+        return defer.DeferredList(defers, consumeErrors=True)
+
+    def _check_callable(self, method):
+        if not callable(method):
+            raise AttributeError("Expected callable, got %r" % method)

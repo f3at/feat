@@ -5,7 +5,7 @@ import types
 from twisted.python import components
 
 from feat.common import (log, serialization, fiber, annotate, error_handler,
-                         formatable, time, )
+                         formatable, time, mro, )
 from feat.agents.base import replay, recipient, requester
 
 from feat.interface.protocols import *
@@ -108,7 +108,7 @@ def _inject_definition(relation, descriptor_type, factory, role, force):
 
 
 @serialization.register
-class BasePartner(serialization.Serializable):
+class BasePartner(serialization.Serializable, mro.MroMixin):
 
     type_name = 'partner'
 
@@ -128,32 +128,37 @@ class BasePartner(serialization.Serializable):
         brothers = agent.query_partners(type(self))
         return requester.say_goodbye(agent, self.recipient, brothers)
 
-    def on_goodbye(self, agent, payload=None):
+    def on_goodbye(self, agent, brothers):
         '''
         Called when the partner goes through the termination procedure.
-        @param payload: By default list of the partner of the same class
-                        of the agent.
+        @param brothers: The list of the partner of the same class
+                         of the agent.
         '''
 
-    def on_died(self, agent, payload, monitor):
+    def on_breakup(self, agent):
+        '''
+        Called when we have successfully broken up with the partner.
+        '''
+
+    def on_died(self, agent, brothers, monitor):
         '''
         Called by the monitoring agent, when he detects that the partner has
         died. If your handler is going to solve this problem return the
         L{feat.agents.base.partners.ResponsabilityAccepted} instance.
 
-        @param payload: Same as in on_goodbye.
+        @param brothers: Same as in on_goodbye.
         @param monitor: IRecipient of monitoring agent who notified us about
                         this unfortunate event
         '''
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent, old_recipient):
         '''
         Called after the partner is restarted by the monitoring agent.
         @param migrated: Flag saying whether the IRecipient of partner has
                          changed
         '''
 
-    def on_burried(self, agent, payload=None):
+    def on_buried(self, agent, brothers=None):
         '''
         Called when all the hope is lost. Noone took the responsability for
         handling the agents death, and monitoring agent failed to restart it.
@@ -342,7 +347,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def initiate_partner(self, state, partner):
-        return partner.initiate(state.agent)
+        return partner.call_mro('initiate', agent=state.agent)
 
     @replay.mutable
     def receive_notification(self, state, recp, notification_type,
@@ -371,27 +376,39 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                            partner.allocation_id)
         return f
 
+    @replay.mutable
+    def breakup(self, state, partner):
+        brothers = self.query(type(partner))
+        f = requester.say_goodbye(state.agent, partner.recipient, brothers)
+        f.add_callback(fiber.drop_param, self._do_breakup, partner)
+        return f
+
     # handlers for incoming notifications from/about partners
 
     def _on_goodbye(self, partner, blackbox, sender):
-        return self._remove_and_trigger_cb(partner, 'on_goodbye', blackbox)
+        return self._remove_and_trigger_cb(partner, 'on_goodbye',
+                                           brothers=blackbox)
 
-    def _on_burried(self, partner, blackbox, sender):
-        return self._remove_and_trigger_cb(partner, 'on_burried', blackbox)
+    def _on_buried(self, partner, blackbox, sender):
+        return self._remove_and_trigger_cb(partner, 'on_buried',
+                                           brothers=blackbox)
 
     @replay.immutable
     def _on_died(self, state, partner, blackbox, sender):
-        f = fiber.wrap_defer(partner.on_died, state.agent, blackbox, sender)
+        f = fiber.wrap_defer(partner.call_mro, 'on_died',
+                             agent=state.agent,
+                             brothers=blackbox,
+                             monitor=sender)
         f.add_errback(self._error_handler)
         return f
 
     @replay.immutable
     def _on_restarted(self, state, partner, new_address, sender):
-        moved = (new_address != partner.recipient)
+        old = partner.recipient if new_address != partner.recipient else None
         f = fiber.succeed()
         partner.recipient = recipient.IRecipient(new_address)
         f.add_callback(fiber.drop_param, self._call_next_cb,
-                       partner.on_restarted, moved)
+                       partner, 'on_restarted', old_recipient=old)
         f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._update_partner,
                        partner)
@@ -399,21 +416,23 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     # private
 
-    def _remove_and_trigger_cb(self, partner, cb_name, blackbox):
-        callback = getattr(partner, cb_name, None)
-        assert callable(callback)
+    def _do_breakup(self, partner):
+        return self._remove_and_trigger_cb(partner, 'on_breakup')
+
+    def _remove_and_trigger_cb(self, partner, cb_name, **kwargs):
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self.remove, partner)
-        f.add_callback(fiber.drop_param, self._call_next_cb,
-                       callback, blackbox)
+        f.add_callback(fiber.drop_param, self._call_next_cb, partner,
+                       cb_name, **kwargs)
         return f.succeed()
 
     @replay.immutable
-    def _call_next_cb(self, state, method, blackbox):
+    def _call_next_cb(self, state, partner, method_name, **kwargs):
         # This is done outside the currect execution chain, as the
         # action performed may be arbitrary long running, and we don't want
         # to run into the timeout of goodbye request
-        state.agent.call_next(fiber.maybe_fiber, method, state.agent, blackbox)
+        state.agent.call_next(fiber.maybe_fiber, partner.call_mro,
+                              method_name, agent=state.agent, **kwargs)
 
     def _get_relation(self, name):
         try:

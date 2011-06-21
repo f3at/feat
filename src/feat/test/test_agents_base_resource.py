@@ -95,7 +95,7 @@ class DummyAgent(serialization.Serializable, common.DummyRecorderNode,
         return defer.succeed(allocation)
 
 
-@common.attr(timescale=0.01)
+@common.attr(timescale=0.05)
 class ResourcesTest(common.TestCase, Common):
 
     implements(journal.IRecorderNode)

@@ -18,11 +18,11 @@ class IAgency(Interface):
     It only publishes the interface global for all agents, agent normally use
     there L{IAgencyAgent} reference given at initialization time.'''
 
-    def start_agent(descriptor, *args, **kwargs):
+    def start_agent(descriptor, **kwargs):
         '''
         Start new agent for the given descriptor.
         The factory is lookuped at in the agents registry.
-        The args and kwargs will be passed to the agents initiate() method.
+        The kwargs will be passed to the agents initiate_agent() method.
         @return_type: L{IAgencyAngent}
         '''
 

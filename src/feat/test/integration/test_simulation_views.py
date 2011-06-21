@@ -62,8 +62,9 @@ class ViewTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         desc = descriptor_factory('querying-view-agent')
-        spawn_agency()
-        medium = _.start_agent(desc)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        medium = agency.start_agent(desc)
         wait_for_idle()
         """)
         return self.process(setup)

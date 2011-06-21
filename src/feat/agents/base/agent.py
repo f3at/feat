@@ -5,9 +5,10 @@ import types
 
 from zope.interface import implements
 
-from feat.common import log, decorator, serialization, fiber, manhole
+from feat.common import (log, decorator, serialization, fiber, defer,
+                         manhole, mro, )
 from feat.interface import generic, agent, protocols
-from feat.agents.base import (resource, recipient, replay, requester,
+from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor
 
@@ -69,8 +70,9 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
-                dependency.AgentDependencyMixin, monitor.AgentMixin):
+class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
+                manhole.Manhole, dependency.AgentDependencyMixin,
+                monitor.AgentMixin):
 
     __metaclass__ = MetaAgent
 
@@ -104,7 +106,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     def init_state(self, state, medium):
         state.medium = agent.IAgencyAgent(medium)
-        state.resources = resource.Resources(self)
         state.partners = self.partners_class(self)
 
     @replay.immutable
@@ -113,46 +114,89 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
 
     ### IAgent Methods ###
 
+    @replay.journaled
+    def initiate_agent(self, state, **keywords):
+        f = self.call_mro('initiate', **keywords)
+        f.add_callback(fiber.drop_param, self._initiate_partners)
+        return f
+
+    @replay.journaled
+    def startup_agent(self, state):
+        return self.call_mro('startup')
+
+    @replay.journaled
+    def shutdown_agent(self, state):
+        return self.call_mro('shutdown')
+
+    @replay.journaled
+    def on_agent_killed(self, state):
+        return self.call_mro('on_killed')
+
+    @replay.journaled
+    def on_agent_disconnect(self, state):
+        return self.call_mro('on_disconnect')
+
+    @replay.journaled
+    def on_agent_reconnect(self, state):
+        return self.call_mro('on_reconnect')
+
+    ### Methods called as a result of agency calls ###
+
     @replay.immutable
     def initiate(self, state):
-        state.medium.register_interest(replier.PartnershipProtocol)
-        state.medium.register_interest(replier.ProposalReceiver)
         state.medium.register_interest(replier.Ping)
-
-    @replay.immutable
-    def startup(self, state):
-        pass
-
-    @replay.immutable
-    def get_descriptor(self, state):
-        return state.medium.get_descriptor()
-
-    @replay.immutable
-    def get_agent_id(self, state):
-        desc = state.medium.get_descriptor()
-        return desc.doc_id
-
-    @replay.immutable
-    def get_instance_id(self, state):
-        desc = state.medium.get_descriptor()
-        return desc.instance_id
-
-    @replay.immutable
-    def get_full_id(self, state):
-        desc = state.medium.get_descriptor()
-        return desc.doc_id + u"/" + unicode(desc.instance_id)
 
     @replay.journaled
     def shutdown(self, state):
         desc = self.get_descriptor()
         self.info('Agent shutdown, partners: %r', desc.partners)
-        results = [x.on_shutdown(self) for x in desc.partners]
-        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        fibers = [x.call_mro('on_shutdown', agent=self)
+                   for x in desc.partners]
         f = fiber.FiberList(fibers)
         return f.succeed()
 
+    def startup(self):
+        pass
+
     def on_killed(self):
-        self.info('Agents on_killed called.')
+        pass
+
+    def on_disconnect(self):
+        pass
+
+    def on_reconnect(self):
+        pass
+
+    ### Public methods ###
+
+    @replay.immutable
+    def get_descriptor(self, state):
+        '''Returns a copy of the agent descriptos.'''
+        return state.medium.get_descriptor()
+
+    @replay.immutable
+    def get_agent_id(self, state):
+        '''Returns a global unique identifier for the agent.
+        Do not change when the agent is restarted.'''
+        desc = state.medium.get_descriptor()
+        return desc.doc_id
+
+    @replay.immutable
+    def get_instance_id(self, state):
+        """Returns the agent instance identifier.
+        Changes when the agent is restarted.
+        It's unique only for the agent."""
+        desc = state.medium.get_descriptor()
+        return desc.instance_id
+
+    @replay.immutable
+    def get_full_id(self, state):
+        """Return a global unique identifier for this agent instance.
+        It's a combination of agent_id and instance_id:
+          full_id = agent_id + '/' + instance_id
+        """
+        desc = state.medium.get_descriptor()
+        return desc.doc_id + u"/" + unicode(desc.instance_id)
 
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
@@ -170,14 +214,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def wait_for_ready(self, state):
         return fiber.wrap_defer(state.medium.wait_for_state,
                                 AgencyAgentState.ready)
-
-    @replay.journaled
-    def initiate_partners(self, state):
-        desc = self.get_descriptor()
-        results = [x.initiate(self) for x in desc.partners]
-        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
-        f = fiber.FiberList(fibers)
-        return f.succeed()
 
     @manhole.expose()
     def propose_to(self, recp, partner_role=None, our_role=None):
@@ -240,12 +276,10 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
         recp = recipient.IRecipient(recp)
         partner = self.find_partner(recp)
         if partner:
-            f = requester.say_goodbye(self, recp)
-            f.add_callback(fiber.drop_param, self.remove_partner, partner)
-            return f
+            return state.partners.breakup(partner)
         else:
             self.warning('We were trying to break up with agent recp %r.,'
-                         'but aparently he is not our partner!.', recp)
+                         'but apparently he is not our partner!.', recp)
 
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,
@@ -313,60 +347,6 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
     def register_interest(self, state, *args, **kwargs):
         return state.medium.register_interest(*args, **kwargs)
 
-    @replay.mutable
-    def preallocate_resource(self, state, **params):
-        return state.resources.preallocate(**params)
-
-    @replay.mutable
-    def allocate_resource(self, state, **params):
-        return state.resources.allocate(**params)
-
-    @replay.immutable
-    def check_allocation_exists(self, state, allocation_id):
-        return state.resources.get_allocation(allocation_id)
-
-    @manhole.expose()
-    @replay.immutable
-    def get_resource_usage(self, state):
-        return state.resources.get_usage()
-
-    @replay.immutable
-    def list_resource(self, state):
-        allocated = state.resources.allocated()
-        totals = state.resources.get_totals()
-        return totals, allocated
-
-    @replay.mutable
-    def confirm_allocation(self, state, allocation_id):
-        return state.resources.confirm(allocation_id)
-
-    @replay.immutable
-    def allocation_used(self, state, allocation_id):
-        '''
-        Checks if allocation is used by any of the partners.
-        If allocation does not exist returns False.
-        @param allocation_id: ID of the allocation
-        @returns: True/False
-        '''
-        return len(filter(lambda x: x.allocation_id == allocation_id,
-                          state.partners.all)) > 0
-
-    @replay.mutable
-    def release_resource(self, state, allocation_id):
-        return state.resources.release(allocation_id)
-
-    @replay.mutable
-    def premodify_allocation(self, state, allocation_id, **delta):
-        return state.resources.premodify(allocation_id, **delta)
-
-    @replay.mutable
-    def apply_modification(self, state, change_id):
-        return state.resources.apply_modification(change_id)
-
-    @replay.mutable
-    def release_modification(self, state, change_id):
-        return state.resources.release_modification(change_id)
-
     @replay.immutable
     def get_document(self, state, doc_id):
         return fiber.wrap_defer(state.medium.get_document, doc_id)
@@ -421,3 +401,17 @@ class BaseAgent(log.Logger, log.LogProxy, replay.Replayable, manhole.Manhole,
             return fail.value.args[0]
         else:
             fail.raiseException()
+
+    @replay.journaled
+    def _initiate_partners(self, state):
+        desc = self.get_descriptor()
+        results = [state.partners.initiate_partner(x) for x in desc.partners]
+        fibers = [x for x in results if isinstance(x, fiber.Fiber)]
+        f = fiber.FiberList(fibers)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.PartnershipProtocol)
+        f.add_callback(fiber.drop_param,
+                       state.medium.register_interest,
+                       replier.ProposalReceiver)
+        return f.succeed()

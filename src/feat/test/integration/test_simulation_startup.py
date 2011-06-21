@@ -35,7 +35,9 @@ class SimulateRunningAgentTwice(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
         agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('some-stupid-agent')
         """)
         yield self.process(setup)

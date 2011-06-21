@@ -21,12 +21,9 @@ class Agent(agent.BaseAgent):
 
     implements(shard.IShardNotificationHandler)
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-
         self.clear()
-
         shard.register_for_notifications(self)
 
     @replay.mutable
@@ -61,13 +58,15 @@ class StructuralPartners(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'))
 
         wait_for_idle()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'))
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'))
 
         wait_for_idle()
         """)
@@ -106,7 +105,7 @@ class StructuralPartners(common.SimulationTest):
         self.assertEqual(1, self.count_agents('host_agent'))
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.2)
 class TestShardNotification(common.SimulationTest):
 
     def prolog(self):
@@ -145,6 +144,7 @@ class TestShardNotification(common.SimulationTest):
         drv = self.driver
 
         agency1 = yield drv.spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
         sa1_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard1")
         sa1 = yield agency1.start_agent(sa1_desc)
@@ -158,6 +158,7 @@ class TestShardNotification(common.SimulationTest):
         yield self.wait_for_idle(10)
 
         agency2 = yield drv.spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
         sa2_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard2")
         sa2 = yield agency2.start_agent(sa2_desc)
@@ -183,6 +184,7 @@ class TestShardNotification(common.SimulationTest):
         check_no_changes(na2b)
 
         agency3 = yield drv.spawn_agency()
+        agency3.disable_protocol('setup-monitoring', 'Task')
         sa3_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard3")
         sa3 = yield agency3.start_agent(sa3_desc)

@@ -27,19 +27,13 @@ class ResourcesAllocationAgent(agent.BaseAgent, rpc.AgentMixin):
 
     restart_strategy = monitor.RestartStrategy.local
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-
         state.medium.register_interest(
             contractor.Service(AllocationContractor))
         state.medium.register_interest(AllocationContractor)
 
-        return self.initiate_partners()
-
     def startup(self):
-        agent.BaseAgent.startup(self)
         self.startup_monitoring()
 
     @replay.immutable
@@ -60,11 +54,8 @@ class AllocationContractor(contractor.NestingContractor):
     protocol_id = 'request-allocation'
     interest_type = InterestType.private
 
-    announce_timeout = 10
-
     @replay.entry_point
     def announced(self, state, announcement):
-
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param,
                        self._ask_own_shard, announcement)
@@ -122,7 +113,7 @@ class HostAllocationManager(manager.BaseManager):
     '''
 
     protocol_id = 'allocate-resources'
-    announce_timeout = 5
+    announce_timeout = 2
 
     @replay.mutable
     def initiate(self, state, announcement):

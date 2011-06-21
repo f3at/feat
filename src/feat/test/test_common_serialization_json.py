@@ -89,7 +89,14 @@ class JSONConvertersTest(common_serialization.ConverterTest):
 
         ### External References ###
 
-        if not freezing:
+        if freezing:
+            name = '[".enc", "UTF8", "%s"]' % self.ext_val.type_name
+            identifier = '[".tuple", %s, %d]' % (name, id(self.ext_val))
+            yield (type(self.ext_val), [self.ext_val],
+                   str, [identifier], False)
+            yield (type(self.ext_snap_val), [self.ext_snap_val],
+                   str, [str(id(self.ext_snap_val))], False)
+        else:
             name = '[".enc", "UTF8", "%s"]' % self.ext_val.type_name
             identifier = '[".tuple", %s, %d]' % (name, id(self.ext_val))
             yield (common_serialization.SerializableDummy, [self.ext_val],

@@ -75,7 +75,7 @@ class JournalReplayEntry(object):
     def __init__(self, replay, record):
         self._replay = replay
 
-        # this needs to be consitent with output of the Journaler._decode()
+        # this needs to be consistent with output of the Journaler._decode()
         (self.agent_id, self.instance_id, self.journal_id, self.function_id,
          self.fiber_id, self.fiber_depth, self._args, self._kwargs,
          self._side_effects, self.frozen_result, self._timestamp) = record
@@ -106,11 +106,13 @@ class JournalReplayEntry(object):
             result = instance.replay(self)
 
             if self._next_effect < len(self._side_effects):
-                remaining = self._side_effects[self._next_effect:]
-                se_desc = ", ".join([side_effect_as_string(*v)
-                                     for v in remaining])
-                raise ReplayError("Unconsumed side_effects: %s"
-                                  % se_desc)
+                remaining = self._side_effects[self._next_effect]
+                side_effect = self.restore_side_effect(remaining,
+                                                       parse_args=True)
+                function_id, args, kwargs, _effects, _result = side_effect
+                se_desc = side_effect_as_string(function_id, args, kwargs)
+                raise ReplayError("Function %s did not consume side-effect %s"
+                                  % (self.function_id, se_desc))
 
             frozen_result = self._replay.serializer.freeze(result)
 
@@ -180,9 +182,22 @@ class JournalReplayEntry(object):
         self._next_effect = 0
 
     def next_side_effect(self, function_id, *args, **kwargs):
-        unexpected_desc = side_effect_as_string(function_id, args, kwargs)
+
+        def current_effect_as_string():
+            frozen_args = self._replay.serializer.freeze(args)
+            frozen_kwargs = self._replay.serializer.freeze(kwargs)
+            new_args = self._replay.unserializer.convert(frozen_args)
+            new_kwargs = self._replay.unserializer.convert(frozen_kwargs)
+            return side_effect_as_string(function_id, new_args, new_kwargs)
+
+        def expected_effect_as_string(raw_side_effect):
+            side_effect = self.restore_side_effect(raw_side_effect,
+                                                   parse_args=True)
+            function_id, args, kwargs, _effects, _result = side_effect
+            return side_effect_as_string(function_id, args, kwargs)
 
         if self._next_effect >= len(self._side_effects):
+            unexpected_desc = current_effect_as_string()
             raise ReplayError("Unexpected side-effect %s"
                               % (unexpected_desc, ))
 
@@ -193,34 +208,22 @@ class JournalReplayEntry(object):
         exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
 
         if exp_fun_id != function_id:
-            expected_desc = side_effect_as_string(exp_fun_id,
-                                                  exp_args, exp_kwargs)
+            unexpected_desc = current_effect_as_string()
+            expected_desc = expected_effect_as_string(raw_side_effect)
             raise ReplayError("Side-effect %s called instead of %s"
                               % (unexpected_desc, expected_desc))
 
-        args = self._replay.serializer.freeze(args)
-        if exp_args != args:
-            side_effect = self.restore_side_effect(raw_side_effect,
-                                                    parse_args=True)
-            exp_fun_id, exp_args, exp_kwargs, effects, result = side_effect
-            expected_desc = side_effect_as_string(exp_fun_id,
-                                                  exp_args, exp_kwargs)
-            which = 0
-            for exp, got in zip(exp_args, args):
-                if exp == got:
-                    which += 1
-                else:
-                    break
+        frozen_args = self._replay.serializer.freeze(args)
+        if exp_args != frozen_args:
+            unexpected_desc = current_effect_as_string()
+            expected_desc = expected_effect_as_string(raw_side_effect)
+            raise ReplayError("Bad side-effect arguments in %s, expecting %s."
+                              % (unexpected_desc, expected_desc))
 
-            raise ReplayError("Bad side-effect arguments in %s, expecting "
-                              "%s. Different argument index %d."
-                              % (unexpected_desc, expected_desc, which))
         kwargs = self._replay.serializer.freeze(kwargs)
-
         if exp_kwargs != kwargs:
-            side_effect = self.restore_side_effect(raw_side_effect,
-                                                    parse_args=True)
-            expected_desc = side_effect_as_string(*side_effect[0:3])
+            unexpected_desc = current_effect_as_string()
+            expected_desc = expected_effect_as_string(raw_side_effect)
             raise ReplayError("Bad side-effect keywords in %s, "
                               " expecting %s"
                               % (unexpected_desc, expected_desc))
@@ -394,8 +397,10 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     ### IExternalizer Methods ###
 
-    def identify(self, _):
-        raise RuntimeError("OOPS, this should not be used in replay")
+    def identify(self, instance):
+        if (IRecorder.providedBy(instance) and
+            instance.journal_id in self.registry):
+            return instance.journal_id
 
     def lookup(self, identifier):
         found = self.registry.get(identifier, None)
@@ -815,6 +820,7 @@ class AgencyTask(AgencyProtocol, StateMachineSpecific):
     def finish(self, result=None):
         '''Deprecated.'''
 
+    @serialization.freeze_tag('AgencyTask.terminate')
     @replay.named_side_effect('AgencyTask.terminate')
     def terminate(self, result=None):
         pass

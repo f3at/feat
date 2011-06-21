@@ -80,9 +80,10 @@ class HeartBeatPoster(poster.BasePoster):
     ### Overridden Methods ###
 
     @replay.immutable
-    def pack_payload(self, state):
+    def pack_payload(self, state, index):
         desc = state.agent.get_descriptor()
-        return desc.doc_id, desc.instance_id
+        time = state.agent.get_time()
+        return (desc.doc_id, time, index)
 
 
 class HeartBeatTask(task.StealthPeriodicTask):
@@ -91,7 +92,9 @@ class HeartBeatTask(task.StealthPeriodicTask):
 
     def initiate(self, poster, period):
         self._poster = poster
+        self._index = 0
         return task.StealthPeriodicTask.initiate(self, period)
 
     def run(self):
-        self._poster.notify()
+        self._poster.notify(self._index)
+        self._index += 1

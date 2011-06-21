@@ -22,6 +22,7 @@ class HostAgentTests(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('host_agent')
         medium = agency.start_agent(desc1, run_startup=False)
         agent = medium.get_agent()
@@ -88,12 +89,14 @@ class HostAgentDefinitionTests(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency()
+        agency1.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('host_agent')
         medium1 = agency1.start_agent(desc1, hostdef=hostdef, \
         run_startup=False)
         agent1 = medium1.get_agent()
 
         agency2 = spawn_agency()
+        agency2.disable_protocol('setup-monitoring', 'Task')
         desc2 = descriptor_factory('host_agent')
         medium2 = agency2.start_agent(desc2, hostdef=hostdef_id, \
         run_startup=False)
@@ -138,6 +141,7 @@ class HostAgentRequerimentsTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
             agency = spawn_agency()
+            agency.disable_protocol('setup-monitoring', 'Task')
             desc = descriptor_factory('host_agent')
             medium = agency.start_agent(desc, hostdef=hostdef,\
                                         run_startup=False)
@@ -203,6 +207,7 @@ class HostAgentCheckTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
             agency = spawn_agency()
+            agency.disable_protocol('setup-monitoring', 'Task')
 
             host_desc = descriptor_factory('host_agent')
             test_desc = descriptor_factory('condition-agent')
@@ -274,14 +279,17 @@ class SimulationStartAgentContract(common.SimulationTest):
         setup = format_block("""
         test_desc = descriptor_factory('contract-running-agent')
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
 
-       spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
 
-       spawn_agency()
-        _.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
         agent = _.get_agent()
         agent.wait_for_ready()
         agent.start_agent(test_desc)

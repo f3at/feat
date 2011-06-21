@@ -8,6 +8,7 @@ import signal
 from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb, jelly
+from twisted.internet import reactor
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole, )
@@ -144,6 +145,13 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
     def get_filename(self):
         return self._writer.get_filename()
 
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        if self._writer:
+            return self._writer.is_idle()
+        return True
+
     ### private ###
 
     def _schedule_flush(self):
@@ -225,6 +233,10 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     def get_filename(self):
         return self._writer.callRemote('get_filename')
 
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
 
     ### private ###
 
@@ -352,6 +364,11 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     def get_filename(self):
         return self._filename
 
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
+
     ### Private ###
 
     def _reset_history_id_cache(self):
@@ -361,6 +378,9 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     def _install_sighup(self):
         if self._sighup_installed:
             return
+
+        def run_sighup_from_thread(signum, frame):
+            reactor.callFromThread(sighup, signum, frame)
 
         def sighup(signum, frame):
             if callable(self._old_sighup_handler):
@@ -373,7 +393,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                 self._on_rotate_cb()
 
         self.log('Installing SIGHUP handler.')
-        handler = signal.signal(signal.SIGHUP, sighup)
+        handler = signal.signal(signal.SIGHUP, run_sighup_from_thread)
         if handler == signal.SIG_DFL or handler == signal.SIG_IGN:
             self._old_sighup_handler = None
         else:

@@ -45,6 +45,7 @@ class TestDriver(common.TestCase):
     def testStartAgent(self):
         test = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('descriptor'))
         """)
         d = self.cb_after(None, self.driver._parser, 'on_finish')
@@ -55,7 +56,7 @@ class TestDriver(common.TestCase):
         self.assertEqual(1, len(ag._agents))
         agent = ag._agents[0]
         self.assertIsInstance(agent.agent, common.DummyAgent)
-        self.assertCalled(agent.agent, 'initiate')
+        self.assertCalled(agent.agent, 'initiate', times=1)
 
     def testBreakpoints(self):
 

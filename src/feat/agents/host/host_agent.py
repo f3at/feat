@@ -7,7 +7,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
                               problem, task, )
-from feat.agents.common import rpc
+from feat.agents.common import rpc, monitor
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
@@ -38,7 +38,7 @@ class HostedPartner(agent.BasePartner):
 
     type_name = 'host->agent'
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
 
 
@@ -74,7 +74,7 @@ class ShardPartner(agent.BasePartner):
             recipients, self.recipient.key, monitor)
         return partners.accept_responsability(task)
 
-    def on_restarted(self, agent, migrated):
+    def on_restarted(self, agent):
         agent.callback_event('shard_agent_restarted', self.recipient)
 
 
@@ -86,16 +86,13 @@ class Partners(agent.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
+class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
+                resource.AgentMixin):
 
     partners_class = Partners
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state, hostdef=None):
-        agent.BaseAgent.initiate(self)
-        rpc.AgentMixin.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
-
         state.medium.register_interest(StartAgentReplier)
         state.medium.register_interest(StartAgentContractor)
         state.medium.register_interest(
@@ -111,12 +108,10 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self._update_hostname)
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
-        f.add_callback(fiber.drop_param, self.initiate_partners)
         return f.succeed()
 
     @replay.journaled
     def startup(self, state):
-        agent.BaseAgent.startup(self)
         f = self.start_join_shard_manager()
         f.add_callback(fiber.drop_param, self.startup_monitoring)
         return f
@@ -134,10 +129,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def start_join_shard_manager(self, state):
+        f = fiber.succeed()
         if state.partners.shard is None:
-            f = common_shard.start_manager(self)
+            f.add_callback(fiber.drop_param, common_shard.start_manager, self)
             f.add_errback(fiber.drop_param, self.start_own_shard)
-            return f
+        return f
 
     @replay.journaled
     def start_own_shard(self, state, shard=None):
@@ -197,17 +193,17 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @manhole.expose()
     @replay.journaled
-    def start_agent(self, state, doc_id, allocation_id=None, *args, **kwargs):
+    def start_agent(self, state, doc_id, allocation_id=None, **kwargs):
         task = self.initiate_protocol(StartAgent, doc_id, allocation_id,
-                                      args=args, kwargs=kwargs)
+                                      kwargs=kwargs)
         return task.notify_finish()
 
     @replay.immutable
-    def medium_start_agent(self, state, desc, *args, **kwargs):
+    def medium_start_agent(self, state, desc, **kwargs):
         '''
         Just delegation to Agency part. Used by StartAgent task.
         '''
-        return state.medium.start_agent(desc, *args, **kwargs)
+        return state.medium.start_agent(desc, **kwargs)
 
     @replay.journaled
     def restart_agent(self, state, agent_id):
@@ -252,16 +248,16 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin):
 
     @rpc.publish
     def premodify_allocation(self, allocation_id, **delta):
-        return agent.BaseAgent.premodify_allocation(self,
+        return resource.AgentMixin.premodify_allocation(self,
                 allocation_id, **delta)
 
     @rpc.publish
     def apply_modification(self, change_id):
-        return agent.BaseAgent.apply_modification(self, change_id)
+        return resource.AgentMixin.apply_modification(self, change_id)
 
     @rpc.publish
     def release_modification(self, change_id):
-        return agent.BaseAgent.release_modification(self, change_id)
+        return resource.AgentMixin.release_modification(self, change_id)
 
     ### Private Methods ###
 
@@ -344,8 +340,7 @@ class StartAgent(task.BaseTask):
     protocol_id = "host_agent.start-agent"
 
     @replay.entry_point
-    def initiate(self, state, doc_id, allocation_id,
-                 args=tuple(), kwargs=dict()):
+    def initiate(self, state, doc_id, allocation_id, kwargs=dict()):
         if isinstance(doc_id, descriptor.Descriptor):
             doc_id = doc_id.doc_id
         assert isinstance(doc_id, (str, unicode, ))
@@ -360,7 +355,7 @@ class StartAgent(task.BaseTask):
         f.add_callback(fiber.drop_param, self._update_shard_field)
         f.add_callback(fiber.drop_param, self._validate_allocation)
         f.add_callback(fiber.drop_param, getattr, state, 'descriptor')
-        f.add_callback(state.agent.medium_start_agent, *args, **kwargs)
+        f.add_callback(state.agent.medium_start_agent, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self._establish_partnership)
         return f
@@ -481,7 +476,7 @@ class RestartShard(problem.BaseProblem):
 
     def _finalize(self, recp):
         self.agent.callback_event('shard_agent_restarted', recp)
-        return self.agent.call_remote(self.monitor, 'restart_complete', recp)
+        return monitor.notify_restart_complete(self.agent, self.monitor, recp)
 
 
 class HostAllocationContractor(contractor.BaseContractor):
@@ -514,10 +509,8 @@ class HostAllocationContractor(contractor.BaseContractor):
         bid = message.Bid()
         bid.payload['allocation_id'] = state.preallocation_id
 
-        f = fiber.Fiber()
-        f.add_callback(self._get_cost)
-        f.add_callback(state.medium.bid)
-        return f.succeed(bid)
+        bid = self._get_cost(bid)
+        state.medium.bid(bid)
 
     @replay.immutable
     def _refuse(self, state, reason):

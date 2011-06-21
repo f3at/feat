@@ -1,5 +1,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import sys
+
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
@@ -10,6 +12,7 @@ from feat.agencies import replay
 from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
+from feat.agencies.interface import *
 
 attr = common.attr
 delay = common.delay
@@ -70,12 +73,11 @@ class SimulationTest(common.TestCase):
     skip_replayability = False
     jourfile = None
 
-    overriden_configs = None
-
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
         initial_documents = dbtools.get_current_initials()
         self.addCleanup(dbtools.reset_documents, initial_documents)
+        self.overriden_configs = None
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -104,20 +106,28 @@ class SimulationTest(common.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        # First get the current exception before anything else
+        exc_type, _, _ = sys.exc_info()
+
         for x in self.driver.iter_agents():
             yield x._cancel_long_running_protocols()
             yield x.wait_for_protocols_finish()
 
         yield common.TestCase.tearDown(self)
+
         try:
-            yield self._check_replayability()
+            if exc_type is None or exc_type is StopIteration:
+                yield self._check_replayability()
         finally:
-            self.revert_overrides()
+            yield self.driver.destroy()
+            del(self.driver)
 
     @defer.inlineCallbacks
     def _check_replayability(self):
         if not self.skip_replayability:
             self.info("Test finished, now validating replayability.")
+            yield self.wait_for(self.driver._journaler.is_idle, 10, 0.01)
+
             histories = yield self.driver._journaler.get_histories()
             for history in histories:
                 entries = yield self.driver._journaler.get_entries(history)
@@ -193,6 +203,7 @@ class SimulationTest(common.TestCase):
     def override_config(self, agent_type, config):
         if self.overriden_configs is None:
             self.overriden_configs = dict()
+            self.addCleanup(self.revert_overrides)
         factory = registry_lookup(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
@@ -203,3 +214,8 @@ class SimulationTest(common.TestCase):
         for key, value in self.overriden_configs.iteritems():
             factory = registry_lookup(key)
             factory.configuration_doc_id = value
+
+    def assert_document_not_found(self, doc_id):
+        d = self.driver.get_document(doc_id)
+        self.assertFailure(d, NotFoundError)
+        return d

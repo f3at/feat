@@ -570,7 +570,7 @@ class Fiber(object):
         if trace_fiber_calls:
             self._trace(param, callback, *args, **kwargs)
 
-        if param is failure.Failure and param.check(FiberCancelled):
+        if isinstance(param, failure.Failure) and param.check(FiberCancelled):
             param.raiseException()
 
         if self.canceller and not self.canceller.is_active():

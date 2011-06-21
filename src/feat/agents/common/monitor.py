@@ -2,42 +2,35 @@ from twisted.python import failure
 
 from feat.agencies import retrying
 from feat.agents.base import descriptor, replay, task, partners, dependency
-from feat.common import enum, fiber
+from feat.common import enum, fiber, formatable, serialization
 
 # To access from this module
+from feat.agents.monitor.interface import RestartStrategy
+from feat.agents.monitor.interface import RestartFailed, MonitoringFailed
 from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
 from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 
 from feat.interface.agency import *
 
 
-__all__ = ['Descriptor', 'RestartFailed', 'RestartStrategy',
+__all__ = ['notify_restart_complete',
+           'Descriptor', 'RestartFailed', 'RestartStrategy',
            'PartnerMixin', 'AgentMixin',
            'IPacemakerFactory', 'IPacemaker',
-           'Pacemaker', 'FakePacemaker']
+           'Pacemaker', 'FakePacemaker', "PendingNotification"]
 
 
-class RestartFailed(Exception):
-    pass
-
-
-class MonitoringFailed(Exception):
-    pass
-
-
-class RestartStrategy(enum.Enum):
-    """
-    Enum for the IAgentFactory.restart_strategy attribute
-    buryme    - Don't try to restart agent, just notify everybody about the
-                death.
-    local     - May be be restarted but only in the same shard.
-    whereever - May be restarted whereever in the cluster.
-    monitor   - Special strategy used by monitoring agents. When monitor
-                cannot be restarted in the shard before dying for good his
-                partners will get monitored by the monitoring agent who is
-                resolving this issue.
-    """
-    buryme, local, whereever, monitor = range(4)
+def notify_restart_complete(agent, monitor, recp):
+    '''
+    Use this for finalizing custom restart procedure of some agent. If
+    his partner accepted responsibility in on_died() callback, he needs
+    to notify the monitor agent the the restart procedure is complete.
+    @param agent: Agent performing the restart
+    @param monitor: IRecipient of the monitor agent who sent us the
+                    on_died() notification
+    @param recp: IRecipient of the agent who died and got restarted.
+    '''
+    return agent.call_remote(monitor, 'restart_complete', recp)
 
 
 def discover(agent, shard=None):
@@ -57,11 +50,11 @@ class PartnerMixin(object):
         f.add_callback(self._start_heartbeat, agent)
         return f
 
-    def on_goodbye(self, agent, payload):
+    def on_goodbye(self, agent):
         agent.stop_heartbeat(self.recipient)
         agent.lookup_monitor()
 
-    def on_buried(self, agent, payload):
+    def on_buried(self, agent):
         agent.stop_heartbeat(self.recipient)
         agent.lookup_monitor()
 
@@ -76,6 +69,8 @@ class AgentMixin(object):
     dependency.register(IPacemakerFactory, Pacemaker, ExecMode.production)
     dependency.register(IPacemakerFactory, FakePacemaker, ExecMode.test)
     dependency.register(IPacemakerFactory, FakePacemaker, ExecMode.simulation)
+
+    need_local_monitoring = True
 
     @replay.immutable
     def startup_monitoring(self, state):
@@ -99,13 +94,15 @@ class AgentMixin(object):
     @replay.mutable
     def stop_heartbeat(self, state, monitor):
         self._lazy_mixin_init()
-        del state.pacemakers[monitor.key]
+        if monitor.key in state.pacemakers:
+            del state.pacemakers[monitor.key]
 
     @replay.immutable
     def lookup_monitor(self, state):
-        Factory = retrying.RetryingProtocolFactory
-        factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
-        self.initiate_protocol(factory)
+        if self.need_local_monitoring:
+            Factory = retrying.RetryingProtocolFactory
+            factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
+            self.initiate_protocol(factory)
 
     ### Private Methods ###
 
@@ -127,17 +124,19 @@ class SetupMonitoringTask(task.BaseTask):
     def initiate(self, state, shard=None):
         self.debug("Looking up a monitor for %s %s",
                    state.agent.descriptor_type, state.agent.get_full_id())
-        f = fiber.succeed(state.agent)
+        f = fiber.Fiber(state.medium.get_canceller())
         f.add_callback(discover, shard)
         f.add_callback(self._start_monitoring)
-        return f
+        return f.succeed(state.agent)
 
     @replay.journaled
     def _start_monitoring(self, state, monitors):
         if not monitors:
-            raise MonitoringFailed("No monitor agent found in shard for %s %s"
-                                   % (state.agent.descriptor_type,
-                                      state.agent.get_full_id()))
+            ex = MonitoringFailed("No monitor agent found in shard for %s %s"
+                                  % (state.agent.descriptor_type,
+                                     state.agent.get_full_id()))
+            #raise ex
+            return fiber.fail(ex)
 
         monitor = monitors[0]
         self.info("Monitor found for %s %s: %s", state.agent.descriptor_type,
@@ -149,4 +148,17 @@ class SetupMonitoringTask(task.BaseTask):
 
 @descriptor.register("monitor_agent")
 class Descriptor(descriptor.Descriptor):
-    pass
+
+    # agent_id -> [PendingNotification]
+    formatable.field('pending_notifications', dict())
+
+
+@serialization.register
+class PendingNotification(formatable.Formatable):
+
+    type_name = 'notification'
+
+    formatable.field('type', None)
+    formatable.field('origin', None)
+    formatable.field('payload', None)
+    formatable.field('recipient', None)

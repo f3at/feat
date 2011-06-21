@@ -39,12 +39,12 @@ class ResponsablePartner(partners.BasePartner):
         assert recipient.IRecipient.providedBy(monitor)
         return 'ACCEPT_RESPONSABILITY'
 
-    def on_restarted(self, agent, moved):
-        assert moved
+    def on_restarted(self, agent, old_recipient):
+        assert old_recipient
         assert self.recipient.shard == 'shard'
         agent.done_migrated()
 
-    def on_burried(self, agent, brothers):
+    def on_buried(self, agent, brothers):
         pass
 
 
@@ -59,14 +59,12 @@ class Partners(partners.Partners):
 
 
 @agent.register('partner-agent')
-class Agent(agent.BaseAgent):
+class Agent(agent.BaseAgent, resource.AgentMixin):
 
     partners_class = Partners
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-
         state.resources.define('foo', 2)
         state.received_brothers = list()
         state.migrated = False
@@ -92,8 +90,8 @@ class Agent(agent.BaseAgent):
         return requester.notify_died(self, recp, origin, 'payload')
 
     @replay.journaled
-    def notify_burried(self, state, recp, origin):
-        return requester.notify_burried(self, recp, origin, 'payload')
+    def notify_buried(self, state, recp, origin):
+        return requester.notify_buried(self, recp, origin, 'payload')
 
     @replay.journaled
     def notify_restarted(self, state, recp, origin, new_address):
@@ -109,6 +107,7 @@ class PartnershipTest(common.SimulationTest):
 
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         initiator = agency.start_agent(descriptor_factory('partner-agent'))
         receiver = agency.start_agent(descriptor_factory('partner-agent'))
         """)
@@ -297,14 +296,14 @@ class PartnershipTest(common.SimulationTest):
         self.assertEqual(new_address, partner_obj.recipient)
 
     @defer.inlineCallbacks
-    def testNotifyBurried(self):
+    def testNotifyburied(self):
         yield self._partnership_taking_care(self.initiator, self.receiver)
         irecv = recipient.IRecipient(self.receiver)
         iinit = recipient.IRecipient(self.initiator)
 
         monitor = yield self._start_agent()
 
-        yield monitor.notify_burried(irecv, iinit)
+        yield monitor.notify_buried(irecv, iinit)
         yield self.wait_for_idle(3)
 
         partner_obj = self.receiver.get_agent().query_partners('caretaker')

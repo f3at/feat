@@ -69,9 +69,10 @@ class CommonMixin(object):
     def start_host(self, join_shard=True):
         script = format_block("""
         desc = descriptor_factory('host_agent')
-        spawn_agency()
-        _.start_agent(desc, run_startup=False)
-        agent = _.get_agent()
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        medium = agency.start_agent(desc, run_startup=False)
+        agent = medium.get_agent()
         agent.wait_for_ready()
         """)
         yield self.process(script)
@@ -90,18 +91,21 @@ class DivorceSimulation(common.SimulationTest, CommonMixin):
     @defer.inlineCallbacks
     def prolog(self):
         script = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent1 = _.get_agent()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent2 = _.get_agent()
 
-        spawn_agency()
-        _.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent3 = _.get_agent()
         """)
@@ -200,9 +204,10 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
     def start_shard(self):
         a_id = str(uuid.uuid1())
         script = format_block("""
-        spawn_agency()
-        _.start_agent(descriptor_factory('shard_agent', shard='%(shard)s'),\
-        run_startup=False)
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        desc = descriptor_factory('shard_agent', shard='%(shard)s')
+        agency.start_agent(desc, run_startup=False)
         agent = _.get_agent()
         agent.look_for_neighbours()
         """) % dict(shard=a_id)

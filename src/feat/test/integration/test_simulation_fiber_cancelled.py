@@ -21,10 +21,8 @@ class Descriptor(descriptor.Descriptor):
 class Agent(agent.BaseAgent, notifier.AgentMixin,
         test_common.Mock):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
-        notifier.AgentMixin.initiate(self, state)
         test_common.Mock.__init__(self)
         state.medium.register_interest(LateReplier)
 
@@ -75,6 +73,7 @@ class ProtoFiberCancelTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('test_prop_agent')
         medium = agency.start_agent(desc)
         agent = medium.get_agent()

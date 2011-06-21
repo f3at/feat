@@ -21,9 +21,8 @@ class PosterDescriptor(descriptor.Descriptor):
 @agent.register("poster_test_agent")
 class PosterAgent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state, desc):
-        agent.BaseAgent.initiate(self)
         recip = IRecipient(desc)
         state.poster = state.medium.initiate_protocol(DummyPoster, recip)
 
@@ -40,9 +39,8 @@ class CollectorDescriptor(descriptor.Descriptor):
 @agent.register("collector_test_agent")
 class CollectorAgent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.medium.register_interest(DummyCollector)
         state.notifications = []
 
@@ -78,6 +76,7 @@ class NotificationTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         cdesc1 = descriptor_factory('collector_test_agent')
         cdesc2 = descriptor_factory('collector_test_agent')
         pdesc1 = descriptor_factory('poster_test_agent')
@@ -85,9 +84,9 @@ class NotificationTest(common.SimulationTest):
         pdesc3 = descriptor_factory('poster_test_agent')
         cmedium1 = agency.start_agent(cdesc1)
         cmedium2 = agency.start_agent(cdesc2)
-        pmedium1 = agency.start_agent(pdesc1, cdesc1)
-        pmedium2 = agency.start_agent(pdesc2, cdesc2)
-        pmedium3 = agency.start_agent(pdesc3, broadcast)
+        pmedium1 = agency.start_agent(pdesc1, desc=cdesc1)
+        pmedium2 = agency.start_agent(pdesc2, desc=cdesc2)
+        pmedium3 = agency.start_agent(pdesc3, desc=broadcast)
         collector1 = cmedium1.get_agent()
         collector2 = cmedium2.get_agent()
         poster1 = pmedium1.get_agent()

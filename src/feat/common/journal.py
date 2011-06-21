@@ -9,7 +9,8 @@ from feat.interface.serialization import *
 from feat.common.serialization.base import MetaSerializable
 from feat.common.annotate import MetaAnnotable
 
-from feat.common import decorator, annotate, reflect, fiber, serialization
+from feat.common import decorator, fiber, error
+from feat.common import annotate, reflect, serialization
 
 RECORDING_TAG = "__RECORDING__"
 RECMODE_TAG = "__RECMODE__"
@@ -69,9 +70,11 @@ def replay(journal_entry, function, *args, **kwargs):
 def recorded(function, custom_id=None, reentrant=True):
     '''MUST only be used only with method from child
     classes of L{{Recorder}}.'''
+    canonical = reflect.class_canonical_name(3)
     annotate.injectClassCallback("recorded", 4,
                                  "_register_recorded_call",
-                                 function, custom_id=custom_id)
+                                 function, custom_id=custom_id,
+                                 class_canonical_name=canonical)
 
     def wrapper(self, *args, **kwargs):
         recorder = IRecorder(self)
@@ -148,7 +151,10 @@ def _side_effect_wrapper(callable, args, kwargs, name):
                 effect.commit()
                 return result
             except Exception, e:
-                #FIXME: handle exceptions in side effects
+                #FIXME: handle exceptions in side effects properly
+                error.handle_exception(None, e,
+                                       "Exception raised by side-effect %s",
+                                       reflect.canonical_name(callable))
                 raise
 
     # Not in a replayable section, maybe in another side-effect
@@ -238,13 +244,16 @@ class Recorder(RecorderNode, annotate.Annotable):
     _registry = None
 
     @classmethod
-    def _register_recorded_call(cls, function, custom_id=None):
+    def _register_recorded_call(cls, function, custom_id=None,
+                                class_canonical_name=None):
         global _registry, _reverse
 
         if custom_id is not None:
             fun_id = custom_id
         else:
-            parts = [cls.__module__, cls.__name__, function.__name__]
+            if class_canonical_name is None:
+                class_canonical_name = ".".join([cls.__module__, cls.__name__])
+            parts = [class_canonical_name, function.__name__]
             fun_id = ".".join(parts)
 
         if fun_id in _registry:
@@ -337,6 +346,8 @@ class Recorder(RecorderNode, annotate.Annotable):
                 raise
 
             result = fiber.fail(e)
+            error.handle_exception(self, e, "Exception inside recorded "
+                                   "function %s", fun_id)
 
         finally:
 

@@ -5,9 +5,11 @@ from zope.interface import implements
 from twisted.web import error as web_error
 from twisted.internet import error
 from twisted.web._newclient import ResponseDone
+from twisted.python import failure
 
 from feat.agencies.database import Connection, ChangeListener
 from feat.common import log, defer, time
+from feat.agencies import common
 
 from feat.agencies.interface import *
 from feat.interface.view import *
@@ -25,24 +27,39 @@ DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
 
 
-class Database(log.FluLogKeeper, ChangeListener):
+class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
     log_category = "database"
 
     def __init__(self, host, port, db_name):
+        common.ConnectionManager.__init__(self)
         log.FluLogKeeper.__init__(self)
         ChangeListener.__init__(self, self)
 
-        self.paisley = CouchDB(host, port)
-        self.db_name = db_name
         self.semaphore = defer.DeferredSemaphore(1)
-        self.notifier = ChangeNotifier(
-            self.paisley, self.db_name)
-        self.notifier.addListener(self)
+        self.paisley = None
+        self.db_name = None
+        self.host = None
+        self.port = None
+        self.notifier = None
+
         self.retry = 0
         self.reconnector = None
+
+        self._configure(host, port, db_name)
+
+    def reconfigure(self, host, port, name):
+        if self.notifier.isRunning():
+            self.notifier.stop()
+        self._configure(host, port, name)
+        self._setup_notifier()
+
+    def show_status(self):
+        eta = self.reconnector and self.reconnector.active() and \
+              time.left(self.reconnector.getTime())
+        return "Database", self.is_connected(), self.host, self.port, eta
 
     ### IDbConnectionFactory
 
@@ -114,13 +131,27 @@ class Database(log.FluLogKeeper, ChangeListener):
                        'network problem. Will try to reconnect in %d seconds.',
                        self.retry, wait)
             self.reconnector = time.callLater(wait, self._setup_notifier)
+            self._on_disconnected()
             return
         else:
             # FIXME handle disconnection when network is down
+            self._on_disconnected()
             self.warning('Connection to db lost with reason: %r', reason)
             return self._setup_notifier()
 
     ### private
+
+    def _configure(self, host, port, name):
+        self._cancel_reconnector()
+        self.host, self.port = host, port
+        self.paisley = CouchDB(host, port)
+        self.db_name = name
+        self.notifier = ChangeNotifier(self.paisley, self.db_name)
+        self.notifier.addListener(self)
+
+        # ping database to figure trigger changing state to connected
+        d = self._paisley_call(self.paisley.listDB)
+        d.addErrback(failure.Failure.trap, NotConnectedError)
 
     def _parse_view_result(self, resp):
         assert "rows" in resp
@@ -146,22 +177,28 @@ class Database(log.FluLogKeeper, ChangeListener):
             heartbeat=1000)
         d.addCallback(self._connected)
         d.addErrback(self.connectionLost)
+        d.addErrback(failure.Failure.trap, NotConnectedError)
         return d
 
     def _connected(self, _):
         self.debug('Established persistent connection for receiving '
                    'notifications.')
-        self.retry = 0
+        self._on_connected()
+        self._cancel_reconnector()
+
+    def _cancel_reconnector(self):
         if self.reconnector:
             if self.reconnector.active():
                 self.reconnector.cancel()
             self.reconnector = None
+            self.retry = 0
 
     def _paisley_call(self, method, *args, **kwargs):
         # It is necessarry to acquire the lock to perform the http request
-        # because we won't to be sure that we are not in the middle of sth
+        # because we need to be sure that we are not in the middle of sth
         # while analizing the change notification
         d = self.semaphore.run(method, *args, **kwargs)
+        d.addCallback(defer.bridge_param, self._on_connected)
         d.addErrback(self._error_handler)
         return d
 
@@ -179,5 +216,8 @@ class Database(log.FluLogKeeper, ChangeListener):
                 raise NotImplementedError(
                     'Behaviour for response code %d not define yet, FIXME!' %
                     status)
+        elif failure.check(error.ConnectionRefusedError):
+            self._on_disconnected()
+            raise NotConnectedError("Database connection refused.")
         else:
             failure.raiseException()

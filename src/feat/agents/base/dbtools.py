@@ -20,7 +20,6 @@ def reset_documents(documents):
 
 def get_current_initials():
     global _documents
-
     return copy.deepcopy(_documents)
 
 

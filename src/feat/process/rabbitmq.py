@@ -38,11 +38,11 @@ class Process(base.Base):
             'rabbitmq-rabbit-plugins-scratch')
         self.env['RABBITMQ_ALLOW_INPUT'] = 'true'
         self.env['RABBITMQ_SERVER_START_ARGS'] = ''
+        self.keep_workdir = False
 
     @replay.side_effect
     def started_test(self):
         buffer = self._control.out_buffer
-        self.log("Checking buffer: %s", buffer)
         return "broker running" in buffer
 
     def rabbitmqctl(self, command):
@@ -59,9 +59,14 @@ class Process(base.Base):
                                command, output))
         return d
 
+    def terminate(self, keep_workdir=False):
+        self.keep_workdir = keep_workdir
+        return base.Base.terminate(self)
+
     @replay.side_effect
     def on_finished(self, e):
-        shutil.rmtree(self.get_config()['workspace'], ignore_errors=True)
+        if not self.keep_workdir:
+            shutil.rmtree(self.get_config()['workspace'], ignore_errors=True)
         base.Base.on_finished(self, e)
 
 

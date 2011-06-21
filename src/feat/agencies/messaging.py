@@ -153,11 +153,11 @@ class Queue(object):
         d = defer.Deferred()
         self._consumers.append(d)
         self._schedule_sending()
-        reactor.callLater(0, self._send_messages)
         return d
 
     def is_idle(self):
-        return not self.has_waiting_consumers() or len(self._messages) == 0
+        return not self.has_waiting_consumers() or len(self._messages) == 0 \
+               and self._send_task is None
 
     def has_waiting_consumers(self):
         return len([x for x in self._consumers if not x.called]) > 0

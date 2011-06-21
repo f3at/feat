@@ -20,9 +20,8 @@ class Descriptor(descriptor.Descriptor):
 @agent.register("protoser_test_agent")
 class Agent(agent.BaseAgent):
 
-    @replay.entry_point
+    @replay.mutable
     def initiate(self, state):
-        agent.BaseAgent.initiate(self)
         state.medium.register_interest(NormalReplier)
         state.medium.register_interest(SerializedReplier)
         state.medium.register_interest(PooledReplier)
@@ -110,7 +109,7 @@ class PooledReplier(NormalReplier):
     concurrency = 3
 
 
-@common.attr(timescale=0.1)
+@common.attr(timescale=0.2)
 class ProtoSerializationTest(common.SimulationTest):
 
     timeout = 15
@@ -118,6 +117,7 @@ class ProtoSerializationTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('protoser_test_agent')
         desc2 = descriptor_factory('protoser_test_agent')
         medium1 = agency.start_agent(desc1)
@@ -129,8 +129,6 @@ class ProtoSerializationTest(common.SimulationTest):
 
     @defer.inlineCallbacks
     def checkMultipleRequest(self, factory, count, max):
-        medium1 = self.get_local('medium1')
-        medium2 = self.get_local('medium2')
         agent1 = self.get_local('agent1')
         agent2 = self.get_local('agent2')
         recip2 = IRecipient(agent2)
@@ -139,12 +137,13 @@ class ProtoSerializationTest(common.SimulationTest):
         self.assertEqual(agent2.get_max(), 0)
         self.assertEqual(agent2.get_count(), 0)
 
+        dl = []
         for _ in range(count):
-            agent1.initiate_protocol(factory, recip2)
+            p = agent1.initiate_protocol(factory, recip2)
+            dl.append(p.notify_finish())
 
-        yield medium1.wait_for_protocols_finish()
-        yield medium2.wait_for_protocols_finish()
-        yield medium1.wait_for_protocols_finish()
+        yield defer.DeferredList(dl)
+        yield self.wait_for_idle(10)
 
         self.assertEqual(agent2.get_curr(), 0)
         self.assertEqual(agent2.get_max(), max)

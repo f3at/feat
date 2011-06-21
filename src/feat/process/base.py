@@ -8,7 +8,7 @@ import copy
 
 from twisted.internet import error, protocol, reactor
 
-from feat.common import log, enum, serialization
+from feat.common import log, enum, serialization, defer
 from feat.agents.base import replay
 from feat.agencies.common import StateMachineMixin
 
@@ -16,13 +16,14 @@ from feat.agencies.common import StateMachineMixin
 class ProcessState(enum.Enum):
     '''
     initiated - class is created, process is not ready yet
+    starting - restart() was called, started_test() didnt pass yet
     started - the STDOUT passed the started_test()
     failed - process exited with nonzero status
     finished - process exited with status 0
     terminating - termination has been ordered (we will send TERM)
     '''
 
-    (initiated, started, failed, finished, terminating) = range(5)
+    (initiated, starting, started, failed, finished, terminating) = range(6)
 
 
 class ControlProtocol(protocol.ProcessProtocol, log.Logger):
@@ -52,7 +53,6 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
     def errReceived(self, data):
         self.err_buffer += data
-        self.error("Receivced on err_buffer, so far:\n%s", self.err_buffer)
 
     def processExited(self, status):
         self.log("Process exited with a status: %r", status)
@@ -85,7 +85,7 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         self._ensure_state([ProcessState.initiated,
                             ProcessState.finished,
                             ProcessState.failed])
-
+        self._set_state(ProcessState.starting)
         self._control = ControlProtocol(self, self.started_test, self.on_ready)
         self._process = reactor.spawnProcess(
             self._control, self.command,
@@ -94,12 +94,14 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         return self.wait_for_state(ProcessState.started)
 
     def terminate(self):
-        self._ensure_state([ProcessState.initiated,
-                            ProcessState.started,
-                            ProcessState.terminating])
-        self._set_state(ProcessState.terminating)
-        self._process.signalProcess("TERM")
-        return self.wait_for_state(ProcessState.finished)
+        if self._cmp_state(ProcessState.initiated):
+            return defer.succeed(self)
+        elif self._cmp_state([ProcessState.starting,
+                                 ProcessState.started,
+                                 ProcessState.terminating]):
+            self._set_state(ProcessState.terminating)
+            self._process.signalProcess("TERM")
+            return self.wait_for_state(ProcessState.finished)
 
     def on_ready(self, out_buffer):
         self._set_state(ProcessState.started)

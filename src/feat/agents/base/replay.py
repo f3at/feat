@@ -1,4 +1,4 @@
-from feat.common import (decorator, annotate, guard, journal, )
+from feat.common import (decorator, annotate, guard, journal, reflect, )
 
 from feat.interface.journal import *
 
@@ -22,8 +22,10 @@ def mutable(function):
     guard_wrapper = guard.mutable(function)
 
     # Register the function
+    canonical = reflect.class_canonical_name(3)
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call", guard_wrapper)
+                                 "_register_recorded_call", guard_wrapper,
+                                 class_canonical_name=canonical)
 
     def wrapper(self, *args, **kwargs):
         recorder = IRecorder(self)
@@ -54,8 +56,10 @@ def entry_point(function):
     guard_wrapper = guard.mutable(function)
 
     # Register the function
+    canonical = reflect.class_canonical_name(3)
     annotate.injectClassCallback("recorded", 4,
-                                 "_register_recorded_call", guard_wrapper)
+                                 "_register_recorded_call", guard_wrapper,
+                                 class_canonical_name=canonical)
 
     def wrapper(self, *args, **kwargs):
         recorder = IRecorder(self)

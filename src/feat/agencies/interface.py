@@ -10,6 +10,7 @@ __all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
+           "NotConnectedError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
            "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection",
            "IJournalWriter")
@@ -31,6 +32,13 @@ class NotFoundError(DatabaseError):
     '''
     Raised when we request document which is not there
     or has been deleted.
+    '''
+
+
+class NotConnectedError(Exception):
+    '''
+    Raised when we ned connection refused trying to perform a request to
+    database.
     '''
 
 
@@ -453,6 +461,11 @@ class IJournaler(Interface):
         Return the filename to which this journaler stores entries.
         """
 
+    def is_idle():
+        """
+        Returns bool saying if there are pending entries to get flushed.
+        """
+
 
 class IRecord(Interface):
     '''
@@ -517,4 +530,9 @@ class IJournalWriter(Interface):
     def get_filename():
         """
         Return the filename to which this connection stores.
+        """
+
+    def is_idle():
+        """
+        Returns bool saying if there are pending entries to get flushed.
         """

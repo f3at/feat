@@ -39,14 +39,12 @@ class Agency(agency.Agency):
         aid = self.config['agent']['id']
         args = ()
         kwargs = {}
-        if self.config['agent']['args']:
-            args = json.unserialize(self.config['agent']['args'])
         if self.config['agent']['kwargs']:
             kwargs = json.unserialize(self.config['agent']['kwargs'])
         d = agency.Agency.initiate(self)
         d.addCallback(lambda _: self._database.get_connection())
         d.addCallback(lambda conn: conn.get_document(aid))
-        d.addCallback(self.start_agent_locally, *args, **kwargs)
+        d.addCallback(self.start_agent_locally, **kwargs)
         d.addCallbacks(self.notify_running, self.notify_failed)
         return d
 
