@@ -39,6 +39,9 @@ class IJournalSideEffect(Interface):
     def set_result(result):
         pass
 
+    def get_result():
+        pass
+
     def commit():
         pass
 

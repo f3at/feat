@@ -891,14 +891,14 @@ class RestartPartner(AbstractStartPartner):
 
         f = state.agent.get_document(agent_id)
         f.add_callback(self._store_descriptor)
-        f.add_callback(self._remove_host_partner)
+        f.add_callback(fiber.drop_param, self._remove_host_partner)
         f.add_callback(fiber.drop_param, self._try_next)
         f.add_callback(self._notify_monitor)
         return f
 
     @replay.mutable
-    def _remove_host_partner(self, state, desc):
-        f = desc.remove_host_partner(state.agent)
+    def _remove_host_partner(self, state):
+        f = state.descriptor.remove_host_partner(state.agent)
         f.add_callback(self._store_descriptor)
         return f
 

@@ -354,6 +354,7 @@ class Recorder(RecorderNode, annotate.Annotable):
             if section_first:
                 entry.set_result(result)
                 entry.commit()
+                result = entry.get_result()
                 section.state[RECORDING_TAG] = None
                 section.state[JOURNAL_ENTRY_TAG] = None
                 section.state[RECMODE_TAG] = None
@@ -397,6 +398,7 @@ class DummyJournalEntry(object):
     implements(IJournalEntry)
 
     def __init__(self):
+        self._result = None
         self._dumy_side_effect = DummySideEffect()
 
     ### IJournalEntry Methods ###
@@ -408,10 +410,14 @@ class DummyJournalEntry(object):
         return self._dumy_side_effect
 
     def set_result(self, result):
+        self._result = result
         return self
 
     def commit(self):
         return self
+
+    def get_result(self):
+        return self._result
 
 
 class DummyRecorderNode(object):
@@ -572,6 +578,7 @@ class StupidJournalEntry(object):
 
     def set_result(self, result):
         assert self._record is not None
+        self.not_serialized_result = result
         self.frozen_result = self._keeper.serializer.freeze(result)
         return self
 
@@ -590,6 +597,9 @@ class StupidJournalEntry(object):
         self._record.extend(data)
         self._record = None
         return self
+
+    def get_result(self):
+        return self.not_serialized_result
 
 
 class StupidJournalKeeper(RecorderRoot):
