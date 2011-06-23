@@ -1,6 +1,6 @@
 from feat.agents.base import (requester, replay, message, document,
                               manager, descriptor, )
-from feat.common import fiber, serialization
+from feat.common import fiber
 
 from feat.interface.recipient import IRecipient
 from feat.interface.agent import Access, Address, Storage
@@ -8,6 +8,56 @@ from feat.interface.agent import Access, Address, Storage
 
 __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
            'HostDef', 'NoHostFound', 'Descriptor']
+
+
+class SpecialHostPartnerMixin(object):
+    '''
+    This mixin should be used by agents which establish partnership with
+    host agent, which does not necesarily reflect the fact that the host
+    is running this agent.
+    The point here is to remove the "host" role from the host partner in
+    case we have been restarted on some other host.
+    Other agents just remove the partnership, which is triggered by the
+    host agent himself.
+    '''
+
+    @replay.mutable
+    def initiate(self, state):
+        partners = state.partners.hosts
+        fibers = list()
+        for partner in partners:
+            f = fiber.wrap_defer(state.medium.check_if_hosted,
+                                 partner.recipient.key)
+            f.add_callback(self.fixup_host_role, partner)
+            fibers.append(f)
+        f = fiber.FiberList(fibers, consumeErrors=True)
+        return f.succeed()
+
+    @replay.mutable
+    def fixup_host_role(self, state, hosted, partner):
+        has_role = (partner.role == 'host')
+        f = fiber.succeed()
+        if hosted and not has_role:
+            f.add_callback(fiber.drop_param, self.add_host_role,
+                           partner)
+        elif not hosted and has_role:
+            f.add_callback(fiber.drop_param, self.remove_host_role,
+                           partner)
+        return f
+
+    @replay.mutable
+    def remove_host_role(self, state, partner):
+        self.log("Removing 'host' role from the host partner %r, "
+                 "aparently he is not hosting us any more", partner.recipient)
+        partner.role = None
+        return state.partners.update_partner(partner)
+
+    @replay.mutable
+    def add_host_role(self, state, partner):
+        self.log("Adding 'host' role to the partner %r, who hosts us after"
+                 " the restart", partner.recipient)
+        partner.role = u'host'
+        return state.partners.update_partner(partner)
 
 
 class NoHostFound(Exception):
@@ -37,11 +87,12 @@ def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):
     return f
 
 
-def start_agent_in_shard(agent, desc, shard):
+def start_agent_in_shard(agent, desc, shard, **kwargs):
     f = agent.discover_service(StartAgentManager, shard=shard, timeout=1)
     f.add_callback(_check_recp_not_empty, shard)
     f.add_callback(lambda recp:
-                   agent.initiate_protocol(StartAgentManager, recp, desc))
+                   agent.initiate_protocol(StartAgentManager, recp, desc,
+                                           kwargs))
     f.add_callback(StartAgentManager.notify_finish)
     return f
 
@@ -89,7 +140,8 @@ class StartAgentManager(manager.BaseManager):
     protocol_id = 'start-agent'
 
     @replay.entry_point
-    def initiate(self, state, desc):
+    def initiate(self, state, desc, kwargs):
+        state.kwargs = kwargs
         payload = dict(descriptor=desc)
         msg = message.Announcement(payload=payload)
         state.medium.announce(msg)
@@ -97,7 +149,9 @@ class StartAgentManager(manager.BaseManager):
     @replay.entry_point
     def closed(self, state):
         bids = state.medium.get_bids()
-        state.medium.grant((bids[0], message.Grant(), ))
+        grant = message.Grant()
+        grant.payload['kwargs'] = state.kwargs
+        state.medium.grant((bids[0], grant))
 
     @replay.entry_point
     def completed(self, state, reports):

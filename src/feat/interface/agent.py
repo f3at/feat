@@ -149,6 +149,10 @@ class IAgencyAgent(Interface):
     def leave_shard(shard_id):
         '''Leave the shard with specified identifier.'''
 
+    def upgrade_agency(ugrade_cmd):
+        '''Used by host agent to tell agency to shutdown all the agents
+        and run external script.'''
+
     def register_interest(factory):
         '''Registers an interest in a contract or a request.'''
 
@@ -260,10 +264,26 @@ class IAgencyAgent(Interface):
         2. Terminate all retrying protocols.
         3. Kill all protocols (with making them expire instantly).
         4. Run the IAgent.shutdown() and wait for it to finish.
-        5. Run the IAgent.unregister() - responsibility of this method to
            perform agent-side shutdown part common to all agents.
-        6. Remove agents descriptor from the database.
-        7. Delete the agents queue.
+        5. Remove agents descriptor from the database.
+        6. Delete the agents queue.
+
+        @returns: Deferred.
+        '''
+
+    def terminate_hard():
+        '''
+        Performs all the less gentle form of the agents shutdown. This type
+        of shutdown is the same as if the descriptor of the agent has been
+        modified, or the agency process received the SIGTERM signal.
+        The only callback called on the agent-side during this procedure
+        is on_killed(), we are not sending goodbyes to the partners, nor
+        touching the descriptor or the queue.
+
+        1. Revoke all interests.
+        2. Terminate all retrying protocols.
+        3. Kill all protocols (with making them expire instantly).
+        4. Run the IAgent.on_killed() and wait for it to finish.
 
         @returns: Deferred.
         '''

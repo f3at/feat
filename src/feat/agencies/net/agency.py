@@ -342,6 +342,11 @@ class Agency(agency.Agency):
         d.addCallback(defer.drop_param, self._disconnect)
         return d
 
+    def upgrade(self, upgrade_cmd):
+        d = agency.Agency.shutdown(self, upgrade_cmd)
+        #TODO: stop reactor and actually run the command (not part of the task)
+        return d
+
     def _disconnect(self):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)

@@ -315,8 +315,8 @@ class RestartingSimulation(common.SimulationTest):
         yield random_medium.terminate_hard()
         yield self.monitor.handle_agent_death(recipient.IRecipient(
             random_medium))
-        yield self.wait_for_idle(20)
         yield self.wait_for(self.monitor.has_empty_outbox, 20)
+        yield self.wait_for_idle(20)
 
         self.assertEqual(1, self.count_agents('random-agent'))
         self.assert_has_host('random-agent')

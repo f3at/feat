@@ -16,7 +16,7 @@ class Descriptor(descriptor.Descriptor):
 
 
 @agent.register("rpc_test_agent")
-class Agent(agent.BaseAgent, rpc.AgentMixin):
+class Agent(agent.BaseAgent):
 
     @replay.mutable
     def initiate(self, state):

@@ -39,7 +39,7 @@ class Descriptor(descriptor.Descriptor):
 
 
 @agent.register('requesting_agent_mod')
-class RequestingAgent(agent.BaseAgent, rpc.AgentMixin):
+class RequestingAgent(agent.BaseAgent):
 
     @replay.journaled
     def call_premodify(self, state, agent, recp, allocation_id, **delta):

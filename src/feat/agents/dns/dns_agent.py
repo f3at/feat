@@ -6,6 +6,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay, agent, dependency, contractor, collector
 from feat.agents.base import descriptor, document, dbtools, message
+from feat.agents.common import export
 from feat.agents.dns import production, simulation
 from feat.common import fiber, manhole
 
@@ -52,6 +53,8 @@ class DNSAgent(agent.BaseAgent):
                         simulation.Labour, ExecMode.test)
     dependency.register(IDNSServerLabourFactory,
                         simulation.Labour, ExecMode.simulation)
+
+    migratability = export.Migratability.not_migratable
 
     @replay.mutable
     def initiate(self, state, port=None, ns_ttl=None, aa_ttl=None,

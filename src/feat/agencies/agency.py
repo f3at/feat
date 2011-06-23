@@ -236,6 +236,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         bindings = [binding] + bindings
         return defer.DeferredList([x.created for x in bindings])
 
+    @replay.named_side_effect('AgencyAgent.upgrade_agency')
+    def upgrade_agency(self, upgrade_cmd):
+        self.agency.upgrade(upgrade_cmd)
+
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
         self.log("Leaving shard %r", shard)
@@ -980,6 +984,10 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         d = defer.DeferredList([x._terminate() for x in self._agents])
         d.addCallback(lambda _: self._messaging.disconnect())
         return d
+
+    def upgrade(self, upgrade_cmd):
+        '''Called as the result of upgrade process triggered by host agent.'''
+        return self.shutdown()
 
     def on_killed(self):
         '''Called when the agency process is terminating. (SIGTERM)'''

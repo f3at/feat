@@ -17,7 +17,7 @@ __all__ = ['notify_restart_complete',
            'Descriptor', 'RestartFailed', 'RestartStrategy',
            'PartnerMixin', 'AgentMixin',
            'IPacemakerFactory', 'IPacemaker',
-           'Pacemaker', 'FakePacemaker', "PendingNotification"]
+           'Pacemaker', 'FakePacemaker']
 
 
 def notify_restart_complete(agent, monitor, recp):
@@ -151,14 +151,3 @@ class Descriptor(descriptor.Descriptor):
 
     # agent_id -> [PendingNotification]
     formatable.field('pending_notifications', dict())
-
-
-@serialization.register
-class PendingNotification(formatable.Formatable):
-
-    type_name = 'notification'
-
-    formatable.field('type', None)
-    formatable.field('origin', None)
-    formatable.field('payload', None)
-    formatable.field('recipient', None)

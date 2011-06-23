@@ -6,8 +6,9 @@ import copy
 
 from feat.agents.base import agent, partners, document, replay
 from feat.agents.base import dependency, problem, task, contractor, requester
-from feat.agents.base import dbtools
-from feat.agents.common import raage, host, rpc, shard, monitor
+from feat.agents.base import dbtools, sender
+from feat.agents.common import (raage, host, rpc, shard, monitor, export,
+                                start_agent)
 from feat.agents.monitor import intensive_care, clerk, simulation
 from feat.common import fiber, serialization, defer, time
 from feat.common import error, manhole, text_helper
@@ -16,7 +17,6 @@ from feat.agents.monitor.interface import *
 from feat.interface.agency import *
 from feat.interface.protocols import *
 from feat.interface.recipient import *
-from feat.agencies.interface import NotFoundError
 
 
 @serialization.register
@@ -81,6 +81,12 @@ class ShardPartner(MonitoredPartner):
         agent.call_next(agent.update_neighbour_monitors)
 
 
+@serialization.register
+class HostPartner(MonitoredPartner):
+
+    type_name = 'monitor->host'
+
+
 class Partners(agent.Partners):
 
     #FIXME: Only partners with role "monitored" should use MonitoredPartner
@@ -91,6 +97,9 @@ class Partners(agent.Partners):
     partners.has_many('foreign_shards', 'shard_agent',
                       ForeignShardPartner, role="foreigner")
     partners.has_many('monitors', 'monitor_agent', MonitorPartner, "monitor")
+    # overwrite the definition from agent.Partners, so that host agents
+    # are properly monitored
+    partners.has_many('hosts', 'host_agent', HostPartner)
 
 
 @document.register
@@ -109,11 +118,11 @@ dbtools.initial_data(MonitorAgentConfiguration)
 
 
 Descriptor = monitor.Descriptor
-PendingNotification = monitor.PendingNotification
 
 
 @agent.register('monitor_agent')
-class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
+class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
+                   host.SpecialHostPartnerMixin):
 
     implements(shard.IShardNotificationHandler, IAssistant, ICoroner)
 
@@ -136,6 +145,8 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
                         ExecMode.simulation)
 
     need_local_monitoring = False # We handle monitors on our own
+
+    migratability = export.Migratability.locally
 
     @replay.mutable
     def initiate(self, state):
@@ -164,13 +175,6 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
     def startup(self, state):
         state.clerk.startup()
         state.intensive_care.startup()
-
-        config = state.medium.get_configuration()
-        period = config.notification_period
-        proto = state.medium.initiate_protocol(NotificationSender,
-                                               clerk=state.clerk,
-                                               period=period)
-        state.notification_sender = proto
 
     ### ICoroner ###
 
@@ -338,10 +342,6 @@ class MonitorAgent(agent.BaseAgent, rpc.AgentMixin):
         self.debug("Leaving old monitor %s", recipient)
         return self.breakup(recipient)
 
-    @replay.immutable
-    def has_empty_outbox(self, state):
-        return state.notification_sender.has_empty_outbox()
-
     ### protected ###
 
     @replay.mutable
@@ -422,8 +422,7 @@ class HandleDeath(task.BaseTask):
 
         state.agent.call_next(self._bind_unregistering_self)
 
-        f = state.agent.get_document(state.recp.key)
-        f.add_callback(self._store_descriptor)
+        f = self._fetch_descriptor()
         f.add_callback(fiber.drop_param, self._determine_factory)
         f.add_callback(fiber.drop_param, self._start_collective_solver)
         return f
@@ -531,11 +530,11 @@ class HandleDeath(task.BaseTask):
                  "which are: %r", state.descriptor.partners)
         notifications = list()
         for partner, brothers in self._iter_categorized_partners():
-            notification = monitor.PendingNotification(
-                                       recipient=IRecipient(partner),
-                                       type='buried',
-                                       origin=state.recp,
-                                       payload=brothers)
+            notification = sender.PendingNotification(
+                recipient=IRecipient(partner),
+                type='buried',
+                origin=state.recp,
+                payload=brothers)
             notifications.append(notification)
 
         f = state.sender.notify(notifications)
@@ -550,11 +549,11 @@ class HandleDeath(task.BaseTask):
                  "which are: %r", state.descriptor.partners)
         notifications = list()
         for partner in state.descriptor.partners:
-            notifications.append(monitor.PendingNotification(
-                                             recipient=IRecipient(partner),
-                                             type='restarted',
-                                             origin=state.recp,
-                                             payload=new_address))
+            notifications.append(sender.PendingNotification(
+                recipient=IRecipient(partner),
+                type='restarted',
+                origin=state.recp,
+                payload=new_address))
         f = state.sender.notify(notifications)
         f.add_both(fiber.drop_param, self._death_handled, new_address)
         return f
@@ -617,15 +616,18 @@ class HandleDeath(task.BaseTask):
             self.info('Trying to find an allocation anywhere in the cluster.')
             # first we need to clear the host partner, it is necessary, because
             # agent will bind to different exchange after the restart, so
-            # he will never receive the notification about burring his previous
-            # host
+            # he will never receive the notification
+            # about burring his previous host
             f = self._clear_host_partner()
-            f.add_callback(fiber.drop_param, raage.retrying_allocate_resource,
-                state.agent, resources=state.factory.resources,
-                categories=state.factory.categories, max_retries=3)
-            f.add_callback(self._request_starting_agent)
-            f.add_callback(self._send_restarted_notifications)
-            f.add_errback(self._finding_allocation_failed)
+            f.add_callback(fiber.inject_param, 2,
+                           state.agent.initiate_protocol,
+                           start_agent.GloballyStartAgent)
+            f.add_callback(fiber.call_param, 'notify_finish')
+            # GloballyStartAgent task is updating descriptor, to get things
+            # we need to redownload it here
+            f.add_callback(fiber.bridge_param, self._fetch_descriptor)
+            f.add_callbacks(self._send_restarted_notifications,
+                            self._global_restart_failed)
             return f
         elif self._cmp_strategy(RestartStrategy.monitor):
             self.info('Taking over the role of the died monitor.')
@@ -641,38 +643,16 @@ class HandleDeath(task.BaseTask):
                                             (self.factory.restart_strategy, )))
 
     @replay.immutable
-    def _finding_allocation_failed(self, state, fail):
+    def _global_restart_failed(self, state, fail):
         fail.trap(ProtocolFailed)
-        msg = ("Chaos monkey won this time! Despite 3 times trying we "
-               "failed to find the allocation for the the %r. "
-               "Just sending buried notifications." %
+        msg = ("Chaos monkey won this time! GloballyStartAgent task returned"
+               " failure. Just sending buried notifications for %r." %
                state.descriptor.document_type)
         exp = RestartFailed(msg)
-        f = self._send_buried_notifications()
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param, self._send_buried_notifications)
         f.add_callback(fiber.drop_param, state.medium.fail, exp)
         return f
-
-    @replay.mutable
-    def _request_starting_agent(self, state, (allocation_id, recp)):
-        # we are setting shard=None here first, because of the logic in
-        # Host Agent which prevents it from changing the shard field if it
-        # has been set to sth meaningfull (not in [None, 'lobby'])
-        f = state.descriptor.set_shard(state.agent, None)
-        f.add_callback(self._store_descriptor)
-        f.add_callback(fiber.drop_param, host.start_agent,
-            state.agent, recp, state.descriptor, allocation_id)
-        f.add_errback(self._starting_failed)
-        # POSSIBLE FIXME: should we get protected from host agent changing
-        # his mind now and not starting the agent?
-        # Error handler here could just retry everything.
-        return f
-
-    @replay.immutable
-    def _starting_failed(self, state, fail):
-        self.error("Starting agent failed with: %r, despite the fact "
-                   "that getting allocation was successful. "
-                   "I will retry the whole procedure.", fail)
-        return self._retry()
 
     @replay.journaled
     def _checkup_partners(self, state):
@@ -718,6 +698,12 @@ class HandleDeath(task.BaseTask):
     @replay.mutable
     def _clear_host_partner(self, state):
         f = state.descriptor.remove_host_partner(state.agent)
+        f.add_callback(self._store_descriptor)
+        return f
+
+    @replay.mutable
+    def _fetch_descriptor(self, state):
+        f = state.agent.get_document(state.recp.key)
         f.add_callback(self._store_descriptor)
         return f
 
@@ -777,161 +763,3 @@ class HandleDeath(task.BaseTask):
         if self._handled is not None:
             return self._handled
         return self._result
-
-
-class NotificationSender(task.StealthPeriodicTask):
-
-    protocol_id = 'notification-sender'
-
-    @replay.entry_point
-    def initiate(self, state, clerk=None, period=None):
-        state.clerk = clerk and IClerk(clerk)
-        period = period or DEFAULT_NOTIFICATION_PERIOD
-        # IRecipient -> list of PendingNotifications
-        return task.StealthPeriodicTask.initiate(self, period)
-
-    @replay.immutable
-    def run(self, state):
-        defers = list()
-        for agent_id, notifications in self._iter_outbox():
-            if not notifications:
-                continue
-
-            if state.clerk and state.clerk.has_patient(agent_id):
-                status = state.clerk.get_patient(agent_id)
-                if status.state == PatientState.alive:
-                    defers.append(self.flush_notifications(agent_id))
-            else:
-                defers.append(self.flush_notifications(agent_id))
-        return defer.DeferredList(defers)
-
-    @replay.mutable
-    def flush_notifications(self, state, agent_id):
-        return self._flush_next(agent_id)
-
-    @replay.immutable
-    def has_empty_outbox(self, state):
-        desc = state.agent.get_descriptor()
-        if desc.pending_notifications:
-            self.log('Pending notifications are: %r',
-                     desc.pending_notifications)
-            return False
-        return True
-
-    ### flushing notifications ###
-
-    @replay.mutable
-    def _flush_next(self, state, agent_id):
-        notification = self._get_first_pending(agent_id)
-        if notification:
-            recp = notification.recipient
-            f = requester.notify_partner(
-                state.agent, recp, notification.type,
-                notification.origin, notification.payload)
-            f.add_callbacks(fiber.drop_param, self._sending_failed,
-                            cbargs=(self._sending_cb, recp, notification, ),
-                            ebargs=(recp, ))
-            return f
-
-    @replay.mutable
-    def _sending_cb(self, state, recp, notification):
-        f = self._remove_notification(recp, notification)
-        f.add_both(fiber.drop_param, self._flush_next, str(recp.key))
-        return f
-
-    @replay.mutable
-    def _sending_failed(self, state, fail, recp):
-        fail.trap(ProtocolFailed)
-        # check that the document still exists, if not it means that this
-        # agent got buried
-
-        f = state.agent.get_document(recp.key)
-        f.add_callbacks(self._check_recipient, self._handle_not_found,
-                        ebargs=(recp, ), cbargs=(recp, ))
-        return f
-
-    @replay.journaled
-    def _handle_not_found(self, state, fail, recp):
-        fail.trap(NotFoundError)
-        return self._forget_recipient(recp)
-
-    @replay.journaled
-    def _check_recipient(self, state, desc, recp):
-        self.log("Descriptor is still there, waiting patiently for the agent.")
-
-        new_recp = IRecipient(desc)
-        if recp != new_recp:
-            return self._update_recipient(recp, new_recp)
-
-    ### methods for handling the list of notifications ###
-
-    @replay.journaled
-    def notify(self, state, notifications):
-        '''
-        Call this to schedule sending partner notification.
-        '''
-
-        def do_append(desc, notifications):
-            for notification in notifications:
-                if not isinstance(notification, monitor.PendingNotification):
-                    raise ValueError("Expected notify() params to be a list "
-                                     "of PendingNotification instance, got %r."
-                                     % notification)
-                key = str(notification.recipient.key)
-                if key not in desc.pending_notifications:
-                    desc.pending_notifications[key] = list()
-                desc.pending_notifications[key].append(notification)
-
-        return state.agent.update_descriptor(do_append, notifications)
-
-    @replay.immutable
-    def _iter_outbox(self, state):
-        desc = state.agent.get_descriptor()
-        return desc.pending_notifications.iteritems()
-
-    @replay.immutable
-    def _get_first_pending(self, state, agent_id):
-        desc = state.agent.get_descriptor()
-        pending = desc.pending_notifications.get(agent_id, list())
-        if pending:
-            return pending[0]
-
-    @replay.journaled
-    def _remove_notification(self, state, recp, notification):
-
-        def do_remove(desc, recp, notification):
-            try:
-                desc.pending_notifications[recp.key].remove(notification)
-                if not desc.pending_notifications[recp.key]:
-                    del(desc.pending_notifications[recp.key])
-            except (ValueError, KeyError, ):
-                self.warning("Tried to remove notification %r for "
-                             "agent_id %r from %r, but not found",
-                             notification, recp.key,
-                             desc.pending_notifications)
-
-        return state.agent.update_descriptor(do_remove, recp, notification)
-
-    @replay.journaled
-    def _forget_recipient(self, state, recp):
-
-        def do_remove(desc, recp):
-            res = desc.pending_notifications.pop(str(recp.key))
-
-        return state.agent.update_descriptor(do_remove, recp)
-
-    @replay.journaled
-    def _update_recipient(self, state, old, new):
-        old = IRecipient(old)
-        new = IRecipient(new)
-        if old.key != new.key:
-            raise AttributeError("Tried to subsituted recipient %r with %r, "
-                                 "the key should be the same!" % (old, new))
-
-        def do_update(desc, recp):
-            if not desc.pending_notifications.get(recp.key, None):
-                return
-            for notification in desc.pending_notifications[recp.key]:
-                notification.recipient = recp
-
-        return state.agent.update_descriptor(do_update, new)

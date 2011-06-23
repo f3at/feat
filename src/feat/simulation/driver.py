@@ -40,7 +40,7 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        d = ag.initiate(self._messaging, self._database, self._journaler)
+        d = ag.initiate(self._messaging, self._database, self._journaler, self)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -104,6 +104,7 @@ class Commands(manhole.Manhole):
             return matching[0]
 
     @manhole.expose()
+    @defer.inlineCallbacks
     def find_agent(self, agent_id):
         """
         Return the medium class of the agent with agent_id if the one is
@@ -115,7 +116,9 @@ class Commands(manhole.Manhole):
         except TypeError:
             pass
         agency = self.find_agency(agent_id)
-        return agency and agency.find_agent(agent_id)
+        if agency:
+            agent = yield agency.find_agent(agent_id)
+            defer.returnValue(agent)
 
     @manhole.expose()
     def count_shard_kings(self):
@@ -203,6 +206,12 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         del(self._breakpoints)
         del(self._parser)
         del(self._output)
+
+    def remove_agency(self, agency):
+        self._agencies.remove(agency)
+
+    def iter_agencies(self):
+        return self._agencies.__iter__()
 
     def iter_agents(self, agent_type=None):
         for agency in self._agencies:
