@@ -74,6 +74,13 @@ def release_modification(agent, host_agent_recipient, change_id):
     return agent.call_remote(host_agent_recipient, "release_modification",
                              change_id)
 
+
+def release_resource(agent, host_agent_recipient, alloc_id):
+    return agent.call_remote(host_agent_recipient, "release_resource",
+                             alloc_id)
+
+
+
 ### Private module stuff ###
 
 
