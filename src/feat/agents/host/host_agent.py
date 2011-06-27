@@ -259,6 +259,11 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     def release_modification(self, change_id):
         return resource.AgentMixin.release_modification(self, change_id)
 
+    @manhole.expose()
+    @rpc.publish
+    def release_resource(self, alloc_id):
+        return resource.AgentMixin.release_resource(self, alloc_id)
+
     ### Private Methods ###
 
     @replay.immutable
