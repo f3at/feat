@@ -10,8 +10,8 @@ from feat.agents.base import dbtools, sender
 from feat.agents.common import (raage, host, rpc, shard, monitor, export,
                                 start_agent)
 from feat.agents.monitor import intensive_care, clerk, simulation
-from feat.common import fiber, serialization, defer, time
-from feat.common import error, manhole, text_helper
+from feat.common import fiber, serialization, defer, time, log
+from feat.common import error, manhole, text_helper, first
 
 from feat.agents.monitor.interface import *
 from feat.interface.agency import *
@@ -22,6 +22,9 @@ from feat.interface.recipient import *
 @serialization.register
 class MonitoredPartner(agent.BasePartner):
 
+    instance_id = 0
+    location = "unknown"
+
     type_name = 'monitor->agent'
 
     def __init__(self, *args, **kwargs):
@@ -29,8 +32,8 @@ class MonitoredPartner(agent.BasePartner):
         self.instance_id = None
 
     def initiate(self, agent):
-        f = self._update_instance_id(agent)
-        f.add_callback(fiber.drop_param, agent.add_monitored, self)
+        f = self._update_monitoring_info(agent)
+        f.add_callback(agent.add_monitored)
         return f
 
     def on_goodbye(self, agent):
@@ -46,18 +49,24 @@ class MonitoredPartner(agent.BasePartner):
         agent.remove_monitored(self)
 
     def on_restarted(self, agent, old_recipient):
-        f = self._update_instance_id(agent)
-        f.add_callback(fiber.drop_param,
-                       agent.update_monitored, self, old_recipient)
+        f = self._update_monitoring_info(agent)
+        f.add_callback(agent.update_monitored, old_recipient)
         return f
 
-    def _update_instance_id(self, agent):
-        f = agent.get_document(self.recipient.key)
-        f.add_callback(self._instance_id_changed, agent)
+    def _update_monitoring_info(self, agent):
+        f = agent.query_monitoring_info(self.recipient)
+        f.add_callbacks(self._monitoring_info_changed,
+                        self._no_monitoring_info)
         return f
 
-    def _instance_id_changed(self, doc, agent):
-        self.instance_id = doc.instance_id
+    def _monitoring_info_changed(self, info):
+        self.instance_id = info.instance_id
+        self.location = info.location
+        return self
+
+    def _no_monitoring_info(self, _failure):
+        # Ignoring the error, going on with default values
+        return self
 
 
 @serialization.register
@@ -78,11 +87,12 @@ class ShardPartner(MonitoredPartner):
     type_name = 'monitor->shard'
 
     def initiate(self, agent):
-        agent.call_next(agent.update_neighbour_monitors)
+        agent.call_next(agent.update_neighbour_monitors,
+                        shard_recip=self.recipient)
 
 
 @serialization.register
-class HostPartner(MonitoredPartner):
+class HostPartner(MonitoredPartner, agent.HostPartner):
 
     type_name = 'monitor->host'
 
@@ -112,6 +122,9 @@ class MonitorAgentConfiguration(document.Document):
     document.field('heartbeat_dying_skips', DEFAULT_DYING_SKIPS)
     document.field('control_period', DEFAULT_CONTROL_PERIOD)
     document.field('notification_period', DEFAULT_NOTIFICATION_PERIOD)
+    document.field('enable_quarantine', True)
+    document.field('host_quarantine_length', DEFAULT_HOST_QUARANTINE_LENGTH)
+    document.field('self_quarantine_length', DEFAULT_SELF_QUARANTINE_LENGTH)
 
 
 dbtools.initial_data(MonitorAgentConfiguration)
@@ -161,8 +174,15 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
 
         config = state.medium.get_configuration()
         control_period = config.control_period
+        enable_quarantine = config.enable_quarantine
+        host_quarantine = config.host_quarantine_length
+        self_quarantine = config.self_quarantine_length
 
-        state.clerk = self.dependency(IClerkFactory, self, self)
+        state.clerk = self.dependency(IClerkFactory, self, self,
+                                      location=state.medium.get_hostname(),
+                                      enable_quarantine=enable_quarantine,
+                                      host_quarantine_length=host_quarantine,
+                                      self_quarantine_length=self_quarantine)
         state.intensive_care = self.dependency(IIntensiveCareFactory,
                                                self, state.clerk,
                                                control_period=control_period)
@@ -176,6 +196,14 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         state.clerk.startup()
         state.intensive_care.startup()
 
+    @replay.journaled
+    def on_disconnect(self, state):
+        state.clerk.on_disconnected()
+
+    @replay.journaled
+    def on_reconnect(self, state):
+        state.clerk.on_reconnected()
+
     ### ICoroner ###
 
     def on_patient_dead(self, patient):
@@ -185,21 +213,44 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
 
     @manhole.expose()
     @replay.immutable
-    def show_status(self, state):
-        tab = text_helper.Table(
-            fields=('agent_id', 'shard', 'counter', 'state', ),
-            lengths=(35, 45, 15, 20, ))
-        iterator = self.get_monitoring_status().iteritems()
-        return tab.render((k.key, k.shard, v['counter'], v['state'].name, )
-                           for k, v in iterator)
+    def show_monitoring_status(self, state):
+
+        def patients(patients):
+            tab = text_helper.Table(
+                    fields=('agent_id', 'shard', 'state', 'counter'),
+                    lengths=(37, 37, 7, 9))
+            return tab.render((k.key, k.shard, v['state'].name, v['counter'])
+                              for k, v in patients.iteritems())
+
+        def locations(locations):
+            tab = text_helper.Table(
+                    fields=('location', 'state', 'patients', ),
+                    lengths=(58, 12, 90))
+            return tab.render((k, v["state"].name, patients(v["patients"]))
+                              for k, v in locations.iteritems())
+
+        status = self.get_monitoring_status()
+        return locations(status["locations"])
 
     @manhole.expose()
     @replay.immutable
     def get_monitoring_status(self, state):
-        result = {}
-        for patient in state.intensive_care.iter_patients():
-            result[patient.recipient] = {"state": patient.state,
-                                         "counter": patient.counter}
+        locations = {}
+        result = {"state": state.clerk.state,
+                  "location": state.clerk.location,
+                  "locations": locations}
+
+        for loc in state.clerk.iter_locations():
+            patients = {}
+            location = {"state": loc.state,
+                        "patients": patients}
+            locations[loc.name] = location
+
+            for pat in loc.iter_patients():
+                patient = {"state": pat.state,
+                           "counter": pat.counter}
+                patients[pat.recipient] = patient
+
         return result
 
     @manhole.expose()
@@ -308,13 +359,14 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         return self.update_neighbour_monitors()
 
     @replay.mutable
-    def update_neighbour_monitors(self, state):
-        f = self._get_monitors()
+    def update_neighbour_monitors(self, state, shard_recip=None):
+        f = self._get_monitors(shard_recip=shard_recip)
         f.add_callback(self._update_monitors)
         return f
 
-    def _get_monitors(self):
-        return shard.query_structure(self, 'monitor_agent', distance=1)
+    def _get_monitors(self, shard_recip=None):
+        return shard.query_structure(self, 'monitor_agent',
+                                     shard_recip=shard_recip, distance=1)
 
     @replay.mutable
     def _update_monitors(self, state, monitors):
@@ -331,16 +383,27 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
             fibers.append(self._add_monitor_partner(monitor))
         for monitor in old:
             fibers.append(self._remove_monitor_partner(monitor))
-        return fiber.FiberList(fibers).succeed()
+
+        return fiber.FiberList(filter(None, fibers)).succeed()
 
     def _add_monitor_partner(self, recipient):
-        self.debug("Partnering with new monitor %s", recipient)
-        return self.establish_partnership(recipient)
+        ourself = self.get_own_address()
+        if ourself.key > recipient.key:
+            # We have the bigger one
+            self.debug("Partnering with new monitor %s", recipient)
+            return self.establish_partnership(recipient)
+        #FIXME: Maybe we should schedule a check to force partnership ?
+        self.debug("Waiting for monitor %s to propose", recipient)
 
     @replay.immutable
     def _remove_monitor_partner(self, state, recipient):
-        self.debug("Leaving old monitor %s", recipient)
-        return self.breakup(recipient)
+        ourself = self.get_own_address()
+        if ourself.key > recipient.key:
+            # We have the bigger one
+            self.debug("Breaking up with old monitor %s", recipient)
+            return self.breakup(recipient)
+        #FIXME: Maybe we should schedule a check to force breakup ?
+        self.debug("Waiting for old monitor %s to breakup", recipient)
 
     ### protected ###
 
@@ -352,7 +415,8 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         dying_skips = config.heartbeat_dying_skips
         death_skips = config.heartbeat_death_skips
 
-        state.intensive_care.add_patient(partner.recipient, None,
+        state.intensive_care.add_patient(partner.recipient,
+                                         partner.location,
                                          period=period,
                                          dying_skips=dying_skips,
                                          death_skips=death_skips)
@@ -659,7 +723,11 @@ class HandleDeath(task.BaseTask):
         self.debug('Checking up on the partners, which are: %r',
                    state.descriptor.partners)
         fibers = list()
+        agent_id = state.agent.get_agent_id()
         for partner in state.descriptor.partners:
+            if partner.recipient.key == agent_id:
+                # We don't want to monitor ourself
+                continue
             f = requester.ping(state.agent, partner)
             f.add_callbacks(self._ping_success, self._ping_failed,
                             cbargs=(partner, ), ebargs=(partner, ))

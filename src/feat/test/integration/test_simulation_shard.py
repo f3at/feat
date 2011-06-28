@@ -131,14 +131,14 @@ class TestShardNotification(common.SimulationTest):
             self.assertEqual(new_shards[0], IRecipient(shard))
             agent.clear()
 
-        def check_shard_gone(agent_medium, shard_medium):
+        def check_shard_gone(agent_medium, *shard_mediums):
             agent = agent_medium.get_agent()
-            shard = shard_medium.get_agent()
+            shards = [IRecipient(m.get_agent()) for m in shard_mediums]
             new_shards = agent.get_new_shards()
             old_shards = agent.get_old_shards()
             self.assertEqual(len(new_shards), 0)
-            self.assertEqual(len(old_shards), 1)
-            self.assertEqual(old_shards[0], IRecipient(shard))
+            self.assertEqual(len(old_shards), len(shards))
+            self.assertEqual(set(old_shards), set(shards))
             agent.clear()
 
         drv = self.driver
@@ -207,7 +207,7 @@ class TestShardNotification(common.SimulationTest):
 
         yield self.wait_for_idle(10)
 
-        check_no_changes(na1)
+        check_shard_gone(na1, sa2, sa3)
         check_shard_gone(na2a, sa1)
         check_shard_gone(na2b, sa1)
         check_shard_gone(na3, sa1)

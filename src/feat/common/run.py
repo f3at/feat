@@ -10,10 +10,11 @@ from twisted.internet import reactor
 from feat.agencies.net import agency
 from feat.common import log
 
-PROCESS_TYPE = 'feat'
-SERVICE_NAME = 'host'
-LOGDIR = '/var/log/feat'
-RUNDIR = '/var/log/feat'
+PROCESS_TYPE = "feat"
+SERVICE_NAME = "host"
+DAEMONIZE_TO = "/"
+LOGDIR = "/var/log/feat"
+RUNDIR = "/var/log/feat"
 
 
 class OptionError(Exception):
@@ -36,16 +37,14 @@ def add_options(parser):
     group.add_option('-s', '--service-name',
                      action="store", type="string", dest="serviceName",
                      help="name to use for flog and pid files "
-                          "when run as a daemon",
-                     default=SERVICE_NAME)
+                          "when run as a daemon")
     group.add_option('-D', '--daemonize',
                      action="store_true", dest="daemonize",
                      default=False,
                      help="run in background as a daemon")
     group.add_option('', '--daemonize-to',
                      action="store", dest="daemonizeTo",
-                     help="what directory to run from when daemonizing",
-                     default='/')
+                     help="what directory to run from when daemonizing")
     group.add_option('-L', '--logdir',
                       action="store", dest="logdir",
                       help=("agent log directory (default: %s)" % LOGDIR),
@@ -85,6 +84,13 @@ class bootstrap(object):
                 print >> sys.stderr, "ERROR: %s" % str(value)
                 return True
             return
+
+        if self.opts.daemonize:
+            if not self.opts.daemonizeTo:
+                self.opts.daemonizeTo = DAEMONIZE_TO
+            if not self.opts.serviceName:
+                self.opts.serviceName = SERVICE_NAME
+
         startup(PROCESS_TYPE, self.opts.serviceName, self.opts.daemonize,
                 self.opts.daemonizeTo, self.opts.logdir, self.opts.rundir)
         reactor.run()

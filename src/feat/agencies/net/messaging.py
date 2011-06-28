@@ -7,9 +7,8 @@ from feat.extern.txamqp.content import Content
 from feat.extern.txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
-from twisted.internet import defer
 
-from feat.common import log, enum, error_handler, time
+from feat.common import log, defer, enum, error_handler, time
 from feat.common.serialization import banana
 from feat.agencies.interface import IConnectionFactory, IDbConnectionFactory
 from feat.agencies.messaging import Connection, Queue
@@ -29,7 +28,7 @@ class MessagingClient(AMQClient, log.Logger):
         self._password = password
 
         log.Logger.__init__(self, factory)
-        AMQClient.__init__(self, delegate, vhost, spec)
+        AMQClient.__init__(self, delegate, vhost, spec, heartbeat=10)
 
         self._channel_counter = 0
 

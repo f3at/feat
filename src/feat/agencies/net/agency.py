@@ -178,6 +178,9 @@ class Agency(agency.Agency):
         # by host agent
         self._flushing_sem = defer.DeferredSemaphore(1)
 
+    def wait_event(self, agent_id, event):
+        return self._broker.wait_event(agent_id, event)
+
     @manhole.expose()
     def spawn_agent(self, desc, *args, **kwargs):
         '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
@@ -356,6 +359,7 @@ class Agency(agency.Agency):
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
+        self._broker.push_event(medium.get_agent_id(), 'unregistered')
         self._start_host_agent_if_necessary()
 
     @manhole.expose()

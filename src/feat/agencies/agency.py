@@ -201,6 +201,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_hostname(self):
         return self.agency.get_hostname()
 
+    @replay.named_side_effect('AgencyAgent.get_hostname')
+    def get_ip(self):
+        return self.agency.get_ip()
+
     @manhole.expose()
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
@@ -295,7 +299,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         Factory = retrying.RetryingProtocolFactory
         factory = Factory(factory, max_retries=max_retries,
                           initial_delay=initial_delay, max_delay=max_delay)
-        if recipients:
+        if recipients is not None:
             args = (recipients, ) + args if args else (recipients, )
         return self._initiate_protocol(factory, args, kwargs)
 
@@ -876,9 +880,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _call(self, method, *args, **kwargs):
 
         def raise_on_fiber(res):
-            if isinstance(d.result, fiber.Fiber):
-                raise RuntimeError("We don't are not expecting %r method to "
+            if isinstance(res, fiber.Fiber):
+                raise RuntimeError("We are not expecting method %r to "
                                    "return a Fiber, which it did!" % method)
+            return res
 
         self.log('Calling method %r, with args: %r, kwargs: %r', method,
                  args, kwargs)
@@ -934,6 +939,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         agency is used for anything.
         '''
         self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+        self._ip = unicode(socket.gethostbyname(socket.gethostname()))
         self._database = IDbConnectionFactory(database)
         self._messaging = IConnectionFactory(messaging)
         self._journaler = IJournaler(journaler)
@@ -978,6 +984,10 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     @manhole.expose()
     def get_hostname(self):
         return self._hostname
+
+    @manhole.expose()
+    def get_ip(self):
+        return self._ip
 
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''

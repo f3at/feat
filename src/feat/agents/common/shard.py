@@ -29,17 +29,17 @@ def start_manager(agent):
     return f
 
 
-def query_structure(agent, partner_type, distance=1):
-    shard_recp = agent.query_partners('shard')
-    if not shard_recp:
+def query_structure(agent, partner_type, shard_recip=None, distance=1):
+    if shard_recip is None:
+        shard_recip = agent.query_partners('shard')
+    if not shard_recip:
         agent.warning(
             "query_structure() called, but agent doesn't have shard partner, "
-            "hence noone to send a query to.")
+            "hence none to send a query to.")
         return fiber.succeed([])
     else:
-        f = agent.call_remote(shard_recp, 'query_structure',
-                              partner_type, distance, _timeout=10)
-        return f
+        return agent.call_remote(shard_recip, 'query_structure',
+                                 partner_type, distance, _timeout=10)
 
 
 def get_host_list(agent):
@@ -121,8 +121,8 @@ class ShardNotificationCollector(collector.BaseCollector):
 
     @replay.immutable
     def on_new_neighbour(self, state, recipient):
-        state.handler.on_new_neighbour_shard(recipient)
+        return state.handler.on_new_neighbour_shard(recipient)
 
     @replay.immutable
     def on_neighbour_gone(self, state, recipient):
-        state.handler.on_neighbour_shard_gone(recipient)
+        return state.handler.on_neighbour_shard_gone(recipient)

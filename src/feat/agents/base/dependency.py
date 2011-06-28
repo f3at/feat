@@ -65,12 +65,12 @@ class AgentDependencyMixin(object):
         # or its canonical name.
         # Here we handle lazy imports in this second case.
         if callable(canonical_name):
-            calable = canonical_name
+            function = canonical_name
         else:
-            calable = reflect.named_object(canonical_name)
-        if not component.providedBy(calable):
+            function = reflect.named_object(canonical_name)
+        if not component.providedBy(function):
             raise UndefinedDependency(
                 'Expected object %r to provide the interface %r!' %\
-                (calable, component, ))
+                (function, component, ))
 
-        return calable(*args, **kwargs)
+        return function(*args, **kwargs)

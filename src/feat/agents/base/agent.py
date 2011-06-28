@@ -3,11 +3,13 @@
 
 import types
 
+from twisted.python.failure import Failure
 from zope.interface import implements
 
 from feat.common import (log, decorator, serialization, fiber, defer,
                          manhole, mro, )
 from feat.interface import generic, agent, protocols
+from feat.agencies import retrying
 from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor, rpc, export
@@ -65,6 +67,17 @@ class MonitorPartner(monitor.PartnerMixin, BasePartner):
 class HostPartner(BasePartner):
 
     type_name = "agent->host"
+
+#FIXME: At some point we should enable this code.
+#       host.SpecialHostPartnerMixin would have to be merged with base agent
+#       to prevent newly restarted agents to commit suicide and test would
+#       have to be fixed (good luck).
+#
+#    def on_buried(self, agent, brothers=None):
+#        if self.role == u"host":
+#            agent.info("Host agent %s died, %s committing suicide",
+#                       self.recipient.key, agent.get_full_id())
+#            agent.terminate_hard()
 
 
 class Partners(partners.Partners):
@@ -247,7 +260,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def establish_partnership(self, state, recp, allocation_id=None,
                               partner_allocation_id=None,
                               partner_role=None, our_role=None,
-                              substitute=None, allow_double=False):
+                              substitute=None, allow_double=False,
+                              max_retries=0):
         f = fiber.succeed()
         found = state.partners.find(recp)
         default_role = getattr(self.partners_class, 'default_role', None)
@@ -263,11 +277,17 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
             f.chain(fiber.fail(partners.DoublePartnership(msg)))
             return f
+#        f.add_callback(fiber.drop_param, self.initiate_protocol,
+#                       requester.Propose, recp, allocation_id,
+#                       partner_allocation_id,
+#                       our_role, partner_role, substitute)
+        factory = retrying.RetryingProtocolFactory(requester.Propose,
+                                                   max_retries=max_retries)
         f.add_callback(fiber.drop_param, self.initiate_protocol,
-                       requester.Propose, recp, allocation_id,
+                       factory, recp, allocation_id,
                        partner_allocation_id,
                        our_role, partner_role, substitute)
-        f.add_callback(requester.Propose.notify_finish)
+        f.add_callback(fiber.call_param, "notify_finish")
         return f
 
     @replay.journaled

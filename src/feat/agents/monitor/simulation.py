@@ -71,7 +71,10 @@ class Clerk(labour.BaseLabour):
     classProvides(IClerkFactory)
     implements(IClerk, IDoctor)
 
-    def __init__(self, assistant, coroner):
+    def __init__(self, assistant, coroner,
+                 location="localhost", enable_quarantine=True,
+                 host_quarantine_length=DEFAULT_HOST_QUARANTINE_LENGTH,
+                 self_quarantine_length=DEFAULT_SELF_QUARANTINE_LENGTH):
         labour.BaseLabour.__init__(self, IAssistant(assistant))
         self._coroner = ICoroner(coroner)
 
@@ -85,6 +88,14 @@ class Clerk(labour.BaseLabour):
 
     def cleanup(self):
         """Nothing."""
+
+    @replay.side_effect
+    def on_disconnected(self):
+        pass
+
+    @replay.side_effect
+    def on_reconnected(self):
+        pass
 
     @replay.side_effect
     def has_patient(self, identifier):

@@ -21,4 +21,4 @@ from feat.common.serialization import adapters
 from feat.agencies import contracts, requests, tasks, notifications
 
 # Imports for gateway
-from feat.gateway import adapters
+from feat.gateway import adapters, dummies

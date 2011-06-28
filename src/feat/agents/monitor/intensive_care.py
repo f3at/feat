@@ -19,13 +19,16 @@ class Patient(object):
         self.period = period or DEFAULT_HEARTBEAT_PERIOD
         self.dying_skips = dying_skip or DEFAULT_DYING_SKIPS
         self.death_skips = death_skip or DEFAULT_DEATH_SKIPS
-        self.last_beat = beat_time
         self.last_state = PatientState.alive
         self.state = PatientState.alive
-        self.counter = 0
+        self.reset(beat_time)
 
         assert self.dying_skips <= self.death_skips, \
                "Death skips should be bigger than dying skips"
+
+    def reset(self, beat_time):
+        self.last_beat = beat_time
+        self.counter = 0
 
     def beat(self, beat_time):
         self.counter += 1
@@ -92,6 +95,9 @@ class IntensiveCare(labour.BaseLabour):
     def resume(self):
         if self._task is None:
             agent = self.patron
+            beat_time = agent.get_time()
+            for patient in self._patients.itervalues():
+                patient.reset(beat_time)
             agent.register_interest(HeartBeatCollector, self)
             self._task = agent.initiate_protocol(CheckPatientTask, self,
                                                  self._control_period)

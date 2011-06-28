@@ -42,7 +42,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
     def reset(self):
         self.deads = []
         self.dyings = []
-        self.resurecteds = []
+        self.resurrecteds = []
 
     ### IAssistant ###
 
@@ -100,7 +100,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
         self.deads.append(patient.recipient)
 
     def on_patient_resurrected(self, patient):
-        self.resurecteds.append(patient.recipient)
+        self.resurrecteds.append(patient.recipient)
 
     ### private ###
 
@@ -183,7 +183,7 @@ class TestIntensiveCare(common.TestCase):
         self.assertEqual(len(patron.calls), 1)
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
 
         recip1 = recipient.Recipient("agent1", "shard1")
         recip2 = recipient.Recipient("agent2", "shard1")
@@ -200,7 +200,7 @@ class TestIntensiveCare(common.TestCase):
         self.assertEqual(len(patron.calls), 1)
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
 
         patron.now += 3
         patron.do_calls()
@@ -208,7 +208,7 @@ class TestIntensiveCare(common.TestCase):
         self.assertEqual(len(patron.calls), 1)
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
 
         # Both send heart-beat
         hb1 = message.Notification(payload=("agent1", 0, 0))
@@ -218,13 +218,13 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
 
         patron.do_calls()
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
 
         # Both skip 1.5 heart beats
         patron.now += 8
@@ -232,7 +232,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(len(patron.dyings), 2)
-        self.assertEqual(patron.resurecteds, [])
+        self.assertEqual(patron.resurrecteds, [])
         self.assertTrue(recip1 in patron.dyings)
         self.assertTrue(recip2 in patron.dyings)
 
@@ -247,8 +247,8 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
-        self.assertEqual(len(patron.resurecteds), 1)
-        self.assertTrue(recip1 in patron.resurecteds)
+        self.assertEqual(len(patron.resurrecteds), 1)
+        self.assertTrue(recip1 in patron.resurrecteds)
 
         patron.reset()
 
@@ -258,7 +258,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 1)
         self.assertEqual(len(patron.dyings), 1)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
         self.assertTrue(recip1 in patron.dyings)
         self.assertTrue(recip2 in patron.deads)
 
@@ -273,8 +273,8 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 1)
-        self.assertTrue(recip1 in patron.resurecteds)
+        self.assertEqual(len(patron.resurrecteds), 1)
+        self.assertTrue(recip1 in patron.resurrecteds)
 
         patron.reset()
 
@@ -287,7 +287,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
 
         # a few normal heart beats
         hb1 = message.Notification(payload=("agent1", 0, 4))
@@ -298,7 +298,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
 
         # Then resurect the dead
         hb1 = message.Notification(payload=("agent1", 0, 5))
@@ -311,8 +311,8 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 1)
-        self.assertTrue(recip2 in patron.resurecteds)
+        self.assertEqual(len(patron.resurrecteds), 1)
+        self.assertTrue(recip2 in patron.resurrecteds)
 
         patron.reset()
 
@@ -326,7 +326,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
 
         # Remove patient, and stop heart-beats
         monitor.remove_patient(recip1)
@@ -336,7 +336,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 1)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
         self.assertTrue(recip2 in patron.dyings)
 
         patron.reset()
@@ -346,7 +346,7 @@ class TestIntensiveCare(common.TestCase):
 
         self.assertEqual(len(patron.deads), 1)
         self.assertEqual(len(patron.dyings), 0)
-        self.assertEqual(len(patron.resurecteds), 0)
+        self.assertEqual(len(patron.resurrecteds), 0)
         self.assertTrue(recip2 in patron.deads)
 
         monitor.cleanup()

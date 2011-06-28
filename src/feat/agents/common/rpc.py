@@ -44,9 +44,18 @@ class AgentMixin(object):
 
     ### IRPCClient Methods ###
 
-    @replay.journaled
-    def call_remote(self, state, recipient, fun_id, *args, **kwargs):
+    def call_remote(self, recipient, fun_id, *args, **kwargs):
+        #FIXME: _timeout should be made deprecated
         timeout = kwargs.pop('_timeout', 10)
+        return self.call_remote_ex(recipient, fun_id, args, kwargs,
+                                   timeout=timeout)
+
+    @replay.journaled
+    def call_remote_ex(self, state, recipient, fun_id,
+                       args=None, kwargs=None, timeout=10):
+        args = args or ()
+        kwargs = kwargs or {}
+
         f = fiber.Fiber()
         f.add_callback(self.initiate_protocol,
                        recipient, fun_id, *args, **kwargs)
