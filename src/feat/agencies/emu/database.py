@@ -114,21 +114,30 @@ class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
         iterator = (self._perform_map(doc, factory)
                     for doc in self._iterdocs())
         d = defer.succeed(iterator)
-        d.addCallback(self._flatten)
+        d.addCallback(self._flatten, **options)
         if use_reduce:
             d.addCallback(self._perform_reduce, factory)
         return d
 
     ### private
 
-    def _flatten(self, iterator):
+    def _matches_filter(self, tup, **filter_options):
+        # We only support filtering by key at the moment
+        if 'key' in filter_options:
+            if filter_options['key'] != tup[0]:
+                return False
+        return True
+
+    def _flatten(self, iterator, **filter_options):
         '''
         iterator here gives as lists of tuples. Method flattens the structure
         to a single list of tuples.
         '''
         resp = list()
         for entry in iterator:
-            resp += entry
+            for tup in entry:
+                if self._matches_filter(tup, **filter_options):
+                    resp.append(tup)
         return resp
 
     def _perform_map(self, doc, factory):
