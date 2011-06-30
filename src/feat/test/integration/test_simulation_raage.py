@@ -60,8 +60,8 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         self.raage_agent = raage_medium.get_agent()
         self.host_medium = self.get_local('host_medium')
         self.host_agent = self.get_local('host_agent')
-        self.req_agent = self.driver.find_agent(
-            self.get_local('req_desc')).get_agent()
+        medium = yield self.driver.find_agent(self.get_local('req_desc'))
+        self.req_agent = medium.get_agent()
 
     def testValidateProlog(self):
         self.assertEqual(1, self.count_agents('host_agent'))

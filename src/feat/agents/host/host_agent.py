@@ -122,9 +122,15 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
         Called after partner has been restarted. It checks our agency
         is in charge of this agent. If not it removes the partnership.
         '''
-        if not state.medium.check_if_hosted(recp.key):
+        f = fiber.succeed(recp.key)
+        f.add_callback(state.medium.check_if_hosted)
+        f.add_callback(self._got_if_hosted, recp)
+        return f
+
+    def _got_if_hosted(self, is_hosted, recp):
+        if not is_hosted:
             self.debug('Detected that agent with recp %r has moved to '
-                       'different agency, we are breaking up.')
+                       'different agency, we are breaking up.', recp)
             return self.breakup(recp)
 
     @replay.journaled

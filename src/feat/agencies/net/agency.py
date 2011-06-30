@@ -625,7 +625,7 @@ class Agency(agency.Agency):
         Will return AgencyAgent if agent is hosted by master agency,
         PB.Reference if it runs in stanadlone or None if it was not found.
         '''
-        local = self.find_agent_locally(agent_id)
+        local = yield self.find_agent_locally(agent_id)
         if local:
             defer.returnValue(local)
         for slave in self._broker.iter_slaves():

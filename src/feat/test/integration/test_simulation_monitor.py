@@ -69,8 +69,8 @@ class SingleHostMonitorSimulation(common.SimulationTest):
         monitor_medium = list(self.driver.iter_agents('monitor_agent'))[0]
         self.monitor_agent = monitor_medium.get_agent()
 
-        self.req_agent = self.driver.find_agent(
-                self.get_local('req_desc')).get_agent()
+        medium = yield self.driver.find_agent(self.get_local('req_desc'))
+        self.req_agent = medium.get_agent()
 
     @defer.inlineCallbacks
     def tearDown(self):

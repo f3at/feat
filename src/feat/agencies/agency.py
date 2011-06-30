@@ -172,9 +172,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def start_agent(self, desc, **kwargs):
         return self.agency.start_agent(desc, **kwargs)
 
-    @replay.named_side_effect('AgencyAgent.check_if_hosted')
+    @serialization.freeze_tag('AgencyAgent.check_if_hosted')
     def check_if_hosted(self, agent_id):
-        return self.agency.find_agent(agent_id) is not None
+        d = self.agency.find_agent(agent_id)
+        d.addCallback(bool)
+        return d
 
     def on_killed(self):
         '''called as part of SIGTERM handler.'''
@@ -1092,8 +1094,9 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
                     if isinstance(desc, descriptor.Descriptor)
                     else desc)
         self.log("I'm trying to find the agent with id: %s", agent_id)
-        return first(x for x in self._agents
-                     if x._descriptor.doc_id == agent_id)
+        result = first(x for x in self._agents
+                       if x._descriptor.doc_id == agent_id)
+        return defer.succeed(result)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
