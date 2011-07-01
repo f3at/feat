@@ -1,25 +1,43 @@
 from feat.agents.base import manager, replay, message, descriptor
+from feat.common import error
 
 __all__ = ['allocate_resource', 'AllocationManager', 'discover', 'Descriptor']
 
 
+class AllocationFailedError(error.FeatError):
+
+    def __init__(self, resources, *args, **kwargs):
+        msg = "Could not allocate resources: %r" % resources
+        error.FeatError.__init__(self, msg, *args, **kwargs)
+
+
 def allocate_resource(agent, resources, shard=None,
                       categories={}, max_distance=None):
+
+    def on_error(f):
+        raise AllocationFailedError(resources, cause=f)
+
     f = discover(agent, shard)
     f.add_callback(lambda recp: agent.initiate_protocol(
         AllocationManager, recp, resources, categories, max_distance))
     f.add_callback(lambda x: x.notify_finish())
+    f.add_errback(on_error)
     return f
 
 
 def retrying_allocate_resource(agent, resources, shard=None,
                                categories={}, max_distance=None,
                                max_retries=3):
+
+    def on_error(f):
+        raise AllocationFailedError(resources, cause=f)
+
     f = discover(agent, shard)
     f.add_callback(lambda recp: agent.retrying_protocol(
         AllocationManager, recp, max_retries=max_retries,
         args=(resources, categories, max_distance, )))
     f.add_callback(lambda x: x.notify_finish())
+    f.add_errback(on_error)
     return f
 
 
