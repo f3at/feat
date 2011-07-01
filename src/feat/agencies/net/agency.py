@@ -604,7 +604,7 @@ class Agency(agency.Agency):
         d = defer.Deferred()
         d.addCallback(defer.drop_param, self.wait_connected)
         d.addCallback(defer.drop_param, conn.save_document, desc)
-        d.addCallback(self.start_agent)
+        d.addCallback(self.start_agent, hostdef=self._hostdef)
         d.addBoth(defer.bridge_param, set_flag, False)
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
 
