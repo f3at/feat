@@ -86,7 +86,6 @@ class HostDef(document.Document):
     document.field('categories', DEFAULT_CATEGORIES)
     # List of ports ranges used for allocating new ports
     document.field('ports_ranges', DEFAULT_PORTS_RANGES)
-    document.field('ports_ranges', {})
 
 
 def allocate_ports(agent, recp, port_num, group):
