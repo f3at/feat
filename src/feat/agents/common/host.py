@@ -36,7 +36,6 @@ class HostDef(document.Document):
     document.field('categories', DEFAULT_CATEGORIES)
     # List of ports ranges used for allocating new ports
     document.field('ports_ranges', DEFAULT_PORTS_RANGES)
-    document.field('ports_ranges', {})
 
 
 def allocate_ports(agent, recp, port_num, group):
@@ -173,5 +172,3 @@ class Descriptor(descriptor.Descriptor):
 
     # Hostname of the machine, updated when an agent is started
     document.field('hostname', None)
-    # Range used for allocating new ports
-    document.field('port_range', (5000, 5999, ))
