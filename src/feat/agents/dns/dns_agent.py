@@ -91,7 +91,7 @@ class DNSAgent(agent.BaseAgent):
                    state.aa_ttl, state.ns, state.suffix)
 
         state.resolver = Resolver(state.suffix, state.ns, state.notify_cfg,
-                                  self._get_ip())
+                                  self._get_ip(), state.ns_ttl)
 
         state.labour = self.dependency(IDNSServerLabourFactory,
                                        self, state.resolver,
@@ -118,6 +118,16 @@ class DNSAgent(agent.BaseAgent):
             return
         self.error("Network error: port %d is not available." % state.port)
         #FIXME: should retry or shutdown the agent
+
+    @replay.immutable
+    def killed(self, state):
+        state.labour.cleanup()
+
+    @replay.mutable
+    def shutdown(self, state):
+        f = state.labour.cleanup()
+        f.add_callback(fiber.drop_result, agent.BaseAgent.shutdown, self)
+        return f
 
     @manhole.expose()
     @replay.mutable
@@ -184,7 +194,7 @@ class Resolver(authority.PySourceAuthority):
 
     type_name = "dns-resolver"
 
-    def __init__(self, suffix, ns, notify, host_ip):
+    def __init__(self, suffix, ns, notify, host_ip, ns_ttl):
         common.ResolverBase.__init__(self)
         self.records = {}
         r_soa = dns.Record_SOA(
@@ -207,7 +217,7 @@ class Resolver(authority.PySourceAuthority):
         self.records.setdefault(suffix, []).append(
             dns.Record_A(address=host_ip))
         self.records.setdefault(suffix, []).append(
-            dns.Record_NS(ns))
+            dns.Record_NS(ns, ns_ttl))
         self.cache = {}
 
     def add_record(self, prefix, suffix, ip, ttl):

@@ -2,7 +2,7 @@ import socket
 
 from twisted.names import server, common, dns, authority
 from twisted.python import log
-from twisted.internet import reactor, error
+from twisted.internet import reactor, error, defer
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
@@ -42,8 +42,9 @@ class Labour(labour.BaseLabour):
             return False
 
     def cleanup(self):
-        self._tcp_listener.stopListening()
-        return self._listener.stopListening()
+        d = defer.maybeDeferred(self._tcp_listener.stopListening)
+        d.addCallback(lambda _: self._listener.stopListening())
+        return d
 
     def get_host(self):
         return self._listener and self._listener.getHost()
