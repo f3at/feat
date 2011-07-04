@@ -57,9 +57,9 @@ def add_options(parser):
                            "Format: RES_NAME:RES_MAX. Example: 'epu:42'.",
                       metavar="HOST_DEF_ID", action="append", default=[])
     parser.add_option('-z', '--host-ports-ranges', dest="hostports",
-                      help="Add available port ranges by groups to the host agent. "
-                      "Format: GROUP_NAME:PORT_MIN:PORT_MAX. Example: "
-                      "'worker:1000:2000'.",
+                      help="Add available port ranges by groups to the "
+                      "host agent. Format: GROUP_NAME:PORT_MIN:PORT_MAX. "
+                      "Example: 'worker:1000:2000'.",
                       metavar="HOST_DEF_ID", action="append", default=[])
     parser.add_option('-g', '--host-category', dest="hostcat",
                     help="Add a category to the host agent. "
@@ -124,6 +124,7 @@ def check_category(catdef):
     if name == 'storage' and value in Storage.values():
         return name, Storage.get(value)
     raise OptionError("Invalid host category: %s" % catdef)
+
 
 def bootstrap(parser=None, args=None, descriptors=None):
     """Bootstrap a feat process, handling command line arguments.
