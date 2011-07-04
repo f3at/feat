@@ -52,10 +52,11 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
         resp += ["Migration check in entries."]
         t = text_helper.Table(
             fields=("Agent type", "Agent_id", "Shard",
-                    "Migratability", "Dependencies", ),
-            lengths=(20, 40, 40, 20, 50, ))
+                    "Migratability", "Dependencies", "Hostname"),
+            lengths=(20, 40, 40, 20, 50, 40))
         text = t.render(((x.agent_type, x.agent_id, x.shard,
-                          x.migratability.name, "\n".join(x.dependencies), )
+                          x.migratability.name, "\n".join(x.dependencies),
+                          x.hostname)
                          for x in migration.checkins))
         resp += [text]
         resp += [""]

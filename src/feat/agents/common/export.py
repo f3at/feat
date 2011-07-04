@@ -126,7 +126,8 @@ class AgentMigrationBase(object):
         recp = self.get_own_address()
         entry = CheckinEntry(agent_id=recp.key, shard=recp.shard,
                              migratability=self.migratability,
-                             agent_type=self.descriptor_type)
+                             agent_type=self.descriptor_type,
+                             hostname=state.medium.get_hostname())
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self.set_migration_dependencies,
                        entry)
@@ -145,8 +146,8 @@ class AgentMigrationBase(object):
     @rpc.publish
     @replay.journaled
     def get_migration_blackbox(self, state):
-        if hasattr(self, 'generate_blackbox'):
-            return self.generate_blackbox()
+        if hasattr(self, 'get_migration_state'):
+            return self.get_migration_state()
 
     @rpc.publish
     @manhole.expose()
@@ -180,6 +181,7 @@ class CheckinEntry(formatable.Formatable):
     formatable.field('dependencies', list())
     # information usefull only for debuging and inspection purpouse
     formatable.field('agent_type', None)
+    formatable.field('hostname', None)
 
     def get_dependant_entries(self, data):
         '''

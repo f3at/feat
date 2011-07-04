@@ -61,7 +61,7 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
         state.labour.startup()
 
     @replay.journaled
-    def generate_blackbox(self, state):
+    def get_migration_state(self, state):
         '''
         This is called before we get terminated during migration.
         '''
