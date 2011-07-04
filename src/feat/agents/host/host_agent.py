@@ -322,9 +322,8 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
 
         self.info("Setting host ports ranges to: %s",
                   ", ".join(["%s=%s:%s" % (g, s, e)
-                             for g, s, e  in ports_ranges]))
+                             for g, s, e in ports_ranges]))
         state.port_allocator.set_ports_groups(ports_ranges)
-
 
     @replay.immutable
     def check_requirements(self, state, doc):

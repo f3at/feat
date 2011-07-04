@@ -49,6 +49,7 @@ def allocate_ports(agent, recp, port_num, group):
     '''
     return agent.call_remote(recp, "allocate_ports", port_num, group)
 
+
 def release_ports(agent, recp, ports, group):
     '''
     Releases a list of ports for a given group in a host agent

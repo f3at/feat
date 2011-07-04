@@ -20,7 +20,6 @@ class PortAllocator(serialization.Serializable, log.Logger):
         log.Logger.__init__(self, logger)
         self.set_ports_groups(ports_groups)
 
-
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented
@@ -43,7 +42,7 @@ class PortAllocator(serialization.Serializable, log.Logger):
             self.ports_groups[group] = (start, stop, [])
         # Add the default group
         if self.DEFAULT_GROUP not in self.ports_groups:
-            self.ports_groups[self.DEFAULT_GROUP]  = (0, 0, [])
+            self.ports_groups[self.DEFAULT_GROUP] = (0, 0, [])
 
     def reserve_ports(self, num_ports, group=DEFAULT_GROUP):
         """
@@ -59,7 +58,8 @@ class PortAllocator(serialization.Serializable, log.Logger):
         while num_ports > 0:
             if not False in bitmap:
                 raise PortAllocationError(
-                    'Could not allocate %r ports to group %r' % (num_ports, group))
+                    'Could not allocate %r '
+                    'ports to group %r' % (num_ports, group))
             i = bitmap.index(False)
             ret.append(start + i)
             bitmap[i] = True
