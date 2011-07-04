@@ -8,7 +8,7 @@ from feat.test.integration import common
 from feat.interface.protocols import ProtocolFailed
 from feat.common.text_helper import format_block
 from feat.agents.base import recipient, dbtools
-from feat.agents.common import host
+from feat.agents.common import host, raage
 from feat.interface.agent import Access, Address, Storage
 
 
@@ -91,7 +91,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         yield self.host_medium.wait_for_protocols_finish()
         checkAllocation(self, self.host_agent, resources)
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, ProtocolFailed)
+        self.assertFailure(d, raage.AllocationFailedError)
         yield d
 
     @defer.inlineCallbacks
@@ -99,7 +99,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         resources = {'beers': 999}
         categories = {}
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, ProtocolFailed)
+        self.assertFailure(d, raage.AllocationFailedError)
         yield d
 
     @defer.inlineCallbacks
@@ -107,7 +107,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         resources = {'host': 1}
         categories = {'address': Address.fixed}
         d = self.req_agent.request_resource(resources, categories)
-        self.assertFailure(d, ProtocolFailed)
+        self.assertFailure(d, raage.AllocationFailedError)
         yield d
 
 
@@ -315,7 +315,7 @@ class ContractNestingSimulation(common.SimulationTest):
         self.info("Starting test")
         resources = dict(host=1)
         d = self.req_agent.request_local_resource(resources, {})
-        self.assertFailure(d, ProtocolFailed)
+        self.assertFailure(d, raage.AllocationFailedError)
         yield d
         self.assert_allocated('host', 0)
 
