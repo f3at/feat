@@ -25,7 +25,7 @@ class CheckInContractor(contractor.NestingContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
-        state.migration_id = announcement.payload.ident
+        state.migration_id = announcement.payload['migration_id']
         keep_sender = (announcement.level == 0)
         # If we are on lvl 0 it means that we are host agent and it was
         # export agent who sended this announcement. If he is running on
@@ -48,6 +48,7 @@ class CheckInContractor(contractor.NestingContractor):
         entries = list()
         for bid in bids:
             entries += bid.payload
+        own_entry.migration_ids = [state.migration_id]
         entries += [own_entry]
         state.agent.set_migrating(state.migration_id)
 
@@ -57,7 +58,7 @@ class CheckInContractor(contractor.NestingContractor):
 
     @replay.mutable
     def _cancel_migration(self, state, *_):
-        state.agent.unregister_from_migration(state.migration_id)
+        state.agent.unregister_from_migration([state.migration_id])
 
     expired = _cancel_migration
     cancelled = _cancel_migration
@@ -152,13 +153,18 @@ class AgentMigrationBase(object):
     @rpc.publish
     @manhole.expose()
     @replay.mutable
-    def unregister_from_migration(self, state, migration_id):
-        if migration_id not in state.migrations:
-            raise KeyError("unregister_from_migration() called with "
+    def unregister_from_migration(self, state, migration_ids):
+        for migration_id in migration_ids:
+            if migration_id not in state.migrations:
+                # deliberately don't raise exception here, this condition
+                # is an error but not a fatal one, it should not stop other
+                # parts of algorithm working
+                self.error("unregister_from_migration() called with "
                            "migration_id: %r, but the migrations we know "
-                           "at this point are: %r." %
-                           (migration_id, state.migrations, ))
-        state.migrations.remove(migration_id)
+                           "at this point are: %r.",
+                           migration_id, state.migrations)
+            else:
+                state.migrations.remove(migration_id)
 
 
 @descriptor.register('export_agent')
@@ -182,6 +188,8 @@ class CheckinEntry(formatable.Formatable):
     # information usefull only for debuging and inspection purpouse
     formatable.field('agent_type', None)
     formatable.field('hostname', None)
+    # list of migrations this agent have checked into
+    formatable.field('migration_ids', list())
 
     def get_dependant_entries(self, data):
         '''

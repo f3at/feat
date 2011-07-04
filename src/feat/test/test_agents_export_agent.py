@@ -12,43 +12,31 @@ class CheckinListTest(common.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         yield common.TestCase.setUp(self)
-        self.migration = export_agent.Migration()
-        self.list = self.migration.checkins
+        self.migration = export_agent.Migration(
+            common.DummyRecorderNode(self))
+        self.list = self.migration.get_checkin_entries()
 
-    def reset(self):
-        self.migration.reset()
-        self.migration.checkins = self.list
+    def testMultihostMigration(self):
+        (hosts, shard, monitor, raage, alert,
+         signal, manager, worker1, worker2) = self.generate_test_shard()
+        self.migration.analyze(hosts)
+        self.assertTrue(self.migration.is_completable())
+        self.assertEqual(11, len(self.migration.get_steps()))
 
-    def generate_test_shard(self):
-        '''
-        Entries for shard with 3 hosts, structural agents and the one simple
-        flt flow.
-        Host 1 runs all the structural agents.
-        Host 2 runs signal agent, manager and one worker.
-        Host 3 runs one worker and alert agent.
-        '''
-        hosts = map(lambda x: self.host_entry(), range(3))
-        shard = self.shard_entry()
-        raage = self.raage_entry()
-        monitor = self.monitor_entry()
-        alert = self.alert_entry()
-        entries = self.flow_entries()
+        def with_strat(steps, strat):
+            for x in steps:
+                if x.strategy == strat:
+                    yield x
 
-        hosts[0].add_dependency(shard)
-        hosts[0].add_dependency(raage)
-        hosts[0].add_dependency(monitor)
-        hosts[1].add_dependency(entries[0])
-        hosts[1].add_dependency(entries[1])
-        hosts[1].add_dependency(entries[2])
-        hosts[2].add_dependency(entries[3])
-        hosts[2].add_dependency(alert)
-
-        all_entries = entries + hosts + [shard, raage, monitor, alert]
-        for e in all_entries:
-            self.list.add_entry(e)
-        signal, manager, worker1, worker2 = entries
-        return (hosts, shard, monitor, raage, alert,
-                signal, manager, worker1, worker2)
+        steps = self.migration.get_steps()
+        self.assertEqual(
+            3, len(list(with_strat(steps, export.Migratability.host))))
+        self.assertEqual(
+            3, len(list(with_strat(steps, export.Migratability.locally))))
+        self.assertEqual(
+            1, len(list(with_strat(steps, export.Migratability.exportable))))
+        self.assertEqual(
+            3, len(list(with_strat(steps, export.Migratability.shutdown))))
 
     def testRecursiveDependencyFirstStep(self):
         (hosts, shard, monitor, raage, alert,
@@ -59,7 +47,7 @@ class CheckinListTest(common.TestCase):
                           self.list.generate_migration, hosts[0].agent_id)
         self.migration.analyze(hosts[0])
         self.assertFalse(self.migration.is_completable())
-        self.assertIsInstance(self.migration.problem,
+        self.assertIsInstance(self.migration.get_problem(),
                               export_agent.RecursiveDependency)
 
     def testRecursiveDependencyTwoSteps(self):
@@ -114,7 +102,7 @@ class CheckinListTest(common.TestCase):
                                hosts[0].agent_id)
         self.migration.analyze(hosts[0])
         self.assertFalse(self.migration.is_completable())
-        assert_on_partial_host0(self.migration.steps)
+        assert_on_partial_host0(self.migration.get_steps())
         self.reset()
 
         # host 0 cannot be migrated as it runs DNS agent who need to live as
@@ -124,7 +112,7 @@ class CheckinListTest(common.TestCase):
                           self.list.generate_migration,
                           hosts[0].agent_id)
         self.migration.analyze(hosts[0])
-        assert_on_partial_host0(self.migration.steps)
+        assert_on_partial_host0(self.migration.get_steps())
         self.assertFalse(self.migration.is_completable())
 
         self.reset()
@@ -134,7 +122,7 @@ class CheckinListTest(common.TestCase):
                           self.list.generate_migration,
                           hosts[1].agent_id)
         self.migration.analyze(hosts[1])
-        assert_on_partial_host1(self.migration.steps)
+        assert_on_partial_host1(self.migration.get_steps())
         self.assertFalse(self.migration.is_completable())
 
     def testGeneratingMigration(self):
@@ -143,64 +131,64 @@ class CheckinListTest(common.TestCase):
 
         # Test migration Host 0
         self.migration.analyze(hosts[0])
-        self.assertEqual(4, len(self.migration.steps))
+        self.assertEqual(4, len(self.migration.get_steps()))
         ids = list()
-        for step in self.migration.steps[0:3]:
+        for step in self.migration.get_steps()[0:3]:
             self.assertEqual(step.strategy, export.Migratability.locally)
             ids.append(step.agent_id)
         self.assertEqual(set(ids), self.extract_ids([shard, raage, monitor]))
 
-        step = self.migration.steps[3]
+        step = self.migration.get_steps()[3]
         self.assertEqual(step.agent_id, hosts[0].agent_id)
         self.assertEqual(step.strategy, export.Migratability.host)
         kill_list = self.migration.get_kill_list()
         self.assertIn(hosts[0].shard, kill_list)
         self.assertEqual([hosts[0].agent_id], kill_list[hosts[0].shard])
         self.migration.remove_local_migrations(hosts[0].shard)
-        self.assertEqual(1, len(self.migration.steps))
+        self.assertEqual(1, len(self.migration.get_steps()))
         self.assertEqual(export.Migratability.host,
-                         self.migration.steps[0].strategy)
+                         self.migration.get_steps()[0].strategy)
 
         # Test migration Host 1
         self.reset()
         self.migration.analyze(hosts[1])
         self.assertTrue(self.migration.is_completable())
-        self.assertEqual(5, len(self.migration.steps))
+        self.assertEqual(5, len(self.migration.get_steps()))
 
-        step = self.migration.steps[0]
+        step = self.migration.get_steps()[0]
         self.assertEqual(signal.agent_id, step.agent_id)
         self.assertEqual(step.strategy,
                          export.Migratability.exportable)
         ids = list()
-        for step in self.migration.steps[1:4]:
+        for step in self.migration.get_steps()[1:4]:
             self.assertEqual(step.strategy,
                              export.Migratability.shutdown)
             ids.append(step.agent_id)
 
         self.assertEqual(set(ids),
                          self.extract_ids([worker1, worker2, manager]))
-        step = self.migration.steps[4]
+        step = self.migration.get_steps()[4]
         self.assertEqual(step.agent_id, hosts[1].agent_id)
         self.assertEqual(step.strategy, export.Migratability.host)
 
         # Test migration Host 2
         self.reset()
         self.migration.analyze(hosts[2])
-        self.assertEqual(6, len(self.migration.steps))
-        step = self.migration.steps[0]
+        self.assertEqual(6, len(self.migration.get_steps()))
+        step = self.migration.get_steps()[0]
         self.assertEqual(alert.agent_id, step.agent_id)
         self.assertEqual(step.strategy, export.Migratability.globally)
-        step = self.migration.steps[1]
+        step = self.migration.get_steps()[1]
         self.assertEqual(signal.agent_id, step.agent_id)
         self.assertEqual(step.strategy, export.Migratability.exportable)
         ids = list()
-        for step in self.migration.steps[2:5]:
+        for step in self.migration.get_steps()[2:5]:
             self.assertEqual(step.strategy,
                              export.Migratability.shutdown)
             ids.append(step.agent_id)
         self.assertEqual(set(ids),
                          self.extract_ids([worker1, worker2, manager]))
-        step = self.migration.steps[5]
+        step = self.migration.get_steps()[5]
         self.assertEqual(step.agent_id, hosts[2].agent_id)
         self.assertEqual(step.strategy, export.Migratability.host)
 
@@ -278,3 +266,39 @@ class CheckinListTest(common.TestCase):
 
     def extract_ids(self, entries):
         return set(map(operator.attrgetter('agent_id'), entries))
+
+    def reset(self):
+        self.migration.reset()
+        for entry in self.list:
+            self.migration.checkin(entry)
+
+    def generate_test_shard(self):
+        '''
+        Entries for shard with 3 hosts, structural agents and the one simple
+        flt flow.
+        Host 1 runs all the structural agents.
+        Host 2 runs signal agent, manager and one worker.
+        Host 3 runs one worker and alert agent.
+        '''
+        hosts = map(lambda x: self.host_entry(), range(3))
+        shard = self.shard_entry()
+        raage = self.raage_entry()
+        monitor = self.monitor_entry()
+        alert = self.alert_entry()
+        entries = self.flow_entries()
+
+        hosts[0].add_dependency(shard)
+        hosts[0].add_dependency(raage)
+        hosts[0].add_dependency(monitor)
+        hosts[1].add_dependency(entries[0])
+        hosts[1].add_dependency(entries[1])
+        hosts[1].add_dependency(entries[2])
+        hosts[2].add_dependency(entries[3])
+        hosts[2].add_dependency(alert)
+
+        all_entries = entries + hosts + [shard, raage, monitor, alert]
+        for e in all_entries:
+            self.list.add_entry(e)
+        signal, manager, worker1, worker2 = entries
+        return (hosts, shard, monitor, raage, alert,
+                signal, manager, worker1, worker2)

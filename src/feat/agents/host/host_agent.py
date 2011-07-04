@@ -63,12 +63,16 @@ class ShardPartner(agent.BasePartner):
         If the requests to the neighbour timeouts, he is removed from the
         local list and the algorithm iterates in.
         '''
+        if agent.is_migrating():
+            return
         agent.info('Shard partner said goodbye.')
         recipients = map(operator.attrgetter('recipient'), brothers)
         return agent.resolve_missing_shard_agent_problem(recipients)
 
     def on_died(self, agent, brothers, monitor):
         agent.info('Shard partner died.')
+        if agent.is_migrating():
+            return
         recipients = map(operator.attrgetter('recipient'), brothers)
         task = agent.collectively_restart_shard(
             recipients, self.recipient.key, monitor)

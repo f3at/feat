@@ -195,6 +195,10 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
 
     @replay.mutable
     def fix_shard_structure(self, state):
+        if self.is_migrating():
+            # don't restart partners if they got terminated as part of the
+            # shard shutdown during migration process
+            return
         for partner_class in state.partners.shard_structure:
             factory = self.query_partner_handler(partner_class)
             if factory in state.tasks:
