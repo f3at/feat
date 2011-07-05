@@ -25,18 +25,20 @@ class MroMixin(object):
             argspec = inspect.getargspec(function)
             defaults = argspec.defaults and list(argspec.defaults) or list()
             kwargs = dict()
-            for arg in argspec.args:
+            for arg, default_index in zip(argspec.args,
+                                          range(-len(argspec.args), 0)):
                 if arg in ['self', 'state']:
                     continue
                 if arg in keywords:
                     consumed_keys.add(arg)
                     kwargs[arg] = keywords[arg]
-                elif len(defaults) > 0:
-                    kwargs[arg] = defaults.pop(0)
                 else:
-                    msg = ("Missing value for keyword argument %s "
-                           "of the method %r" % (arg, method))
-                    raise AttributeError(msg)
+                    try:
+                        kwargs[arg] = defaults[default_index]
+                    except IndexError:
+                        msg = ("Missing value for keyword argument %s "
+                               "of the method %r" % (arg, method))
+                        raise AttributeError(msg)
 
             f.add_callback(fiber.drop_param, method, self, **kwargs)
 

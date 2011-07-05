@@ -29,7 +29,9 @@ class MroTestBase(mro.MroMixin):
 
 class A(MroTestBase):
 
-    def spam(self, param_A='default'):
+    def spam(self, param_A='default', default_none=None, default_true=True):
+        assert default_none is None, default_none
+        assert default_true is True, default_true
         return self._call(A, param_A=param_A)
 
 
@@ -45,7 +47,8 @@ class B(A, Blank):
 
 class C(B, A):
 
-    def spam(self, param_C=None):
+    def spam(self, default_sth='sth', param_C=None):
+        assert default_sth == 'sth', default_sth
         return self._call(C, param_C=param_C)
 
 
