@@ -2,6 +2,7 @@ from zope.interface import directlyProvides, Interface
 
 from feat.interface.agency import ExecMode
 from feat.agents.base import (testsuite, agent, dependency, descriptor, )
+from feat.test import common
 
 
 class TestDependency(testsuite.TestCase):
@@ -38,6 +39,15 @@ class TestDependency(testsuite.TestCase):
                                   ExecMode.simulation, (SomeInterface, ))]
         self.assertRaises(dependency.UndefinedDependency, self.ball.call,
                           expected, self.agent.dependency, SomeInterface)
+
+
+class TestProblemWithAnnotations(common.TestCase):
+
+    def testDependenciesAreNotGlobal(self):
+        self.assertNotIn(SomeInterface,
+                         agent.BaseAgent._get_defined_components())
+        self.assertIn(SomeInterface,
+                      AgentWithDependency._get_defined_components())
 
 
 class SomeInterface(Interface):
