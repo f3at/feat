@@ -226,7 +226,7 @@ class Agency(agency.Agency):
 
         mc = self.config['manhole']
         ssh_port = int(mc["port"]) if mc["port"] is not None else None
-        self._ssh = ssh.ListeningPort(self,
+        self._ssh = ssh.ListeningPort(self, ssh.Commands(self),
                                       public_key=mc["public_key"],
                                       private_key=mc["private_key"],
                                       authorized_keys=mc["authorized_keys"],
