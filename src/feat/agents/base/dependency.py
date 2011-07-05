@@ -45,7 +45,8 @@ class AgentDependencyMixin(object):
         for klass in klasses:
             if not '_dependencies' in klass.__dict__:
                 continue
-            for component, value in klass.__dict__['_dependencies'].iteritems():
+            for component, value in \
+                    klass.__dict__['_dependencies'].iteritems():
                 if component in seen:
                     continue
                 seen.append(component)
