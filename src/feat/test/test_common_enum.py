@@ -41,6 +41,11 @@ except ValueError:
 
 class TestEnum(common.TestCase):
 
+    def testLogicalValues(self):
+        self.assertTrue(A.a)
+        self.assertTrue(A.b)
+        self.assertTrue(A.c)
+
     def testConstructor(self):
         self.assertIdentical(A.a, A(A.a))
         self.assertIdentical(A.b, A(A.b))
