@@ -183,7 +183,7 @@ Report bugs via the web at <http://code.google.com/p/couchdb-python>.
 def main():
     """Command-line entry point for running the view server."""
     import getopt
-    from couchdb import __version__ as VERSION
+    from . import __version__ as VERSION
 
     try:
         option_list, argument_list = getopt.gnu_getopt(
