@@ -121,11 +121,12 @@ def status(processName, rundir='/tmp', processType=PROCESS_TYPE):
     pid = getPid(rundir, processType, processName)
     if not pid:
         print "%s %s not running" % (processType, processName)
-        return
+        sys.exit(3)
     if checkPidRunning(pid):
         print "%s %s is running with pid %d" % (processType, processName, pid)
     else:
         print "%s %s dead (stale pid %d)" % (processType, processName, pid)
+        sys.exit(3)
 
 
 def stop(processName, rundir='/tmp', processType=PROCESS_TYPE):
