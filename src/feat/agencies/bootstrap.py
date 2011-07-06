@@ -61,16 +61,6 @@ def check_options(opts, args):
     return opts, args
 
 
-def start_agent(host_medium, desc, *args, **kwargs):
-    agent = host_medium.get_agent()
-    d = host_medium.save_document(desc)
-    d.addCallback(
-        lambda desc: agent.start_agent(desc.doc_id, *args, **kwargs))
-    d.addErrback(host_medium.agency._error_handler)
-    d.addCallback(lambda _: host_medium)
-    return d
-
-
 def check_category(catdef):
     parts = catdef.split(":", 1)
     name = parts[0].lower()
