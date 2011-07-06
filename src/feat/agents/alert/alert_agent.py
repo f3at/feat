@@ -4,6 +4,7 @@
 from feat.common import manhole, text_helper, serialization, formatable
 from feat.agents.base import (agent, replay, descriptor, alert, collector,
                               document, dbtools, dependency, )
+from feat.agents.common import export
 from feat.interface.protocols import *
 from feat.interface.agency import *
 
@@ -46,16 +47,25 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
     dependency.register(IEmailSenderLabourFactory,
                         simulation.Labour, ExecMode.simulation)
 
+    migratability = export.Migratability.globally
+
     @replay.mutable
-    def initiate(self, state):
+    def initiate(self, state, blackbox=None):
         interest = state.medium.register_interest(AlertsCollector)
         interest.bind_to_lobby()
         state.labour = self.dependency(IEmailSenderLabourFactory, self)
-        state.alerts = dict()
+        state.alerts = blackbox or dict()
 
     @replay.immutable
     def startup(self, state):
         state.labour.startup()
+
+    @replay.journaled
+    def get_migration_state(self, state):
+        '''
+        This is called before we get terminated during migration.
+        '''
+        return state.alerts
 
     @replay.mutable
     def append_alert(self, state, alert_msg, severity):

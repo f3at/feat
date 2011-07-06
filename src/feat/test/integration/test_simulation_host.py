@@ -236,6 +236,7 @@ class HostAgentCheckTest(common.SimulationTest):
         agents = [x for x in self.driver.iter_agents()]
         self.assertEqual(2, len(agents))
 
+    @defer.inlineCallbacks
     def testCheckRequeriments(self):
 
         def check_requeriments(categories):
@@ -249,7 +250,7 @@ class HostAgentCheckTest(common.SimulationTest):
 
         host_agent = self.get_local('host_agent')
         check_requeriments(host_agent._get_state().categories)
-        test_medium = self.driver.find_agent(self.get_local('test_desc'))
+        test_medium = yield self.driver.find_agent(self.get_local('test_desc'))
         test_agent = test_medium.get_agent()
         check_requeriments(test_agent.categories)
 

@@ -5,7 +5,7 @@ import operator
 from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
                               task, poster, notifier)
-from feat.agents.common import rpc, raage, host, monitor
+from feat.agents.common import rpc, raage, host, monitor, export
 from feat.common import fiber, defer, serialization, manhole, enum
 
 from feat.interface.protocols import *
@@ -150,12 +150,14 @@ dbtools.initial_data(ShardAgentConfiguration)
 
 
 @agent.register('shard_agent')
-class ShardAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
-                 resource.AgentMixin):
+class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
+                 host.SpecialHostPartnerMixin):
 
     partners_class = Partners
 
     restart_strategy = monitor.RestartStrategy.local
+
+    migratability = export.Migratability.locally
 
     @replay.mutable
     def initiate(self, state):
@@ -682,7 +684,8 @@ class JoinShardContractor(contractor.NestingContractor):
 
     @replay.mutable
     def announced(self, state, announcement):
-        allocation = state.agent.preallocate_resource(hosts=1)
+        allocation = (not state.agent.is_migrating() and
+                      state.agent.preallocate_resource(hosts=1))
 
         if allocation is not None:
             state.preallocation_id = allocation.id
@@ -888,14 +891,14 @@ class RestartPartner(AbstractStartPartner):
 
         f = state.agent.get_document(agent_id)
         f.add_callback(self._store_descriptor)
-        f.add_callback(self._remove_host_partner)
+        f.add_callback(fiber.drop_param, self._remove_host_partner)
         f.add_callback(fiber.drop_param, self._try_next)
         f.add_callback(self._notify_monitor)
         return f
 
     @replay.mutable
-    def _remove_host_partner(self, state, desc):
-        f = desc.remove_host_partner(state.agent)
+    def _remove_host_partner(self, state):
+        f = state.descriptor.remove_host_partner(state.agent)
         f.add_callback(self._store_descriptor)
         return f
 

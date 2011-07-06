@@ -10,7 +10,7 @@ from feat.common import (log, decorator, serialization, fiber, defer,
 from feat.interface import generic, agent, protocols
 from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
-from feat.agents.common import monitor
+from feat.agents.common import monitor, rpc, export
 
 from feat.interface.agent import *
 from feat.interface.agency import *
@@ -61,9 +61,16 @@ class MonitorPartner(monitor.PartnerMixin, BasePartner):
     type_name = "agent->monitor"
 
 
+@serialization.register
+class HostPartner(BasePartner):
+
+    type_name = "agent->host"
+
+
 class Partners(partners.Partners):
 
     partners.has_many("monitors", "monitor_agent", MonitorPartner)
+    partners.has_many("hosts", "host_agent", HostPartner)
 
 
 class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
@@ -71,8 +78,8 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
 
 
 class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
-                manhole.Manhole, dependency.AgentDependencyMixin,
-                monitor.AgentMixin):
+                manhole.Manhole, rpc.AgentMixin, export.AgentMigrationBase,
+                dependency.AgentDependencyMixin, monitor.AgentMixin):
 
     __metaclass__ = MetaAgent
 
@@ -175,6 +182,11 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return state.medium.get_descriptor()
 
     @replay.immutable
+    def get_configuration(self, state):
+        '''Returns a copy of the agent config.'''
+        return state.medium.get_configuration()
+
+    @replay.immutable
     def get_agent_id(self, state):
         '''Returns a global unique identifier for the agent.
         Do not change when the agent is restarted.'''
@@ -208,6 +220,16 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return generic.ITimeProvider(state.medium).get_time()
 
     ### Public Methods ###
+
+    @rpc.publish
+    @replay.journaled
+    def terminate_hard(self, state):
+        self.call_next(state.medium.terminate_hard)
+
+    @rpc.publish
+    @replay.journaled
+    def terminate(self, state):
+        self.call_next(state.medium.terminate)
 
     @manhole.expose()
     @replay.journaled
@@ -393,6 +415,10 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @replay.immutable
     def cancel_delayed_call(self, state, call_id):
         state.medium.cancel_delayed_call(call_id)
+
+    @replay.immutable
+    def observe(self, _method, *args, **kwargs):
+        state.medium.observe(_method, *args, **kwargs)
 
     ### Private Methods ###
 

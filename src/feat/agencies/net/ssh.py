@@ -12,106 +12,25 @@ from twisted.internet.error import CannotListenError
 from twisted.internet import reactor
 from twisted.conch.insults import insults
 
-from feat.common import log, manhole, reflect, first
-from feat.agents.base import descriptor
+from feat.common import log, manhole, reflect
 
 
-class ListeningPort(log.Logger):
+class ExitException(Exception):
+    pass
 
-    def __init__(self, agency, public_key=None, private_key=None,
-                 authorized_keys=None, port=None):
-        log.Logger.__init__(self, agency)
+
+class Commands(manhole.Manhole, manhole.Parser):
+
+    def __init__(self, agency):
+        manhole.Parser.__init__(self, agency, output=None, commands=self)
 
         self.agency = agency
-        self._listener = None
-        self.sshFactory = None
-        self.port = port or 6000
-
-        if not (public_key and private_key and authorized_keys):
-            self.info('Skipping manhole configuration. You need to specify '
-                      'public and private key files and authorized_keys file.')
-            return
-
-        try:
-            public_key_str = file(public_key).read()
-            private_key_str = file(private_key).read()
-
-            self.sshFactory = factory.SSHFactory()
-            self.sshFactory.portal = portal.Portal(SSHRealm(self.agency))
-            self.sshFactory.portal.registerChecker(KeyChecker(authorized_keys))
-
-            self.sshFactory.publicKeys = {
-                'ssh-rsa': keys.Key.fromString(data=public_key_str)}
-            self.sshFactory.privateKeys = {
-                'ssh-rsa': keys.Key.fromString(data=private_key_str)}
-        except IOError as e:
-            self.sshFactory = None
-            self.error('Failed to setup the manhole. File missing. %r', e)
-            return
-
-    def start_listening(self):
-        try:
-            if self.sshFactory:
-                self._listener = reactor.listenTCP(self.port, self.sshFactory)
-                self.info('Manhole listening on port: %d.', self.port)
-        except CannotListenError as e:
-            self.error('Cannot setup manhole. Reason: %r', e)
-
-    def stop_listening(self):
-        if self._listener:
-            self.info('Closing manhole listener.')
-            return self._listener.stopListening()
-
-
-class KeyChecker(checkers.SSHPublicKeyDatabase):
-
-    def __init__(self, keyfile):
-        self._keyfile = keyfile
-
-    def checkKey(self, credentials):
-        """
-        Retrieve the keys of the user specified by the credentials, and check
-        if one matches the blob in the credentials.
-        """
-        filename = self._keyfile
-        if not os.path.exists(filename):
-            return 0
-        lines = open(filename).xreadlines()
-        for l in lines:
-            l2 = l.split()
-            if len(l2) < 2:
-                continue
-            try:
-                if base64.decodestring(l2[1]) == credentials.blob:
-                    return 1
-            except binascii.Error:
-                continue
-        return 0
-
-
-class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
-
-    def __init__(self, ag):
-        recvline.HistoricRecvLine.__init__(self)
-        self.agency = ag
-        manhole.Parser.__init__(self, ag, None, self)
-
-    def connectionMade(self):
-        recvline.HistoricRecvLine.connectionMade(self)
-        self.output = self.terminal
         self.set_local(self.agency, 'agency')
-        self.terminal.write("Welcome to the manhole! Type help() for info.")
-        self.terminal.nextLine()
-        self.showPrompt()
-
-    def showPrompt(self):
-        self.terminal.write("> ")
-
-    def lineReceived(self, line):
-        manhole.Parser.dataReceived(self, line+'\n')
 
     def on_finish(self):
-        self.showPrompt()
+        self.output.write("> ")
+
+    ### methods exposed as root level ###
 
     @manhole.expose()
     def locals(self):
@@ -121,9 +40,7 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
     @manhole.expose()
     def exit(self):
         '''exit() -> Close connection.'''
-        self.terminal.write("Happy hacking!")
-        self.terminal.nextLine()
-        self.terminal.loseConnection()
+        raise ExitException()
 
     @manhole.expose()
     def get_document(self, doc_id):
@@ -188,17 +105,114 @@ class SSHProtocol(manhole.Parser, recvline.HistoricRecvLine, manhole.Manhole):
         return d
 
 
+class ListeningPort(log.Logger):
+
+    def __init__(self, logger, parser, public_key=None, private_key=None,
+                 authorized_keys=None, port=None):
+        log.Logger.__init__(self, logger)
+
+        self._listener = None
+        self.sshFactory = None
+        self.port = port or 6000
+
+        if not (public_key and private_key and authorized_keys):
+            self.info('Skipping manhole configuration. You need to specify '
+                      'public and private key files and authorized_keys file.')
+            return
+
+        try:
+            public_key_str = file(public_key).read()
+            private_key_str = file(private_key).read()
+
+            self.sshFactory = factory.SSHFactory()
+            self.sshFactory.portal = portal.Portal(SSHRealm(parser))
+            self.sshFactory.portal.registerChecker(KeyChecker(authorized_keys))
+
+            self.sshFactory.publicKeys = {
+                'ssh-rsa': keys.Key.fromString(data=public_key_str)}
+            self.sshFactory.privateKeys = {
+                'ssh-rsa': keys.Key.fromString(data=private_key_str)}
+        except IOError as e:
+            self.sshFactory = None
+            self.error('Failed to setup the manhole. File missing. %r', e)
+            return
+
+    def start_listening(self):
+        try:
+            if self.sshFactory:
+                self._listener = reactor.listenTCP(self.port, self.sshFactory)
+                self.info('Manhole listening on port: %d.', self.port)
+        except CannotListenError as e:
+            self.error('Cannot setup manhole. Reason: %r', e)
+
+    def stop_listening(self):
+        if self._listener:
+            self.info('Closing manhole listener.')
+            return self._listener.stopListening()
+
+
+class KeyChecker(checkers.SSHPublicKeyDatabase):
+
+    def __init__(self, keyfile):
+        self._keyfile = keyfile
+
+    def checkKey(self, credentials):
+        """
+        Retrieve the keys of the user specified by the credentials, and check
+        if one matches the blob in the credentials.
+        """
+        filename = self._keyfile
+        if not os.path.exists(filename):
+            return 0
+        lines = open(filename).xreadlines()
+        for l in lines:
+            l2 = l.split()
+            if len(l2) < 2:
+                continue
+            try:
+                if base64.decodestring(l2[1]) == credentials.blob:
+                    return 1
+            except binascii.Error:
+                continue
+        return 0
+
+
+class SSHProtocol(recvline.HistoricRecvLine):
+
+    def __init__(self, parser):
+        recvline.HistoricRecvLine.__init__(self)
+        self.parser = parser
+
+    def connectionMade(self):
+        recvline.HistoricRecvLine.connectionMade(self)
+        self.parser.output = self.terminal
+        self.terminal.write("Welcome to the manhole! Type help() for info.")
+        self.terminal.nextLine()
+        self.showPrompt()
+
+    def showPrompt(self):
+        self.terminal.write("> ")
+
+    def lineReceived(self, line):
+        try:
+            self.parser.dataReceived(line + '\n')
+        except ExitException:
+            self.terminal.write("Happy hacking!")
+            self.terminal.nextLine()
+            self.terminal.loseConnection()
+
+
 class SSHAvatar(avatar.ConchUser):
     implements(conchinterfaces.ISession)
 
-    def __init__(self, username, ag):
+    def __init__(self, username, parser):
         avatar.ConchUser.__init__(self)
         self.username = username
-        self.agency = ag
+        self.parser = parser
         self.channelLookup.update({'session': session.SSHSession})
 
     def openShell(self, protocol):
-        serverProtocol = insults.ServerProtocol(SSHProtocol, self.agency)
+        serverProtocol = insults.ServerProtocol(SSHProtocol, self.parser)
         serverProtocol.makeConnection(protocol)
         protocol.makeConnection(session.wrapProtocol(serverProtocol))
 
@@ -218,12 +232,12 @@ class SSHAvatar(avatar.ConchUser):
 class SSHRealm(object):
     implements(portal.IRealm)
 
-    def __init__(self, agency):
-        self.agency = agency
+    def __init__(self, parser):
+        self.parser = parser
 
     def requestAvatar(self, avatarId, mind, *interfaces):
         if conchinterfaces.IConchUser in interfaces:
-            return interfaces[0], SSHAvatar(avatarId, self.agency),\
+            return interfaces[0], SSHAvatar(avatarId, self.parser),\
                    lambda: None
         else:
             raise Exception("No supported interfaces found.")

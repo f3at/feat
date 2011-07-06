@@ -22,14 +22,17 @@ class CommonMixin(object):
         self.assertIsInstance(agent, shard_agent.ShardAgent)
         return agent.get_own_address().shard
 
-    def iter_partners(self, agent):
+    @defer.inlineCallbacks
+    def query_partners(self, agent):
         '''
         Generator returning the ShardAgent instances of partners being
         neighbours of the given ShardAgent.
         '''
+        result = []
         for p in agent.query_partners('neighbours'):
-            ag = self.driver.find_agent(p.recipient.key)
-            yield ag.get_agent()
+            ag = yield self.driver.find_agent(p.recipient.key)
+            result.append(ag.get_agent())
+        defer.returnValue(result)
 
     def _get_exp(self, *numbers, **kwargs):
         res = dict()
@@ -38,6 +41,7 @@ class CommonMixin(object):
             res[index] = num
         return res
 
+    @defer.inlineCallbacks
     def check_structure(self, expected):
         expected_kings = expected.pop('kings')
         seen_kings = 0
@@ -52,7 +56,8 @@ class CommonMixin(object):
             # check for self-partnership
             self.assertTrue(our_shard not in partners)
             # check for symetry of partnership
-            for partner in self.iter_partners(agent):
+            partners = yield self.query_partners(agent)
+            for partner in partners:
                 self.assertTrue(our_shard in self.partners_of(partner))
         for expectation, value in expected.iteritems():
             self.assertEqual(value, seen[expectation],

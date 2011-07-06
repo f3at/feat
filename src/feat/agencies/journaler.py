@@ -11,7 +11,8 @@ from twisted.spread import pb, jelly
 from twisted.internet import reactor
 
 from feat.common import (log, text_helper, error_handler, defer,
-                         formatable, enum, decorator, time, manhole, )
+                         formatable, enum, decorator, time, manhole,
+                         fiber, )
 from feat.agencies import common
 from feat.common.serialization import banana
 
@@ -706,12 +707,14 @@ class AgencyJournalEntry(object):
             'instance_id': instance_id,
             'journal_id': self._serializer.convert(journal_id),
             'function_id': function_id,
-            'args': self._serializer.convert(args or None),
-            'kwargs': self._serializer.convert(kwargs or None),
             'fiber_id': None,
             'fiber_depth': None,
-            'result': None,
             'side_effects': list()}
+
+        self._not_serialized = {
+            'args': args or None,
+            'kwargs': kwargs or None,
+            'result': None}
 
     ### IJournalEntry Methods ###
 
@@ -723,8 +726,10 @@ class AgencyJournalEntry(object):
 
     def set_result(self, result):
         assert self._record is not None
-        self._data['result'] = self._serializer.freeze(result)
-        return self
+        self._not_serialized['result'] = result
+
+    def get_result(self):
+        return self._not_serialized['result']
 
     def new_side_effect(self, function_id, *args, **kwargs):
         assert self._record is not None
@@ -734,8 +739,20 @@ class AgencyJournalEntry(object):
                                        function_id, *args, **kwargs)
 
     def commit(self):
-        self._data['side_effects'] = self._serializer.convert(
-            self._data['side_effects'])
-        self._record.commit(**self._data)
-        self._record = None
-        return self
+        try:
+            self._data['args'] = self._serializer.convert(
+                    self._not_serialized['args'])
+            self._data['kwargs'] = self._serializer.convert(
+                    self._not_serialized['kwargs'])
+            self._data['result'] = self._serializer.freeze(
+                    self._not_serialized['result'])
+            self._data['side_effects'] = self._serializer.convert(
+                    self._data['side_effects'])
+            self._record.commit(**self._data)
+            self._record = None
+            return self
+        except TypeError as e:
+            self.set_result(fiber.fail(e))
+            self._not_serialized['args'] = None
+            self._not_serialized['kwargs'] = None
+            self.commit()

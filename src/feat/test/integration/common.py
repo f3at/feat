@@ -131,15 +131,16 @@ class SimulationTest(common.TestCase):
             histories = yield self.driver._journaler.get_histories()
             for history in histories:
                 entries = yield self.driver._journaler.get_entries(history)
-                self._validate_replay_on_agent(history, entries)
+                yield self._validate_replay_on_agent(history, entries)
         else:
             msg = ("\n\033[91mFIXME: \033[0mReplayability test "
                   "skipped: %s\n" % self.skip_replayability)
             print msg
 
+    @defer.inlineCallbacks
     def _validate_replay_on_agent(self, history, entries):
         aid = history.agent_id
-        agent = self.driver.find_agent(aid)
+        agent = yield self.driver.find_agent(aid)
         if agent is None:
             self.warning(
                 'Agent with id %r not found. '

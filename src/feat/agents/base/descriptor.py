@@ -6,6 +6,9 @@ from feat.common import decorator, fiber, first
 from feat.agents.base import document
 
 
+field = document.field
+
+
 @decorator.parametrized_class
 def register(klass, name):
     klass.type_name = name

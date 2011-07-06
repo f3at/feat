@@ -69,8 +69,8 @@ class SingleHostMonitorSimulation(common.SimulationTest):
         monitor_medium = list(self.driver.iter_agents('monitor_agent'))[0]
         self.monitor_agent = monitor_medium.get_agent()
 
-        self.req_agent = self.driver.find_agent(
-                self.get_local('req_desc')).get_agent()
+        medium = yield self.driver.find_agent(self.get_local('req_desc'))
+        self.req_agent = medium.get_agent()
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -315,8 +315,8 @@ class RestartingSimulation(common.SimulationTest):
         yield random_medium.terminate_hard()
         yield self.monitor.handle_agent_death(recipient.IRecipient(
             random_medium))
-        yield self.wait_for_idle(20)
         yield self.wait_for(self.monitor.has_empty_outbox, 20)
+        yield self.wait_for_idle(20)
 
         self.assertEqual(1, self.count_agents('random-agent'))
         self.assert_has_host('random-agent')

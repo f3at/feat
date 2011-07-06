@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import operator
 import difflib
 import re
 
@@ -17,10 +18,24 @@ class Table(object):
             [x.ljust(length) for x, length in zip(self.fields, self.lengths)])
         result = [result, "^" * len(result)]
         for record in iterator:
-            formated = [str(val).ljust(length) \
-                        for val, length in zip(record, self.lengths)]
-            result += ["".join(formated)]
+            splited = map(self._split_on_newline, record)
+            while any(splited):
+                line = [self._pop(x) for x in splited]
+                formated = [val.ljust(length)
+                            for val, length in zip(line, self.lengths)]
+                result += ["".join(formated)]
         return '\n'.join(result)
+
+    def _split_on_newline(self, value):
+        value = str(value)
+        lines = value.split('\n')
+        return lines
+
+    def _pop(self, llist):
+        if llist:
+            return llist.pop(0)
+        else:
+            return ""
 
 
 def format_block(block):

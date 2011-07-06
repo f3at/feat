@@ -73,17 +73,18 @@ class BaseContractor(protocols.BaseInterested):
 class NestingContractor(BaseContractor):
 
     @replay.mutable
-    def fetch_nested_bids(self, state, recipients, original_announcement):
+    def fetch_nested_bids(self, state, recipients, original_announcement,
+                          keep_sender=False):
         recipients = recipient.IRecipients(recipients)
         sender = original_announcement.reply_to
         max_distance = original_announcement.max_distance
 
-        if sender in recipients:
+        if sender in recipients and not keep_sender:
             self.log("Removing sender from list of recipients to nest")
             recipients.remove(sender)
         if len(recipients) == 0:
             self.log("Empty list to nest to, will not nest")
-            return list()
+            return fiber.succeed(list())
         elif max_distance is not None and \
              original_announcement.level + 1 > max_distance:
             self.log("Reached max distance for nesting of %d, returning empy "
@@ -95,13 +96,11 @@ class NestingContractor(BaseContractor):
         announcement = original_announcement.clone()
         announcement.level += 1
 
-        # nested contract needs to have a smaller window for gathering
-        # bids, otherwise everything would expire
+        announcement.expiration_time = self._get_time_window(
+            announcement.expiration_time)
+
         current_time = state.agent.get_time()
         time_left = announcement.expiration_time - current_time
-        expiration_time = current_time + 0.9 * time_left
-        announcement.expiration_time = expiration_time
-
         state.nested_manager = state.agent.initiate_protocol(
             NestedManagerFactory(self.protocol_id, time_left),
             recipients, announcement)
@@ -109,6 +108,28 @@ class NestingContractor(BaseContractor):
         f.add_callback(fiber.drop_param,
                        state.nested_manager.wait_for_bids)
         return f.succeed()
+
+    @replay.mutable
+    def grant_nested_bids(self, state, original_grant):
+        if not hasattr(state, 'nested_manager'):
+            return
+        grant = original_grant.clone()
+        grant.expiration_time = self._get_time_window(grant.expiration_time)
+        state.nested_manager.grant_all(grant)
+
+    @replay.journaled
+    def wait_for_nested_complete(self, state):
+        if not hasattr(state, 'nested_manager'):
+            return fiber.succeed()
+        return state.nested_manager.wait_for_complete()
+
+    @replay.immutable
+    def _get_time_window(self, state, expiration_time):
+        # nested contract needs to have a smaller window for gathering
+        # bids, otherwise everything would expire
+        current_time = state.agent.get_time()
+        time_left = expiration_time - current_time
+        return current_time + 0.9 * time_left
 
     @replay.immutable
     def terminate_nested_manager(self, state):
@@ -168,6 +189,21 @@ class NestedManager(manager.BaseManager):
         f.add_callback(fiber.drop_param, state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
         f.add_callback(fiber.drop_param, state.medium.get_bids)
+        return f
+
+    @replay.mutable
+    def grant_all(self, state, grant):
+        bids = state.medium.get_bids()
+        if bids:
+            params = map(lambda bid: (bid, grant, ), bids)
+            state.medium.grant(params)
+
+    @replay.immutable
+    def wait_for_complete(self, state):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param, state.medium.wait_for_state,
+                       ContractState.completed, ContractState.expired)
+        f.add_callback(fiber.override_result, None)
         return f
 
     @replay.journaled

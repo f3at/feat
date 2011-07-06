@@ -563,7 +563,7 @@ class AgencyAgent(BaseReplayDummy):
     def start_agent(self, desc):
         pass
 
-    @replay.named_side_effect('AgencyAgent.check_if_hosted')
+    @serialization.freeze_tag('AgencyAgent.check_if_hosted')
     def check_if_hosted(self, agent_id):
         pass
 

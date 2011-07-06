@@ -90,3 +90,27 @@ class Agency(agency.Agency):
         key = (protocol_id, protocol_type)
         if key in self._disabled_protocols:
             self._disabled_protocols.remove(key)
+
+    def initiate(self, messaging, database, journaler, driver):
+        self._driver = driver
+        return agency.Agency.initiate(self, messaging, database, journaler)
+
+    def upgrade(self, upgrade_cmd):
+        self._upgrade_cmd = upgrade_cmd
+        return agency.Agency.upgrade(self, upgrade_cmd)
+
+    def get_upgrade_command(self):
+        '''
+        Should be used only in tests for checking if the upgrade has been
+        triggered correctly.
+        '''
+        if not hasattr(self, '_upgrade_cmd'):
+            raise AssertationError('upgrade() has not been called for this'
+                                   ' agency.')
+        return self._upgrade_cmd
+
+    def shutdown(self):
+        d = agency.Agency.shutdown(self)
+        if hasattr(self, '_driver'):
+            d.addCallback(defer.drop_param, self._driver.remove_agency, self)
+        return d

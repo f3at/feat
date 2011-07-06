@@ -345,6 +345,10 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                        self._append_partner, partner, substitute)
         return f
 
+    @replay.mutable
+    def update_partner(self, state, partner):
+        return state.agent.update_descriptor(self._do_update_partner, partner)
+
     @replay.immutable
     def initiate_partner(self, state, partner):
         return partner.call_mro('initiate', agent=state.agent)
@@ -409,9 +413,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         partner.recipient = recipient.IRecipient(new_address)
         f.add_callback(fiber.drop_param, self._call_next_cb,
                        partner, 'on_restarted', old_recipient=old)
-        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
-                       self._update_partner,
-                       partner)
+        f.add_callback(fiber.drop_param, self.update_partner, partner)
         return f
 
     # private
@@ -440,7 +442,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         except KeyError:
             raise ValueError('Unknown relation name %r: ' % (name, ))
 
-    def _update_partner(self, desc, partner):
+    def _do_update_partner(self, desc, partner):
         found = [x for x in desc.partners
                  if x.recipient.key == partner.recipient.key]
         if len(found) != 1:

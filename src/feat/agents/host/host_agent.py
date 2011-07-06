@@ -7,12 +7,12 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
                               problem, task, )
-from feat.agents.common import rpc, monitor
+from feat.agents.common import rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
 from feat.agents.host import port_allocator
 from feat.interface.protocols import InterestType
-from feat.common import fiber, manhole, serialization
+from feat.common import fiber, manhole, serialization, defer
 from feat.agencies.interface import NotFoundError
 from feat.interface.agent import Access, Address, Storage, CategoryError
 
@@ -86,10 +86,12 @@ class Partners(agent.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
+class HostAgent(agent.BaseAgent, notifier.AgentMixin,
                 resource.AgentMixin):
 
     partners_class = Partners
+
+    migratability = export.Migratability.host
 
     @replay.mutable
     def initiate(self, state, hostdef=None):
@@ -122,9 +124,15 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
         Called after partner has been restarted. It checks our agency
         is in charge of this agent. If not it removes the partnership.
         '''
-        if not state.medium.check_if_hosted(recp.key):
+        f = fiber.succeed(recp.key)
+        f.add_callback(state.medium.check_if_hosted)
+        f.add_callback(self._got_if_hosted, recp)
+        return f
+
+    def _got_if_hosted(self, is_hosted, recp):
+        if not is_hosted:
             self.debug('Detected that agent with recp %r has moved to '
-                       'different agency, we are breaking up.')
+                       'different agency, we are breaking up.', recp)
             return self.breakup(recp)
 
     @replay.journaled
@@ -190,6 +198,15 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
                        save_change, shard)
         f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
         return f.succeed()
+
+    @rpc.publish
+    @replay.journaled
+    def upgrade(self, state, upgrade_cmd):
+        '''
+        This method is called by the export agent at the end of the life
+        of the host agent.
+        '''
+        state.medium.upgrade_agency(upgrade_cmd)
 
     @manhole.expose()
     @replay.journaled
@@ -264,7 +281,36 @@ class HostAgent(agent.BaseAgent, rpc.AgentMixin, notifier.AgentMixin,
     def release_resource(self, alloc_id):
         return resource.AgentMixin.release_resource(self, alloc_id)
 
+    ### Methods overloaded from the AgentMigrationBase class ###
+
+    @replay.immutable
+    def set_migration_dependencies(self, state, entry):
+
+        def add_to_entry(recipients, entry):
+            for recp in recipients:
+                    entry.add_dependency(recp.key)
+            return entry
+
+        d = self.get_hosted_recipients()
+        d.addCallback(add_to_entry, entry)
+        return d
+
+    def get_migration_partners(self):
+        return self.get_hosted_recipients()
+
     ### Private Methods ###
+
+    @defer.inlineCallbacks
+    @replay.immutable
+    def get_hosted_recipients(self, state):
+        result = list()
+        partners = self.query_partners('all')
+        for partner in partners:
+            agent_id = partner.recipient.key
+            hosted = yield state.medium.check_if_hosted(agent_id)
+            if hosted:
+                result.append(partner.recipient)
+        defer.returnValue(result)
 
     @replay.immutable
     def _discover_hostname(self, state):
@@ -494,6 +540,10 @@ class HostAllocationContractor(contractor.BaseContractor):
     def announced(self, state, announcement):
         categories = announcement.payload['categories']
         ret = check_categories(state.agent, categories)
+        if state.agent.is_migrating():
+            self._refuse("We are currently migrating.")
+            return
+
         if not ret:
             self._refuse("Categories doesn't match")
             return
@@ -593,6 +643,10 @@ class StartAgentContractor(contractor.BaseContractor):
         state.descriptor = announce.payload['descriptor']
         state.factory = agent.registry_lookup(state.descriptor.document_type)
 
+        if state.agent.is_migrating():
+            self._refuse()
+            return
+
         if not check_categories(state.agent, state.factory.categories):
             self._refuse()
             return
@@ -623,7 +677,8 @@ class StartAgentContractor(contractor.BaseContractor):
     def granted(self, state, grant):
         f = state.agent.confirm_allocation(state.alloc_id)
         f.add_callback(fiber.drop_param, state.agent.start_agent,
-                       state.descriptor.doc_id, state.alloc_id)
+                       state.descriptor.doc_id, state.alloc_id,
+                       **grant.payload['kwargs'])
         f.add_callbacks(self._finalize, self._starting_failed)
         return f
 

@@ -226,7 +226,7 @@ class Agency(agency.Agency):
 
         mc = self.config['manhole']
         ssh_port = int(mc["port"]) if mc["port"] is not None else None
-        self._ssh = ssh.ListeningPort(self,
+        self._ssh = ssh.ListeningPort(self, ssh.Commands(self),
                                       public_key=mc["public_key"],
                                       private_key=mc["private_key"],
                                       authorized_keys=mc["authorized_keys"],
@@ -340,6 +340,11 @@ class Agency(agency.Agency):
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
         d.addCallback(defer.drop_param, self._disconnect)
+        return d
+
+    def upgrade(self, upgrade_cmd):
+        d = agency.Agency.shutdown(self, upgrade_cmd)
+        #TODO: stop reactor and actually run the command (not part of the task)
         return d
 
     def _disconnect(self):
@@ -625,7 +630,7 @@ class Agency(agency.Agency):
         Will return AgencyAgent if agent is hosted by master agency,
         PB.Reference if it runs in stanadlone or None if it was not found.
         '''
-        local = self.find_agent_locally(agent_id)
+        local = yield self.find_agent_locally(agent_id)
         if local:
             defer.returnValue(local)
         for slave in self._broker.iter_slaves():

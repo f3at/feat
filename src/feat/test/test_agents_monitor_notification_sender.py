@@ -3,7 +3,7 @@ from zope.interface import implements
 from feat.agents.monitor import monitor_agent
 from feat.test import common
 from feat.common import defer, time, log, journal, fiber
-from feat.agents.base import recipient, descriptor
+from feat.agents.base import recipient, descriptor, sender
 
 from feat.agencies.interface import *
 from feat.agents.monitor.interface import *
@@ -129,7 +129,7 @@ class NotificationSenderTest(common.TestCase):
         self.medium = DummyMedium(self)
         self.agent = DummyAgent(self)
         self.clerk = DummyClerk()
-        self.task = monitor_agent.NotificationSender(self.agent, self.medium)
+        self.task = sender.NotificationSender(self.agent, self.medium)
         yield self.task.initiate(self.clerk)
         self.recp = recipient.Agent(agent_id='agent_id', shard='shard')
 
@@ -246,4 +246,4 @@ class NotificationSenderTest(common.TestCase):
         self.assertEqual(num, len(self.agent.protocols))
 
     def gen_notification(self, **options):
-        return monitor_agent.PendingNotification(**options)
+        return sender.PendingNotification(**options)
