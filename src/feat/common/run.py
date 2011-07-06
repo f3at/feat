@@ -18,6 +18,7 @@ def status(processName, rundir='/tmp', processType=PROCESS_TYPE):
         print "%s %s is running with pid %d" % (processType, processName, pid)
     else:
         print "%s %s dead (stale pid %d)" % (processType, processName, pid)
+        sys.exit(3)
 
 
 def stop(processName, rundir='/tmp', processType=PROCESS_TYPE):
