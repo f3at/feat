@@ -16,7 +16,7 @@ import sys
 import traceback
 from types import FunctionType
 
-from couchdb import json
+from . import json
 
 __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
