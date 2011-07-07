@@ -343,7 +343,7 @@ class Agency(agency.Agency):
         return d
 
     def upgrade(self, upgrade_cmd):
-        d = agency.Agency.shutdown(self, upgrade_cmd)
+        d = agency.Agency.shutdown(self)
         #TODO: stop reactor and actually run the command (not part of the task)
         return d
 
