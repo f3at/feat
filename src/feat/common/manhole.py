@@ -233,13 +233,22 @@ class Parser(log.Logger):
             self.output.write(str(data) + "\n")
 
     def get_line(self):
-        try:
-            index = self.buffer.index("\n")
-            line = self.buffer[0:index]
-            self.buffer = self.buffer[(index + 1):]
-            return line
-        except ValueError:
-            return None
+
+        def index_safe(sep):
+            try:
+                return self.buffer.index(sep)
+            except ValueError:
+                pass
+
+        separators = ["\n", ";"]
+        indexes = [index_safe(x) for x in separators]
+        indexes = [x for x in indexes if x is not None]
+        if not indexes:
+            return
+        index = min(indexes)
+        line = self.buffer[0:index]
+        self.buffer = self.buffer[(index + 1):]
+        return line
 
     def process_line(self):
         line = self.get_line()

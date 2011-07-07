@@ -232,7 +232,11 @@ class SSHAvatar(avatar.ConchUser):
         return None
 
     def execCommand(self, protocol, cmd):
-        raise NotImplementedError
+        parser = self.parser_factory()
+        parser.output = protocol
+        parser.on_finish = protocol.loseConnection
+        protocol.makeConnection(_DummyTransport())
+        parser.dataReceived(cmd + '\n')
 
     def closed(self):
         pass
@@ -250,3 +254,9 @@ class SSHRealm(object):
                    lambda: None
         else:
             raise Exception("No supported interfaces found.")
+
+
+class _DummyTransport(object):
+
+    def loseConnection(self):
+        pass
