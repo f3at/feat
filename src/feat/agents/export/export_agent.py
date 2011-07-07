@@ -48,7 +48,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
         else:
             resp += ["Migration is NOT completable. Problem is: %r." %
                      migration.problem]
-        recp += ["Migration import agent recp: %r" % migration.migration_agent]
+        resp += ["Migration import agent recp: %r" % migration.migration_agent]
         resp += ["Migration check in entries."]
         t = text_helper.Table(
             fields=("Agent type", "Agent_id", "Shard",
