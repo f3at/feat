@@ -15,8 +15,12 @@ from twisted.conch.insults import insults
 from feat.common import log, manhole, reflect
 
 
-class ExitException(Exception):
-    pass
+def commands_factory(agency):
+
+    def wrapper():
+        return Commands(agency)
+
+    return wrapper
 
 
 class Commands(manhole.Manhole, manhole.Parser):
@@ -40,7 +44,9 @@ class Commands(manhole.Manhole, manhole.Parser):
     @manhole.expose()
     def exit(self):
         '''exit() -> Close connection.'''
-        raise ExitException()
+        self.output.write("Happy hacking!")
+        self.output.nextLine()
+        self.output.loseConnection()
 
     @manhole.expose()
     def get_document(self, doc_id):
@@ -107,8 +113,8 @@ class Commands(manhole.Manhole, manhole.Parser):
 
 class ListeningPort(log.Logger):
 
-    def __init__(self, logger, parser, public_key=None, private_key=None,
-                 authorized_keys=None, port=None):
+    def __init__(self, logger, parser_factory, public_key=None,
+                 private_key=None, authorized_keys=None, port=None):
         log.Logger.__init__(self, logger)
 
         self._listener = None
@@ -125,7 +131,7 @@ class ListeningPort(log.Logger):
             private_key_str = file(private_key).read()
 
             self.sshFactory = factory.SSHFactory()
-            self.sshFactory.portal = portal.Portal(SSHRealm(parser))
+            self.sshFactory.portal = portal.Portal(SSHRealm(parser_factory))
             self.sshFactory.portal.registerChecker(KeyChecker(authorized_keys))
 
             self.sshFactory.publicKeys = {
@@ -179,40 +185,43 @@ class KeyChecker(checkers.SSHPublicKeyDatabase):
 
 class SSHProtocol(recvline.HistoricRecvLine):
 
-    def __init__(self, parser):
+    def __init__(self, parser_factory):
         recvline.HistoricRecvLine.__init__(self)
-        self.parser = parser
+        if not callable(parser_factory):
+            self._wrong_parser(parser_factory)
+
+        self.parser = parser_factory()
+        if not isinstance(self.parser, manhole.Parser):
+            self._wrong_parser(self.parser)
+
+    def _wrong_parser(self, arg):
+            raise TypeError("Expected first param to be a callable giving the "
+                            "f.c.manhole.Parser instance. Got %r instead." %
+                            arg)
 
     def connectionMade(self):
         recvline.HistoricRecvLine.connectionMade(self)
         self.parser.output = self.terminal
         self.terminal.write("Welcome to the manhole! Type help() for info.")
         self.terminal.nextLine()
-        self.showPrompt()
-
-    def showPrompt(self):
-        self.terminal.write("> ")
+        self.parser.on_finish()
 
     def lineReceived(self, line):
-        try:
-            self.parser.dataReceived(line + '\n')
-        except ExitException:
-            self.terminal.write("Happy hacking!")
-            self.terminal.nextLine()
-            self.terminal.loseConnection()
+        self.parser.dataReceived(line + '\n')
 
 
 class SSHAvatar(avatar.ConchUser):
     implements(conchinterfaces.ISession)
 
-    def __init__(self, username, parser):
+    def __init__(self, username, parser_factory):
         avatar.ConchUser.__init__(self)
         self.username = username
-        self.parser = parser
+        self.parser_factory = parser_factory
         self.channelLookup.update({'session': session.SSHSession})
 
     def openShell(self, protocol):
-        serverProtocol = insults.ServerProtocol(SSHProtocol, self.parser)
+        serverProtocol = insults.ServerProtocol(SSHProtocol,
+                                                self.parser_factory)
         serverProtocol.makeConnection(protocol)
         protocol.makeConnection(session.wrapProtocol(serverProtocol))
 
@@ -232,12 +241,12 @@ class SSHAvatar(avatar.ConchUser):
 class SSHRealm(object):
     implements(portal.IRealm)
 
-    def __init__(self, parser):
-        self.parser = parser
+    def __init__(self, parser_factory):
+        self.parser_factory = parser_factory
 
     def requestAvatar(self, avatarId, mind, *interfaces):
         if conchinterfaces.IConchUser in interfaces:
-            return interfaces[0], SSHAvatar(avatarId, self.parser),\
+            return interfaces[0], SSHAvatar(avatarId, self.parser_factory),\
                    lambda: None
         else:
             raise Exception("No supported interfaces found.")
