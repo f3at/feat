@@ -325,7 +325,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     @manhole.expose()
     @in_state(State.connected)
-    def get_entries(self, history):
+    def get_entries(self, history, start_date=0, limit=None):
         '''
         Returns a list of journal entries  for the given history_id.
         '''
@@ -348,9 +348,12 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                entries.timestamp
           FROM entries
           LEFT JOIN histories ON histories.id = entries.history_id
-          WHERE entries.history_id = ?
-          ORDER BY entries.rowid ASC
-        """)
+          WHERE entries.history_id = ?""")
+        if start_date:
+            command += " AND entries.timestamp >= %s" % (start_date, )
+        command += " ORDER BY entries.rowid ASC"
+        if limit:
+            command += " LIMIT %s" % (limit, )
         d = self._db.runQuery(command, (history.history_id, ))
         d.addCallback(self._decode)
         return d
