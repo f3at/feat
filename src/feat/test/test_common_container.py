@@ -584,3 +584,46 @@ class TestReplayability(common.TestCase):
         t.set("spam", 3, 8.001)
         t.set("bacon", 4, 8.0012)
         self.assertEqual(t, self.unserialize(self.serialize(t)))
+
+
+class A(object):
+
+    registry = MroDict('_mro_registry')
+
+
+class B(A):
+    pass
+
+
+class C(A):
+    pass
+
+
+class D(B):
+    pass
+
+
+class TestMroDict(common.TestCase):
+
+    def testItWorks(self):
+        A.registry['spam'] = 'a'
+        A.registry['eggs'] = 'a'
+        B.registry['spam'] = 'b'
+        C.registry['spam'] = 'c'
+        D.registry['spam'] = 'd'
+        D.registry['eggs'] = 'd'
+
+        self.assertEqual(A.registry['spam'], 'a')
+        self.assertEqual(B.registry['spam'], 'b')
+        self.assertEqual(C.registry['spam'], 'c')
+        self.assertEqual(D.registry['spam'], 'd')
+
+        self.assertEqual(A.registry['eggs'], 'a')
+        self.assertEqual(B.registry['eggs'], 'a')
+        self.assertEqual(C.registry['eggs'], 'a')
+        self.assertEqual(D.registry['eggs'], 'd')
+
+        # it should also work on instances not classes
+        a = A()
+        self.assertEqual(a.registry['spam'], 'a')
+        self.assertEqual(a.registry['eggs'], 'a')

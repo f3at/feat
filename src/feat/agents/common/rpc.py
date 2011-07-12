@@ -1,6 +1,6 @@
 from zope.interface import Interface, implements
 
-from feat.common import (annotate, decorator, fiber, defer,
+from feat.common import (annotate, decorator, fiber, defer, container,
                          error_handler, serialization, )
 from feat.agents.base import replay, message, requester, replier
 
@@ -35,7 +35,7 @@ class AgentMixin(object):
 
     implements(IRPCClient, IRPCServer)
 
-    _published = None
+    _published = container.MroDict("_mro_published")
 
     @replay.immutable
     def initiate(self, state):
@@ -68,8 +68,6 @@ class AgentMixin(object):
     @classmethod
     def _register_published(cls, function):
         fun_id = function.__name__
-        if cls._published is None:
-            cls._published = {}
         cls._published[fun_id] = function
 
 
