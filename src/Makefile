@@ -12,6 +12,14 @@ check-local-pep8:
 	find $(top_srcdir) -name \*.py | grep -v extern | \
 	sort -u | xargs $(PYTHON) $(PEP8)
 
+pyflakes:
+	find $(top_srcdir) -name \*.py | grep -v extern | \
+	sort -u | xargs pyflakes
+
+pychecker:
+	find $(top_srcdir) -name \*.py | grep -v extern | \
+	sort -u | xargs pychecker
+
 check-tests:
 	$(PYTHON) $(TRIAL) $(TRIAL_FLAGS) $(COVERAGE_MODULES)
 
