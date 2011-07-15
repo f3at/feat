@@ -10,7 +10,7 @@ class IRoot(IModel):
     def is_master():
         """Returns if the agency is a master."""
 
-    def locate_master(sel):
+    def locate_master():
         """Returns a tuple with host, port
         and if redirection is needed or None"""
 
@@ -55,8 +55,14 @@ class IAgency(IModel):
     def shutdown_agency():
         """Shut the agency down."""
 
-    def kill_agency(self):
+    def kill_agency():
         """Kill the agency."""
+
+    def get_logging_filter():
+        """Returns the global logging filter currently in use."""
+
+    def set_logging_filter(filter):
+        """Sets the global logging filter."""
 
 
 class IAgent(IModel):
@@ -67,7 +73,7 @@ class IAgent(IModel):
     agent_status = Attribute("")
     agency_id = Attribute("")
 
-    def has_resources(self):
+    def has_resources():
         """Returns if the agent have resources."""
 
     def iter_attributes():

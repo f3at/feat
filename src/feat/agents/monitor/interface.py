@@ -110,6 +110,7 @@ class ILocationStatus(Interface):
 
 class IPatientStatus(Interface):
 
+    patient_type = Attribute("Patient type name.")
     recipient = Attribute("Monitored agent identifier")
     location = Attribute("Location of the patient")
     last_beat = Attribute("Last heartbeat time")

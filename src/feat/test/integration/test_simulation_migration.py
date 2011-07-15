@@ -42,7 +42,7 @@ class ChildAgent(TestAgent):
     migratability = export.Migratability.shutdown
 
 
-@common.attr(timescale=0.2)
+@common.attr(timescale=0.4)
 class TestMigration(common.SimulationTest):
 
     def setUp(self):

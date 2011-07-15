@@ -54,7 +54,9 @@ class Patient(object):
     implements(IPatientStatus)
 
     def __init__(self, recipient, location,
-                 period=None, dying_skips=None, death_skips=None):
+                 period=None, dying_skips=None,
+                 death_skips=None, patient_type=None):
+        self.patient_type = patient_type
         self.location = location
         self.recipient = recipient
         self.state = PatientState.alive
@@ -188,11 +190,12 @@ class IntensiveCare(labour.BaseLabour):
 
     @replay.side_effect
     def add_patient(self, recipient, location,
-                    period=None, dying_skips=None, death_skips=None):
+                    period=None, dying_skips=None,
+                    death_skips=None, patient_type=None):
         agent_id = recipient.key
         assert agent_id not in self._patients, \
                "Patient already added to intensive care"
-        patient = Patient(recipient, location)
+        patient = Patient(recipient, location, patient_type=patient_type)
         self._patients[recipient.key] = patient
         self._doctor.on_patient_added(patient)
 

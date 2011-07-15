@@ -8,7 +8,7 @@ from feat.agencies import agency
 from feat.agencies.net import agency as net_agency
 from feat.agencies.net.broker import BrokerRole
 from feat.agents.base import partners, resource
-from feat.common import adapter, defer
+from feat.common import adapter, log
 from feat.gateway import models
 
 

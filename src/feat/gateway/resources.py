@@ -1,5 +1,6 @@
 import cgi
 import operator
+import socket
 
 from feat.common import defer, time
 from feat.gateway import models
@@ -15,15 +16,20 @@ class BaseResource(webserver.BasicResource):
         return base + "/" + child
 
     def render_header(self, doc):
+        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
         doc.extend(["<HTML><HEAD>"
                     "<TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                    "<A href='/'><I>top</I><A>"])
+                    "<I>"
+                    "<A href='/'>top<A>"
+                    " on ", hostname,
+                    "<I>"])
 
     def render_footer(self, doc):
         doc.extend(["</BODY></HTML>"])
 
     def redirect(self, path, host=None, port=None):
         url = http.compose(path, host=host, port=port)
+        print "R"*80, url
         raise http.MovedPermanently(location=url)
 
 
@@ -39,11 +45,15 @@ class Root(BaseResource):
         # Force mime-type to html
         response.set_mime_type("text/html")
 
+        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+
         agencies_url = self.create_url(request, "agencies")
         agents_url = self.create_url(request, "agents")
 
         doc = ["<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                "<H2>F3EAT Gateway</H2><UL>"
+                "<H2>F3EAT Gateway</H2>"
+                "<I>", hostname, "</I>"
+                "<UL>"
                 "<LI><H2><A href='", agencies_url, "'>Agencies</A></H2></LI>"
                 "<LI><H2><A href='", agents_url, "'>Agents</A></H2></LI>"
                 "</UL></BODY></HTML>"]
@@ -316,16 +326,20 @@ class Agency(BaseResource):
             data = "\n".join(request.readlines())
             params = http.urldecode(data, request.encoding)
 
+            if 'set_logging_filter' in params:
+                filter = params["filter"][0]
+                self.model.set_debug(filter)
+
             if 'shutdown_agency' in params:
-                time.callLater(0, self.model.shutdown_agency)
+                time.callLater(1, self.model.shutdown_agency)
                 return self._redirect_to_top()
 
             if 'terminate_agency' in params:
-                time.callLater(0, self.model.terminate_agency)
+                time.callLater(1, self.model.terminate_agency)
                 return self._redirect_to_top()
 
             if 'kill_agency' in params:
-                time.callLater(0, self.model.kill_agency)
+                time.callLater(1, self.model.kill_agency)
                 return self._redirect_to_top()
 
         agents_url = "/agents"
@@ -348,9 +362,22 @@ class Agency(BaseResource):
                     "</UL>"])
 
         if self.enable_actions:
+            dbg = self.model.get_debug()
             doc.extend(["</TABLE>"
                         "<H2>Actions</H2>"
                         "<TABLE>"
+                        "<TR>"
+                        "<TD valign='top'><B>Global Logging Filter:</TD>"
+                        "<TD colspan='2'>"
+                        "<DIV>"
+                        "<FORM method='post'>"
+                        "<INPUT type='text' name='filter' value='", dbg, "'>"
+                        "<INPUT type='submit' name='set_logging_filter'"
+                        " value='Update'>"
+                        "</FORM>"
+                        "</DIV>"
+                        "</TD>"
+                        "</TR>"
                         "<TR>"
                         "<TD>"
                         "<FORM method='post'>"
@@ -523,6 +550,7 @@ class Monitor(Agent):
                         "<TD>"
                         "<TABLE border='1'>"
                         "<TR>"
+                        "<TH align='left'>Agent Type</TH>"
                         "<TH align='left'>Agent ID</TH>"
                         "<TH align='left'>Shard ID</TH>"
                         "<TH align='left'>State</TH>"
@@ -530,7 +558,13 @@ class Monitor(Agent):
                         "</TR>"])
             for recip, pat in loc["patients"].iteritems():
                 agent_url = "/agents/" + recip.key
+                type_name = pat["patient_type"] or "unknown"
+                if type_name == "unknown":
+                    type_name = "<I>" + type_name + "</I>"
+                else:
+                    type_name = "<B>" + type_name + "</B>"
                 doc.extend(["<TR>"
+                            "<TD>", type_name, "</TD>"
                             "<TD><A href='", agent_url, "'>",
                             recip.key, "</A></TD>",
                             "<TD>", recip.shard, "</TD>"

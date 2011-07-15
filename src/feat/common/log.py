@@ -169,7 +169,7 @@ class FluLogKeeper(object):
     @classmethod
     def get_debug(self):
         global flulog
-        flulog.getDebug()
+        return flulog.getDebug()
 
     ### ILogger Methods ###
 

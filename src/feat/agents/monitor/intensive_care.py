@@ -13,12 +13,14 @@ class Patient(object):
     implements(IPatientStatus)
 
     def __init__(self, recipient, location, beat_time,
-                 period=None, dying_skip=None, death_skip=None):
+                 period=None, dying_skips=None,
+                 death_skips=None, patient_type=None):
+        self.patient_type = patient_type
         self.recipient = recipient
         self.location = location
         self.period = period or DEFAULT_HEARTBEAT_PERIOD
-        self.dying_skips = dying_skip or DEFAULT_DYING_SKIPS
-        self.death_skips = death_skip or DEFAULT_DEATH_SKIPS
+        self.dying_skips = dying_skips or DEFAULT_DYING_SKIPS
+        self.death_skips = death_skips or DEFAULT_DEATH_SKIPS
         self.last_state = PatientState.alive
         self.state = PatientState.alive
         self.reset(beat_time)
@@ -110,13 +112,16 @@ class IntensiveCare(labour.BaseLabour):
 
     @replay.side_effect
     def add_patient(self, recipient, location,
-                    period=None, dying_skips=None, death_skips=None):
+                    period=None, dying_skips=None,
+                    death_skips=None, patient_type=None):
         agent_id = recipient.key
         assert agent_id not in self._patients, \
                "Patient already added to intensive care"
         self.debug("Start agent's %s heart monitoring", agent_id)
+
         patient = Patient(recipient, location, self.patron.get_time(),
-                          period, dying_skips, death_skips)
+                          period=period, dying_skips=dying_skips,
+                          death_skips=death_skips, patient_type=patient_type)
         self._patients[agent_id] = patient
         self._doctor.on_patient_added(patient)
 

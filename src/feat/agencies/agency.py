@@ -989,6 +989,14 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     def get_ip(self):
         return self._ip
 
+    @manhole.expose()
+    def get_logging_filter(self):
+        return log.FluLogKeeper.get_debug()
+
+    @manhole.expose()
+    def set_logging_filter(self, filter):
+        log.FluLogKeeper.set_debug(filter)
+
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
         d = defer.DeferredList([x._terminate() for x in self._agents])

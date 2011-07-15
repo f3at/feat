@@ -45,6 +45,7 @@ class MonitoringInfo(formatable.Formatable):
     type_name = "monitoring-info"
 
     formatable.field("instance_id", None)
+    formatable.field("agent_type", None)
     formatable.field("location", None)
 
 
@@ -123,6 +124,7 @@ class AgentMixin(object):
     def get_monitoring_info(self, state):
         desc = state.medium.get_descriptor()
         return MonitoringInfo(instance_id=desc.instance_id,
+                              agent_type=self.descriptor_type,
                               location=state.medium.get_hostname())
 
     ### Private Methods ###

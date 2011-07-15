@@ -24,6 +24,7 @@ class MonitoredPartner(agent.BasePartner):
 
     instance_id = 0
     location = "unknown"
+    type_name = "unknown"
 
     type_name = 'monitor->agent'
 
@@ -62,6 +63,7 @@ class MonitoredPartner(agent.BasePartner):
     def _monitoring_info_changed(self, info):
         self.instance_id = info.instance_id
         self.location = info.location
+        self.agent_type = info.agent_type
         return self
 
     def _no_monitoring_info(self, _failure):
@@ -248,6 +250,7 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
 
             for pat in loc.iter_patients():
                 patient = {"state": pat.state,
+                           "patient_type": pat.patient_type,
                            "counter": pat.counter}
                 patients[pat.recipient] = patient
 
@@ -419,7 +422,8 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
                                          partner.location,
                                          period=period,
                                          dying_skips=dying_skips,
-                                         death_skips=death_skips)
+                                         death_skips=death_skips,
+                                         patient_type=partner.agent_type)
 
     @replay.mutable
     def update_monitored(self, state, partner, old_recipient):
