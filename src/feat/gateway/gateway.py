@@ -15,7 +15,7 @@ class Gateway(log.LogProxy, log.Logger):
 
     def __init__(self, root, port_range=None):
         log.Logger.__init__(self, self)
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, root)
         self._root = root
 
         self._ports = port_range
@@ -51,7 +51,7 @@ class Gateway(log.LogProxy, log.Logger):
 
     def cleanup(self):
         if self._server:
-            self.debug("Cleaning up gateway on port %d", self.port)
+            self.debug("Cleaning up gateway on port %s", self.port)
             d = self._server.cleanup()
             self._server = None
             return d

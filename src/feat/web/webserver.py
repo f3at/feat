@@ -793,6 +793,9 @@ class Server(log.LogProxy, log.Logger):
             if response.can_update_headers:
                 response.set_header('Location', exception.location)
                 response.set_status(http.Status.MOVED_PERMANENTLY)
+                response.set_header("Cache-Control", "no-store")
+                response.set_header("connection", "close")
+
                 return None
 
         elif isinstance(exception, http.HTTPError):

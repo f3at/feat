@@ -11,8 +11,8 @@ FEAT="$BIN/feat"
 LOGDIR="$ROOT"
 RUNDIR="$ROOT"
 JOURNAL="$LOGDIR/journal.sqlite3"
-LOGFILES=( "$LOGDIR/feat.host.log" "$SRCDIR/standalone.log" )
-PIDFILE="$RUNDIR/feat.host.pid"
+LOGFILES="$LOGDIR/feat.*.log"
+PIDFILE="$RUNDIR/feat.pid"
 DBLOAD="$SRC/feat/bin/dbload.py"
 MHDIR="$SRC/feat/bin"
 MHPUB="$MHDIR/public.key"
@@ -47,7 +47,8 @@ if [ -e "$PIDFILE" ]; then
 fi
 
 if [ $do_cleanup ]; then
-    for l in $LOGFILES; do
+    files=`ls -1 $LOGFILES`
+    for l in $files; do
         if [ -e "$l" ]; then
             echo "Cleaning up log file $l"
             rm "$l"

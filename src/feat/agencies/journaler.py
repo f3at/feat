@@ -121,7 +121,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._set_state(State.connected)
         self._schedule_flush()
 
-    def close(self):
+    def close(self, flush_writer=True):
 
         def set_disconnected():
             self._writer = None
@@ -134,7 +134,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
             # in this case we are not registered as the observer anymore
             pass
 
-        d = self._close_writer()
+        d = self._close_writer(flush_writer)
         d.addCallback(defer.drop_param, set_disconnected)
         return d
 
@@ -248,10 +248,11 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._cache.rollback()
         fail.raiseException()
 
-    def _close_writer(self):
+    def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
         if self._writer:
-            d.addCallback(defer.drop_param, self._writer.close)
+            d.addCallback(defer.drop_param, self._writer.close,
+                          flush=flush_writer)
         return d
 
 
@@ -281,8 +282,10 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         d.addCallback(defer.drop_param, self._set_state, State.connected)
         return d
 
-    def close(self):
-        d = self._flush_next()
+    def close(self, flush=True):
+        d = defer.succeed(None)
+        if flush:
+            d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._set_state, State.disconnected)
         d.addCallback(defer.drop_param, self._set_writer, None)
         return d
@@ -386,10 +389,17 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     ### IJournalWriter ###
 
-    def close(self):
-        self._db.close()
-        self._uninstall_sighup()
-        self._set_state(State.disconnected)
+    def close(self, flush=True):
+        d = defer.succeed(None)
+        if self._cmp_state(State.disconnected):
+            return d
+        if flush:
+            d.addCallback(defer.drop_param, self._flush_next)
+        d.addCallback(defer.drop_param, self._db.close)
+        d.addCallback(defer.drop_param, self._uninstall_sighup)
+        d.addCallback(defer.drop_param, self._set_state,
+                      State.disconnected)
+        return d
 
     @manhole.expose()
     @in_state(State.connected)

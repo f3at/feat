@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-
-import os
 from setuptools import setup, find_packages
 
 setup(name='feat',
@@ -11,9 +9,9 @@ setup(name='feat',
       platforms=['any'],
       package_dir={'': 'src',
                    'paisley': 'src/feat/extern/paisley/paisley/'},
-      packages=find_packages(where='src') + find_packages('src/feat/extern/paisley'),
-      scripts=['bin/feat',
-               'src/feat/bin/host.py',
-               'src/feat/bin/standalone.py'],
-      package_data={'': ['src/feat/agencies/net/amqp0-8.xm']},
+      packages=(find_packages(where='src') +
+                find_packages('src/feat/extern/paisley')),
+      scripts=['bin/feat'],
+      package_data={'': ['src/feat/agencies/net/amqp0-8.xml']},
+      include_package_data=True,
 )

@@ -988,7 +988,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         factory = IAgentFactory(registry_lookup(descriptor.document_type))
         self.log('I will start: %r agent. Kwargs: %r', factory, kwargs)
         medium = self.agency_agent_factory(self, factory, descriptor)
-        self._agents.append(medium)
+        self.register_agent(medium)
 
         d = self.wait_connected()
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
@@ -1025,6 +1025,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.DeferredList([x.on_killed() for x in self._agents])
         d.addBoth(defer.drop_param, self._messaging.disconnect)
         return d
+
+    def register_agent(self, medium):
+        self._agents.append(medium)
 
     def unregister_agent(self, medium):
         agent_id = medium.get_descriptor().doc_id

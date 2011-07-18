@@ -19,3 +19,7 @@ class Process(base.Base):
         # itself without puting anything to stdout.
         self._control.outReceived("")
         return d
+
+    @replay.side_effect
+    def on_finished(self, e):
+        base.Base.on_finished(self, e)

@@ -23,6 +23,9 @@ class DummyAgency(log.LogProxy, manhole.Manhole, log.Logger):
     def echo(self, text):
         return text
 
+    def iter_agents(self):
+        return iter([])
+
 
 class BrokerTest(common.TestCase):
 

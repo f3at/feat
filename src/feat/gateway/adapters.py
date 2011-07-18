@@ -27,9 +27,7 @@ class Root(object):
         return self._agency.role is BrokerRole.master
 
     def full_shutdown(self):
-        d = self._agency.full_shutdown()
-        d.addBoth(lambda _: reactor.stop())
-        return d
+        return self._agency.full_shutdown(stop_process=True)
 
 
 @adapter.register(net_agency.Agency, models.IAgency)
@@ -48,7 +46,7 @@ class Agency(object):
         return net_agency.DEFAULT_GW_PORT
 
     def shutdown_agency(self):
-        return self._agency.shutdown()
+        return self._agency.shutdown(stop_process=True)
 
     def terminate_agency(self):
         os.kill(os.getpid(), signal.SIGTERM)

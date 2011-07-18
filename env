@@ -11,5 +11,6 @@ fi
 
 ROOT=$(cd $(dirname $env_path); pwd)
 export PYTHONPATH=$PYTHONPATH${PYTHONPATH:+:}$ROOT/src
+export PATH=$ROOT/bin:$PATH
 
 exec "$@"

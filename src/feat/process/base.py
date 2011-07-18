@@ -13,6 +13,23 @@ from feat.agents.base import replay
 from feat.agencies.common import StateMachineMixin
 
 
+def which(component, path_str):
+    '''helper method having same behaviour as "which" os command.'''
+
+    def is_exe(fpath):
+        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(component)
+    if fpath:
+        if is_exe(component):
+            return component
+    else:
+        for path in path_str.split(os.pathsep):
+            exe_file = os.path.join(path, component)
+            if is_exe(exe_file):
+                return exe_file
+
+
 class ProcessState(enum.Enum):
     '''
     initiated - class is created, process is not ready yet
@@ -83,9 +100,12 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
                             ProcessState.failed])
         self._set_state(ProcessState.starting)
         self._control = ControlProtocol(self, self.started_test, self.on_ready)
+        args = [self.command] + self.args
+        self.log('Running command: %s, with env: %r',
+                 " ".join(args), self.env)
         self._process = reactor.spawnProcess(
             self._control, self.command,
-            args=[self.command] + self.args, env=self.env)
+            args=args, env=self.env)
 
         return self.wait_for_state(ProcessState.started)
 
@@ -163,9 +183,10 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
 
     @replay.side_effect
     def check_installed(self, component):
-        if not os.path.isfile(component):
+        path_str = self.env.get("PATH", "")
+        if not which(component, path_str):
             raise DependencyError("Required component is not installed, "
-                                    "expected %s to be present." % component)
+                                  "expected %s to be present." % component)
 
     @replay.side_effect
     def get_tmp_dir(self):

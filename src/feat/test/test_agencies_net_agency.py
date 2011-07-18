@@ -1,3 +1,4 @@
+import sys
 import os
 import optparse
 import operator
@@ -6,11 +7,11 @@ from twisted.internet import defer
 from twisted.spread import jelly, pb
 
 from feat.test import common
-from feat.process import couchdb, rabbitmq
+from feat.process import couchdb, rabbitmq, standalone
 from feat.agencies import agency as base_agency
-from feat.agencies.net import agency, database
+from feat.agencies.net import agency, database, broker
 from feat.agents.base import agent, descriptor, dbtools, partners, replay
-from feat.common import first, serialization, fiber
+from feat.common import serialization, fiber, log, first
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
@@ -86,19 +87,22 @@ class UnitTestCase(common.TestCase):
         self.assertTrue(hasattr(options, 'manhole_private_key'))
         self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
         self.assertTrue(hasattr(options, 'manhole_port'))
-        self.assertEqual(options.msg_host, agency.DEFAULT_MSG_HOST)
-        self.assertEqual(options.msg_port, agency.DEFAULT_MSG_PORT)
-        self.assertEqual(options.msg_user, agency.DEFAULT_MSG_USER)
-        self.assertEqual(options.msg_password, agency.DEFAULT_MSG_PASSWORD)
-        self.assertEqual(options.db_host, agency.DEFAULT_DB_HOST)
-        self.assertEqual(options.db_port, agency.DEFAULT_DB_PORT)
-        self.assertEqual(options.db_name, agency.DEFAULT_DB_NAME)
-        self.assertEqual(options.manhole_public_key, agency.DEFAULT_MH_PUBKEY)
-        self.assertEqual(options.manhole_private_key,
+        a = agency.Agency.from_config(dict())
+        self.assertEqual(a.config['msg']['host'], agency.DEFAULT_MSG_HOST)
+        self.assertEqual(a.config['msg']['port'], agency.DEFAULT_MSG_PORT)
+        self.assertEqual(a.config['msg']['user'], agency.DEFAULT_MSG_USER)
+        self.assertEqual(a.config['msg']['password'],
+                         agency.DEFAULT_MSG_PASSWORD)
+        self.assertEqual(a.config['db']['host'], agency.DEFAULT_DB_HOST)
+        self.assertEqual(a.config['db']['port'], agency.DEFAULT_DB_PORT)
+        self.assertEqual(a.config['db']['name'], agency.DEFAULT_DB_NAME)
+        self.assertEqual(a.config['manhole']['public_key'],
+                         agency.DEFAULT_MH_PUBKEY)
+        self.assertEqual(a.config['manhole']['private_key'],
                          agency.DEFAULT_MH_PRIVKEY)
-        self.assertEqual(options.manhole_authorized_keys,
+        self.assertEqual(a.config['manhole']['authorized_keys'],
                          agency.DEFAULT_MH_AUTH)
-        self.assertEqual(options.manhole_port, agency.DEFAULT_MH_PORT)
+        self.assertEqual(a.config['manhole']['port'], agency.DEFAULT_MH_PORT)
 
 
 class StandalonePartners(partners.Partners):
@@ -114,14 +118,25 @@ class StandaloneAgent(agent.BaseAgent):
     standalone = True
 
     @staticmethod
-    def get_cmd_line():
+    def get_cmd_line(desc, **kwargs):
         src_path = os.path.abspath(os.path.join(
             os.path.dirname(__file__), '..', '..'))
-        command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
-        logfile = os.path.join(src_path, 'standalone.log')
+        bin_path = os.path.abspath(os.path.join(
+            src_path, '..', 'bin'))
+
+        agent_id = str(desc.doc_id)
+        s_kwargs = serialization.json.serialize(kwargs)
+
+        command = 'feat'
         args = ['-i', 'feat.test.test_agencies_net_agency',
-                '-l', logfile]
-        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
+                '-L', os.path.curdir,
+                '-R', os.path.curdir,
+                '-D',
+                '-X',
+                '-a', agent_id]
+        if s_kwargs:
+            args += ['--kwargs', s_kwargs]
+        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5', PATH=bin_path)
         return command, args, env
 
 
@@ -131,24 +146,17 @@ class Descriptor(descriptor.Descriptor):
 
 
 @agent.register('standalone_with_args')
-class StandaloneAgentWithArgs(agent.BaseAgent):
+class StandaloneAgentWithArgs(StandaloneAgent):
 
     standalone = True
     partners_class = StandalonePartners
 
     @staticmethod
-    def get_cmd_line(**kwargs):
+    def get_cmd_line(descriptor, **kwargs):
         if kwargs != {"foo": 4, "bar": 5}:
             raise Exception("Unexpected arguments or keyword in get_cmd_line()"
                             ": %r" % (kwargs, ))
-        src_path = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), '..', '..'))
-        command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
-        logfile = os.path.join(src_path, 'standalone.log')
-        args = ['-i', 'feat.test.test_agencies_net_agency',
-                '-l', logfile]
-        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
-        return command, args, env
+        return StandaloneAgent.get_cmd_line(descriptor, **kwargs)
 
     def initiate(self, foo, bar):
         if foo != 4 or bar != 5:
@@ -197,7 +205,7 @@ class MasterDescriptor(descriptor.Descriptor):
     document_type = 'standalone-master'
 
 
-@common.attr('slow')
+@common.attr('slow', timeout=40)
 class IntegrationTestCase(common.TestCase):
 
     configurable_attributes = ['run_rabbit', 'run_couch']
@@ -225,6 +233,12 @@ class IntegrationTestCase(common.TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         common.TestCase.setUp(self)
+        self.tempdir = os.path.curdir
+        self.socket_path = os.path.join(os.path.curdir, 'feat-test.socket')
+
+        bin_dir = os.path.abspath(os.path.join(
+            os.path.curdir, '..', '..', 'bin'))
+        os.environ["PATH"] = ":".join([bin_dir, os.environ["PATH"]])
 
         try:
             self.db_process = couchdb.Process(self)
@@ -238,29 +252,34 @@ class IntegrationTestCase(common.TestCase):
 
 
         if self.run_couch:
-            db_host, db_port, db_name = yield self._run_and_configure_db()
+            self.db_host, self.db_port, self.db_name =\
+                          yield self._run_and_configure_db()
         else:
 
-            db_host, db_name = '127.0.0.1', 'test'
-            db_port = self.db_process.get_free_port()
+            self.db_host, self.db_name = '127.0.0.1', 'test'
+            self.db_port = self.db_process.get_free_port()
 
         if self.run_rabbit:
-            msg_host, msg_port = yield self._run_and_configure_msg()
+            self.msg_host, self.msg_port = yield self._run_and_configure_msg()
         else:
-            msg_host, msg_port = '127.0.0.1', self.msg_process.get_free_port()
+            self.msg_host = '127.0.0.1'
+            self.msg_port = self.msg_process.get_free_port()
 
-        jourfile = "%s.sqlite3" % (self._testMethodName, )
+        self.jourfile = "%s.sqlite3" % (self._testMethodName, )
 
         self.agency = agency.Agency(
-            msg_host=msg_host, msg_port=msg_port,
-            db_host=db_host, db_port=db_port, db_name=db_name,
-            agency_journal=jourfile)
-        yield self.agency.initiate()
+            msg_host=self.msg_host, msg_port=self.msg_port,
+            db_host=self.db_host, db_port=self.db_port, db_name=self.db_name,
+            agency_journal=self.jourfile, rundir=self.tempdir,
+            logdir=self.tempdir,
+            socket_path=self.socket_path)
 
     @defer.inlineCallbacks
     def testStartStandaloneAgent(self):
-        yield self.wait_for_host_agent(10)
+        yield self.agency.initiate()
+        yield self.wait_for_host_agent(20)
         host_a = self.agency._get_host_agent()
+        yield host_a.wait_for_ready()
 
         yield self.agency.spawn_agent("standalone")
 
@@ -277,8 +296,10 @@ class IntegrationTestCase(common.TestCase):
         stand = yield self.agency.find_agent(agent_ids[1])
         self.assertIsInstance(stand, pb.RemoteReference)
 
-        slave = first(self.agency._broker.iter_slaves())
-        self.assertIsInstance(slave, pb.RemoteReference)
+        slave = first(x for x in self.agency._broker.slaves.itervalues()
+                      if x.is_standalone)
+
+        self.assertIsInstance(slave, broker.SlaveReference)
         host = yield slave.callRemote('find_agent', agent_ids[0])
         self.assertIsInstance(host, base_agency.AgencyAgent)
         stand = yield slave.callRemote('find_agent', agent_ids[1])
@@ -287,6 +308,13 @@ class IntegrationTestCase(common.TestCase):
         not_found = yield slave.callRemote('find_agent', 'unknown id')
         self.assertIs(None, not_found)
 
+        # asserts on slaves registry
+        self.assertEqual(2, len(self.agency._broker.slaves))
+        self.assertEqual(1, len(slave.agents))
+        self.assertEqual(agent_ids[1], slave.agents.keys()[0])
+        self.assertEqual(stand, slave.agents.values()[0])
+
+        # asserts on logs and journal entries in journal database
         jour = self.agency._journaler._writer
         yield self.wait_for(jour.is_idle, 10)
         categories = yield jour.get_log_categories()
@@ -301,12 +329,12 @@ class IntegrationTestCase(common.TestCase):
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
+        yield self.agency.initiate()
         yield self.wait_for_host_agent(10)
         host_a = self.agency._get_host_agent()
 
         # this will be called in the other process
-        yield self.agency.spawn_agent('standalone_with_args',
-                                      None, foo=4, bar=5)
+        yield self.agency.spawn_agent('standalone_with_args', foo=4, bar=5)
 
         yield self.wait_for_standalone()
         part = host_a.query_partners_with_role('all', 'standalone')
@@ -324,6 +352,7 @@ class IntegrationTestCase(common.TestCase):
         normally. Than it simulates host agent being burried (by deleting
         the descriptor) and asserts that the new host agent has been started.
         '''
+        yield self.agency.initiate()
         self.assertEqual(None, self.agency._get_host_medium())
         self.info("Starting rabbit")
         msg_host, msg_port = yield self._run_and_configure_msg()
@@ -352,6 +381,51 @@ class IntegrationTestCase(common.TestCase):
         new_agent_id = new_medium.get_descriptor().doc_id
 
         self.assertNotEqual(new_agent_id, agent_id)
+
+    @defer.inlineCallbacks
+    def testBackupAgency(self):
+        pid_path = os.path.join(os.path.curdir, 'feat.pid')
+        process = yield self.spawn_agency()
+        yield self.wait_for_pid(pid_path)
+        yield self.agency.initiate()
+        yield self.wait_for_slave()
+        yield process.terminate()
+        yield self.wait_for_master()
+        yield self.wait_for_backup()
+        slave = self.agency._broker.slaves.values()[0]
+        self.info('killing slave')
+        yield slave.callRemote('shutdown')
+        yield common.delay(None, 0.5)
+        yield self.wait_for_backup()
+        slave2 = self.agency._broker.slaves.values()[0]
+        self.assertNotEqual(slave.slave_id, slave2.slave_id)
+
+    def spawn_agency(self):
+        cmd, cmd_args, env = self.get_cmd_line()
+
+        p = standalone.Process(self, cmd, cmd_args, env)
+        return p.restart()
+
+    def get_cmd_line(self):
+        command = 'feat'
+        args = ['--no-slave',
+                '--msghost', self.msg_host,
+                '--msgport', str(self.msg_port),
+                '--msguser', 'guest',
+                '--msgpass', 'guest',
+                '--dbhost', self.db_host,
+                '--dbport', str(self.db_port),
+                '--dbname', self.db_name,
+                '--jourfile', self.jourfile,
+                '--rundir', os.path.abspath(os.path.curdir),
+                '--logdir', os.path.abspath(os.path.curdir),
+                '--socket-path', self.socket_path]
+        python_path = ":".join(sys.path)
+        env = dict(PYTHONPATH=python_path,
+                   FEAT_DEBUG=log.FluLogKeeper.get_debug(),
+                   PATH=os.environ.get("PATH"))
+
+        return command, args, env
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -398,3 +472,27 @@ class IntegrationTestCase(common.TestCase):
             return len(part) == 1
 
         return self.wait_for(has_partner, timeout)
+
+    def wait_for_pid(self, pid_path):
+
+        def pid_created():
+            return os.path.exists(pid_path)
+
+        return self.wait_for(pid_created, timeout=20)
+
+    def wait_for_slave(self, timeout=20):
+
+        def is_slave():
+            return self.agency._broker.is_slave()
+
+        return  self.wait_for(is_slave, timeout)
+
+    def wait_for_master(self, timeout=20):
+
+        def became_master():
+            return self.agency._broker.is_master()
+
+        return self.wait_for(became_master, timeout)
+
+    def wait_for_backup(self, timeout=20):
+        return self.wait_for(self.agency._broker.has_slave, timeout)

@@ -40,8 +40,6 @@ CFLAGS="$RPM_OPT_FLAGS" %{__python} setup.py build
 %install
 rm -rf $RPM_BUILD_ROOT
 %{__python} setup.py install --skip-build --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
-%{__mv} $RPM_BUILD_ROOT/%_usr/bin/host.py $RPM_BUILD_ROOT/%_usr/bin/feat-host
-%{__mv} $RPM_BUILD_ROOT/%_usr/bin/standalone.py $RPM_BUILD_ROOT/%_usr/bin/feat-standalone
 
 install -m 644 src/feat/agencies/net/amqp0-8.xml \
      $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/net/amqp0-8.xml
@@ -55,6 +53,10 @@ install -m 644 src/feat/agencies/net/amqp0-8.xml \
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Thu Jul 28 2011 Marek Kowalski <mkowalski@flumotion.com>
+- 0.1.2-4
+- Remove obsolete executable scripts
+
 * Wed May 11 2011 Xavier Queralt <xqueralt@flumotion.com>
 - 0.1.2-3
 - Add missing amqp0-8.xml file into the package

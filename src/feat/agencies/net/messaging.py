@@ -171,7 +171,8 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
         self._port = port
         self._connector = reactor.connectTCP(self._host, self._port,
                                              self._factory)
-        self.log('Connector created: %r', self._connector)
+        self.log('AMQP connector created. Host: %s, Port: %s',
+                 self._host, self._port)
 
     def disconnect(self):
         self.log("Disconnect called.")
