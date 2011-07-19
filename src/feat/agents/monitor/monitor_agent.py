@@ -1,17 +1,16 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from zope.interface import implements
-
 import copy
+import operator
+
+from zope.interface import implements
 
 from feat.agents.base import agent, partners, document, replay
 from feat.agents.base import dependency, problem, task, contractor, requester
 from feat.agents.base import dbtools, sender
-from feat.agents.common import (raage, host, rpc, shard, monitor, export,
-                                start_agent)
+from feat.agents.common import host, rpc, shard, monitor, export, start_agent
 from feat.agents.monitor import intensive_care, clerk, simulation
-from feat.common import fiber, serialization, defer, time, log
-from feat.common import error, manhole, text_helper, first
+from feat.common import fiber, serialization, defer, time, manhole, text_helper
 
 from feat.agents.monitor.interface import *
 from feat.interface.agency import *
@@ -550,14 +549,9 @@ class HandleDeath(task.BaseTask):
     def solve_localy(self, state):
         f = self._retry()
         f.add_callback(self._wait_handled)
-        f.add_both(self.debug_mark)
         f.add_both(state.medium.terminate)
         f.add_callback(fiber.override_result, self)
         return f
-
-    @replay.journaled
-    def debug_mark(self, state, param):
-        return param
 
     ### endof IProblem ###
 
@@ -803,11 +797,13 @@ class HandleDeath(task.BaseTask):
         # partner_class -> list of its instances
         categorized = dict()
         for partner in state.descriptor.partners:
-            category = categorized.get(partner.__class__, list())
+            category, index = categorized.get(partner.__class__,
+                                              (list(), len(categorized)))
             category.append(partner)
-            categorized[partner.__class__] = category
+            categorized[partner.__class__] = tuple([category, index])
 
-        for category, brothers in categorized.iteritems():
+        for category, (brothers, index) in sorted(categorized.items(),
+                                                  key=lambda x: x[1][1]):
             for partner in brothers:
                 yield partner, brothers
 

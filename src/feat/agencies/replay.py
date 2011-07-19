@@ -1,3 +1,5 @@
+import pprint
+
 from zope.interface import implements, classProvides
 
 from feat.common import serialization, log, text_helper
@@ -100,7 +102,7 @@ class JournalReplayEntry(object):
             self._replay.require_agent()
             instance = self._replay.registry.get(self.journal_id, None)
             if instance is None:
-                raise ValueError("Instance for journal_id %r not found "
+                raise ReplayError("Instance for journal_id %r not found "
                                  "in the registry when replaying %r"
                                  % (self.journal_id, self.function_id))
 
@@ -118,8 +120,9 @@ class JournalReplayEntry(object):
             frozen_result = self._replay.serializer.freeze(result)
 
             if frozen_result != self.frozen_result:
-                res = repr(self._replay.unserializer.convert(frozen_result))
-                exp = repr(self.result)
+                res = pprint.pformat(
+                    self._replay.unserializer.convert(frozen_result))
+                exp = pprint.pformat(self.result)
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
@@ -372,13 +375,13 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     def register_dummy(self, dummy_id, dummy):
         if self.lookup_dummy(dummy_id) is not None:
-            raise RuntimeError("Tried to register dummy: %r class: %r second"
-                               " time", dummy_id, dummy.__class__.__name__)
+            raise ReplayError("Tried to register dummy: %r class: %r second"
+                              " time", dummy_id, dummy.__class__.__name__)
         self.dummies[dummy_id] = dummy
 
     def unregister_dummy(self, dummy_id):
         if self.lookup_dummy(dummy_id) is None:
-            raise RuntimeError("Treid to unregister dummy_id: %r "
+            raise ReplayError("Treid to unregister dummy_id: %r "
                                "but not found.", dummy_id)
         del(self.dummies[dummy_id])
 
@@ -584,6 +587,10 @@ class AgencyAgent(BaseReplayDummy):
 
     @replay.named_side_effect('AgencyAgent.get_mode')
     def get_mode(self, component):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.upgrade_agency')
+    def upgrade_agency(self, upgrade_cmd):
         pass
 
     @serialization.freeze_tag('AgencyAgent.join_shard')

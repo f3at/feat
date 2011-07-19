@@ -14,17 +14,16 @@ def say_goodbye(agent, recp, payload=None):
                           consume_error=True)
 
 
-def notify_died(agent, recp, origin, payload=None, retrying=False):
-    return notify_partner(agent, recp, 'died', origin, payload, retrying)
+def notify_died(agent, recp, origin, payload=None):
+    return notify_partner(agent, recp, 'died', origin, payload)
 
 
-def notify_restarted(agent, recp, origin, new_address, retrying=True):
-    return notify_partner(agent, recp, 'restarted', origin, new_address,
-                            retrying)
+def notify_restarted(agent, recp, origin, new_address):
+    return notify_partner(agent, recp, 'restarted', origin, new_address)
 
 
-def notify_buried(agent, recp, origin, payload=None, retrying=True):
-    return notify_partner(agent, recp, 'buried', origin, payload, retrying)
+def notify_buried(agent, recp, origin, payload=None):
+    return notify_partner(agent, recp, 'buried', origin, payload)
 
 
 def ping(agent, recp):
@@ -35,27 +34,13 @@ def ping(agent, recp):
 
 
 def notify_partner(agent, recp, notification_type, origin, payload,
-                   retrying=False, consume_error=False):
+                   consume_error=False):
 
-    def _ignore_initiator_failed(fail):
-        if fail.check(ProtocolFailed):
-            agent.log('Swallowing %r expection.', fail.value)
-            return None
-        else:
-            agent.log('Reraising exception %r', fail)
-            fail.raiseException()
-
-    f = fiber.succeed(PartnershipProtocol)
-    if retrying:
-        f.add_callback(agent.retrying_protocol, recp,
-                       args=(notification_type, origin, payload, ),
-                       max_retries=5, initial_delay=1)
-    else:
-        f.add_callback(agent.initiate_protocol, recp, notification_type,
-                       origin, payload)
-    f.add_callback(fiber.call_param, 'notify_finish')
+    req = agent.initiate_protocol(PartnershipProtocol, recp,
+                                  notification_type, origin, payload)
+    f = req.notify_finish()
     if consume_error:
-        f.add_errback(_ignore_initiator_failed)
+        f.add_errback(Failure.trap, ProtocolFailed)
     return f
 
 

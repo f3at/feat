@@ -242,7 +242,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @replay.named_side_effect('AgencyAgent.upgrade_agency')
     def upgrade_agency(self, upgrade_cmd):
-        self.agency.upgrade(upgrade_cmd)
+        self.call_next(self.agency.upgrade, upgrade_cmd)
 
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
