@@ -178,6 +178,7 @@ class DBTests(common.TestCase):
 
     def _generate_data(self, **opts):
         defaults = {
+            'entry_type': 'journal',
             'agent_id': 'some id',
             'instance_id': 1,
             'journal_id': self.serializer.convert(('some_id', 1, 0, )),

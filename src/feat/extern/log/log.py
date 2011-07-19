@@ -315,6 +315,9 @@ def doLog(level, object, category, format, args, where=-1,
     """
     ret = {}
 
+    if category is None:
+        category = 'feat'
+
     if args:
         message = format % args
     else:

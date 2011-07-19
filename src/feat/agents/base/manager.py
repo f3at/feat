@@ -31,7 +31,6 @@ class BaseManager(protocols.BaseInitiator):
 
     implements(IAgentManager)
 
-    log_category = "manager"
     protocol_type = "Contract"
     protocol_id = None
 

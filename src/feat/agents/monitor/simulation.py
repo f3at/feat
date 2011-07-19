@@ -159,8 +159,6 @@ class IntensiveCare(labour.BaseLabour):
     classProvides(IIntensiveCareFactory)
     implements(IIntensiveCare)
 
-    log_category = "intensive-care"
-
     def __init__(self, assistant, doctor, control_period=None):
         labour.BaseLabour.__init__(self, IAssistant(assistant))
         self._doctor = IDoctor(doctor)

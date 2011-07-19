@@ -9,13 +9,14 @@ from feat.agents.monitor.interface import *
 from feat.test import common
 
 
-class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
+class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     implements(IDoctor, IAssistant)
 
     def __init__(self, logger, now=None):
         journal.DummyRecorderNode.__init__(self)
         log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
         self.protocol = None
         self.calls = {}
         self.now = now or time.time()

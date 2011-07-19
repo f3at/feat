@@ -25,7 +25,6 @@ class BaseReplier(protocols.BaseInterested):
     initiator = message.RequestMessage
     interest_type = InterestType.private
 
-    log_category = "replier"
     protocol_type = "Request"
     protocol_id = None
 

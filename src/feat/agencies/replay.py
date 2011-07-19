@@ -244,9 +244,9 @@ class Replay(log.FluLogKeeper, log.Logger):
     Class managing the replay of the single agent.
     '''
 
-    implements(IExternalizer, IEffectHandler)
+    log_category = 'replay'
 
-    log_category = 'replay-driver'
+    implements(IExternalizer, IEffectHandler)
 
     def __init__(self, journal, agent_id, inject_dummy_externals=False):
         log.FluLogKeeper.__init__(self)
@@ -508,7 +508,6 @@ class Factory(serialization.Serializable):
 class AgencyInterest(log.Logger):
 
     type_name = "agent-interest"
-    log_category = "agent-interest"
 
     _outside_hamsterball_tag = True
 
@@ -553,7 +552,6 @@ class AgencyInterest(log.Logger):
 class AgencyAgent(BaseReplayDummy):
 
     type_name = "agent-medium"
-    log_category = "agent-medium"
 
     implements(IAgencyAgent, ITimeProvider, IRecorderNode, IJournalKeeper)
 
@@ -741,7 +739,6 @@ class AgencyReplier(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyReplier)
 
-    log_category = "replier-medium"
     type_name = "replier-medium"
 
     ### IAgencyReplier Methods ###
@@ -756,7 +753,6 @@ class AgencyRequester(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyRequester)
 
-    log_category = "requester-medium"
     type_name = "requester-medium"
 
     ### IAgencyRequester Methods ###
@@ -774,7 +770,6 @@ class AgencyContractor(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyContractor)
 
-    log_category = "contractor-medium"
     type_name = "contractor-medium"
 
     ### IAgencyContractor Methods ###
@@ -811,7 +806,6 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyManager)
 
-    log_category = "manager-medium"
     type_name = "manager-medium"
 
     ### IAgencyManager Methods ###
@@ -854,7 +848,6 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
 class AgencyTask(AgencyProtocol, StateMachineSpecific):
 
     type_name = "task-medium"
-    log_category = "task-medium"
 
     implements(IAgencyTask)
 
@@ -880,7 +873,6 @@ class AgencyCollector(AgencyProtocol):
 
     implements(IAgencyCollector)
 
-    log_category = "collector-medium"
     type_name = "collector-medium"
 
     ### IAgencyCollector Methods ###
@@ -890,7 +882,6 @@ class AgencyPoster(AgencyProtocol):
 
     implements(IAgencyPoster)
 
-    log_category = "poster-medium"
     type_name = "poster-medium"
 
     ### IAgencyPoster Methods ###
@@ -902,7 +893,6 @@ class AgencyPoster(AgencyProtocol):
 
 class RetryingProtocol(AgencyProtocol):
 
-    log_category="retrying-protocol"
     type_name="retrying-protocol"
 
     @serialization.freeze_tag('RetryingProtocol.cancel')
@@ -912,7 +902,6 @@ class RetryingProtocol(AgencyProtocol):
 
 class PeriodicProtocol(AgencyProtocol):
 
-    log_category="periodic-protocol"
     type_name="periodic-protocol"
 
     @serialization.freeze_tag('PeriodicProtocol.cancel')

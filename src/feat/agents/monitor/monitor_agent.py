@@ -781,7 +781,6 @@ class HandleDeath(task.BaseTask):
     @replay.mutable
     def _determine_factory(self, state):
         state.factory = agent.registry_lookup(state.descriptor.document_type)
-        self.log_name = "HandleDeath %s" % (state.factory.descriptor_type, )
 
     @replay.immutable
     def _cmp_strategy(self, state, strategy):

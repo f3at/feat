@@ -10,11 +10,12 @@ from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
 
 
-class DummyBase(journal.DummyRecorderNode, log.LogProxy):
+class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     def __init__(self, logger, now=None):
         journal.DummyRecorderNode.__init__(self)
         log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
 
         self.calls = {}
         self.now = now or time.time()

@@ -42,7 +42,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     implements(IAgencyAgent, IAgencyAgentInternal, ITimeProvider,
                IRecorderNode, IJournalKeeper, ISerializable, IMessagingPeer)
 
-    log_category = "agent-medium"
     type_name = "agent-medium" # this is used by ISerializable
 
     _error_handler = error_handler
@@ -65,8 +64,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # identifiers.
         self._instance_id = descriptor.instance_id + 1
 
+        self.log_name = descriptor.doc_id
+        self.log_category = descriptor.document_type
+
         self.agent = factory(self)
-        self.log_name = self.agent.__class__.__name__
         self.log('Instantiated the %r instance', self.agent)
 
         self._protocols = {} # {puid: IAgencyProtocolInternal}
@@ -893,13 +894,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
 
-class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
+class Agency(log.LogProxy, log.Logger, manhole.Manhole,
              dependency.AgencyDependencyMixin, common.ConnectionManager):
 
     log_category = 'agency'
-
-    __metaclass__ = type('MetaAgency', (type(manhole.Manhole),
-                                        type(log.FluLogKeeper)), {})
 
     implements(IAgency, IExternalizer, ITimeProvider)
 
@@ -908,7 +906,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     _error_handler = error_handler
 
     def __init__(self):
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
         dependency.AgencyDependencyMixin.__init__(self, ExecMode.test)
         common.ConnectionManager.__init__(self)
@@ -927,6 +925,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._hostname = None
 
         self._agency_id = str(uuid.uuid1())
+        self.log_name = self._agency_id
 
         self.add_reconnected_cb(self._notify_agents_about_reconnection)
         self.add_disconnected_cb(self._notify_agents_about_disconnection)
@@ -944,6 +943,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         self._messaging = IConnectionFactory(messaging)
         self._journaler = IJournaler(journaler)
         self._jourconn = self._journaler.get_connection(self)
+        self.redirect_log(self._jourconn)
 
         self._messaging.add_disconnected_cb(self._on_disconnected)
         self._messaging.add_reconnected_cb(self._check_msg_and_db_state)
@@ -1000,7 +1000,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
         d = defer.DeferredList([x._terminate() for x in self._agents])
-        d.addCallback(lambda _: self._messaging.disconnect())
+        d.addBoth(defer.drop_param, self._messaging.disconnect)
         return d
 
     def upgrade(self, upgrade_cmd):
@@ -1010,7 +1010,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
     def on_killed(self):
         '''Called when the agency process is terminating. (SIGTERM)'''
         d = defer.DeferredList([x.on_killed() for x in self._agents])
-        d.addCallback(lambda _: self._messaging.disconnect())
+        d.addBoth(defer.drop_param, self._messaging.disconnect)
         return d
 
     def unregister_agent(self, medium):
@@ -1137,7 +1137,7 @@ class Agency(log.FluLogKeeper, log.Logger, manhole.Manhole,
         t = text_helper.Table(fields=("Agent ID", "Agent class", "State"),
                               lengths=(40, 25, 15))
 
-        return t.render((a._descriptor.doc_id, a.log_name,
+        return t.render((a._descriptor.doc_id, a.log_category,
                          a._get_machine_state().name)
                         for a in self._agents)
 

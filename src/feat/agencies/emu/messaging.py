@@ -12,7 +12,7 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
 
     implements(IConnectionFactory)
 
-    log_category = "messaging"
+    log_category = "emu-messaging"
 
     def __init__(self):
         common.ConnectionManager.__init__(self)

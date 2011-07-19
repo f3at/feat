@@ -578,8 +578,9 @@ class DummyAgent(agent.BaseAgent, Mock):
         pass
 
 
-class DummyRecorderNode(journal.DummyRecorderNode, log.LogProxy):
+class DummyRecorderNode(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     def __init__(self, test_case):
         journal.DummyRecorderNode.__init__(self)
         log.LogProxy.__init__(self, test_case)
+        log.Logger.__init__(self, test_case)

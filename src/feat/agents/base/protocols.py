@@ -10,8 +10,6 @@ class BaseProtocol(log.Logger, replay.Replayable):
 
     implements(IAgentProtocol)
 
-    log_category = "protocol"
-
     protocol_type = None
     protocol_id = None
 

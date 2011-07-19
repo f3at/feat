@@ -19,13 +19,14 @@ class DummyDescriptor(object):
         self.instance_id = iid
 
 
-class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
+class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     implements(IAgent)
 
     def __init__(self, logger, descriptor):
         journal.DummyRecorderNode.__init__(self)
         log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
 
         self.descriptor = descriptor
         self.calls = {}

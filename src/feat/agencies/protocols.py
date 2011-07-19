@@ -62,7 +62,6 @@ class BaseInterest(log.Logger):
                IAgencyInterest, ISerializable)
 
     type_name = "agent-interest"
-    log_category = "agent-interest"
 
     agency_agent = None
     agent_factory = None

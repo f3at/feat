@@ -39,8 +39,6 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
     Represents the contractor from the point of view of the manager
     '''
 
-    log_category = "manager-contractor"
-
     def __init__(self, manager, bid, state=None):
         log.Logger.__init__(self, manager)
         common.StateMachineMixin.__init__(self)
@@ -120,7 +118,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(ISerializable, IAgencyManager,
                IAgencyProtocolInternal, IAgencyListenerInternal)
 
-    log_category = "manager-medium"
     type_name = "manager-medium"
 
     error_state = ContractState.wtf
@@ -151,7 +148,6 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.register_protocol(self)
 
         self.manager = manager
-        self.log_name = manager.__class__.__name__
         self._set_protocol_id(manager.protocol_id)
 
         self._set_state(ContractState.initiated)
@@ -450,7 +446,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(ISerializable, IAgencyContractor,
                IAgencyProtocolInternal, IAgencyListenerInternal)
 
-    log_category = "contractor-medium"
     type_name = "contractor-medium"
 
     error_state = ContractState.wtf
@@ -481,7 +476,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         contractor = self.factory(self.agent.get_agent(), self)
 
         self.contractor = contractor
-        self.log_name = self.contractor.__class__.__name__
         self._set_state(ContractState.initiated)
 
         self.call_next(self._call, self.contractor.initiate,

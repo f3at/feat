@@ -197,8 +197,6 @@ class BasePartner(serialization.Serializable, mro.MroMixin):
 
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
-    log_category = "partners"
-
     default_handler = BasePartner
     default_role = None
 
@@ -210,7 +208,6 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
         replay.Replayable.__init__(self, agent)
-        self.log_name = type(self).__name__
 
     @replay.immutable
     def restored(self, state):

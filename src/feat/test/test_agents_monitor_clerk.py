@@ -95,13 +95,14 @@ class DummyClerk(object):
         self.dead.append(patient)
 
 
-class DummyPatron(journal.DummyRecorderNode, log.LogProxy):
+class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     implements(IAssistant, ICoroner)
 
     def __init__(self, logger, now=None):
         journal.DummyRecorderNode.__init__(self)
         log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
         self.calls = {} # {CALL_ID: (time, call_id, fun, args, kwargs)}
 
         self.reset()

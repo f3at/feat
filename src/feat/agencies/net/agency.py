@@ -218,9 +218,11 @@ class Agency(agency.Agency):
         mesg = messaging.Messaging(
             self.config['msg']['host'], int(self.config['msg']['port']),
             self.config['msg']['user'], self.config['msg']['password'])
+        mesg.redirect_log(self)
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
+        db.redirect_log(self)
         jour = journaler.Journaler(self)
         self._journal_writer = None
 
@@ -321,8 +323,6 @@ class Agency(agency.Agency):
         return self._journal_writer
 
     def on_killed(self):
-        if self._journal_writer:
-            self._journal_writer.close()
         d = agency.Agency.on_killed(self)
         d.addCallback(lambda _: self._disconnect)
         return d
@@ -354,6 +354,7 @@ class Agency(agency.Agency):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
         d.addCallback(defer.drop_param, self._gateway.cleanup)
+        d.addCallback(defer.drop_param, self._journaler.close)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
 

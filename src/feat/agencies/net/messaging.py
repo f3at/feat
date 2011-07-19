@@ -18,8 +18,6 @@ from feat.agents.base.message import BaseMessage
 
 class MessagingClient(AMQClient, log.Logger):
 
-    log_category = 'messaging-client'
-
     _error_handler=error_handler
 
     def __init__(self, factory, delegate, vhost, spec, user, password):
@@ -54,8 +52,6 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
     protocol = MessagingClient
     initialDelay = 0.1
     maxDelay = 300
-
-    log_category = 'amq-factory'
 
     def __init__(self, messaging, delegate, user, password,
                  on_connected=None, on_disconnected=None):
@@ -139,7 +135,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self._wait_for_client = defer.Deferred()
 
 
-class Messaging(ConnectionManager, log.Logger, log.FluLogKeeper):
+class Messaging(ConnectionManager, log.Logger, log.LogProxy):
 
     implements(IConnectionFactory)
 
@@ -147,7 +143,7 @@ class Messaging(ConnectionManager, log.Logger, log.FluLogKeeper):
 
     def __init__(self, host, port, user='guest', password='guest'):
         ConnectionManager.__init__(self)
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         self._user = user
@@ -236,8 +232,6 @@ class ProcessingCall(object):
 
 class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
-    log_category = 'messaging-channel'
-
     def __init__(self, messaging, client_defer, factory):
         StateMachineMixin.__init__(self, ChannelState.recording)
         log.Logger.__init__(self, messaging)
@@ -262,7 +256,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                  "client=%r", client)
 
         def open_channel(channel):
-            self.log_name = "channel %d" % client._channel_counter
             d = channel.channel_open()
             d.addCallback(lambda _: channel.tx_select())
             d.addCallback(lambda _: channel)
@@ -419,8 +412,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
 
 class WrappedQueue(Queue, log.Logger):
-
-    log_category = "messaging-queue"
 
     def __init__(self, channel, name):
         log.Logger.__init__(self, channel)

@@ -10,9 +10,12 @@ from feat.agencies.net import broker
 from feat.common import log, manhole, first
 
 
-class DummyAgency(log.LogProxy, manhole.Manhole):
+class DummyAgency(log.LogProxy, manhole.Manhole, log.Logger):
+
+    log_category = 'dummy_agency'
 
     def __init__(self, testcase):
+        log.Logger.__init__(self, testcase)
         log.LogProxy.__init__(self, testcase)
         self.agency_id = str(uuid.uuid1())
 

@@ -15,10 +15,12 @@ from feat.common import (log, text_helper, error_handler, defer,
                          fiber, )
 from feat.agencies import common
 from feat.common.serialization import banana
+from feat.extern.log import log as flulog
 
 from feat.interface.journal import *
 from feat.interface.serialization import *
 from feat.agencies.interface import *
+from feat.interface.log import *
 
 
 class State(enum.Enum):
@@ -92,16 +94,18 @@ def in_state(func, *states):
     return wrapper
 
 
-class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
-    implements(IJournaler)
+class Journaler(log.Logger, common.StateMachineMixin):
+    implements(IJournaler, ILogKeeper)
 
     log_category = 'journaler'
 
     _error_handler = error_handler
 
+    # FIXME: at some point switch to False and remove this attribute
+    should_keep_on_logging_to_flulog = True
+
     def __init__(self, logger):
-        log.Logger.__init__(self, logger)
-        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
         self._writer = None
@@ -116,8 +120,14 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._schedule_flush()
 
     def close(self):
-        self._writer = None
-        self._set_state(State.disconnected)
+
+        def set_disconnected():
+            self._writer = None
+            self._set_state(State.disconnected)
+
+        d = self._close_writer()
+        d.addCallback(defer.drop_param, set_disconnected)
+        return d
 
     ### IJournaler ###
 
@@ -153,6 +163,38 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
             return self._writer.is_idle()
         return True
 
+    ### ILogKeeper Methods ###
+
+    def do_log(self, level, object, category, format, args,
+               depth=-1, file_path=None, line_num=None):
+        level = int(level)
+        if category is None:
+            category = 'feat'
+        if level > flulog.getCategoryLevel(category):
+            return
+
+        if file_path is None and line_num is None:
+            file_path, line_num = flulog.getFileLine(where=depth-1)
+
+        if args:
+            message = format % args
+        else:
+            message = str(format)
+
+        data = dict(
+            entry_type='log',
+            level=level,
+            log_name=object,
+            category=category,
+            file_path=file_path,
+            line_num=line_num,
+            message=message)
+        self.insert_entry(**data)
+
+        if self.should_keep_on_logging_to_flulog:
+            flulog.doLog(level, object, category, format, args,
+                         where=depth, filePath=file_path, line=line_num)
+
     ### private ###
 
     def _schedule_flush(self):
@@ -182,11 +224,15 @@ class Journaler(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._cache.rollback()
         fail.raiseException()
 
+    def _close_writer(self):
+        d = defer.succeed(None)
+        if self._writer:
+            d.addCallback(defer.drop_param, self._writer.close)
+        return d
+
 
 class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     implements(IJournalWriter)
-
-    log_category = 'broker-proxy-writer'
 
     _error_handler = error_handler
 
@@ -253,11 +299,16 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     def _push_entries(self):
         entries = self._cache.fetch()
         if entries:
-            d = self._writer.callRemote('insert_entries', entries)
-            d.addCallbacks(defer.drop_param, defer.drop_param,
-                           callbackArgs=(self._cache.commit, ),
-                           errbackArgs=(self._cache.rollback, ))
-            return d
+            try:
+                d = self._writer.callRemote('insert_entries', entries)
+                d.addCallbacks(defer.drop_param, defer.drop_param,
+                               callbackArgs=(self._cache.commit, ),
+                               errbackArgs=(self._cache.rollback, ))
+                return d
+            except pb.DeadReferenceError:
+                # for some reason callRemote raises this error
+                # instead of giving failed Deferred
+                self._cache.rollback()
 
     def _set_writer(self, writer):
         self._writer = writer
@@ -272,8 +323,6 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
 class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                    manhole.Manhole):
     implements(IJournalWriter)
-
-    log_category = 'sqlite-writer'
 
     _error_handler = error_handler
 
@@ -358,6 +407,92 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(self._decode)
         return d
 
+    @in_state(State.connected)
+    def get_log_entries(self, start_date=None, end_date=None, filters=list()):
+        '''
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        @param filters: list of dictionaries with the following keys:
+                        level - mandatory, display entries with lvl <= level
+                        category - optional, limit to log_category
+                        name - optional, limit to log_name
+                        Leaving optional fields blank will match all the
+                        entries. The entries in this list are combined with
+                        OR operator.
+        '''
+        query = text_helper.format_block('''
+        SELECT logs.message,
+               logs.level,
+               logs.category,
+               logs.log_name,
+               logs.file_path,
+               logs.line_num,
+               logs.timestamp
+        FROM logs
+        WHERE 1
+        ''')
+        query = self._add_timestamp_condition_sql(query, start_date, end_date)
+
+        def transform_filter(filter):
+            level = filter.get('level', None)
+            category = filter.get('category', None)
+            name = filter.get('name', None)
+            if level is None:
+                raise AttributeError("level is mandatory parameter.")
+            resp = "(logs.level <= %d" % (int(level), )
+            if category is not None:
+                resp += " AND logs.category == '%s'" % (category, )
+            if name is not None:
+                resp += " AND logs.log_name == '%s'" % (name, )
+            resp += ')'
+            return resp
+
+        filter_strings = map(transform_filter, filters)
+        query += " AND (%s)\n" % (' OR '.join(filter_strings), )
+        d = self._db.runQuery(query)
+        d.addCallback(self._decode)
+        return d
+
+    @in_state(State.connected)
+    def get_log_categories(self, start_date=None, end_date=None):
+        '''
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        '''
+        query = text_helper.format_block('''
+        SELECT DISTINCT logs.category
+        FROM logs
+        WHERE 1
+        ''')
+        query = self._add_timestamp_condition_sql(query, start_date, end_date)
+        d = self._db.runQuery(query)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_names(self, category, start_date=None, end_date=None):
+        '''
+        Fetches log names for the given category.
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        '''
+        query = text_helper.format_block('''
+        SELECT DISTINCT logs.log_name
+        FROM logs
+        WHERE category = ?
+        ''')
+        query = self._add_timestamp_condition_sql(query, start_date, end_date)
+        d = self._db.runQuery(query, (category, ))
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
     @manhole.expose()
     def insert_entries(self, entries):
         for data in entries:
@@ -374,6 +509,13 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         return True
 
     ### Private ###
+
+    def _add_timestamp_condition_sql(self, query, start_date, end_date):
+        if start_date is not None:
+            query += "  AND logs.timestamp >= %d\n" % (int(start_date), )
+        if end_date is not None:
+            query += "  AND logs.timestamp <= %d\n" % (int(end_date), )
+        return query
 
     def _reset_history_id_cache(self):
         # (agent_id, instance_id, ) -> history_id
@@ -435,16 +577,28 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     def _encode(self, data):
         result = dict()
 
-        # just copy, caring open escapes
-        result['fiber_depth'] = data['fiber_depth']
-        result['instance_id'] = data['instance_id']
+        if data['entry_type'] == 'journal':
+            to_copy = ('fiber_depth', 'instance_id', 'entry_type')
+            to_decode = ('agent_id', 'function_id', 'fiber_id', )
+            to_blob = ('journal_id', 'args', 'kwargs', 'side_effects',
+                       'result', )
+        elif data['entry_type'] == 'log':
+            to_copy = ('level', 'log_name', 'category', 'line_num',
+                       'entry_type')
+            to_decode = ('file_path', )
+            to_blob = ('message', )
+        else:
+            raise RuntimeError('Unknown entry type %r' % data['entry_type'])
 
-        for key in ('agent_id', 'function_id', 'fiber_id', ):
+        # just copy, caring open escapes
+        for key in to_copy:
+            result[key] = data[key]
+
+        for key in to_decode:
             result[key] = data[key].decode("utf-8")
 
         # encode the blobs
-        for key in ('journal_id', 'args', 'kwargs',
-                    'side_effects', 'result', ):
+        for key in to_blob:
             safe = data[key]
             if self._encoding:
                 safe = safe.encode(self._encoding)
@@ -460,6 +614,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _got_encoding(self, res):
         encoding = res[0][0]
+        if encoding == 'None':
+            encoding = None
         if self._encoding is not None and encoding != self._encoding:
             self.warning("Journaler created with encoding %r but the one "
                          "loaded from existing database is %r. Using "
@@ -470,7 +626,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _create_schema(self, fail):
         fail.trap(sqlite3.OperationalError)
-        self.log('Creating entries table.')
         commands = [
             text_helper.format_block("""
             CREATE TABLE entries (
@@ -483,6 +638,17 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
               kwargs BLOB,
               side_effects BLOB,
               result BLOB,
+              timestamp INTEGER
+            )
+            """),
+            text_helper.format_block("""
+            CREATE TABLE logs (
+              message BLOB,
+              level INTEGER,
+              category VARCHAR(36),
+              log_name VARCHAR(36),
+              file_path VARCHAR(200),
+              line_num INTEGER,
               timestamp INTEGER
             )
             """),
@@ -531,7 +697,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _perform_inserts(self, cache):
 
-        def do_insert(connection, history_id, data):
+        def do_insert_entry(connection, history_id, data):
             command = text_helper.format_block("""
             INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
                                         strftime('%s', 'now'))
@@ -543,16 +709,28 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                           data['args'], data['kwargs'],
                           data['side_effects'], data['result'], ))
 
+        def do_insert_log(connection, data):
+            command = text_helper.format_block("""
+            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+            """)
+            connection.execute(
+                command, (data['message'], int(data['level']),
+                          data['category'], data['log_name'],
+                          data['file_path'], data['line_num']))
+
         def transaction(connection, cache):
             entries = cache.fetch()
             if not entries:
                 return
-            entries = map(self._encode, entries)
             try:
+                entries = map(self._encode, entries)
                 for data in entries:
-                    history_id = self._get_history_id(
-                        connection, data['agent_id'], data['instance_id'])
-                    do_insert(connection, history_id, data)
+                    if data['entry_type'] == 'journal':
+                        history_id = self._get_history_id(
+                            connection, data['agent_id'], data['instance_id'])
+                        do_insert_entry(connection, history_id, data)
+                    elif data['entry_type'] == 'log':
+                        do_insert_log(connection, data)
                 cache.commit()
             except Exception:
                 cache.rollback()
@@ -607,14 +785,16 @@ class Record(object):
         self._journaler = journaler
 
     def commit(self, **data):
+        data['entry_type'] = 'journal'
         self._journaler.insert_entry(**data)
 
 
-class JournalerConnection(log.Logger):
+class JournalerConnection(log.Logger, log.LogProxy):
     implements(IJournalerConnection)
 
     def __init__(self, journaler, externalizer):
-        log.Logger.__init__(self, journaler)
+        log.LogProxy.__init__(self, journaler)
+        log.Logger.__init__(self, self)
 
         self.serializer = banana.Serializer(externalizer=externalizer)
         self.journaler = IJournaler(journaler)

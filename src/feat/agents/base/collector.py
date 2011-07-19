@@ -26,7 +26,6 @@ class BaseCollector(log.Logger, replay.Replayable):
     initiator = message.Notification
     interest_type = InterestType.private
 
-    log_category = "collector"
     protocol_type = "Notification"
     protocol_id = None
 

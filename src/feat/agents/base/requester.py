@@ -62,8 +62,6 @@ class BaseRequester(protocols.BaseInitiator):
 
     implements(IAgentRequester)
 
-    log_category = "requester"
-
     protocol_type = "Request"
 
     timeout = 0

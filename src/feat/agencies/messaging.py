@@ -16,8 +16,6 @@ class Connection(log.Logger):
 
     implements(IMessagingClient)
 
-    log_category = 'messaging-connection'
-
     def __init__(self, messaging, agent):
         log.Logger.__init__(self, messaging)
         self._messaging = messaging

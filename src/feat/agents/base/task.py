@@ -26,8 +26,6 @@ class BaseTask(protocols.BaseInitiator):
 
     implements(IAgentTask)
 
-    log_category = "task"
-
     protocol_type = "Task"
     protocol_id = None
     busy = True # Busy tasks will not be idle

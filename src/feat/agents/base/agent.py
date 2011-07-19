@@ -100,8 +100,6 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     partners_class = Partners
 
-    log_category = "agent"
-
     standalone = False
 
     categories = {'access': agent.Access.none,
@@ -116,7 +114,6 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         log.Logger.__init__(self, medium)
         log.LogProxy.__init__(self, medium)
         replay.Replayable.__init__(self, medium)
-        self.log_name = self.__class__.__name__
 
     @replay.immutable
     def restored(self, state):

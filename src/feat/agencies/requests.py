@@ -25,7 +25,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(ISerializable, IAgencyRequester,
                IAgencyProtocolInternal, IAgencyListenerInternal)
 
-    log_category = "requester-medium"
     type_name = "requester-medium"
 
     error_state = RequestState.wtf
@@ -52,7 +51,6 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.register_protocol(self)
 
         self.requester = requester
-        self.log_name = requester.__class__.__name__
         self._set_protocol_id(requester.protocol_id)
 
         self._set_state(RequestState.requested)
@@ -136,7 +134,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(ISerializable, IAgencyReplier,
                IAgencyProtocolInternal, IAgencyListenerInternal)
 
-    log_category = "replier-medium"
     type_name = "replier-medium"
 
     error_state = RequestState.wtf
@@ -163,7 +160,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         replier = self.factory(self.agent.get_agent(), self)
 
         self.replier = replier
-        self.log_name = replier.__class__.__name__
         self._set_state(RequestState.requested)
         return replier
 

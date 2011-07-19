@@ -74,11 +74,11 @@ class TestLogging(common.TestCase):
         obj.error("4")
 
         self.assertEqual(keeper.entries,
-                         [(LogLevel.log, None, 'feat', '1', (), 1),
-                          (LogLevel.debug, None, 'feat', '2', (42, ), 1),
-                          (LogLevel.info, None, 'feat', '3', (), 1),
-                          (LogLevel.warning, None, 'feat', '4', (2, 3, 5), 1),
-                          (LogLevel.error, None, 'feat', '4', (), 1)])
+                         [(LogLevel.log, None, None, '1', (), 1),
+                          (LogLevel.debug, None, None, '2', (42, ), 1),
+                          (LogLevel.info, None, None, '3', (), 1),
+                          (LogLevel.warning, None, None, '4', (2, 3, 5), 1),
+                          (LogLevel.error, None, None, '4', (), 1)])
 
     def testLogEntryWithCategory(self):
         keeper = DummyLogKeeper()
@@ -123,11 +123,11 @@ class TestLogging(common.TestCase):
         obj.error("4")
 
         self.assertEqual(keeper.entries,
-                         [(LogLevel.log, 'spam', 'feat', '1', (), 1),
-                          (LogLevel.debug, 'beans', 'feat', '2', (), 1),
-                          (LogLevel.info, 'foo', 'feat', '3', (), 1),
-                          (LogLevel.warning, 'bar', 'feat', '4', (), 1),
-                          (LogLevel.error, 'bacon', 'feat', '4', (), 1),
+                         [(LogLevel.log, 'spam', None, '1', (), 1),
+                          (LogLevel.debug, 'beans', None, '2', (), 1),
+                          (LogLevel.info, 'foo', None, '3', (), 1),
+                          (LogLevel.warning, 'bar', None, '4', (), 1),
+                          (LogLevel.error, 'bacon', None, '4', (), 1),
                           (LogLevel.log, 'spam', 'dummy', '1', (), 1),
                           (LogLevel.debug, 'beans', 'dummy', '2', (), 1),
                           (LogLevel.info, 'foo', 'dummy', '3', (), 1),

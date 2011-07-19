@@ -109,8 +109,6 @@ class PBRemote(object):
 
 class Parser(log.Logger):
 
-    log_category = 'command-parser'
-
     def __init__(self, driver, output, commands, cb_on_finish=None):
         log.Logger.__init__(self, driver)
 
