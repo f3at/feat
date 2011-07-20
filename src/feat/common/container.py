@@ -6,10 +6,70 @@ from feat.common import serialization
 from feat.interface.generic import *
 
 
-__all__ = ("Empty", "ExpDict", "ExpQueue")
+__all__ = ("MroDict", "Empty", "ExpDict", "ExpQueue")
 
 PRECISION = 1e3
 MAX_LAZY_PACK_PER_SECOND = 1
+
+
+class MroDict(object):
+    """
+    I'm an dictionary which is ment to be used as a class attribute.
+    I'm aware of MRO and show different values depending from which class
+    i'm accessed.
+
+    NOTE: Keep in mind that accessible mro dictionary in results in two
+    dictionaries being instantiated. The is expensive operation, in case of
+    performing multiple operations in single method it is recommended to
+    assign it to local variable.
+    """
+
+    def __init__(self, tag):
+        self._tag = tag
+
+    ### descriptor protocol ###
+
+    def __get__(self, obj, owner):
+        klasses = owner.mro()
+        klasses.reverse()
+
+        kwargs = dict()
+        for klass in klasses:
+            kwargs.update(getattr(klass, self._tag, dict()))
+        return ProxyDict(self._get_tag(owner), kwargs)
+
+    def __set__(self, instance, value):
+        return NotImplemetedError(
+            "You are doing something you shouldn't be doing")
+
+    def __delete__(self, instance):
+        return NotImplemetedError(
+            "You are doing something you shouldn't be doing")
+
+    ### endof descriptor protocol ###
+
+    def _get_tag(self, cls):
+        if self._tag not in cls.__dict__:
+            setattr(cls, self._tag, dict())
+        return getattr(cls, self._tag)
+
+
+class ProxyDict(dict):
+    '''
+    Delegates mutating methods to the owner which is part of the big object.
+    '''
+
+    def __init__(self, owner, kwargs):
+        dict.__init__(self, kwargs.iteritems())
+        self._owner = owner
+
+    def __setitem__(self, key, value):
+        self._owner.__setitem__(key, value)
+        dict.__setitem__(self, key, value)
+
+    def __delitem__(self, key):
+        self._owner.__delitem__(key)
+        dict.__delitem__(self, key)
 
 
 class Empty(Exception):

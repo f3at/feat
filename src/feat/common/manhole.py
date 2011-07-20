@@ -7,7 +7,8 @@ from functools import partial
 from twisted.internet import defer
 from twisted.spread import pb
 
-from feat.common import decorator, annotate, enum, log, error_handler
+from feat.common import (decorator, annotate, enum, log,
+                         error_handler, container, )
 
 
 class SecurityLevel(enum.Enum):
@@ -32,26 +33,17 @@ def expose(function, security_level=SecurityLevel.safe):
 
 class Manhole(annotate.Annotable, pb.Referenceable):
 
-    @classmethod
-    def __class__init__(cls, name, bases, dct):
-        cls._exposed = dict()
-        for base in bases:
-            base_exposed = getattr(base, '_exposed', dict())
-            for lvl, methods in base_exposed.iteritems():
-                if lvl not in cls._exposed:
-                    cls._exposed[lvl] = dict()
-                cls._exposed[lvl].update(methods)
+    _exposed = container.MroDict("_mro_exposed")
 
     @classmethod
     def _register_exposed(cls, function, security_level):
+        fun_id = function.__name__
+        cls._exposed[fun_id] = dict()
+
         for lvl in SecurityLevel:
             if lvl > security_level:
                 continue
-            fun_id = function.__name__
-            if lvl not in cls._exposed:
-
-                cls._exposed[lvl] = dict()
-            cls._exposed[lvl][fun_id] = function
+            cls._exposed[fun_id][lvl] = function
         cls._build_remote_call(function)
 
     @classmethod
@@ -79,10 +71,8 @@ class Manhole(annotate.Annotable, pb.Referenceable):
         return "%s %s" % (method.__name__.ljust(25), method.__doc__)
 
     def get_exposed_cmds(self, lvl=SecurityLevel.safe):
-        if self._exposed is None or lvl not in self._exposed:
-            return dict()
-        else:
-            return self._exposed[lvl]
+        return dict((fun_id, v.get(lvl), )
+                    for fun_id, v in self._exposed.iteritems() if lvl in v)
 
     def remote_get_exposed_cmds(self, lvl=SecurityLevel.safe):
         return self.get_exposed_cmds(lvl).keys()
@@ -118,8 +108,6 @@ class PBRemote(object):
 
 
 class Parser(log.Logger):
-
-    log_category = 'command-parser'
 
     def __init__(self, driver, output, commands, cb_on_finish=None):
         log.Logger.__init__(self, driver)
@@ -233,13 +221,22 @@ class Parser(log.Logger):
             self.output.write(str(data) + "\n")
 
     def get_line(self):
-        try:
-            index = self.buffer.index("\n")
-            line = self.buffer[0:index]
-            self.buffer = self.buffer[(index + 1):]
-            return line
-        except ValueError:
-            return None
+
+        def index_safe(sep):
+            try:
+                return self.buffer.index(sep)
+            except ValueError:
+                pass
+
+        separators = ["\n", ";"]
+        indexes = [index_safe(x) for x in separators]
+        indexes = [x for x in indexes if x is not None]
+        if not indexes:
+            return
+        index = min(indexes)
+        line = self.buffer[0:index]
+        self.buffer = self.buffer[(index + 1):]
+        return line
 
     def process_line(self):
         line = self.get_line()

@@ -16,7 +16,7 @@ from feat.agencies.interface import *
 from feat.interface.view import *
 
 
-class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
+class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -24,11 +24,11 @@ class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
     Imitates the CouchDB server internals.
     '''
 
-    log_category = "database"
+    log_category = "emu-database"
 
     def __init__(self):
         common.ConnectionManager.__init__(self)
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         ChangeListener.__init__(self, self)
 
         # id -> document

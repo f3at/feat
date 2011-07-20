@@ -1,6 +1,6 @@
 from zope.interface import Interface, implements
 
-from feat.common import (annotate, decorator, fiber, defer,
+from feat.common import (annotate, decorator, fiber, defer, container,
                          error_handler, serialization, )
 from feat.agents.base import replay, message, requester, replier
 
@@ -35,7 +35,7 @@ class AgentMixin(object):
 
     implements(IRPCClient, IRPCServer)
 
-    _published = None
+    _published = container.MroDict("_mro_published")
 
     @replay.immutable
     def initiate(self, state):
@@ -44,9 +44,18 @@ class AgentMixin(object):
 
     ### IRPCClient Methods ###
 
-    @replay.journaled
-    def call_remote(self, state, recipient, fun_id, *args, **kwargs):
+    def call_remote(self, recipient, fun_id, *args, **kwargs):
+        #FIXME: _timeout should be made deprecated
         timeout = kwargs.pop('_timeout', 10)
+        return self.call_remote_ex(recipient, fun_id, args, kwargs,
+                                   timeout=timeout)
+
+    @replay.journaled
+    def call_remote_ex(self, state, recipient, fun_id,
+                       args=None, kwargs=None, timeout=10):
+        args = args or ()
+        kwargs = kwargs or {}
+
         f = fiber.Fiber()
         f.add_callback(self.initiate_protocol,
                        recipient, fun_id, *args, **kwargs)
@@ -68,8 +77,6 @@ class AgentMixin(object):
     @classmethod
     def _register_published(cls, function):
         fun_id = function.__name__
-        if cls._published is None:
-            cls._published = {}
         cls._published[fun_id] = function
 
 

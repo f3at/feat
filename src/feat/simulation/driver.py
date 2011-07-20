@@ -196,8 +196,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         for x in self.iter_agents():
             defers.append(x.terminate_hard())
         yield defer.DeferredList(defers)
-        self._journaler.close()
-        self._jourwriter.close()
+        yield self._journaler.close()
         del(self._journaler)
         del(self._jourwriter)
         del(self._messaging)

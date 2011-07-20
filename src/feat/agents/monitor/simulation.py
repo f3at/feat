@@ -54,7 +54,9 @@ class Patient(object):
     implements(IPatientStatus)
 
     def __init__(self, recipient, location,
-                 period=None, dying_skips=None, death_skips=None):
+                 period=None, dying_skips=None,
+                 death_skips=None, patient_type=None):
+        self.patient_type = patient_type
         self.location = location
         self.recipient = recipient
         self.state = PatientState.alive
@@ -71,7 +73,10 @@ class Clerk(labour.BaseLabour):
     classProvides(IClerkFactory)
     implements(IClerk, IDoctor)
 
-    def __init__(self, assistant, coroner):
+    def __init__(self, assistant, coroner,
+                 location="localhost", enable_quarantine=True,
+                 host_quarantine_length=DEFAULT_HOST_QUARANTINE_LENGTH,
+                 self_quarantine_length=DEFAULT_SELF_QUARANTINE_LENGTH):
         labour.BaseLabour.__init__(self, IAssistant(assistant))
         self._coroner = ICoroner(coroner)
 
@@ -85,6 +90,14 @@ class Clerk(labour.BaseLabour):
 
     def cleanup(self):
         """Nothing."""
+
+    @replay.side_effect
+    def on_disconnected(self):
+        pass
+
+    @replay.side_effect
+    def on_reconnected(self):
+        pass
 
     @replay.side_effect
     def has_patient(self, identifier):
@@ -146,8 +159,6 @@ class IntensiveCare(labour.BaseLabour):
     classProvides(IIntensiveCareFactory)
     implements(IIntensiveCare)
 
-    log_category = "intensive-care"
-
     def __init__(self, assistant, doctor, control_period=None):
         labour.BaseLabour.__init__(self, IAssistant(assistant))
         self._doctor = IDoctor(doctor)
@@ -177,11 +188,12 @@ class IntensiveCare(labour.BaseLabour):
 
     @replay.side_effect
     def add_patient(self, recipient, location,
-                    period=None, dying_skips=None, death_skips=None):
+                    period=None, dying_skips=None,
+                    death_skips=None, patient_type=None):
         agent_id = recipient.key
         assert agent_id not in self._patients, \
                "Patient already added to intensive care"
-        patient = Patient(recipient, location)
+        patient = Patient(recipient, location, patient_type=patient_type)
         self._patients[recipient.key] = patient
         self._doctor.on_patient_added(patient)
 

@@ -1,9 +1,14 @@
+import signal
+import os
+
+from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.agencies import agency
 from feat.agencies.net import agency as net_agency
-from feat.agents.base import partners
-from feat.common import adapter
+from feat.agencies.net.broker import BrokerRole
+from feat.agents.base import partners, resource
+from feat.common import adapter, log
 from feat.gateway import models
 
 
@@ -18,6 +23,14 @@ class Root(object):
     def __getattr__(self, attr):
         return getattr(self._agency, attr)
 
+    def is_master(self):
+        return self._agency.role is BrokerRole.master
+
+    def full_shutdown(self):
+        d = self._agency.full_shutdown()
+        d.addBoth(lambda _: reactor.stop())
+        return d
+
 
 @adapter.register(net_agency.Agency, models.IAgency)
 class Agency(object):
@@ -30,17 +43,30 @@ class Agency(object):
     def __getattr__(self, attr):
         return getattr(self._agency, attr)
 
+    @property
+    def default_gateway_port(self):
+        return net_agency.DEFAULT_GW_PORT
+
+    def shutdown_agency(self):
+        return self._agency.shutdown()
+
+    def terminate_agency(self):
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def kill_agency(self):
+        os.kill(os.getpid(), signal.SIGKILL)
+
 
 @adapter.register(agency.AgencyAgent, models.IAgent)
 class Agent(object):
 
-    implements(models.IAgency)
+    implements(models.IAgent)
 
     def __init__(self, medium):
         self._medium = medium
         self._agent = medium.get_agent()
 
-    ### models.IAgencyModel ###
+    ### models.IAgent ###
 
     @property
     def agent_id(self):
@@ -58,6 +84,13 @@ class Agent(object):
     def agent_status(self):
         return self._agent.get_status()
 
+    @property
+    def agency_id(self):
+        return self._medium.agency.agency_id
+
+    def have_resources(self):
+        return isinstance(self._agent, resource.AgentMixin)
+
     def iter_attributes(self):
         return iter([])
 
@@ -66,6 +99,29 @@ class Agent(object):
 
     def iter_resources(self):
         return self._agent.get_resource_usage().iteritems()
+
+    def terminate_agent(self):
+        agent_id = self._medium.get_agent_id()
+        d = self._medium.agency.wait_event(agent_id, "unregistered")
+        self._medium.terminate()
+        return d
+
+    def kill_agent(self):
+        return self._medium.terminate_hard()
+
+
+@adapter.register(agency.AgencyAgent, models.IMonitor)
+class Monitor(Agent):
+
+    implements(models.IMonitor)
+
+    def __init__(self, medium):
+        Agent.__init__(self, medium)
+
+    ### models.IMonitor ###
+
+    def get_monitoring_status(self):
+        return self._agent.get_monitoring_status()
 
 
 @adapter.register(partners.BasePartner, models.IPartner)

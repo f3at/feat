@@ -26,8 +26,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     default_socket_path = "/tmp/feat-master.socket"
     socket_mode = 666
 
-    log_category = "pb-broker"
-
     def __init__(self, agency, socket_path=None,
                  on_master_cb=None, on_slave_cb=None,
                  on_disconnected_cb=None):
@@ -224,8 +222,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
 class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
-    log_category = "pb-master"
-
     def __init__(self, broker):
         log.Logger.__init__(self, broker)
         pb.PBServerFactory.__init__(self, self)
@@ -276,8 +272,6 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 
 
 class SlaveFactory(pb.PBClientFactory, log.Logger):
-
-    log_category = 'pb-slave'
 
     def __init__(self, broker, cb):
         pb.PBClientFactory.__init__(self)

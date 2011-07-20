@@ -9,12 +9,13 @@ class NoPortAvailableError(Exception):
     pass
 
 
-class Gateway(log.FluLogKeeper, log.Logger):
+class Gateway(log.LogProxy, log.Logger):
 
     log_category = "gateway"
 
     def __init__(self, root, port_range=None):
         log.Logger.__init__(self, self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         self._root = root
 
         self._ports = port_range
@@ -23,7 +24,8 @@ class Gateway(log.FluLogKeeper, log.Logger):
     def initiate_master(self):
         port = self._ports[0]
         self.log("Initializing master gateway on port %d", port)
-        self._server = webserver.Server(port, resources.Root(self._root))
+        self._server = webserver.Server(port, resources.Root(self._root),
+                                        log_keeper=self)
         self._server.initiate()
         self.info("Master gateway started on port %d", self.port)
 
@@ -33,7 +35,8 @@ class Gateway(log.FluLogKeeper, log.Logger):
             try:
 
                 self.log("Initializing slave gateway on port %d", port)
-                server = webserver.Server(port, resources.Root(self._root))
+                server = webserver.Server(port, resources.Root(self._root),
+                                          log_keeper=self)
                 server.initiate()
                 self._server = server
                 self.info("Slave gateway started on port %d", self.port)

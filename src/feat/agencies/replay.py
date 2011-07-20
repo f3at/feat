@@ -1,3 +1,5 @@
+import pprint
+
 from zope.interface import implements, classProvides
 
 from feat.common import serialization, log, text_helper
@@ -97,9 +99,10 @@ class JournalReplayEntry(object):
 
             self._replay._log_entry(self)
 
+            self._replay.require_agent()
             instance = self._replay.registry.get(self.journal_id, None)
             if instance is None:
-                raise ValueError("Instance for journal_id %r not found "
+                raise ReplayError("Instance for journal_id %r not found "
                                  "in the registry when replaying %r"
                                  % (self.journal_id, self.function_id))
 
@@ -117,8 +120,9 @@ class JournalReplayEntry(object):
             frozen_result = self._replay.serializer.freeze(result)
 
             if frozen_result != self.frozen_result:
-                res = repr(self._replay.unserializer.convert(frozen_result))
-                exp = repr(self.result)
+                res = pprint.pformat(
+                    self._replay.unserializer.convert(frozen_result))
+                exp = pprint.pformat(self.result)
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
@@ -240,9 +244,9 @@ class Replay(log.FluLogKeeper, log.Logger):
     Class managing the replay of the single agent.
     '''
 
-    implements(IExternalizer, IEffectHandler)
+    log_category = 'replay'
 
-    log_category = 'replay-driver'
+    implements(IExternalizer, IEffectHandler)
 
     def __init__(self, journal, agent_id, inject_dummy_externals=False):
         log.FluLogKeeper.__init__(self)
@@ -253,6 +257,7 @@ class Replay(log.FluLogKeeper, log.Logger):
         self.serializer = banana.Serializer(externalizer=self)
         self.inject_dummy_externals = inject_dummy_externals
 
+        self.agent_type = None
         self.agent_id = agent_id
         Factory(self, 'agent-medium', AgencyAgent)
         Factory(self, 'replier-medium', AgencyReplier)
@@ -267,6 +272,8 @@ class Replay(log.FluLogKeeper, log.Logger):
 
         self.reset()
 
+    ### public methods ###
+
     def reset(self):
         # registry of Recorders: journal_id -> IRecorderNode
         self.registry = dict()
@@ -278,6 +285,20 @@ class Replay(log.FluLogKeeper, log.Logger):
         self.dummies = dict()
         # list of all the protocols
         self.protocols = list()
+
+    def snapshot_registry(self):
+        '''
+        Give the dictionary of recorders detached from the existing instances.
+        It is safe to store those references for future use. Used by feattool.
+        '''
+        unserializer = banana.Unserializer(externalizer=self)
+        serializer = banana.Serializer(externalizer=self)
+        return unserializer.convert(serializer.convert(self.registry))
+
+    def get_agent_type(self):
+        return self.agent_type
+
+    ### endof public section ###
 
     def register(self, recorder):
         j_id = recorder.journal_id
@@ -325,16 +346,18 @@ class Replay(log.FluLogKeeper, log.Logger):
         self.medium = AgencyAgent(self, dummy_id)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
+        self.agent_type = self.agent.descriptor_type
 
     def effect_agent_deleted(self):
         self.reset()
 
     def effect_protocol_created(self, factory, medium, *args, **kwargs):
-        assert self.agent is not None
+        self.require_agent()
         instance = factory(self.agent, medium)
         self.protocols.append(instance)
 
     def effect_protocol_deleted(self, journal_id, dummy_id):
+        self.require_agent()
         instance = self.registry[journal_id]
         self.protocols.remove(instance)
         del(self.registry[journal_id])
@@ -342,46 +365,23 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     def apply_snapshot(self, entry):
         old_agent, old_protocols = self.agent, self.protocols
+        self.agent_type = self.agent.descriptor_type
         self.reset()
         args, kwargs = entry.get_arguments()
-        self.restore_snapshot(*args, **kwargs)
-        self.check_snapshot(old_agent, old_protocols)
-
-    def restore_snapshot(self, snapshot):
-        self.agent, self.protocols = snapshot
-
-    def check_snapshot(self, old_agent, old_protocols):
-        # check that the state so far matches the snapshop
-        # if old_agent is None, it means that the snapshot is first entry
-        # we are replaynig - hence we have no state to compare to
-        if old_agent is not None:
-            if self.agent != old_agent:
-                raise ReplayError("States of current agent mismatch the "
-                                  "old agent\nOld: %r\nLoaded: %r."
-                                  % (old_agent._get_state(),
-                                     self.agent._get_state()))
-            if len(self.protocols) != len(old_protocols):
-                raise ReplayError("The number of protocols mismatch. "
-                                  "\nOld: %r\nLoaded: %r"
-                                  % (old_protocols, self.protocols))
-            else:
-                for protocol in self.protocols:
-                    if protocol not in old_protocols:
-                        raise ReplayError("One of the protocols was not found."
-                                          "\nOld: %r\nLoaded: %r"
-                                          % (old_protocols, self.protocols))
+        self._restore_snapshot(*args, **kwargs)
+        self._check_snapshot(old_agent, old_protocols)
 
     # Managing the dummy registry:
 
     def register_dummy(self, dummy_id, dummy):
         if self.lookup_dummy(dummy_id) is not None:
-            raise RuntimeError("Tried to register dummy: %r class: %r second"
-                               " time", dummy_id, dummy.__class__.__name__)
+            raise ReplayError("Tried to register dummy: %r class: %r second"
+                              " time", dummy_id, dummy.__class__.__name__)
         self.dummies[dummy_id] = dummy
 
     def unregister_dummy(self, dummy_id):
         if self.lookup_dummy(dummy_id) is None:
-            raise RuntimeError("Treid to unregister dummy_id: %r "
+            raise ReplayError("Treid to unregister dummy_id: %r "
                                "but not found.", dummy_id)
         del(self.dummies[dummy_id])
 
@@ -408,6 +408,36 @@ class Replay(log.FluLogKeeper, log.Logger):
             found = DummyExternal(identifier)
         return found
 
+    ### private ###
+
+    def require_agent(self):
+        if self.agent is None:
+            raise NoHamsterballError()
+
+    def _restore_snapshot(self, snapshot):
+        self.agent, self.protocols = snapshot
+
+    def _check_snapshot(self, old_agent, old_protocols):
+        # check that the state so far matches the snapshop
+        # if old_agent is None, it means that the snapshot is first entry
+        # we are replaynig - hence we have no state to compare to
+        if old_agent is not None:
+            if self.agent != old_agent:
+                raise ReplayError("States of current agent mismatch the "
+                                  "old agent\nOld: %r\nLoaded: %r."
+                                  % (old_agent._get_state(),
+                                     self.agent._get_state()))
+            if len(self.protocols) != len(old_protocols):
+                raise ReplayError("The number of protocols mismatch. "
+                                  "\nOld: %r\nLoaded: %r"
+                                  % (old_protocols, self.protocols))
+            else:
+                for protocol in self.protocols:
+                    if protocol not in old_protocols:
+                        raise ReplayError("One of the protocols was not found."
+                                          "\nOld: %r\nLoaded: %r"
+                                          % (old_protocols, self.protocols))
+
 
 @serialization.register
 class DummyExternal(serialization.Serializable):
@@ -424,6 +454,8 @@ class DummyExternal(serialization.Serializable):
 class BaseReplayDummy(log.LogProxy, log.Logger):
 
     implements(ISerializable)
+
+    _outside_hamsterball_tag = True
 
     def __init__(self, replay, dummy_id):
         log.Logger.__init__(self, replay)
@@ -476,15 +508,20 @@ class Factory(serialization.Serializable):
 class AgencyInterest(log.Logger):
 
     type_name = "agent-interest"
-    log_category = "agent-interest"
+
+    _outside_hamsterball_tag = True
 
     classProvides(IRestorator)
     implements(ISerializable)
 
     def __eq__(self, other):
+        if not hasattr(other, 'agent_factory'):
+            return NotImplemented
         return self.agent_factory == other.agent_factory
 
     def __ne__(self, other):
+        if not hasattr(other, 'agent_factory'):
+            return NotImplemented
         return not self.__eq__(other)
 
     ### IRestorator Methods ###
@@ -515,7 +552,6 @@ class AgencyInterest(log.Logger):
 class AgencyAgent(BaseReplayDummy):
 
     type_name = "agent-medium"
-    log_category = "agent-medium"
 
     implements(IAgencyAgent, ITimeProvider, IRecorderNode, IJournalKeeper)
 
@@ -549,6 +585,10 @@ class AgencyAgent(BaseReplayDummy):
 
     @replay.named_side_effect('AgencyAgent.get_mode')
     def get_mode(self, component):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.upgrade_agency')
+    def upgrade_agency(self, upgrade_cmd):
         pass
 
     @serialization.freeze_tag('AgencyAgent.join_shard')
@@ -699,7 +739,6 @@ class AgencyReplier(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyReplier)
 
-    log_category = "replier-medium"
     type_name = "replier-medium"
 
     ### IAgencyReplier Methods ###
@@ -714,7 +753,6 @@ class AgencyRequester(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyRequester)
 
-    log_category = "requester-medium"
     type_name = "requester-medium"
 
     ### IAgencyRequester Methods ###
@@ -732,7 +770,6 @@ class AgencyContractor(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyContractor)
 
-    log_category = "contractor-medium"
     type_name = "contractor-medium"
 
     ### IAgencyContractor Methods ###
@@ -769,7 +806,6 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
 
     implements(IAgencyManager)
 
-    log_category = "manager-medium"
     type_name = "manager-medium"
 
     ### IAgencyManager Methods ###
@@ -812,7 +848,6 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
 class AgencyTask(AgencyProtocol, StateMachineSpecific):
 
     type_name = "task-medium"
-    log_category = "task-medium"
 
     implements(IAgencyTask)
 
@@ -838,7 +873,6 @@ class AgencyCollector(AgencyProtocol):
 
     implements(IAgencyCollector)
 
-    log_category = "collector-medium"
     type_name = "collector-medium"
 
     ### IAgencyCollector Methods ###
@@ -848,7 +882,6 @@ class AgencyPoster(AgencyProtocol):
 
     implements(IAgencyPoster)
 
-    log_category = "poster-medium"
     type_name = "poster-medium"
 
     ### IAgencyPoster Methods ###
@@ -860,7 +893,6 @@ class AgencyPoster(AgencyProtocol):
 
 class RetryingProtocol(AgencyProtocol):
 
-    log_category="retrying-protocol"
     type_name="retrying-protocol"
 
     @serialization.freeze_tag('RetryingProtocol.cancel')
@@ -870,7 +902,6 @@ class RetryingProtocol(AgencyProtocol):
 
 class PeriodicProtocol(AgencyProtocol):
 
-    log_category="periodic-protocol"
     type_name="periodic-protocol"
 
     @serialization.freeze_tag('PeriodicProtocol.cancel')

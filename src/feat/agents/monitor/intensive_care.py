@@ -13,19 +13,24 @@ class Patient(object):
     implements(IPatientStatus)
 
     def __init__(self, recipient, location, beat_time,
-                 period=None, dying_skip=None, death_skip=None):
+                 period=None, dying_skips=None,
+                 death_skips=None, patient_type=None):
+        self.patient_type = patient_type
         self.recipient = recipient
         self.location = location
         self.period = period or DEFAULT_HEARTBEAT_PERIOD
-        self.dying_skips = dying_skip or DEFAULT_DYING_SKIPS
-        self.death_skips = death_skip or DEFAULT_DEATH_SKIPS
-        self.last_beat = beat_time
+        self.dying_skips = dying_skips or DEFAULT_DYING_SKIPS
+        self.death_skips = death_skips or DEFAULT_DEATH_SKIPS
         self.last_state = PatientState.alive
         self.state = PatientState.alive
-        self.counter = 0
+        self.reset(beat_time)
 
         assert self.dying_skips <= self.death_skips, \
                "Death skips should be bigger than dying skips"
+
+    def reset(self, beat_time):
+        self.last_beat = beat_time
+        self.counter = 0
 
     def beat(self, beat_time):
         self.counter += 1
@@ -54,8 +59,6 @@ class IntensiveCare(labour.BaseLabour):
 
     classProvides(IIntensiveCareFactory)
     implements(IIntensiveCare)
-
-    log_category = "heart-monitor"
 
     def __init__(self, assistant, doctor, control_period=None):
         labour.BaseLabour.__init__(self, IAssistant(assistant))
@@ -92,6 +95,9 @@ class IntensiveCare(labour.BaseLabour):
     def resume(self):
         if self._task is None:
             agent = self.patron
+            beat_time = agent.get_time()
+            for patient in self._patients.itervalues():
+                patient.reset(beat_time)
             agent.register_interest(HeartBeatCollector, self)
             self._task = agent.initiate_protocol(CheckPatientTask, self,
                                                  self._control_period)
@@ -104,13 +110,16 @@ class IntensiveCare(labour.BaseLabour):
 
     @replay.side_effect
     def add_patient(self, recipient, location,
-                    period=None, dying_skips=None, death_skips=None):
+                    period=None, dying_skips=None,
+                    death_skips=None, patient_type=None):
         agent_id = recipient.key
         assert agent_id not in self._patients, \
                "Patient already added to intensive care"
         self.debug("Start agent's %s heart monitoring", agent_id)
+
         patient = Patient(recipient, location, self.patron.get_time(),
-                          period, dying_skips, death_skips)
+                          period=period, dying_skips=dying_skips,
+                          death_skips=death_skips, patient_type=patient_type)
         self._patients[agent_id] = patient
         self._doctor.on_patient_added(patient)
 

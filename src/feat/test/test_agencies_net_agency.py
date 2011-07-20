@@ -287,6 +287,18 @@ class IntegrationTestCase(common.TestCase):
         not_found = yield slave.callRemote('find_agent', 'unknown id')
         self.assertIs(None, not_found)
 
+        jour = self.agency._journaler._writer
+        yield self.wait_for(jour.is_idle, 10)
+        categories = yield jour.get_log_categories()
+        self.assertTrue(set(['host_agent', 'standalone', 'agency']).issubset(
+            set(categories)))
+        log_names = yield jour.get_log_names('host_agent')
+        self.assertEqual([agent_ids[0]], log_names)
+        log_names = yield jour.get_log_names('standalone')
+        self.assertEqual([agent_ids[1]], log_names)
+        yield self.assert_has_logs('host_agent', agent_ids[0])
+        yield self.assert_has_logs('standalone', agent_ids[1])
+
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
         yield self.wait_for_host_agent(10)
@@ -349,8 +361,18 @@ class IntegrationTestCase(common.TestCase):
         yield self.msg_process.terminate()
 
     @defer.inlineCallbacks
+    def assert_has_logs(self, agent_type, agent_id):
+        jour = self.agency._journaler._writer
+        yield self.wait_for(jour.is_idle, 10)
+        logs = yield jour.get_log_entries(filters=[dict(category=agent_type,
+                                                        name=agent_id,
+                                                        level=5)])
+        self.assertTrue(len(logs) > 0)
+
+    @defer.inlineCallbacks
     def assert_journal_contains(self, agent_ids):
         jour = self.agency._journaler
+        yield self.wait_for(jour.is_idle, 10)
         resp = yield jour.get_histories()
         ids_got = map(operator.attrgetter('agent_id'), resp)
         set1 = set(agent_ids)

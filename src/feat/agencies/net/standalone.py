@@ -35,6 +35,9 @@ class Agency(agency.Agency):
     def wait_running(self):
         return self._notifications.wait("running")
 
+    def _start_host_agent_if_necessary(self):
+        """Disable host agent startup for standalone agencies."""
+
     def _run(self):
         aid = self.config['agent']['id']
         args = ()

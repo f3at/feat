@@ -4,8 +4,8 @@ import types
 
 from twisted.python import components
 
-from feat.common import (log, serialization, fiber, annotate, error_handler,
-                         formatable, time, mro, )
+from feat.common import log, serialization, fiber, defer, annotate
+from feat.common import formatable, time, mro, error_handler
 from feat.agents.base import replay, recipient, requester
 
 from feat.interface.protocols import *
@@ -120,7 +120,8 @@ class BasePartner(serialization.Serializable, mro.MroMixin):
     ### callbacks for partnership notifications ###
 
     def initiate(self, agent):
-        pass
+        """After returning a synchronous result or when the returned fiber
+        is finished the partner is stored to descriptor."""
 
     def on_shutdown(self, agent):
         agent.log('Shutdown handler sending goodbye, for '
@@ -154,6 +155,8 @@ class BasePartner(serialization.Serializable, mro.MroMixin):
     def on_restarted(self, agent, old_recipient):
         '''
         Called after the partner is restarted by the monitoring agent.
+        After returning a synchronous result or when the returned fiber
+        is finished the partner is stored to descriptor.
         @param migrated: Flag saying whether the IRecipient of partner has
                          changed
         '''
@@ -194,8 +197,6 @@ class BasePartner(serialization.Serializable, mro.MroMixin):
 
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
-    log_category = "partners"
-
     default_handler = BasePartner
     default_role = None
 
@@ -207,7 +208,6 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
         replay.Replayable.__init__(self, agent)
-        self.log_name = type(self).__name__
 
     @replay.immutable
     def restored(self, state):
@@ -302,6 +302,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def find(self, state, recp):
+        """WARNING: This function do not return partners
+        currently being initialized."""
         if recipient.IRecipient.providedBy(recp):
             agent_id = recipient.IRecipient(recp).key
         else:
@@ -411,9 +413,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         old = partner.recipient if new_address != partner.recipient else None
         f = fiber.succeed()
         partner.recipient = recipient.IRecipient(new_address)
-        f.add_callback(fiber.drop_param, self._call_next_cb,
-                       partner, 'on_restarted', old_recipient=old)
-        f.add_callback(fiber.drop_param, self.update_partner, partner)
+        f.add_callback(fiber.drop_param, self._call_next_cb_broken,
+                       partner, 'on_restarted', True, old_recipient=old)
         return f
 
     # private
@@ -424,17 +425,27 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     def _remove_and_trigger_cb(self, partner, cb_name, **kwargs):
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self.remove, partner)
-        f.add_callback(fiber.drop_param, self._call_next_cb, partner,
-                       cb_name, **kwargs)
+        f.add_callback(fiber.drop_param, self._call_next_cb_broken,
+                       partner, cb_name, False, **kwargs)
         return f.succeed()
 
     @replay.immutable
-    def _call_next_cb(self, state, partner, method_name, **kwargs):
-        # This is done outside the currect execution chain, as the
+    def _call_next_cb_broken(self, state, partner, method_name,
+                            update_descriptor, **kwargs):
+        # This is done outside the current execution chain, as the
         # action performed may be arbitrary long running, and we don't want
         # to run into the timeout of goodbye request
-        state.agent.call_next(fiber.maybe_fiber, partner.call_mro,
-                              method_name, agent=state.agent, **kwargs)
+        state.agent.call_next(self._call_next_cb, partner, method_name,
+                              update_descriptor, **kwargs)
+
+    @fiber.woven
+    @replay.immutable
+    def _call_next_cb(self, state, partner, method_name,
+                      update_descriptor, **kwargs):
+        f = partner.call_mro(method_name, agent=state.agent, **kwargs)
+        if update_descriptor:
+            f.add_callback(defer.drop_param, self.update_partner, partner)
+        return f
 
     def _get_relation(self, name):
         try:

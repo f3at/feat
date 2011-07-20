@@ -13,7 +13,7 @@ from feat.interface.contracts import *
 
 
 @serialization.register
-class HostPartner(agent.BasePartner):
+class HostPartner(agent.HostPartner):
 
     type_name = 'shard->host'
 
@@ -38,14 +38,14 @@ class ShardPartner(agent.BasePartner):
     type_name = 'shard->neighbour'
 
     def initiate(self, agent):
-        agent.on_new_neighbour(self.recipient)
+        f = fiber.succeed()
         if self.allocation_id is None:
-            f = agent.allocate_resource(neighbours=1)
+            f.add_callback(fiber.drop_param,
+                           agent.allocate_resource, neighbours=1)
             f.add_callback(self._store_alloc_id)
-            return f
-
-    def startup(self):
-        self.startup_monitoring()
+        f.add_callback(fiber.drop_param, agent.call_next,
+                       agent.on_new_neighbour, self.recipient)
+        return f
 
     def _store_alloc_id(self, alloc):
         assert isinstance(alloc, resource.Allocation)
@@ -54,8 +54,9 @@ class ShardPartner(agent.BasePartner):
     def on_goodbye(self, agent):
         f = fiber.succeed()
         f.add_both(fiber.drop_param, agent.become_king)
-        f.add_both(fiber.drop_param, agent.on_neighbour_gone, self.recipient)
         f.add_both(fiber.drop_param, agent.look_for_neighbours)
+        f.add_both(fiber.drop_param, agent.call_next,
+                   agent.on_neighbour_gone, self.recipient)
         return f
 
 
@@ -83,10 +84,6 @@ class StructuralPartner(agent.BasePartner):
 
     def on_goodbye(self, agent):
         return fiber.maybe_fiber(agent.fix_shard_structure)
-
-    def on_died(self, agent, monitor):
-        task = agent.request_restarting_partner(self.recipient.key, monitor)
-        return partners.accept_responsability(task)
 
 
 @serialization.register
@@ -194,7 +191,16 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
         return f
 
     @replay.mutable
+    def shutdown(self, state):
+        for partner in state.partners.neighbours:
+            self.on_neighbour_gone(partner.recipient)
+
+    @replay.mutable
     def fix_shard_structure(self, state):
+        if self.is_migrating():
+            # don't restart partners if they got terminated as part of the
+            # shard shutdown during migration process
+            return
         for partner_class in state.partners.shard_structure:
             factory = self.query_partner_handler(partner_class)
             if factory in state.tasks:
@@ -224,11 +230,6 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
     def request_starting_partner(self, state, factory):
         task = self.initiate_protocol(StartPartner, factory)
         return fiber.wrap_defer(task.notify_finish)
-
-    @replay.mutable
-    def request_restarting_partner(self, state, agent_id, monitor=None):
-        task = self.initiate_protocol(RestartPartner, agent_id, monitor)
-        return task
 
     @manhole.expose()
     @rpc.publish
@@ -806,7 +807,7 @@ class StartPartnerException(Exception):
 
 class AbstractStartPartner(task.BaseTask):
     """
-    Base class for StartPartner and RestartPartner tasks.
+    Base class for StartPartner and tasks.
     Implements common functionality which is cyclying through the list of
     host partners and requesting the to start the agent.
     """
@@ -878,34 +879,6 @@ class StartPartner(AbstractStartPartner):
         f.add_callback(self._store_descriptor)
         f.add_callback(fiber.drop_param, self._try_next)
         return f
-
-
-class RestartPartner(AbstractStartPartner):
-
-    protocol_id = 'request-restarting-partner'
-
-    @replay.entry_point
-    def initiate(self, state, agent_id, monitor):
-        self._init(agent_id)
-        state.monitor = monitor
-
-        f = state.agent.get_document(agent_id)
-        f.add_callback(self._store_descriptor)
-        f.add_callback(fiber.drop_param, self._remove_host_partner)
-        f.add_callback(fiber.drop_param, self._try_next)
-        f.add_callback(self._notify_monitor)
-        return f
-
-    @replay.mutable
-    def _remove_host_partner(self, state):
-        f = state.descriptor.remove_host_partner(state.agent)
-        f.add_callback(self._store_descriptor)
-        return f
-
-    @replay.immutable
-    def _notify_monitor(self, state, recp):
-        return monitor.notify_restart_complete(
-            state.agent, state.monitor, recp)
 
 
 class QueryStructureManager(manager.BaseManager):

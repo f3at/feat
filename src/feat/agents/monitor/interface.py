@@ -5,8 +5,9 @@ from feat.common import enum
 __all__ = ['DEFAULT_HEARTBEAT_PERIOD',
            'DEFAULT_DEATH_SKIPS', 'DEFAULT_DYING_SKIPS',
            'DEFAULT_CONTROL_PERIOD', 'DEFAULT_NOTIFICATION_PERIOD',
+           'DEFAULT_HOST_QUARANTINE_LENGTH', 'DEFAULT_SELF_QUARANTINE_LENGTH',
            'RestartFailed', 'MonitoringFailed',
-           'PatientState', 'LocationState', 'RestartStrategy',
+           'PatientState', 'LocationState', 'MonitorState', 'RestartStrategy',
            'ILocationStatus',
            'IClerkFactory', 'IClerk', 'ICoroner', 'IAssistant',
            'IDoctor', 'IPatientStatus',
@@ -18,6 +19,9 @@ DEFAULT_DEATH_SKIPS = 3
 DEFAULT_DYING_SKIPS = 1.5
 DEFAULT_CONTROL_PERIOD = DEFAULT_HEARTBEAT_PERIOD / 3.0
 DEFAULT_NOTIFICATION_PERIOD = 10
+
+DEFAULT_HOST_QUARANTINE_LENGTH = 60*2
+DEFAULT_SELF_QUARANTINE_LENGTH = 60*3
 
 
 class RestartFailed(Exception):
@@ -34,8 +38,37 @@ class PatientState(enum.Enum):
 
 
 class LocationState(enum.Enum):
+    """
+    Enum for the monitoring state:
 
-    normal, isolated = range(2)
+    normal       - Stable state. Normal location behaviours.
+    isolated     - Temporary state. All patient are dead so wait extra time
+                   to to let a chance to recover temporary network failures.
+    recovering   - Temporary state. After being isolated some patient
+                   resurrected. Give the other some extra time to ressurect
+                   before handling there death.
+    """
+
+    normal, isolated, recovering = range(3)
+
+
+class MonitorState(enum.Enum):
+    """
+    Enum for the monitoring state:
+
+    normal       - Stable state. Normal monitoring behaviours.
+    isolated     - Temporary state. All locations minus the one of the monitor
+                   itself are isolated, so the monitoring is waiting extra time
+                   to cover for a temporary network disconnection.
+    recovering   - Temporary state. After waiting extra time isolated nothing
+                   changed so we are now in recovering state meaning that
+                   each locations are given there usual isolation time to
+                   recover or will be handled with.
+    disconnected - Stable state. the monitor is disconnected from the network.
+                   Nothing should be done until reconnected.
+    """
+
+    normal, isolated, recovering, disconnected = range(4)
 
 
 class RestartStrategy(enum.Enum):
@@ -77,6 +110,7 @@ class ILocationStatus(Interface):
 
 class IPatientStatus(Interface):
 
+    patient_type = Attribute("Patient type name.")
     recipient = Attribute("Monitored agent identifier")
     location = Attribute("Location of the patient")
     last_beat = Attribute("Last heartbeat time")
@@ -89,17 +123,29 @@ class IPatientStatus(Interface):
 
 class IClerkFactory(Interface):
 
-    def __call__(assistant, coroner):
+    def __call__(assistant, coroner,
+                 self_location="localhost", enable_quarantine=True,
+                 host_quarantine_length=DEFAULT_HOST_QUARANTINE_LENGTH,
+                 self_quarantine_length=DEFAULT_SELF_QUARANTINE_LENGTH):
         """Creates a new clerk."""
 
 
 class IClerk(Interface):
+
+    state = Attribute("State of the monitoring location as a LocationState.")
+    location = Attribute("Name of the clerk location.")
 
     def startup():
         """Initializes the clerk with specified heart monitor and coroner."""
 
     def cleanup():
         """Cleanup the clerk."""
+
+    def on_disconnected():
+        """Called when network connectivity was lost."""
+
+    def on_reconnected():
+        """Called when network connectivity was restored."""
 
     def has_patient(identifier):
         """Returns if the clerk knows about the specified patient.

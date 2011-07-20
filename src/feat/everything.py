@@ -11,6 +11,7 @@ from feat.agents.dns import dns_agent
 from feat.agents.monitor import monitor_agent
 from feat.agents.alert import alert_agent
 from feat.agents.export import export_agent
+from feat.agents.migration import migration_agent
 from feat.agents.common import host, shard, raage, dns, monitor, export
 
 # Internal to register serialization adapters
@@ -20,4 +21,4 @@ from feat.common.serialization import adapters
 from feat.agencies import contracts, requests, tasks, notifications
 
 # Imports for gateway
-from feat.gateway import adapters
+from feat.gateway import adapters, dummies

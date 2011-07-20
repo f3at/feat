@@ -19,7 +19,6 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
 
     implements(IAgencyPoster, ISerializable)
 
-    log_category = "poster-medium"
     type_name = "poster-medium"
 
     def __init__(self, agency_agent, factory, recipients, *args, **kwargs):
@@ -40,7 +39,6 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
         poster = self.factory(self.agent.get_agent(), self)
 
         self.poster = poster
-        self.log_name = poster.__class__.__name__
         self.protocol_id = poster.protocol_id
 
         self.agent.call_next(self._call, poster.initiate,
@@ -94,7 +92,6 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
 
     implements(IAgencyCollector, ISerializable)
 
-    log_category = "collector-medium"
     type_name = "collector-medium"
 
     def __init__(self, agency_agent, factory, *args, **kwargs):
@@ -115,7 +112,6 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
         collector = self.factory(self.agent.get_agent(), self)
 
         self.collector = collector
-        self.log_name = collector.__class__.__name__
 
         self.agent.call_next(self._call, self.collector.initiate,
                              *self.args, **self.kwargs)

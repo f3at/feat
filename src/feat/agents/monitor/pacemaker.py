@@ -15,8 +15,6 @@ class Pacemaker(labour.BaseLabour):
     classProvides(IPacemakerFactory)
     implements(IPacemaker)
 
-    log_category = "pacemaker"
-
     def __init__(self, patron, monitor, period=None):
         labour.BaseLabour.__init__(self, IAgent(patron))
         self._monitor = monitor
@@ -58,8 +56,6 @@ class FakePacemaker(labour.BaseLabour):
 
     classProvides(IPacemakerFactory)
     implements(IPacemaker)
-
-    log_category = "pacemaker"
 
     def __init__(self, patron, monitor, period=None):
         labour.BaseLabour.__init__(self, IAgent(patron))

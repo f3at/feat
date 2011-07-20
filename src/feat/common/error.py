@@ -181,7 +181,10 @@ def handle_failure(source, failure, template, *args, **kwargs):
     debug = kwargs.get("debug", None)
     msg = get_failure_message(failure)
 
-    if xlog.getCategoryLevel(logger.log_category) in [xlog.LOG, xlog.DEBUG]:
+    category = logger.log_category
+    if category is None:
+        category = 'feat'
+    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_failure_traceback(failure, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))
@@ -202,7 +205,10 @@ def handle_exception(source, exception, template, *args, **kwargs):
     debug = kwargs.get("debug", None)
     msg = get_exception_message(exception)
 
-    if xlog.getCategoryLevel(logger.log_category) in [xlog.LOG, xlog.DEBUG]:
+    category = logger.log_category
+    if category is None:
+        category = 'feat'
+    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_exception_traceback(exception, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))

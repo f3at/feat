@@ -2,7 +2,7 @@ import operator
 
 from zope.interface.interface import InterfaceClass
 
-from feat.common import annotate, reflect
+from feat.common import annotate, reflect, container
 from feat.agents.base import replay
 
 
@@ -20,41 +20,30 @@ class AgentDependencyMixin(object):
     Mixin for the BaseAgent to handle dependencies.
     '''
 
+    _dependencies = container.MroDict("_mro_dependencies")
+
     @classmethod
     def _register_dependency(cls, component, canonical_name, mode):
         if not isinstance(component, InterfaceClass):
             raise AttributeError(
                 'Component %r should be an Interface. Got %r instead.' % \
                 component.__class__.__name__)
-        if '_dependencies' not in cls.__dict__:
-            cls._dependencies = dict()
+
         if component not in cls._dependencies:
             cls._dependencies[component] = dict()
         cls._dependencies[component][mode] = canonical_name
 
     @classmethod
     def _get_dependency_for_component(cls, component):
-        for comp, value in cls._iter_dependencies():
-            if component == comp:
-                return value
+        return cls._dependencies.get(component, None)
 
     @classmethod
     def _iter_dependencies(cls):
-        klasses = list(cls.mro())
-        seen = list()
-        for klass in klasses:
-            if not '_dependencies' in klass.__dict__:
-                continue
-            for component, value in \
-                    klass.__dict__['_dependencies'].iteritems():
-                if component in seen:
-                    continue
-                seen.append(component)
-                yield component, value
+        return cls._dependencies.iteritems()
 
     @classmethod
     def _get_defined_components(cls):
-        return map(operator.itemgetter(0), list(cls._iter_dependencies()))
+        return cls._dependencies.keys()
 
     @replay.immutable
     def dependency(self, state, component, *args, **kwargs):
@@ -76,12 +65,12 @@ class AgentDependencyMixin(object):
         # or its canonical name.
         # Here we handle lazy imports in this second case.
         if callable(canonical_name):
-            calable = canonical_name
+            function = canonical_name
         else:
-            calable = reflect.named_object(canonical_name)
-        if not component.providedBy(calable):
+            function = reflect.named_object(canonical_name)
+        if not component.providedBy(function):
             raise UndefinedDependency(
                 'Expected object %r to provide the interface %r!' %\
-                (calable, component, ))
+                (function, component, ))
 
-        return calable(*args, **kwargs)
+        return function(*args, **kwargs)

@@ -23,8 +23,6 @@ class BasePoster(protocols.BaseInitiator):
 
     implements(IAgentPoster)
 
-    log_category = "poster"
-
     protocol_type = "Notification"
     protocol_id = None
 

@@ -7,7 +7,10 @@ class IModel(Interface):
 
 class IRoot(IModel):
 
-    def locate_master(self):
+    def is_master():
+        """Returns if the agency is a master."""
+
+    def locate_master():
         """Returns a tuple with host, port
         and if redirection is needed or None"""
 
@@ -33,11 +36,33 @@ class IRoot(IModel):
         Returns a deferred fired with a tuple of host name,
         port and if redirect is needed, or None if not located."""
 
+    def spawn_agent(desc, *args, **kwargs):
+        """Spawn an agent on this agency."""
+
+    def full_shutdown():
+        """Shut all agencies down."""
+
 
 class IAgency(IModel):
 
     agency_id = Attribute("Agency's identifier")
-    role = Attribute("Agency role as a broker.BrokerRole")
+    role = Attribute("Agency role as a broker.")
+    default_gateway_port = Attribute("")
+
+    def get_hostname():
+        """Returns agency's hostname."""
+
+    def shutdown_agency():
+        """Shut the agency down."""
+
+    def kill_agency():
+        """Kill the agency."""
+
+    def get_logging_filter():
+        """Returns the global logging filter currently in use."""
+
+    def set_logging_filter(filter):
+        """Sets the global logging filter."""
 
 
 class IAgent(IModel):
@@ -46,6 +71,10 @@ class IAgent(IModel):
     instance_id = Attribute("Agent's instance number")
     agent_type = Attribute("")
     agent_status = Attribute("")
+    agency_id = Attribute("")
+
+    def has_resources():
+        """Returns if the agent have resources."""
 
     def iter_attributes():
         """Iterates over agent's attributes."""
@@ -56,6 +85,12 @@ class IAgent(IModel):
     def iter_resources():
         """Iterates over agent's resources."""
 
+    def terminate_agent():
+        """Terminate the agent."""
+
+    def kill_agent():
+        """Kill the agent."""
+
 
 class IPartner(IModel):
 
@@ -63,3 +98,9 @@ class IPartner(IModel):
     agent_id = Attribute("Partner's agent identifier")
     shard_id = Attribute("Partner's shard identifier")
     role = Attribute("Partner's role")
+
+
+class IMonitor(IAgent):
+
+    def get_monitoring_status(self):
+        """Returns monitor status."""

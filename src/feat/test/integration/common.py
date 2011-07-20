@@ -119,8 +119,12 @@ class SimulationTest(common.TestCase):
             if exc_type is None or exc_type is StopIteration:
                 yield self._check_replayability()
         finally:
+            # remove leaking memory during the tests
             yield self.driver.destroy()
-            del(self.driver)
+            for k, v in self.__dict__.items():
+                if str(k)[0] == "_":
+                    continue
+                delattr(self, k)
 
     @defer.inlineCallbacks
     def _check_replayability(self):

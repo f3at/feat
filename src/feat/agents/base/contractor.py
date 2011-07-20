@@ -33,8 +33,6 @@ class BaseContractor(protocols.BaseInterested):
 
     initiator = message.Announcement
 
-    log_category = "contractor"
-
     protocol_type = "Contract"
     protocol_id = None
 

@@ -26,8 +26,6 @@ class BaseTask(protocols.BaseInitiator):
 
     implements(IAgentTask)
 
-    log_category = "task"
-
     protocol_type = "Task"
     protocol_id = None
     busy = True # Busy tasks will not be idle
@@ -54,6 +52,7 @@ class StealthPeriodicTask(BaseTask):
     def initiate(self, period):
         self._period = period
         self._call = None
+        self._canceled = False
 
         self._run()
 
@@ -64,8 +63,10 @@ class StealthPeriodicTask(BaseTask):
 
     @replay.immutable
     def cancel(self, state):
-        self._cancel()
-        state.medium.terminate()
+        if not self._canceled:
+            self._canceled = True
+            self._cancel()
+            state.medium.terminate()
 
     def run(self):
         """Overridden in sub-classes. The time of the asynchnours job
@@ -88,6 +89,8 @@ class StealthPeriodicTask(BaseTask):
 
     @replay.immutable
     def _schedule(self, state, _=None):
+        if self._canceled:
+            return
         self._cancel()
         self._call = state.medium.call_later_ex(self._period,
                                                 self._run,

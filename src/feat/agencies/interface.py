@@ -32,6 +32,7 @@ class NotFoundError(DatabaseError):
     '''
     Raised when we request document which is not there
     or has been deleted.
+    FIXME: Should be moved to feat.interface.
     '''
 
 
@@ -39,6 +40,7 @@ class NotConnectedError(Exception):
     '''
     Raised when we ned connection refused trying to perform a request to
     database.
+    FIXME: Should be moved to feat.interface.
     '''
 
 

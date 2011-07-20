@@ -63,12 +63,16 @@ class ShardPartner(agent.BasePartner):
         If the requests to the neighbour timeouts, he is removed from the
         local list and the algorithm iterates in.
         '''
+        if agent.is_migrating():
+            return
         agent.info('Shard partner said goodbye.')
         recipients = map(operator.attrgetter('recipient'), brothers)
         return agent.resolve_missing_shard_agent_problem(recipients)
 
     def on_died(self, agent, brothers, monitor):
         agent.info('Shard partner died.')
+        if agent.is_migrating():
+            return
         recipients = map(operator.attrgetter('recipient'), brothers)
         task = agent.collectively_restart_shard(
             recipients, self.recipient.key, monitor)
@@ -86,8 +90,7 @@ class Partners(agent.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, notifier.AgentMixin,
-                resource.AgentMixin):
+class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     partners_class = Partners
 
@@ -236,9 +239,9 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin,
 
     @manhole.expose()
     @rpc.publish
-    @replay.side_effect
-    def get_ip(self):
-        return unicode(socket.gethostbyname(socket.gethostname()))
+    @replay.immutable
+    def get_ip(self, state):
+        return state.medium.get_ip()
 
     @rpc.publish
     @replay.mutable
@@ -414,7 +417,9 @@ class StartAgent(task.BaseTask):
     @replay.immutable
     def _establish_partnership(self, state, recp):
         f = state.agent.establish_partnership(
-            recp, state.allocation_id, our_role=u'host', allow_double=True)
+            recp, state.allocation_id, our_role=u'host',
+            allow_double=True)
+            #allow_double=True, max_retries=None)
         return f
 
     @replay.mutable
@@ -651,8 +656,7 @@ class StartAgentContractor(contractor.BaseContractor):
             self._refuse()
             return
 
-        alloc = state.agent.preallocate_resource(
-            **state.factory.resources)
+        alloc = state.agent.preallocate_resource(**state.factory.resources)
 
         if alloc is None:
             self._refuse()
@@ -668,10 +672,21 @@ class StartAgentContractor(contractor.BaseContractor):
         if state.alloc_id:
             return state.agent.release_resource(state.alloc_id)
 
-    closed = _release_allocation
-    rejected = _release_allocation
-    expired = _release_allocation
-    cancelled = _release_allocation
+    @replay.mutable
+    def closed(self, state, *args):
+        return self._release_allocation()
+
+    @replay.mutable
+    def rejected(self, state, *args):
+        return self._release_allocation()
+
+    @replay.mutable
+    def expired(self, state, *args):
+        return self._release_allocation()
+
+    @replay.mutable
+    def cancelled(self, state, *args):
+        return self._release_allocation()
 
     @replay.entry_point
     def granted(self, state, grant):

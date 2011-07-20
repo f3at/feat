@@ -33,8 +33,6 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     implements(ISerializable, IAgencyTask, IAgencyProtocolInternal,
                ILongRunningProtocol)
 
-    log_category = 'agency-task'
-
     type_name = 'task-medium'
 
     _error_handler = error_handler
@@ -71,7 +69,6 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.agent.register_protocol(self)
 
         self.task = task
-        self.log_name = self.task.__class__.__name__
 
         self._set_state(TaskState.performing)
 

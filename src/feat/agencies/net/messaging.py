@@ -7,9 +7,8 @@ from feat.extern.txamqp.content import Content
 from feat.extern.txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
-from twisted.internet import defer
 
-from feat.common import log, enum, error_handler, time
+from feat.common import log, defer, enum, error_handler, time
 from feat.common.serialization import banana
 from feat.agencies.interface import IConnectionFactory, IDbConnectionFactory
 from feat.agencies.messaging import Connection, Queue
@@ -19,8 +18,6 @@ from feat.agents.base.message import BaseMessage
 
 class MessagingClient(AMQClient, log.Logger):
 
-    log_category = 'messaging-client'
-
     _error_handler=error_handler
 
     def __init__(self, factory, delegate, vhost, spec, user, password):
@@ -29,7 +26,7 @@ class MessagingClient(AMQClient, log.Logger):
         self._password = password
 
         log.Logger.__init__(self, factory)
-        AMQClient.__init__(self, delegate, vhost, spec)
+        AMQClient.__init__(self, delegate, vhost, spec, heartbeat=10)
 
         self._channel_counter = 0
 
@@ -55,8 +52,6 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
     protocol = MessagingClient
     initialDelay = 0.1
     maxDelay = 300
-
-    log_category = 'amq-factory'
 
     def __init__(self, messaging, delegate, user, password,
                  on_connected=None, on_disconnected=None):
@@ -140,7 +135,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self._wait_for_client = defer.Deferred()
 
 
-class Messaging(ConnectionManager, log.Logger, log.FluLogKeeper):
+class Messaging(ConnectionManager, log.Logger, log.LogProxy):
 
     implements(IConnectionFactory)
 
@@ -148,7 +143,7 @@ class Messaging(ConnectionManager, log.Logger, log.FluLogKeeper):
 
     def __init__(self, host, port, user='guest', password='guest'):
         ConnectionManager.__init__(self)
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         self._user = user
@@ -237,8 +232,6 @@ class ProcessingCall(object):
 
 class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
-    log_category = 'messaging-channel'
-
     def __init__(self, messaging, client_defer, factory):
         StateMachineMixin.__init__(self, ChannelState.recording)
         log.Logger.__init__(self, messaging)
@@ -263,7 +256,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                  "client=%r", client)
 
         def open_channel(channel):
-            self.log_name = "channel %d" % client._channel_counter
             d = channel.channel_open()
             d.addCallback(lambda _: channel.tx_select())
             d.addCallback(lambda _: channel)
@@ -420,8 +412,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
 
 class WrappedQueue(Queue, log.Logger):
-
-    log_category = "messaging-queue"
 
     def __init__(self, channel, name):
         log.Logger.__init__(self, channel)

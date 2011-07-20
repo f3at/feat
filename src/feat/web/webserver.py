@@ -11,8 +11,6 @@ from twisted.web import server, resource, http as twhttp
 from feat.common import log, defer, error
 from feat.web import http, compat, document, auth
 
-LOG_CATEGORY = "web"
-
 
 ### Errors ###
 
@@ -346,14 +344,16 @@ class BasicResource(BaseResource):
             return self._childs[next], remaining[1:]
 
 
-class Server(log.FluLogKeeper, log.Logger):
+class Server(log.LogProxy, log.Logger):
 
-    log_category = LOG_CATEGORY
+    log_category = 'web'
 
     def __init__(self, port, root_resource, registry=None,
                  security_policy=None, server_identity=None,
-                 default_authenticator=None, default_authorizer=None):
+                 default_authenticator=None, default_authorizer=None,
+                 log_keeper=None):
         log.Logger.__init__(self, self)
+        log.LogProxy.__init__(self, log_keeper or log.FluLogKeeper())
         self._port = port
         self._resource = root_resource
         self._registry = registry or document.get_registry()
@@ -888,8 +888,6 @@ class Request(log.Logger, log.LogProxy):
 
     implements(IWebRequest, document.IReadableDocument)
 
-    log_category = LOG_CATEGORY
-
     def __init__(self, server, priv_request):
         log.Logger.__init__(self, server)
         log.LogProxy.__init__(self, server)
@@ -1134,8 +1132,6 @@ class Request(log.Logger, log.LogProxy):
 class Response(log.Logger):
 
     implements(IWebResponse, document.IWritableDocument)
-
-    log_category = LOG_CATEGORY
 
     strict_negotiation = True
 
@@ -1482,8 +1478,6 @@ class Response(log.Logger):
 class RootResourceWrapper(log.Logger):
 
     implements(resource.IResource)
-
-    log_category = LOG_CATEGORY
 
     def __init__(self, server):
         log.Logger.__init__(self, server)

@@ -53,7 +53,7 @@ class ExportableAgent(TestAgent):
 
 
 @descriptor.register('test_signal_agent')
-class Desc1(descriptor.Descriptor):
+class Desc2(descriptor.Descriptor):
     pass
 
 
@@ -126,6 +126,26 @@ class ExportTest(common.SimulationTest, Common):
         self.host4 = self.get_local('host4')
 
     @defer.inlineCallbacks
+    def testJoiningMigrations(self):
+        mig1 = yield self.export_agent.prepare_migration(
+            recipient.IRecipient(self.host3))
+        mig2 = yield self.export_agent.prepare_migration(
+            recipient.IRecipient(self.host4))
+        known = yield self.export_agent.get_known_migrations()
+        self.assertEqual(set([mig1, mig2]), set(known))
+
+        mig = yield self.export_agent.join_migrations([mig1, mig2])
+        known = yield self.export_agent.get_known_migrations()
+        self.assertEqual(set([mig]), set(known))
+
+        self.assertEqual(5, len(mig.get_steps()))
+
+        yield self.export_agent.cancel_migration(mig.get_id())
+        signal = first(
+            self.driver.iter_agents('test_signal_agent')).get_agent()
+        self.assertFalse(signal.is_migrating())
+
+    @defer.inlineCallbacks
     def testSimpleCheckinsAndCancels(self):
         # First query shard structure and make asserts on the result
         self.info("Starting test testcase.")
@@ -141,7 +161,7 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertIsInstance(migration, export_agent.Migration)
         self.assertTrue(migration.is_completable())
-        self.assertEqual(4, len(migration.steps))
+        self.assertEqual(4, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host1)
         for agent in agents:
             self.assertTrue(agent.is_migrating())
@@ -156,7 +176,7 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertIsInstance(migration, export_agent.Migration)
         self.assertFalse(migration.is_completable())
-        self.assertEqual(1, len(migration.steps))
+        self.assertEqual(1, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host2)
         self.assertEqual(3, len(agents))
         for agent in agents:
@@ -168,7 +188,7 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertIsInstance(migration, export_agent.Migration)
         self.assertTrue(migration.is_completable())
-        self.assertEqual(4, len(migration.steps))
+        self.assertEqual(4, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host3)
         self.assertEqual(3, len(agents))
         for agent in agents:
@@ -183,7 +203,7 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertIsInstance(migration, export_agent.Migration)
         self.assertTrue(migration.is_completable())
-        self.assertEqual(4, len(migration.steps))
+        self.assertEqual(4, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host4)
 
         self.assertEqual(2, len(agents))
@@ -203,7 +223,7 @@ class ExportTest(common.SimulationTest, Common):
         # first 3 steps involving migration of the structural agents
         for expected in range(2, -1, -1):
             migration = yield self.export_agent.apply_next_step(migration)
-            self.assertTrue(migration.steps[2-expected].applied)
+            self.assertTrue(migration.get_steps()[2-expected].applied)
             yield self.wait_for_idle(10)
             hosted_recp = yield self.host1.get_hosted_recipients()
             num = len(hosted_recp)
@@ -250,13 +270,13 @@ class ExportTest(common.SimulationTest, Common):
         recp = self.host2.get_own_address()
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertFalse(migration.is_completable())
-        self.assertEqual(1, len(migration.steps))
+        self.assertEqual(1, len(migration.get_steps()))
         yield self.export_agent.lock_host(recp)
 
         migration = yield self.export_agent.apply_migration_step(migration, 0)
         yield self.wait_for(self.export_agent.has_empty_outbox, 10)
         yield self.wait_for_idle(10)
-        self.assertTrue(migration.steps[0].applied)
+        self.assertTrue(migration.get_steps()[0].applied)
 
         alert_agent = yield get_alert_agent()
         hosts = alert_agent.query_partners('hosts')
@@ -286,7 +306,7 @@ class ExportTest(common.SimulationTest, Common):
         # one worker left
         self.assertEqual(2, len(agents))
         monitor = yield self._get_agent('monitor_agent')
-        p = yield monitor.find_partner(migration.steps[0].recipient)
+        p = yield monitor.find_partner(migration.get_steps()[0].recipient)
         self.assertIs(None, p)
 
         # just finish the migration
@@ -349,7 +369,7 @@ class TestShutingDownShard(common.SimulationTest, Common):
         migration = yield export_agent.prepare_migration(recp)
         self.assertTrue(migration.is_completable())
         # should only consist of termination of the host
-        self.assertEqual(1, len(migration.steps))
+        self.assertEqual(1, len(migration.get_steps()))
 
         migration = yield export_agent.apply_next_step(migration)
         self.assertTrue(migration.is_complete())

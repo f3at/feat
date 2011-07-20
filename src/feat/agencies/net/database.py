@@ -27,7 +27,7 @@ DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
 
 
-class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
+class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -35,7 +35,7 @@ class Database(common.ConnectionManager, log.FluLogKeeper, ChangeListener):
 
     def __init__(self, host, port, db_name):
         common.ConnectionManager.__init__(self)
-        log.FluLogKeeper.__init__(self)
+        log.LogProxy.__init__(self, log.FluLogKeeper())
         ChangeListener.__init__(self, self)
 
         self.semaphore = defer.DeferredSemaphore(1)

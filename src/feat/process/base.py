@@ -28,8 +28,6 @@ class ProcessState(enum.Enum):
 
 class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
-    log_category = "process-protocol"
-
     def __init__(self, owner, success_test, ready_cb):
         log.Logger.__init__(self, owner)
 
@@ -63,8 +61,6 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
 class Base(log.Logger, log.LogProxy, StateMachineMixin,
            serialization.Serializable):
-
-    log_category = 'process'
 
     def __init__(self, logger, *args, **kwargs):
         log.LogProxy.__init__(self, logger)

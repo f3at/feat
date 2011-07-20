@@ -186,6 +186,13 @@ class RestartingSimulation(common.SimulationTest):
         self.shard_medium = first(self.driver.iter_agents('shard_agent'))
         self.raage_medium = first(self.driver.iter_agents('raage_agent'))
 
+    def tearDown(self):
+        del self.hosts
+        del self.monitor
+        del self.shard_medium
+        del self.raage_medium
+        return common.SimulationTest.tearDown(self)
+
     @common.attr(timescale=0.2)
     @defer.inlineCallbacks
     def testShardAgentDied(self):
@@ -276,6 +283,7 @@ class RestartingSimulation(common.SimulationTest):
         medium = first(self.driver.iter_agents('host_agent'))
         recp = recipient.IRecipient(medium)
         d = medium.terminate_hard()
+        d.addBoth(defer.drop_param, self.wait_for_idle, 10)
         d.addBoth(defer.override_result, recp)
         return d
 
@@ -826,35 +834,35 @@ class DummyAgent(agent.BaseAgent):
         return copy.deepcopy(state.calls)
 
 
-@agent.register("dummy_buryme_agent")
+@agent.register("test_buryme_agent")
 class DummyBuryMeAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.buryme
 
 
-@descriptor.register("dummy_buryme_agent")
+@descriptor.register("test_buryme_agent")
 class DummyBuryMeDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_local_agent')
+@agent.register('test_local_agent')
 class DummyLocalAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.local
 
 
-@descriptor.register('dummy_local_agent')
+@descriptor.register('test_local_agent')
 class DummyLocalDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_wherever_agent')
+@agent.register('test_wherever_agent')
 class DummyWhereverAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.wherever
 
 
-@descriptor.register('dummy_wherever_agent')
+@descriptor.register('test_wherever_agent')
 class DummyWhereverDescriptor(descriptor.Descriptor):
     pass
 
@@ -868,6 +876,9 @@ class TestRealMonitoring(common.SimulationTest):
         monitor_conf.heartbeat_period = 2
         monitor_conf.heartbeat_dying_skips = 1.5
         monitor_conf.heartbeat_death_skips = 3
+        monitor_conf.host_quarantine_length = 2
+        monitor_conf.self_quarantine_length = 3
+        monitor_conf.enable_quarantine = True
         monitor_conf.control_period = 0.2
         monitor_conf.notification_period = 1
         dbtools.initial_data(monitor_conf)
@@ -926,8 +937,11 @@ class TestRealMonitoring(common.SimulationTest):
     def check_status(self, agency_monitor, entry_count,
                      default=PatientState.alive, exceptions={}):
         status = agency_monitor.get_agent().get_monitoring_status()
-        self.assertEqual(len(status), entry_count)
-        for k, s in status.items():
+        all_patients = {}
+        for loc in status["locations"].values():
+            all_patients.update(loc["patients"])
+        self.assertEqual(len(all_patients), entry_count)
+        for k, s in all_patients.items():
             expected = exceptions.get(k, default)
             self.assertEqual(expected, s["state"])
 
@@ -983,23 +997,23 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Starting "bury me" agents
 
-        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        desc = yield drv.descriptor_factory("test_buryme_agent")
         yield drv.save_document(desc)
         yield ha.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        desc = yield drv.descriptor_factory("test_buryme_agent")
         yield drv.save_document(desc)
         yield ha.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_buryme_agent")
+        desc = yield drv.descriptor_factory("test_buryme_agent")
         yield drv.save_document(desc)
         yield ha.get_agent().start_agent(desc.doc_id)
 
         yield self.wait(20, ma)
 
-        self.assertEqual(self.count_agents("dummy_buryme_agent"), 3)
+        self.assertEqual(self.count_agents("test_buryme_agent"), 3)
 
-        a1, a2, a3 = self.get_agent("dummy_buryme_agent", ha)
+        a1, a2, a3 = self.get_agent("test_buryme_agent", ha)
 
         # Waiting them to be monitored
 
@@ -1073,7 +1087,7 @@ class TestRealMonitoring(common.SimulationTest):
         ha2_desc = yield drv.descriptor_factory("host_agent")
         ha2 = yield agency.start_agent(ha2_desc)
 
-        yield self.wait(20)
+        yield self.wait(300)
 
         # Checking shard structure
 
@@ -1105,24 +1119,24 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Starting "local" agents
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha1.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
         yield self.wait(20, ma1, ma2)
 
-        self.assertEqual(self.count_agents("dummy_local_agent"), 3)
+        self.assertEqual(self.count_agents("test_local_agent"), 3)
 
-        a1, = self.get_agent("dummy_local_agent", ha1)
-        a2, a3 = self.get_agent("dummy_local_agent", ha2)
+        a1, = self.get_agent("test_local_agent", ha1)
+        a2, a3 = self.get_agent("test_local_agent", ha2)
 
         # Waiting them to be monitored
 
@@ -1165,7 +1179,7 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma1, ma2)
 
-        a1b, = self.get_agent("dummy_local_agent", ha1)
+        a1b, = self.get_agent("test_local_agent", ha1)
         self.assertEqual(a1.get_agent().get_agent_id(),
                          a1b.get_agent().get_agent_id())
         self.assertNotEqual(a1.get_agent().get_instance_id(),
@@ -1203,7 +1217,7 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma1, ma2)
 
-        a2b, a3b = self.get_agent("dummy_local_agent", ha2)
+        a2b, a3b = self.get_agent("test_local_agent", ha2)
         self.assertEqual(a2.get_agent().get_full_id(),
                          a2b.get_agent().get_full_id())
         self.assertEqual(a3.get_agent().get_agent_id(),
@@ -1272,24 +1286,24 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Starting "local" agents
 
-        desc = yield drv.descriptor_factory("dummy_wherever_agent")
+        desc = yield drv.descriptor_factory("test_wherever_agent")
         yield drv.save_document(desc)
         yield ha1.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_wherever_agent")
+        desc = yield drv.descriptor_factory("test_wherever_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_wherever_agent")
+        desc = yield drv.descriptor_factory("test_wherever_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
         yield self.wait(20, ma1, ma2)
 
-        self.assertEqual(self.count_agents("dummy_wherever_agent"), 3)
+        self.assertEqual(self.count_agents("test_wherever_agent"), 3)
 
-        a1, = self.get_agent("dummy_wherever_agent", ha1)
-        a2, a3 = self.get_agent("dummy_wherever_agent", ha2)
+        a1, = self.get_agent("test_wherever_agent", ha1)
+        a2, a3 = self.get_agent("test_wherever_agent", ha2)
 
         # Waiting them to be monitored
 
@@ -1333,7 +1347,7 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma1, ma2)
 
-        agents = self.get_agent("dummy_wherever_agent", ha2)
+        agents = self.get_agent("test_wherever_agent", ha2)
         agents.remove(a2)
         agents.remove(a3)
         a1b, = agents
@@ -1376,7 +1390,7 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma1, ma2)
 
-        agents = self.get_agent("dummy_wherever_agent", ha2)
+        agents = self.get_agent("test_wherever_agent", ha2)
         agents.remove(a1)
         agents.remove(a2)
         a3b, = agents
@@ -1443,24 +1457,24 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Starting "local" agents
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha1.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
-        desc = yield drv.descriptor_factory("dummy_local_agent")
+        desc = yield drv.descriptor_factory("test_local_agent")
         yield drv.save_document(desc)
         yield ha2.get_agent().start_agent(desc.doc_id)
 
         yield self.wait(20, ma1, ma2)
 
-        self.assertEqual(self.count_agents("dummy_local_agent"), 3)
+        self.assertEqual(self.count_agents("test_local_agent"), 3)
 
-        a1, = self.get_agent("dummy_local_agent", ha1)
-        a2, a3 = self.get_agent("dummy_local_agent", ha2)
+        a1, = self.get_agent("test_local_agent", ha1)
+        a2, a3 = self.get_agent("test_local_agent", ha2)
 
         # Waiting them to be monitored
 
@@ -1534,6 +1548,7 @@ class TestRealMonitoring(common.SimulationTest):
             return ma2.get_agent_id() not in desc.pending_notifications
 
         yield self.wait_for(check, 10)
+        yield self.wait_for_idle(20)
 
         ma1b, = self.get_agent("monitor_agent", ha1)
         self.assertEqual(ma1.get_agent().get_agent_id(),
@@ -1552,7 +1567,7 @@ class TestRealMonitoring(common.SimulationTest):
         self.assertEqual(self.count_partners(ma2), 6)
 
         # But dead indeed
-        self.assertEqual(self.count_agents("dummy_local_agent"), 2)
+        self.assertEqual(self.count_agents("test_local_agent"), 2)
 
         # Waiting more than 3 hard beats
         # death of dummy agent should be detected and agent restarted
@@ -1560,7 +1575,7 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma1, ma2)
 
-        a1b, = self.get_agent("dummy_local_agent", ha1)
+        a1b, = self.get_agent("test_local_agent", ha1)
         self.assertEqual(a1.get_agent().get_agent_id(),
                          a1b.get_agent().get_agent_id())
         self.assertNotEqual(a1.get_agent().get_instance_id(),

@@ -65,7 +65,7 @@ class Logger(object):
     implements(ILogger)
 
     log_name = None
-    log_category = "feat"
+    log_category = None
 
     def __init__(self, log_keeper, log_category=None):
         if log_keeper:
@@ -75,6 +75,13 @@ class Logger(object):
 
         if log_category is not None:
             self.log_category = log_category
+
+        # adopt log_caterogy and log_name of the
+        # log_keeper in case we don't have our own
+        if self.log_category is None and ILogger.providedBy(log_keeper):
+            self.log_category = log_keeper.log_category
+        if self.log_name is None and ILogger.providedBy(log_keeper):
+            self.log_name = log_keeper.log_name
 
     ### ILoggable Methods ###
 
@@ -117,6 +124,9 @@ class LogProxy(object):
                depth=1, file_path=None, line_num=None):
         self._logkeeper.do_log(level, object, category, format, args,
                depth=depth+1, file_path=file_path, line_num=line_num)
+
+    def redirect_log(self, logkeeper):
+        self._logkeeper = ILogKeeper(logkeeper)
 
 
 class VoidLogKeeper(object):
@@ -169,7 +179,7 @@ class FluLogKeeper(object):
     @classmethod
     def get_debug(self):
         global flulog
-        flulog.getDebug()
+        return flulog.getDebug()
 
     ### ILogger Methods ###
 

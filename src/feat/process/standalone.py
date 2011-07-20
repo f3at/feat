@@ -4,8 +4,6 @@ from feat.agents.base import replay
 
 class Process(base.Base):
 
-    log_name = "standalone"
-
     def initiate(self, command, args, env):
         self.command = command
         self.args = args

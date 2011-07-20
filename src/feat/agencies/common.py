@@ -77,7 +77,7 @@ class StateMachineMixin(object):
             if len(match) != 1:
                 self.warning("Expected to find excatly one handler for %r in "
                              "state %r, found %r handlers", event,
-                             self.get_machine_state(),
+                             self._get_machine_state(),
                              len(match))
                 return False
             decision = match[0]

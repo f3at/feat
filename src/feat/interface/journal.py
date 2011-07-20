@@ -3,7 +3,7 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 __all__ = ["JournalMode", "RecordingResultError", "SideEffectResultError",
-           "ReentrantCallError", "ReplayError",
+           "ReentrantCallError", "ReplayError", "NoHamsterballError",
            "IJournalKeeper", "IJournalEntry", "IJournalReplayEntry",
            "IJournalSideEffect", "IEffectHandler",
            "IRecorderNode", "IRecorder"]
@@ -28,6 +28,13 @@ class ReentrantCallError(RuntimeError):
 class ReplayError(BaseException):
     """Inherit from BaseException to not be caught
     by journal exception handler."""
+
+
+class NoHamsterballError(Exception):
+    """
+    Thrown when we try to apply entry during replay but don't have any agent
+    loaded in the hamsterball.
+    """
 
 
 class IJournalSideEffect(Interface):

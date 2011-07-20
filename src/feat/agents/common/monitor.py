@@ -1,8 +1,9 @@
 from twisted.python import failure
 
 from feat.agencies import retrying
-from feat.agents.base import descriptor, replay, task, partners, dependency
-from feat.common import enum, fiber, formatable, serialization
+from feat.agents.base import replay, task, partners, descriptor, dependency
+from feat.agents.common import rpc
+from feat.common import fiber, formatable, serialization
 
 # To access from this module
 from feat.agents.monitor.interface import RestartStrategy
@@ -36,6 +37,16 @@ def notify_restart_complete(agent, monitor, recp):
 def discover(agent, shard=None):
     shard = shard or agent.get_own_address().shard
     return agent.discover_service("monitoring", timeout=1, shard=shard)
+
+
+@serialization.register
+class MonitoringInfo(formatable.Formatable):
+
+    type_name = "monitoring-info"
+
+    formatable.field("instance_id", None)
+    formatable.field("agent_type", None)
+    formatable.field("location", None)
 
 
 class PartnerMixin(object):
@@ -103,6 +114,18 @@ class AgentMixin(object):
             Factory = retrying.RetryingProtocolFactory
             factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
             self.initiate_protocol(factory)
+
+    def query_monitoring_info(self, recipient):
+        return self.call_remote_ex(recipient,
+                                   "get_monitoring_info", timeout=2)
+
+    @rpc.publish
+    @replay.immutable
+    def get_monitoring_info(self, state):
+        desc = state.medium.get_descriptor()
+        return MonitoringInfo(instance_id=desc.instance_id,
+                              agent_type=self.descriptor_type,
+                              location=state.medium.get_hostname())
 
     ### Private Methods ###
 

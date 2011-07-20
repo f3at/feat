@@ -48,8 +48,6 @@ class PeriodicProtocol(common.InitiatorMediumBase, log.Logger):
     classProvides(IInitiatorFactory)
     implements(ISerializable, ILongRunningProtocol)
 
-    log_category="periodic-protocol"
-
     type_name="periodic-protocol"
 
     protocol_type = "Special"

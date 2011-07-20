@@ -50,8 +50,6 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
     implements(ISerializable, ILongRunningProtocol)
 
-    log_category="retrying-protocol"
-
     type_name="retrying-protocol"
 
     protocol_type = "Special"

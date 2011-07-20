@@ -178,6 +178,9 @@ class Agency(agency.Agency):
         # by host agent
         self._flushing_sem = defer.DeferredSemaphore(1)
 
+    def wait_event(self, agent_id, event):
+        return self._broker.wait_event(agent_id, event)
+
     @manhole.expose()
     def spawn_agent(self, desc, *args, **kwargs):
         '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
@@ -215,9 +218,11 @@ class Agency(agency.Agency):
         mesg = messaging.Messaging(
             self.config['msg']['host'], int(self.config['msg']['port']),
             self.config['msg']['user'], self.config['msg']['password'])
+        mesg.redirect_log(self)
         db = database.Database(
             self.config['db']['host'], int(self.config['db']['port']),
             self.config['db']['name'])
+        db.redirect_log(self)
         jour = journaler.Journaler(self)
         self._journal_writer = None
 
@@ -318,8 +323,6 @@ class Agency(agency.Agency):
         return self._journal_writer
 
     def on_killed(self):
-        if self._journal_writer:
-            self._journal_writer.close()
         d = agency.Agency.on_killed(self)
         d.addCallback(lambda _: self._disconnect)
         return d
@@ -351,11 +354,13 @@ class Agency(agency.Agency):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
         d.addCallback(defer.drop_param, self._gateway.cleanup)
+        d.addCallback(defer.drop_param, self._journaler.close)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
+        self._broker.push_event(medium.get_agent_id(), 'unregistered')
         self._start_host_agent_if_necessary()
 
     @manhole.expose()
