@@ -174,7 +174,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
             return
 
         if file_path is None and line_num is None:
-            file_path, line_num = flulog.getFileLine(where=depth-1)
+            file_path, line_num = flulog.getFileLine(where=-depth-2)
 
         if args:
             message = format % args
@@ -448,7 +448,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             return resp
 
         filter_strings = map(transform_filter, filters)
-        query += " AND (%s)\n" % (' OR '.join(filter_strings), )
+        if filter_strings:
+            query += " AND (%s)\n" % (' OR '.join(filter_strings), )
         d = self._db.runQuery(query)
         d.addCallback(self._decode)
         return d
@@ -490,6 +491,23 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         def unpack(res):
             return map(operator.itemgetter(0), res)
 
+        d.addCallback(unpack)
+        return d
+
+    def get_log_time_boundaries(self):
+        '''
+        @returns: a tuple of log entry timestaps (first, last) or None
+        '''
+        query = text_helper.format_block('''
+        SELECT min(logs.timestamp),
+               max(logs.timestamp)
+        FROM logs''')
+
+        def unpack(res):
+            if res:
+                return res[0]
+
+        d = self._db.runQuery(query)
         d.addCallback(unpack)
         return d
 
