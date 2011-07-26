@@ -693,11 +693,9 @@ class HandleDeath(task.BaseTask):
             return f
         elif self._cmp_strategy(RestartStrategy.monitor):
             self.info('Taking over the role of the died monitor.')
-            f = self._checkup_partners()
-            f.add_callback(fiber.drop_param,
-                           self._adopt_notifications)
-            f.add_callback(fiber.drop_param,
-                           self._send_buried_notifications)
+            f = self._send_buried_notifications()
+            f.add_callback(fiber.drop_param, self._checkup_partners)
+            f.add_callback(fiber.drop_param, self._adopt_notifications)
             f.add_callback(fiber.drop_param, state.medium.terminate, None)
             return f
         else:
