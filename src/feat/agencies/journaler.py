@@ -9,6 +9,7 @@ from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb, jelly
 from twisted.internet import reactor
+from twisted.python import log as twisted_log
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
@@ -115,6 +116,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
 
     def configure_with(self, writer):
         self._ensure_state(State.disconnected)
+        twisted_log.addObserver(self.on_twisted_log)
         self._writer = IJournalWriter(writer)
         self._set_state(State.connected)
         self._schedule_flush()
@@ -124,6 +126,13 @@ class Journaler(log.Logger, common.StateMachineMixin):
         def set_disconnected():
             self._writer = None
             self._set_state(State.disconnected)
+
+        try:
+            twisted_log.removeObserver(self.on_twisted_log)
+        except ValueError:
+            # it should be safe to call close() multiple times,
+            # in this case we are not registered as the observer anymore
+            pass
 
         d = self._close_writer()
         d.addCallback(defer.drop_param, set_disconnected)
@@ -162,6 +171,21 @@ class Journaler(log.Logger, common.StateMachineMixin):
         if self._writer:
             return self._writer.is_idle()
         return True
+
+    ### ILogObserver provider ###
+
+    def on_twisted_log(self, event_dict):
+        edm = event_dict['message']
+        if not edm:
+            if event_dict['isError'] and 'failure' in event_dict:
+                fail = event_dict['failure']
+                self.error("A twisted traceback occurred. Exception: %r.",
+                           fail.value)
+                if flulog.getCategoryLevel("twisted") < flulog.WARN:
+                    self.debug(
+                        "Run with debug level >= 2 to see the traceback.")
+                else:
+                    self.error("%s", fail.getTraceback())
 
     ### ILogKeeper Methods ###
 
