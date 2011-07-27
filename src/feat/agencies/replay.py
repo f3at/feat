@@ -380,6 +380,9 @@ class Replay(log.FluLogKeeper, log.Logger):
         if self.medium is not None:
             raise ReplayError(
                 'Replay instance already has the medium reference')
+
+        self.log_category = agent_factory.descriptor_type
+        self.log_name = dummy_id[0]
         self.medium = AgencyAgent(self, dummy_id)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
