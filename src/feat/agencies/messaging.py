@@ -23,6 +23,7 @@ class Connection(log.Logger):
 
         self._bindings = []
         self._queue_name = self._agent.get_queue_name()
+        self.log_name = self._queue_name
         self._queue = None
         self._disconnect = False
         self._consumeDeferred = None

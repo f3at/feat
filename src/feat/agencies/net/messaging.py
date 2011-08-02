@@ -10,7 +10,7 @@ from zope.interface import implements
 
 from feat.common import log, defer, enum, error_handler, time
 from feat.common.serialization import banana
-from feat.agencies.interface import IConnectionFactory, IDbConnectionFactory
+from feat.agencies.interface import IConnectionFactory
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
@@ -26,7 +26,7 @@ class MessagingClient(AMQClient, log.Logger):
         self._password = password
 
         log.Logger.__init__(self, factory)
-        AMQClient.__init__(self, delegate, vhost, spec, heartbeat=10)
+        AMQClient.__init__(self, delegate, vhost, spec, heartbeat=8)
 
         self._channel_counter = 0
 
@@ -51,7 +51,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
 
     protocol = MessagingClient
     initialDelay = 0.1
-    maxDelay = 300
+    maxDelay = 30
 
     def __init__(self, messaging, delegate, user, password,
                  on_connected=None, on_disconnected=None):
@@ -255,6 +255,8 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self.log("_setup_with_client called, starting channel configuration. "
                  "client=%r", client)
 
+        self.factory.add_connection_lost_cb(self._on_connection_lost)
+
         def open_channel(channel):
             d = channel.channel_open()
             d.addCallback(lambda _: channel.tx_select())
@@ -265,13 +267,18 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             self.log("Finished channel configuration.")
             self.channel = channel
             self.client = client
-            self.factory.add_connection_lost_cb(self._on_connection_lost)
             return channel
+
+        def errback(fail):
+            self.log("_setup_with_client failed with the error: %r. "
+                     "Hopefully we will get this right after the next "
+                     "reconnection.", fail)
 
         d = client.get_free_channel()
         d.addCallback(open_channel)
         d.addCallback(store)
         d.addCallback(self._on_configured)
+        d.addErrback(errback)
         return d
 
     def _on_connection_lost(self):

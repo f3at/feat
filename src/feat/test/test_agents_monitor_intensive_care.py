@@ -117,7 +117,10 @@ class TestIntensiveCare(common.TestCase):
     def testPatient(self):
         now = time.time()
 
-        patient = intensive_care.Patient(None, None, now, 5, 1.5, 3)
+        patient = intensive_care.Patient(None, None, now,
+                                         period=5,
+                                         dying_skips=1.5,
+                                         death_skips=3)
         self.assertEqual((PatientState.alive, PatientState.alive),
                          patient.check(now))
         self.assertEqual((PatientState.alive, PatientState.alive),

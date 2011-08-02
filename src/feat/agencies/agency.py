@@ -18,7 +18,7 @@ from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
-                         first, )
+                         first, error)
 
 # Import interfaces
 from interface import *
@@ -682,6 +682,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         def do_set(desc):
             desc.instance_id = self._instance_id
+            desc.under_restart = None
 
         return self.update_descriptor(do_set)
 
@@ -759,23 +760,35 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         # Cancel all long running protocols
         d.addBoth(defer.drop_param, self._cancel_long_running_protocols)
+        d.addErrback(self._handle_failure)
         # Cancel all delayed calls
-        d.addBoth(self._cancel_all_delayed_calls)
+        d.addBoth(defer.drop_param, self._cancel_all_delayed_calls)
+        d.addErrback(self._handle_failure)
         # Kill all protocols
         d.addBoth(self._kill_all_protocols)
+        d.addErrback(self._handle_failure)
         # Again, just in case
-        d.addBoth(self._cancel_all_delayed_calls)
+        d.addBoth(defer.drop_param, self._cancel_all_delayed_calls)
+        d.addErrback(self._handle_failure)
         # Run code specific to the given shutdown
         d.addBoth(defer.drop_param, body)
+        d.addErrback(self._handle_failure)
         # Tell the agency we are no more
         d.addBoth(defer.drop_param, self._unregister_from_agency)
+        d.addErrback(self._handle_failure)
         # Close the messaging connection
         d.addBoth(defer.drop_param, self._messaging.disconnect)
+        d.addErrback(self._handle_failure)
         # Close the database connection
         d.addBoth(defer.drop_param, self._database.disconnect)
+        d.addErrback(self._handle_failure)
         d.addBoth(defer.drop_param,
                   self._set_state, AgencyAgentState.terminated)
+        d.addErrback(self._handle_failure)
         return d
+
+    def _handle_failure(self, failure):
+        error.handle_failure(self, failure, "Failure during termination")
 
     def _unregister_from_agency(self):
         self.agency.journal_agent_deleted(self._descriptor.doc_id,
@@ -793,7 +806,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         def generate_body():
             d = defer.succeed(None)
             # run IAgent.killed() and wait for the listeners to finish the job
-            d.addBoth(self._run_and_wait, self.agent.killed)
+            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
             return d
 
         return self._terminate_procedure(generate_body)

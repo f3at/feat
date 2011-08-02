@@ -567,9 +567,17 @@ class HandleDeath(task.BaseTask):
                        'last will.', state.factory.descriptor_type)
             return self._send_buried_notifications()
         else:
-            f = self._send_died_notifications()
+            f = self._set_restart_flag()
+            f.add_callback(fiber.drop_param, self._send_died_notifications)
             f.add_both(self._ensure_someone_took_responsability)
             return f
+
+    @replay.mutable
+    def _set_restart_flag(self, state):
+        state.descriptor.under_restart = True
+        f = state.agent.save_document(state.descriptor)
+        f.add_callback(self._store_descriptor)
+        return f
 
     @replay.mutable
     def _send_died_notifications(self, state):

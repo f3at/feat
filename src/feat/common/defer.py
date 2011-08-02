@@ -4,7 +4,7 @@ from twisted.internet.defer import *
 from twisted.internet.defer import returnValue, passthru, setDebugging
 from twisted.python import failure
 
-from feat.common import log, decorator
+from feat.common import log, decorator, error
 
 from feat.interface.log import *
 from feat.interface.fiber import *
@@ -63,6 +63,10 @@ def inject_param(_param, _index, _method, *args, **kwargs):
 
 def override_result(_param, _result):
     return _result
+
+
+def handle_failure(failure, message, logger=None):
+    error.handle_failure(logger, failure, message)
 
 
 def print_debug(_param, _template="", *args):

@@ -29,7 +29,6 @@ class BaseResource(webserver.BasicResource):
 
     def redirect(self, path, host=None, port=None):
         url = http.compose(path, host=host, port=port)
-        print "R"*80, url
         raise http.MovedPermanently(location=url)
 
 
@@ -328,7 +327,7 @@ class Agency(BaseResource):
 
             if 'set_logging_filter' in params:
                 filter = params["filter"][0]
-                self.model.set_debug(filter)
+                self.model.set_logging_filter(filter)
 
             if 'shutdown_agency' in params:
                 time.callLater(1, self.model.shutdown_agency)
@@ -362,7 +361,7 @@ class Agency(BaseResource):
                     "</UL>"])
 
         if self.enable_actions:
-            dbg = self.model.get_debug()
+            dbg = self.model.get_logging_filter()
             doc.extend(["</TABLE>"
                         "<H2>Actions</H2>"
                         "<TABLE>"

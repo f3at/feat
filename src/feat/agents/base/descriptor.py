@@ -32,6 +32,8 @@ class Descriptor(document.Document, pb.Copyable):
     document.field('partners', list())
     # The counter incremented at the agents startup
     document.field('instance_id', 0)
+    # Field set by monitor agent while restarting the agent
+    document.field('under_restart', None)
 
     ### methods usefull for descriptor manipulations done ###
     ### by agents who don't own them                      ###

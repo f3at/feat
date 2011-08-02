@@ -1,6 +1,6 @@
 # coding: utf-8
-from twisted.python import log
-from twisted.internet import defer, protocol, reactor
+from twisted.python import log, failure
+from twisted.internet import defer, protocol, reactor, error
 from twisted.internet.task import LoopingCall
 from twisted.protocols import basic
 from feat.extern.txamqp import spec
@@ -13,6 +13,7 @@ from feat.extern.txamqp.client import TwistedEvent, TwistedDelegate, Closed
 from cStringIO import StringIO
 import struct
 from time import time
+
 
 class GarbageException(Exception):
     pass
@@ -81,7 +82,7 @@ class AMQChannel(object):
                 # end up in ValueError being raised.
                 # This is dirty hack: check that we get what we want and
                 # remove message to the queue otherwise.
-                # Moreover I don't quite understand the 
+                # Moreover I don't quite understand the
                 while resp.method not in method.responses:
                     self.responses.put(msg)
                     # More explanation is given by uncommening the print statement:
@@ -386,7 +387,7 @@ class AMQClient(FrameReceiver):
     def checkHeartbeat(self):
         if self.checkHB.active():
             self.checkHB.cancel()
-        self.transport.loseConnection()
+        self.transport.connectionLost(failure.Failure(error.ConnectionLost()))
 
     def connectionLost(self, reason):
         if self.heartbeatInterval > 0:

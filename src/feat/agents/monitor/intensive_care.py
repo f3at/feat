@@ -7,6 +7,8 @@ from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
 from feat.interface.recipient import *
 
+PATIENT_RESET_EXTRA = 2/3.0
+
 
 class Patient(object):
 
@@ -23,13 +25,14 @@ class Patient(object):
         self.death_skips = death_skips or DEFAULT_DEATH_SKIPS
         self.last_state = PatientState.alive
         self.state = PatientState.alive
-        self.reset(beat_time)
+        self.reset(beat_time, 0)
 
         assert self.dying_skips <= self.death_skips, \
                "Death skips should be bigger than dying skips"
 
-    def reset(self, beat_time):
-        self.last_beat = beat_time
+    def reset(self, beat_time, extra=PATIENT_RESET_EXTRA):
+        # Reset to beat time plus 2/3 of a period to reduce false death
+        self.last_beat = beat_time + self.period * extra
         self.counter = 0
 
     def beat(self, beat_time):

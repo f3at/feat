@@ -124,7 +124,7 @@ class NotificationSender(task.StealthPeriodicTask):
         self.log("Descriptor is still there, waiting patiently for the agent.")
 
         new_recp = IRecipient(desc)
-        if recp != new_recp:
+        if recp != new_recp and new_recp.shard is not None:
             return self._update_recipient(recp, new_recp)
 
     ### methods for handling the list of notifications ###

@@ -10,7 +10,7 @@ from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, defer, time, text_helper, first
+from feat.common import manhole, defer, time, text_helper, first, error
 from feat.process import standalone
 from feat.common.serialization import json
 from feat.gateway import gateway
@@ -44,6 +44,9 @@ DEFAULT_MH_PORT = 6000
 
 
 GATEWAY_PORT_COUNT = 100
+
+
+HOST_RESTART_RETRY_INTERVAL = 5
 
 
 def add_options(parser):
@@ -617,8 +620,15 @@ class Agency(agency.Agency):
         d.addCallback(self.start_agent, hostdef=self._hostdef)
         d.addBoth(defer.bridge_param, set_flag, False)
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
+        d.addErrback(self._host_restart_failed)
 
         time.callLater(0, d.callback, None)
+
+    def _host_restart_failed(self, failure):
+        error.handle_failure(self, failure, "Failure during host restart")
+        self.debug("Retrying in %d seconds", HOST_RESTART_RETRY_INTERVAL)
+        time.callLater(HOST_RESTART_RETRY_INTERVAL,
+                       self._start_host_agent_if_necessary)
 
     def _get_host_agent(self):
         medium = self._get_host_medium()
