@@ -180,6 +180,11 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._agencies = list()
         self._breakpoints = dict()
 
+    def get_stats(self):
+        res = dict(self._messaging.get_stats())
+        res.update(dict(self._database.get_stats()))
+        return res
+
     def initiate(self):
         self._database_connection = self._database.get_connection()
         d1 = dbtools.push_initial_data(self._database_connection)

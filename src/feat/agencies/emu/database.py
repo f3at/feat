@@ -16,7 +16,8 @@ from feat.agencies.interface import *
 from feat.interface.view import *
 
 
-class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
+class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
+               common.Statistics):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
 
@@ -30,6 +31,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         common.ConnectionManager.__init__(self)
         log.LogProxy.__init__(self, log.FluLogKeeper())
         ChangeListener.__init__(self, self)
+        common.Statistics.__init__(self)
 
         # id -> document
         self._documents = {}
@@ -58,6 +60,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             doc = json.loads(doc)
             doc = self._set_id_and_revision(doc, doc_id)
 
+            self.increase_stat('save_doc')
+
             self._documents[doc['_id']] = doc
             self._expire_cache(doc['_id'])
 
@@ -75,7 +79,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         get the list of revision.
         '''
         d = defer.Deferred()
-
+        self.increase_stat('open_doc')
         try:
             doc = self._get_doc(doc_id)
             doc = copy.deepcopy(doc)
@@ -90,6 +94,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     def delete_doc(self, doc_id, revision):
         '''Imitates sending DELETE request to CouchDB server'''
         d = defer.Deferred()
+
+        self.increase_stat('delete_doc')
 
         try:
             doc = self._get_doc(doc_id)

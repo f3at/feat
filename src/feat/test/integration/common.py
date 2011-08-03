@@ -5,7 +5,7 @@ import sys
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
-from feat.common import text_helper, defer
+from feat.common import text_helper, defer, reflect
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
@@ -69,9 +69,10 @@ def format_journal(journal, prefix=""):
 
 class SimulationTest(common.TestCase):
 
-    configurable_attributes = ['skip_replayability', 'jourfile']
+    configurable_attributes = ['skip_replayability', 'jourfile', 'save_stats']
     skip_replayability = False
     jourfile = None
+    save_stats = False
 
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
@@ -114,6 +115,16 @@ class SimulationTest(common.TestCase):
             yield x.wait_for_protocols_finish()
 
         yield common.TestCase.tearDown(self)
+
+        if self.save_stats:
+            f = file(self.save_stats, "a")
+            print >> f, ""
+            print >> f, "%s.%s:" % (reflect.canonical_name(self),
+                                    self._testMethodName, )
+            t = text_helper.Table(fields=('name', 'value'),
+                                  lengths=(40, 40))
+            print >> f, t.render(self.driver.get_stats().iteritems())
+            f.close()
 
         try:
             if exc_type is None or exc_type is StopIteration:

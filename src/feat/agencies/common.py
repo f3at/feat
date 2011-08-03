@@ -16,6 +16,20 @@ from zope.interface import implements, classProvides
 from feat.interface.fiber import ICancellable, FiberCancelled
 
 
+class Statistics(object):
+
+    def __init__(self):
+        self._statistics = dict()
+
+    def increase_stat(self, key, value=1):
+        if key not in self._statistics:
+            self._statistics[key] = 0
+        self._statistics[key] += value
+
+    def get_stats(self):
+        return self._statistics.items()
+
+
 class StateAssertationError(RuntimeError):
     pass
 

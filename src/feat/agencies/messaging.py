@@ -141,9 +141,10 @@ class PersonalBinding(BaseBinding):
 
 class Queue(object):
 
-    def __init__(self, name):
+    def __init__(self, name, on_deliver=None):
         self.name = name
         self._messages = []
+        self.on_deliver = on_deliver
 
         self._consumers = []
         self._send_task = None
@@ -174,6 +175,8 @@ class Queue(object):
                     consumer = self._consumers.pop(0)
                 message = self._messages.pop(0)
                 consumer.callback(message)
+                if callable(self.on_deliver):
+                    self.on_deliver()
         except IndexError:
             # we had consumers but they disconnected,
             # this is expected, just pass
