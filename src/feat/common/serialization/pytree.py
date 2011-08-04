@@ -164,9 +164,12 @@ class Serializer(base.Serializer):
     pack_dereference = Dereference
     pack_external = External._build
 
-    def __init__(self, post_converter=None, externalizer=None):
+    def __init__(self, post_converter=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Serializer.__init__(self, post_converter=post_converter,
-                                 externalizer=externalizer)
+                                 externalizer=externalizer,
+                                 source_ver=source_ver,
+                                 target_ver=target_ver)
 
     def pack_frozen_external(self, value):
         identifier, = value
@@ -194,10 +197,13 @@ class Unserializer(base.Unserializer):
     pass_through_types = set([str, unicode, int, long, float, bool,
                               type(None), type, InterfaceClass])
 
-    def __init__(self, pre_converter=None, registry=None, externalizer=None):
+    def __init__(self, pre_converter=None, registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Unserializer.__init__(self, pre_converter=pre_converter,
                                    registry=registry,
-                                   externalizer=externalizer)
+                                   externalizer=externalizer,
+                                   source_ver=source_ver,
+                                   target_ver=target_ver)
 
     ### Overridden Methods ###
 

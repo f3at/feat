@@ -5,6 +5,7 @@
 from twisted.spread import jelly
 
 from feat.common import serialization
+from feat.common.serialization import base
 from feat.interface.serialization import *
 
 from . import common
@@ -166,3 +167,119 @@ class TestSerializable(common.TestCase):
         self.assertEqual(e2.u, 2)
         self.assertEqual(e2.v, 3)
         self.assertNotEqual(e1, e2)
+
+
+class DummyVerAdapter1(base.VersionAdapter):
+    pass
+
+
+class DummyVerAdapter2(base.VersionAdapter):
+
+    @staticmethod
+    def upgrade_to_3(data):
+        data.append("U3")
+        return data
+
+    @staticmethod
+    def upgrade_to_7(data):
+        data.append("U7")
+        return data
+
+    @staticmethod
+    def upgrade_to_9(data):
+        data.append("U9")
+        return data
+
+    @staticmethod
+    def downgrade_to_2(data):
+        data.append("D2")
+        return data
+
+    @staticmethod
+    def downgrade_to_5(data):
+        data.append("D5")
+        return data
+
+    @staticmethod
+    def downgrade_to_8(data):
+        data.append("D8")
+        return data
+
+
+class TestVersionAdapter(common.TestCase):
+
+    def check_combinations(self, adapter, ver_range, expected):
+        result = {}
+        for a in ver_range:
+            for b in ver_range:
+                value = adapter.adapt_version([], a, b)
+                if value:
+                    result[(a, b)] = value
+
+        self.assertEqual(result, expected)
+
+    def testNoAdaption(self):
+        self.check_combinations(DummyVerAdapter1, range(1, 10), {})
+        self.check_combinations(DummyVerAdapter1(), range(1, 10), {})
+
+    def testDummyAdaption(self):
+        expected = {(1, 3): ['U3'],
+                    (1, 4): ['U3'],
+                    (1, 5): ['U3'],
+                    (1, 6): ['U3'],
+                    (1, 7): ['U3', 'U7'],
+                    (1, 8): ['U3', 'U7'],
+                    (1, 9): ['U3', 'U7', 'U9'],
+                    (2, 3): ['U3'],
+                    (2, 4): ['U3'],
+                    (2, 5): ['U3'],
+                    (2, 6): ['U3'],
+                    (2, 7): ['U3', 'U7'],
+                    (2, 8): ['U3', 'U7'],
+                    (2, 9): ['U3', 'U7', 'U9'],
+                    (3, 1): ['D2'],
+                    (3, 2): ['D2'],
+                    (3, 7): ['U7'],
+                    (3, 8): ['U7'],
+                    (3, 9): ['U7', 'U9'],
+                    (4, 1): ['D2'],
+                    (4, 2): ['D2'],
+                    (4, 7): ['U7'],
+                    (4, 8): ['U7'],
+                    (4, 9): ['U7', 'U9'],
+                    (5, 1): ['D2'],
+                    (5, 2): ['D2'],
+                    (5, 7): ['U7'],
+                    (5, 8): ['U7'],
+                    (5, 9): ['U7', 'U9'],
+                    (6, 1): ['D5', 'D2'],
+                    (6, 2): ['D5', 'D2'],
+                    (6, 3): ['D5'],
+                    (6, 4): ['D5'],
+                    (6, 5): ['D5'],
+                    (6, 7): ['U7'],
+                    (6, 8): ['U7'],
+                    (6, 9): ['U7', 'U9'],
+                    (7, 1): ['D5', 'D2'],
+                    (7, 2): ['D5', 'D2'],
+                    (7, 3): ['D5'],
+                    (7, 4): ['D5'],
+                    (7, 5): ['D5'],
+                    (7, 9): ['U9'],
+                    (8, 1): ['D5', 'D2'],
+                    (8, 2): ['D5', 'D2'],
+                    (8, 3): ['D5'],
+                    (8, 4): ['D5'],
+                    (8, 5): ['D5'],
+                    (8, 9): ['U9'],
+                    (9, 1): ['D8', 'D5', 'D2'],
+                    (9, 2): ['D8', 'D5', 'D2'],
+                    (9, 3): ['D8', 'D5'],
+                    (9, 4): ['D8', 'D5'],
+                    (9, 5): ['D8', 'D5'],
+                    (9, 6): ['D8'],
+                    (9, 7): ['D8'],
+                    (9, 8): ['D8']}
+
+        self.check_combinations(DummyVerAdapter2, range(1, 10), expected)
+        self.check_combinations(DummyVerAdapter2(), range(1, 10), expected)

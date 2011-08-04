@@ -85,13 +85,49 @@ class SnapshotableAdapter(object):
     def __init__(self, value):
         self.value = value
 
-    ### ISnapshotable Methods ###
+    ### ISnapshotable ###
 
     def snapshot(self):
         return self.value
 
 
-class MetaSnapshotable(type):
+class MetaVersionAdapter(type):
+
+    implements(IVersionAdapter)
+
+
+class VersionAdapter(object):
+
+    __metaclass__ = MetaVersionAdapter
+
+    implements(IVersionAdapter)
+
+    ### IVersionAdapter ###
+
+    @classmethod
+    def adapt_version(cls, snapshot, source_ver, target_ver):
+        assert isinstance(source_ver, int)
+        assert isinstance(target_ver, int)
+
+        if source_ver < target_ver:
+            template = "upgrade_to_%d"
+            step = 1
+        elif source_ver > target_ver:
+            template = "downgrade_to_%d"
+            step = -1
+        else:
+            # No adaption needed
+            return snapshot
+
+        for ver in range(source_ver + step, target_ver + step, step):
+            method = getattr(cls, template % (ver, ), None)
+            if method is not None:
+                snapshot = method(snapshot)
+
+        return snapshot
+
+
+class MetaSnapshotable(MetaVersionAdapter):
 
     def __init__(cls, name, bases, dct):
         if "type_name" not in dct:
@@ -100,7 +136,7 @@ class MetaSnapshotable(type):
         super(MetaSnapshotable, cls).__init__(name, bases, dct)
 
 
-class Snapshotable(object):
+class Snapshotable(VersionAdapter):
     '''Simple L{ISnapshotable} that snapshot the instance attributes
     not starting by an underscore. If the class attribute type_name
     is not defined, the canonical name of the class is used.'''
@@ -111,7 +147,7 @@ class Snapshotable(object):
 
     referenceable = True
 
-    ### ISnapshotable Methods ###
+    ### ISnapshotable ###
 
     def snapshot(self):
         return dict([(k, v)
@@ -121,7 +157,7 @@ class Snapshotable(object):
 
 class MetaSerializable(MetaSnapshotable):
 
-    implements(IRestorator)
+    implements(IRestorator, IVersionAdapter)
 
 
 class Serializable(Snapshotable):
@@ -160,7 +196,7 @@ class Registry(object):
     def __init__(self):
         self._restorators = {} # {TYPE_NAME: IRestorator}
 
-    ### IRegistry Methods ###
+    ### IRegistry ###
 
     def register(self, restorator):
         r = IRestorator(restorator)
@@ -194,7 +230,7 @@ class Externalizer(object):
             return instance.type_name, id(instance)
         return id(instance)
 
-    ### IExternalizer Methods ###
+    ### IExternalizer ###
 
     def identify(self, instance):
         identifier = self.get_identifier(instance)
@@ -309,25 +345,31 @@ class Serializer(object):
     pack_frozen_external = None
 
     def __init__(self, converter_caps=None, freezer_caps=None,
-                 post_converter=None, externalizer=None, registry=None):
+                 post_converter=None, externalizer=None, registry=None,
+                 source_ver=None, target_ver=None):
+        global _global_registry
+        assert ((source_ver is None) and (target_ver is None)) \
+               or ((source_ver is not None) and (target_ver is not None))
         self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self.freezer_capabilities = freezer_caps or DEFAULT_FREEZER_CAPS
         self._post_converter = post_converter and IConverter(post_converter)
         self._externalizer = externalizer and IExternalizer(externalizer)
         self._registry = IRegistry(registry) if registry else _global_registry
+        self._source_ver = source_ver
+        self._target_ver = target_ver
         self.reset()
 
-    ### IFreezer Methods ###
+    ### IFreezer ###
 
     def freeze(self, data):
         return self._convert(data, self.freezer_capabilities, True)
 
-    ### IConverter Methods ###
+    ### IConverter ###
 
     def convert(self, data):
         return self._convert(data, self.converter_capabilities, False)
 
-    ### Protected Methods ###
+    ### protected ###
 
     def check_capabilities(self, cap, value, caps, freezing):
         if cap not in caps:
@@ -593,7 +635,17 @@ class Serializer(object):
             if deref is not None:
                 return deref
 
-        dump = self.flatten_value(value.snapshot(), caps, freezing)
+        snapshot = value.snapshot()
+
+        if self._source_ver is not None:
+            #TODO: If external adapter is needed change this to a cast
+            if IVersionAdapter.providedBy(value):
+                adapter = IVersionAdapter(value)
+                snapshot = adapter.adapt_version(snapshot,
+                                                 self._source_ver,
+                                                 self._target_ver)
+
+        dump = self.flatten_value(snapshot, caps, freezing)
 
         if freezing:
             packer, data = self.pack_frozen_instance, [dump]
@@ -614,7 +666,7 @@ class Serializer(object):
             return self.pack_external, flatened
         return self.pack_frozen_external, flatened
 
-    ### Setup lookup tables ###
+    ### lookup tables ###
 
     _value_lookup = {tuple: flatten_tuple_value,
                      list: flatten_list_value,
@@ -640,7 +692,7 @@ class Serializer(object):
                    bool: flatten_bool_key,
                    type(None): flatten_none_key}
 
-    ### Private Methods ###
+    ### private ###
 
     def _convert(self, data, caps, freezing):
         try:
@@ -732,15 +784,20 @@ class Unserializer(object):
     pass_through_types = ()
 
     def __init__(self, converter_caps=None, pre_converter=None,
-                 registry=None, externalizer=None):
+                 registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         global _global_registry
+        assert ((source_ver is None) and (target_ver is None)) \
+               or ((source_ver is not None) and (target_ver is not None))
         self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self._pre_converter = pre_converter and IConverter(pre_converter)
         self._registry = IRegistry(registry) if registry else _global_registry
         self._externalizer = externalizer and IExternalizer(externalizer)
+        self._source_ver = source_ver
+        self._target_ver = target_ver
         self.reset()
 
-    ### IConverter Methods ###
+    ### IConverter ###
 
     def convert(self, data):
         try:
@@ -756,7 +813,7 @@ class Unserializer(object):
             # Reset the state to cleanup all references
             self.reset()
 
-    ### Protected Methods ###
+    ### protected ###
 
     def pre_convertion(self, data):
         if self._pre_converter is not None:
@@ -766,7 +823,7 @@ class Unserializer(object):
     def reset(self):
         self._references = {} # {REFERENCE_ID: (DATA_ID, OBJECT)}
         self._pending = [] # Pendings unpacking
-        self._instances = [] # [(INSTANCE, SNAPSHOT)]
+        self._instances = [] # [(RESTORATOR, INSTANCE, SNAPSHOT)]
         self._delayed = 0 # If we are in a delayable unpacking
 
     def unpack_data(self, data):
@@ -816,14 +873,15 @@ class Unserializer(object):
             fun(*args, **kwargs)
 
         # Initialize the instance in creation order
-        for instance, snapshot in self._instances:
+        for restorator, instance, snapshot in self._instances:
+            snapshot = self._adapt_snapshot(restorator, snapshot)
             instance.recover(snapshot)
 
         # Calls the instances post restoration callback in reversed order
         # in an intent to reduce the possibilities of instances relying
         # on there references being fully restored when called.
         # This should not be relied on anyway.
-        for instance, _ in reversed(self._instances):
+        for _, instance, _ in reversed(self._instances):
             restored_fun = getattr(instance, "restored", None)
             if restored_fun:
                 restored_fun()
@@ -857,12 +915,13 @@ class Unserializer(object):
         if instance is None:
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
+            snapshot = self._adapt_snapshot(restorator, snapshot)
             return restorator.restore(snapshot)
 
         # Delay the instance restoration for later to handle circular refs
         return self.delayed_unpacking(instance,
                                       self._continue_restoring_instance,
-                                      instance, data)
+                                      restorator, instance, data)
 
     def restore_reference(self, refid, data):
         if refid in self._references:
@@ -968,7 +1027,7 @@ class Unserializer(object):
 
         return result
 
-    ### Virtual Methods, to be Overridden by Sub-Classes ###
+    ### virtual ###
 
     def analyse_data(self, data):
         '''Analyses the data provided and return a tuple containing
@@ -977,16 +1036,26 @@ class Unserializer(object):
         reference and dereferences.'''
 
 
-    ### Private Methods ###
+    ### private ###
 
-    def _continue_restoring_instance(self, instance, data):
+    def _continue_restoring_instance(self, restorator, instance, data):
         snapshot = self.unpack_data(data)
         # Delay instance initialization to the end to be sure
         # all snapshots circular references have been resolved
-        self._instances.append((instance, snapshot))
+        self._instances.append((restorator, instance, snapshot))
         return instance
 
+    def _adapt_snapshot(self, restorator, snapshot):
+        if self._source_ver is not None:
+            #TODO: If external adapter is needed change this to a cast
+            if IVersionAdapter.providedBy(restorator):
+                adapter = IVersionAdapter(restorator)
+                snapshot = adapter.adapt_version(snapshot,
+                                                 self._source_ver,
+                                                 self._target_ver)
+        return snapshot
 
-### Module Private ###
+
+### private ###
 
 _global_registry = Registry()

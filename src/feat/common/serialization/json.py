@@ -55,10 +55,13 @@ class Serializer(base.Serializer):
 
     pack_dict = dict
 
-    def __init__(self, indent=None, separators=None, externalizer=None):
+    def __init__(self, indent=None, separators=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Serializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                  freezer_caps=JSON_FREEZER_CAPS,
-                                 externalizer=externalizer)
+                                 externalizer=externalizer,
+                                 source_ver=source_ver,
+                                 target_ver=target_ver)
         self._indent = indent
         self._separators = separators
 
@@ -141,10 +144,13 @@ class Unserializer(base.Unserializer):
     pass_through_types = set([str, unicode, int, long,
                               float, bool, type(None)])
 
-    def __init__(self, registry=None, externalizer=None):
+    def __init__(self, registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Unserializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                    registry=registry,
-                                   externalizer=externalizer)
+                                   externalizer=externalizer,
+                                   source_ver=source_ver,
+                                   target_ver=target_ver)
 
     ### Overridden Methods ###
 

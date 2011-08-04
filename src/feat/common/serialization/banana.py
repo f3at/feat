@@ -34,8 +34,9 @@ class BananaCodec(object):
 
 class Serializer(sexp.Serializer, BananaCodec):
 
-    def __init__(self, externalizer=None):
-        sexp.Serializer.__init__(self, externalizer=externalizer)
+    def __init__(self, externalizer=None, source_ver=None, target_ver=None):
+        sexp.Serializer.__init__(self, externalizer=externalizer,
+                                 source_ver=source_ver, target_ver=target_ver)
         BananaCodec.__init__(self)
 
     ### Overridden Methods ###
@@ -46,9 +47,12 @@ class Serializer(sexp.Serializer, BananaCodec):
 
 class Unserializer(sexp.Unserializer, BananaCodec):
 
-    def __init__(self, registry=None, externalizer=None):
+    def __init__(self, registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         sexp.Unserializer.__init__(self, registry=registry,
-                                   externalizer=externalizer)
+                                   externalizer=externalizer,
+                                   source_ver=source_ver,
+                                   target_ver=target_ver)
         BananaCodec.__init__(self)
 
     ### Overridden Methods ###
