@@ -143,23 +143,23 @@ def stop(processName, rundir='/tmp', processType=PROCESS_TYPE):
     termClock = startClock + 20
     killClock = termClock + 10
 
-    log.debug('stopping process with pid %d', pid)
+    log.debug("run", 'stopping process with pid %d', pid)
     if not termPid(pid):
-        log.warning('No process with pid %d', pid)
+        log.warning("run", 'No process with pid %d', pid)
         return  1
 
     # wait for the kill
     while (checkPidRunning(pid)):
         if time.clock() > termClock:
-            log.warning("Process with pid %d has not responded to TERM " \
-                "for %d seconds, killing", pid, 20)
+            log.warning("run", "Process with pid %d has not responded "
+                        "to TERM for %d seconds, killing", pid, 20)
             killPid(pid)
             # so it does not get triggered again
             termClock = killClock + 1.0
 
         if time.clock() > killClock:
-            log.warning("Process with pid %d has not responded to KILL " \
-                "for %d seconds, stopping", pid, 10)
+            log.warning("run", "Process with pid %d has not responded to "
+                        "KILL for %d seconds, stopping", pid, 10)
             return 1
     print "%s %s with pid %d stopped" % (processType, processName, pid)
     return 0
@@ -332,7 +332,7 @@ def _getPidPath(rundir, type, name=None):
     path = os.path.join(rundir, '%s.pid' % type)
     if name:
         path = os.path.join(rundir, '%s.%s.pid' % (type, name))
-    log.debug('common', 'getPidPath for type %s, name %r: %s' % (
+    log.debug('run', 'getPidPath for type %s, name %r: %s' % (
         type, name, path))
     return path
 
@@ -404,7 +404,7 @@ def getPid(rundir, type, name=None):
     """
 
     pidPath = _getPidPath(rundir, type, name)
-    log.log('common', 'pidfile for %s %s is %s' % (type, name, pidPath))
+    log.log('run', 'pidfile for %s %s is %s' % (type, name, pidPath))
     if not os.path.exists(pidPath):
         return
 
