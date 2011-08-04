@@ -88,6 +88,11 @@ def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):
 
 
 def start_agent_in_shard(agent, desc, shard, **kwargs):
+    if shard is None or shard == 'lobby':
+        return fiber.fail(ValueError(
+            'We cannot start agent in shard without passing a meaningful '
+            'value for the shard. (%r)' % shard))
+
     f = agent.discover_service(StartAgentManager, shard=shard, timeout=1)
     f.add_callback(_check_recp_not_empty, shard)
     f.add_callback(lambda recp:
@@ -187,7 +192,9 @@ class StartAgentRequester(requester.BaseRequester):
 @descriptor.register("host_agent")
 class Descriptor(descriptor.Descriptor):
 
-    # Hostname of the machine, updated when an agent is started
-    document.field('hostname', None)
     # Range used for allocating new ports
     document.field('port_range', (5000, 5999, ))
+
+    @property
+    def hostname(self):
+        return self.doc_id

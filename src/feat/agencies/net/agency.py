@@ -21,9 +21,9 @@ from feat.utils import locate
 from feat.agencies.net import messaging
 from feat.agencies.net import database
 
-from feat.interface.agent import *
-from feat.interface.agency import *
-from feat.agencies.interface import *
+from feat.interface.agent import IAgentFactory, AgencyAgentState
+from feat.interface.agency import ExecMode
+from feat.agencies.interface import NotFoundError
 from feat.agencies.net.broker import BrokerRole, DEFAULT_SOCKET_PATH
 
 
@@ -50,8 +50,8 @@ DEFAULT_DAEMONIZE = False
 
 GATEWAY_PORT_COUNT = 100
 
-
 HOST_RESTART_RETRY_INTERVAL = 5
+DEFAULT_FORCE_HOST_RESTART = False
 
 
 def add_options(parser):
@@ -79,6 +79,10 @@ def add_options(parser):
     group.add_option('-D', '--daemonize',
                      action="store_true", dest="agency_daemonize",
                      help="run in background as a daemon")
+    group.add_option('--force-host-restart',
+                     action="store_true", dest="agency_force_host_restart",
+                     help=("force restarting host agent which descriptor "
+                           "exists in database."))
 
     parser.add_option_group(group)
 
@@ -183,7 +187,8 @@ class Agency(agency.Agency):
                  enable_spawning_slave=DEFAULT_ENABLE_SPAWNING_SLAVE,
                  rundir=DEFAULT_RUNDIR,
                  logdir=DEFAULT_LOGDIR,
-                 daemonize=DEFAULT_DAEMONIZE):
+                 daemonize=DEFAULT_DAEMONIZE,
+                 force_host_restart=DEFAULT_FORCE_HOST_RESTART):
 
         agency.Agency.__init__(self)
         self._init_config(msg_host=msg_host,
@@ -203,7 +208,8 @@ class Agency(agency.Agency):
                           enable_spawning_slave=enable_spawning_slave,
                           rundir=rundir,
                           logdir=logdir,
-                          daemonize=daemonize)
+                          daemonize=daemonize,
+                          force_host_restart=force_host_restart)
 
         self._ssh = None
         self._broker = None
@@ -359,6 +365,10 @@ class Agency(agency.Agency):
 
         self._redirect_text_log()
         self._create_pid_file()
+
+        if 'enable_host_restart' not in self._broker.shared_state:
+            value = self.config['agency']['force_host_restart']
+            self._broker.shared_state['enable_host_restart'] = value
 
         d = defer.succeed(None)
         if self.config['agency']['enable_spawning_slave']:
@@ -581,13 +591,14 @@ class Agency(agency.Agency):
     # in the environment).
 
     def _init_config(self, msg_host=None, msg_port=None,
-                 msg_user=None, msg_password=None,
-                 db_host=None, db_port=None, db_name=None,
-                 public_key=None, private_key=None,
-                 authorized_keys=None, manhole_port=None,
-                 agency_journal=None, socket_path=None,
-                 gateway_port=None, enable_spawning_slave=None,
-                 rundir=None, logdir=None, daemonize=None):
+                     msg_user=None, msg_password=None,
+                     db_host=None, db_port=None, db_name=None,
+                     public_key=None, private_key=None,
+                     authorized_keys=None, manhole_port=None,
+                     agency_journal=None, socket_path=None,
+                     gateway_port=None, enable_spawning_slave=None,
+                     rundir=None, logdir=None, daemonize=None,
+                     force_host_restart=None):
 
         msg_conf = dict(host=msg_host,
                         port=msg_port,
@@ -611,7 +622,8 @@ class Agency(agency.Agency):
                            rundir=rundir,
                            logdir=logdir,
                            enable_spawning_slave=enable_spawning_slave,
-                           daemonize=daemonize)
+                           daemonize=daemonize,
+                           force_host_restart=force_host_restart)
 
         gateway_conf = dict(port=gateway_port)
 
@@ -700,16 +712,38 @@ class Agency(agency.Agency):
                      'starting one.')
             return
 
+        def handle_error_on_get(fail, connection, doc_id):
+            fail.trap(NotFoundError)
+            desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
+            self.log("Host Agent descriptor not found in database, "
+                     "creating a brand new instance.")
+            return connection.save_document(desc)
+
+        def handle_success_on_get(desc):
+            if not self._broker.shared_state['enable_host_restart']:
+                self.error("Descriptor of host agent has been found in "
+                           "database (hostname: %s). This should not happen "
+                           "on the first run. If you really want to restart "
+                           "the host agent include --force-host-restart "
+                           "options to feat script.", desc.doc_id)
+                return self.full_shutdown(stop_process=True)
+            self.log("Host Agent descriptor found in database, will restart.")
+            return desc
+
         set_flag(True)
-        self.info('Starting host agent')
-        desc = host.Descriptor(shard=u'lobby')
+        self.info('Starting host agent.')
         conn = self._database.get_connection()
 
+        doc_id = self.get_hostname()
         d = defer.Deferred()
         d.addCallback(defer.drop_param, self.wait_connected)
-        d.addCallback(defer.drop_param, conn.save_document, desc)
+        d.addCallback(defer.drop_param, conn.get_document, doc_id)
+        d.addCallbacks(handle_success_on_get, handle_error_on_get,
+                       errbackArgs=(conn, doc_id, ))
         d.addCallback(self.start_agent, hostdef=self._hostdef)
-        d.addBoth(defer.bridge_param, set_flag, False)
+        d.addBoth(defer.drop_param, set_flag, False)
+        d.addCallback(defer.drop_param, self._broker.shared_state.__setitem__,
+                      'enable_host_restart', True)
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
         d.addErrback(self._host_restart_failed)
 

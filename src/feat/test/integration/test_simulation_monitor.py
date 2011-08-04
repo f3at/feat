@@ -157,6 +157,14 @@ class BadManagerAgent(agent.BaseAgent):
 @common.attr('slow')
 class RestartingSimulation(common.SimulationTest):
 
+    # def setUp(self):
+    #     # Overriding monitor configuration
+    #     monitor_conf = monitor_agent.MonitorAgentConfiguration()
+    #     monitor_conf.notification_period = 1
+    #     dbtools.initial_data(monitor_conf)
+    #     self.override_config('monitor_agent', monitor_conf)
+    #     return common.SimulationTest.setUp(self)
+
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
@@ -213,33 +221,6 @@ class RestartingSimulation(common.SimulationTest):
         shard_partner = self.monitor.query_partners('shard')
         self.assertEqual(2, shard_partner.instance_id)
 
-    @common.attr(timescale=0.2)
-    @defer.inlineCallbacks
-    def testShardAgentAndItsHostDied(self):
-        yield self.shard_medium.terminate_hard()
-        recp = yield self._kill_first_host()
-        self.assertEqual(0, self.count_agents('shard_agent'))
-        self.assertEqual(2, self.count_agents('host_agent'))
-        d1 = self.monitor.handle_agent_death(recipient.IRecipient(
-            self.shard_medium))
-        d2 = self.monitor.handle_agent_death(recp)
-        yield defer.DeferredList([d1, d2])
-        yield self.wait_for_idle(20)
-        yield self.wait_for(self.monitor.has_empty_outbox, 20)
-
-        self.assertEqual(1, self.count_agents('shard_agent'))
-        self.assertEqual(2, self.count_agents('host_agent'))
-        self.assert_has_host('shard_agent')
-        shard_agent = first(self.driver.iter_agents('shard_agent')).get_agent()
-        hosts = shard_agent.query_partners('hosts')
-        _, used = shard_agent.list_resource()
-        self.assertEqual(2, used['hosts'])
-        recp = map(operator.attrgetter('recipient'), hosts)
-        self.assertEqual(2, len(hosts))
-        for host in self.hosts[1:3]:
-            self.assertTrue(host.query_partners('shard') is not None)
-            self.assertIn(recipient.IRecipient(host), recp)
-
     @defer.inlineCallbacks
     def testRaageDies(self):
         yield self.raage_medium.terminate_hard()
@@ -250,25 +231,6 @@ class RestartingSimulation(common.SimulationTest):
         yield self.wait_for(self.monitor.has_empty_outbox, 20)
 
         self.assertEqual(1, self.count_agents('raage_agent'))
-        self.assert_has_host('raage_agent')
-
-    @common.attr(timescale=0.1)
-    @defer.inlineCallbacks
-    def testRaageAndHisHostDie(self):
-        self.assert_has_host('raage_agent')
-        yield self.raage_medium.terminate_hard()
-        recp = yield self._kill_first_host()
-        self.assertEqual(0, self.count_agents('raage_agent'))
-        self.assertEqual(2, self.count_agents('host_agent'))
-        d1 = self.monitor.handle_agent_death(recipient.IRecipient(
-            self.raage_medium))
-        d2 = self.monitor.handle_agent_death(recp)
-        yield defer.DeferredList([d1, d2])
-        yield self.wait_for_idle(20)
-        yield self.wait_for(self.monitor.has_empty_outbox, 20)
-
-        self.assertEqual(1, self.count_agents('raage_agent'))
-        self.assertEqual(2, self.count_agents('host_agent'))
         self.assert_has_host('raage_agent')
 
     def assert_has_host(self, agent_type):
@@ -385,7 +347,6 @@ class MonitoringMonitor(common.SimulationTest):
         self.assertEqual(2, self.count_agents('monitor_agent'))
         self.assert_monitor_in_first_shard()
 
-    @common.attr(jourfile="test.sqlite")
     @defer.inlineCallbacks
     def testKillAllInSecondShard(self):
         '''
@@ -428,8 +389,8 @@ class MonitoringMonitor(common.SimulationTest):
         '''
         This testcase first starts the agent which imitates the agent running
         in the standalone agency who is not affected by the failure.
-        Expected result is that the agent is getting monitored by the new
-        monitored and removes the old one.
+        Expected result is that the agent commits suacide after he receives
+        on_buried notification of host agent.
         '''
         script = format_block("""
         last_host.start_agent(descriptor_factory('random-agent'))
@@ -452,15 +413,7 @@ class MonitoringMonitor(common.SimulationTest):
 
         yield self.wait_for(self.monitors[0].has_empty_outbox, 200)
 
-        self.assertEqual(1, self.count_agents('random-agent'))
-        random_medium = first(self.driver.iter_agents('random-agent'))
-        self.assertEqual(second_shard, random_medium.get_descriptor().shard)
-        monitors = [x for x in random_medium.get_descriptor().partners
-                    if x.role == u'monitor']
-
-        self.assertEqual(1, len(monitors))
-        self.assertEqual(monitors[0].recipient,
-                         recipient.IRecipient(self.monitor_mediums[0]))
+        self.assertEqual(0, self.count_agents('random-agent'))
 
     def assert_monitor_in_first_shard(self):
         shard = self.hosts[0].get_own_address().shard
@@ -1240,7 +1193,7 @@ class TestRealMonitoring(common.SimulationTest):
         self.check_no_call(a3, a2)
         self.check_no_call(a1, a3)
 
-    @common.attr(hosts_per_shard=1, jourfile="test.sqlite3")
+    @common.attr(hosts_per_shard=1, jourfile="testWhereverStrategy.sqlite3")
     @defer.inlineCallbacks
     def testWhereverStrategy(self):
         drv = self.driver
@@ -1329,10 +1282,11 @@ class TestRealMonitoring(common.SimulationTest):
         self.check_status(ma1, 5)
         self.check_status(ma2, 6)
 
-        # Kill the one with partnership alongside the host
+        # Kill the one with partnership alongside the host and monitor
 
         yield ha1.terminate_hard()
         yield a1.terminate_hard()
+        yield ma1.terminate_hard()
 
         # Nothing yet changed
 
@@ -1345,7 +1299,7 @@ class TestRealMonitoring(common.SimulationTest):
         # death should be detected and agent restarted
 
         yield common.delay(None, 10)
-        yield self.wait(20, ma1, ma2)
+        yield self.wait(40, ma2)
 
         agents = self.get_agent("test_wherever_agent", ha2)
         agents.remove(a2)
@@ -1358,13 +1312,17 @@ class TestRealMonitoring(common.SimulationTest):
         self.assertNotEqual(IRecipient(a1.get_agent()).shard,
                             IRecipient(a1b.get_agent()).shard)
 
-        yield self.wait_monitored(a1b, ma1, 10)
+        # wait to detect the death of the monitor agent from shard 1
+        yield common.delay(None, 10)
+        # Now all structural agents in shard 1 should receive
+        # on_buried notification and suacide
+        self.assertEqual(1, self.count_agents('monitor_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('host_agent'))
 
         a1 = a1b
-
-        self.assertEqual(self.count_partners(ma1), 4)
         self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 4)
         self.check_status(ma2, 6)
 
         self.check_calls(a1, a2, "initiate")
@@ -1379,16 +1337,14 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma1), 4)
         self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 4)
         self.check_status(ma2, 6)
 
         # Waiting more than 3 hard beats
         # death should be detected and agent restarted
 
         yield common.delay(None, 10)
-        yield self.wait(20, ma1, ma2)
+        yield self.wait(20, ma2)
 
         agents = self.get_agent("test_wherever_agent", ha2)
         agents.remove(a1)
@@ -1403,15 +1359,13 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.wait_monitored(a3b, ma2, 10)
 
-        self.assertEqual(self.count_partners(ma1), 4)
         self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 4)
         self.check_status(ma2, 6)
 
         self.check_no_call(a1, a3)
         self.check_no_call(a2, a3)
 
-    @common.attr(hosts_per_shard=1, jourfile="test.sqlite")
+    @common.attr(hosts_per_shard=1, jourfile="testMonitorStrategy.sqlite")
     @defer.inlineCallbacks
     def testMonitorStrategy(self):
         drv = self.driver

@@ -91,7 +91,12 @@ class JournalReplayEntry(object):
 
     def apply(self):
         try:
-            assert self.agent_id == self._replay.agent_id
+            if self.agent_id != self._replay.agent_id:
+                raise ReplayError("Tried to apply the entry belonging to the "
+                                  "agent id: %r, but the Replay instance "
+                                  "belogs to: %r" % (self.agent_id,
+                                                     self._replay.agent_id))
+
 
             if self.journal_id == 'agency':
                 self._replay.replay_agency_entry(self)
@@ -304,11 +309,15 @@ class Replay(log.FluLogKeeper, log.Logger):
         j_id = recorder.journal_id
         self.log('Registering recorder: %r, id: %r, id(recorder): %r',
                  recorder.__class__.__name__, j_id, id(recorder))
-        assert j_id not in self.registry
+        if j_id in self.registry:
+            raise ReplayError('Journal id: %r is already in registry!' %
+                              (j_id, ))
         self.registry[j_id] = recorder
 
     def set_aa(self, medium):
-        assert self.medium is None
+        if self.medium is not None:
+            raise ReplayError(
+                'Replay instance already has the medium reference')
         self.medium = medium
 
     def __iter__(self):
@@ -342,7 +351,9 @@ class Replay(log.FluLogKeeper, log.Logger):
         return replay.replay(entry, method, *args, **kwargs)
 
     def effect_agent_created(self, agent_factory, dummy_id):
-        assert self.medium is None
+        if self.medium is not None:
+            raise ReplayError(
+                'Replay instance already has the medium reference')
         self.medium = AgencyAgent(self, dummy_id)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
@@ -704,7 +715,9 @@ class AgencyAgent(BaseReplayDummy):
     ### IRecorderNone Methods ###
 
     def generate_identifier(self, recorder):
-        assert not getattr(self, 'indentifier_generated', False)
+        if getattr(self, 'indentifier_generated', False):
+            raise ReplayError("Indetifier for the recorder %r has already "
+                              "been generated!" % (recorder, ))
         self._identifier_generated = True
         return self._dummy_id
 

@@ -14,8 +14,8 @@ class TestLocating(common.TestCase):
         self.database = database.Database()
         self.connection = self.database.get_connection()
 
-        host1 = host.Descriptor(hostname=u'host1')
-        host2 = host.Descriptor(hostname=u'host2')
+        host1 = host.Descriptor(doc_id=u'host1')
+        host2 = host.Descriptor(doc_id=u'host2')
         self.host1 = yield self.connection.save_document(host1)
         self.host2 = yield self.connection.save_document(host2)
         part1 = agent.BasePartner(recipient.IRecipient(host1),

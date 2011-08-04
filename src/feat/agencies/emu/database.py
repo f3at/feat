@@ -5,15 +5,16 @@ import uuid
 import json
 import operator
 
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import log
 from feat.agencies.database import Connection, ChangeListener
 from feat.agencies import common
 
-from feat.agencies.interface import *
-from feat.interface.view import *
+from feat.agencies.interface import IDbConnectionFactory, IDatabaseDriver
+from feat.agencies.interface import ConflictError, NotFoundError
+from feat.interface.view import IViewFactory
 
 
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
@@ -39,6 +40,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         self._view_cache = {}
 
         self._on_connected()
+
+        # document_type -> int, used for generating nice agent IDs in
+        # simulations
+        self._doc_type_counters = dict()
 
     ### IDbConnectionFactory
 
@@ -103,7 +108,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 raise ConflictError("Document update conflict.")
             if doc.get('_deleted', None):
                 raise NotFoundError('deleted')
-            doc['_rev'] = self._generate_id()
+            doc['_rev'] = self._generate_rev(doc)
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
             self.log('Marking document %r as deleted', doc_id)
@@ -191,7 +196,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _set_id_and_revision(self, doc, doc_id):
         doc_id = doc_id or doc.get('_id', None)
         if doc_id is None:
-            doc_id = self._generate_id()
+            doc_id = self._generate_id(doc)
             self.log("Generating new id for the document: %r", doc_id)
         else:
             old_doc = self._documents.get(doc_id, None)
@@ -201,7 +206,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                        old_doc['_rev'] != doc['_rev']:
                     raise ConflictError('Document update conflict.')
 
-        doc['_rev'] = self._generate_id()
+        doc['_rev'] = self._generate_rev(doc)
         doc['_id'] = doc_id
 
         return doc
@@ -212,8 +217,26 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             raise NotFoundError("missing")
         return doc
 
-    def _generate_id(self):
-        return unicode(uuid.uuid1())
+    def _generate_id(self, doc):
+        doc_type = doc.get('.type', None)
+        if doc_type:
+            if doc_type not in self._doc_type_counters:
+                self._doc_type_counters[doc_type] = 0
+            self._doc_type_counters[doc_type] += 1
+            return unicode("%s_%d" % (doc_type,
+                                      self._doc_type_counters[doc_type]))
+        else:
+            return unicode(uuid.uuid1())
+
+    def _generate_rev(self, doc):
+        cur_rev = doc.get('_rev', None)
+        if not cur_rev:
+            counter = 1
+        else:
+            counter, _ = cur_rev.split('-')
+            counter = int(counter) + 1
+        rand = unicode(uuid.uuid1()).replace('-', '')
+        return unicode("%d-%s" % (counter, rand))
 
 
 class Response(dict):
