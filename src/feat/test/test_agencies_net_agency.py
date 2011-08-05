@@ -391,7 +391,9 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_backup()
         slave = self.agency._broker.slaves.values()[0]
         self.info('killing slave')
-        yield slave.callRemote('shutdown')
+        d = slave.callRemote('shutdown', stop_process=True)
+        self.assertFailure(d, pb.PBConnectionLost)
+        yield d
         yield common.delay(None, 0.5)
         yield self.wait_for_backup()
         slave2 = self.agency._broker.slaves.values()[0]
