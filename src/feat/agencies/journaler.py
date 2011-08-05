@@ -7,7 +7,7 @@ import signal
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
-from twisted.spread import pb, jelly
+from twisted.spread import pb
 from twisted.internet import reactor
 from twisted.python import log as twisted_log
 
@@ -923,9 +923,6 @@ class History(formatable.Formatable, pb.Copyable):
     def _parse_resp(cls, resp):
         columns = map(operator.attrgetter('name'), cls._fields)
         return map(lambda row: cls(**dict(zip(columns, row))), resp)
-
-
-jelly.globalSecurity.allowInstancesOf(History)
 
 
 class AgencyJournalEntry(object):

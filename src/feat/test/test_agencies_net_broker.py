@@ -1,7 +1,6 @@
 import uuid
 import os
 
-from twisted.spread import pb
 from twisted.internet import defer
 from twisted.python import failure
 
@@ -156,6 +155,88 @@ class BrokerTest(common.TestCase):
         yield master.push_event('some', 'event')
         yield d1
         yield d2
+
+    @defer.inlineCallbacks
+    def testSharedState(self):
+        master, slave1, slave2 = self.brokers
+        for x in master, slave1:
+            yield x.initiate_broker()
+
+        # test basic setting
+
+        master.shared_state['key'] = 'value'
+        self.assertIn('key', master.shared_state)
+        self.assertEquals('value', master.shared_state['key'])
+
+        yield common.delay(None, 0.01)
+        self.assertIn('key', slave1.shared_state)
+        self.assertEquals('value', slave1.shared_state['key'])
+        yield slave2.initiate_broker()
+        yield common.delay(None, 0.01)
+        self.assertIn('key', slave2.shared_state)
+        self.assertEquals('value', slave2.shared_state['key'])
+        slave2.shared_state['key'] = 'other value'
+        self.assertEqual('other value', slave2.shared_state['key'])
+        yield common.delay(None, 0.01)
+        self.assertEqual('other value', master.shared_state['key'])
+
+        # test deleting
+
+        yield slave1.disconnect()
+        del(slave2.shared_state['key'])
+        self.assertNotIn('key', slave2.shared_state)
+        yield common.delay(None, 0.01)
+        self.assertNotIn('key', master.shared_state)
+
+        yield slave1.initiate_broker()
+        yield common.delay(None, 0.01)
+        self.assertNotIn('key', slave1.shared_state)
+
+        # test clear() method
+        master.shared_state['new_key'] = 2
+        yield common.delay(None, 0.01)
+        slave1.shared_state.clear()
+        self.assertNotIn('new_key', slave1.shared_state)
+        yield common.delay(None, 0.01)
+        self.assertNotIn('new_key', slave2.shared_state)
+        self.assertNotIn('new_key', master.shared_state)
+
+        # test pop() method
+        master.shared_state['new_key'] = 2
+        yield common.delay(None, 0.01)
+        self.assertIn('new_key', slave2.shared_state)
+        self.assertEqual(2, slave2.shared_state.pop('new_key'))
+        self.assertNotIn('new_key', slave2.shared_state)
+        yield common.delay(None, 0.01)
+        self.assertNotIn('new_key', slave2.shared_state)
+        self.assertNotIn('new_key', slave1.shared_state)
+        self.assertNotIn('new_key', master.shared_state)
+
+        # test popitem() method
+        master.shared_state['new_key'] = 2
+        yield common.delay(None, 0.01)
+        self.assertEqual(('new_key', 2), slave2.shared_state.popitem())
+        self.assertNotIn('new_key', slave2.shared_state)
+        yield common.delay(None, 0.01)
+        self.assertNotIn('new_key', slave2.shared_state)
+        self.assertNotIn('new_key', slave1.shared_state)
+
+        # test update() method
+        to_update = dict(a=3, b=5)
+        slave1.shared_state.update(to_update)
+        self.assertIn('a', slave1.shared_state)
+        self.assertIn('b', slave1.shared_state)
+        self.assertEqual(3, slave1.shared_state['a'])
+        self.assertEqual(5, slave1.shared_state['b'])
+        yield common.delay(None, 0.01)
+        self.assertIn('a', master.shared_state)
+        self.assertIn('b', master.shared_state)
+        self.assertEqual(3, master.shared_state['a'])
+        self.assertEqual(5, master.shared_state['b'])
+        self.assertIn('a', slave2.shared_state)
+        self.assertIn('b', slave2.shared_state)
+        self.assertEqual(3, slave2.shared_state['a'])
+        self.assertEqual(5, slave2.shared_state['b'])
 
     @defer.inlineCallbacks
     def testFailingEventsMasterToSlaves(self):

@@ -4,10 +4,9 @@ import functools
 from twisted.internet import reactor
 from twisted.internet.error import (CannotListenError, ConnectionRefusedError,
                                     ConnectionDone, )
-from twisted.spread import pb
+from twisted.spread import pb, jelly
 
-from feat.common import log, enum, defer, first, error
-from feat.common.serialization import banana
+from feat.common import log, enum, defer, first, error, manhole
 from feat.agencies import common
 
 
@@ -16,10 +15,12 @@ DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
 
 class SlaveReference(object):
 
-    def __init__(self, slave_id, reference, is_standalone):
+    def __init__(self, broker, slave_id, reference, is_standalone):
+        # pb.RemoteReference to the Broker instance
+        self.broker = broker
         # agency id
         self.slave_id = slave_id
-        # pb.Reference to the Agency instance
+        # pb.RemoteReference to the Agency instance
         self.reference = reference
         # bool flag saying if it is a standalone agency
         self.is_standalone = is_standalone
@@ -36,12 +37,71 @@ class SlaveReference(object):
         del(self.agents[agent_id])
 
 
+class SharedState(dict):
+
+    def __init__(self, broker, items=[]):
+        dict.__init__(self, items)
+        self._broker = broker
+
+    ### dict implementation ###
+
+    def __setitem__(self, key, value):
+        self.set_locally(key, value)
+        self._broker.update_state_broadcast('set_locally', key, value)
+
+    def __delitem__(self, key):
+        self.del_locally(key)
+        self._broker.update_state_broadcast('del_locally', key)
+
+    def clear(self):
+        self.clear_locally()
+        self._broker.update_state_broadcast('clear_locally')
+
+    def pop(self, key):
+        if key not in self:
+            raise KeyError("%s key not found!")
+        res = dict.pop(self, key)
+        self._broker.update_state_broadcast('del_locally', key)
+        return res
+
+    def popitem(self):
+        key, value = dict.popitem(self)
+        self._broker.update_state_broadcast('del_locally', key)
+        return key, value
+
+    def update(self, dict):
+        self.update_locally(dict.items())
+        self._broker.update_state_broadcast('update_locally', dict.items())
+
+    ### local modifications ###
+
+    def set_locally(self, key, value):
+        dict.__setitem__(self, key, value)
+
+    def del_locally(self, key):
+        if key in self:
+            dict.__delitem__(self, key)
+
+    def clear_locally(self):
+        for key in self.keys():
+            self.del_locally(key)
+
+    def reset_locally(self, items):
+        self.clear_locally()
+        self.update_locally(items)
+
+    def update_locally(self, items):
+        for key, value in items:
+            self.set_locally(key, value)
+
+
 class BrokerRole(enum.Enum):
 
     disconnected, master, slave = range(3)
 
 
-class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
+class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
+             manhole.Manhole, pb.Root):
     '''
     Mixin for the network agency. It is responsible on connecting/listening
     on the unix socket. The broker which manages to listen is taking the master
@@ -74,7 +134,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         self.on_disconnected_cb = on_disconnected_cb
         self.on_remove_slave_cb = on_remove_slave_cb
 
-        self._serializer = banana.Serializer()
+        self.shared_state = SharedState(self)
 
     def is_master(self):
         return self._cmp_state(BrokerRole.master)
@@ -138,8 +198,25 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     # Server specific
 
+    def remote_handshake(self, broker, slave, agency_id, standalone):
+        self.debug('Appending slave agency: %r', slave)
+        self.append_slave(broker, agency_id, slave, standalone)
+        slave.notifyOnDisconnect(self.remove_slave(agency_id))
+        return self.shared_state.items()
+
+    def remote_register_agent_local(self, slave_id, agent_id, reference):
+        slave = self.slaves[slave_id]
+        slave.register_agent(agent_id, reference)
+
+    def remote_unregister_agent_local(self, slave_id, agent_id):
+        slave = self.slaves[slave_id]
+        slave.unregister_agent(agent_id)
+
     def iter_slaves(self):
         return (slave.reference for slave in self.slaves.itervalues())
+
+    def iter_slave_references(self):
+        return (slave for slave in self.slaves.itervalues())
 
     def has_slave(self):
         '''Returns True/False wether we have a slave agency which is not
@@ -169,8 +246,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         elif self.is_slave():
             self._master.callRemote('shutdown_slaves')
 
-    def append_slave(self, slave_id, slave, standalone):
-        self.slaves[slave_id] = SlaveReference(slave_id, slave, standalone)
+    def append_slave(self, broker, slave_id, slave, standalone):
+        self.slaves[slave_id] = SlaveReference(broker, slave_id, slave,
+                                               standalone)
 
     def remove_slave(self, slave_id):
 
@@ -192,15 +270,28 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     # Slave/Standalone specific
 
-    def become_slave(self, root):
+    def become_slave(self, broker):
         '''
         Run as part of the handshake.
-        @param master: Remote reference to the root object (PBServerFactory)
+        @param master: Remote reference to the broker object
         '''
         self._set_state(BrokerRole.slave)
-        self._master = root
+        self._master = broker
+        d = defer.succeed(None)
         if callable(self.on_slave_cb):
-            return self.on_slave_cb()
+            d.addCallback(defer.drop_param, self.on_slave_cb)
+            d.addErrback(self._handle_critical_error)
+
+        d.addCallback(defer.drop_param, self._master.callRemote,
+                      'handshake', self, self.agency, self.agency.agency_id,
+                      self.is_standalone())
+        d.addCallback(defer.inject_param, 1, self.update_state,
+                      'reset_locally')
+
+        for medium in self.agency.iter_agents():
+            d.addCallback(defer.drop_param, self.register_agent, medium)
+
+        return d
 
     # ............
 
@@ -212,6 +303,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     # events
 
+    @manhole.expose()
     def wait_event(self, *args):
         self._ensure_connected()
         if self.is_master():
@@ -221,6 +313,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         elif self.is_slave():
             return self._master.callRemote('wait_event', *args)
 
+    @manhole.expose()
     def push_event(self, *args):
         self._ensure_connected()
         if self.is_master():
@@ -230,6 +323,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         elif self.is_slave():
             return self._master.callRemote('push_event', *args)
 
+    @manhole.expose()
     def fail_event(self, failure, *args):
         self._ensure_connected()
         if self.is_master():
@@ -248,16 +342,16 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
     def _event_key(self, *args):
         return tuple(args)
 
+    @manhole.expose()
     def start_agent(self, desc, *args, **kwargs):
         self._ensure_connected()
         if self.is_master():
             return self.agency.actually_start_agent(desc, *args, **kwargs)
         elif self.is_slave():
-            self._unserializer = banana.Unserializer()
-            raw_desc = self._serializer.convert(desc)
             return self._master.callRemote(
-                'start_agent', raw_desc, *args, **kwargs)
+                'start_agent', desc, *args, **kwargs)
 
+    @manhole.expose()
     def find_agent(self, agent_id):
         self._ensure_connected()
         if self.is_master():
@@ -265,6 +359,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
         elif self.is_slave():
             return self._master.callRemote('find_agent', agent_id)
 
+    @manhole.expose()
     def get_journal_writer(self):
         self._ensure_connected()
         if self.is_master():
@@ -282,65 +377,59 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin):
             return res.__iter__()
 
     def register_agent(self, medium):
-        agent_id = medium.get_agent_id()
         if self.is_slave():
-            return self._master.callRemote(
-                'register_agent', self.agency.agency_id, agent_id, medium)
+            agent_id = medium.get_agent_id()
+            return self._master.callRemote('register_agent_local',
+                                           self.agency.agency_id,
+                                           agent_id, medium)
 
     def unregister_agent(self, medium):
         agent_id = medium.get_agent_id()
         if self.is_slave():
             return self._master.callRemote(
-                'unregister_agent', self.agency.agency_id, agent_id)
+                'unregister_agent_local', self.agency.agency_id, agent_id)
 
     def is_standalone(self):
         return self._is_standalone
 
+    @manhole.expose()
+    def update_state(self, _method, *args, **kwargs):
+        method = getattr(self.shared_state, _method, None)
+        if not callable(method):
+            raise AttributeError("Uknown update_state() param, method: %s"
+                                 % _method)
+        return method(*args, **kwargs)
 
-class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
+    @manhole.expose()
+    def update_state_broadcast(self, _method, *args, **kwargs):
+        origin_id = kwargs.pop('agency_id', self.agency.agency_id)
+
+        self._ensure_connected()
+        if self._cmp_state(BrokerRole.master):
+            defers = list()
+            if origin_id != self.agency.agency_id:
+                self.update_state(_method, *args, **kwargs)
+            for slave in self.iter_slave_references():
+                if slave.slave_id != self.agency.agency_id:
+                    defers.append(
+                        slave.broker.callRemote(
+                            'update_state', _method, *args, **kwargs))
+            return defer.DeferredList(defers, consumeErrors=True)
+        elif self._cmp_state(BrokerRole.slave):
+            return self._master.callRemote('update_state_broadcast',
+                                           _method, agency_id=origin_id,
+                                           *args, **kwargs)
+
+
+class MasterFactory(pb.PBServerFactory, log.Logger):
 
     def __init__(self, broker):
         log.Logger.__init__(self, broker)
-        pb.PBServerFactory.__init__(self, self)
+        pb.PBServerFactory.__init__(self, broker,
+                                    security=jelly.DummySecurityOptions())
+
         self.broker = broker
         self.connections = list()
-
-        self._unserializer = banana.Unserializer()
-
-    def remote_handshake(self, slave, agency_id, standalone):
-        self.debug('Appending slave agency: %r', slave)
-        self.broker.append_slave(agency_id, slave, standalone)
-        slave.notifyOnDisconnect(self.broker.remove_slave(agency_id))
-
-    def remote_wait_event(self, *args):
-        return self.broker.wait_event(*args)
-
-    def remote_push_event(self, *args):
-        return self.broker.push_event(*args)
-
-    def remote_fail_event(self, failure, *args):
-        return self.broker.fail_event(failure, *args)
-
-    def remote_find_agent(self, agent_id):
-        return self.broker.find_agent(agent_id)
-
-    def remote_shutdown_slaves(self):
-        return self.broker.shutdown_slaves()
-
-    def remote_start_agent(self, raw_desc, *args, **kwargs):
-        desc = self._unserializer.convert(raw_desc)
-        return self.broker.start_agent(desc, *args, **kwargs)
-
-    def remote_get_journal_writer(self):
-        return self.broker.get_journal_writer()
-
-    def remote_register_agent(self, slave_id, agent_id, reference):
-        slave = self.broker.slaves[slave_id]
-        slave.register_agent(agent_id, reference)
-
-    def remote_unregister_agent(self, slave_id, agent_id):
-        slave = self.broker.slaves[slave_id]
-        slave.unregister_agent(agent_id)
 
     def clientConnectionMade(self, broker):
         self.debug('Client connection made to the server: %r', broker)
@@ -362,9 +451,9 @@ class MasterFactory(pb.PBServerFactory, pb.Root, log.Logger):
 class SlaveFactory(pb.PBClientFactory, log.Logger):
 
     def __init__(self, broker, cb):
-        pb.PBClientFactory.__init__(self)
+        pb.PBClientFactory.__init__(
+            self, security=jelly.DummySecurityOptions())
         log.Logger.__init__(self, broker)
-        self.agency = broker.agency
         self.broker = broker
         self.deferred = cb
 
@@ -378,28 +467,16 @@ class SlaveFactory(pb.PBClientFactory, log.Logger):
 
     def clientConnectionMade(self, broker):
         pb.PBClientFactory.clientConnectionMade(self, broker)
-        self.log('Slave connection made. Broker: %r', broker)
+        self.log('Slave broker connection made.')
 
-        d = self.getRootObject()
-        d.addCallback(self.broker.become_slave)
-        d.addErrback(self.broker._handle_critical_error)
-        d.addCallback(defer.drop_param, self.getRootObject)
-        d.addCallback(defer.call_param, 'callRemote', 'handshake',
-                      self.agency, self.agency.agency_id,
-                      self.broker.is_standalone())
-        d.addCallback(defer.drop_param, self._register_agents)
-        d.addCallback(self.deferred.callback)
-
-    def _register_agents(self):
         d = defer.succeed(None)
-        for medium in self.agency.iter_agents():
-            d.addCallback(defer.drop_param, self.broker.register_agent,
-                          medium)
-        return d
+        d.addCallback(defer.drop_param, self.getRootObject)
+        d.addCallback(self.broker.become_slave)
+        d.addCallback(defer.drop_param, self.deferred.callback, None)
 
     def clientConnectionLost(self, connector, reason, reconnecting=0):
         pb.PBClientFactory.clientConnectionLost(self, connector, reason)
-        self.debug('lost slave connection')
+        self.debug('Lost slave broker connection. Reason: %r', reason)
         if not self.broker._cmp_state(BrokerRole.disconnected):
             d = defer.succeed(None)
             d.addCallback(defer.drop_param, self.broker.become_disconnected)

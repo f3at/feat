@@ -4,7 +4,7 @@ import optparse
 import operator
 
 from twisted.internet import defer
-from twisted.spread import jelly, pb
+from twisted.spread import pb
 
 from feat.test import common
 from feat.process import couchdb, rabbitmq, standalone
@@ -16,9 +16,6 @@ from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
 from feat.interface.agent import *
-
-
-jelly.globalSecurity.allowModules(__name__)
 
 
 class OptParseMock(object):

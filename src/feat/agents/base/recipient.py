@@ -3,7 +3,7 @@ from types import NoneType
 
 from twisted.python import components
 from zope.interface import implements
-from twisted.spread import pb, jelly
+from twisted.spread import pb
 
 from feat.agents.base import message, descriptor
 from feat.interface.agent import *
@@ -203,8 +203,3 @@ def dummy_agent():
     recipient.
     '''
     return Agent(str(uuid.uuid1()), 'shard')
-
-
-jelly.globalSecurity.allowInstancesOf(
-    Recipient, Recipients, Broadcast, Agent,
-    RecipientFromAgent, RecipientFromMessage, RecipientFromDescriptor)

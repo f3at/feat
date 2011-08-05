@@ -1,6 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from twisted.spread import pb, jelly
+from twisted.spread import pb
 
 from feat.common import decorator, fiber, first
 from feat.agents.base import document
@@ -60,6 +60,3 @@ class Descriptor(document.Document, pb.Copyable):
     def set_shard(self, agent, shard):
         self.shard = shard
         return agent.save_document(self)
-
-
-jelly.globalSecurity.allowInstancesOf(Descriptor)
