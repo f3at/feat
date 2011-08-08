@@ -1,6 +1,7 @@
+import sys
 import os
 
-from feat.agents.base import agent, descriptor, partners
+from feat.agents.base import agent, descriptor
 from feat.agents.common import monitor
 
 
@@ -24,7 +25,7 @@ class DummyStandalone(agent.BaseAgent):
         args = ['-X',
                 '-a', str(desc.doc_id),
                 '-D']
-        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5', PATH=path)
+        env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
         return command, args, env
 
     def startup(self):
