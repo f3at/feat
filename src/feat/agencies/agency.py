@@ -843,8 +843,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _kill_all_protocols(self, *_):
 
-        def expire_one(protocol):
-            d = protocol.cleanup()
+        def expire_one(prot):
+            d = defer.succeed(None)
+            d.addCallback(defer.drop_param, prot.cleanup)
             d.addErrback(Failure.trap, ProtocolFailed)
             return d
 

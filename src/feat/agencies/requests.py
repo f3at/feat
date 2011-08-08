@@ -82,6 +82,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     ### IAgencyProtocolInternal Methods ###
 
+    def cleanup(self):
+        pass
+
     def get_agent_side(self):
         return self.requester
 
@@ -176,6 +179,9 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         time.callLater(0, self._terminate, None)
 
     ### IAgencyProtocolInternal Methods ###
+
+    def cleanup(self):
+        pass
 
     def get_agent_side(self):
         return self.replier

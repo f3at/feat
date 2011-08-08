@@ -101,7 +101,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def cleanup(self):
         if self.factory and self.factory.timeout:
-            return common.ExpirationCallsMixin.expire_now()
+            return self.expire_now()
         #FIXME: calling expired anyway when no timeout is not the way
         return self._call(self.task.expired)
 
