@@ -6,7 +6,7 @@ import operator
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
-                              problem, task, )
+                              problem, task, requester, )
 from feat.agents.common import rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
@@ -63,11 +63,12 @@ class ShardPartner(agent.BasePartner):
         If the requests to the neighbour timeouts, he is removed from the
         local list and the algorithm iterates in.
         '''
-        if agent.is_migrating():
-            return
         agent.info('Shard partner said goodbye.')
-        recipients = map(operator.attrgetter('recipient'), brothers)
-        return agent.resolve_missing_shard_agent_problem(recipients)
+        return self._handle_no_shard(agent, brothers)
+
+    def on_buried(self, agent, brothers):
+        agent.info('Received shard partner on buried.')
+        return self._handle_no_shard(agent, brothers)
 
     def on_died(self, agent, brothers, monitor):
         agent.info('Shard partner died.')
@@ -80,6 +81,12 @@ class ShardPartner(agent.BasePartner):
 
     def on_restarted(self, agent):
         agent.callback_event('shard_agent_restarted', self.recipient)
+
+    def _handle_no_shard(self, agent, brothers):
+        if agent.is_migrating():
+            return
+        recipients = map(operator.attrgetter('recipient'), brothers)
+        return agent.resolve_missing_shard_agent_problem(recipients)
 
 
 class Partners(agent.Partners):
@@ -111,14 +118,30 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_param, self._update_hostname)
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
         return f.succeed()
 
     @replay.journaled
     def startup(self, state):
-        f = self.start_join_shard_manager()
+        desc = state.medium.get_descriptor()
+
+        f = fiber.succeed()
+        if state.partners.shard is None:
+            f.add_callback(fiber.drop_param, self.start_join_shard_manager)
         f.add_callback(fiber.drop_param, self.startup_monitoring)
+
+        # this agent is restarted by the agency not the monitor agent
+        # for this reason we need to mind the restarted notifications
+        # in a special way (ourselves)
+        if desc.instance_id > 1:
+            own = self.get_own_address()
+            fibers = list()
+            for partner in state.partners.all:
+                fibers.append(requester.notify_restarted(
+                    self, partner.recipient, own, own))
+            if fibers:
+                fl = fiber.FiberList(fibers, consumeErrors=True)
+                f.chain(fl)
         return f
 
     @replay.journaled
@@ -189,8 +212,12 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     @replay.journaled
     def switch_shard(self, state, shard):
-        self.debug('Switching shard to %r', shard)
+        self.debug('Switching shard to %r.', shard)
         desc = state.medium.get_descriptor()
+        if desc.shard == shard:
+            self.debug("switch_shard(%s) called, but we are already member "
+                       "of this shard, ignoring.", shard)
+            return fiber.succeed()
 
         def save_change(desc, shard):
             desc.shard = shard
@@ -314,16 +341,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
             if hosted:
                 result.append(partner.recipient)
         defer.returnValue(result)
-
-    @replay.immutable
-    def _discover_hostname(self, state):
-        return state.medium.get_hostname()
-
-    @agent.update_descriptor
-    def _update_hostname(self, state, desc, hostname=None):
-        if not hostname:
-            hostname = self._discover_hostname()
-        desc.hostname = hostname
 
     @replay.immutable
     def _load_definition(self, state, hostdef=None):

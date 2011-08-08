@@ -1,3 +1,4 @@
+import socket
 import sys
 import os
 import optparse
@@ -15,7 +16,7 @@ from feat.common import serialization, fiber, log, first
 from feat.process.base import DependencyError
 from twisted.trial.unittest import SkipTest
 
-from feat.interface.agent import *
+from feat.interface.agent import AgencyAgentState
 
 
 class OptParseMock(object):
@@ -157,8 +158,7 @@ class StandaloneAgentWithArgs(StandaloneAgent):
 
     def initiate(self, foo, bar):
         if foo != 4 or bar != 5:
-            raise Exception("Unexpected arguments or keyword in initiate()"
-                            ": %r %r" % (args, kwargs))
+            raise Exception("Unexpected arguments or keyword in initiate()")
 
 
 @descriptor.register('standalone_with_args')
@@ -375,21 +375,34 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_host_agent(10)
         new_medium = self.agency._get_host_medium()
         yield new_medium.wait_for_state(AgencyAgentState.ready)
-        new_agent_id = new_medium.get_descriptor().doc_id
-
-        self.assertNotEqual(new_agent_id, agent_id)
 
     @defer.inlineCallbacks
     def testBackupAgency(self):
         pid_path = os.path.join(os.path.curdir, 'feat.pid')
+        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+
         process = yield self.spawn_agency()
         yield self.wait_for_pid(pid_path)
+
+        host_desc = yield self.db.get_document(hostname)
+        self.assertEqual(1, host_desc.instance_id)
+
         yield self.agency.initiate()
         yield self.wait_for_slave()
         yield process.terminate()
         yield self.wait_for_master()
+
+        def has_host():
+            m = self.agency._get_host_medium()
+            return m is not None and m.is_ready()
+
+        yield self.wait_for(has_host, 10)
+        host_desc = yield self.db.get_document(hostname)
+        self.assertEqual(2, host_desc.instance_id)
+
         yield self.wait_for_backup()
         slave = self.agency._broker.slaves.values()[0]
+
         self.info('killing slave')
         d = slave.callRemote('shutdown', stop_process=True)
         self.assertFailure(d, pb.PBConnectionLost)

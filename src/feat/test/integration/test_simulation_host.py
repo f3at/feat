@@ -23,10 +23,9 @@ class HostAgentTests(common.SimulationTest):
         setup = format_block("""
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        desc1 = descriptor_factory('host_agent')
-        medium = agency.start_agent(desc1, run_startup=False)
+        desc = descriptor_factory('host_agent', doc_id='test.host.lan')
+        medium = agency.start_agent(desc, run_startup=False)
         agent = medium.get_agent()
-        desc2 = medium.get_descriptor()
         """)
         return self.process(setup)
 
@@ -51,10 +50,9 @@ class HostAgentTests(common.SimulationTest):
         self.assertTrue("address" in cats)
 
     def testHostname(self):
-        expected = socket.gethostbyaddr(socket.gethostname())[0]
+        expected = 'test.host.lan'
         expected_ip = socket.gethostbyname(socket.gethostname())
-        self.assertEqual(self.get_local('desc1').hostname, None)
-        self.assertEqual(self.get_local('desc2').hostname, expected)
+        self.assertEqual(self.get_local('desc').hostname, expected)
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
@@ -81,6 +79,50 @@ class HostAgentTests(common.SimulationTest):
         self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
         agent.release_ports(ports)
         self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
+
+
+@common.attr(timescale=0.05)
+class HostAgentRestartTest(common.SimulationTest):
+
+    NUM_PORTS = 999
+
+    @defer.inlineCallbacks
+    def prolog(self):
+        setup = format_block("""
+        agency = spawn_agency()
+        agency.disable_protocol('setup-monitoring', 'Task')
+        desc = descriptor_factory('host_agent', doc_id='test.host.lan')
+        medium = agency.start_agent(desc)
+        agent = medium.get_agent()
+        wait_for_idle()
+        """)
+        yield self.process(setup)
+
+    @defer.inlineCallbacks
+    def testKillHost(self):
+        self.assertEqual(1, self.count_agents('host_agent'))
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('monitor_agent'))
+        medium = self.get_local('medium')
+        desc = medium.get_descriptor()
+        yield medium.terminate_hard()
+        self.assertEqual(0, self.count_agents('host_agent'))
+        agency = self.get_local('agency')
+        self.assertEqual(1, desc.instance_id)
+
+        yield agency.start_agent(desc)
+        yield self.wait_for_idle(10)
+        new_desc = yield self.driver._database_connection.get_document(
+            desc.doc_id)
+        self.assertEqual(2, new_desc.instance_id)
+        self.assertEqual(1, self.count_agents('shard_agent'))
+        self.assertEqual(1, self.count_agents('raage_agent'))
+        self.assertEqual(1, self.count_agents('monitor_agent'))
+
+        monitor = first(self.driver.iter_agents('monitor_agent')).get_agent()
+        hosts = yield monitor.query_partners('hosts')
+        self.assertEqual(2, hosts[0].instance_id)
 
 
 @common.attr(timescale=0.05)
@@ -282,15 +324,18 @@ class SimulationStartAgentContract(common.SimulationTest):
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
+                           run_startup=False)
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
+                           run_startup=False)
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), run_startup=False)
+        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
+                           run_startup=False)
         agent = _.get_agent()
         agent.wait_for_ready()
         agent.start_agent(test_desc)
