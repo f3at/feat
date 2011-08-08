@@ -423,9 +423,8 @@ class StartAgent(task.BaseTask):
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self._fetch_descriptor)
         f.add_callback(fiber.drop_param, self._check_requirements)
-        f.add_callback(fiber.drop_param, self._update_shard_field)
         f.add_callback(fiber.drop_param, self._validate_allocation)
-        f.add_callback(fiber.drop_param, getattr, state, 'descriptor')
+        f.add_callback(self._update_descriptor)
         f.add_callback(state.agent.medium_start_agent, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self._establish_partnership)
@@ -436,7 +435,6 @@ class StartAgent(task.BaseTask):
         f = state.agent.establish_partnership(
             recp, state.allocation_id, our_role=u'host',
             allow_double=True)
-            #allow_double=True, max_retries=None)
         return f
 
     @replay.mutable
@@ -448,19 +446,21 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _store_descriptor(self, state, value):
         state.descriptor = value
+        return state.descriptor
 
     @replay.mutable
     def _check_requirements(self, state):
         state.agent.check_requirements(state.descriptor)
 
     @replay.mutable
-    def _update_shard_field(self, state):
+    def _update_descriptor(self, state, allocation):
         '''Sometime creating the descriptor for new agent we cannot know in
         which shard it will endup. If it is None or set to lobby, the HA
         will update the field to match his own'''
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
             own_shard = state.agent.get_own_address().shard
             state.descriptor.shard = own_shard
+        state.descriptor.resource = allocation.scalar
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)
@@ -471,7 +471,7 @@ class StartAgent(task.BaseTask):
         if state.allocation_id:
             return state.agent.check_allocation_exists(state.allocation_id)
         else:
-            resources = self._get_factory().resources
+            resources = state.descriptor.extract_resources()
             f = state.agent.allocate_resource(**resources)
             f.add_callback(self._store_allocation)
             return f
@@ -479,6 +479,7 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _store_allocation(self, state, allocation):
         state.allocation_id = allocation.id
+        return allocation
 
     @replay.immutable
     def _get_factory(self, state):
@@ -673,7 +674,8 @@ class StartAgentContractor(contractor.BaseContractor):
             self._refuse()
             return
 
-        alloc = state.agent.preallocate_resource(**state.factory.resources)
+        resc = state.descriptor.extract_resources()
+        alloc = state.agent.preallocate_resource(**resc)
 
         if alloc is None:
             self._refuse()

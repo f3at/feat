@@ -5,12 +5,12 @@ from twisted.internet import defer
 from feat import everything
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, document, replay
+from feat.agents.base import agent, descriptor, document, replay, resource
 from feat.agents.common import host
 from feat.common.text_helper import format_block
 from feat.common import first
 
-from feat.interface.recipient import *
+from feat.interface.recipient import IRecipient
 from feat.interface.agent import Access, Address, Storage
 
 
@@ -161,8 +161,8 @@ class HostAgentDefinitionTests(common.SimulationTest):
 
     def testDefaultResources(self):
 
-        def check_resources(resources):
-            totals = resources.get_totals()
+        def check_resources(resc):
+            totals = resc.get_totals()
             self.assertTrue("spam" in totals)
             self.assertTrue("bacon" in totals)
             self.assertTrue("eggs" in totals)
@@ -301,8 +301,10 @@ class HostAgentCheckTest(common.SimulationTest):
 class RequestingAgent(agent.BaseAgent):
 
     @replay.mutable
-    def request(self, state, shard):
+    def request(self, state, shard, resc=dict()):
         desc = Descriptor3()
+        if resc:
+            desc.resources = resource.ScalarResource(**resc)
         f = self.save_document(desc)
         f.add_callback(lambda desc:
                        host.start_agent_in_shard(self, desc, shard))
@@ -356,3 +358,29 @@ class SimulationStartAgentContract(common.SimulationTest):
         d = self.agent.request('some shard')
         self.assertFailure(d, host.NoHostFound)
         return d
+
+    @defer.inlineCallbacks
+    def testRunningWithSpecificResource(self):
+        shard = self.agent.get_own_address().shard
+        res = dict(epu=20, core=1)
+        recp = yield self.agent.request(shard, res)
+        doc = yield self.driver._database_connection.get_document(
+            IRecipient(recp).key)
+        self.assertIsInstance(doc.resources, resource.ScalarResource)
+        self.assertEqual(res, doc.resources.values)
+        host_id = doc.partners[0].recipient.key
+        host_medium = yield self.driver.find_agent(host_id)
+        host = host_medium.get_agent()
+        _, allocated = yield host.list_resource()
+        self.assertEqual(1, allocated['core'])
+
+        # now use start_agent directly
+        desc = Descriptor3(resources=resource.ScalarResource(core=1))
+        desc = yield self.driver._database_connection.save_document(desc)
+        self.info('starting')
+        recp = yield host.start_agent(desc)
+        desc = yield self.driver._database_connection.reload_document(desc)
+        self.assertIsInstance(desc.resources, resource.ScalarResource)
+        self.assertEqual({'core': 1}, desc.resources.values)
+        _, allocated = yield host.list_resource()
+        self.assertEqual(2, allocated['core'])

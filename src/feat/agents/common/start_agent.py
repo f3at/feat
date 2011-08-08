@@ -34,8 +34,9 @@ class GloballyStartAgent(task.BaseTask):
 
     @replay.mutable
     def _retry(self, state):
+        resc = state.descriptor.extract_resources()
         f = raage.retrying_allocate_resource(
-            state.agent, resources=state.factory.resources,
+            state.agent, resources=resc,
             categories=state.factory.categories, max_retries=3)
         f.add_callback(self._request_starting_host)
         return f

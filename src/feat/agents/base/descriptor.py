@@ -3,7 +3,7 @@
 from twisted.spread import pb
 
 from feat.common import decorator, fiber, first
-from feat.agents.base import document
+from feat.agents.base import document, registry
 
 
 field = document.field
@@ -34,6 +34,8 @@ class Descriptor(document.Document, pb.Copyable):
     document.field('instance_id', 0)
     # Field set by monitor agent while restarting the agent
     document.field('under_restart', None)
+    # Resources allocated by host agent for this agent
+    document.field('resources', None)
 
     ### methods usefull for descriptor manipulations done ###
     ### by agents who don't own them                      ###
@@ -60,3 +62,9 @@ class Descriptor(document.Document, pb.Copyable):
     def set_shard(self, agent, shard):
         self.shard = shard
         return agent.save_document(self)
+
+    def extract_resources(self):
+        if self.resources:
+            return self.resources.values
+        else:
+            return registry.registry_lookup(self.document_type).resources
