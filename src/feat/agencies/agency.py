@@ -1043,9 +1043,15 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def remove_agent_recorders(self, agent_id):
         for key in self.registry.keys():
             if key[0] == agent_id:
-                self.log("Removing recorder id %r, instance: %r",
-                         key, self.registry[key])
-                del(self.registry[key])
+                try:
+                    self.log("Removing recorder id %r, instance: %r",
+                             key, self.registry[key])
+                    del(self.registry[key])
+                except KeyError:
+                    self.debug("Removing recorder id %r failed. It seems it "
+                               "dissapeared from WeakRefDict between "
+                               "obtaining the list of keys and iterating "
+                               "over it.", key)
 
     def is_idle(self):
         return all([x.is_idle() for x in self._agents])
