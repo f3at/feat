@@ -109,10 +109,14 @@ class Unserializer(base.Unserializer):
         type_name = data[0]
 
         # We assume that if it's nothing we know about, it's an instance
-        default = (None, Unserializer.unpack_instance)
+        default = (type_name, Unserializer.unpack_instance)
         return self._unpackers.get(type_name, default)
 
     ### Private Methods ###
+
+    def unpack_instance(self, data, *args):
+        type_name, value = data
+        return self.restore_instance(type_name, value, *args)
 
     def unpack_unicode(self, data):
         _, value = data
@@ -145,10 +149,6 @@ class Unserializer(base.Unserializer):
     def unpack_type(self, data):
         _, type_name, = data
         return self.restore_type(type_name)
-
-    def unpack_instance(self, data):
-        type_name, value = data
-        return self.restore_instance(type_name, value)
 
     def unpack_reference(self, data):
         _, refid, value = data

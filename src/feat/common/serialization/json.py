@@ -160,7 +160,7 @@ class Unserializer(base.Unserializer):
     def analyse_data(self, data):
         if isinstance(data, dict):
             if INSTANCE_TYPE_ATOM in data:
-                return None, Unserializer.unpack_instance
+                return data[INSTANCE_TYPE_ATOM], Unserializer.unpack_instance
             return dict, Unserializer.unpack_dict
 
         if isinstance(data, list):
@@ -176,18 +176,18 @@ class Unserializer(base.Unserializer):
 
     ### Private Methods ###
 
-    def unpack_external(self, data):
-        _, identifier = data
-        return self.restore_external(identifier)
-
-    def unpack_instance(self, data):
+    def unpack_instance(self, data, *args):
         data = dict(data)
         type_name = data.pop(INSTANCE_TYPE_ATOM)
         if INSTANCE_STATE_ATOM in data:
             snapshot = data.pop(INSTANCE_STATE_ATOM)
         else:
             snapshot = data
-        return self.restore_instance(type_name, snapshot)
+        return self.restore_instance(type_name, snapshot, *args)
+
+    def unpack_external(self, data):
+        _, identifier = data
+        return self.restore_external(identifier)
 
     def unpack_reference(self, data):
         _, refid, value = data

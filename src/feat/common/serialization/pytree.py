@@ -219,7 +219,7 @@ class Unserializer(base.Unserializer):
         # of the interface so we cannot use lookup table
 
         if IInstance.providedBy(data):
-            return None, Unserializer.unpack_instance
+            return data.type_name, Unserializer.unpack_instance
 
         if IDereference.providedBy(data):
             return None, Unserializer.unpack_dereference
@@ -232,11 +232,11 @@ class Unserializer(base.Unserializer):
 
     ### Private Methods ###
 
+    def unpack_instance(self, data, *args):
+        return self.restore_instance(data.type_name, data.snapshot, *args)
+
     def unpack_external(self, data):
         return self.restore_external(data.identifier)
-
-    def unpack_instance(self, data):
-        return self.restore_instance(data.type_name, data.snapshot)
 
     def unpack_reference(self, data):
         return self.restore_reference(data.refid, data.value)

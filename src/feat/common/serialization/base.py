@@ -401,7 +401,7 @@ class Serializer(object):
         return flattener(self, key, caps, freezing)
 
     def post_convertion(self, data):
-        if self._post_converter:
+        if self._post_converter is not None:
             return self._post_converter.convert(data)
         return data
 
@@ -422,7 +422,7 @@ class Serializer(object):
         if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
-        if self._externalizer:
+        if self._externalizer is not None:
             extid = self._externalizer.identify(value)
             if extid is not None:
                 return self.flatten_external(extid, caps, freezing)
@@ -827,40 +827,20 @@ class Unserializer(object):
         self._delayed = 0 # If we are in a delayable unpacking
 
     def unpack_data(self, data):
-
-        # Just return pass-through types,
-        # support sub-classed base types and metaclasses
-        if set(type(data).__mro__) & self.pass_through_types:
-            return data
-
-        analysis = self.analyse_data(data)
-
-        if analysis is None:
-            raise TypeError("Type %s not supported by unserializer %s"
-                            % (type(data).__name__,
-                               reflect.canonical_name(self)))
-
-        constructor, unpacker = analysis
-
-        # Unpack the mutable containers that provides constructor
-        if constructor is not None:
-            # The container is specified two time once for the base class
-            # and once for the function call argument
-            container = constructor()
-            return self.delayed_unpacking(container, unpacker,
-                                          self, container, data)
-
-        return unpacker(self, data)
+        return self._unpack_data(data, None, None)
 
     def delayed_unpacking(self, container, fun, *args, **kwargs):
         '''Should be used when unpacking mutable values.
         This allows circular references resolution by pausing serialization.'''
         try:
             self._delayed += 1
+            blob = self._begin()
             try:
                 fun(*args, **kwargs)
+                self._commit(blob)
                 return container
             except DelayPacking:
+                self._rollback(blob)
                 continuation = (fun, args, kwargs)
                 self._pending.append(continuation)
                 return container
@@ -873,7 +853,7 @@ class Unserializer(object):
             fun(*args, **kwargs)
 
         # Initialize the instance in creation order
-        for restorator, instance, snapshot in self._instances:
+        for restorator, instance, snapshot, _refid in self._instances:
             snapshot = self._adapt_snapshot(restorator, snapshot)
             instance.recover(snapshot)
 
@@ -881,9 +861,9 @@ class Unserializer(object):
         # in an intent to reduce the possibilities of instances relying
         # on there references being fully restored when called.
         # This should not be relied on anyway.
-        for _, instance, _ in reversed(self._instances):
+        for _, instance, _, _ in reversed(self._instances):
             restored_fun = getattr(instance, "restored", None)
-            if restored_fun:
+            if restored_fun is not None:
                 restored_fun()
 
     def restore_type(self, type_name):
@@ -904,14 +884,22 @@ class Unserializer(object):
                              % (identifier, ))
         return instance
 
-    def restore_instance(self, type_name, data):
-        # Lookup the registry for a IRestorator
-        restorator = self._registry.lookup(type_name)
-        if restorator is None:
-            raise TypeError("Type %s not supported by unserializer %s"
-                            % (type_name, reflect.canonical_name(self)))
+    def prepare_instance(self, type_name):
+        restorator = self._lookup_restorator(type_name)
         # Prepare the instance for recovery
         instance = restorator.prepare()
+        if instance is not None:
+            return restorator, instance
+
+    def restore_instance(self, type_name, data, refid=None,
+                         restorator=None, instance=None):
+        if restorator is None:
+            restorator = self._lookup_restorator(type_name)
+
+        if instance is None:
+            # Prepare the instance for recovery
+            instance = restorator.prepare()
+
         if instance is None:
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
@@ -921,7 +909,7 @@ class Unserializer(object):
         # Delay the instance restoration for later to handle circular refs
         return self.delayed_unpacking(instance,
                                       self._continue_restoring_instance,
-                                      restorator, instance, data)
+                                      restorator, instance, data, refid)
 
     def restore_reference(self, refid, data):
         if refid in self._references:
@@ -932,8 +920,10 @@ class Unserializer(object):
                 return value
             raise ValueError("Multiple references found with "
                              "the same identifier: %s" % refid)
-        value = self.unpack_data(data)
-        self._references[refid] = (id(data), value)
+        value = self._unpack_data(data, refid, data)
+        if refid not in self._references:
+            # If not yet referenced
+            self._references[refid] = (id(data), value)
         return value
 
     def restore_dereference(self, refid):
@@ -962,10 +952,13 @@ class Unserializer(object):
         while values and max_loop:
             next_values = []
             for value_data in values:
+                blob = self._begin()
                 try:
                     # try unpacking the value
                     value = self.unpack_data(value_data)
+                    self._commit(blob)
                 except DelayPacking:
+                    self._rollback(blob)
                     # If it is delayed keep it for later
                     next_values.append(value_data)
                     continue
@@ -1000,18 +993,24 @@ class Unserializer(object):
                 if key_unpacked:
                     key = key_data
                 else:
+                    blob = self._begin()
                     try:
                         # Try unpacking the key
                         key = self.unpack_data(key_data)
+                        self._commit(blob)
                     except DelayPacking:
+                        self._rollback(blob)
                         # If it is delayed keep it for later
                         next_items.append((False, key_data, value_data))
                         continue
 
+                blob = self._begin()
                 try:
                     # try unpacking the value
                     value = self.unpack_data(value_data)
+                    self._commit(blob)
                 except DelayPacking:
+                    self._rollback(blob)
                     # If it is delayed keep it for later
                     next_items.append((True, key, value_data))
                     continue
@@ -1035,14 +1034,85 @@ class Unserializer(object):
         The type can be None for immutable types, instances,
         reference and dereferences.'''
 
-
     ### private ###
 
-    def _continue_restoring_instance(self, restorator, instance, data):
+    def _begin(self):
+        # Start a DelayPacking protected section
+        blob = self._instances
+        self._instances = []
+        return blob
+
+    def _rollback(self, blob):
+        # We need to rollback after a DelayPacking has been raised
+        # we only keep instances that has been referenced
+        for instance in self._instances:
+            refid = instance[3]
+            if refid is not None:
+                blob.append(instance)
+        self._instances = blob
+
+    def _commit(self, blob):
+        # Commit after a DelayPacking protected section
+        # Joining the instance lists
+        blob.extend(self._instances)
+        self._instances = blob
+
+    def _lookup_restorator(self, type_name):
+        # Lookup the registry for a IRestorator
+        restorator = self._registry.lookup(type_name)
+        if restorator is None:
+            raise TypeError("Type %s not supported by unserializer %s"
+                            % (type_name, reflect.canonical_name(self)))
+        return restorator
+
+    def _unpack_data(self, data, refid, refdata):
+        # Just return pass-through types,
+        # support sub-classed base types and metaclasses
+        if set(type(data).__mro__) & self.pass_through_types:
+            return data
+
+        analysis = self.analyse_data(data)
+
+        if analysis is not None:
+
+            constructor, unpacker = analysis
+
+            if constructor is None:
+                # Immutable types
+                return unpacker(self, data)
+
+            if callable(constructor):
+                # Unpack the mutable containers that provides constructor
+                container = constructor()
+                if container is not None:
+                    if refid is not None:
+                        self._references[refid] = (id(refdata), container)
+                    return self.delayed_unpacking(container, unpacker,
+                                                  self, container, data)
+
+            else:
+                # Instance type name
+                prepared = self.prepare_instance(constructor)
+                if prepared is None:
+                    # Immutable instance
+                    return unpacker(self, data, None, None, None)
+
+                restorator, instance = prepared
+
+                if refid is not None:
+                    self._references[refid] = (id(refdata), instance)
+                return self.delayed_unpacking(instance, unpacker, self, data,
+                                              refid, restorator, instance)
+
+        raise TypeError("Type %s not supported by unserializer %s"
+                        % (type(data).__name__,
+                           reflect.canonical_name(self)))
+
+    def _continue_restoring_instance(self, restorator, instance, data, refid):
         snapshot = self.unpack_data(data)
         # Delay instance initialization to the end to be sure
         # all snapshots circular references have been resolved
-        self._instances.append((restorator, instance, snapshot))
+        self._instances.append((restorator, instance, snapshot, refid))
         return instance
 
     def _adapt_snapshot(self, restorator, snapshot):

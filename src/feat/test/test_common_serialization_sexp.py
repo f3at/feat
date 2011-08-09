@@ -5,7 +5,7 @@
 import itertools
 import types
 
-from zope.interface import Interface
+from zope.interface import Interface, implements, classProvides
 from zope.interface.interface import InterfaceClass
 
 from twisted.spread import jelly
@@ -14,7 +14,7 @@ from feat.common import reflect, serialization
 from feat.common.serialization import sexp
 from feat.interface.serialization import *
 
-from . import common_serialization
+from . import common, common_serialization
 
 
 @serialization.register
@@ -493,3 +493,150 @@ class SExpConvertersTest(common_serialization.ConverterTest):
                [["list", Ref(1, Inst(["dictionary", ["ref",
                     Inst(["dictionary", ["ref", Deref(1)]])]])),
                     Ref(2, Inst(["dictionary", ["ref", Deref(2)]]))]], True)
+
+
+class MetaTest(type):
+    implements(IRestorator)
+
+
+class Test(object):
+    __metaclass__ = MetaTest
+    implements(ISerializable)
+
+    recover_count = 0
+    restored_count = 0
+    snapshot = None
+
+    @classmethod
+    def reset(cls):
+        cls.recover_count = 0
+        cls.restored_count = 0
+
+    @classmethod
+    def prepare(cls):
+        return cls.__new__(cls)
+
+    @classmethod
+    def restore(cls, snapshot):
+        return cls.prepare()
+
+    def recover(self, snapshot):
+        cls = type(self)
+        cls.recover_count = getattr(cls, "recover_count", 0) + 1
+        self.snapshot = snapshot
+
+    def restored(self):
+        cls = type(self)
+        cls.restored_count = getattr(cls, "restored_count", 0) + 1
+
+    def __repr__(self):
+        return "<%s #%d: %r>" % (type(self).__name__, id(self), self.snapshot)
+
+
+@serialization.register
+class A(Test):
+    type_name = "A"
+
+
+@serialization.register
+class B(Test):
+    type_name = "B"
+
+
+@serialization.register
+class C(Test):
+    type_name = "C"
+
+
+@serialization.register
+class D(Test):
+    type_name = "D"
+
+
+@serialization.register
+class E(Test):
+    type_name = "E"
+
+
+@serialization.register
+class F(Test):
+    type_name = "F"
+
+
+data1 = ['list',
+         ['reference', 1,
+          ['A', ['list',
+           ['B', 0],
+           ['C', ['list',
+            ['reference', 4, ['D', ['list',
+             ['dereference', 1],
+             ['C', ['reference', 2, ['B', 0]]]]]],
+            ['E', ['C', 0]],
+            ['dereference', 2],
+            ['reference', 3, ['B', 0]]]]]]],
+         ['C', 0],
+         ['C', ['F', 0]],
+         ['C', ['list',
+           ['F', 0],
+           ['dereference', 3]]],
+         ['dereference', 4]]
+
+
+data2 = ['list',
+         ['list',
+          ['A', 0],
+          ['dereference', 1],
+          ['reference', 2, ['C', 0]],
+          ['D', 0]],
+         ['list',
+          ['A', 0],
+          ['reference', 1, ['B', 0]],
+          ['dereference', 2],
+          ['D', 0]]]
+
+
+class TestInstanceCreation(common.TestCase):
+
+    def tearDown(self):
+        A.reset()
+        B.reset()
+        C.reset()
+        D.reset()
+        E.reset()
+        F.reset()
+        return common.TestCase.tearDown(self)
+
+    def testComplexUseCase(self):
+        """This data structure is base on a real feat snapshot.
+           This test was added to fix and keep fixed an unserialization
+           bug causing additional instances beeing created and there
+           restored method being called.
+           """
+        unserializer = sexp.Unserializer()
+        _value = unserializer.convert(data1)
+
+        self.assertEqual(A.recover_count, 1)
+        self.assertEqual(A.restored_count, 1)
+        self.assertEqual(B.recover_count, 3)
+        self.assertEqual(B.restored_count, 3)
+        self.assertEqual(C.recover_count, 6)
+        self.assertEqual(C.restored_count, 6)
+        self.assertEqual(D.recover_count, 1)
+        self.assertEqual(D.restored_count, 1)
+        self.assertEqual(E.recover_count, 1)
+        self.assertEqual(E.restored_count, 1)
+        self.assertEqual(F.recover_count, 2)
+        self.assertEqual(F.restored_count, 2)
+
+    def testCrossReferences(self):
+        unserializer = sexp.Unserializer()
+        _value = unserializer.convert(data2)
+
+        self.assertEqual(A.recover_count, 2)
+        self.assertEqual(A.restored_count, 2)
+        self.assertEqual(B.recover_count, 1)
+        self.assertEqual(B.restored_count, 1)
+        self.assertEqual(C.recover_count, 1)
+        self.assertEqual(C.restored_count, 1)
+        self.assertEqual(D.recover_count, 2)
+        self.assertEqual(D.restored_count, 2)
