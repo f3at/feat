@@ -277,6 +277,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     def get_agent_side(self):
         return self.manager
 
+    def cleanup(self):
+        pass
+
     # notify_finish() implemented in common.TransientInitiatorMediumBase
 
     ### IAgencyListenerInternal Methods ###
@@ -574,6 +577,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def get_agent_side(self):
         return self.contractor
+
+    def cleanup(self):
+        pass
 
     # notify_finish() implemented in common.TransientInterestedMediumBase
 
