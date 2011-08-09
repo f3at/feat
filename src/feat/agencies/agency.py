@@ -7,6 +7,7 @@ import uuid
 import weakref
 import warnings
 import socket
+from pprint import pformat
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -21,18 +22,23 @@ from feat.common import (log, defer, fiber, serialization, journal, time,
                          first, error)
 
 # Import interfaces
-from interface import *
-from feat.interface.agency import *
-from feat.interface.agent import *
-from feat.interface.generic import *
-from feat.interface.journal import *
-from feat.interface.protocols import *
-from feat.interface.recipient import *
-from feat.interface.serialization import *
+from interface import (IAgencyAgentInternal, IMessagingPeer,
+                       IFirstMessage, IAgencyInterestInternalFactory,
+                       IDialogMessage, IAgencyProtocolInternal,
+                       IAgencyInitiatorFactory, NotFoundError, ConflictError,
+                       IDbConnectionFactory, IConnectionFactory, IJournaler,
+                       ILongRunningProtocol, )
+from feat.interface.agency import IAgency, ExecMode
+from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
+from feat.interface.generic import ITimeProvider
+from feat.interface.journal import IRecorderNode, IJournalKeeper, IRecorder
+from feat.interface.protocols import (IInterest, ProtocolFailed,
+                                      IInitiatorFactory, )
+from feat.interface.serialization import ISerializable, IExternalizer
 
 
 # How many entries should be between two snapshot at minimum
-MIN_ENTRIES_PER_SNAPSHOT = 1000
+MIN_ENTRIES_PER_SNAPSHOT = 600
 
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
@@ -159,7 +165,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Remove all the entries for the agent from  the registry,
         # so that snapshot contains full objects not just the references
         agent_id = self._descriptor.doc_id
-        self.agency.remove_agent_recorders(agent_id)
         self._entries_since_snapshot = 0
         self.agency.journal_agent_snapshot(
             agent_id, self._instance_id, self.snapshot_agent())
@@ -395,6 +400,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### ITimeProvider Methods ###
 
+    @replay.named_side_effect('AgencyAgent.get_time')
     def get_time(self):
         return self.agency.get_time()
 
@@ -555,12 +561,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Protected Methods ###
 
-    def wait_for_listeners_finish(self):
-        warnings.warn("AgencyAgent.wait_for_listeners_finish() is deprecated, "
-                      "please use AgencyAgent.wait_for_protocols_finish()",
-                      DeprecationWarning)
-        return self.wait_for_protocols_finish()
-
     def wait_for_protocols_finish(self):
         '''Used by tests.'''
 
@@ -706,7 +706,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self._descriptor = desc
             d.callback(result)
 
-        def error(failure, d):
+        def error_handler(failure, d):
             if failure.check(ConflictError):
                 self.warning('Descriptor update conflict, killing the agent.')
                 self.call_next(self.terminate_hard)
@@ -736,7 +736,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             assert not isinstance(result, (defer.Deferred, fiber.Fiber))
             save_d = self.save_document(desc)
             save_d.addCallbacks(callback=saved, callbackArgs=(result, d),
-                                errback=error, errbackArgs=(d, ))
+                                errback=error_handler, errbackArgs=(d, ))
             save_d.addBoth(next_update)
         except Exception as e:
             d.errback(e)
@@ -748,9 +748,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         if self._cmp_state(AgencyAgentState.terminating):
             return
         self._set_state(AgencyAgentState.terminating)
-
-        # Revoke all queued protocols
-        [i.clear_queue() for i in self._iter_interests()]
 
         # Revoke all interests
         [self.revoke_interest(i.agent_factory)
@@ -1113,7 +1110,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self.journal_agency_entry(agent_id, instance_id, 'agent_deleted')
 
     def journal_agent_snapshot(self, agent_id, instance_id, snapshot):
-        self.journal_agency_entry(agent_id, instance_id, 'snapshot', snapshot)
+        self.log("Storing agents snapshot. Agent_id: %r, Instance_id: %r.",
+                 agent_id, instance_id)
+        self._jourconn.snapshot(agent_id, instance_id, snapshot)
 
     ### IExternalizer Methods ###
 

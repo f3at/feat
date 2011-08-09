@@ -1,13 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from pprint import pformat
 
-import types
-
-from zope.interface import implements
-
-from feat.interface.serialization import *
-
-from feat.common import decorator, annotate, serialization
+from feat.common import decorator, serialization
 
 STATE_TAG = "_GUARDED_STATE_"
 
@@ -46,7 +41,7 @@ class MutableState(serialization.Serializable):
     '''Object representing a mutable state.'''
 
     def __repr__(self):
-        return "<MutableState: %s>" % str(self.__dict__)
+        return "<MutableState: %s>" % pformat(self.__dict__)
 
     def __eq__(self, other):
         """

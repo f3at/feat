@@ -637,6 +637,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             result[key] = data[key]
 
         for key in to_decode:
+            if data[key] is None:
+                data[key] = ""
             result[key] = data[key].decode("utf-8")
 
         # encode the blobs
@@ -839,6 +841,7 @@ class JournalerConnection(log.Logger, log.LogProxy):
         log.Logger.__init__(self, self)
 
         self.serializer = banana.Serializer(externalizer=externalizer)
+        self.snapshot_serializer = banana.Serializer()
         self.journaler = IJournaler(journaler)
 
     ### IJournalerConnection ###
@@ -853,6 +856,14 @@ class JournalerConnection(log.Logger, log.LogProxy):
 
     def get_filename(self):
         return self.journaler.get_filename()
+
+    def snapshot(self, agent_id, instance_id, snapshot):
+        record = self.journaler.prepare_record()
+        entry = AgencyJournalEntry(
+            self.snapshot_serializer, record, agent_id, instance_id,
+            'agency', 'snapshot', snapshot)
+        entry.set_result(None)
+        entry.commit()
 
 
 class AgencyJournalSideEffect(object):

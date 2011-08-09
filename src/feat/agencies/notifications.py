@@ -9,10 +9,11 @@ from feat.common import log, defer, error_handler
 from feat.agencies import common, protocols
 from feat.agents.base import replay
 
-from interface import *
-from feat.interface.serialization import *
-from feat.interface.collector import *
-from feat.interface.poster import *
+from interface import (IAgencyProtocolInternal, IAgencyInitiatorFactory,
+                       IAgencyInterestInternalFactory)
+from feat.interface.serialization import ISerializable
+from feat.interface.collector import IAgencyCollector, ICollectorFactory
+from feat.interface.poster import IAgencyPoster, IPosterFactory
 
 
 class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
@@ -90,7 +91,7 @@ components.registerAdapter(AgencyPosterFactory,
 
 class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
 
-    implements(IAgencyCollector, ISerializable)
+    implements(IAgencyCollector, ISerializable, IAgencyProtocolInternal)
 
     type_name = "collector-medium"
 
@@ -105,13 +106,14 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
         self.kwargs = kwargs
 
         self.collector = None
+        self.guid = str(uuid.uuid1())
 
     def initiate(self):
         self.agent.journal_protocol_created(self.factory, self,
                                             *self.args, **self.kwargs)
         collector = self.factory(self.agent.get_agent(), self)
-
         self.collector = collector
+        self.agent.register_protocol(self)
 
         self.agent.call_next(self._call, self.collector.initiate,
                              *self.args, **self.kwargs)
@@ -123,6 +125,20 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
 
     ### IAgencyCollector Methods ###
 
+    ### IAgencyProtocolInternal Methods ###
+
+    def cleanup(self):
+        self.agent.unregister_protocol(self)
+        return defer.succeed(None)
+
+    def get_agent_side(self):
+        return self.collector
+
+    def is_idle(self):
+        return self
+
+    def notify_finish(self):
+        return defer.succeed(None)
 
     ### ISerializable Methods ###
 
@@ -154,6 +170,12 @@ class AgencyCollectorInterest(protocols.BaseInterest):
         self.agency_collector = medium
 
         return self
+
+    ### Overriden IAgencyInterestInternal Methods ###
+
+    def revoke(self):
+        self.agency_collector.cleanup()
+        protocols.BaseInterest.revoke(self)
 
     ### Overridden Protected Methods ###
 

@@ -360,6 +360,15 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return self._master.callRemote('find_agent', agent_id)
 
     @manhole.expose()
+    def broadcast_force_snapshot(self):
+        self._ensure_connected()
+        if self.is_master():
+            defers = list()
+            for slave in self.iter_slaves():
+                defers.append(slave.callRemote('snapshot_agents', force=True))
+            return defer.DeferredList(defers, consumeErrors=True)
+
+    @manhole.expose()
     def get_journal_writer(self):
         self._ensure_connected()
         if self.is_master():

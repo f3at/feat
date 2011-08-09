@@ -107,7 +107,6 @@ class Unserializer(base.Unserializer):
             return None
 
         type_name = data[0]
-
         # We assume that if it's nothing we know about, it's an instance
         default = (type_name, Unserializer.unpack_instance)
         return self._unpackers.get(type_name, default)

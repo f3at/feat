@@ -1,6 +1,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import operator
 import sys
+from pprint import pformat
 
 from twisted.trial.unittest import FailTest
 
@@ -12,7 +14,7 @@ from feat.agencies import replay
 from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
-from feat.agencies.interface import *
+from feat.agencies.interface import NotFoundError
 
 attr = common.attr
 delay = common.delay
@@ -177,10 +179,9 @@ class SimulationTest(common.TestCase):
         for entry in r:
             entry.apply()
 
-        agent_snapshot, listeners = agent.snapshot_agent()
+        agent_snapshot, protocols = agent.snapshot_agent()
         self.log("Replay complete. Comparing state of the agent and his "
-                 "%d listeners.", len(listeners))
-
+                 "%d protocols.", len(protocols))
         if agent_snapshot._get_state() != r.agent._get_state():
             s1 = r.agent._get_state()
             s2 = agent_snapshot._get_state()
@@ -197,14 +198,26 @@ class SimulationTest(common.TestCase):
 
         self.assertEqual(agent_snapshot._get_state(), r.agent._get_state())
 
-        listeners_from_replay = [obj for obj in r.registry.values()
-                                 if obj.type_name.endswith('-medium')]
+        self.assertEqual(len(r.protocols), len(protocols),
+                         "Protocols of agent: %s from replay doesn't much "
+                         "the test result. \nReplay: %s,\nResult: %s" %
+                         (aid,
+                          pformat(r.protocols),
+                          pformat(protocols)))
 
-        self.assertEqual(len(listeners_from_replay), len(listeners))
-        for from_snapshot, from_replay in zip(listeners,
-                                              listeners_from_replay):
+        def sort(recorders):
+            # at some point the protocols are stored as the dictionary values,
+            # for this reason they come in snapshot in random order and need
+            # to be sorted before comparing
+            return sorted(recorders, key=operator.attrgetter('journal_id'))
+
+        for from_snapshot, from_replay in zip(sort(protocols),
+                                              sort(r.protocols)):
             self.assertEqual(from_snapshot._get_state(),
-                             from_replay._get_state())
+                             from_replay._get_state(),
+                             "Failed comparing state of protocols. \nA=%s "
+                             "\B=%s." % (pformat(from_snapshot),
+                                         pformat(from_replay)))
 
     def deep_compare(self, expected, value):
 

@@ -810,6 +810,12 @@ class Agency(agency.Agency):
                 defer.returnValue(found)
         defer.returnValue(None)
 
+    @manhole.expose()
+    def snapshot_agents(self, force=False):
+        agency.Agency.snapshot_agents(self, force)
+        if force:
+            return self._broker.broadcast_force_snapshot()
+
     def _setup_snapshoter(self):
         self._snapshot_task = time.callLater(300, self._trigger_snapshot)
 

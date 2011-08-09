@@ -6,7 +6,11 @@ from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
 from feat.common import decorator, enum, adapter, reflect
-from feat.interface.serialization import *
+from feat.interface.serialization import ISerializable, Capabilities
+from feat.interface.serialization import ISnapshotable, IFreezer, IConverter
+from feat.interface.serialization import IRegistry, IExternalizer, IRestorator
+from feat.interface.serialization import IVersionAdapter
+
 
 DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
                               Capabilities.enum_values,
@@ -46,10 +50,10 @@ FREEZING_TAG_ATTRIBUTE = '__freezing_tag__'
 
 
 def freeze_tag(name):
-    '''
+    """
     This is not using decorator.py because we need to access original function
     not the wrapper.
-    '''
+    """
 
     def decorator(func):
         setattr(func, FREEZING_TAG_ATTRIBUTE, name)
@@ -60,7 +64,7 @@ def freeze_tag(name):
 
 @decorator.simple_class
 def register(restorator):
-    '''Register a class as a L{IRestorator} in the default global registry.'''
+    """Register a class as a L{IRestorator} in the default global registry."""
     global _global_registry
     _global_registry.register(restorator)
     return restorator
@@ -78,7 +82,7 @@ def get_registry():
 
 @adapter.register(object, ISnapshotable)
 class SnapshotableAdapter(object):
-    '''Make any object a L{ISnapshotable} that return itself as snapshot.'''
+    """Make any object a L{ISnapshotable} that return itself as snapshot."""
 
     implements(ISnapshotable)
 
@@ -137,9 +141,9 @@ class MetaSnapshotable(MetaVersionAdapter):
 
 
 class Snapshotable(VersionAdapter):
-    '''Simple L{ISnapshotable} that snapshot the instance attributes
+    """Simple L{ISnapshotable} that snapshot the instance attributes
     not starting by an underscore. If the class attribute type_name
-    is not defined, the canonical name of the class is used.'''
+    is not defined, the canonical name of the class is used."""
 
     __metaclass__ = MetaSnapshotable
 
@@ -161,9 +165,9 @@ class MetaSerializable(MetaSnapshotable):
 
 
 class Serializable(Snapshotable):
-    '''Simple L{ISerializable} that serialize and restore the full instance
+    """Simple L{ISerializable} that serialize and restore the full instance
     dictionary. If the class attribute type_name is not defined, the canonical
-    name of the class is used.'''
+    name of the class is used."""
 
     __metaclass__ = MetaSerializable
 
@@ -189,7 +193,7 @@ class Serializable(Snapshotable):
 
 
 class Registry(object):
-    '''Keep track of L{IRestorator}. Used by unserializers.'''
+    """Keep track of L{IRestorator}. Used by unserializers."""
 
     implements(IRegistry)
 
@@ -207,10 +211,10 @@ class Registry(object):
 
 
 class Externalizer(object):
-    '''Simplistic implementation of L{IExternalizer}.
+    """Simplistic implementation of L{IExternalizer}.
     WARNING, by default it uses id() for identifying instances,
     IT WILL NOT WORK IF THE INSTANCE GOT SERIALIZED/UNSERIALIZED
-    because it's id() would change..'''
+    because it's id() would change.."""
 
     implements(IExternalizer)
 
@@ -244,10 +248,10 @@ class Externalizer(object):
 
 @decorator.simple_function
 def referenceable(method):
-    '''Used in BaseSerializer and its sub-classes to flatten referenceable
+    """Used in BaseSerializer and its sub-classes to flatten referenceable
     values. Hide the reference handling from sub-classes.
     For example, to make strings referenceable in a sub-class only use
-    this decorator with decorate flatten_str().'''
+    this decorator with decorate flatten_str()."""
 
     def wrapper(self, value, *args):
         deref = self._prepare(value)
@@ -260,7 +264,7 @@ def referenceable(method):
 
 
 class Serializer(object):
-    '''Base class for serializers handling references.
+    """Base class for serializers handling references.
 
     A post converter can be specified at construction time to be chained.
     If specified, the output of this converter will be passed to it
@@ -315,7 +319,7 @@ class Serializer(object):
 
     #FIXME: Add datetime types datetime, date, time and timedelta
 
-    '''
+    """
 
     implements(IFreezer, IConverter)
 
@@ -762,13 +766,13 @@ class Serializer(object):
 
 
 class DelayPacking(Exception):
-    '''Exception raised when unpacking a dereference to an unknown
+    """Exception raised when unpacking a dereference to an unknown
     reference. This allows to delay unpacking of mutable object
-    containing dereferences.'''
+    containing dereferences."""
 
 
 class Unserializer(object):
-    '''Base class for unserializers. It handle delayed unpacking
+    """Base class for unserializers. It handle delayed unpacking
     and instance restoration to resolve circular references.
     If no registry instance is specified when created, the default
     global registry will be used.
@@ -777,7 +781,7 @@ class Unserializer(object):
     data will be first converted by the given converter and then
     the result will be unserialized. Used to parse data before
     unserializing.
-    '''
+    """
 
     implements(IConverter)
 
@@ -830,8 +834,8 @@ class Unserializer(object):
         return self._unpack_data(data, None, None)
 
     def delayed_unpacking(self, container, fun, *args, **kwargs):
-        '''Should be used when unpacking mutable values.
-        This allows circular references resolution by pausing serialization.'''
+        """Should be used when unpacking mutable values.
+        This allows circular references resolution by pausing serialization."""
         try:
             self._delayed += 1
             blob = self._begin()
@@ -939,10 +943,10 @@ class Unserializer(object):
         return value
 
     def unpack_unordered_values(self, values):
-        '''Unpack an unordered list of values taking DelayPacking
+        """Unpack an unordered list of values taking DelayPacking
         exceptions into account to resolve circular references .
         Used to unpack set values when order is not guaranteed by
-        the serializer. See unpack_unordered_pairs().'''
+        the serializer. See unpack_unordered_pairs()."""
 
         values = list(values) # To support iterators
         result = []
@@ -973,14 +977,14 @@ class Unserializer(object):
         return result
 
     def unpack_unordered_pairs(self, pairs):
-        '''Unpack an unordered list of value pairs taking DelayPacking
+        """Unpack an unordered list of value pairs taking DelayPacking
         exceptions into account to resolve circular references .
         Used to unpack dictionary items when the order is not guarennteed
         by the serializer. When item order change between packing
         and unpacking, references are not guaranteed to appear before
         dereferences anymore. So if unpacking an item fail because
         of unknown dereference, we must keep it aside, continue unpacking
-        the other items and continue later.'''
+        the other items and continue later."""
 
         items = [(False, k, v) for k, v in pairs]
         result = []
@@ -1029,10 +1033,10 @@ class Unserializer(object):
     ### virtual ###
 
     def analyse_data(self, data):
-        '''Analyses the data provided and return a tuple containing
+        """Analyses the data provided and return a tuple containing
         the data type and a function to unpack it.
         The type can be None for immutable types, instances,
-        reference and dereferences.'''
+        reference and dereferences."""
 
     ### private ###
 

@@ -38,7 +38,7 @@ class NotFoundError(DatabaseError):
 
 class NotConnectedError(Exception):
     '''
-    Raised when we ned connection refused trying to perform a request to
+    Raised when we get connection refused trying to perform a request to
     database.
     FIXME: Should be moved to feat.interface.
     '''
@@ -63,8 +63,7 @@ class IAgencyProtocolInternal(Interface):
 
     def notify_finish():
         '''
-        @returns: Deferred which will be runs
-                  after the protocol has finished
+        @returns: Deferred which will be run after the protocol has finished.
         '''
 
 
@@ -508,6 +507,11 @@ class IJournalerConnection(Interface):
     def get_filename():
         """
         Return the filename to which this connection stores.
+        """
+
+    def snapshot(agent_id, instance_id, snapshot):
+        """
+        Create special IAgencyJournalEntry representing agent snapshot.
         """
 
 

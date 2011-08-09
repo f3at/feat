@@ -147,6 +147,8 @@ class BaseInterest(log.Logger):
             return self.binding
 
     def revoke(self):
+        self.clear_queue()
+        self.unbind_from_lobby()
         if self.agent_factory.interest_type == InterestType.public:
             self.binding.revoke()
 
@@ -154,13 +156,16 @@ class BaseInterest(log.Logger):
 
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
-        assert self._lobby_binding is None
+        if self._lobby_binding is not None:
+            return
         prot_id = self.agent_factory.protocol_id
         binding = self.agency_agent.create_binding(prot_id, 'lobby')
         self._lobby_binding = binding
 
     @replay.named_side_effect('Interest.unbind_from_lobby')
     def unbind_from_lobby(self):
+        if self._lobby_binding is None:
+            return
         self._lobby_binding.revoke()
         self._lobby_binding = None
 
