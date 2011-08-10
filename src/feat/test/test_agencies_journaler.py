@@ -170,6 +170,7 @@ class DBTests(common.TestCase):
             self.assertTrue(os.path.exists(newname))
 
         self.assertEqual(3, self._rotate_called)
+        yield jour.close()
 
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')

@@ -1,7 +1,6 @@
 import collections
 import functools
 import uuid
-import signal
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -13,7 +12,8 @@ from feat.agencies.emu import agency
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import message, recipient, agent
 from feat.common import log, defer, decorator, journal, time
-from feat.interface.generic import *
+
+from feat.interface.generic import ITimeProvider
 
 # Import for registering stuff
 from feat import everything
@@ -136,7 +136,6 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         else:
             time.reset()
         self.info("Test running with timescale: %r", time._get_scale())
-        self.addCleanup(self._reset_sighup_handler)
 
     def getSlow(self):
         """
@@ -347,15 +346,6 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return check(value)
 
-    def _reset_sighup_handler(self):
-        '''
-        Journaler and LogKeeper may install their own SIGHUP handlers, which
-        are not later uninstalled. In case of running all the tests it results
-        in a huge number of method calls when the SIGHUP is received.
-        For this reason we clean the handler after each test.
-        '''
-        signal.signal(signal.SIGHUP, signal.SIG_DFL)
-
 
 class Mock(object):
 
@@ -417,7 +407,7 @@ class AgencyTestHelper(object):
         '''
         endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
         queue = self.agency._messaging.defineQueue(endpoint.key)
-        exchange = self.agency._messaging.defineExchange(endpoint.shard)
+        self.agency._messaging.defineExchange(endpoint.shard)
         self.agency._messaging.createBinding(
             endpoint.shard, endpoint.key, endpoint.key)
         return endpoint, queue

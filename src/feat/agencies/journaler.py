@@ -3,7 +3,6 @@
 import sqlite3
 import operator
 import types
-import signal
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
@@ -13,7 +12,7 @@ from twisted.python import log as twisted_log
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
-                         fiber, )
+                         fiber, signal, )
 from feat.agencies import common
 from feat.common.serialization import banana
 from feat.extern.log import log as flulog
@@ -374,7 +373,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         # .perform_instert() method
         self._semaphore = defer.DeferredSemaphore(1)
 
-        self._old_sighup_handler = None
         self._sighup_installed = False
 
         self._on_rotate_cb = on_rotate
@@ -573,40 +571,32 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         # (agent_id, instance_id, ) -> history_id
         self._history_id_cache = dict()
 
+    def _sighup_handler(self, signum, frame):
+        self.log("Received SIGHUP, reopening the journal.")
+        self.close()
+        self.initiate()
+        if callable(self._on_rotate_cb):
+            self._on_rotate_cb()
+
     def _install_sighup(self):
         if self._sighup_installed:
             return
-
-        def run_sighup_from_thread(signum, frame):
-            reactor.callFromThread(sighup, signum, frame)
-
-        def sighup(signum, frame):
-            if callable(self._old_sighup_handler):
-                self._old_sighup_handler(signum, frame)
-
-            self.log("Received SIGHUP, reopening the journal.")
-            self.close()
-            self.initiate()
-            if callable(self._on_rotate_cb):
-                self._on_rotate_cb()
-
+        if self._filename == ':memory:':
+            return
         self.log('Installing SIGHUP handler.')
-        handler = signal.signal(signal.SIGHUP, run_sighup_from_thread)
-        if handler == signal.SIG_DFL or handler == signal.SIG_IGN:
-            self._old_sighup_handler = None
-        else:
-            self._old_sighup_handler = handler
+        handler = signal.signal(signal.SIGHUP, self._sighup_handler)
         self._sighup_installed = True
 
     def _uninstall_sighup(self):
         if not self._sighup_installed:
             return
 
-        self.log('Reverting old SIGHUP handler.')
-        handler = self._old_sighup_handler or signal.SIG_DFL
-        signal.signal(signal.SIGHUP, handler)
+        try:
+            signal.unregister(signal.SIGHUP, self._sighup_handler)
+            self.log("Uninstalled SIGHUP handler.")
+        except ValueError:
+            self.warning("Unregistering of sighup failed. Straaange!")
         self._sighup_installed = False
-        self._old_sighup_handler = None
 
     def _decode(self, entries):
         '''
