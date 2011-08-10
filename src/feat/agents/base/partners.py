@@ -340,7 +340,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         f = fiber.succeed()
         if allocation_id:
             f.add_callback(fiber.drop_param,
-                           state.agent.check_allocation_exists,
+                           state.agent.get_allocation,
                            allocation_id)
         f.add_callback(fiber.drop_param, self.initiate_partner, partner)
         f.add_callback(fiber.drop_param, state.agent.update_descriptor,

@@ -304,7 +304,9 @@ class RequestingAgent(agent.BaseAgent):
     def request(self, state, shard, resc=dict()):
         desc = Descriptor3()
         if resc:
-            desc.resources = resource.ScalarResource(**resc)
+            desc.resources = params = dict(
+                [key, resource.AllocatedScalar(val)]
+                for key, val in resc.iteritems())
         f = self.save_document(desc)
         f.add_callback(lambda desc:
                        host.start_agent_in_shard(self, desc, shard))
@@ -366,8 +368,9 @@ class SimulationStartAgentContract(common.SimulationTest):
         recp = yield self.agent.request(shard, res)
         doc = yield self.driver._database_connection.get_document(
             IRecipient(recp).key)
-        self.assertIsInstance(doc.resources, resource.ScalarResource)
-        self.assertEqual(res, doc.resources.values)
+        self.assertIsInstance(doc.resources, dict)
+        for key, val in res.iteritems():
+            self.assertEqual(val, doc.resources[key].value)
         host_id = doc.partners[0].recipient.key
         host_medium = yield self.driver.find_agent(host_id)
         host = host_medium.get_agent()
@@ -375,12 +378,12 @@ class SimulationStartAgentContract(common.SimulationTest):
         self.assertEqual(1, allocated['core'])
 
         # now use start_agent directly
-        desc = Descriptor3(resources=resource.ScalarResource(core=1))
+        desc = Descriptor3(resources=dict(core=resource.AllocatedScalar(1)))
         desc = yield self.driver._database_connection.save_document(desc)
         self.info('starting')
         recp = yield host.start_agent(desc)
         desc = yield self.driver._database_connection.reload_document(desc)
-        self.assertIsInstance(desc.resources, resource.ScalarResource)
-        self.assertEqual({'core': 1}, desc.resources.values)
+        self.assertIsInstance(desc.resources, dict)
+        self.assertEqual(['core'], desc.resources.keys())
         _, allocated = yield host.list_resource()
         self.assertEqual(2, allocated['core'])

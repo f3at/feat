@@ -160,8 +160,10 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
     def initiate(self, state):
         config = state.medium.get_configuration()
 
-        state.resources.define('hosts', config.hosts_per_shard)
-        state.resources.define('neighbours', config.neighbours)
+        state.resources.define('hosts',
+                               resource.Scalar, config.hosts_per_shard)
+        state.resources.define('neighbours',
+                               resource.Scalar, config.neighbours)
 
         state.join_interest =\
             state.medium.register_interest(

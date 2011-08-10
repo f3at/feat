@@ -381,7 +381,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                              for n, v in resources.iteritems()]))
 
         for name, total in resources.iteritems():
-            state.resources.define(name, total)
+            state.resources.define(name, resource.Scalar, total)
 
     @replay.mutable
     def _setup_categories(self, state, categories):
@@ -460,7 +460,7 @@ class StartAgent(task.BaseTask):
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
             own_shard = state.agent.get_shard_id()
             state.descriptor.shard = own_shard
-        state.descriptor.resource = allocation.scalar
+        state.descriptor.resource = allocation.alloc
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)
@@ -469,7 +469,7 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _validate_allocation(self, state):
         if state.allocation_id:
-            return state.agent.check_allocation_exists(state.allocation_id)
+            return state.agent.get_allocation(state.allocation_id)
         else:
             resources = state.descriptor.extract_resources()
             f = state.agent.allocate_resource(**resources)

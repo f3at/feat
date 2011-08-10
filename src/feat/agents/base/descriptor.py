@@ -65,6 +65,8 @@ class Descriptor(document.Document, pb.Copyable):
 
     def extract_resources(self):
         if self.resources:
-            return self.resources.values
+            iterator = self.resources.iteritems()
+            return dict(([name, allocated_resource.extract_init_arguments()]
+                         for name, allocated_resource in iterator))
         else:
             return registry.registry_lookup(self.document_type).resources

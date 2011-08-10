@@ -217,6 +217,12 @@ class ExpDict(ExpBase):
                 yield item.value
                 now = self._time.get_time()
 
+    def values(self):
+        return list(self.itervalues())
+
+    def keys(self):
+        return list(self.iterkeys())
+
     def iteritems(self):
         '''Returns an iterator over tuples (key, value).'''
         self._lazy_pack()

@@ -29,36 +29,15 @@ class Common(object):
         self.assertEqual(expected, al.values())
 
     def _assert_preallocated(self, expected):
-        preal = self._get_preallocated()
-        self.assertEqual(expected, preal)
+        al = self.resources.preallocated()
+        self.assertEqual(expected, al)
 
-    def _assert_changes(self, expected):
-        changes = self._get_changes()
-        self.assertEqual(expected, changes)
+    def _assert_resource(self, expc, alloc_id):
+        alloc = self.resources.get_allocation(alloc_id)
 
-    def _get_preallocated(self):
-        totals = self.resources.get_totals()
-        modifications = self.resources.get_modifications()
-        result = dict()
-        for name in totals:
-            result[name] = 0
-        for m in modifications:
-            if isinstance(modifications[m], Allocation):
-                for r in modifications[m].resources:
-                    result[r] += modifications[m].resources[r]
-        return result
-
-    def _get_changes(self):
-        totals = self.resources.get_totals()
-        modifications = self.resources.get_modifications()
-        result = dict()
-        for name in totals:
-            result[name] = 0
-        for m in modifications:
-            if isinstance(modifications[m], AllocationChange):
-                for r in modifications[m].delta:
-                    result[r] += max(0, modifications[m].delta[r])
-        return result
+        self.assertEqual(set(expc), set(alloc.alloc.keys()))
+        for k, v in expc.items():
+            self.assertEqual(v, alloc.alloc[k].value)
 
 
 @serialization.register
@@ -108,8 +87,8 @@ class ResourcesTest(common.TestCase, Common):
         self.agent = DummyAgent(self, self.allocations)
         self.resources = resource.Resources(self.agent)
 
-        self.resources.define('a', 5)
-        self.resources.define('b', 6)
+        self.resources.define('a', resource.Scalar, 5)
+        self.resources.define('b', resource.Scalar, 6)
 
     def testCheckingEmptyAllocations(self):
         al = self.resources.allocated()
@@ -132,29 +111,25 @@ class ResourcesTest(common.TestCase, Common):
         allocation = yield self.resources.preallocate(a=3)
         self._assert_allocated([3, 0])
         self._assert_preallocated({'a': 3, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
         self.assertCalled(self.agent, 'update_descriptor', times=0)
         yield self.resources.release(allocation.id)
         self._assert_allocated([0, 0])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
     @defer.inlineCallbacks
     def testPremodifyRelease(self):
         allocation = yield self.resources.allocate(a=3, b=2)
         allocation2 = yield self.resources.allocate(b=1)
-        # Resources {a:5 b:6}
+
         modification = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
 
         self._assert_allocated([4, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
-        yield self.resources.release_modification(modification.id)
+        self._assert_preallocated({'a': 1, 'b': 1})
+        yield self.resources.release(modification.id)
         self._assert_allocated([3, 3])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
 
     @defer.inlineCallbacks
     def testCannotOverallocate(self):
@@ -165,7 +140,7 @@ class ResourcesTest(common.TestCase, Common):
 
     @defer.inlineCallbacks
     def testAllocateThrowsOnOverflow(self):
-        yield self.assertFails(resource.NotEnoughResources,
+        yield self.assertFails(resource.NotEnoughResource,
                                 self.resources.allocate, a=10)
         self.assertCalled(self.agent, 'update_descriptor', times=0)
 
@@ -196,7 +171,6 @@ class ResourcesTest(common.TestCase, Common):
         allocation = yield self.resources.preallocate(a=3)
         self._assert_allocated([3, 0])
         self._assert_preallocated({'a': 3, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
         self.assertCalled(self.agent, 'update_descriptor', times=0)
         yield self.resources.confirm(allocation.id)
         self.assertCalled(self.agent, 'update_descriptor', times=1)
@@ -210,10 +184,9 @@ class ResourcesTest(common.TestCase, Common):
         allocation5 = yield self.resources.preallocate(a=1)
         self._assert_allocated([5, 0])
         self._assert_preallocated({'a': 5, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
 
     @defer.inlineCallbacks
-    def testPrallocateAlocateModify(self):
+    def testPrellocateAlocateModify(self):
         allocation1 = yield self.resources.allocate(a=1)
         allocation2 = yield self.resources.preallocate(b=1)
         allocation3 = yield self.resources.preallocate(a=1)
@@ -221,27 +194,17 @@ class ResourcesTest(common.TestCase, Common):
         modification = yield \
             self.resources.premodify(allocation_id=allocation1.id, a=1, b=1)
         self._assert_allocated([3, 3])
-        self._assert_preallocated({'a': 1, 'b': 1})
-        self._assert_changes({'a': 1, 'b': 1})
+        self._assert_preallocated({'a': 2, 'b': 2})
 
     def testBadDefine(self):
         return self.assertAsyncFailure(None, resource.DeclarationError,
-                                       self.resources.define, 'c', 'not int')
+                                       self.resources.define, 'c',
+                                       resource.Scalar, 'not int')
 
     @defer.inlineCallbacks
     def testAllocationExists(self):
         allocation = yield self.resources.allocate(a=3)
-        a = yield fiber.maybe_fiber(self.resources.get_allocation,
-                allocation.id)
-        self.assertIsInstance(a, resource.Allocation)
-
-    @defer.inlineCallbacks
-    def testAllocationDoesNotExist(self):
-        allocation = yield self.resources.allocate(a=3)
-        d = defer.succeed(None)
-        d = self.assertAsyncFailure(d, (resource.AllocationNotFound, ),
-                fiber.maybe_fiber, self.resources.get_allocation, 2)
-        yield d
+        self.assertTrue(self.resources.check_allocated(allocation.id))
 
     @defer.inlineCallbacks
     def testPremodifyUnknownId(self):
@@ -272,8 +235,7 @@ class ResourcesTest(common.TestCase, Common):
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
 
         self._assert_allocated([4, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
+        self._assert_preallocated({'a': 1, 'b': 1})
 
     @defer.inlineCallbacks
     def testApplyModificationSuccess(self):
@@ -283,17 +245,14 @@ class ResourcesTest(common.TestCase, Common):
         self.assertCalled(self.agent, 'update_descriptor', times=2)
         modification = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
+        self._assert_preallocated({'a': 1, 'b': 1})
         # apply modification
-        self.assertCalled(self.agent, 'update_descriptor', times=2)
-        yield self.resources.apply_modification(modification.id)
+        yield self.resources.confirm(modification.id)
         self.assertCalled(self.agent, 'update_descriptor', times=3)
 
         self._assert_allocated([4, 4])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
-        self.assertEqual({'a': 4, 'b': 3},
-                self.resources.get_allocations()[allocation.id].resources)
-        self.assertEqual(0, len(self.resources.get_modifications()))
+        self._assert_resource({'a': 4, 'b': 3}, allocation.id)
 
     @defer.inlineCallbacks
     def testPremodifyMultipleModifications(self):
@@ -301,14 +260,12 @@ class ResourcesTest(common.TestCase, Common):
         allocation2 = yield self.resources.allocate(b=1)
         modification = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
-        yield self.resources.apply_modification(modification.id)
+        yield self.resources.confirm(modification.id)
         # premodify again
         modification2 = yield \
                 self.resources.premodify(allocation_id=allocation2.id, a=1)
         self._assert_allocated([5, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 0})
-        self.assertEqual(1, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 1, 'b': 0})
 
     @defer.inlineCallbacks
     def testPremodifyOverallocate(self):
@@ -319,18 +276,15 @@ class ResourcesTest(common.TestCase, Common):
         modification2 = yield \
                 self.resources.premodify(allocation_id=allocation2.id, a=1)
         self._assert_allocated([5, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 2, 'b': 1})
-        yield self.resources.apply_modification(modification.id)
+        self._assert_preallocated({'a': 2, 'b': 1})
+        yield self.resources.confirm(modification.id)
 
         modification3 = yield \
             self.resources.premodify(allocation_id=allocation.id, a=2)
         self.assertTrue(modification3 is None)
 
         self._assert_allocated([5, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 0})
-        self.assertEqual(1, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 1, 'b': 0})
 
     @defer.inlineCallbacks
     def testPremodifyOverallocate2(self):
@@ -338,22 +292,18 @@ class ResourcesTest(common.TestCase, Common):
         allocation2 = yield self.resources.allocate(b=1)
         modification = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
-        yield self.resources.apply_modification(modification.id)
+        yield self.resources.confirm(modification.id)
         modification2 = yield \
                 self.resources.premodify(allocation_id=allocation2.id, a=1)
         preallocation = yield self.resources.preallocate(a=1)
         self._assert_allocated([3, 4])
-        self._assert_preallocated({'a': 1, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 0})
-        # a 5 b 4
+        self._assert_preallocated({'a': 2, 'b': 0})
+
         modification3 = yield \
             self.resources.premodify(allocation_id=allocation.id, a=4)
         self.assertTrue(modification3 is None)
-
         self._assert_allocated([3, 4])
-        self._assert_preallocated({'a': 1, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 0})
-        self.assertEqual(2, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 2, 'b': 0})
 
     @defer.inlineCallbacks
     def testPremodifyNegativeDeltas(self):
@@ -362,82 +312,48 @@ class ResourcesTest(common.TestCase, Common):
         modification = yield \
             self.resources.premodify(allocation_id=allocation2.id, a=1, b=1)
         self._assert_allocated([4, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
-        self.assertEqual(1, len(self.resources.get_modifications()))
-        # delta negative
-        modification2 = yield \
-            self.resources.premodify(allocation_id=allocation2.id, a=-1, b=1)
-        # here a=-1 must be ignored
-        self._assert_allocated([4, 5])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 2})
-        self.assertEqual(2, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 1, 'b': 1})
+        # delta negative a=-1 doesn't match allocation2
+        d = self.resources.premodify(allocation_id=allocation2.id, a=-1, b=1)
+        self.assertFailure(d, resource.DeclarationError)
+        yield d
+        self._assert_allocated([4, 4])
+        self._assert_preallocated({'a': 1, 'b': 1})
 
-        self.assertEqual({'b': 1},
-                self.resources.get_allocations()[allocation2.id].resources)
-        # apply the previous change
-        yield self.resources.apply_modification(modification2.id)
-        # modify allocation 2: {b:1} with c3 -> 2:{a:-1,b:1},
-        # so -1 should be avoided and 'a' set to 0
-        self.assertEqual({'a': 0, 'b': 2},
-                self.resources.get_allocations()[allocation2.id].resources)
-        self._assert_allocated([4, 5])
+        self._assert_resource({'b': 1}, allocation2.id)
+        yield self.resources.confirm(modification.id)
+        self._assert_resource({'a': 1, 'b': 2}, allocation2.id)
+        self._assert_resource({'a': 3, 'b': 2}, allocation.id)
+        self._assert_allocated([4, 4])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
-        self.assertEqual(1, len(self.resources.get_modifications()))
 
         # make a negative modification
         modification3 = yield \
                 self.resources.premodify(allocation_id=allocation2.id, b=-1)
-        yield self.resources.apply_modification(modification3.id)
+        yield self.resources.confirm(modification3.id)
 
-        # self.assertEqual({'b':-1},
-
-        self._assert_allocated([4, 4])
+        self._assert_allocated([4, 3])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
-        self.assertEqual(1, len(self.resources.get_modifications()))
 
         modification4 = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=-1)
-        yield self.resources.apply_modification(modification4.id)
-        self._assert_allocated([5, 3])
+        self._assert_preallocated({'a': 1, 'b': 0})
+        yield self.resources.confirm(modification4.id)
+        self._assert_allocated([5, 2])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
 
     @defer.inlineCallbacks
     def testPremodifyTooMuchNegativeDeltas(self):
         allocation = yield self.resources.allocate(a=3, b=2)
-        modification = yield \
-                self.resources.premodify(allocation_id=allocation.id, b=-10)
-        yield self.resources.apply_modification(modification.id)
-        self._assert_allocated([3, 0])
+        d = self.resources.premodify(allocation_id=allocation.id, b=-10)
+        self.assertFailure(d, resource.DeclarationError)
+        self._assert_allocated([3, 2])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
-
-    @defer.inlineCallbacks
-    def testPremodifyTooMuchNegativeDeltasIgnored(self):
-        allocation = yield self.resources.allocate(a=3, b=2)
-
-        modification = yield \
-            self.resources.premodify(allocation_id=allocation.id, a=1, b=-10)
-        yield self.resources.apply_modification(modification.id)
-        self._assert_allocated([4, 0])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
 
     @defer.inlineCallbacks
     def testPremodifyNonExistentChange(self):
-        allocation = yield self.resources.allocate(a=3, b=2)
-        allocation2 = yield self.resources.allocate(b=1)
-        modification = yield \
-                self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
-
-        # try to apply a change that does not exist
-        d = defer.succeed(None)
-        d = self.assertAsyncFailure(d, (resource.AllocationChangeNotFound, ),
-                fiber.maybe_fiber, self.resources.apply_modification, 100)
+        d = self.resources.confirm(100)
+        self.assertFailure(d, resource.AllocationNotFound)
         yield d
 
     @defer.inlineCallbacks
@@ -446,15 +362,13 @@ class ResourcesTest(common.TestCase, Common):
         allocation2 = yield self.resources.allocate(b=1)
         modification = yield \
                 self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
-        self.assertEqual(1, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 1, 'b': 1})
         # for timeout = 10
         self.agent.time += 15
-        self.assertEqual(0, len(self.resources.get_modifications()))
+        self._assert_preallocated({'a': 0, 'b': 0})
 
-        d = defer.succeed(None)
-        d = self.assertAsyncFailure(d, (resource.AllocationChangeNotFound, ),
-                fiber.maybe_fiber, self.resources.apply_modification,
-                modification.id)
+        d = self.resources.confirm(modification.id)
+        self.assertFailure(d, resource.AllocationNotFound)
         yield d
 
     @defer.inlineCallbacks
@@ -464,31 +378,24 @@ class ResourcesTest(common.TestCase, Common):
         modification = yield \
             self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
         self._assert_allocated([4, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 1})
+        self._assert_preallocated({'a': 1, 'b': 1})
 
         self.agent.time += 5
         modification2 = yield \
             self.resources.premodify(allocation_id=allocation2.id, a=1)
         self._assert_allocated([5, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 2, 'b': 1})
+        self._assert_preallocated({'a': 2, 'b': 1})
 
-        yield self.resources.apply_modification(modification.id)
+        yield self.resources.confirm(modification.id)
         self._assert_allocated([5, 4])
-        self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 1, 'b': 0})
+        self._assert_preallocated({'a': 1, 'b': 0})
 
         self.agent.time += 10
-        self.assertEqual({'a': 4, 'b': 4}, self.resources.allocated())
         self._assert_allocated([4, 4])
         self._assert_preallocated({'a': 0, 'b': 0})
-        self._assert_changes({'a': 0, 'b': 0})
 
-        d = defer.succeed(None)
-        d = self.assertAsyncFailure(d, (resource.AllocationChangeNotFound, ),
-                fiber.maybe_fiber, self.resources.apply_modification,
-                modification2.id)
+        d = self.resources.confirm(modification2.id)
+        self.assertFailure(d, resource.AllocationNotFound)
         yield d
 
     @defer.inlineCallbacks
@@ -498,14 +405,3 @@ class ResourcesTest(common.TestCase, Common):
         unserialize = pytree.unserialize
         Ins = pytree.Instance
         self.assertEqual(allocation, unserialize(serialize(allocation)))
-
-    @defer.inlineCallbacks
-    def testSerializationAllocationChange(self):
-        allocation = yield self.resources.allocate(a=3, b=2)
-        modification = yield \
-                self.resources.premodify(allocation_id=allocation.id, a=1, b=1)
-        serialize = pytree.serialize
-        unserialize = pytree.unserialize
-        Ins = pytree.Instance
-        modifications = self.resources.get_modifications()[modification.id]
-        self.assertEqual(modification, unserialize(serialize(modification)))

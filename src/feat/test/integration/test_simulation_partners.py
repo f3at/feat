@@ -65,7 +65,7 @@ class Agent(agent.BaseAgent, resource.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
-        state.resources.define('foo', 2)
+        state.resources.define('foo', resource.Scalar, 2)
         state.received_brothers = list()
         state.migrated = False
 
@@ -250,6 +250,7 @@ class PartnershipTest(common.SimulationTest):
             partner = agent.query_partners('all')[0]
             self.assertTrue(partner.allocation_id is not None)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testEstablishPartnershipWithPreAllocaton(self):
         i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
@@ -263,6 +264,7 @@ class PartnershipTest(common.SimulationTest):
         self.assert_partners(agents, [0, 0])
         r_alloc = yield self.receiver.get_agent().release_resource(r_alloc.id)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testEstablishPartnershipWithUnknownAllocaton(self):
         i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
