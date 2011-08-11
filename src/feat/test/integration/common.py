@@ -180,15 +180,20 @@ class SimulationTest(common.TestCase):
         agent_snapshot, listeners = agent.snapshot_agent()
         self.log("Replay complete. Comparing state of the agent and his "
                  "%d listeners.", len(listeners))
+
         if agent_snapshot._get_state() != r.agent._get_state():
-            res = repr(pytree.freeze(agent_snapshot._get_state()))
-            exp = repr(pytree.freeze(r.agent._get_state()))
+            s1 = r.agent._get_state()
+            s2 = agent_snapshot._get_state()
+            comp = self.deep_compare(s1, s2)
+            info = "  INFO:        %s: %s\n" % comp if comp else ""
+            res = repr(pytree.serialize(agent_snapshot._get_state()))
+            exp = repr(pytree.serialize(r.agent._get_state()))
             diffs = text_helper.format_diff(exp, res, "\n               ")
-            self.fail("Agent snapshot different after replay:\n"
+            self.fail("Agent snapshot different after replay:\n%s"
                       "  SNAPSHOT:    %s\n"
                       "  EXPECTED:    %s\n"
                       "  DIFFERENCES: %s\n"
-                      % (res, exp, diffs))
+                      % (info, res, exp, diffs))
 
         self.assertEqual(agent_snapshot._get_state(), r.agent._get_state())
 
@@ -200,6 +205,99 @@ class SimulationTest(common.TestCase):
                                               listeners_from_replay):
             self.assertEqual(from_snapshot._get_state(),
                              from_replay._get_state())
+
+    def deep_compare(self, expected, value):
+
+        def compare_value(v1, v2, path):
+            if v1 == v2:
+                return
+
+            if isinstance(v1, (list, tuple)):
+                return compare_iter(v1, v2, path)
+            if isinstance(v1, dict):
+                return compare_dict(v1, v2, path)
+            return compare_object(v1, v2, path)
+
+        def compare_iter(v1, v2, path):
+            if not isinstance(v2, (list, tuple)):
+                msg = ("expected list or tuple and got %s"
+                       % (type(v2).__name__, ))
+                return path, msg
+
+            if len(v1) != len(v2):
+                msg = "Expected %d item(s) and got %d" % (len(v1), len(v2))
+                return path, msg
+
+            i = 0
+            a = iter(v1)
+            b = iter(v2)
+            try:
+                while True:
+                    new_path = path + "[%s]" % i
+                    i += 1
+                    v1 = a.next()
+                    v2 = b.next()
+                    result = compare_value(v1, v2, new_path)
+                    if result:
+                        return result
+            except StopIteration:
+                return path, "Lists or tuples do not compare equal"
+
+        def compare_dict(v1, v2, path):
+            if not isinstance(v2, dict):
+                msg = ("expected dict and got %s"
+                       % (type(v2).__name__, ))
+                return path, msg
+
+            if len(v1) != len(v2):
+                msg = "Expected %d item(s) and got %d" % (len(v1), len(v2))
+                return path, msg
+
+            for k in v1:
+                new_path = path + "[%r]" % (k, )
+                a = v1[k]
+                if k not in v2:
+                    return new_path, "key not found"
+                b = v2[k]
+                result = compare_value(a, b, new_path)
+                if result:
+                    return result
+
+            return path, "Dictionaries do not compare equal"
+
+        def compare_object(v1, v2, path):
+            basic_types = (int, float, long, bool, str, unicode)
+            if isinstance(v1, basic_types) or isinstance(v2, basic_types):
+                if not isinstance(v2, type(v1)):
+                    msg = ("expected %s and got %s"
+                           % (type(v1).__name__, type(v2).__name__))
+                    return path, msg
+
+            d1 = v1.__dict__
+            d2 = v2.__dict__
+
+            if len(d1) != len(d2):
+                msg = ("Expected %d attribute(s) and got %d"
+                       % (len(v1), len(v2)))
+                return path, msg
+
+            for k in d1:
+                # Simplistic black list
+                if k in ["medium", "agent"]:
+                    continue
+                new_path = path + ("." if path else "") + "%s" % (k, )
+                a = d1[k]
+                if k not in d2:
+                    return new_path, "attribute not found"
+                b = d2[k]
+                result = compare_value(a, b, new_path)
+                if result:
+                    return result
+
+            return path, ("Instances %s and %s do not compare equal"
+                          % (type(v1).__name__, type(v2).__name__))
+
+        return compare_value(expected, value, "")
 
     @defer.inlineCallbacks
     def wait_for_idle(self, timeout, freq=0.05):

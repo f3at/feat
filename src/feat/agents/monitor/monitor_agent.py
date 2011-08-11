@@ -18,6 +18,9 @@ from feat.interface.protocols import *
 from feat.interface.recipient import *
 
 
+DEFAULT_NEIGHBOURS_CHECK_PERIOD = 120
+
+
 @serialization.register
 class MonitoredPartner(agent.BasePartner):
 
@@ -126,6 +129,7 @@ class MonitorAgentConfiguration(document.Document):
     document.field('enable_quarantine', True)
     document.field('host_quarantine_length', DEFAULT_HOST_QUARANTINE_LENGTH)
     document.field('self_quarantine_length', DEFAULT_SELF_QUARANTINE_LENGTH)
+    document.field('neighbours_check_period', DEFAULT_NEIGHBOURS_CHECK_PERIOD)
 
 
 dbtools.initial_data(MonitorAgentConfiguration)
@@ -179,6 +183,9 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         host_quarantine = config.host_quarantine_length
         self_quarantine = config.self_quarantine_length
 
+        state.updating_neighbours = False
+        state.need_neighbour_update = False
+
         state.clerk = self.dependency(IClerkFactory, self, self,
                                       location=state.medium.get_hostname(),
                                       enable_quarantine=enable_quarantine,
@@ -188,7 +195,6 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
                                                self, state.clerk,
                                                control_period=control_period)
 
-
         # agent_id -> HandleDeath instance
         state.handler_tasks = dict()
 
@@ -196,6 +202,9 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
     def startup(self, state):
         state.clerk.startup()
         state.intensive_care.startup()
+        config = state.medium.get_configuration()
+        state.medium.initiate_protocol(CheckNeighboursTask,
+                                       config.neighbours_check_period)
 
     @replay.journaled
     def on_disconnect(self, state):
@@ -360,11 +369,27 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         #FIXME: We shouldn't do a full update in this case
         return self.update_neighbour_monitors()
 
+    @manhole.expose()
     @replay.mutable
     def update_neighbour_monitors(self, state, shard_recip=None):
+        if state.updating_neighbours:
+            state.need_neighbour_update = True
+            return self
+        state.updating_neighbours = True
+        state.need_neighbour_update = False
+
         f = self._get_monitors(shard_recip=shard_recip)
         f.add_callback(self._update_monitors)
+        f.add_callback(fiber.override_result, self)
+        f.add_both(self.neighbour_monitors_updated)
         return f
+
+    @replay.mutable
+    def neighbour_monitors_updated(self, state, param):
+        state.updating_neighbours = False
+        if state.need_neighbour_update:
+            return self.update_neighbour_monitors()
+        return param
 
     def _get_monitors(self, shard_recip=None):
         return shard.query_structure(self, 'monitor_agent',
@@ -836,3 +861,14 @@ class HandleDeath(task.BaseTask):
         if self._handled is not None:
             return self._handled
         return self._result
+
+
+class CheckNeighboursTask(task.StealthPeriodicTask):
+
+    protocol_id = "monitor:check-neighbours"
+
+    @replay.immutable
+    def run(self, state):
+        neighbours = state.agent.query_partners(MonitorPartner)
+        if not neighbours:
+            return state.agent.update_neighbour_monitors()

@@ -12,8 +12,8 @@ from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, defer, time, text_helper, first, error, run
-from feat.extern.log import log as flulog
+from feat.common import log, defer, time, first, error, run
+from feat.common import manhole, text_helper
 from feat.process import standalone
 from feat.gateway import gateway
 from feat.utils import locate
@@ -52,6 +52,7 @@ GATEWAY_PORT_COUNT = 100
 
 HOST_RESTART_RETRY_INTERVAL = 5
 DEFAULT_FORCE_HOST_RESTART = False
+MASTER_LOG_LINK = "feat.master.log"
 
 
 def add_options(parser):
@@ -185,12 +186,19 @@ class Agency(agency.Agency):
                  socket_path=DEFAULT_SOCKET_PATH,
                  gateway_port=DEFAULT_GW_PORT,
                  enable_spawning_slave=DEFAULT_ENABLE_SPAWNING_SLAVE,
-                 rundir=DEFAULT_RUNDIR,
-                 logdir=DEFAULT_LOGDIR,
+                 rundir=None,
+                 logdir=None,
                  daemonize=DEFAULT_DAEMONIZE,
                  force_host_restart=DEFAULT_FORCE_HOST_RESTART):
 
         agency.Agency.__init__(self)
+
+        curdir = os.path.abspath(os.curdir)
+        if rundir is None:
+            rundir = DEFAULT_RUNDIR if daemonize else curdir
+        if logdir is None:
+            logdir = DEFAULT_LOGDIR if daemonize else curdir
+
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
                           msg_password=msg_password,
@@ -271,7 +279,8 @@ class Agency(agency.Agency):
             yield agent.start_agent(desc, **kwargs)
 
     def initiate(self):
-        os.chdir(self.config['agency']['rundir'])
+        if self.config['agency']['daemonize']:
+            os.chdir(self.config['agency']['rundir'])
 
         mesg = messaging.Messaging(
             self.config['msg']['host'], int(self.config['msg']['port']),
@@ -365,6 +374,7 @@ class Agency(agency.Agency):
 
         self._redirect_text_log()
         self._create_pid_file()
+        self._link_log_file(MASTER_LOG_LINK)
 
         if 'enable_host_restart' not in self._broker.shared_state:
             value = self.config['agency']['force_host_restart']
@@ -394,7 +404,24 @@ class Agency(agency.Agency):
 
             logname = "%s.%s.log" % ('feat', log_id, )
             logfile = os.path.join(self.config['agency']['logdir'], logname)
-            flulog.moveLogFiles(logfile, logfile)
+            log.FluLogKeeper.move_files(logfile, logfile)
+
+    def _link_log_file(self, filename):
+        if not self.config['agency']['daemonize']:
+            return
+
+        logfile, _ = log.FluLogKeeper.get_filenames()
+        basedir = os.path.dirname(logfile)
+        linkname = os.path.join(basedir, filename)
+        try:
+            os.unlink(linkname)
+        except OSError:
+            pass
+        try:
+            os.link(logfile, linkname)
+        except OSError as e:
+            self.warning("Failed to link log file %s to %s: %s",
+                         logfile, linkname, error.get_exception_message(e))
 
     def on_broker_disconnect(self, pre_state):
         self._ssh.stop_listening()
@@ -692,6 +719,7 @@ class Agency(agency.Agency):
         def set_flag(value):
             self._starting_host = value
 
+
         if self.role != BrokerRole.master:
             self.log('Not starting host agent, because we are not the '
                      'master agency')
@@ -721,12 +749,15 @@ class Agency(agency.Agency):
 
         def handle_success_on_get(desc):
             if not self._broker.shared_state['enable_host_restart']:
-                self.error("Descriptor of host agent has been found in "
-                           "database (hostname: %s). This should not happen "
-                           "on the first run. If you really want to restart "
-                           "the host agent include --force-host-restart "
-                           "options to feat script.", desc.doc_id)
-                return self.full_shutdown(stop_process=True)
+                msg = ("Descriptor of host agent has been found in "
+                       "database (hostname: %s). This should not happen "
+                       "on the first run. If you really want to restart "
+                       "the host agent include --force-host-restart "
+                       "options to feat script." % desc.doc_id)
+                self.error(msg)
+                d = self.full_shutdown(stop_process=True)
+                d.addBoth(defer.raise_error, RuntimeError, msg)
+                return d
             self.log("Host Agent descriptor found in database, will restart.")
             return desc
 
@@ -741,7 +772,7 @@ class Agency(agency.Agency):
         d.addCallbacks(handle_success_on_get, handle_error_on_get,
                        errbackArgs=(conn, doc_id, ))
         d.addCallback(self.start_agent, hostdef=self._hostdef)
-        d.addBoth(defer.drop_param, set_flag, False)
+        d.addBoth(defer.bridge_param, set_flag, False)
         d.addCallback(defer.drop_param, self._broker.shared_state.__setitem__,
                       'enable_host_restart', True)
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)

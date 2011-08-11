@@ -172,6 +172,16 @@ class FluLogKeeper(object):
         flulog.outputToFiles(stdout, stderr)
 
     @classmethod
+    def move_files(cls, stdout, stderr):
+        global flulog
+        flulog.moveLogFiles(stdout, stderr)
+
+    @classmethod
+    def get_filenames(cls):
+        global flulog
+        return flulog.getOutputFileNames()
+
+    @classmethod
     def set_debug(self, string):
         global flulog
         flulog.setDebug(string)

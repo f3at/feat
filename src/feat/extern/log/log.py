@@ -670,6 +670,11 @@ def getExceptionMessage(exception, frame=-1, filename=None):
         % locals()
 
 
+def getOutputFileNames():
+    global _stdout, _stderr
+    return _stdout, _stderr
+
+
 def reopenOutputFiles():
     """
     Reopens the stdout and stderr output files, as set by

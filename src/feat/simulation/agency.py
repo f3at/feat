@@ -28,6 +28,16 @@ class DummyInitiator(serialization.Serializable):
     def expire_now(self):
         return defer.succeed(self)
 
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return True
+
+    def __ne__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return False
+
 
 class AgencyAgent(agency.AgencyAgent):
 
