@@ -11,8 +11,8 @@ FEAT="$BIN/feat"
 LOGDIR="$ROOT"
 RUNDIR="$ROOT"
 JOURNAL="$LOGDIR/journal.sqlite3"
-LOGFILES=( "$LOGDIR/feat.host.log" "$SRCDIR/standalone.log" )
-PIDFILE="$RUNDIR/feat.host.pid"
+LOGFILES="$LOGDIR/feat.*.log"
+PIDFILE="$RUNDIR/feat.pid"
 DBLOAD="$SRC/feat/bin/dbload.py"
 MHDIR="$SRC/feat/bin"
 MHPUB="$MHDIR/public.key"
@@ -25,17 +25,19 @@ db_reset=
 master_host="localhost"
 debug=
 sync_time=
+force_host_restart=
 
-while getopts 'ntcrm:d:' OPTION
+while getopts 'fntcrm:d:' OPTION
 do
     case $OPTION in
+	    f) force_host_restart=1;;
         n) no_daemon=1;;
         t) sync_time=1;;
         c) do_cleanup=1;;
         r) db_reset=1;;
         m) master_host="$OPTARG";;
         d) debug="$OPTARG";;
-        ?) printf "Usage: %s: [-crt] [-d DEBUG] [-h HOSTNAME]\n" $(basename $0) >&2
+        ?) printf "Usage: %s: [-cfrt] [-d DEBUG] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
            exit 2;;
     esac
 done
@@ -47,7 +49,8 @@ if [ -e "$PIDFILE" ]; then
 fi
 
 if [ $do_cleanup ]; then
-    for l in $LOGFILES; do
+    files=`ls -1 $LOGFILES`
+    for l in $files; do
         if [ -e "$l" ]; then
             echo "Cleaning up log file $l"
             rm "$l"
@@ -80,8 +83,15 @@ fi
 if [ $no_daemon ]; then
     daemon_args=
 else
-    daemon_args="-R "$RUNDIR" -D"
+    daemon_args="-D"
+fi
+
+force_args=
+if [ $force_host_restart ]; then
+    force_args="${force_args:-" "}--force-host-restart"
 fi
 
 echo "Starting F3AT..."
-$ENV $FEAT -m "$master_host" -H "$master_host" -L "$LOGDIR" $daemon_args -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH"
+$ENV $FEAT -m "$master_host" -H "$master_host" \
+           -L "$LOGDIR" -R "$RUNDIR" $daemon_args \
+           -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" $force_args

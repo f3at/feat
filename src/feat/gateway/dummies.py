@@ -1,6 +1,7 @@
+import sys
 import os
 
-from feat.agents.base import agent, descriptor, partners
+from feat.agents.base import agent, descriptor
 from feat.agents.common import monitor
 
 
@@ -16,14 +17,15 @@ class DummyStandalone(agent.BaseAgent):
     standalone = True
 
     @staticmethod
-    def get_cmd_line():
-        src_path = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), '..', '..'))
-        command = os.path.join(src_path, 'feat', 'bin', 'standalone.py')
-        logfile = os.path.join(src_path, 'standalone.log')
-        args = ['-i', 'feat.test.test_agencies_net_agency',
-                '-l', logfile]
-        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5')
+    def get_cmd_line(desc):
+        python_path = ":".join(sys.path)
+        path = os.environ.get("PATH", "")
+
+        command = 'feat'
+        args = ['-X',
+                '-a', str(desc.doc_id),
+                '-D']
+        env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
         return command, args, env
 
     def startup(self):

@@ -20,3 +20,8 @@ def import_json():
 def import_time():
     import time
     return time
+
+
+def import_signal():
+    import signal
+    return signal

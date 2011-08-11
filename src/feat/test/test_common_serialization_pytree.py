@@ -11,7 +11,7 @@ from feat.common import serialization, reflect
 from feat.common.serialization import pytree
 from feat.interface.serialization import *
 
-from . import common_serialization
+from . import common, common_serialization
 
 
 @serialization.register
@@ -31,6 +31,375 @@ def dummy_function():
 
 class DummyInterface(Interface):
     pass
+
+
+class Av1(serialization.Serializable):
+    type_name = "A"
+
+    def __init__(self):
+        self.foo = "42"
+
+
+class Av2(Av1):
+    type_name = "A"
+
+    def __init__(self):
+        self.foo = 42
+
+    @staticmethod
+    def upgrade_to_2(snapshot):
+        snapshot["foo"] = int(snapshot["foo"])
+        return snapshot
+
+    @staticmethod
+    def downgrade_to_1(snapshot):
+        snapshot["foo"] = str(snapshot["foo"])
+        return snapshot
+
+
+class Av3(Av2):
+    type_name = "A"
+
+    def __init__(self):
+        self.bar = 42
+
+    @staticmethod
+    def upgrade_to_3(snapshot):
+        snapshot["bar"] = snapshot["foo"]
+        del snapshot["foo"]
+        return snapshot
+
+    @staticmethod
+    def downgrade_to_2(snapshot):
+        snapshot["foo"] = snapshot["bar"]
+        del snapshot["bar"]
+        return snapshot
+
+
+class Bv1(serialization.Serializable):
+    type_name = "B"
+
+    def __init__(self):
+        self.a = Av1()
+        self.b = Av1()
+        self.c = Av1()
+        self.a.foo = "1"
+        self.b.foo = "2"
+        self.c.foo = "3"
+
+
+class Bv2(Bv1):
+    type_name = "B"
+
+    def __init__(self):
+        a = Av2()
+        b = Av2()
+        c = Av2()
+        a.foo = 1
+        b.foo = 2
+        c.foo = 3
+        self.values = [a, b, c]
+
+    @staticmethod
+    def upgrade_to_2(snapshot):
+        a = snapshot["a"]
+        b = snapshot["b"]
+        c = snapshot["c"]
+        del snapshot["a"]
+        del snapshot["b"]
+        del snapshot["c"]
+        snapshot["values"] = [a, b, c]
+        return snapshot
+
+    @staticmethod
+    def downgrade_to_1(snapshot):
+        a, b, c = snapshot["values"]
+        del snapshot["values"]
+        snapshot["a"] = a
+        snapshot["b"] = b
+        snapshot["c"] = c
+        return snapshot
+
+
+class Bv3(Bv2):
+    type_name = "B"
+
+    def __init__(self):
+        a = Av3()
+        b = Av3()
+        c = Av3()
+        a.bar = 1
+        b.bar = 2
+        c.bar = 3
+        self.values = {"a": a, "b": b, "c": c}
+
+    @staticmethod
+    def upgrade_to_3(snapshot):
+        a, b, c = snapshot["values"]
+        snapshot["values"] = {"a": a, "b": b, "c": c}
+        return snapshot
+
+    @staticmethod
+    def downgrade_to_2(snapshot):
+        values = snapshot["values"]
+        snapshot["values"] = [values["a"], values["b"], values["c"]]
+        return snapshot
+
+
+class PyTreeVersionTest(common.TestCase):
+
+    def adapt(self, value, registry, source_ver, inter_ver, target_ver):
+        serializer = pytree.Serializer(source_ver=source_ver,
+                                       target_ver=inter_ver)
+        data = serializer.convert(value)
+        unserializer = pytree.Unserializer(registry=registry,
+                                           source_ver=inter_ver,
+                                           target_ver=target_ver)
+        return unserializer.convert(data)
+
+    def testSimpleUpgrades(self):
+        r1 = serialization.Registry()
+        r1.register(Av1)
+        r2 = serialization.Registry()
+        r2.register(Av2)
+        r3 = serialization.Registry()
+        r3.register(Av3)
+
+        a1 = Av1()
+        self.assertTrue(hasattr(a1, "foo"))
+        self.assertFalse(hasattr(a1, "bar"))
+        self.assertEqual(a1.foo, "42")
+        a1.foo = "18"
+
+        a12 = self.adapt(a1, r2, 1, 1, 2)
+        self.assertTrue(hasattr(a12, "foo"))
+        self.assertFalse(hasattr(a12, "bar"))
+        self.assertEqual(a12.foo, 18)
+
+        a13 = self.adapt(a1, r3, 1, 1, 3)
+        self.assertFalse(hasattr(a13, "foo"))
+        self.assertTrue(hasattr(a13, "bar"))
+        self.assertEqual(a13.bar, 18)
+
+        a2 = Av2()
+        self.assertTrue(hasattr(a2, "foo"))
+        self.assertFalse(hasattr(a2, "bar"))
+        self.assertEqual(a2.foo, 42)
+        a2.foo = 23
+
+        a23 = self.adapt(a2, r3, 2, 2, 3)
+        self.assertFalse(hasattr(a23, "foo"))
+        self.assertTrue(hasattr(a23, "bar"))
+        self.assertEqual(a23.bar, 23)
+
+    def testSimpleDowngrade(self):
+        r1 = serialization.Registry()
+        r1.register(Av1)
+        r2 = serialization.Registry()
+        r2.register(Av2)
+        r3 = serialization.Registry()
+        r3.register(Av3)
+
+        a3 = Av3()
+        self.assertFalse(hasattr(a3, "foo"))
+        self.assertTrue(hasattr(a3, "bar"))
+        self.assertEqual(a3.bar, 42)
+        a3.bar = 24
+
+        a32 = self.adapt(a3, r2, 3, 2, 2)
+        self.assertTrue(hasattr(a32, "foo"))
+        self.assertFalse(hasattr(a32, "bar"))
+        self.assertEqual(a32.foo, 24)
+
+        a31 = self.adapt(a3, r2, 3, 2, 1)
+        self.assertTrue(hasattr(a31, "foo"))
+        self.assertFalse(hasattr(a31, "bar"))
+        self.assertEqual(a31.foo, "24")
+
+        a31 = self.adapt(a3, r1, 3, 1, 1)
+        self.assertTrue(hasattr(a31, "foo"))
+        self.assertFalse(hasattr(a31, "bar"))
+        self.assertEqual(a31.foo, "24")
+
+        a2 = Av2()
+        self.assertTrue(hasattr(a2, "foo"))
+        self.assertFalse(hasattr(a2, "bar"))
+        self.assertEqual(a2.foo, 42)
+        a2.foo = 18
+
+        a21 = self.adapt(a2, r1, 2, 1, 1)
+        self.assertTrue(hasattr(a21, "foo"))
+        self.assertFalse(hasattr(a21, "bar"))
+        self.assertEqual(a21.foo, "18")
+
+    def testSimpleDownUp(self):
+        r1 = serialization.Registry()
+        r1.register(Av1)
+        r2 = serialization.Registry()
+        r2.register(Av2)
+        r3 = serialization.Registry()
+        r3.register(Av3)
+
+        a2 = Av2()
+        self.assertTrue(hasattr(a2, "foo"))
+        self.assertFalse(hasattr(a2, "bar"))
+        self.assertEqual(a2.foo, 42)
+        a2.foo = 18
+
+        a23 = self.adapt(a2, r3, 2, 1, 3)
+        self.assertFalse(hasattr(a23, "foo"))
+        self.assertTrue(hasattr(a23, "bar"))
+        self.assertEqual(a23.bar, 18)
+
+    def testCompoundUpgrades(self):
+        r1 = serialization.Registry()
+        r1.register(Av1)
+        r1.register(Bv1)
+        r2 = serialization.Registry()
+        r2.register(Av2)
+        r2.register(Bv2)
+        r3 = serialization.Registry()
+        r3.register(Av3)
+        r3.register(Bv3)
+
+        b1 = Bv1()
+        self.assertTrue(hasattr(b1, "a"))
+        self.assertTrue(hasattr(b1, "b"))
+        self.assertTrue(hasattr(b1, "c"))
+        self.assertFalse(hasattr(b1, "values"))
+        self.assertEqual(b1.a.foo, "1")
+        self.assertEqual(b1.b.foo, "2")
+        self.assertEqual(b1.c.foo, "3")
+        b1.a.foo = "4"
+        b1.b.foo = "5"
+        b1.c.foo = "6"
+
+        b12 = self.adapt(b1, r2, 1, 1, 2)
+        self.assertFalse(hasattr(b12, "a"))
+        self.assertFalse(hasattr(b12, "b"))
+        self.assertFalse(hasattr(b12, "c"))
+        self.assertTrue(hasattr(b12, "values"))
+        self.assertTrue(isinstance(b12.values, list))
+        self.assertEqual(b12.values[0].foo, 4)
+        self.assertEqual(b12.values[1].foo, 5)
+        self.assertEqual(b12.values[2].foo, 6)
+
+        b13 = self.adapt(b1, r3, 1, 1, 3)
+        self.assertFalse(hasattr(b13, "a"))
+        self.assertFalse(hasattr(b13, "b"))
+        self.assertFalse(hasattr(b13, "c"))
+        self.assertTrue(hasattr(b13, "values"))
+        self.assertTrue(isinstance(b13.values, dict))
+        self.assertEqual(b13.values["a"].bar, 4)
+        self.assertEqual(b13.values["b"].bar, 5)
+        self.assertEqual(b13.values["c"].bar, 6)
+
+        b2 = Bv2()
+        self.assertFalse(hasattr(b2, "a"))
+        self.assertFalse(hasattr(b2, "b"))
+        self.assertFalse(hasattr(b2, "c"))
+        self.assertTrue(hasattr(b2, "values"))
+        self.assertTrue(isinstance(b2.values, list))
+        self.assertEqual(b2.values[0].foo, 1)
+        self.assertEqual(b2.values[1].foo, 2)
+        self.assertEqual(b2.values[2].foo, 3)
+        b2.values[0].foo = 4
+        b2.values[1].foo = 5
+        b2.values[2].foo = 6
+
+        b23 = self.adapt(b2, r3, 2, 2, 3)
+        self.assertFalse(hasattr(b23, "a"))
+        self.assertFalse(hasattr(b23, "b"))
+        self.assertFalse(hasattr(b23, "c"))
+        self.assertTrue(hasattr(b23, "values"))
+        self.assertTrue(isinstance(b23.values, dict))
+        self.assertEqual(b23.values["a"].bar, 4)
+        self.assertEqual(b23.values["b"].bar, 5)
+        self.assertEqual(b23.values["c"].bar, 6)
+
+    def testCompoundDowngrade(self):
+        r1 = serialization.Registry()
+        r1.register(Av1)
+        r1.register(Bv1)
+        r2 = serialization.Registry()
+        r2.register(Av2)
+        r2.register(Bv2)
+        r3 = serialization.Registry()
+        r3.register(Av3)
+        r3.register(Bv3)
+
+        b3 = Bv3()
+        self.assertFalse(hasattr(b3, "a"))
+        self.assertFalse(hasattr(b3, "b"))
+        self.assertFalse(hasattr(b3, "c"))
+        self.assertTrue(hasattr(b3, "values"))
+        self.assertTrue(isinstance(b3.values, dict))
+        self.assertEqual(b3.values["a"].bar, 1)
+        self.assertEqual(b3.values["b"].bar, 2)
+        self.assertEqual(b3.values["c"].bar, 3)
+        b3.values["a"].bar = 4
+        b3.values["b"].bar = 5
+        b3.values["c"].bar = 6
+
+        b32 = self.adapt(b3, r2, 3, 2, 2)
+        self.assertFalse(hasattr(b32, "a"))
+        self.assertFalse(hasattr(b32, "b"))
+        self.assertFalse(hasattr(b32, "c"))
+        self.assertTrue(hasattr(b32, "values"))
+        self.assertTrue(isinstance(b32.values, list))
+        self.assertEqual(b32.values[0].foo, 4)
+        self.assertEqual(b32.values[1].foo, 5)
+        self.assertEqual(b32.values[2].foo, 6)
+
+        b32 = self.adapt(b3, r3, 3, 3, 2)
+        self.assertFalse(hasattr(b32, "a"))
+        self.assertFalse(hasattr(b32, "b"))
+        self.assertFalse(hasattr(b32, "c"))
+        self.assertTrue(hasattr(b32, "values"))
+        self.assertTrue(isinstance(b32.values, list))
+        self.assertEqual(b32.values[0].foo, 4)
+        self.assertEqual(b32.values[1].foo, 5)
+        self.assertEqual(b32.values[2].foo, 6)
+
+        b31 = self.adapt(b3, r1, 3, 1, 1)
+        self.assertTrue(hasattr(b31, "a"))
+        self.assertTrue(hasattr(b31, "b"))
+        self.assertTrue(hasattr(b31, "c"))
+        self.assertFalse(hasattr(b31, "values"))
+        self.assertEqual(b31.a.foo, "4")
+        self.assertEqual(b31.b.foo, "5")
+        self.assertEqual(b31.c.foo, "6")
+
+        b31 = self.adapt(b3, r2, 3, 2, 1)
+        self.assertTrue(hasattr(b31, "a"))
+        self.assertTrue(hasattr(b31, "b"))
+        self.assertTrue(hasattr(b31, "c"))
+        self.assertFalse(hasattr(b31, "values"))
+        self.assertEqual(b31.a.foo, "4")
+        self.assertEqual(b31.b.foo, "5")
+        self.assertEqual(b31.c.foo, "6")
+
+        b2 = Bv2()
+        self.assertFalse(hasattr(b2, "a"))
+        self.assertFalse(hasattr(b2, "b"))
+        self.assertFalse(hasattr(b2, "c"))
+        self.assertTrue(hasattr(b2, "values"))
+        self.assertTrue(isinstance(b2.values, list))
+        self.assertEqual(b2.values[0].foo, 1)
+        self.assertEqual(b2.values[1].foo, 2)
+        self.assertEqual(b2.values[2].foo, 3)
+        b2.values[0].foo = 4
+        b2.values[1].foo = 5
+        b2.values[2].foo = 6
+
+        b21 = self.adapt(b2, r1, 2, 1, 1)
+        self.assertTrue(hasattr(b21, "a"))
+        self.assertTrue(hasattr(b21, "b"))
+        self.assertTrue(hasattr(b21, "c"))
+        self.assertFalse(hasattr(b21, "values"))
+        self.assertEqual(b21.a.foo, "4")
+        self.assertEqual(b21.b.foo, "5")
+        self.assertEqual(b21.c.foo, "6")
 
 
 class PyTreeConvertersTest(common_serialization.ConverterTest):

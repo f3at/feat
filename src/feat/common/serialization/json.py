@@ -55,10 +55,13 @@ class Serializer(base.Serializer):
 
     pack_dict = dict
 
-    def __init__(self, indent=None, separators=None, externalizer=None):
+    def __init__(self, indent=None, separators=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Serializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                  freezer_caps=JSON_FREEZER_CAPS,
-                                 externalizer=externalizer)
+                                 externalizer=externalizer,
+                                 source_ver=source_ver,
+                                 target_ver=target_ver)
         self._indent = indent
         self._separators = separators
 
@@ -141,10 +144,13 @@ class Unserializer(base.Unserializer):
     pass_through_types = set([str, unicode, int, long,
                               float, bool, type(None)])
 
-    def __init__(self, registry=None, externalizer=None):
+    def __init__(self, registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Unserializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                    registry=registry,
-                                   externalizer=externalizer)
+                                   externalizer=externalizer,
+                                   source_ver=source_ver,
+                                   target_ver=target_ver)
 
     ### Overridden Methods ###
 
@@ -154,7 +160,7 @@ class Unserializer(base.Unserializer):
     def analyse_data(self, data):
         if isinstance(data, dict):
             if INSTANCE_TYPE_ATOM in data:
-                return None, Unserializer.unpack_instance
+                return data[INSTANCE_TYPE_ATOM], Unserializer.unpack_instance
             return dict, Unserializer.unpack_dict
 
         if isinstance(data, list):
@@ -170,18 +176,18 @@ class Unserializer(base.Unserializer):
 
     ### Private Methods ###
 
-    def unpack_external(self, data):
-        _, identifier = data
-        return self.restore_external(identifier)
-
-    def unpack_instance(self, data):
+    def unpack_instance(self, data, *args):
         data = dict(data)
         type_name = data.pop(INSTANCE_TYPE_ATOM)
         if INSTANCE_STATE_ATOM in data:
             snapshot = data.pop(INSTANCE_STATE_ATOM)
         else:
             snapshot = data
-        return self.restore_instance(type_name, snapshot)
+        return self.restore_instance(type_name, snapshot, *args)
+
+    def unpack_external(self, data):
+        _, identifier = data
+        return self.restore_external(identifier)
 
     def unpack_reference(self, data):
         _, refid, value = data

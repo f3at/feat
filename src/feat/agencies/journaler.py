@@ -3,17 +3,16 @@
 import sqlite3
 import operator
 import types
-import signal
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
-from twisted.spread import pb, jelly
+from twisted.spread import pb
 from twisted.internet import reactor
 from twisted.python import log as twisted_log
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
-                         fiber, )
+                         fiber, signal, )
 from feat.agencies import common
 from feat.common.serialization import banana
 from feat.extern.log import log as flulog
@@ -121,7 +120,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._set_state(State.connected)
         self._schedule_flush()
 
-    def close(self):
+    def close(self, flush_writer=True):
 
         def set_disconnected():
             self._writer = None
@@ -134,7 +133,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
             # in this case we are not registered as the observer anymore
             pass
 
-        d = self._close_writer()
+        d = self._close_writer(flush_writer)
         d.addCallback(defer.drop_param, set_disconnected)
         return d
 
@@ -248,10 +247,11 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._cache.rollback()
         fail.raiseException()
 
-    def _close_writer(self):
+    def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
         if self._writer:
-            d.addCallback(defer.drop_param, self._writer.close)
+            d.addCallback(defer.drop_param, self._writer.close,
+                          flush=flush_writer)
         return d
 
 
@@ -281,8 +281,10 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         d.addCallback(defer.drop_param, self._set_state, State.connected)
         return d
 
-    def close(self):
-        d = self._flush_next()
+    def close(self, flush=True):
+        d = defer.succeed(None)
+        if flush:
+            d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._set_state, State.disconnected)
         d.addCallback(defer.drop_param, self._set_writer, None)
         return d
@@ -371,7 +373,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         # .perform_instert() method
         self._semaphore = defer.DeferredSemaphore(1)
 
-        self._old_sighup_handler = None
         self._sighup_installed = False
 
         self._on_rotate_cb = on_rotate
@@ -386,10 +387,17 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     ### IJournalWriter ###
 
-    def close(self):
-        self._db.close()
-        self._uninstall_sighup()
-        self._set_state(State.disconnected)
+    def close(self, flush=True):
+        d = defer.succeed(None)
+        if self._cmp_state(State.disconnected):
+            return d
+        if flush:
+            d.addCallback(defer.drop_param, self._flush_next)
+        d.addCallback(defer.drop_param, self._db.close)
+        d.addCallback(defer.drop_param, self._uninstall_sighup)
+        d.addCallback(defer.drop_param, self._set_state,
+                      State.disconnected)
+        return d
 
     @manhole.expose()
     @in_state(State.connected)
@@ -563,40 +571,32 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         # (agent_id, instance_id, ) -> history_id
         self._history_id_cache = dict()
 
+    def _sighup_handler(self, signum, frame):
+        self.log("Received SIGHUP, reopening the journal.")
+        self.close()
+        self.initiate()
+        if callable(self._on_rotate_cb):
+            self._on_rotate_cb()
+
     def _install_sighup(self):
         if self._sighup_installed:
             return
-
-        def run_sighup_from_thread(signum, frame):
-            reactor.callFromThread(sighup, signum, frame)
-
-        def sighup(signum, frame):
-            if callable(self._old_sighup_handler):
-                self._old_sighup_handler(signum, frame)
-
-            self.log("Received SIGHUP, reopening the journal.")
-            self.close()
-            self.initiate()
-            if callable(self._on_rotate_cb):
-                self._on_rotate_cb()
-
+        if self._filename == ':memory:':
+            return
         self.log('Installing SIGHUP handler.')
-        handler = signal.signal(signal.SIGHUP, run_sighup_from_thread)
-        if handler == signal.SIG_DFL or handler == signal.SIG_IGN:
-            self._old_sighup_handler = None
-        else:
-            self._old_sighup_handler = handler
+        handler = signal.signal(signal.SIGHUP, self._sighup_handler)
         self._sighup_installed = True
 
     def _uninstall_sighup(self):
         if not self._sighup_installed:
             return
 
-        self.log('Reverting old SIGHUP handler.')
-        handler = self._old_sighup_handler or signal.SIG_DFL
-        signal.signal(signal.SIGHUP, handler)
+        try:
+            signal.unregister(signal.SIGHUP, self._sighup_handler)
+            self.log("Uninstalled SIGHUP handler.")
+        except ValueError:
+            self.warning("Unregistering of sighup failed. Straaange!")
         self._sighup_installed = False
-        self._old_sighup_handler = None
 
     def _decode(self, entries):
         '''
@@ -637,6 +637,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             result[key] = data[key]
 
         for key in to_decode:
+            if data[key] is None:
+                data[key] = ""
             result[key] = data[key].decode("utf-8")
 
         # encode the blobs
@@ -839,6 +841,7 @@ class JournalerConnection(log.Logger, log.LogProxy):
         log.Logger.__init__(self, self)
 
         self.serializer = banana.Serializer(externalizer=externalizer)
+        self.snapshot_serializer = banana.Serializer()
         self.journaler = IJournaler(journaler)
 
     ### IJournalerConnection ###
@@ -853,6 +856,14 @@ class JournalerConnection(log.Logger, log.LogProxy):
 
     def get_filename(self):
         return self.journaler.get_filename()
+
+    def snapshot(self, agent_id, instance_id, snapshot):
+        record = self.journaler.prepare_record()
+        entry = AgencyJournalEntry(
+            self.snapshot_serializer, record, agent_id, instance_id,
+            'agency', 'snapshot', snapshot)
+        entry.set_result(None)
+        entry.commit()
 
 
 class AgencyJournalSideEffect(object):
@@ -913,9 +924,6 @@ class History(formatable.Formatable, pb.Copyable):
     def _parse_resp(cls, resp):
         columns = map(operator.attrgetter('name'), cls._fields)
         return map(lambda row: cls(**dict(zip(columns, row))), resp)
-
-
-jelly.globalSecurity.allowInstancesOf(History)
 
 
 class AgencyJournalEntry(object):

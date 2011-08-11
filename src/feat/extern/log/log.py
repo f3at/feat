@@ -670,6 +670,11 @@ def getExceptionMessage(exception, frame=-1, filename=None):
         % locals()
 
 
+def getOutputFileNames():
+    global _stdout, _stderr
+    return _stdout, _stderr
+
+
 def reopenOutputFiles():
     """
     Reopens the stdout and stderr output files, as set by
@@ -694,6 +699,24 @@ def reopenOutputFiles():
     if _stderr:
         reopen(_stderr, sys.stderr.fileno(), 0)
         debug('log', 'opened log %r', _stderr)
+
+
+def moveLogFiles(out_filename, err_filename):
+
+    def doMove(src, dst):
+        try:
+            os.rename(src, dst)
+        except OSError as e:
+            error('log', 'Error moving file %s -> %s. Error: %r',
+                  src, dst, e)
+
+    global _stdout, _stderr
+    doMove(_stdout, out_filename)
+    if _stdout != _stderr:
+        doMove(_stderr, err_filename)
+
+    _stdout = out_filename
+    _stderr = err_filename
 
 
 def outputToFiles(stdout=None, stderr=None):

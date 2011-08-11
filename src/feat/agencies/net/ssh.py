@@ -68,9 +68,7 @@ class Commands(manhole.Manhole, manhole.Parser):
     def shutdown(self):
         """shutdown() -> Perfrom full agency shutdown. Cleanup slave agency and
         agents descriptor."""
-        d = self.agency.full_shutdown()
-        d.addBoth(lambda _: reactor.stop())
-        return d
+        return self.agency.full_shutdown(stop_process=True)
 
     @manhole.expose()
     def import_module(self, module):

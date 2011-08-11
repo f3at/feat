@@ -1,12 +1,10 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
 import types
 
-from twisted.python.failure import Failure
 from zope.interface import implements
 
-from feat.common import (log, decorator, serialization, fiber, defer,
+from feat.common import (log, decorator, serialization, fiber,
                          manhole, mro, )
 from feat.interface import generic, agent, protocols
 from feat.agencies import retrying
@@ -14,28 +12,11 @@ from feat.agents.base import (recipient, replay, requester,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor, rpc, export
 
-from feat.interface.agent import *
-from feat.interface.agency import *
+from feat.interface.agent import AgencyAgentState
 
-
-registry = dict()
-
-
-@decorator.parametrized_class
-def register(klass, name, configuration_id=None):
-    global registry
-    registry[name] = klass
-    doc_id = configuration_id or name + "_conf"
-    klass.descriptor_type = name
-    klass.type_name = name + ":data"
-    klass.configuration_doc_id = doc_id
-    serialization.register(klass)
-    return klass
-
-
-def registry_lookup(name):
-    global registry
-    return registry.get(name, None)
+# import this here to stay compatibile with code using
+# f.a.b.agent.register as class decorator
+from feat.agents.base.registry import registry_lookup, register
 
 
 @decorator.simple_function
@@ -68,16 +49,11 @@ class HostPartner(BasePartner):
 
     type_name = "agent->host"
 
-#FIXME: At some point we should enable this code.
-#       host.SpecialHostPartnerMixin would have to be merged with base agent
-#       to prevent newly restarted agents to commit suicide and test would
-#       have to be fixed (good luck).
-#
-#    def on_buried(self, agent, brothers=None):
-#        if self.role == u"host":
-#            agent.info("Host agent %s died, %s committing suicide",
-#                       self.recipient.key, agent.get_full_id())
-#            agent.terminate_hard()
+    def on_buried(self, agent):
+        if self.role == u"host":
+            agent.info("Received host agent %s buried, committing suicide.",
+                       self.recipient.key)
+            agent.terminate_hard()
 
 
 class Partners(partners.Partners):
@@ -434,7 +410,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         state.medium.cancel_delayed_call(call_id)
 
     @replay.immutable
-    def observe(self, _method, *args, **kwargs):
+    def observe(self, state, _method, *args, **kwargs):
         state.medium.observe(_method, *args, **kwargs)
 
     ### Private Methods ###

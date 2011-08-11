@@ -1,8 +1,9 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
+from pprint import pformat
 
-from feat.common import (log, serialization, error_handler, fiber, manhole, )
+from feat.common import log, serialization, fiber, manhole
 from feat.agents.base import replay
 from feat.common.container import ExpDict
 
@@ -131,7 +132,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def preallocate(self, state, **params):
         try:
             self._validate_params(params)
-            allocation = Allocation(id=self._next_id(), **params)
+            scalar = ScalarResource(**params)
+            allocation = Allocation(id=self._next_id(), scalar=scalar)
             self._append_allocation(allocation)
             return allocation
         except NotEnoughResources:
@@ -171,7 +173,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def allocate(self, state, **params):
         try:
             self._validate_params(params)
-            allocation = Allocation(id=self._next_id(), **params)
+            scalar = ScalarResource(**params)
+            allocation = Allocation(id=self._next_id(), scalar=scalar)
             self._validate(state.totals, self._read_allocations().values() +
                     [allocation], state.modifications)
         except BaseResourceException as e:
@@ -315,12 +318,12 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             delta = alloc_change.delta
             al = desc.allocations[alloc_id]
             for r in delta:
-                if r not in al.resources:
-                    al.resources[r] = delta[r]
+                if r not in al.scalar.values:
+                    al.scalar.values[r] = delta[r]
                 else:
-                    al.resources[r] += delta[r]
-                if al.resources[r] < 0:
-                    al.resources[r] = 0
+                    al.scalar.values[r] += delta[r]
+                if al.scalar.values[r] < 0:
+                    al.scalar.values[r] = 0
             return al
 
         f = fiber.Fiber()
@@ -390,8 +393,9 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             raise ValueError('Expected AllocationChange class,\
                     got %r instead!' % alloc_change.__class__, )
 
-        self._validate(state.totals, self._read_allocations().values() +
-                [Allocation(None, **alloc_change.delta)], state.modifications)
+        alloc_after = (self._read_allocations().values() +
+               [Allocation(None, ScalarResource(**alloc_change.delta))])
+        self._validate(state.totals, alloc_after, state.modifications)
         state.modifications.set(alloc_change.id, alloc_change,
                 expiration=alloc_change.default_timeout, relative=True)
 
@@ -428,8 +432,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def __repr__(self, state):
-        return "<Resources. Totals: %r>" %\
-               (state.totals, )
+        return "<Resources. Totals: %r>" % (state.totals, )
 
     @replay.immutable
     def __eq__(self, state, other):
@@ -449,30 +452,52 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
 
 @serialization.register
+class ScalarResource(serialization.Serializable):
+
+    type_name = 'scalar'
+
+    def __init__(self, **values):
+        self.values = values
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.values == other.values
+
+    def __ne__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return not self.__eq__(other)
+
+
+@serialization.register
 class Allocation(serialization.Serializable):
 
     type_name = 'alloc'
 
     default_timeout = 10
-    _error_handler=error_handler
 
-    def __init__(self, id=None, **resources):
+    def __init__(self, id=None, scalar=None):
         self.id = id
-        self.resources = resources
+        self.scalar = scalar
+
+    @property
+    def resources(self):
+        return self.scalar.values
 
     def add_to(self, total):
-        for r in self.resources:
-            total[r] += self.resources[r]
+        for r, v in self.scalar.values.iteritems():
+            total[r] += v
         return total
 
     def __repr__(self):
-        return "<Allocation id: %r, Resource: %r>" %\
-               (self.id, self.resources, )
+        return "<Allocation id: %r, Resource: %s>" %\
+               (self.id, pformat(self.scalar.values), )
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        return self.resources == other.resources and \
+        return self.scalar == other.scalar and \
                self.id == other.id
 
     def __ne__(self, other):

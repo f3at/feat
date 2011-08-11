@@ -6,7 +6,7 @@ import operator
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
-                              problem, task, )
+                              problem, task, requester, )
 from feat.agents.common import rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories, Descriptor
@@ -63,11 +63,12 @@ class ShardPartner(agent.BasePartner):
         If the requests to the neighbour timeouts, he is removed from the
         local list and the algorithm iterates in.
         '''
-        if agent.is_migrating():
-            return
         agent.info('Shard partner said goodbye.')
-        recipients = map(operator.attrgetter('recipient'), brothers)
-        return agent.resolve_missing_shard_agent_problem(recipients)
+        return self._handle_no_shard(agent, brothers)
+
+    def on_buried(self, agent, brothers):
+        agent.info('Received shard partner on buried.')
+        return self._handle_no_shard(agent, brothers)
 
     def on_died(self, agent, brothers, monitor):
         agent.info('Shard partner died.')
@@ -80,6 +81,12 @@ class ShardPartner(agent.BasePartner):
 
     def on_restarted(self, agent):
         agent.callback_event('shard_agent_restarted', self.recipient)
+
+    def _handle_no_shard(self, agent, brothers):
+        if agent.is_migrating():
+            return
+        recipients = map(operator.attrgetter('recipient'), brothers)
+        return agent.resolve_missing_shard_agent_problem(recipients)
 
 
 class Partners(agent.Partners):
@@ -111,14 +118,30 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
-        f.add_callback(fiber.drop_param, self._update_hostname)
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
         return f.succeed()
 
     @replay.journaled
     def startup(self, state):
-        f = self.start_join_shard_manager()
+        desc = state.medium.get_descriptor()
+
+        f = fiber.succeed()
+        if state.partners.shard is None:
+            f.add_callback(fiber.drop_param, self.start_join_shard_manager)
         f.add_callback(fiber.drop_param, self.startup_monitoring)
+
+        # this agent is restarted by the agency not the monitor agent
+        # for this reason we need to mind the restarted notifications
+        # in a special way (ourselves)
+        if desc.instance_id > 1:
+            own = self.get_own_address()
+            fibers = list()
+            for partner in state.partners.all:
+                fibers.append(requester.notify_restarted(
+                    self, partner.recipient, own, own))
+            if fibers:
+                fl = fiber.FiberList(fibers, consumeErrors=True)
+                f.chain(fl)
         return f
 
     @replay.journaled
@@ -189,8 +212,12 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     @replay.journaled
     def switch_shard(self, state, shard):
-        self.debug('Switching shard to %r', shard)
+        self.debug('Switching shard to %r.', shard)
         desc = state.medium.get_descriptor()
+        if desc.shard == shard:
+            self.debug("switch_shard(%s) called, but we are already member "
+                       "of this shard, ignoring.", shard)
+            return fiber.succeed()
 
         def save_change(desc, shard):
             desc.shard = shard
@@ -316,16 +343,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         defer.returnValue(result)
 
     @replay.immutable
-    def _discover_hostname(self, state):
-        return state.medium.get_hostname()
-
-    @agent.update_descriptor
-    def _update_hostname(self, state, desc, hostname=None):
-        if not hostname:
-            hostname = self._discover_hostname()
-        desc.hostname = hostname
-
-    @replay.immutable
     def _load_definition(self, state, hostdef=None):
         if not hostdef:
             return self._apply_defaults()
@@ -406,9 +423,8 @@ class StartAgent(task.BaseTask):
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self._fetch_descriptor)
         f.add_callback(fiber.drop_param, self._check_requirements)
-        f.add_callback(fiber.drop_param, self._update_shard_field)
         f.add_callback(fiber.drop_param, self._validate_allocation)
-        f.add_callback(fiber.drop_param, getattr, state, 'descriptor')
+        f.add_callback(self._update_descriptor)
         f.add_callback(state.agent.medium_start_agent, **kwargs)
         f.add_callback(recipient.IRecipient)
         f.add_callback(self._establish_partnership)
@@ -419,7 +435,6 @@ class StartAgent(task.BaseTask):
         f = state.agent.establish_partnership(
             recp, state.allocation_id, our_role=u'host',
             allow_double=True)
-            #allow_double=True, max_retries=None)
         return f
 
     @replay.mutable
@@ -431,19 +446,21 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _store_descriptor(self, state, value):
         state.descriptor = value
+        return state.descriptor
 
     @replay.mutable
     def _check_requirements(self, state):
         state.agent.check_requirements(state.descriptor)
 
     @replay.mutable
-    def _update_shard_field(self, state):
+    def _update_descriptor(self, state, allocation):
         '''Sometime creating the descriptor for new agent we cannot know in
         which shard it will endup. If it is None or set to lobby, the HA
         will update the field to match his own'''
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
             own_shard = state.agent.get_own_address().shard
             state.descriptor.shard = own_shard
+        state.descriptor.resource = allocation.scalar
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)
@@ -454,7 +471,7 @@ class StartAgent(task.BaseTask):
         if state.allocation_id:
             return state.agent.check_allocation_exists(state.allocation_id)
         else:
-            resources = self._get_factory().resources
+            resources = state.descriptor.extract_resources()
             f = state.agent.allocate_resource(**resources)
             f.add_callback(self._store_allocation)
             return f
@@ -462,6 +479,7 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _store_allocation(self, state, allocation):
         state.allocation_id = allocation.id
+        return allocation
 
     @replay.immutable
     def _get_factory(self, state):
@@ -656,7 +674,8 @@ class StartAgentContractor(contractor.BaseContractor):
             self._refuse()
             return
 
-        alloc = state.agent.preallocate_resource(**state.factory.resources)
+        resc = state.descriptor.extract_resources()
+        alloc = state.agent.preallocate_resource(**resc)
 
         if alloc is None:
             self._refuse()

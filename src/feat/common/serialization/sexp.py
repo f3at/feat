@@ -27,9 +27,12 @@ class Serializer(base.Serializer):
     '''Serialize any python structure into s-expression compatible
     with twisted.spread.jelly.'''
 
-    def __init__(self, post_converter=None, externalizer=None):
+    def __init__(self, post_converter=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Serializer.__init__(self, post_converter=post_converter,
-                                 externalizer=externalizer)
+                                 externalizer=externalizer,
+                                 source_ver=source_ver,
+                                 target_ver=target_ver)
 
     def pack_unicode(self, value):
         return [UNICODE_ATOM, value.encode(UNICODE_FORMAT_ATOM)]
@@ -87,10 +90,13 @@ class Unserializer(base.Unserializer):
 
     pass_through_types = set([str, int, long, float])
 
-    def __init__(self, pre_converter=None, registry=None, externalizer=None):
+    def __init__(self, pre_converter=None, registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Unserializer.__init__(self, pre_converter=pre_converter,
                                    registry=registry,
-                                   externalizer=externalizer)
+                                   externalizer=externalizer,
+                                   source_ver=source_ver,
+                                   target_ver=target_ver)
 
     ### Overridden Methods ###
 
@@ -101,12 +107,15 @@ class Unserializer(base.Unserializer):
             return None
 
         type_name = data[0]
-
         # We assume that if it's nothing we know about, it's an instance
-        default = (None, Unserializer.unpack_instance)
+        default = (type_name, Unserializer.unpack_instance)
         return self._unpackers.get(type_name, default)
 
     ### Private Methods ###
+
+    def unpack_instance(self, data, *args):
+        type_name, value = data
+        return self.restore_instance(type_name, value, *args)
 
     def unpack_unicode(self, data):
         _, value = data
@@ -139,10 +148,6 @@ class Unserializer(base.Unserializer):
     def unpack_type(self, data):
         _, type_name, = data
         return self.restore_type(type_name)
-
-    def unpack_instance(self, data):
-        type_name, value = data
-        return self.restore_instance(type_name, value)
 
     def unpack_reference(self, data):
         _, refid, value = data

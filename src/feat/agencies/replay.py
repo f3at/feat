@@ -1,4 +1,4 @@
-import pprint
+from pprint import pformat
 
 from zope.interface import implements, classProvides
 
@@ -6,17 +6,20 @@ from feat.common import serialization, log, text_helper
 from feat.agents.base import replay
 from feat.common.serialization import banana
 
-from feat.interface.agent import *
-from feat.interface.contractor import *
-from feat.interface.generic import *
-from feat.interface.journal import *
-from feat.interface.replier import *
-from feat.interface.requester import *
-from feat.interface.manager import *
-from feat.interface.serialization import *
-from feat.interface.task import *
-from feat.interface.collector import *
-from feat.interface.poster import *
+from feat.interface.agent import IAgencyAgent
+from feat.interface.generic import ITimeProvider
+from feat.interface.journal import (IJournalReplayEntry, ReplayError,
+                                    IEffectHandler, IRecorder, IRecorderNode,
+                                    NoHamsterballError, IJournalKeeper, )
+from feat.interface.replier import IAgencyReplier
+from feat.interface.requester import IAgencyRequester
+from feat.interface.manager import IAgencyManager
+from feat.interface.contractor import IAgencyContractor
+from feat.interface.serialization import (IExternalizer, ISerializable,
+                                          IRestorator, )
+from feat.interface.task import IAgencyTask
+from feat.interface.collector import IAgencyCollector
+from feat.interface.poster import IAgencyPoster
 
 
 def side_effect_as_string(*args):
@@ -91,7 +94,13 @@ class JournalReplayEntry(object):
 
     def apply(self):
         try:
-            assert self.agent_id == self._replay.agent_id
+            if self.agent_id != self._replay.agent_id:
+                raise ReplayError("Tried to apply the entry belonging to the "
+                                  "agent id: %r, but the Replay instance "
+                                  "belogs to: %r" % (self.agent_id,
+                                                     self._replay.agent_id))
+
+            self._replay.set_current_time(self._timestamp)
 
             if self.journal_id == 'agency':
                 self._replay.replay_agency_entry(self)
@@ -120,9 +129,8 @@ class JournalReplayEntry(object):
             frozen_result = self._replay.serializer.freeze(result)
 
             if frozen_result != self.frozen_result:
-                res = pprint.pformat(
-                    self._replay.unserializer.convert(frozen_result))
-                exp = pprint.pformat(self.result)
+                res = pformat(self._replay.unserializer.convert(frozen_result))
+                exp = pformat(self.result)
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
@@ -179,8 +187,15 @@ class JournalReplayEntry(object):
     ### IJournalReplayEntry Methods ###
 
     def get_arguments(self):
-        return (self._replay.unserializer.convert(self._args) or (),
-                self._replay.unserializer.convert(self._kwargs) or {})
+        if not hasattr(self, '_unserialized_arguments'):
+            # unserializing arguments results in recorders being created
+            # registred, etc. It is important that it happens only once
+            # for each entry. Here we store the result to later only
+            # return it.
+            args = self._replay.unserializer.convert(self._args) or ()
+            kwargs = self._replay.unserializer.convert(self._kwargs) or {}
+            self._unserialized_arguments = (args, kwargs)
+        return self._unserialized_arguments
 
     def rewind_side_effects(self):
         self._next_effect = 0
@@ -286,6 +301,11 @@ class Replay(log.FluLogKeeper, log.Logger):
         # list of all the protocols
         self.protocols = list()
 
+        # timestamp of the last entry applied, this is used by get_time()
+        # calls perfromed from ExpDict's which is done outside the replayable
+        # context to validate if the structures match the expected ones
+        self._current_timestamp = None
+
     def snapshot_registry(self):
         '''
         Give the dictionary of recorders detached from the existing instances.
@@ -300,15 +320,29 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     ### endof public section ###
 
+    def get_time(self):
+        # Here we could increase self._current_timestamp by the minimal
+        # value to ensure that two subsequent calls of this function gives
+        # different results. This is not implemented because of disagreemnt
+        # whether this feature would cause or resolve more problems.
+        return self._current_timestamp
+
+    def set_current_time(self, epoch):
+        self._current_timestamp = epoch
+
     def register(self, recorder):
         j_id = recorder.journal_id
         self.log('Registering recorder: %r, id: %r, id(recorder): %r',
                  recorder.__class__.__name__, j_id, id(recorder))
-        assert j_id not in self.registry
+        if j_id in self.registry:
+            raise ReplayError('Journal id: %r is already in registry!' %
+                              (j_id, ))
         self.registry[j_id] = recorder
 
     def set_aa(self, medium):
-        assert self.medium is None
+        if self.medium is not None:
+            raise ReplayError(
+                'Replay instance already has the medium reference')
         self.medium = medium
 
     def __iter__(self):
@@ -333,7 +367,8 @@ class Replay(log.FluLogKeeper, log.Logger):
         # Special case for snapshot call, because we don't want
         # to unserialize any arguments before reseting the registry.
         if entry.function_id == "snapshot":
-            return replay.replay(entry, self.apply_snapshot, entry)
+            self.apply_snapshot(entry)
+            return
 
         self._log_entry(entry)
 
@@ -342,7 +377,9 @@ class Replay(log.FluLogKeeper, log.Logger):
         return replay.replay(entry, method, *args, **kwargs)
 
     def effect_agent_created(self, agent_factory, dummy_id):
-        assert self.medium is None
+        if self.medium is not None:
+            raise ReplayError(
+                'Replay instance already has the medium reference')
         self.medium = AgencyAgent(self, dummy_id)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
@@ -354,7 +391,8 @@ class Replay(log.FluLogKeeper, log.Logger):
     def effect_protocol_created(self, factory, medium, *args, **kwargs):
         self.require_agent()
         instance = factory(self.agent, medium)
-        self.protocols.append(instance)
+        if medium.keep_track_of_instances:
+            self.protocols.append(instance)
 
     def effect_protocol_deleted(self, journal_id, dummy_id):
         self.require_agent()
@@ -365,11 +403,11 @@ class Replay(log.FluLogKeeper, log.Logger):
 
     def apply_snapshot(self, entry):
         old_agent, old_protocols = self.agent, self.protocols
-        self.agent_type = self.agent.descriptor_type
         self.reset()
-        args, kwargs = entry.get_arguments()
+        args, kwargs = replay.replay(entry, entry.get_arguments)
         self._restore_snapshot(*args, **kwargs)
         self._check_snapshot(old_agent, old_protocols)
+        self.agent_type = self.agent.descriptor_type
 
     # Managing the dummy registry:
 
@@ -435,8 +473,9 @@ class Replay(log.FluLogKeeper, log.Logger):
                 for protocol in self.protocols:
                     if protocol not in old_protocols:
                         raise ReplayError("One of the protocols was not found."
-                                          "\nOld: %r\nLoaded: %r"
-                                          % (old_protocols, self.protocols))
+                                          "\nOld: %s\nLoaded: %s"
+                                          % (pformat(old_protocols),
+                                             pformat(self.protocols)))
 
 
 @serialization.register
@@ -692,9 +731,9 @@ class AgencyAgent(BaseReplayDummy):
 
     ### ITimeProvider Methods ###
 
-    @replay.named_side_effect('Agency.get_time')
+    @replay.named_side_effect('AgencyAgent.get_time')
     def get_time(self):
-        pass
+        return self.replay.get_time()
 
     ### IJournalKeeper Methods ###
 
@@ -704,7 +743,9 @@ class AgencyAgent(BaseReplayDummy):
     ### IRecorderNone Methods ###
 
     def generate_identifier(self, recorder):
-        assert not getattr(self, 'indentifier_generated', False)
+        if getattr(self, 'indentifier_generated', False):
+            raise ReplayError("Indetifier for the recorder %r has already "
+                              "been generated!" % (recorder, ))
         self._identifier_generated = True
         return self._dummy_id
 
@@ -716,6 +757,10 @@ class AgencyAgent(BaseReplayDummy):
 
 
 class AgencyProtocol(BaseReplayDummy, StateMachineSpecific):
+
+    # flag saying if Replay class should register us in protocols list
+    # (this should be done for IAgencyProtocolInternal implementations)
+    keep_track_of_instances = True
 
     @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
@@ -879,6 +924,8 @@ class AgencyCollector(AgencyProtocol):
 
 
 class AgencyPoster(AgencyProtocol):
+
+    keep_track_of_instances = False
 
     implements(IAgencyPoster)
 

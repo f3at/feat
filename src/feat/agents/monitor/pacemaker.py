@@ -43,12 +43,12 @@ class Pacemaker(labour.BaseLabour):
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        return self._monitor == other._monitor
+        return True
 
     def __ne__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
-        return self._monitor != other._monitor
+        return False
 
 
 @serialization.register

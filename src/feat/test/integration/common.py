@@ -1,18 +1,20 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import operator
 import sys
+from pprint import pformat
 
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
-from feat.common import text_helper, defer
+from feat.common import text_helper, defer, reflect
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
 from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
-from feat.agencies.interface import *
+from feat.agencies.interface import NotFoundError
 
 attr = common.attr
 delay = common.delay
@@ -69,9 +71,10 @@ def format_journal(journal, prefix=""):
 
 class SimulationTest(common.TestCase):
 
-    configurable_attributes = ['skip_replayability', 'jourfile']
+    configurable_attributes = ['skip_replayability', 'jourfile', 'save_stats']
     skip_replayability = False
     jourfile = None
+    save_stats = False
 
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
@@ -114,6 +117,16 @@ class SimulationTest(common.TestCase):
             yield x.wait_for_protocols_finish()
 
         yield common.TestCase.tearDown(self)
+
+        if self.save_stats:
+            f = file(self.save_stats, "a")
+            print >> f, ""
+            print >> f, "%s.%s:" % (reflect.canonical_name(self),
+                                    self._testMethodName, )
+            t = text_helper.Table(fields=('name', 'value'),
+                                  lengths=(40, 40))
+            print >> f, t.render(self.driver.get_stats().iteritems())
+            f.close()
 
         try:
             if exc_type is None or exc_type is StopIteration:
@@ -166,29 +179,138 @@ class SimulationTest(common.TestCase):
         for entry in r:
             entry.apply()
 
-        agent_snapshot, listeners = agent.snapshot_agent()
+        agent_snapshot, protocols = agent.snapshot_agent()
         self.log("Replay complete. Comparing state of the agent and his "
-                 "%d listeners.", len(listeners))
+                 "%d protocols.", len(protocols))
         if agent_snapshot._get_state() != r.agent._get_state():
-            res = repr(pytree.freeze(agent_snapshot._get_state()))
-            exp = repr(pytree.freeze(r.agent._get_state()))
+            s1 = r.agent._get_state()
+            s2 = agent_snapshot._get_state()
+            comp = self.deep_compare(s1, s2)
+            info = "  INFO:        %s: %s\n" % comp if comp else ""
+            res = repr(pytree.serialize(agent_snapshot._get_state()))
+            exp = repr(pytree.serialize(r.agent._get_state()))
             diffs = text_helper.format_diff(exp, res, "\n               ")
-            self.fail("Agent snapshot different after replay:\n"
+            self.fail("Agent snapshot different after replay:\n%s"
                       "  SNAPSHOT:    %s\n"
                       "  EXPECTED:    %s\n"
                       "  DIFFERENCES: %s\n"
-                      % (res, exp, diffs))
+                      % (info, res, exp, diffs))
 
         self.assertEqual(agent_snapshot._get_state(), r.agent._get_state())
 
-        listeners_from_replay = [obj for obj in r.registry.values()
-                                 if obj.type_name.endswith('-medium')]
+        self.assertEqual(len(r.protocols), len(protocols),
+                         "Protocols of agent: %s from replay doesn't much "
+                         "the test result. \nReplay: %s,\nResult: %s" %
+                         (aid,
+                          pformat(r.protocols),
+                          pformat(protocols)))
 
-        self.assertEqual(len(listeners_from_replay), len(listeners))
-        for from_snapshot, from_replay in zip(listeners,
-                                              listeners_from_replay):
+        def sort(recorders):
+            # at some point the protocols are stored as the dictionary values,
+            # for this reason they come in snapshot in random order and need
+            # to be sorted before comparing
+            return sorted(recorders, key=operator.attrgetter('journal_id'))
+
+        for from_snapshot, from_replay in zip(sort(protocols),
+                                              sort(r.protocols)):
             self.assertEqual(from_snapshot._get_state(),
-                             from_replay._get_state())
+                             from_replay._get_state(),
+                             "Failed comparing state of protocols. \nA=%s "
+                             "\B=%s." % (pformat(from_snapshot),
+                                         pformat(from_replay)))
+
+    def deep_compare(self, expected, value):
+
+        def compare_value(v1, v2, path):
+            if v1 == v2:
+                return
+
+            if isinstance(v1, (list, tuple)):
+                return compare_iter(v1, v2, path)
+            if isinstance(v1, dict):
+                return compare_dict(v1, v2, path)
+            return compare_object(v1, v2, path)
+
+        def compare_iter(v1, v2, path):
+            if not isinstance(v2, (list, tuple)):
+                msg = ("expected list or tuple and got %s"
+                       % (type(v2).__name__, ))
+                return path, msg
+
+            if len(v1) != len(v2):
+                msg = "Expected %d item(s) and got %d" % (len(v1), len(v2))
+                return path, msg
+
+            i = 0
+            a = iter(v1)
+            b = iter(v2)
+            try:
+                while True:
+                    new_path = path + "[%s]" % i
+                    i += 1
+                    v1 = a.next()
+                    v2 = b.next()
+                    result = compare_value(v1, v2, new_path)
+                    if result:
+                        return result
+            except StopIteration:
+                return path, "Lists or tuples do not compare equal"
+
+        def compare_dict(v1, v2, path):
+            if not isinstance(v2, dict):
+                msg = ("expected dict and got %s"
+                       % (type(v2).__name__, ))
+                return path, msg
+
+            if len(v1) != len(v2):
+                msg = "Expected %d item(s) and got %d" % (len(v1), len(v2))
+                return path, msg
+
+            for k in v1:
+                new_path = path + "[%r]" % (k, )
+                a = v1[k]
+                if k not in v2:
+                    return new_path, "key not found"
+                b = v2[k]
+                result = compare_value(a, b, new_path)
+                if result:
+                    return result
+
+            return path, "Dictionaries do not compare equal"
+
+        def compare_object(v1, v2, path):
+            basic_types = (int, float, long, bool, str, unicode)
+            if isinstance(v1, basic_types) or isinstance(v2, basic_types):
+                if not isinstance(v2, type(v1)):
+                    msg = ("expected %s and got %s"
+                           % (type(v1).__name__, type(v2).__name__))
+                    return path, msg
+
+            d1 = v1.__dict__
+            d2 = v2.__dict__
+
+            if len(d1) != len(d2):
+                msg = ("Expected %d attribute(s) and got %d"
+                       % (len(v1), len(v2)))
+                return path, msg
+
+            for k in d1:
+                # Simplistic black list
+                if k in ["medium", "agent"]:
+                    continue
+                new_path = path + ("." if path else "") + "%s" % (k, )
+                a = d1[k]
+                if k not in d2:
+                    return new_path, "attribute not found"
+                b = d2[k]
+                result = compare_value(a, b, new_path)
+                if result:
+                    return result
+
+            return path, ("Instances %s and %s do not compare equal"
+                          % (type(v1).__name__, type(v2).__name__))
+
+        return compare_value(expected, value, "")
 
     @defer.inlineCallbacks
     def wait_for_idle(self, timeout, freq=0.05):

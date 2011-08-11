@@ -6,7 +6,11 @@ from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
 from feat.common import decorator, enum, adapter, reflect
-from feat.interface.serialization import *
+from feat.interface.serialization import ISerializable, Capabilities
+from feat.interface.serialization import ISnapshotable, IFreezer, IConverter
+from feat.interface.serialization import IRegistry, IExternalizer, IRestorator
+from feat.interface.serialization import IVersionAdapter
+
 
 DEFAULT_CONVERTER_CAPS = set([Capabilities.int_values,
                               Capabilities.enum_values,
@@ -46,10 +50,10 @@ FREEZING_TAG_ATTRIBUTE = '__freezing_tag__'
 
 
 def freeze_tag(name):
-    '''
+    """
     This is not using decorator.py because we need to access original function
     not the wrapper.
-    '''
+    """
 
     def decorator(func):
         setattr(func, FREEZING_TAG_ATTRIBUTE, name)
@@ -60,7 +64,7 @@ def freeze_tag(name):
 
 @decorator.simple_class
 def register(restorator):
-    '''Register a class as a L{IRestorator} in the default global registry.'''
+    """Register a class as a L{IRestorator} in the default global registry."""
     global _global_registry
     _global_registry.register(restorator)
     return restorator
@@ -78,20 +82,56 @@ def get_registry():
 
 @adapter.register(object, ISnapshotable)
 class SnapshotableAdapter(object):
-    '''Make any object a L{ISnapshotable} that return itself as snapshot.'''
+    """Make any object a L{ISnapshotable} that return itself as snapshot."""
 
     implements(ISnapshotable)
 
     def __init__(self, value):
         self.value = value
 
-    ### ISnapshotable Methods ###
+    ### ISnapshotable ###
 
     def snapshot(self):
         return self.value
 
 
-class MetaSnapshotable(type):
+class MetaVersionAdapter(type):
+
+    implements(IVersionAdapter)
+
+
+class VersionAdapter(object):
+
+    __metaclass__ = MetaVersionAdapter
+
+    implements(IVersionAdapter)
+
+    ### IVersionAdapter ###
+
+    @classmethod
+    def adapt_version(cls, snapshot, source_ver, target_ver):
+        assert isinstance(source_ver, int)
+        assert isinstance(target_ver, int)
+
+        if source_ver < target_ver:
+            template = "upgrade_to_%d"
+            step = 1
+        elif source_ver > target_ver:
+            template = "downgrade_to_%d"
+            step = -1
+        else:
+            # No adaption needed
+            return snapshot
+
+        for ver in range(source_ver + step, target_ver + step, step):
+            method = getattr(cls, template % (ver, ), None)
+            if method is not None:
+                snapshot = method(snapshot)
+
+        return snapshot
+
+
+class MetaSnapshotable(MetaVersionAdapter):
 
     def __init__(cls, name, bases, dct):
         if "type_name" not in dct:
@@ -100,10 +140,10 @@ class MetaSnapshotable(type):
         super(MetaSnapshotable, cls).__init__(name, bases, dct)
 
 
-class Snapshotable(object):
-    '''Simple L{ISnapshotable} that snapshot the instance attributes
+class Snapshotable(VersionAdapter):
+    """Simple L{ISnapshotable} that snapshot the instance attributes
     not starting by an underscore. If the class attribute type_name
-    is not defined, the canonical name of the class is used.'''
+    is not defined, the canonical name of the class is used."""
 
     __metaclass__ = MetaSnapshotable
 
@@ -111,7 +151,7 @@ class Snapshotable(object):
 
     referenceable = True
 
-    ### ISnapshotable Methods ###
+    ### ISnapshotable ###
 
     def snapshot(self):
         return dict([(k, v)
@@ -121,13 +161,13 @@ class Snapshotable(object):
 
 class MetaSerializable(MetaSnapshotable):
 
-    implements(IRestorator)
+    implements(IRestorator, IVersionAdapter)
 
 
 class Serializable(Snapshotable):
-    '''Simple L{ISerializable} that serialize and restore the full instance
+    """Simple L{ISerializable} that serialize and restore the full instance
     dictionary. If the class attribute type_name is not defined, the canonical
-    name of the class is used.'''
+    name of the class is used."""
 
     __metaclass__ = MetaSerializable
 
@@ -153,14 +193,14 @@ class Serializable(Snapshotable):
 
 
 class Registry(object):
-    '''Keep track of L{IRestorator}. Used by unserializers.'''
+    """Keep track of L{IRestorator}. Used by unserializers."""
 
     implements(IRegistry)
 
     def __init__(self):
         self._restorators = {} # {TYPE_NAME: IRestorator}
 
-    ### IRegistry Methods ###
+    ### IRegistry ###
 
     def register(self, restorator):
         r = IRestorator(restorator)
@@ -171,10 +211,10 @@ class Registry(object):
 
 
 class Externalizer(object):
-    '''Simplistic implementation of L{IExternalizer}.
+    """Simplistic implementation of L{IExternalizer}.
     WARNING, by default it uses id() for identifying instances,
     IT WILL NOT WORK IF THE INSTANCE GOT SERIALIZED/UNSERIALIZED
-    because it's id() would change..'''
+    because it's id() would change.."""
 
     implements(IExternalizer)
 
@@ -194,7 +234,7 @@ class Externalizer(object):
             return instance.type_name, id(instance)
         return id(instance)
 
-    ### IExternalizer Methods ###
+    ### IExternalizer ###
 
     def identify(self, instance):
         identifier = self.get_identifier(instance)
@@ -208,10 +248,10 @@ class Externalizer(object):
 
 @decorator.simple_function
 def referenceable(method):
-    '''Used in BaseSerializer and its sub-classes to flatten referenceable
+    """Used in BaseSerializer and its sub-classes to flatten referenceable
     values. Hide the reference handling from sub-classes.
     For example, to make strings referenceable in a sub-class only use
-    this decorator with decorate flatten_str().'''
+    this decorator with decorate flatten_str()."""
 
     def wrapper(self, value, *args):
         deref = self._prepare(value)
@@ -224,7 +264,7 @@ def referenceable(method):
 
 
 class Serializer(object):
-    '''Base class for serializers handling references.
+    """Base class for serializers handling references.
 
     A post converter can be specified at construction time to be chained.
     If specified, the output of this converter will be passed to it
@@ -279,7 +319,7 @@ class Serializer(object):
 
     #FIXME: Add datetime types datetime, date, time and timedelta
 
-    '''
+    """
 
     implements(IFreezer, IConverter)
 
@@ -309,25 +349,31 @@ class Serializer(object):
     pack_frozen_external = None
 
     def __init__(self, converter_caps=None, freezer_caps=None,
-                 post_converter=None, externalizer=None, registry=None):
+                 post_converter=None, externalizer=None, registry=None,
+                 source_ver=None, target_ver=None):
+        global _global_registry
+        assert ((source_ver is None) and (target_ver is None)) \
+               or ((source_ver is not None) and (target_ver is not None))
         self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self.freezer_capabilities = freezer_caps or DEFAULT_FREEZER_CAPS
         self._post_converter = post_converter and IConverter(post_converter)
         self._externalizer = externalizer and IExternalizer(externalizer)
         self._registry = IRegistry(registry) if registry else _global_registry
+        self._source_ver = source_ver
+        self._target_ver = target_ver
         self.reset()
 
-    ### IFreezer Methods ###
+    ### IFreezer ###
 
     def freeze(self, data):
         return self._convert(data, self.freezer_capabilities, True)
 
-    ### IConverter Methods ###
+    ### IConverter ###
 
     def convert(self, data):
         return self._convert(data, self.converter_capabilities, False)
 
-    ### Protected Methods ###
+    ### protected ###
 
     def check_capabilities(self, cap, value, caps, freezing):
         if cap not in caps:
@@ -359,7 +405,7 @@ class Serializer(object):
         return flattener(self, key, caps, freezing)
 
     def post_convertion(self, data):
-        if self._post_converter:
+        if self._post_converter is not None:
             return self._post_converter.convert(data)
         return data
 
@@ -380,7 +426,7 @@ class Serializer(object):
         if isinstance(value, (type, InterfaceClass)):
             return self.flatten_type_value(value, caps, freezing)
 
-        if self._externalizer:
+        if self._externalizer is not None:
             extid = self._externalizer.identify(value)
             if extid is not None:
                 return self.flatten_external(extid, caps, freezing)
@@ -593,7 +639,17 @@ class Serializer(object):
             if deref is not None:
                 return deref
 
-        dump = self.flatten_value(value.snapshot(), caps, freezing)
+        snapshot = value.snapshot()
+
+        if self._source_ver is not None:
+            #TODO: If external adapter is needed change this to a cast
+            if IVersionAdapter.providedBy(value):
+                adapter = IVersionAdapter(value)
+                snapshot = adapter.adapt_version(snapshot,
+                                                 self._source_ver,
+                                                 self._target_ver)
+
+        dump = self.flatten_value(snapshot, caps, freezing)
 
         if freezing:
             packer, data = self.pack_frozen_instance, [dump]
@@ -614,7 +670,7 @@ class Serializer(object):
             return self.pack_external, flatened
         return self.pack_frozen_external, flatened
 
-    ### Setup lookup tables ###
+    ### lookup tables ###
 
     _value_lookup = {tuple: flatten_tuple_value,
                      list: flatten_list_value,
@@ -640,7 +696,7 @@ class Serializer(object):
                    bool: flatten_bool_key,
                    type(None): flatten_none_key}
 
-    ### Private Methods ###
+    ### private ###
 
     def _convert(self, data, caps, freezing):
         try:
@@ -710,13 +766,13 @@ class Serializer(object):
 
 
 class DelayPacking(Exception):
-    '''Exception raised when unpacking a dereference to an unknown
+    """Exception raised when unpacking a dereference to an unknown
     reference. This allows to delay unpacking of mutable object
-    containing dereferences.'''
+    containing dereferences."""
 
 
 class Unserializer(object):
-    '''Base class for unserializers. It handle delayed unpacking
+    """Base class for unserializers. It handle delayed unpacking
     and instance restoration to resolve circular references.
     If no registry instance is specified when created, the default
     global registry will be used.
@@ -725,22 +781,27 @@ class Unserializer(object):
     data will be first converted by the given converter and then
     the result will be unserialized. Used to parse data before
     unserializing.
-    '''
+    """
 
     implements(IConverter)
 
     pass_through_types = ()
 
     def __init__(self, converter_caps=None, pre_converter=None,
-                 registry=None, externalizer=None):
+                 registry=None, externalizer=None,
+                 source_ver=None, target_ver=None):
         global _global_registry
+        assert ((source_ver is None) and (target_ver is None)) \
+               or ((source_ver is not None) and (target_ver is not None))
         self.converter_capabilities = converter_caps or DEFAULT_CONVERTER_CAPS
         self._pre_converter = pre_converter and IConverter(pre_converter)
         self._registry = IRegistry(registry) if registry else _global_registry
         self._externalizer = externalizer and IExternalizer(externalizer)
+        self._source_ver = source_ver
+        self._target_ver = target_ver
         self.reset()
 
-    ### IConverter Methods ###
+    ### IConverter ###
 
     def convert(self, data):
         try:
@@ -756,7 +817,7 @@ class Unserializer(object):
             # Reset the state to cleanup all references
             self.reset()
 
-    ### Protected Methods ###
+    ### protected ###
 
     def pre_convertion(self, data):
         if self._pre_converter is not None:
@@ -766,44 +827,24 @@ class Unserializer(object):
     def reset(self):
         self._references = {} # {REFERENCE_ID: (DATA_ID, OBJECT)}
         self._pending = [] # Pendings unpacking
-        self._instances = [] # [(INSTANCE, SNAPSHOT)]
+        self._instances = [] # [(RESTORATOR, INSTANCE, SNAPSHOT)]
         self._delayed = 0 # If we are in a delayable unpacking
 
     def unpack_data(self, data):
-
-        # Just return pass-through types,
-        # support sub-classed base types and metaclasses
-        if set(type(data).__mro__) & self.pass_through_types:
-            return data
-
-        analysis = self.analyse_data(data)
-
-        if analysis is None:
-            raise TypeError("Type %s not supported by unserializer %s"
-                            % (type(data).__name__,
-                               reflect.canonical_name(self)))
-
-        constructor, unpacker = analysis
-
-        # Unpack the mutable containers that provides constructor
-        if constructor is not None:
-            # The container is specified two time once for the base class
-            # and once for the function call argument
-            container = constructor()
-            return self.delayed_unpacking(container, unpacker,
-                                          self, container, data)
-
-        return unpacker(self, data)
+        return self._unpack_data(data, None, None)
 
     def delayed_unpacking(self, container, fun, *args, **kwargs):
-        '''Should be used when unpacking mutable values.
-        This allows circular references resolution by pausing serialization.'''
+        """Should be used when unpacking mutable values.
+        This allows circular references resolution by pausing serialization."""
         try:
             self._delayed += 1
+            blob = self._begin()
             try:
                 fun(*args, **kwargs)
+                self._commit(blob)
                 return container
             except DelayPacking:
+                self._rollback(blob)
                 continuation = (fun, args, kwargs)
                 self._pending.append(continuation)
                 return container
@@ -816,16 +857,17 @@ class Unserializer(object):
             fun(*args, **kwargs)
 
         # Initialize the instance in creation order
-        for instance, snapshot in self._instances:
+        for restorator, instance, snapshot, _refid in self._instances:
+            snapshot = self._adapt_snapshot(restorator, snapshot)
             instance.recover(snapshot)
 
         # Calls the instances post restoration callback in reversed order
         # in an intent to reduce the possibilities of instances relying
         # on there references being fully restored when called.
         # This should not be relied on anyway.
-        for instance, _ in reversed(self._instances):
+        for _, instance, _, _ in reversed(self._instances):
             restored_fun = getattr(instance, "restored", None)
-            if restored_fun:
+            if restored_fun is not None:
                 restored_fun()
 
     def restore_type(self, type_name):
@@ -846,23 +888,32 @@ class Unserializer(object):
                              % (identifier, ))
         return instance
 
-    def restore_instance(self, type_name, data):
-        # Lookup the registry for a IRestorator
-        restorator = self._registry.lookup(type_name)
-        if restorator is None:
-            raise TypeError("Type %s not supported by unserializer %s"
-                            % (type_name, reflect.canonical_name(self)))
+    def prepare_instance(self, type_name):
+        restorator = self._lookup_restorator(type_name)
         # Prepare the instance for recovery
         instance = restorator.prepare()
+        if instance is not None:
+            return restorator, instance
+
+    def restore_instance(self, type_name, data, refid=None,
+                         restorator=None, instance=None):
+        if restorator is None:
+            restorator = self._lookup_restorator(type_name)
+
+        if instance is None:
+            # Prepare the instance for recovery
+            instance = restorator.prepare()
+
         if instance is None:
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
+            snapshot = self._adapt_snapshot(restorator, snapshot)
             return restorator.restore(snapshot)
 
         # Delay the instance restoration for later to handle circular refs
         return self.delayed_unpacking(instance,
                                       self._continue_restoring_instance,
-                                      instance, data)
+                                      restorator, instance, data, refid)
 
     def restore_reference(self, refid, data):
         if refid in self._references:
@@ -873,8 +924,10 @@ class Unserializer(object):
                 return value
             raise ValueError("Multiple references found with "
                              "the same identifier: %s" % refid)
-        value = self.unpack_data(data)
-        self._references[refid] = (id(data), value)
+        value = self._unpack_data(data, refid, data)
+        if refid not in self._references:
+            # If not yet referenced
+            self._references[refid] = (id(data), value)
         return value
 
     def restore_dereference(self, refid):
@@ -890,10 +943,10 @@ class Unserializer(object):
         return value
 
     def unpack_unordered_values(self, values):
-        '''Unpack an unordered list of values taking DelayPacking
+        """Unpack an unordered list of values taking DelayPacking
         exceptions into account to resolve circular references .
         Used to unpack set values when order is not guaranteed by
-        the serializer. See unpack_unordered_pairs().'''
+        the serializer. See unpack_unordered_pairs()."""
 
         values = list(values) # To support iterators
         result = []
@@ -903,10 +956,13 @@ class Unserializer(object):
         while values and max_loop:
             next_values = []
             for value_data in values:
+                blob = self._begin()
                 try:
                     # try unpacking the value
                     value = self.unpack_data(value_data)
+                    self._commit(blob)
                 except DelayPacking:
+                    self._rollback(blob)
                     # If it is delayed keep it for later
                     next_values.append(value_data)
                     continue
@@ -921,14 +977,14 @@ class Unserializer(object):
         return result
 
     def unpack_unordered_pairs(self, pairs):
-        '''Unpack an unordered list of value pairs taking DelayPacking
+        """Unpack an unordered list of value pairs taking DelayPacking
         exceptions into account to resolve circular references .
         Used to unpack dictionary items when the order is not guarennteed
         by the serializer. When item order change between packing
         and unpacking, references are not guaranteed to appear before
         dereferences anymore. So if unpacking an item fail because
         of unknown dereference, we must keep it aside, continue unpacking
-        the other items and continue later.'''
+        the other items and continue later."""
 
         items = [(False, k, v) for k, v in pairs]
         result = []
@@ -941,18 +997,24 @@ class Unserializer(object):
                 if key_unpacked:
                     key = key_data
                 else:
+                    blob = self._begin()
                     try:
                         # Try unpacking the key
                         key = self.unpack_data(key_data)
+                        self._commit(blob)
                     except DelayPacking:
+                        self._rollback(blob)
                         # If it is delayed keep it for later
                         next_items.append((False, key_data, value_data))
                         continue
 
+                blob = self._begin()
                 try:
                     # try unpacking the value
                     value = self.unpack_data(value_data)
+                    self._commit(blob)
                 except DelayPacking:
+                    self._rollback(blob)
                     # If it is delayed keep it for later
                     next_items.append((True, key, value_data))
                     continue
@@ -968,25 +1030,106 @@ class Unserializer(object):
 
         return result
 
-    ### Virtual Methods, to be Overridden by Sub-Classes ###
+    ### virtual ###
 
     def analyse_data(self, data):
-        '''Analyses the data provided and return a tuple containing
+        """Analyses the data provided and return a tuple containing
         the data type and a function to unpack it.
         The type can be None for immutable types, instances,
-        reference and dereferences.'''
+        reference and dereferences."""
 
+    ### private ###
 
-    ### Private Methods ###
+    def _begin(self):
+        # Start a DelayPacking protected section
+        blob = self._instances
+        self._instances = []
+        return blob
 
-    def _continue_restoring_instance(self, instance, data):
+    def _rollback(self, blob):
+        # We need to rollback after a DelayPacking has been raised
+        # we only keep instances that has been referenced
+        for instance in self._instances:
+            refid = instance[3]
+            if refid is not None:
+                blob.append(instance)
+        self._instances = blob
+
+    def _commit(self, blob):
+        # Commit after a DelayPacking protected section
+        # Joining the instance lists
+        blob.extend(self._instances)
+        self._instances = blob
+
+    def _lookup_restorator(self, type_name):
+        # Lookup the registry for a IRestorator
+        restorator = self._registry.lookup(type_name)
+        if restorator is None:
+            raise TypeError("Type %s not supported by unserializer %s"
+                            % (type_name, reflect.canonical_name(self)))
+        return restorator
+
+    def _unpack_data(self, data, refid, refdata):
+        # Just return pass-through types,
+        # support sub-classed base types and metaclasses
+        if set(type(data).__mro__) & self.pass_through_types:
+            return data
+
+        analysis = self.analyse_data(data)
+
+        if analysis is not None:
+
+            constructor, unpacker = analysis
+
+            if constructor is None:
+                # Immutable types
+                return unpacker(self, data)
+
+            if callable(constructor):
+                # Unpack the mutable containers that provides constructor
+                container = constructor()
+                if container is not None:
+                    if refid is not None:
+                        self._references[refid] = (id(refdata), container)
+                    return self.delayed_unpacking(container, unpacker,
+                                                  self, container, data)
+
+            else:
+                # Instance type name
+                prepared = self.prepare_instance(constructor)
+                if prepared is None:
+                    # Immutable instance
+                    return unpacker(self, data, None, None, None)
+
+                restorator, instance = prepared
+
+                if refid is not None:
+                    self._references[refid] = (id(refdata), instance)
+                return self.delayed_unpacking(instance, unpacker, self, data,
+                                              refid, restorator, instance)
+
+        raise TypeError("Type %s not supported by unserializer %s"
+                        % (type(data).__name__,
+                           reflect.canonical_name(self)))
+
+    def _continue_restoring_instance(self, restorator, instance, data, refid):
         snapshot = self.unpack_data(data)
         # Delay instance initialization to the end to be sure
         # all snapshots circular references have been resolved
-        self._instances.append((instance, snapshot))
+        self._instances.append((restorator, instance, snapshot, refid))
         return instance
 
+    def _adapt_snapshot(self, restorator, snapshot):
+        if self._source_ver is not None:
+            #TODO: If external adapter is needed change this to a cast
+            if IVersionAdapter.providedBy(restorator):
+                adapter = IVersionAdapter(restorator)
+                snapshot = adapter.adapt_version(snapshot,
+                                                 self._source_ver,
+                                                 self._target_ver)
+        return snapshot
 
-### Module Private ###
+
+### private ###
 
 _global_registry = Registry()

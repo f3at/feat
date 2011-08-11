@@ -43,7 +43,8 @@ class Root(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
-
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
         hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
 
         agencies_url = self.create_url(request, "agencies")
@@ -103,6 +104,8 @@ class Agencies(BaseResource):
 
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         if request.method == http.Methods.POST:
             if self.enable_actions and self.model.is_master():
@@ -227,6 +230,8 @@ class Agents(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         if request.method == http.Methods.POST:
             if self.enable_actions:
@@ -320,6 +325,8 @@ class Agency(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         if self.enable_actions and request.method == http.Methods.POST:
             data = "\n".join(request.readlines())
@@ -420,6 +427,8 @@ class Agent(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         if self.enable_actions and request.method == http.Methods.POST:
             data = "\n".join(request.readlines())
@@ -582,6 +591,8 @@ class Partners(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         doc = []
         self.render_header(doc)
@@ -622,6 +633,8 @@ class Resources(BaseResource):
     def render_resource(self, request, response, location):
         # Force mime-type to html
         response.set_mime_type("text/html")
+        response.set_header("Cache-Control", "no-store")
+        response.set_header("connection", "close")
 
         doc = []
         self.render_header(doc)

@@ -20,7 +20,6 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
 
 
 @common.attr(timescale=0.1)
-@common.attr('slow')
 class AlertAgentTest(common.SimulationTest):
 
     @defer.inlineCallbacks

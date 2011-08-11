@@ -7,7 +7,7 @@ import warnings
 from twisted.python import failure
 from zope.interface import implements
 
-from feat.common import log, defer, decorator, text_helper
+from feat.common import log, error, defer, decorator, text_helper
 
 from feat.interface.log import *
 from feat.interface.fiber import *
@@ -76,15 +76,26 @@ def override_result(_param, _result):
     return _result
 
 
+def handle_failure(failure, message, logger=None):
+    error.handle_failure(logger, failure, message)
+
+
+def raise_error(_param, _error_type, *args, **kwargs):
+    raise _error_type(*args, **kwargs)
+
+
 def print_debug(_param, _template="", *args):
     print _template % args
     return _param
 
 
 def print_trace(_param, _template="", *args):
+    postfix = repr(_param)
+    if isinstance(_param, failure.Failure):
+        postfix = "%r %s" % (_param, error.get_failure_message(_param))
     prefix = _template % args
     prefix = prefix + ": " if prefix else prefix
-    print "%s%r" % (prefix, _param)
+    print "%s%s" % (prefix, postfix)
     return _param
 
 
@@ -94,9 +105,12 @@ def debug(_param, _template="", *args):
 
 
 def trace(_param, _template="", *args):
+    postfix = repr(_param)
+    if isinstance(_param, failure.Failure):
+        postfix = "%r %s" % (_param, error.get_failure_message(_param))
     prefix = _template % args
     prefix = prefix + ": " if prefix else prefix
-    message = "%s%r" % (prefix, _param)
+    message = "%s%s" % (prefix, postfix)
     log.logex("fiber", LogLevel.debug, message, log_name="trace")
     return _param
 

@@ -1,5 +1,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import functools
 
 from zope.interface import implements
 from feat.common import log
@@ -8,7 +9,8 @@ from feat.agencies.interface import IConnectionFactory
 from feat.agencies import common
 
 
-class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
+class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
+                common.Statistics):
 
     implements(IConnectionFactory)
 
@@ -18,6 +20,7 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
         common.ConnectionManager.__init__(self)
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
+        common.Statistics.__init__(self)
 
         # name -> queue
         self._queues = {}
@@ -42,6 +45,7 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
         exchange = self._getExchange(name)
         if not exchange:
             self.log("Defining exchange: %r" % name)
+            self.increase_stat('exchanges declared')
             exchange = Exchange(name)
             self._exchanges[name] = exchange
         return exchange
@@ -51,7 +55,10 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
 
         queue = self._getQueue(name)
         if not queue:
-            queue = Queue(name)
+            self.increase_stat('queues created')
+            queue = Queue(name, on_deliver=functools.partial(
+                self.increase_stat, 'messages delivered'))
+
             self._queues[name] = queue
             self.log("Defining queue: %r" % name)
         return queue
@@ -59,6 +66,7 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper):
     def publish(self, key, shard, message):
         exchange = self._getExchange(shard)
         if exchange:
+            self.increase_stat('messages published')
             exchange.publish(message, key)
         else:
             self.error("Exchange %r not found!" % shard)

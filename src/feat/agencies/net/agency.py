@@ -1,6 +1,8 @@
+import sys
 import optparse
 import re
 import types
+import os
 
 from twisted.internet import reactor
 from twisted.spread import pb
@@ -10,22 +12,21 @@ from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker
-from feat.common import manhole, defer, time, text_helper, first, error
+from feat.common import log, defer, time, first, error, run
+from feat.common import manhole, text_helper
 from feat.process import standalone
-from feat.common.serialization import json
 from feat.gateway import gateway
 from feat.utils import locate
 
 from feat.agencies.net import messaging
 from feat.agencies.net import database
 
-from feat.interface.agent import *
-from feat.interface.agency import *
-from feat.agencies.interface import *
-from feat.agencies.net.broker import BrokerRole
+from feat.interface.agent import IAgentFactory, AgencyAgentState
+from feat.interface.agency import ExecMode
+from feat.agencies.interface import NotFoundError
+from feat.agencies.net.broker import BrokerRole, DEFAULT_SOCKET_PATH
 
 
-DEFAULT_SOCKET_PATH = None # Use broker default
 DEFAULT_MSG_HOST = "localhost"
 DEFAULT_MSG_PORT = 5672
 DEFAULT_MSG_USER = "guest"
@@ -42,11 +43,16 @@ DEFAULT_MH_PRIVKEY = "private.key"
 DEFAULT_MH_AUTH = "authorized_keys"
 DEFAULT_MH_PORT = 6000
 
+DEFAULT_ENABLE_SPAWNING_SLAVE = True
+DEFAULT_RUNDIR = "/var/log/feat"
+DEFAULT_LOGDIR = "/var/log/feat"
+DEFAULT_DAEMONIZE = False
 
 GATEWAY_PORT_COUNT = 100
 
-
 HOST_RESTART_RETRY_INTERVAL = 5
+DEFAULT_FORCE_HOST_RESTART = False
+MASTER_LOG_LINK = "feat.master.log"
 
 
 def add_options(parser):
@@ -55,63 +61,89 @@ def add_options(parser):
     group.add_option('-j', '--jourfile',
                      action="store", dest="agency_journal",
                      help=("journal filename (default: %s)"
-                           % DEFAULT_JOURFILE),
-                     default=DEFAULT_JOURFILE)
+                           % DEFAULT_JOURFILE))
     group.add_option('-S', '--socket-path', dest="agency_socket_path",
-                     help="path to the unix socket used by the agency",
-                     metavar="PATH", default=DEFAULT_SOCKET_PATH)
+                     help=("path to the unix socket used by the agency"
+                           "(default: %s)" % DEFAULT_SOCKET_PATH),
+                     metavar="PATH")
+    group.add_option('-b', '--no-slave',
+                     dest="agency_enable_spawning_slave", action="store_false",
+                     help=("Disable spawning slave agency"))
+    group.add_option('-R', '--rundir',
+                     action="store", dest="agency_rundir",
+                     help=("Rundir of the agency (default: %s)" %
+                           DEFAULT_RUNDIR))
+    group.add_option('-L', '--logdir',
+                      action="store", dest="agency_logdir",
+                      help=("agent log directory (default: %s)" %
+                            DEFAULT_LOGDIR))
+    group.add_option('-D', '--daemonize',
+                     action="store_true", dest="agency_daemonize",
+                     help="run in background as a daemon")
+    group.add_option('--force-host-restart',
+                     action="store_true", dest="agency_force_host_restart",
+                     help=("force restarting host agent which descriptor "
+                           "exists in database."))
+
     parser.add_option_group(group)
 
     # Messaging related options
     group = optparse.OptionGroup(parser, "Messaging options")
     group.add_option('-m', '--msghost', dest="msg_host",
-                     help="host of messaging server to connect to",
-                     metavar="HOST", default=DEFAULT_MSG_HOST)
+                     help=("host of messaging server to connect to "
+                           "(default: %s)" % DEFAULT_MSG_HOST),
+                     metavar="HOST")
     group.add_option('-p', '--msgport', dest="msg_port",
-                     help="port of messaging server to connect to",
-                     metavar="PORT", default=DEFAULT_MSG_PORT, type="int")
+                     help=("port of messaging server to connect to "
+                           "(default: %s" % DEFAULT_MSG_PORT),
+                     metavar="PORT", type="int")
     group.add_option('-u', '--msguser', dest="msg_user",
-                     help="username to loging to messaging server",
-                     metavar="USER", default=DEFAULT_MSG_USER)
+                     help=("username for messaging server (default: %s)" %
+                           DEFAULT_MSG_USER),
+                     metavar="USER")
     group.add_option('-c', '--msgpass', dest="msg_password",
-                     help="password to messaging server",
-                     metavar="PASSWORD", default=DEFAULT_MSG_PASSWORD)
+                     help=("password to messaging server (default: %s)" %
+                           DEFAULT_MSG_PASSWORD),
+                     metavar="PASSWORD")
     parser.add_option_group(group)
 
     # database related options
     group = optparse.OptionGroup(parser, "Database options")
     group.add_option('-H', '--dbhost', dest="db_host",
-                     help="host of database server to connect to",
-                     metavar="HOST", default=DEFAULT_DB_HOST)
+                     help=("host of database server to connect to "
+                           "(default: %s)" % DEFAULT_DB_HOST),
+                     metavar="HOST")
     group.add_option('-P', '--dbport', dest="db_port",
-                     help="port of messaging server to connect to",
-                     metavar="PORT", default=DEFAULT_DB_PORT, type="int")
+                     help=("port of messaging server to connect to "
+                           "(default: %s)" % DEFAULT_DB_PORT),
+                     metavar="PORT", type="int")
     group.add_option('-N', '--dbname', dest="db_name",
-                     help="host of database server to connect to",
-                     metavar="NAME", default=DEFAULT_DB_NAME)
+                     help=("host of database server to connect to "
+                           "(default: %s)" % DEFAULT_DB_NAME),
+                     metavar="NAME")
     parser.add_option_group(group)
 
     # manhole specific
     group = optparse.OptionGroup(parser, "Manhole options")
     group.add_option('-k', '--pubkey', dest='manhole_public_key',
-                     help="public key used by the manhole",
-                     default=DEFAULT_MH_PUBKEY)
+                     help=("public key file used by the manhole "
+                           "(default: %s)" % DEFAULT_MH_PUBKEY))
     group.add_option('-K', '--privkey', dest='manhole_private_key',
-                     help="private key used by the manhole",
-                     default=DEFAULT_MH_PRIVKEY)
+                     help=("private key file used by the manhole "
+                           "(default: %s)" % DEFAULT_MH_PRIVKEY))
     group.add_option('-A', '--authorized', dest='manhole_authorized_keys',
-                     help="file with authorized keys to be used by manhole",
-                     default=DEFAULT_MH_AUTH)
+                     help=("file with authorized keys to be used by manhole "
+                           "(default: %s)" % DEFAULT_MH_AUTH))
     group.add_option('-M', '--manhole', type="int", dest='manhole_port',
-                     help="port for the manhole to listen", metavar="PORT",
-                     default=DEFAULT_MH_PORT)
+                     help=("port for the manhole to listen (default: %s)" %
+                           DEFAULT_MH_PORT), metavar="PORT")
     parser.add_option_group(group)
 
     # gateway specific
     group = optparse.OptionGroup(parser, "Gateway options")
     group.add_option('-w', '--gateway-port', type="int", dest='gateway_port',
-                     help="port for the gateway to listen", metavar="PORT",
-                     default=DEFAULT_GW_PORT)
+                     help=("port for the gateway to listen (default: %s)" %
+                           DEFAULT_GW_PORT), metavar="PORT")
     parser.add_option_group(group)
 
 
@@ -130,23 +162,47 @@ class Agency(agency.Agency):
 
     agency_agent_factory = AgencyAgent
 
+    broker_factory = broker.Broker
+
     @classmethod
     def from_config(cls, env, options=None):
         agency = cls()
         agency._load_config(env, options)
         return agency
 
-    def __init__(self, msg_host=None, msg_port=None,
-                 msg_user=None, msg_password=None,
-                 db_host=None, db_port=None, db_name=None,
-                 public_key=None, private_key=None,
-                 authorized_keys=None, manhole_port=None,
-                 agency_journal=None, socket_path=None,
-                 gateway_port=None):
+    def __init__(self,
+                 msg_host=DEFAULT_MSG_HOST,
+                 msg_port=DEFAULT_MSG_PORT,
+                 msg_user=DEFAULT_MSG_USER,
+                 msg_password=DEFAULT_MSG_PASSWORD,
+                 db_host=DEFAULT_DB_HOST,
+                 db_port=DEFAULT_DB_PORT,
+                 db_name=DEFAULT_DB_NAME,
+                 public_key=DEFAULT_MH_PUBKEY,
+                 private_key=DEFAULT_MH_PRIVKEY,
+                 authorized_keys=DEFAULT_MH_AUTH,
+                 manhole_port=DEFAULT_MH_PORT,
+                 agency_journal=DEFAULT_JOURFILE,
+                 socket_path=DEFAULT_SOCKET_PATH,
+                 gateway_port=DEFAULT_GW_PORT,
+                 enable_spawning_slave=DEFAULT_ENABLE_SPAWNING_SLAVE,
+                 rundir=None,
+                 logdir=None,
+                 daemonize=DEFAULT_DAEMONIZE,
+                 force_host_restart=DEFAULT_FORCE_HOST_RESTART):
+
         agency.Agency.__init__(self)
+
+        curdir = os.path.abspath(os.curdir)
+        if rundir is None:
+            rundir = DEFAULT_RUNDIR if daemonize else curdir
+        if logdir is None:
+            logdir = DEFAULT_LOGDIR if daemonize else curdir
+
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
                           msg_password=msg_password,
+                          msg_user=msg_user,
                           db_host=db_host,
                           db_port=db_port,
                           db_name=db_name,
@@ -156,7 +212,12 @@ class Agency(agency.Agency):
                           manhole_port=manhole_port,
                           agency_journal=agency_journal,
                           socket_path=socket_path,
-                          gateway_port=gateway_port)
+                          gateway_port=gateway_port,
+                          enable_spawning_slave=enable_spawning_slave,
+                          rundir=rundir,
+                          logdir=logdir,
+                          daemonize=daemonize,
+                          force_host_restart=force_host_restart)
 
         self._ssh = None
         self._broker = None
@@ -185,10 +246,10 @@ class Agency(agency.Agency):
         return self._broker.wait_event(agent_id, event)
 
     @manhole.expose()
-    def spawn_agent(self, desc, *args, **kwargs):
+    def spawn_agent(self, desc, **kwargs):
         '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
         agent running in this agency to spawn a new agent of the given type.'''
-        self._to_spawn.append((desc, args, kwargs, ))
+        self._to_spawn.append((desc, kwargs, ))
         return self._flush_agents_to_spawn()
 
     def _flush_agents_to_spawn(self):
@@ -207,7 +268,7 @@ class Agency(agency.Agency):
                 to_spawn = self._to_spawn.pop(0)
             except IndexError:
                 break
-            desc, args, kwargs = to_spawn
+            desc, kwargs = to_spawn
             if not isinstance(desc, descriptor.Descriptor):
                 factory = descriptor.lookup(desc)
                 if factory is None:
@@ -218,6 +279,9 @@ class Agency(agency.Agency):
             yield agent.start_agent(desc, **kwargs)
 
     def initiate(self):
+        if self.config['agency']['daemonize']:
+            os.chdir(self.config['agency']['rundir'])
+
         mesg = messaging.Messaging(
             self.config['msg']['host'], int(self.config['msg']['port']),
             self.config['msg']['user'], self.config['msg']['password'])
@@ -241,10 +305,11 @@ class Agency(agency.Agency):
                                       port=ssh_port)
 
         socket_path = self.config['agency']['socket_path']
-        self._broker = broker.Broker(self, socket_path,
+        self._broker = self.broker_factory(self, socket_path,
                                 on_master_cb=self.on_become_master,
                                 on_slave_cb=self.on_become_slave,
-                                on_disconnected_cb=self.on_broker_disconnect)
+                                on_disconnected_cb=self.on_broker_disconnect,
+                                on_remove_slave_cb=self.on_remove_slave)
 
         self._setup_snapshoter()
 
@@ -298,27 +363,75 @@ class Agency(agency.Agency):
 
     def on_become_master(self):
         self._ssh.start_listening()
+        filename = os.path.join(self.config['agency']['rundir'],
+                                self.config['agency']['journal'])
         self._journal_writer = journaler.SqliteWriter(
-            self, filename=self.config['agency']['journal'], encoding='zip',
+            self, filename=filename, encoding='zip',
             on_rotate=self._force_snapshot_agents)
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
         self._start_master_gateway()
-        return self._start_host_agent_if_necessary()
+
+        self._redirect_text_log()
+        self._create_pid_file()
+        self._link_log_file(MASTER_LOG_LINK)
+
+        if 'enable_host_restart' not in self._broker.shared_state:
+            value = self.config['agency']['force_host_restart']
+            self._broker.shared_state['enable_host_restart'] = value
+
+        d = defer.succeed(None)
+        if self.config['agency']['enable_spawning_slave']:
+            d.addCallback(defer.drop_param, self._spawn_backup_agency)
+
+        d.addCallback(defer.drop_param, self._start_host_agent_if_necessary)
+        return d
+
+    def on_remove_slave(self):
+        return self._spawn_backup_agency()
 
     def on_become_slave(self):
         self._ssh.stop_listening()
         self._journal_writer = journaler.BrokerProxyWriter(self._broker)
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
+        self._redirect_text_log()
         self._start_slave_gateway()
 
-    def on_broker_disconnect(self):
+    def _redirect_text_log(self):
+        if self.config['agency']['daemonize']:
+            log_id = str(self.agency_id)
+
+            logname = "%s.%s.log" % ('feat', log_id, )
+            logfile = os.path.join(self.config['agency']['logdir'], logname)
+            log.FluLogKeeper.move_files(logfile, logfile)
+
+    def _link_log_file(self, filename):
+        if not self.config['agency']['daemonize']:
+            return
+
+        logfile, _ = log.FluLogKeeper.get_filenames()
+        basedir = os.path.dirname(logfile)
+        linkname = os.path.join(basedir, filename)
+        try:
+            os.unlink(linkname)
+        except OSError:
+            pass
+        try:
+            os.link(logfile, linkname)
+        except OSError as e:
+            self.warning("Failed to link log file %s to %s: %s",
+                         logfile, linkname, error.get_exception_message(e))
+
+    def on_broker_disconnect(self, pre_state):
         self._ssh.stop_listening()
-        if self._journal_writer:
-            self._journal_writer.close()
-            self._journal_writer = None
-        self._journaler.close()
+        d = self._journaler.close(flush_writer=False)
+        d.addCallback(defer.drop_param, self._gateway.cleanup)
+
+        if pre_state == BrokerRole.master:
+            d.addCallback(defer.drop_param, run.delete_pidfile,
+                          self.config['agency']['rundir'])
+        return d
 
     def get_journal_writer(self):
         '''Called by the broker internals to establish the bridge between
@@ -327,25 +440,29 @@ class Agency(agency.Agency):
 
     def on_killed(self):
         d = agency.Agency.on_killed(self)
-        d.addCallback(lambda _: self._disconnect)
+        d.addCallback(defer.drop_param, self._disconnect)
         return d
 
     @manhole.expose()
-    def full_shutdown(self):
+    def full_shutdown(self, stop_process=False):
         '''full_shutdown() -> Terminate all the slave agencies and shutdowns
         itself.'''
-        d = self._broker.shutdown_slaves()
-        d.addCallback(defer.drop_param, self.shutdown)
+        self._shutting_down = True
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param, self._broker.shutdown_slaves)
+        d.addCallback(defer.drop_param, self.shutdown, stop_process)
         return d
 
     @manhole.expose()
-    def shutdown(self):
+    def shutdown(self, stop_process=False):
         '''shutdown() -> Shutdown the agency in gentel manner (terminating
         all the agents).'''
         self._shutting_down = True
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
         d.addCallback(defer.drop_param, self._disconnect)
+        if stop_process:
+            d.addBoth(defer.drop_param, self._stop_process)
         return d
 
     def upgrade(self, upgrade_cmd):
@@ -361,9 +478,15 @@ class Agency(agency.Agency):
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
 
+    def register_agent(self, medium):
+        agency.Agency.register_agent(self, medium)
+        self._broker.register_agent(medium)
+
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
-        self._broker.push_event(medium.get_agent_id(), 'unregistered')
+        agent_id = medium.get_agent_id()
+        self._broker.push_event(agent_id, 'unregistered')
+        self._broker.unregister_agent(medium)
         self._start_host_agent_if_necessary()
 
     @manhole.expose()
@@ -389,10 +512,8 @@ class Agency(agency.Agency):
         return agency.Agency.start_agent(self, descriptor, **kwargs)
 
     def start_standalone_agent(self, descriptor, factory, **kwargs):
-        cmd, cmd_args, env = factory.get_cmd_line(**kwargs)
+        cmd, cmd_args, env = factory.get_cmd_line(descriptor, **kwargs)
         self._store_config(env)
-        env['FEAT_AGENT_ID'] = str(descriptor.doc_id)
-        env['FEAT_AGENT_KWARGS'] = json.serialize(kwargs)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
 
         d = self._broker.wait_event(recp.key, 'started')
@@ -491,7 +612,7 @@ class Agency(agency.Agency):
     def get_slave(self, slave_id):
         '''get_slave(slave_id) -> Give the reference to the nth slave
         agency.'''
-        return self._broker.slaves[slave_id]
+        return self._broker.slaves[slave_id].reference
 
     # Config manipulation (standalone agencies receive the configuration
     # in the environment).
@@ -502,31 +623,36 @@ class Agency(agency.Agency):
                      public_key=None, private_key=None,
                      authorized_keys=None, manhole_port=None,
                      agency_journal=None, socket_path=None,
-                     gateway_port=None):
+                     gateway_port=None, enable_spawning_slave=None,
+                     rundir=None, logdir=None, daemonize=None,
+                     force_host_restart=None):
 
-        def get(value, default=None):
-            if value is not None:
-                return value
-            return default
+        msg_conf = dict(host=msg_host,
+                        port=msg_port,
+                        user=msg_user,
+                        password=msg_password)
 
-        msg_conf = dict(host=get(msg_host, DEFAULT_MSG_HOST),
-                        port=get(msg_port, DEFAULT_MSG_PORT),
-                        user=get(msg_user, DEFAULT_MSG_USER),
-                        password=get(msg_password, DEFAULT_MSG_PASSWORD))
-
-        db_conf = dict(host=get(db_host, DEFAULT_DB_HOST),
-                       port=get(db_port, DEFAULT_DB_PORT),
-                       name=get(db_name, DEFAULT_DB_NAME))
+        db_conf = dict(host=db_host,
+                       port=db_port,
+                       name=db_name)
 
         manhole_conf = dict(public_key=public_key,
                             private_key=private_key,
                             authorized_keys=authorized_keys,
                             port=manhole_port)
 
-        agency_conf = dict(journal=agency_journal,
-                           socket_path=socket_path)
+        if socket_path and not os.path.isabs(socket_path):
+            socket_path = os.path.join(rundir, socket_path)
 
-        gateway_conf = dict(port=get(gateway_port, DEFAULT_GW_PORT))
+        agency_conf = dict(journal=agency_journal,
+                           socket_path=socket_path,
+                           rundir=rundir,
+                           logdir=logdir,
+                           enable_spawning_slave=enable_spawning_slave,
+                           daemonize=daemonize,
+                           force_host_restart=force_host_restart)
+
+        gateway_conf = dict(port=gateway_port)
 
         self.config = dict()
         self.config['msg'] = msg_conf
@@ -593,32 +719,62 @@ class Agency(agency.Agency):
         def set_flag(value):
             self._starting_host = value
 
+
         if self.role != BrokerRole.master:
-            # we are not the master agency
+            self.log('Not starting host agent, because we are not the '
+                     'master agency')
             return
 
         if self._shutting_down:
-            # the agency is about to terminate itself
+            self.log('Not starting host agent, because the agency '
+                     'is about to terminate itself')
             return
 
         if self._get_host_agent():
-            # we already have host agent
+            self.log('Not starting host agent, because we already '
+                     ' have one')
             return
 
         if self._starting_host:
-            # agency if already starting the host agent
+            self.log('Not starting host agent, because we are already '
+                     'starting one.')
             return
 
+        def handle_error_on_get(fail, connection, doc_id):
+            fail.trap(NotFoundError)
+            desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
+            self.log("Host Agent descriptor not found in database, "
+                     "creating a brand new instance.")
+            return connection.save_document(desc)
+
+        def handle_success_on_get(desc):
+            if not self._broker.shared_state['enable_host_restart']:
+                msg = ("Descriptor of host agent has been found in "
+                       "database (hostname: %s). This should not happen "
+                       "on the first run. If you really want to restart "
+                       "the host agent include --force-host-restart "
+                       "options to feat script." % desc.doc_id)
+                self.error(msg)
+                d = self.full_shutdown(stop_process=True)
+                d.addBoth(defer.raise_error, RuntimeError, msg)
+                return d
+            self.log("Host Agent descriptor found in database, will restart.")
+            return desc
+
         set_flag(True)
-        self.info('Starting host agent')
-        desc = host.Descriptor(shard=u'lobby')
+        self.info('Starting host agent.')
         conn = self._database.get_connection()
 
+        doc_id = self.get_hostname()
         d = defer.Deferred()
         d.addCallback(defer.drop_param, self.wait_connected)
-        d.addCallback(defer.drop_param, conn.save_document, desc)
+        d.addCallback(defer.drop_param, conn.get_document, doc_id)
+        d.addCallbacks(handle_success_on_get, handle_error_on_get,
+                       errbackArgs=(conn, doc_id, ))
         d.addCallback(self.start_agent, hostdef=self._hostdef)
         d.addBoth(defer.bridge_param, set_flag, False)
+        d.addCallback(defer.drop_param, self._broker.shared_state.__setitem__,
+                      'enable_host_restart', True)
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
         d.addErrback(self._host_restart_failed)
 
@@ -654,6 +810,12 @@ class Agency(agency.Agency):
                 defer.returnValue(found)
         defer.returnValue(None)
 
+    @manhole.expose()
+    def snapshot_agents(self, force=False):
+        agency.Agency.snapshot_agents(self, force)
+        if force:
+            return self._broker.broadcast_force_snapshot()
+
     def _setup_snapshoter(self):
         self._snapshot_task = time.callLater(300, self._trigger_snapshot)
 
@@ -665,6 +827,7 @@ class Agency(agency.Agency):
 
     def _force_snapshot_agents(self):
         self.log("Journal has been rotated, forcing snapshot of agents")
+        # TODO: Mind also the agents running in slave agencies
         self.snapshot_agents(force=True)
 
     def _cancel_snapshoter(self):
@@ -683,3 +846,42 @@ class Agency(agency.Agency):
         range = (master_port, master_port + GATEWAY_PORT_COUNT)
         self._gateway = gateway.Gateway(self, range)
         self._gateway.initiate_master()
+
+    def _create_pid_file(self):
+        rundir = self.config['agency']['rundir']
+        pid_file = run.acquire_pidfile(rundir)
+
+        path = run.write_pidfile(rundir, file=pid_file)
+        self.log("Written pid file %s" % path)
+
+    def _spawn_backup_agency(self):
+
+        def get_cmd_line():
+            python_path = ":".join(sys.path)
+            path = os.environ.get("PATH", "")
+            feat_debug = self.get_logging_filter()
+
+            command = 'feat'
+            args = ['-D']
+            env = dict(PYTHONPATH=python_path,
+                       FEAT_DEBUG=feat_debug,
+                       PATH=path)
+            return command, args, env
+
+        if self._shutting_down:
+            return
+
+        if self._broker.is_master() and not self._broker.has_slave():
+            self.log("Spawning backup agency")
+            cmd, cmd_args, env = get_cmd_line()
+            self._store_config(env)
+
+            p = standalone.Process(self, cmd, cmd_args, env)
+            return p.restart()
+        else:
+            return
+
+    ### slave agency process related
+
+    def _stop_process(self):
+        reactor.stop()

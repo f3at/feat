@@ -2,7 +2,8 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum
 
-__all__ = ["IRegistry", "IRestorator", "ISnapshotable", "ISerializable",
+__all__ = ["IRegistry", "IRestorator",
+           "ISnapshotable", "ISerializable", "IVersionAdapter",
            "IExternal", "IInstance", "IReference", "IDereference",
            "IExternalizer", "Capabilities", "IFreezer", "IConverter"]
 
@@ -120,6 +121,12 @@ class ISerializable(ISnapshotable):
         '''Called when all unserialized items have been restored.
         Only MUTABLE types are called.
         WARNING: It doesn't mean all restored() functions have been called.'''
+
+
+class IVersionAdapter(Interface):
+
+    def adapt_version(snapshot, source_ver, target_ver):
+        """Adapt a snapshot from a version to another."""
 
 
 class IExternal(Interface):
