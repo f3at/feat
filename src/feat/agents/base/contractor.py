@@ -91,7 +91,7 @@ class NestingContractor(BaseContractor):
         else:
             self.log("Will nest contract to %d contractors.", len(recipients))
 
-        announcement = original_announcement.clone()
+        announcement = original_announcement.duplicate()
         announcement.level += 1
 
         announcement.expiration_time = self._get_time_window(
@@ -111,7 +111,7 @@ class NestingContractor(BaseContractor):
     def grant_nested_bids(self, state, original_grant):
         if not hasattr(state, 'nested_manager'):
             return
-        grant = original_grant.clone()
+        grant = original_grant.duplicate()
         grant.expiration_time = self._get_time_window(grant.expiration_time)
         state.nested_manager.grant_all(grant)
 

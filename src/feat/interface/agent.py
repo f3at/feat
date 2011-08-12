@@ -84,6 +84,15 @@ class IAgencyAgent(Interface):
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
 
+    def enable_channel(channel_type):
+        """Enable specified channel type for this agent."""
+
+    def disable_channel(channel_type):
+        """Disable specified channel type for this agent."""
+
+    def wait_channel(channel_type):
+        """Wait for the specified channel type to be setup."""
+
     def observe(callable, *args, **kwargs):
         """
         Observes the asynchronous method result.
@@ -155,9 +164,6 @@ class IAgencyAgent(Interface):
 
     def register_interest(factory):
         '''Registers an interest in a contract or a request.'''
-
-    def revoke_interest(factory):
-        '''Revokes any interest in a contract or a request.'''
 
     def initiate_protocol(factory, *args, **kwargs):
         '''

@@ -383,7 +383,6 @@ class IntegrationTestCase(common.TestCase):
 
         process = yield self.spawn_agency()
         yield self.wait_for_pid(pid_path)
-
         host_desc = yield self.db.get_document(hostname)
         self.assertEqual(1, host_desc.instance_id)
 

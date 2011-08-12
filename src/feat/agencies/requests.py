@@ -67,7 +67,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyRequester.request')
     def request(self, request):
-        request = request.clone()
+        request = request.duplicate()
         self.log("Sending request: %r.", request)
         self._ensure_state(RequestState.requested)
 
@@ -171,7 +171,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyReplier.reply')
     @replay.named_side_effect('AgencyReplier.reply')
     def reply(self, reply):
-        reply = reply.clone()
+        reply = reply.duplicate()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
         self._cancel_expiration_call()

@@ -20,7 +20,7 @@ class HostPartner(agent.HostPartner):
     def initiate(self, agent):
         # Host Agent on the other end is about to join our shard,
         # his address will change.
-        shard = agent.get_own_address().shard
+        shard = agent.get_shard_id()
         self.recipient = recipient.Agent(self.recipient.key, shard)
 
         if self.allocation_id is None:
@@ -176,7 +176,7 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
         state.medium.register_interest(QueryStructureContractor)
 
         # Creates shard's notifications poster
-        shard = self.get_own_address().shard
+        shard = self.get_shard_id()
         recp = recipient.Broadcast(ShardNotificationPoster.protocol_id, shard)
         state.poster = self.initiate_protocol(ShardNotificationPoster, recp)
 

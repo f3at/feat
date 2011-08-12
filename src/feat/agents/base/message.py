@@ -30,7 +30,17 @@ class BaseMessage(formatable.Formatable):
     formatable.field('payload', dict())
 
     def clone(self):
+        """Returns an exact copy of the message.
+        KNOW WAT YOU ARE DOING, some special fields
+        SHOULD NOT be the same in different messages."""
         return copy.deepcopy(self)
+
+    def duplicate(self):
+        """Returns a duplicate of the message safe to modify
+        and use for another message."""
+        msg = self.clone()
+        msg.message_id = None
+        return msg
 
     def duplication_recipient(self):
         '''Returns a recipient to whom the duplication
@@ -62,6 +72,11 @@ class DialogMessage(BaseMessage):
     formatable.field('reply_to', None)
     formatable.field('sender_id', None)
     formatable.field('receiver_id', None)
+
+    def duplicate(self):
+        msg = BaseMessage.duplicate(self)
+        msg.reply_to = None
+        return msg
 
     def duplication_recipient(self):
         return self.reply_to

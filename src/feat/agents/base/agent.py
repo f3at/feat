@@ -109,7 +109,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.journaled
     def initiate_agent(self, state, **keywords):
-        f = self.call_mro('initiate', **keywords)
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param, self.call_mro, 'initiate', **keywords)
         f.add_callback(fiber.drop_param, self._initiate_partners)
         return f
 
@@ -196,6 +197,11 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         desc = state.medium.get_descriptor()
         return desc.doc_id + u"/" + unicode(desc.instance_id)
 
+    @replay.immutable
+    def get_shard_id(self, state):
+        '''Returns current shard identifier.'''
+        return self.get_own_address().route
+
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 
@@ -250,10 +256,6 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
             f.chain(fiber.fail(partners.DoublePartnership(msg)))
             return f
-#        f.add_callback(fiber.drop_param, self.initiate_protocol,
-#                       requester.Propose, recp, allocation_id,
-#                       partner_allocation_id,
-#                       our_role, partner_role, substitute)
         factory = retrying.RetryingProtocolFactory(requester.Propose,
                                                    max_retries=max_retries)
         f.add_callback(fiber.drop_param, self.initiate_protocol,
@@ -363,6 +365,10 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return state.medium.register_interest(*args, **kwargs)
 
     @replay.immutable
+    def revoke_interest(self, state, *args, **kwargs):
+        return state.medium.revoke_interest(*args, **kwargs)
+
+    @replay.immutable
     def get_document(self, state, doc_id):
         return fiber.wrap_defer(state.medium.get_document, doc_id)
 
@@ -386,7 +392,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def discover_service(self, state, string_or_factory,
                          timeout=3, shard='lobby'):
         initiator = manager.DiscoverService(string_or_factory, timeout)
-        recp = recipient.Broadcast(shard=shard,
+        recp = recipient.Broadcast(route=shard,
                                    protocol_id=initiator.protocol_id)
 
         f = fiber.succeed(initiator)

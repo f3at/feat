@@ -489,7 +489,7 @@ class RecipientFromPartner(recipient.Recipient):
 
     def __init__(self, partner):
         recipient.Recipient.__init__(self, partner.recipient.key,
-                                     partner.recipient.shard)
+                                     partner.recipient.route)
 
 
 components.registerAdapter(RecipientFromPartner, BasePartner,

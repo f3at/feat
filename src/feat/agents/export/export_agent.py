@@ -181,7 +181,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
             fields=("Agent_id", "Shard", "Strategy", "Applied",
                     "Cancelled", "Failure"),
             lengths=(40, 40, 20, 15, 15, 40))
-        text = t.render(((x.recipient.key, x.recipient.shard,
+        text = t.render(((x.recipient.key, x.recipient.route,
                           x.strategy.name, x.applied, x.cancelled,
                           x.failure or "")
                          for x in migration.get_steps()))
@@ -410,7 +410,7 @@ class ApplyMigrationStep(task.BaseTask):
         if blackbox:
             kwargs['blackbox'] = blackbox
         return host.start_agent_in_shard(state.agent, state.descriptor,
-                                         state.step.recipient.shard,
+                                         state.step.recipient.route,
                                          **kwargs)
 
     @replay.journaled
@@ -791,7 +791,7 @@ class Migration(replay.Replayable):
         resp = dict()
         for step in state.steps:
             if step.strategy == Migratability.host:
-                shard = step.recipient.shard
+                shard = step.recipient.route
                 if shard not in resp:
                     resp[shard] = list()
                 resp[shard].append(step.recipient.key)
@@ -804,7 +804,7 @@ class Migration(replay.Replayable):
         '''
         state.steps = [x for x in state.steps
                        if not (x.strategy == Migratability.locally and
-                               x.recipient.shard == shard)]
+                               x.recipient.route == shard)]
         return self
 
     ### private ###

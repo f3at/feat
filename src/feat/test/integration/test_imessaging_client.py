@@ -5,7 +5,7 @@ from twisted.trial.unittest import SkipTest
 
 from feat.test.common import attr, delay, StubAgent, Mock
 from feat.agencies.emu import messaging as emu_messaging
-from feat.agents.base import message
+from feat.agents.base import message, recipient
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
 
@@ -39,7 +39,7 @@ class TestCase(object):
     number_of_agents = 2
 
     def _agent(self, n):
-        return dict(key=self.agents[n].get_queue_name(), shard='lobby')
+        return recipient.Recipient(self.agents[n].channel_id, 'lobby')
 
     @defer.inlineCallbacks
     def init_agents(self):
@@ -47,23 +47,23 @@ class TestCase(object):
         self.connections = list()
         bindings = list()
         for agent in self.agents:
-            connection = yield self.messaging.get_connection(agent)
+            connection = yield self.messaging.new_channel(agent)
             self.connections.append(connection)
-            pb = connection.personal_binding(agent.get_queue_name())
+            pb = connection.bind(agent.channel_id)
             bindings.append(pb)
-        yield defer.DeferredList(map(lambda b: b.created, bindings))
+        yield defer.DeferredList(map(lambda b: b.wait_created(), bindings))
 
     @attr(number_of_agents=2)
     @defer.inlineCallbacks
     def testTwoAgentsTalking(self):
         d = self.cb_after(None, self.agents[1], 'on_message')
         d2 = self.cb_after(None, self.agents[0], 'on_message')
-        self.connections[0].publish(message=m("you stupid!"), **self._agent(1))
+        self.connections[0].post(self._agent(1), m("you stupid!"))
         yield d
         self.assertEqual(1, len(self.agents[1].messages))
         self.assertEqual('you stupid!', unwrap(self.agents[1].messages[0]))
 
-        self.connections[0].publish(message=m("buzz off"), **self._agent(0))
+        self.connections[0].post(self._agent(0), m("buzz off"))
 
         yield d2
         self.assertEqual(1, len(self.agents[0].messages))
@@ -72,11 +72,10 @@ class TestCase(object):
     @defer.inlineCallbacks
     def testMultipleAgentsWithSameBinding(self):
         key = 'some key'
-        bindings = map(lambda x: x.personal_binding(key), self.connections)
-        yield defer.DeferredList(map(lambda x: x.created, bindings))
-
-        self.connections[0].publish(message=m('some message'),
-                                    key=key, shard='lobby')
+        bindings = map(lambda x: x.bind(key), self.connections)
+        yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
+        recip = recipient.Recipient(key, 'lobby')
+        self.connections[0].post(recip, m('some message'))
         yield defer.DeferredList(map(
             lambda x: self.cb_after(None, method='on_message', obj=x),
                                    self.agents))
@@ -90,12 +89,13 @@ class TestCase(object):
         key = 'some key'
         msg = m("only for connection 0")
 
-        bindings = [self.connections[0].personal_binding(key, shard),
-                    self.connections[1].personal_binding(key)]
-        yield defer.DeferredList(map(lambda x: x.created, bindings))
+        bindings = [self.connections[0].bind(key, shard),
+                    self.connections[1].bind(key)]
+        yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
 
         d = self.cb_after(None, obj=self.agents[0], method="on_message")
-        yield self.connections[1].publish(message=msg, key=key, shard=shard)
+        recip = recipient.Recipient(key, shard)
+        yield self.connections[1].post(recip, msg)
         yield d
 
         self.assertEqual(0, len(self.agents[1].messages))
@@ -108,13 +108,14 @@ class TestCase(object):
         key = 'some key'
         msg = m("only for connection 0")
 
-        bindings = [self.connections[0].personal_binding(key, shard),
-                    self.connections[1].personal_binding(key)]
-        yield defer.DeferredList(map(lambda x: x.created, bindings))
+        bindings = [self.connections[0].bind(key, shard),
+                    self.connections[1].bind(key)]
+        yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
 
         yield defer.DeferredList(map(lambda x: x.revoke(), bindings))
 
-        yield self.connections[1].publish(message=msg, key=key, shard=shard)
+        recip = recipient.Recipient(key, shard)
+        yield self.connections[1].post(recip, msg)
 
         yield delay(None, 0.1)
 
@@ -153,16 +154,14 @@ class RabbitSpecific(object):
     def testReconnect(self):
         mock = self.setup_receiver()
         d1 = self.cb_after(None, self.agents[0], "on_message")
-        yield self.connections[1].publish(message=m("first message"),
-                                          **self._agent(0))
+        yield self.connections[1].post(self._agent(0), m("first message"))
         yield d1
         yield self.disconnect_client()
         yield common.delay(None, 0.1)
         self.assertCalled(mock, 'on_disconnect', times=1)
 
         d2 = self.cb_after(None, self.agents[0], "on_message")
-        yield self.connections[1].publish(message=m("second message"),
-                                          **self._agent(0))
+        yield self.connections[1].post(self._agent(0), m("second message"))
         yield d2
 
         self.assertEqual(2, len(self.agents[0].messages))
@@ -185,7 +184,7 @@ class RabbitSpecific(object):
             for conn, i in zip(self.connections, range(total)):
                 target = (i + 1) % total
                 msg = "%s,%s" % (attempt, target, )
-                d = conn.publish(message=m(msg), **self._agent(target))
+                d = conn.post(self._agent(target), m(msg))
                 deferrs.append(d)
             return defer.DeferredList(deferrs)
 
@@ -231,17 +230,17 @@ class RabbitSpecific(object):
         '''
         agent = StubAgent()
         self.agents = [agent]
-        connection = yield self.messaging.get_connection(agent)
+        channel = yield self.messaging.new_channel(agent)
 
         # wait for connection to be established
-        client = yield connection._messaging.factory.add_connection_made_cb()
+        client = yield channel._messaging.factory.add_connection_made_cb()
 
         self.assertIsInstance(client, messaging.MessagingClient)
-        binding = connection.personal_binding(agent.get_queue_name())
-        yield binding.created
+        binding = channel.bind(agent.channel_id)
+        yield binding.wait_created()
 
         d = self.cb_after(None, agent, 'on_message')
-        connection.publish(message=m('something'), **self._agent(0))
+        channel.post(self._agent(0), m('something'))
         yield d
 
         self.assertEqual(1, len(agent.messages))

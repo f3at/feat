@@ -41,7 +41,7 @@ class ResponsablePartner(partners.BasePartner):
 
     def on_restarted(self, agent, old_recipient):
         assert old_recipient
-        assert self.recipient.shard == 'shard'
+        assert self.recipient.route == 'shard'
         agent.done_migrated()
 
     def on_buried(self, agent, brothers):
@@ -287,7 +287,7 @@ class PartnershipTest(common.SimulationTest):
         resp = yield monitor.notify_died(irecv, iinit)
         self.assertEqual('ACCEPT_RESPONSABILITY', resp)
 
-        new_address = recipient.Agent(agent_id = iinit.key, shard=u'shard')
+        new_address = recipient.Agent(agent_id = iinit.key, route=u'shard')
         yield monitor.notify_restarted(irecv, iinit, new_address)
         yield self.wait_for_idle(3)
         self.assertTrue(self.receiver.get_agent().has_migrated())

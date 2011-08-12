@@ -101,9 +101,9 @@ class Agency(agency.Agency):
         if key in self._disabled_protocols:
             self._disabled_protocols.remove(key)
 
-    def initiate(self, messaging, database, journaler, driver):
+    def initiate(self, database, journaler, driver, *backends):
         self._driver = driver
-        return agency.Agency.initiate(self, messaging, database, journaler)
+        return agency.Agency.initiate(self, database, journaler, *backends)
 
     def upgrade(self, upgrade_cmd):
         self._upgrade_cmd = upgrade_cmd

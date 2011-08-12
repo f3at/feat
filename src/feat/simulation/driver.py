@@ -5,7 +5,7 @@ import uuid
 
 from feat.common import log, manhole, defer, reflect, time
 from feat.agencies import journaler
-from feat.agencies.emu import messaging, database
+from feat.agencies.emu import messaging, tunneling, database
 from feat.test import factories
 from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
@@ -40,7 +40,8 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        d = ag.initiate(self._messaging, self._database, self._journaler, self)
+        d = ag.initiate(self._database, self._journaler, self,
+                        self._messaging, self._tunneling)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -165,6 +166,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
+        self._tunneling = tunneling.Backend()
         self._database = database.Database()
         jouropts = dict()
         if jourfile:
@@ -205,6 +207,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         del(self._journaler)
         del(self._jourwriter)
         del(self._messaging)
+        del(self._tunneling)
         del(self._database)
         del(self._agencies)
         del(self._breakpoints)
@@ -225,7 +228,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     yield agent
 
     def is_idle(self):
-        return self._messaging.is_idle() and self.are_agents_idle()
+        return (self._messaging.is_idle()
+                and self._tunneling.is_idle()
+                and self.are_agents_idle())
 
     def are_agents_idle(self):
         return all([agent.is_idle() for agent in self.iter_agents()])

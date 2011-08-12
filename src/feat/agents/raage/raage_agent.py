@@ -70,7 +70,7 @@ class AllocationContractor(contractor.NestingContractor):
     @replay.mutable
     def _ask_own_shard(self, state, announcement):
         f = state.agent.get_list_of_hosts_in_shard()
-        f.add_callback(self._start_manager, announcement.clone())
+        f.add_callback(self._start_manager, announcement.duplicate())
         return f
 
     @replay.mutable

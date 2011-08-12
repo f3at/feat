@@ -575,7 +575,7 @@ class Monitor(Agent):
                             "<TD>", type_name, "</TD>"
                             "<TD><A href='", agent_url, "'>",
                             recip.key, "</A></TD>",
-                            "<TD>", recip.shard, "</TD>"
+                            "<TD>", recip.route, "</TD>"
                             "<TD>", pat["state"].name, "</TD>"
                             "<TD align='right'>", str(pat["counter"]), "</TD>"
                             "</TR>"])

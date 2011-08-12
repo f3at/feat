@@ -15,12 +15,12 @@ from feat.agents.base.partners import FindPartnerError
 class CommonMixin(object):
 
     def partners_of(self, agent):
-        return set(map(lambda x: x.recipient.shard,
+        return set(map(lambda x: x.recipient.route,
                    agent.query_partners('neighbours')))
 
     def shard_of(self, agent):
         self.assertIsInstance(agent, shard_agent.ShardAgent)
-        return agent.get_own_address().shard
+        return agent.get_shard_id()
 
     @defer.inlineCallbacks
     def query_partners(self, agent):

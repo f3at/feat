@@ -350,7 +350,7 @@ class SimulationStartAgentContract(common.SimulationTest):
     def testRunningContract(self):
         self.assertEqual(3, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('contract-running-agent'))
-        shard = self.agent.get_own_address().shard
+        shard = self.agent.get_shard_id()
         yield self.agent.request(shard)
         self.assertEqual(2, self.count_agents('contract-running-agent'))
 
@@ -361,7 +361,7 @@ class SimulationStartAgentContract(common.SimulationTest):
 
     @defer.inlineCallbacks
     def testRunningWithSpecificResource(self):
-        shard = self.agent.get_own_address().shard
+        shard = self.agent.get_shard_id()
         res = dict(epu=20, core=1)
         recp = yield self.agent.request(shard, res)
         doc = yield self.driver._database_connection.get_document(

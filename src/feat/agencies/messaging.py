@@ -1,11 +1,19 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import warnings
+
 from zope.interface import implements
 
-from twisted.internet import defer, reactor
-from feat.common import log
-from feat.agencies.interface import IMessagingPeer, IMessagingClient
+from twisted.internet import reactor
+from feat.common import log, defer
+from feat.agencies.interface import IMessagingClient
+from feat.agents.base import recipient
 from feat.agents.base.message import BaseMessage
+
+from feat.agencies.interface import IDialogMessage
+from feat.interface.channels import IChannel
+from feat.interface.channels import IChannelBinding
+from feat.interface.channels import IChannelSink
 
 
 class FinishConnection(Exception):
@@ -14,33 +22,134 @@ class FinishConnection(Exception):
 
 class Connection(log.Logger):
 
-    implements(IMessagingClient)
+    implements(IMessagingClient, IChannel)
+
+    support_broadcast = True
 
     def __init__(self, messaging, agent):
         log.Logger.__init__(self, messaging)
         self._messaging = messaging
-        self._agent = IMessagingPeer(agent)
+        self._sink = IChannelSink(agent)
 
         self._bindings = []
-        self._queue_name = self._agent.get_queue_name()
-        self.log_name = self._queue_name
         self._queue = None
-        self._disconnect = False
-        self._consumeDeferred = None
+        self._disconnected = False
+        self._consume_deferred = None
+
+        self._queue_name = self._sink.channel_id
+        self._default_route = self._sink.default_route
+        self.log_name = self._queue_name
 
     def initiate(self):
+        d = defer.succeed(None)
         if self._queue_name is not None:
-            d = defer.maybeDeferred(self._messaging.defineQueue,
-                self._queue_name)
-            d.addCallback(self._mainLoop)
+            d.addCallback(defer.drop_param,
+                          self._messaging.define_queue, self._queue_name)
+            d.addCallback(self._main_loop)
         else:
             self.warning('Queue name is None, skipping creating queue '
                          'and consumer.')
-            d = defer.succeed(None)
-        d.addCallback(lambda _: self)
+        d.addCallback(defer.override_result, self)
         return d
 
-    def _mainLoop(self, queue):
+    ### IMessagingClient ###
+
+    def disconnect(self):
+        warnings.warn("IMessagingClient's diconnect() is deprecated, "
+                      "please use IChannel's release() instead.",
+                      DeprecationWarning)
+        return self.release()
+
+    def personal_binding(self, key, shard=None):
+        warnings.warn("IMessagingClient's personal_binding() is deprecated, "
+                      "please use IChannel's bind() instead.",
+                      DeprecationWarning)
+        return self.bind(key, shard)
+
+    def publish(self, key, shard, message):
+        warnings.warn("IMessagingClient's publish() is deprecated, "
+                      "please use IChannel's post() instead.",
+                      DeprecationWarning)
+        return self.post(recipient.Recipient(key=key, route=shard), message)
+
+    ### IChannel ###
+
+    @property
+    def channel_type(self):
+        return self._messaging.channel_type
+
+    def post(self, recipients, message):
+        if not isinstance(message, BaseMessage):
+            raise ValueError("Expected second argument to be "
+                             "f.a.b.BaseMessage, got %r instead"
+                             % (type(message), ))
+
+        recipients = recipient.IRecipients(recipients)
+
+        if IDialogMessage.providedBy(message):
+            reply_to = message.reply_to
+            if reply_to is None:
+                reply_to = recipient.Recipient(self._sink.channel_id,
+                                               self._sink.default_route,
+                                               self.channel_type)
+                message.reply_to = reply_to
+            elif reply_to.channel != self.channel_type:
+                self.error("Invalid reply_to for messaging backend, "
+                           "dropping %d instance(s) of message: %r",
+                           len(list(recipients)), message)
+                return
+
+        defers = []
+        for recip in recipients:
+            assert recip.channel == self.channel_type, \
+                   "Unexpected channel type"
+            self.log('Sending message to %r', recip)
+            d = self._messaging.publish(recip.key, recip.route, message)
+            defers.append(d)
+        return defer.DeferredList(defers)
+
+    def release(self):
+        self._disconnected = True
+        if self._consume_deferred and not self._consume_deferred.called:
+            ex = FinishConnection("Disconnecting")
+            self._consume_deferred.errback(ex)
+        return self._messaging.disconnect()
+
+    def bind(self, key, route=None):
+        if not route:
+            route = self._default_route
+        recip = recipient.Recipient(key=key, route=route)
+        return PersonalBinding(self, self._queue_name, recip)
+
+    def get_bindings(self, route=None):
+        if route is None:
+            return list(self._bindings)
+        return [x for x in self._bindings if x.recipient.route == route]
+
+    ### protected ###
+
+    def _register_binding(self, binding):
+        self._bindings.append(binding)
+
+    def _revoke_binding(self, binding):
+        self._bindings.remove(binding)
+
+    def _define_exchange(self, route, exchange_type="direct"):
+        return self._messaging.define_exchange(route, exchange_type)
+
+    def _create_binding(self, recipient, queue_name):
+        return self._messaging.create_binding(recipient.route,
+                                              recipient.key,
+                                              queue_name)
+
+    def _delete_binding(self, recipient, queue_name):
+        return self._messaging.delete_binding(recipient.route,
+                                              recipient.key,
+                                              queue_name)
+
+    ### private ###
+
+    def _main_loop(self, queue):
         self._queue = queue
 
         def rebind(_):
@@ -53,89 +162,111 @@ class Connection(log.Logger):
                 reason.raiseException()
 
         def bind():
-            if self._disconnect:
+            if self._disconnected:
                 return
-            d = self._consumeQueue(queue)
+            d = self._consume_queue(queue)
             d.addCallbacks(rebind, stop)
 
         bind()
 
-    def _consumeQueue(self, queue):
+    def _consume_queue(self, queue):
 
         def get_and_call_on_message(message):
-            # it is important to always lookup the current message handler
-            # maybe someone bound callback to it ?
-            on_message = self._agent.on_message
-            return on_message(message)
+            return self._sink.on_message(message)
 
-        self._consumeDeferred = queue.get()
-        self._consumeDeferred.addCallback(get_and_call_on_message)
-        return self._consumeDeferred
-
-    def _append_binding(self, binding):
-        self._bindings.append(binding)
-
-    def _remove_binding(self, binding):
-        self._bindings.remove(binding)
-
-    # IMessagingClient implementation
-
-    def disconnect(self):
-        self._disconnect = True
-        if self._consumeDeferred and not self._consumeDeferred.called:
-            ex = FinishConnection("Disconnecting")
-            self._consumeDeferred.errback(ex)
-        self._messaging.disconnect()
-
-    def personal_binding(self, key, shard=None):
-        if not shard:
-            shard = self._agent.get_shard_name()
-        return PersonalBinding(self, key=key, shard=shard)
-
-    def publish(self, key, shard, message):
-        if not isinstance(message, BaseMessage):
-            raise ValueError(
-                'Expected third argument to be f.a.b.BaseMessage, '
-                'got %r instead' % type(message))
-        return self._messaging.publish(key, shard, message)
-
-    def get_bindings(self, shard=None):
-        if shard:
-            return filter(lambda x: x.shard == shard, self._bindings)
-        else:
-            return self._bindings
-
-    # end of IMessagingClient implementation
+        self._consume_deferred = queue.get()
+        self._consume_deferred.addCallback(get_and_call_on_message)
+        return self._consume_deferred
 
 
 class BaseBinding(object):
 
-    def __init__(self, connection, shard):
-        self.connection = connection
-        self.connection._append_binding(self)
-        self.shard = shard
+    implements(IChannelBinding)
+
+    def __init__(self, agent_channel, recipient):
+        self._channel = agent_channel
+        self._recipient = recipient
+
+        self._waiters = []
+        self._created = False
+        self._failure = None
+
+        self._channel._register_binding(self)
+
+    ### protected ###
+
+    def _on_created(self, param):
+        self._created = True
+        for waiter in self._waiters:
+            waiter.callback(self)
+        self._waiters = None
+
+    def _on_failed(self, failure):
+        self._failure = failure
+        for waiter in self._waiters:
+            waiter.errback(failure)
+        self._waiters = None
+
+    ### IChannelBinding ###
+
+    @property
+    def key(self):
+        warnings.warn("Bindings' key property is deprecated, "
+                      "please use IChannelBinding's recipient instead.",
+                      DeprecationWarning)
+        return self._recipient.key
+
+    @property
+    def shard(self):
+        warnings.warn("Bindings' shard property is deprecated, "
+                      "please use IChannelBinding's recipient instead.",
+                      DeprecationWarning)
+        return self._recipient.route
+
+    @property
+    def recipient(self):
+        return self._recipient
+
+    def wait_created(self):
+        if self._created:
+            return defer.succeed(self)
+        if self._failure is not None:
+            return defer.fail(self._failure)
+        d = defer.Deferred()
+        self._waiters.append(d)
+        return d
 
     def revoke(self):
-        self.connection._remove_binding(self)
+        return self._channel._revoke_binding(self)
 
 
 class PersonalBinding(BaseBinding):
 
-    def __init__(self, connection, shard, key):
-        BaseBinding.__init__(self, connection, shard)
-        self.key = key
-        d = defer.maybeDeferred(
-            self.connection._messaging.defineExchange, self.shard)
-        d.addCallback(lambda _:
-            self.connection._messaging.createBinding(
-                 self.shard, self.key, self.connection._queue_name))
-        self.created = d
+    def __init__(self, agent_channel, queue_name, recipient):
+        BaseBinding.__init__(self, agent_channel, recipient)
+        self._queue_name = queue_name
+
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param, self._channel._define_exchange,
+                      self._recipient.route)
+        d.addCallback(defer.drop_param, self._channel._create_binding,
+                      recipient, queue_name)
+        d.addCallbacks(self._on_created, self._on_failed)
+
+    @property
+    def created(self):
+        warnings.warn("Bindings' created property is deprecated, "
+                      "please use IChannelBinding's wait_created() instead.",
+                      DeprecationWarning)
+        return self.wait_created()
+
+    ### IChannelBinding ###
 
     def revoke(self):
-        BaseBinding.revoke(self)
-        d = defer.maybeDeferred(
-            self.connection._messaging.deleteBinding,
-            self.shard, self.key, self.connection._queue_name)
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param, BaseBinding.revoke, self)
+        d.addCallback(defer.drop_param, self._channel._delete_binding,
+                      self._recipient, self._queue_name)
         return d
 
 

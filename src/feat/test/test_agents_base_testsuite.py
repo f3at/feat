@@ -129,7 +129,7 @@ class TestHamsterball(testsuite.TestCase):
         m = self.ball.generate_manager(self.instance, DummyManager)
         manager = self.ball.load(m)
         address = recipient.Agent(agent_id=self.ball.descriptor.doc_id,
-                                  shard=self.ball.descriptor.shard)
+                                  route=self.ball.descriptor.shard)
         args = (
             testsuite.message(payload=dict(level=0, joining_agent=address)), )
         expected = [

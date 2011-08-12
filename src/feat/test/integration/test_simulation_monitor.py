@@ -376,7 +376,7 @@ class MonitoringMonitor(common.SimulationTest):
 
         self.assertEqual(1, self.count_agents('random-agent'))
         random_medium = first(self.driver.iter_agents('random-agent'))
-        first_shard = self.hosts[0].get_own_address().shard
+        first_shard = self.hosts[0].get_shard_id()
         self.assertEqual(first_shard, random_medium.get_descriptor().shard)
 
         yield self.assert_document_not_found(monitor_id)
@@ -395,7 +395,7 @@ class MonitoringMonitor(common.SimulationTest):
         script = format_block("""
         last_host.start_agent(descriptor_factory('random-agent'))
         """)
-        second_shard = self.hosts[2].get_own_address().shard
+        second_shard = self.hosts[2].get_shard_id()
 
         yield self.process(script)
         random_medium = first(self.driver.iter_agents('random-agent'))
@@ -416,7 +416,7 @@ class MonitoringMonitor(common.SimulationTest):
         self.assertEqual(0, self.count_agents('random-agent'))
 
     def assert_monitor_in_first_shard(self):
-        shard = self.hosts[0].get_own_address().shard
+        shard = self.hosts[0].get_shard_id()
         monitor = first(x for x in self.driver.iter_agents('monitor_agent')\
                         if x.get_descriptor().shard == shard)
         self.assertTrue(monitor is not None)
@@ -906,7 +906,7 @@ class TestRealMonitoring(common.SimulationTest):
 
     def check_no_call(self, agency_agent1, partner):
         recipient = IRecipient(partner.get_agent())
-        key = recipient.key, recipient.shard
+        key = recipient.key, recipient.route
         self.assertFalse(key in agency_agent1.get_agent().get_calls())
 
     def check_host(self, agency_agent, agency_host):
@@ -1137,8 +1137,8 @@ class TestRealMonitoring(common.SimulationTest):
                          a1b.get_agent().get_agent_id())
         self.assertNotEqual(a1.get_agent().get_instance_id(),
                             a1b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(a1.get_agent()).shard,
-                         IRecipient(a1b.get_agent()).shard)
+        self.assertEqual(IRecipient(a1.get_agent()).route,
+                         IRecipient(a1b.get_agent()).route)
 
         yield self.wait_monitored(a1b, ma1, 10)
 
@@ -1177,8 +1177,8 @@ class TestRealMonitoring(common.SimulationTest):
                          a3b.get_agent().get_agent_id())
         self.assertNotEqual(a3.get_agent().get_instance_id(),
                             a3b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(a3.get_agent()).shard,
-                         IRecipient(a3b.get_agent()).shard)
+        self.assertEqual(IRecipient(a3.get_agent()).route,
+                         IRecipient(a3b.get_agent()).route)
 
         yield self.wait_monitored(a3b, ma2, 10)
 
@@ -1309,8 +1309,8 @@ class TestRealMonitoring(common.SimulationTest):
                          a1b.get_agent().get_agent_id())
         self.assertNotEqual(a1.get_agent().get_instance_id(),
                             a1b.get_agent().get_instance_id())
-        self.assertNotEqual(IRecipient(a1.get_agent()).shard,
-                            IRecipient(a1b.get_agent()).shard)
+        self.assertNotEqual(IRecipient(a1.get_agent()).route,
+                            IRecipient(a1b.get_agent()).route)
 
         # wait to detect the death of the monitor agent from shard 1
         yield common.delay(None, 10)
@@ -1354,8 +1354,8 @@ class TestRealMonitoring(common.SimulationTest):
                          a3b.get_agent().get_agent_id())
         self.assertNotEqual(a3.get_agent().get_instance_id(),
                             a3b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(a3.get_agent()).shard,
-                         IRecipient(a3b.get_agent()).shard)
+        self.assertEqual(IRecipient(a3.get_agent()).route,
+                         IRecipient(a3b.get_agent()).route)
 
         yield self.wait_monitored(a3b, ma2, 10)
 
@@ -1469,8 +1469,8 @@ class TestRealMonitoring(common.SimulationTest):
                          ma1b.get_agent().get_agent_id())
         self.assertNotEqual(ma1.get_agent().get_instance_id(),
                             ma1b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(ma1.get_agent()).shard,
-                         IRecipient(ma1b.get_agent()).shard)
+        self.assertEqual(IRecipient(ma1.get_agent()).route,
+                         IRecipient(ma1b.get_agent()).route)
 
         yield self.wait_monitored(ma1b, ma2, 10)
 
@@ -1509,8 +1509,8 @@ class TestRealMonitoring(common.SimulationTest):
                          ma1b.get_agent().get_agent_id())
         self.assertNotEqual(ma1.get_agent().get_instance_id(),
                             ma1b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(ma1.get_agent()).shard,
-                         IRecipient(ma1b.get_agent()).shard)
+        self.assertEqual(IRecipient(ma1.get_agent()).route,
+                         IRecipient(ma1b.get_agent()).route)
 
         yield self.wait_monitored(ma1b, ma2, 10)
 
@@ -1534,8 +1534,8 @@ class TestRealMonitoring(common.SimulationTest):
                          a1b.get_agent().get_agent_id())
         self.assertNotEqual(a1.get_agent().get_instance_id(),
                             a1b.get_agent().get_instance_id())
-        self.assertEqual(IRecipient(a1.get_agent()).shard,
-                         IRecipient(a1b.get_agent()).shard)
+        self.assertEqual(IRecipient(a1.get_agent()).route,
+                         IRecipient(a1b.get_agent()).route)
 
         yield self.wait_monitored(a1b, ma1, 10)
 

@@ -15,5 +15,5 @@ class Agency(agency.Agency):
         journal.configure_with(writer)
         d = writer.initiate()
         d.addCallback(defer.drop_param, agency.Agency.initiate,
-                      self, mesg, db, journal)
+                      self, db, journal, mesg)
         return d

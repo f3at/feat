@@ -315,7 +315,7 @@ class Agency(agency.Agency):
 
         d = defer.succeed(None)
         d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, mesg, db, jour)
+                  self, db, jour, mesg)
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
@@ -555,7 +555,8 @@ class Agency(agency.Agency):
     def reconfigure_messaging(self, msg_host, msg_port):
         '''reconfigure_messaging(host, port) -> force messaging reconnector
         to the connect to the (host, port)'''
-        self._messaging.reconfigure(msg_host, msg_port)
+        messaging = self._backends["default"]
+        messaging.reconfigure(msg_host, msg_port)
 
     @manhole.expose()
     def reconfigure_database(self, host, port, name='feat'):
@@ -568,9 +569,8 @@ class Agency(agency.Agency):
         t = text_helper.Table(
             fields=("Connection", "Connected", "Host", "Port", "Reconnect in"),
             lengths=(20, 15, 30, 10, 15))
-
-        iterator = (x.show_status()
-                    for x in (self._messaging, self._database))
+        connections = self._backends.values() + [self._database]
+        iterator = (x.show_status() for x in connections)
         return t.render(iterator)
 
     ### Manhole inspection methods ###

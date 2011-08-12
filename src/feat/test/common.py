@@ -1,6 +1,7 @@
 import collections
 import functools
 import uuid
+import warnings
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -14,6 +15,7 @@ from feat.agents.base import message, recipient, agent
 from feat.common import log, defer, decorator, journal, time
 
 from feat.interface.generic import ITimeProvider
+from feat.interface.channels import IChannelSink
 
 # Import for registering stuff
 from feat import everything
@@ -406,10 +408,11 @@ class AgencyTestHelper(object):
                         messages from components being tested
         '''
         endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
-        queue = self.agency._messaging.defineQueue(endpoint.key)
-        self.agency._messaging.defineExchange(endpoint.shard)
-        self.agency._messaging.createBinding(
-            endpoint.shard, endpoint.key, endpoint.key)
+        messaging = self.agency._backends["default"]
+        queue = messaging.define_queue(endpoint.key)
+        messaging.define_exchange(endpoint.route)
+        messaging.create_binding(
+            endpoint.route, endpoint.key, endpoint.key)
         return endpoint, queue
 
     def assert_queue_empty(self, queue, timeout=10):
@@ -508,7 +511,9 @@ class AgencyTestHelper(object):
         msg.receiver_id = self.remote_id
 
         shard = self.agent._descriptor.shard
-        self.agent._messaging.publish(key, shard, msg)
+        messaging = self.agent._channels["default"]
+        recip = recipient.Recipient(key, shard)
+        messaging.post(recip, msg)
         return d
 
     def reply(self, msg, reply_to, original_msg):
@@ -523,25 +528,45 @@ class AgencyTestHelper(object):
         msg.protocol_type = original_msg.protocol_type
         msg.receiver_id = original_msg.sender_id
 
-        self.agent._messaging.publish(dest.key, dest.shard, msg)
+        messaging = self.agent._channels["default"]
+        messaging.post(dest, msg)
         return d
 
 
 class StubAgent(object):
-    implements(IMessagingPeer)
+
+    implements(IMessagingPeer, IChannelSink)
 
     def __init__(self):
         self.queue_name = str(uuid.uuid1())
         self.messages = []
 
+    ### IChannelSink ###
+
+    @property
+    def channel_id(self):
+        return self.queue_name
+
+    @property
+    def default_route(self):
+        return 'lobby'
+
     def on_message(self, msg):
         self.messages.append(msg)
 
+    ### IMessagingPeer ###
+
     def get_queue_name(self):
-        return self.queue_name
+        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
+                      "please use IChannelSink's channel_id instead.",
+                      DeprecationWarning)
+        return self.channel_id
 
     def get_shard_name(self):
-        return 'lobby'
+        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
+                      "please use IChannelSink's default_route instead.",
+                      DeprecationWarning)
+        return self.default_route
 
 
 @agent.register('descriptor')

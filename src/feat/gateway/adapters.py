@@ -138,7 +138,7 @@ class Partner(object):
 
     @property
     def shard_id(self):
-        return self._partner.recipient.shard
+        return self._partner.recipient.route
 
     @property
     def role(self):

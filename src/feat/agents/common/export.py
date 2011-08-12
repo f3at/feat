@@ -125,7 +125,7 @@ class AgentMigrationBase(object):
             raise AttributeError('Agent class should override migratability '
                                  'attribute!')
         recp = self.get_own_address()
-        entry = CheckinEntry(agent_id=recp.key, shard=recp.shard,
+        entry = CheckinEntry(agent_id=recp.key, shard=recp.route,
                              migratability=self.migratability,
                              agent_type=self.descriptor_type,
                              hostname=state.medium.get_hostname())

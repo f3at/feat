@@ -114,7 +114,7 @@ class TestMigration(common.SimulationTest):
         shards = yield self.migration.get_structure()
 
         # we will migrate first shard (with only migratable agents)
-        shard = recipient.IRecipient(self.host1).shard
+        shard = recipient.IRecipient(self.host1).route
         to_migrate = first(x for x in shards if x.shard == shard)
         self.assertIsNot(None, to_migrate)
 
@@ -143,7 +143,7 @@ class TestMigration(common.SimulationTest):
         shards = yield self.migration.get_structure()
 
         # we will migrate second shard (with migration and export agent)
-        shard = recipient.IRecipient(self.host2).shard
+        shard = recipient.IRecipient(self.host2).route
         to_migrate = first(x for x in shards if x.shard == shard)
         self.assertIsNot(None, to_migrate)
 

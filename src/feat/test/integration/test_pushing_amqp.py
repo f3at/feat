@@ -68,10 +68,9 @@ class TestWithRabbit(common.SimulationTest):
         self.server = messaging.Messaging('127.0.0.1',
                                           self.rabbit.get_config()['port'])
         self.web = StubAgent()
-        self.connection = yield self.server.get_connection(self.web)
-        pb = self.connection.personal_binding(self.web.get_queue_name(),
-                                              'exchange')
-        yield pb.created
+        self.connection = yield self.server.new_channel(self.web)
+        pb = self.connection.bind(self.web.channel_id, 'exchange')
+        yield pb.wait_created()
 
         # setup our agent
         yield common.SimulationTest.setUp(self)
@@ -103,7 +102,7 @@ class TestWithRabbit(common.SimulationTest):
     def testWebGetsMessage(self):
         cb = self.cb_after(None, self.web, 'on_message')
         yield self.agent.get_agent().push_msg(message.BaseMessage(),
-                                              self.web.get_queue_name())
+                                              self.web.channel_id)
         yield cb
         self.assertIsInstance(self.web.messages[0], message.BaseMessage)
 

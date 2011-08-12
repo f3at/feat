@@ -166,7 +166,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyManager.announce')
     def announce(self, announce):
-        announce = announce.clone()
+        announce = announce.duplicate()
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
 
@@ -194,7 +194,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         if not rejection:
             rejection = message.Rejection()
         else:
-            rejection = rejection.clone()
+            rejection = rejection.duplicate()
         contractor.on_event(rejection)
 
     @serialization.freeze_tag('AgencyManager.grant')
@@ -207,7 +207,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             grants = [grants]
         # clone the grant messages, not to mess with the
         # state on the agent side
-        grants = [(bid, grant.clone(), ) for bid, grant in grants]
+        grants = [(bid, grant.duplicate(), ) for bid, grant in grants]
 
         self._cancel_expiration_call()
         self._set_state(ContractState.granted)
@@ -491,7 +491,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
-        bid = bid.clone()
+        bid = bid.duplicate()
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
 
@@ -510,20 +510,21 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyContractor.handover')
     @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
-        bid = bid.clone()
-        self.debug('Sending bid of the nested contractor: %r.', bid)
-        assert isinstance(bid, message.Bid)
+        new_bid = bid.duplicate()
+        new_bid.reply_to = bid.reply_to
+        self.debug('Sending bid of the nested contractor: %r.', new_bid)
+        assert isinstance(new_bid, message.Bid)
 
         self._ensure_state(ContractState.announced)
         self._set_state(ContractState.delegated)
 
-        self.bid = self._handover_message(bid)
+        self.bid = self._handover_message(new_bid)
         time.callLater(0, self._terminate, None)
         return self.bid
 
     @replay.named_side_effect('AgencyContractor.refuse')
     def refuse(self, refusal):
-        refusal = refusal.clone()
+        refusal = refusal.duplicate()
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
 
@@ -536,7 +537,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyContractor.defect')
     def defect(self, cancellation):
-        cancellation = cancellation.clone()
+        cancellation = cancellation.duplicate()
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
 
@@ -549,7 +550,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyContractor.finalize')
     def finalize(self, report):
-        report = report.clone()
+        report = report.duplicate()
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
 

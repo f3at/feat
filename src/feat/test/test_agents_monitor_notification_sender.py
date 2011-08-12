@@ -132,7 +132,7 @@ class NotificationSenderTest(common.TestCase):
         self.clerk = DummyClerk()
         self.task = sender.NotificationSender(self.agent, self.medium)
         yield self.task.initiate(self.clerk)
-        self.recp = recipient.Agent(agent_id='agent_id', shard='shard')
+        self.recp = recipient.Agent(agent_id='agent_id', route='shard')
 
     @defer.inlineCallbacks
     def testDryRunMethod(self):
@@ -209,7 +209,7 @@ class NotificationSenderTest(common.TestCase):
         n2 = self.gen_notification(recipient=self.recp)
         self.task.notify([n1, n2])
 
-        new_recp = recipient.Agent(self.recp.key, shard=u'other shard')
+        new_recp = recipient.Agent(self.recp.key, route=u'other shard')
         self.gen_document(new_recp)
 
         d = self.task.run()
@@ -220,7 +220,7 @@ class NotificationSenderTest(common.TestCase):
 
         self.assert_pending('agent_id', 2)
         for notif in self.agent.descriptor.pending_notifications['agent_id']:
-            self.assertEqual('other shard', notif.recipient.shard)
+            self.assertEqual('other shard', notif.recipient.route)
 
     def assert_pending(self, agent_id, num):
         if num == 0:
@@ -235,7 +235,7 @@ class NotificationSenderTest(common.TestCase):
 
     def gen_document(self, recp):
         self.agent.docs[recp.key] = descriptor.Descriptor(doc_id=recp.key,
-                                                          shard=recp.shard)
+                                                          shard=recp.route)
 
     def succeed_protocol(self, index):
         self.agent.protocols[index].deferred.callback(None)

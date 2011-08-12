@@ -109,23 +109,25 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.endpoint, self.queue = self.setup_endpoint()
 
     def testJoinShard(self):
-        self.assertEqual(1, len(self.agent._messaging.get_bindings('lobby')))
+        messaging = self.agent._channels["default"]
+        self.assertEqual(1, len(messaging.get_bindings('lobby')))
 
         self.agent.leave_shard('lobby')
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks
     def testSwitchingShardRebinding(self):
+        messaging = self.agent._channels["default"]
         interest = DummyInterest()
         self.agent.register_interest(interest)
-        self.assertEqual(2, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(2, len(messaging.get_bindings('lobby')))
         yield self.agent.leave_shard('lobby')
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
         yield self.agent.join_shard('new shard')
         self.assertEqual(2,
-                         len(self.agent._messaging.get_bindings('new shard')))
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+                         len(messaging.get_bindings('new shard')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks
     def testUpdateDocument(self):
@@ -214,7 +216,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         def assertsOnMessage(message):
             desc = self.agent.get_descriptor()
             self.assertEqual(desc.shard, \
-                             message.reply_to.shard)
+                             message.reply_to.route)
             self.assertEqual(desc.doc_id, \
                              message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)

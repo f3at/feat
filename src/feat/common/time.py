@@ -61,6 +61,14 @@ def left(moment):
 
 
 def callLater(_seconds, _f, *args, **kwargs):
+    return call_later(_seconds, _f, *args, **kwargs)
+
+
+def call_next(_f, *args, **kwargs):
+    return call_later(0, _f, *args, **kwargs)
+
+
+def call_later(_seconds, _f, *args, **kwargs):
     '''
     Wrapper for reactor.callLater() aware the time scalling.
     This method should always be used instead directly touching the reactor.

@@ -229,7 +229,7 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
             tab = text_helper.Table(
                     fields=('agent_id', 'shard', 'state', 'counter'),
                     lengths=(37, 37, 7, 9))
-            return tab.render((k.key, k.shard, v['state'].name, v['counter'])
+            return tab.render((k.key, k.route, v['state'].name, v['counter'])
                               for k, v in patients.iteritems())
 
         def locations(locations):

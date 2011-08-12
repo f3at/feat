@@ -602,6 +602,20 @@ class AgencyAgent(BaseReplayDummy):
 
     ### IAgencyAgent Methods ###
 
+    @serialization.freeze_tag('AgencyAgent.enable_channel')
+    @replay.named_side_effect('AgencyAgent.enable_channel')
+    def enable_channel(self, channel_type):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.disable_channel')
+    @replay.named_side_effect('AgencyAgent.disable_channel')
+    def disable_channel(self, channel_type):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.wait_channel')
+    def wait_channel(self, channel_type):
+        pass
+
     @replay.named_side_effect('AgencyAgent.observe')
     def observe(self, _method, *args, **kwargs):
         pass

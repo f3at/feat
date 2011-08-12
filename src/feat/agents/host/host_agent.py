@@ -48,7 +48,7 @@ class ShardPartner(agent.BasePartner):
     type_name = 'host->shard'
 
     def initiate(self, agent):
-        f = agent.switch_shard(self.recipient.shard)
+        f = agent.switch_shard(self.recipient.route)
         f.add_callback(fiber.drop_param, agent.callback_event,
                        'joined_to_shard', None)
         return f
@@ -458,7 +458,7 @@ class StartAgent(task.BaseTask):
         which shard it will endup. If it is None or set to lobby, the HA
         will update the field to match his own'''
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
-            own_shard = state.agent.get_own_address().shard
+            own_shard = state.agent.get_shard_id()
             state.descriptor.shard = own_shard
         state.descriptor.resource = allocation.scalar
         f = fiber.succeed(state.descriptor)
@@ -499,7 +499,7 @@ class MissingShard(problem.BaseProblem):
 
     def solve_localy(self):
         own_address = self.agent.get_own_address()
-        return self.agent.start_own_shard(own_address.shard)
+        return self.agent.start_own_shard(own_address.route)
 
 
 @serialization.register

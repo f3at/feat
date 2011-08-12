@@ -7,7 +7,7 @@ from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.agencies.emu import messaging
-from feat.agents.base import descriptor, message
+from feat.agents.base import descriptor, message, recipient
 from feat.interface import agent
 
 from . import common
@@ -139,17 +139,17 @@ class TestMessaging(common.TestCase):
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = common.StubAgent()
-        self.connection = yield self.messaging.get_connection(self.agent)
+        self.connection = yield self.messaging.new_channel(self.agent)
 
     def testCreateConnection(self):
         self.assertTrue(isinstance(self.connection, messaging.Connection))
         self.assertEqual(1, len(self.messaging._queues))
 
-        self.connection.disconnect()
+        self.connection.release()
 
     def test1To1Binding(self):
-        key = self.agent.get_queue_name()
-        binding = self.connection.personal_binding(key)
+        key = self.agent.channel_id
+        binding = self.connection.bind(key)
         self.assertEqual(1, len(self.connection.get_bindings()))
 
         exchange = self.messaging._exchanges.values()[0]
@@ -175,13 +175,13 @@ class TestMessaging(common.TestCase):
 
     @defer.inlineCallbacks
     def testTwoAgentsWithSameBinding(self):
-        second_agent = common.StubAgent()
-        second_connection = yield self.messaging.get_connection(second_agent)
-        agents = [self.agent, second_agent]
+        agent2 = common.StubAgent()
+        second_connection = yield self.messaging.new_channel(agent2)
+        agents = [self.agent, agent2]
         connections = [self.connection, second_connection]
 
         key = 'some key'
-        bindings = map(lambda x: x.personal_binding(key), connections)
+        bindings = map(lambda x: x.bind(key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
@@ -204,10 +204,11 @@ class TestMessaging(common.TestCase):
         yield d
 
     def testPublishingByAgent(self):
-        key = self.agent.get_queue_name()
+        key = self.agent.channel_id
         msg = message.BaseMessage(payload='some message')
-        self.connection.personal_binding(key, 'lobby')
-        self.connection.publish(key, 'lobby', msg)
+        self.connection.bind(key, 'lobby')
+        recip = recipient.Recipient(key, 'lobby')
+        self.connection.post(recip, msg)
         d = defer.Deferred()
 
         def asserts(d):

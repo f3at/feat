@@ -32,6 +32,8 @@ class IRecipients(Interface):
 
 class IRecipient(Interface):
 
-    shard = Attribute('Shard of reciepient')
-    key = Attribute('Routing key of reciepient')
-    type = Attribute('Broadcast or agent?')
+    shard = Attribute('Shard of recipient. DEPRECATED, use route instead.')
+    route = Attribute("Recipient's route (shard or connection string)")
+    key = Attribute("Routing key of recipient.")
+    type = Attribute("Recipient's type (RecipientType).")
+    channel = Attribute("Communication channel name.")

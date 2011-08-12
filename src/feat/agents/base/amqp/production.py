@@ -1,23 +1,28 @@
+import warnings
+
 from zope.interface import classProvides, implements
 
 from feat.common import serialization, log
 from feat.agencies.net import messaging
+from feat.agents.base import recipient
 from feat.agents.base.amqp.interface import *
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import replay
+
+from feat.interface.channels import IChannelSink
 
 
 @serialization.register
 class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IAMQPClientFactory)
-    implements(IAMQPClient, IMessagingPeer)
+    implements(IAMQPClient, IMessagingPeer, IChannelSink)
 
     def __init__(self, logger, exchange, exchange_type='fanout',
                  host='localhost', port=5672, vhost='/',
                  user='guest', password='guest'):
         log.Logger.__init__(self, logger)
         log.LogProxy.__init__(self, logger)
-        self._server = None
+        self._backend = None
         self._connection = None
 
         self.exchange = exchange
@@ -32,42 +37,58 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     def connect(self):
         assert self._connection is None
-        self._server = messaging.Messaging(self.host, self.port,
-                                           self.user, self.password)
-        d = self._server.get_connection(self)
-        d.addCallback(self._store_connection)
+        self._backend = messaging.Messaging(self.host, self.port,
+                                            self.user, self.password)
+        d = self._backend.new_channel(self)
+        d.addCallback(self._store_channel)
         d.addCallback(lambda _: self._setup_exchange())
         return d
 
     def publish(self, message, key):
-        assert self._connection is not None
-        return self._connection.publish(key, self.exchange, message)
+        assert self._channel is not None
+        recip = recipient.Recipient(key, self.exchange)
+        return self._channel.post(recip, message)
 
     @replay.side_effect
     def disconnect(self):
-        self._server.disconnect()
-        self._server = None
-        self._connection = None
+        self._backend.disconnect()
+        self._backend = None
+        self._channel = None
 
-    ### IMessagingPeer Methods ###
+    ### IChannelSink ###
+
+    @property
+    def channel_id(self):
+        return None
+
+    @property
+    def default_route(self):
+        return None
 
     def on_message(self, msg):
         pass
 
+    ### IMessagingPeer ###
+
     def get_queue_name(self):
-        return None
+        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
+                      "please use IChannelSink's channel_id instead.",
+                      DeprecationWarning)
+        return self.channel_id
 
     def get_shard_name(self):
-        return None
+        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
+                      "please use IChannelSink's default_route instead.",
+                      DeprecationWarning)
+        return self.default_route
 
     ### private ###
 
-    def _store_connection(self, con):
-        self._connection = con
+    def _store_channel(self, channel):
+        self._channel = channel
 
     def _setup_exchange(self):
-        d = self._connection._messaging.defineExchange(
-            self.exchange, self.exchange_type)
+        d = self._channel._define_exchange(self.exchange, self.exchange_type)
         return d
 
     def __eq__(self, other):

@@ -42,7 +42,7 @@ def retrying_allocate_resource(agent, resources, shard=None,
 
 
 def discover(agent, shard=None):
-    shard = shard or agent.get_own_address().shard
+    shard = shard or agent.get_shard_id()
     return agent.discover_service(AllocationManager, timeout=1, shard=shard)
 
 

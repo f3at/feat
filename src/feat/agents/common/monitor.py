@@ -35,7 +35,7 @@ def notify_restart_complete(agent, monitor, recp):
 
 
 def discover(agent, shard=None):
-    shard = shard or agent.get_own_address().shard
+    shard = shard or agent.get_shard_id()
     return agent.discover_service("monitoring", timeout=1, shard=shard)
 
 

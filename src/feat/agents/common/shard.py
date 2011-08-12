@@ -54,7 +54,7 @@ def get_host_list(agent):
 
 
 def register_for_notifications(agent):
-    shard = agent.get_own_address().shard
+    shard = agent.get_shard_id()
     recip = recipient.Broadcast(ShardNotificationCollector.protocol_id, shard)
     return agent.register_interest(ShardNotificationCollector)
 

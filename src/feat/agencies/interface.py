@@ -183,6 +183,7 @@ class IConnectionFactory(Interface):
 class IMessagingClient(Interface):
     '''
     Interface used by L{IAgencyAgent} to send messages and maintain bindings.
+    ** DEPRECATED **
     '''
 
     def publish(key, shard, message):
@@ -225,6 +226,7 @@ class IMessagingPeer(Interface):
     '''
     Interface which agent needs to implement to use messaging connection.
     Required by (feat.agencies.messaging.Connection)
+    ** DEPRECATED **
     '''
 
     def get_queue_name():
