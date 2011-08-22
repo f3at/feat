@@ -1,6 +1,5 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import socket
 import operator
 
 from feat.agents.base import (agent, contractor, recipient, message,
@@ -9,11 +8,11 @@ from feat.agents.base import (agent, contractor, recipient, message,
                               problem, task, requester, )
 from feat.agents.common import rpc, monitor, export
 from feat.agents.common import shard as common_shard
-from feat.agents.common.host import check_categories, Descriptor
-from feat.agents.host import port_allocator
-from feat.interface.protocols import InterestType
+from feat.agents.common.host import check_categories
 from feat.common import fiber, manhole, serialization, defer
+
 from feat.agencies.interface import NotFoundError
+from feat.interface.protocols import InterestType
 from feat.interface.agent import Access, Address, Storage, CategoryError
 
 DEFAULT_RESOURCES = {"host": 1,
@@ -114,8 +113,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
             problem.SolveProblemInterest(MissingShard))
         state.medium.register_interest(
             problem.SolveProblemInterest(RestartShard))
-        ports = state.medium.get_descriptor().port_range
-        state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
@@ -271,29 +268,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         return state.medium.get_ip()
 
     @rpc.publish
-    @replay.mutable
-    def allocate_ports(self, state, number):
-        try:
-            return state.port_allocator.reserve_ports(number)
-        except port_allocator.PortAllocationError as e:
-            return fiber.fail(e)
-
-    @rpc.publish
-    @replay.mutable
-    def release_ports(self, state, ports):
-        return state.port_allocator.release_ports(ports)
-
-    @rpc.publish
-    @replay.mutable
-    def set_ports_used(self, state, ports):
-        return state.port_allocator.set_ports_used(ports)
-
-    @rpc.publish
-    @replay.immutable
-    def get_num_free_ports(self, state):
-        return state.port_allocator.num_free()
-
-    @rpc.publish
     def premodify_allocation(self, allocation_id, **delta):
         return resource.AgentMixin.premodify_allocation(self,
                 allocation_id, **delta)
@@ -365,6 +339,10 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
     def _apply_definition(self, hostdef):
         self._setup_resources(hostdef.resources)
         self._setup_categories(hostdef.categories)
+
+        ports = hostdef.port_ranges
+        for name, (first, last) in ports.items():
+            state.resources.define(name, resource.Range, first, last)
 
     def _apply_defaults(self):
         self._setup_resources(DEFAULT_RESOURCES)

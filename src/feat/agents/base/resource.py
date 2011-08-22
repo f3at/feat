@@ -84,6 +84,115 @@ class IAllocatedResource(Interface):
 
 
 @serialization.register
+class Range(serialization.Serializable):
+    implements(IResourceDefinition)
+    classProvides(IResourceDefinitionFactory)
+
+    type_name = 'range_def'
+
+    def __init__(self, name, first, last):
+        self.name = name
+        first = int(first)
+        last = int(last)
+        if first < 0 or last < 0:
+            raise DeclarationError("%r and %r needs to be positive integers!"
+                                   % (first, last))
+        elif first > last:
+            raise DeclarationError("%r > %r!" % (first, last))
+
+        self.first = first
+        self.last = last
+
+    ### IResourceDefinition ###
+
+    def allocate(self, allocations, number):
+        values = self._find_free_values(allocations, number)
+        return AllocatedRange(values)
+
+    def modify(self, allocations, resource, *args):
+        '''
+        Correct format of args here is:
+        cmd1, param1, param2, cmd2, param1, ...
+        Supported commands:
+        - add - allocate specified number of random values more
+        - add_specific - allocate specific value
+        - release - release allocated specific value
+        '''
+        res = RangeModification()
+        last_cmd = None
+        for param in args:
+            if isinstance(param, (str, unicode, )):
+                last_cmd = param
+            elif last_cmd is None:
+                raise DeclarationError("First parameter should be a command")
+            elif last_cmd == 'add':
+                values = self._find_free_values(allocations, param)
+                for p in values:
+                    res.add_value(p)
+            elif last_cmd == 'add_specific':
+                if not self._value_free(allocations, param):
+                    raise NotEnoughResource(
+                        'Value %r of resource %s is allocated' %
+                        (param, self.name, ))
+                if param in resource.values:
+                    raise DeclarationError('Value %s is already included '
+                                           'in %r' % (param, resource))
+                res.add_value(param)
+            elif last_cmd == 'release':
+                if not param in resource.values:
+                    raise DeclarationError('Value %s is not included '
+                                           'in %r' % (param, resource))
+                res.add_value(-param)
+            else:
+                raise DeclarationError("Unknown modify command: %s" %
+                                       (last_cmd, ))
+        return res
+
+    def reduce(self, allocations):
+        # gives list of allocated values
+        return [x for x in range(self.first, self.last + 1)
+                if not self._value_free(allocations, x)]
+
+    def get_total(self):
+        return (self.first, self.last)
+
+    ### private ####
+
+    def _find_free_values(self, allocations, number):
+        to_allocate = number
+        res = list()
+        for x in range(self.first, self.last + 1):
+            if number < 1:
+                break
+            if self._value_free(allocations, x):
+                res.append(x)
+                number -= 1
+
+        if number > 0:
+            total_allocated = self.last - self.first - to_allocate + number
+            raise NotEnoughResource('Not enough %s. Allocated already: %d '
+                                    'Tried to allocate: %d' %
+                                    (self.name, total_allocated, to_allocate))
+        return res
+
+    def _value_free(self, allocations, value):
+        included = any(map(lambda x: value in x.values, allocations))
+        return not included
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.name == other.name and \
+               self.first == other.first and \
+               self.last == other.last
+
+    def __ne__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return not self.__eq__(other)
+
+
+@serialization.register
 class Scalar(serialization.Serializable):
     implements(IResourceDefinition)
     classProvides(IResourceDefinitionFactory)
@@ -104,7 +213,7 @@ class Scalar(serialization.Serializable):
     def allocate(self, allocations, value):
         try:
             value = int(value)
-            if self.total <= 0:
+            if value <= 0:
                 raise ValueError("Should be positive integer")
         except ValueError as e:
             raise DeclarationError("Bad ammount: %s. Exp: %r" % (value, e, ))
@@ -120,7 +229,7 @@ class Scalar(serialization.Serializable):
     def modify(self, allocations, resource, value):
         try:
             value = int(value)
-            current_value = resource and resource.value or 0
+            current_value = resource.value if resource else 0
             if -value > current_value:
                 raise ValueError("Tried to release more than was allocated.")
         except ValueError as e:
@@ -154,6 +263,51 @@ class Scalar(serialization.Serializable):
 
 
 @serialization.register
+class AllocatedRange(serialization.Serializable):
+    implements(IAllocatedResource)
+
+    type_name = 'range'
+
+    def __init__(self, values=list()):
+        self.values = set(values)
+
+    ### IAllocatedResource ###
+
+    def extract_init_arguments(self):
+        return len(self.values)
+
+    def zero(self):
+        return AllocatedRange()
+
+    def add(self, other):
+        for val in other.values:
+            if val > 0:
+                if val in self.values:
+                    raise ValueError("%r already in %r" % (val, self.values))
+                self.values.add(val)
+            else:
+                if -val not in self.values:
+                    raise ValueError("%r not in %r" % (-val, self.values))
+                self.values.remove(-val)
+        return len(self.values) > 0
+
+    ### public ###
+
+    def add_value(self, value):
+        self.values.add(value)
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.values == other.values
+
+    def __ne__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return not self.__eq__(other)
+
+
+@serialization.register
 class AllocatedScalar(serialization.Serializable):
     implements(IAllocatedResource)
 
@@ -171,9 +325,10 @@ class AllocatedScalar(serialization.Serializable):
         return AllocatedScalar(0)
 
     def add(self, other):
-        self.value += other.value
-        if self.value < 0:
-            raise ValueError("Value needs to be positive. Got %r", self.value)
+        tmp = self.value + other.value
+        if tmp < 0:
+            raise ValueError("Value needs to be positive. Got %r", tmp)
+        self.value = tmp
         return not self.value == 0
 
     ### private ###
@@ -196,6 +351,12 @@ class AllocatedScalar(serialization.Serializable):
 class ScalarModification(AllocatedScalar):
 
     type_name = 'scalar_change'
+
+
+@serialization.register
+class RangeModification(AllocatedRange):
+
+    type_name = 'range_change'
 
 
 @serialization.register
@@ -473,11 +634,11 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.immutable
     def get_usage(self, state):
-        resp = list()
+        resp = dict()
         for x in state.definitions.itervalues():
             alloc = self._get_allocated(x.name)
             modif = self._get_modified(x.name)
-            resp.append((x.name, x.reduce(alloc), x.reduce(modif)))
+            resp[x.name] = (x.get_total(), x.reduce(alloc), x.reduce(modif))
         return resp
 
     ### methods used by tests ###

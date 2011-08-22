@@ -56,6 +56,7 @@ class DummyAgent(serialization.Serializable, common.DummyRecorderNode,
 
     def get_time(self):
         return self.time
+
     ### ISerailizable override ###
 
     def snapshot(self):
@@ -72,6 +73,67 @@ class DummyAgent(serialization.Serializable, common.DummyRecorderNode,
         assert callable(method)
         method(self.descriptor, allocation)
         return defer.succeed(allocation)
+
+
+@common.attr(timescale=0.05)
+class PortResourceTest(common.TestCase, Common):
+
+    implements(journal.IRecorderNode)
+
+    timeout = 1
+
+    def setUp(self):
+
+        self.allocations = dict()
+        self.agent = DummyAgent(self, self.allocations)
+        self.resources = resource.Resources(self.agent)
+
+        self.resources.define('streamer', resource.Range, 1000, 1004)
+
+    @defer.inlineCallbacks
+    def testSimpleAllocate(self):
+        alloc = yield self.resources.allocate(streamer=3)
+        res = alloc.alloc['streamer']
+        self.assertIsInstance(res, resource.AllocatedRange)
+        self.assertEqual(set([1000, 1001, 1002]), res.values)
+        self._assert_allocated([[1000, 1001, 1002]])
+
+    @defer.inlineCallbacks
+    def testOverallocateAndFragmenting(self):
+        alloc1 = yield self.resources.preallocate(streamer=3)
+        alloc2 = yield self.resources.preallocate(streamer=3)
+        self.assertTrue(alloc2 is None)
+        self.assertFalse(alloc1 is None)
+        yield self.resources.confirm(alloc1.id)
+        self._assert_allocated([[1000, 1001, 1002]])
+
+        alloc = yield self.resources.allocate(streamer=1)
+        self._assert_allocated([[1000, 1001, 1002, 1003]])
+        yield self.resources.allocate(streamer=1)
+        self._assert_allocated([[1000, 1001, 1002, 1003, 1004]])
+        yield self.resources.release(alloc.id)
+        self._assert_allocated([[1000, 1001, 1002, 1004]])
+
+    @defer.inlineCallbacks
+    def testModifing(self):
+        alloc1 = yield self.resources.allocate(streamer=3)
+        self._assert_allocated([[1000, 1001, 1002]])
+        mod = yield self.resources.premodify(alloc1.id,
+            streamer=('release', 1000, 'add', 1))
+        self._assert_allocated([[1000, 1001, 1002, 1003]])
+        yield self.resources.confirm(mod.id)
+        self._assert_allocated([[1001, 1002, 1003]])
+
+        n = yield self.resources.premodify(alloc1.id,
+                                           streamer=('add_specific', 1002))
+        self.assertTrue(n is None)
+
+        mod = yield self.resources.premodify(alloc1.id,
+                                             streamer=('add', 2))
+        self._assert_allocated([[1000, 1001, 1002, 1003, 1004]])
+        # now expire
+        self.agent.time += 15
+        self._assert_allocated([[1001, 1002, 1003]])
 
 
 @common.attr(timescale=0.05)

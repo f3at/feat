@@ -57,29 +57,6 @@ class HostAgentTests(common.SimulationTest):
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
 
-    @defer.inlineCallbacks
-    def testAllocatePorts(self):
-        agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        self.assertEqual(len(ports), 10)
-
-    @defer.inlineCallbacks
-    def testAllocatePortsAndRelease(self):
-        agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
-
-    def testSetPortsUsed(self):
-        agent = self.get_local('agent')
-        ports = range(5000, 5010)
-        agent.set_ports_used(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
-
 
 @common.attr(timescale=0.05)
 class HostAgentRestartTest(common.SimulationTest):
