@@ -205,9 +205,10 @@ class MasterDescriptor(descriptor.Descriptor):
 @common.attr('slow', timeout=40)
 class IntegrationTestCase(common.TestCase):
 
-    configurable_attributes = ['run_rabbit', 'run_couch']
+    configurable_attributes = ['run_rabbit', 'run_couch', 'shutdown']
     run_rabbit = True
     run_couch = True
+    shutdown = True
 
     @defer.inlineCallbacks
     def _run_and_configure_db(self):
@@ -411,6 +412,18 @@ class IntegrationTestCase(common.TestCase):
         slave2 = self.agency._broker.slaves.values()[0]
         self.assertNotEqual(slave.slave_id, slave2.slave_id)
 
+    @common.attr(shutdown=False)
+    @defer.inlineCallbacks
+    def testUpgrade(self):
+        self.agency.config['agency']['enable_spawning_slave'] = False
+        yield self.agency.initiate()
+        if os.path.exists("effect.tmp"):
+            os.unlink("effect.tmp")
+        upgrade_cmd = 'touch effect.tmp'
+        yield self.agency.upgrade(upgrade_cmd, testing=True)
+        self.assertTrue(os.path.exists("effect.tmp"))
+        self.assertTrue(self.agency._shutting_down)
+
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()
 
@@ -441,7 +454,8 @@ class IntegrationTestCase(common.TestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.wait_for(self.agency.is_idle, 20)
-        yield self.agency.full_shutdown()
+        if self.shutdown:
+            yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()
 

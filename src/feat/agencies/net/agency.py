@@ -15,6 +15,7 @@ from feat.agencies.net import ssh, broker
 from feat.common import log, defer, time, first, error, run
 from feat.common import manhole, text_helper
 from feat.process import standalone
+from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
 
@@ -465,9 +466,17 @@ class Agency(agency.Agency):
             d.addBoth(defer.drop_param, self._stop_process)
         return d
 
-    def upgrade(self, upgrade_cmd):
-        d = agency.Agency.shutdown(self)
-        #TODO: stop reactor and actually run the command (not part of the task)
+    def upgrade(self, upgrade_cmd, testing=False):
+        args = upgrade_cmd.split(" ")
+        command = args.pop(0)
+        process = standalone.Process(self, command, args, os.environ.copy())
+
+        d = self.full_shutdown()
+        d.addBoth(defer.drop_param, process.restart)
+        d.addBoth(defer.drop_param, process.wait_for_state,
+                  ProcessState.finished, ProcessState.failed)
+        if not testing:
+            d.addBoth(defer.drop_param, self._stop_process)
         return d
 
     def _disconnect(self):
