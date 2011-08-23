@@ -270,7 +270,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                             if cls._handlers[k] == factory and k != '_default')
         except StopIteration:
             existing = None
-        if existing:
+        if existing and existing[0] != factory:
             raise DefinitionError(
                 "Factory %r is already defined for the key %r. Factories "
                 "shouldn't be reused! Create another subclass." % existing)

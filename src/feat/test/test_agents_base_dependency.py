@@ -40,6 +40,14 @@ class TestDependency(testsuite.TestCase):
         self.assertRaises(dependency.UndefinedDependency, self.ball.call,
                           expected, self.agent.dependency, SomeInterface)
 
+    def testMixin(self):
+        expected = [
+            testsuite.side_effect('AgencyAgent.get_mode',
+                                  ExecMode.test, (MixinInterface, ))]
+        out, _ = self.ball.call(
+            expected, self.agent.dependency, MixinInterface)
+        self.assertEqual(out, ExecMode.test)
+
 
 class TestProblemWithAnnotations(common.TestCase):
 
@@ -56,6 +64,12 @@ class SomeInterface(Interface):
         pass
 
 
+class MixinInterface(Interface):
+
+    def __call__():
+        pass
+
+
 class UnknownInterface(Interface):
 
     def __call__():
@@ -64,7 +78,7 @@ class UnknownInterface(Interface):
 
 def test():
     return ExecMode.test
-directlyProvides(test, SomeInterface)
+directlyProvides(test, (SomeInterface, MixinInterface, ))
 
 
 def production():
@@ -72,8 +86,23 @@ def production():
 directlyProvides(production, SomeInterface)
 
 
+class AgentMixin(object):
+
+    dependency.register(
+        MixinInterface, 'feat.test.test_agents_base_dependency.test',
+        ExecMode.test)
+
+
+@agent.register('blah_blah_blah')
+class OtherAgent(agent.BaseAgent, AgentMixin):
+    '''Important is not to move this definion below AgentWithDependency.
+    This is here to reproduce the bug related to annotations and it depends
+    on the order of class definition.
+    '''
+
+
 @agent.register('blah_blah')
-class AgentWithDependency(agent.BaseAgent):
+class AgentWithDependency(agent.BaseAgent, AgentMixin):
 
     dependency.register(
         SomeInterface, 'feat.test.test_agents_base_dependency.test',

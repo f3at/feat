@@ -256,7 +256,7 @@ class Recorder(RecorderNode, annotate.Annotable):
             parts = [class_canonical_name, function.__name__]
             fun_id = ".".join(parts)
 
-        if fun_id in _registry:
+        if fun_id in _registry and _registry[fun_id] != function:
             raise RuntimeError("Failed to register function %r with name '%s' "
                                "it is already used by function %r"
                                % (function, fun_id, _registry[fun_id]))
