@@ -94,6 +94,13 @@ class FailureAdapter(Failure, BaseAdapter, base.Serializable):
         self.__dict__.update(failure.__dict__)
         self.cleanFailure()
 
+    def snapshot(self):
+        snapshot = base.Serializable.snapshot(self)
+        snapshot['tb'] = None
+        snapshot['frames'] = []
+        snapshot['stack'] = []
+        return snapshot
+
     def trap(self, *errorTypes):
         error = self.check(*errorTypes)
         if not error:
