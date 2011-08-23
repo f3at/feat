@@ -144,9 +144,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_agent_id(self):
         return self._descriptor.doc_id
 
+    @manhole.expose()
     def get_full_id(self):
         desc = self._descriptor
         return desc.doc_id + u"/" + unicode(desc.instance_id)
+
+    @manhole.expose()
+    def get_shard_id(self):
+        return self._descriptor.shard
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -201,6 +206,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._terminate_procedure(generate_body)
 
     ### IAgencyAgent Methods ###
+
+    @serialization.freeze_tag('AgencyAgent.get_own_address')
+    @replay.named_side_effect('AgencyAgent.get_own_address')
+    def get_own_address(self, channel_type="default"):
+        channel = self._channels.get(channel_type)
+        if channel is None:
+            self.warning("Address requested for unknown channel type %r",
+                         channel_type)
+            return None
+        return channel.get_recipient()
 
     @serialization.freeze_tag('AgencyAgent.enable_channel')
     @replay.named_side_effect('AgencyAgent.enable_channel')
@@ -518,13 +533,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### IChannelSink ###
 
-    @property
-    def channel_id(self):
-        return self._descriptor.doc_id
+    # get_agent_id() already defined
 
-    @property
-    def default_route(self):
-        return self._descriptor.shard
+    # get_shard_id() already defined
 
     def on_message(self, msg):
         '''
@@ -588,15 +599,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def get_queue_name(self):
         warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
-                      "please use IChannelSink's channel_id instead.",
+                      "please use IChannelSink's get_agent_id() instead.",
                       DeprecationWarning)
-        return self.channel_id
+        return self.get_agent_id()
 
     def get_shard_name(self):
         warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
-                      "please use IChannelSink's default_route instead.",
+                      "please use IChannelSink's get_shard_id() instead.",
                       DeprecationWarning)
-        return self.default_route
+        return self.get_shard_id()
 
     ### Introspection Methods ###
 

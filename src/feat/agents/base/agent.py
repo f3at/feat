@@ -200,7 +200,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @replay.immutable
     def get_shard_id(self, state):
         '''Returns current shard identifier.'''
-        return self.get_own_address().route
+        return state.medium.get_descriptor().shard
 
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
@@ -336,9 +336,9 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @manhole.expose()
     @replay.immutable
-    def get_own_address(self, state):
+    def get_own_address(self, state, channel_type="default"):
         '''get_own_address() -> Return IRecipient representing the agent.'''
-        return recipient.IRecipient(state.medium)
+        return state.medium.get_own_address(channel_type)
 
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):

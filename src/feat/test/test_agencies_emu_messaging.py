@@ -148,7 +148,7 @@ class TestMessaging(common.TestCase):
         self.connection.release()
 
     def test1To1Binding(self):
-        key = self.agent.channel_id
+        key = self.agent.get_agent_id()
         binding = self.connection.bind(key)
         self.assertEqual(1, len(self.connection.get_bindings()))
 
@@ -204,7 +204,7 @@ class TestMessaging(common.TestCase):
         yield d
 
     def testPublishingByAgent(self):
-        key = self.agent.channel_id
+        key = self.agent.get_agent_id()
         msg = message.BaseMessage(payload='some message')
         self.connection.bind(key, 'lobby')
         recip = recipient.Recipient(key, 'lobby')

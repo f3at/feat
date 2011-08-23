@@ -39,7 +39,8 @@ class TestCase(object):
     number_of_agents = 2
 
     def _agent(self, n):
-        return recipient.Recipient(self.agents[n].channel_id, 'lobby')
+        agent_id = self.agents[n].get_agent_id()
+        return recipient.Recipient(agent_id, 'lobby')
 
     @defer.inlineCallbacks
     def init_agents(self):
@@ -49,7 +50,7 @@ class TestCase(object):
         for agent in self.agents:
             connection = yield self.messaging.new_channel(agent)
             self.connections.append(connection)
-            pb = connection.bind(agent.channel_id)
+            pb = connection.bind(agent.get_agent_id())
             bindings.append(pb)
         yield defer.DeferredList(map(lambda b: b.wait_created(), bindings))
 
@@ -236,7 +237,7 @@ class RabbitSpecific(object):
         client = yield channel._messaging.factory.add_connection_made_cb()
 
         self.assertIsInstance(client, messaging.MessagingClient)
-        binding = channel.bind(agent.channel_id)
+        binding = channel.bind(agent.get_agent_id())
         yield binding.wait_created()
 
         d = self.cb_after(None, agent, 'on_message')

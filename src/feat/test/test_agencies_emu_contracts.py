@@ -653,8 +653,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             msg.reply_to = None # Set by the backend
             self.assertEqual(bid, msg)
             medium = self.agent
-            self.assertEqual(medium.channel_id, reply_to.key)
-            self.assertEqual(medium.default_route, reply_to.route)
+            self.assertEqual(medium.get_agent_id(), reply_to.key)
+            self.assertEqual(medium.get_shard_id(), reply_to.route)
 
         d.addCallback(asserts_on_bid)
 

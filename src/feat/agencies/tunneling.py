@@ -17,17 +17,21 @@ class Channel(log.Logger):
 
     support_broadcast = False
 
-    def __init__(self, backend, sink):
+    def __init__(self, backend, agent):
         log.Logger.__init__(self, backend)
         self._backend = IBackend(backend)
-        self._sink = IChannelSink(sink)
-        self._connection_string = backend
-        backend._register_channel(self._sink.channel_id, self)
+        self._sink = IChannelSink(agent)
+        self._channel_id = self._sink.get_agent_id()
+        backend._register_channel(self)
+
+    @property
+    def channel_id(self):
+        return self._channel_id
 
     ### IChannel ###
 
     def release(self):
-        self._backend._release_channel(self._sink.channel_id)
+        self._backend._release_channel(self)
 
     def post(self, recipients, message):
         if not isinstance(message, BaseMessage):
@@ -38,8 +42,9 @@ class Channel(log.Logger):
         if IDialogMessage.providedBy(message):
             reply_to = message.reply_to
             if reply_to is None:
-                reply_to = recipient.Recipient(self._sink.channel_id,
-                                               "emu", self.channel_type)
+                reply_to = recipient.Recipient(self._sink.get_agent_id(),
+                                               self._backend.route,
+                                               self.channel_type)
                 message.reply_to = reply_to
             elif ((reply_to.type is not RecipientType.agent)
                    or (reply_to.channel != self.channel_type)):
@@ -55,6 +60,11 @@ class Channel(log.Logger):
 
     def get_bindings(self, route=None):
         return []
+
+    def get_recipient(self):
+        return recipient.Recipient(self._channel_id,
+                                   self._backend.route,
+                                   self._backend.channel_type)
 
     ### protected ###
 

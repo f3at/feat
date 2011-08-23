@@ -63,6 +63,12 @@ class IChannel(Interface):
         @rtype: list
         """
 
+    def get_recipient(self):
+        """
+        Returns the recipient to be used to send a message
+        to this channel from outside.
+        """
+
 
 class IChannelBinding(Interface):
 
@@ -77,8 +83,11 @@ class IChannelBinding(Interface):
 
 class IChannelSink(Interface):
 
-    channel_id = Attribute("Agent unique identifier.")
-    default_route = Attribute("Default route.")
+    def get_agent_id():
+        pass
+
+    def get_shard_id():
+        pass
 
     def on_message(message):
         """Called to process channel's messages."""

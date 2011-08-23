@@ -36,8 +36,8 @@ class Connection(log.Logger):
         self._disconnected = False
         self._consume_deferred = None
 
-        self._queue_name = self._sink.channel_id
-        self._default_route = self._sink.default_route
+        self._queue_name = agent.get_agent_id()
+
         self.log_name = self._queue_name
 
     def initiate(self):
@@ -89,8 +89,8 @@ class Connection(log.Logger):
         if IDialogMessage.providedBy(message):
             reply_to = message.reply_to
             if reply_to is None:
-                reply_to = recipient.Recipient(self._sink.channel_id,
-                                               self._sink.default_route,
+                reply_to = recipient.Recipient(self._queue_name,
+                                               self._sink.get_shard_id(),
                                                self.channel_type)
                 message.reply_to = reply_to
             elif reply_to.channel != self.channel_type:
@@ -117,7 +117,7 @@ class Connection(log.Logger):
 
     def bind(self, key, route=None):
         if not route:
-            route = self._default_route
+            route = self._sink.get_shard_id()
         recip = recipient.Recipient(key=key, route=route)
         return PersonalBinding(self, self._queue_name, recip)
 
@@ -125,6 +125,10 @@ class Connection(log.Logger):
         if route is None:
             return list(self._bindings)
         return [x for x in self._bindings if x.recipient.route == route]
+
+    def get_recipient(self):
+        return recipient.Recipient(self._queue_name,
+                                   self._sink.get_shard_id())
 
     ### protected ###
 

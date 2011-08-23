@@ -160,13 +160,15 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     log_category = 'simulation-driver'
 
-    def __init__(self, jourfile=None):
+    def __init__(self, jourfile=None,
+                 tunneling_version=None, tunneling_bridge=None):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
-        self._tunneling = tunneling.Backend()
+        self._tunneling = tunneling.Backend(version=tunneling_version,
+                                            bridge=tunneling_bridge)
         self._database = database.Database()
         jouropts = dict()
         if jourfile:

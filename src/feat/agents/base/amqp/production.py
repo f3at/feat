@@ -57,12 +57,10 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     ### IChannelSink ###
 
-    @property
-    def channel_id(self):
+    def get_agent_id(self):
         return None
 
-    @property
-    def default_route(self):
+    def get_shard_id(self):
         return None
 
     def on_message(self, msg):
@@ -72,15 +70,15 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     def get_queue_name(self):
         warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
-                      "please use IChannelSink's channel_id instead.",
+                      "please use IChannelSink's get_agent_id() instead.",
                       DeprecationWarning)
-        return self.channel_id
+        return self.get_agent_id()
 
     def get_shard_name(self):
         warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
-                      "please use IChannelSink's default_route instead.",
+                      "please use IChannelSink's get_shard_id() instead.",
                       DeprecationWarning)
-        return self.default_route
+        return self.get_shard_id()
 
     ### private ###
 

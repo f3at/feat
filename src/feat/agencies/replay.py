@@ -602,6 +602,11 @@ class AgencyAgent(BaseReplayDummy):
 
     ### IAgencyAgent Methods ###
 
+    @serialization.freeze_tag('AgencyAgent.get_own_address')
+    @replay.named_side_effect('AgencyAgent.get_own_address')
+    def get_own_address(self, channel_type="default"):
+        pass
+
     @serialization.freeze_tag('AgencyAgent.enable_channel')
     @replay.named_side_effect('AgencyAgent.enable_channel')
     def enable_channel(self, channel_type):
