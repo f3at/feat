@@ -66,6 +66,11 @@ class Capabilities(enum.Enum):
 class IRegistry(Interface):
     '''Register factories to unserialize object.'''
 
+    def clone():
+        """returns a new registry with the same restorators.
+        registering new restorator to the new registry will
+        not add it to the original registry."""
+
     def register(restorator):
         '''Register L{IRestorer}'''
 

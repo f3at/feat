@@ -596,93 +596,66 @@ class TunnellingTest(common.SimulationTest):
         a3, a4 = self.get_host_agents("test_agent", self.ha2)
         a5, a6 = self.get_host_agents("test_agent", self.ha3)
 
+        agents = [a1, a2, a3, a4, a5, a6]
+
         pid = DummyPublicCollector.protocol_id
         s1 = recipient.Broadcast(pid, a1.get_shard_id())
         s2 = recipient.Broadcast(pid, a5.get_shard_id())
 
-        a1.post_public_notification([s1, s2], "foo")
+        recipients = [s1, s2]
+
+        a1.post_public_notification(recipients, "foo")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), [])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), [])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), [])
+        self.check_public_notification(agents, [[]]*6)
         self.full_reset()
 
-        a1.enable_interest()
-        a4.enable_interest()
-        a6.enable_interest()
+        for a in (a1, a4, a6):
+            a.enable_interest()
 
-        a1.post_public_notification([s1, s2], "foo")
+        a1.post_public_notification(recipients, "foo")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["foo"])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), ["foo"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), ["foo"])
+        self.check_public_notification(agents, [["foo"], [], [],
+                                                ["foo"], [], ["foo"]])
         self.full_reset()
 
-        a1.disable_interest()
-        a2.enable_interest()
-        a3.enable_interest()
-        a4.disable_interest()
-        a5.enable_interest()
-        a6.disable_interest()
+        for a in (a1, a4, a6):
+            a.disable_interest()
 
-        a1.post_public_notification([s1, s2], "bar")
+        for a in (a2, a3, a5):
+            a.enable_interest()
+
+        a1.post_public_notification(recipients, "bar")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), [])
-        self.assertEqual(a2.get_public_notifications(), ["bar"])
-        self.assertEqual(a3.get_public_notifications(), ["bar"])
-        self.assertEqual(a4.get_public_notifications(), [])
-        self.assertEqual(a5.get_public_notifications(), ["bar"])
-        self.assertEqual(a6.get_public_notifications(), [])
+        self.check_public_notification(agents, [[], ["bar"], ["bar"],
+                                                [], ["bar"], []])
         self.full_reset()
 
-        a1.enable_interest()
-        a4.enable_interest()
-        a6.enable_interest()
+        for a in (a1, a4, a6):
+            a.enable_interest()
 
-        a1.post_public_notification([s1], "spam")
+        a1.post_public_notification(s1, "spam")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["spam"])
-        self.assertEqual(a2.get_public_notifications(), ["spam"])
-        self.assertEqual(a3.get_public_notifications(), ["spam"])
-        self.assertEqual(a4.get_public_notifications(), ["spam"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), [])
+        self.check_public_notification(agents, [["spam"], ["spam"], ["spam"],
+                                                ["spam"], [], []])
         self.full_reset()
 
-        a1.post_public_notification([s2], "bacon")
+        a1.post_public_notification(s2, "bacon")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), [])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), [])
-        self.assertEqual(a5.get_public_notifications(), ["bacon"])
-        self.assertEqual(a6.get_public_notifications(), ["bacon"])
+        self.check_public_notification(agents, [[], [], [],
+                                                [], ["bacon"], ["bacon"]])
         self.full_reset()
 
-        a6.post_public_notification([s1], "and spam")
+        a6.post_public_notification(s1, "and spam")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["and spam"])
-        self.assertEqual(a2.get_public_notifications(), ["and spam"])
-        self.assertEqual(a3.get_public_notifications(), ["and spam"])
-        self.assertEqual(a4.get_public_notifications(), ["and spam"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), [])
+        self.check_public_notification(agents, [["and spam"], ["and spam"],
+                                                ["and spam"], ["and spam"],
+                                                [], []])
         self.full_reset()
 
-        a6.post_public_notification([s2], "with eggs")
+        a6.post_public_notification(s2, "with eggs")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), [])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), [])
-        self.assertEqual(a5.get_public_notifications(), ["with eggs"])
-        self.assertEqual(a6.get_public_notifications(), ["with eggs"])
+        self.check_public_notification(agents, [[], [], [], [],
+                                                ["with eggs"], ["with eggs"]])
         self.full_reset()
 
     @defer.inlineCallbacks
@@ -691,61 +664,43 @@ class TunnellingTest(common.SimulationTest):
         a3, a4 = self.get_host_agents("test_agent", self.ha2)
         a5, a6 = self.get_host_agents("test_agent", self.ha3)
 
-        r1 = IRecipient(a1)
-        r2 = IRecipient(a2)
-        r3 = IRecipient(a3)
-        r4 = IRecipient(a4)
-        r5 = IRecipient(a5)
-        r6 = IRecipient(a6)
+        agents = [a1, a2, a3, a4, a5, a6]
+        dr = []
+
+        for a in agents:
+            dr.append(IRecipient(a))
 
         pid = DummyPublicCollector.protocol_id
         s1 = recipient.Broadcast(pid, a1.get_shard_id())
         s2 = recipient.Broadcast(pid, a5.get_shard_id())
 
-        a1.enable_interest()
-        a2.enable_interest()
-        a3.enable_interest()
-        a4.enable_interest()
-        a6.enable_interest()
+        br = [s1, s2]
 
-        a1.post_public_notification([r2, s1, r5], "spam")
+        for a in (a1, a2, a3, a4, a6):
+            a.enable_interest()
+
+        a1.post_public_notification([dr[1], br[0], dr[4]], "spam")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["spam"])
-        self.assertEqual(a2.get_public_notifications(), ["spam"])
-        self.assertEqual(a3.get_public_notifications(), ["spam"])
-        self.assertEqual(a4.get_public_notifications(), ["spam"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), [])
+        self.check_public_notification(agents, [["spam"], ["spam"], ["spam"],
+                                                ["spam"], [], []])
         self.full_reset()
 
-        a1.post_public_notification([s2, r1, r5], "bacon")
+        a1.post_public_notification([br[1], dr[0], dr[4]], "bacon")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["bacon"])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), [])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), ["bacon"])
+        self.check_public_notification(agents, [["bacon"], [], [],
+                                                [], [], ["bacon"]])
         self.full_reset()
 
-        a6.post_public_notification([r1, r6, s1], "egg")
+        a6.post_public_notification([dr[0], dr[5], br[0]], "egg")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), ["egg"])
-        self.assertEqual(a2.get_public_notifications(), ["egg"])
-        self.assertEqual(a3.get_public_notifications(), ["egg"])
-        self.assertEqual(a4.get_public_notifications(), ["egg"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), ["egg"])
+        self.check_public_notification(agents, [["egg"], ["egg"], ["egg"],
+                                                ["egg"], [], ["egg"]])
         self.full_reset()
 
-        a1.post_public_notification([s2, r4, r5], "sausage")
+        a1.post_public_notification([br[1], dr[3], dr[4]], "sausage")
         yield self.wait_for_idle(20)
-        self.assertEqual(a1.get_public_notifications(), [])
-        self.assertEqual(a2.get_public_notifications(), [])
-        self.assertEqual(a3.get_public_notifications(), [])
-        self.assertEqual(a4.get_public_notifications(), ["sausage"])
-        self.assertEqual(a5.get_public_notifications(), [])
-        self.assertEqual(a6.get_public_notifications(), ["sausage"])
+        self.check_public_notification(agents, [[], [], [],
+                                                ["sausage"], [], ["sausage"]])
         self.full_reset()
 
     ### private ###

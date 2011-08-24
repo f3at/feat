@@ -34,6 +34,7 @@ DEFAULT_MSG_PASSWORD = "guest"
 
 DEFAULT_JOURFILE = 'journal.sqlite3'
 DEFAULT_GW_PORT = 5500
+DEFAULT_TUNNEL_PORT = 5400
 
 # Only for command-line options
 DEFAULT_MH_PUBKEY = "public.key"
@@ -58,6 +59,7 @@ def add_options(parser):
     add_msg_options(parser)
     add_mh_options(parser)
     add_gw_options(parser)
+    add_tunnel_options(parser)
 
 
 def add_general_options(parser):
@@ -137,6 +139,19 @@ def add_msg_options(parser):
                      help=("password to messaging server (default: %s)" %
                            DEFAULT_MSG_PASSWORD),
                      metavar="PASSWORD")
+    parser.add_option_group(group)
+
+
+def add_tunnel_options(parser):
+    # Tunneling related options
+    group = optparse.OptionGroup(parser, "Tunneling options")
+    group.add_option('-n', '--tunneling-host', dest="tunnel_host",
+                     help="public tunneling host name",
+                     metavar="HOST")
+    group.add_option('-l', '--tunneling-port', dest="tunnel_port",
+                     help=("first port of tunneling port range"
+                           "(default: %s" % DEFAULT_TUNNEL_PORT),
+                     metavar="PORT", type="int")
     parser.add_option_group(group)
 
 

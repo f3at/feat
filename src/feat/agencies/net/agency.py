@@ -19,10 +19,12 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import sys
-import re
-import types
 import os
+import re
+import socket
+import sys
+import types
+
 
 from twisted.internet import reactor
 from twisted.spread import pb
@@ -31,7 +33,7 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
-from feat.agencies.net import ssh, broker
+from feat.agencies.net import ssh, broker, tunneling
 from feat.common import log, defer, time, first, error, run
 from feat.common import manhole, text_helper
 from feat.process import standalone
@@ -39,15 +41,16 @@ from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
 
-from feat.agencies.net import messaging, database, options
+from feat.agencies.net import database, messaging, tunneling, options
+from feat.agencies.net.broker import BrokerRole
 
 from feat.interface.agent import IAgentFactory, AgencyAgentState
 from feat.interface.agency import ExecMode
 from feat.agencies.interface import NotFoundError
-from feat.agencies.net.broker import BrokerRole
 
 
 GATEWAY_PORT_COUNT = 100
+TUNNELING_PORT_COUNT = 100
 HOST_RESTART_RETRY_INTERVAL = 5
 
 
@@ -85,6 +88,8 @@ class Agency(agency.Agency):
                  agency_journal=options.DEFAULT_JOURFILE,
                  socket_path=options.DEFAULT_SOCKET_PATH,
                  gateway_port=options.DEFAULT_GW_PORT,
+                 tunneling_host=None,
+                 tunneling_port=options.DEFAULT_TUNNEL_PORT,
                  enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
                  rundir=None,
                  logdir=None,
@@ -113,6 +118,7 @@ class Agency(agency.Agency):
                           agency_journal=agency_journal,
                           socket_path=socket_path,
                           gateway_port=gateway_port,
+                          tunneling_port=tunneling_port,
                           enable_spawning_slave=enable_spawning_slave,
                           rundir=rundir,
                           logdir=logdir,
@@ -182,14 +188,21 @@ class Agency(agency.Agency):
         if self.config['agency']['daemonize']:
             os.chdir(self.config['agency']['rundir'])
 
-        mesg = messaging.Messaging(
-            self.config['msg']['host'], int(self.config['msg']['port']),
-            self.config['msg']['user'], self.config['msg']['password'])
-        mesg.redirect_log(self)
-        db = database.Database(
-            self.config['db']['host'], int(self.config['db']['port']),
-            self.config['db']['name'])
+        dbc = self.config['db']
+        db = database.Database(dbc['host'], int(dbc['port']), dbc['name'])
         db.redirect_log(self)
+
+        mc = self.config['msg']
+        mesg_backend = messaging.Messaging(mc['host'], int(mc['port']),
+                                           mc['user'], mc['password'])
+        mesg_backend.redirect_log(self)
+
+        tc = self.config["tunnel"]
+        start_port = int(tc["port"])
+        port_range = range(start_port, start_port + TUNNELING_PORT_COUNT)
+        tunnel_backend = tunneling.Backend(tc["host"], port_range)
+        tunnel_backend.redirect_log(self)
+
         jour = journaler.Journaler(self)
         self._journal_writer = None
 
@@ -215,7 +228,7 @@ class Agency(agency.Agency):
 
         d = defer.succeed(None)
         d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, db, jour, mesg)
+                  self, db, jour, mesg_backend, tunnel_backend)
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
@@ -525,7 +538,9 @@ class Agency(agency.Agency):
                      public_key=None, private_key=None,
                      authorized_keys=None, manhole_port=None,
                      agency_journal=None, socket_path=None,
-                     gateway_port=None, enable_spawning_slave=None,
+                     gateway_port=None,
+                     tunneling_host=None, tunneling_port=None,
+                     enable_spawning_slave=None,
                      rundir=None, logdir=None, daemonize=None,
                      force_host_restart=None):
 
@@ -556,12 +571,15 @@ class Agency(agency.Agency):
 
         gateway_conf = dict(port=gateway_port)
 
+        tunnel_conf = dict(host=tunneling_host, port=tunneling_port)
+
         self.config = dict()
         self.config['msg'] = msg_conf
         self.config['db'] = db_conf
         self.config['manhole'] = manhole_conf
         self.config['agency'] = agency_conf
         self.config['gateway'] = gateway_conf
+        self.config['tunnel'] = tunnel_conf
 
     def _store_config(self, env):
         '''

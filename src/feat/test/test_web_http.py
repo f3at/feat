@@ -30,6 +30,23 @@ from feat.web import http
 
 class TestHTTP(common.TestCase):
 
+    def testjoinLocations(self):
+
+        def check(expected, *locations):
+            self.assertEqual(expected, http.join_locations(*locations))
+
+        check(None)
+        check("", "")
+        check("", "", "")
+        check("/", "/", "")
+        check("/", "/", "/")
+        check("foo/bar", "foo", "bar")
+        check("foo/bar", "foo/", "bar")
+        check("foo/bar", "foo", "/bar")
+        check("foo/bar", "foo/", "/bar")
+        check("foo/bar/toto/tata", "foo", "bar", "toto", "tata")
+        check("foo/bar/toto/tata", "foo/", "/bar/", "/toto/", "/tata")
+
     def testMime2tuple(self):
 
         def check(mime, expected):

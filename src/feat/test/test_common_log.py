@@ -30,6 +30,9 @@ from feat.interface.log import *
 
 from . import common
 
+#TODO: Logging depth seems broken.
+#      Remember to change agencies.common.py when fixed
+
 
 class DummyLogKeeper(object):
 

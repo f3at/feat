@@ -133,7 +133,7 @@ def wait_for(logger, check, timeout, freq=0.5):
             raise RuntimeError('Timeout error waiting for check %r.'
                                % check.__name__)
         d = defer.Deferred()
-        callLater(freq, d.callback, None)
+        call_later(freq, d.callback, None)
         yield d
 
 

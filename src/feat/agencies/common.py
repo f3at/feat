@@ -35,6 +35,7 @@ from feat.interface.serialization import *
 
 from zope.interface import implements, classProvides
 from feat.interface.fiber import ICancellable, FiberCancelled
+from feat.interface.log import LogLevel
 
 
 class Statistics(object):
@@ -134,25 +135,30 @@ class StateMachineMixin(object):
 
     # Make it possible to use mixin without the logging submodule
 
-    def log(self, *args):
+    def log(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.log(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.log, format, args, depth=-3)
 
-    def debug(self, *args):
+    def debug(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.debug(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.debug, format, args, depth=-3)
 
-    def info(self, *args):
+    def info(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.info(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.info, format, args, depth=-3)
 
-    def warning(self, *args):
+    def warning(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.warning(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.warning, format, args, depth=-3)
 
-    def error(self, *args):
+    def error(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.error(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.error, format, args, depth=-3)
 
     # Fiber Canceller
 

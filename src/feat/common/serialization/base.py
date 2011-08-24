@@ -218,10 +218,15 @@ class Registry(object):
 
     implements(IRegistry)
 
-    def __init__(self):
+    def __init__(self, *restorators):
         self._restorators = {} # {TYPE_NAME: IRestorator}
+        for restorator in restorators:
+            self.register(restorator)
 
     ### IRegistry ###
+
+    def clone(self):
+        return type(self)(*self._restorators.values())
 
     def register(self, restorator):
         r = IRestorator(restorator)

@@ -60,7 +60,40 @@ except ValueError:
     same_value_not_allowed = True
 
 
+class E(enum.Enum):
+
+    a = enum.value(1)
+    b = enum.value(2, "custom name")
+    c = enum.value(4, "#/!@")
+
+
 class TestEnum(common.TestCase):
+
+    def testCustomNames(self):
+        self.assertEqual(E.a, 1)
+        self.assertEqual(E.b, 2)
+        self.assertEqual(E.c, 4)
+        self.assertEqual(E.a.name, "a")
+        self.assertEqual(E.b.name, "custom name")
+        self.assertEqual(E.c.name, "#/!@")
+        self.assertEqual(E["a"], E.a)
+        self.assertEqual(E["custom name"], E.b)
+        self.assertEqual(E["#/!@"], E.c)
+        self.assertEqual(E[E.a], E.a)
+        self.assertEqual(E[E.b], E.b)
+        self.assertEqual(E[E.c], E.c)
+        self.assertEqual(E[1], E.a)
+        self.assertEqual(E[2], E.b)
+        self.assertEqual(E[4], E.c)
+        self.assertTrue(E.a in E)
+        self.assertTrue(E.b in E)
+        self.assertTrue(E.c in E)
+        self.assertTrue(1 in E)
+        self.assertTrue(2 in E)
+        self.assertTrue(4 in E)
+        self.assertTrue("a" in E)
+        self.assertTrue("custom name" in E)
+        self.assertTrue("#/!@" in E)
 
     def testLogicalValues(self):
         self.assertTrue(A.a)

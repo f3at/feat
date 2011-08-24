@@ -40,7 +40,12 @@ class MetaEnum(type):
                 if not key.startswith("_"):
                     cls.add(key, value)
 
-    def add(cls, name, value):
+    def add(cls, attr, value):
+        if isinstance(value, tuple) and len(value) == 2:
+            value, name = value
+        else:
+            name = attr
+
         if not isinstance(value, int):
             raise TypeError("Enum value type must be int not %s"
                              % (value.__class__.__name__))
@@ -56,7 +61,7 @@ class MetaEnum(type):
         cls._values[value] = self
         cls._names[name] = self
         cls._items[self] = name
-        setattr(cls, name, self)
+        setattr(cls, attr, self)
 
         return self
 
@@ -80,6 +85,8 @@ class MetaEnum(type):
     __getitem__ = get
 
     def __contains__(cls, key):
+        if isinstance(key, str):
+            return key in cls._names
         if isinstance(key, Enum) and not isinstance(key, cls):
             raise TypeError("Cannot type cast between enums")
         return int(key) in cls._values
@@ -146,3 +153,9 @@ class Enum(int):
         return True
 
     __repr__ = __str__
+
+
+def value(number, name=None):
+    if name is None:
+        return number
+    return number, name
