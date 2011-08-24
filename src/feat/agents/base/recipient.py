@@ -153,6 +153,8 @@ class Recipients(serialization.Serializable, pb.Copyable):
         return hash(self._recipients)
 
     def __eq__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         for el1, el2 in zip(self._recipients, other._recipients):
             if el1 != el2:
                 return False

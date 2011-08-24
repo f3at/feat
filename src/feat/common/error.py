@@ -127,10 +127,11 @@ def get_exception_traceback(exception=None, cleanup=False):
     if cleanup:
         tb = clean_traceback(tb)
     print >> io, tb
+
     if isinstance(f.value, FeatError):
-        if f.value.causeTraceback:
+        if f.value.cause_traceback:
             print >> io, "\n\nCAUSED BY:\n\n"
-            tb = f.value.causeTraceback
+            tb = f.value.cause_traceback
             if cleanup:
                 tb = clean_traceback(tb)
             print >> io, tb

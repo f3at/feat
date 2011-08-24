@@ -1,4 +1,7 @@
-from feat.agents.base import agent, replay, recipient, task, descriptor
+from pprint import pformat
+
+from feat.agents.base import (agent, replay, recipient, task, descriptor,
+                              alert, notifier, )
 from feat.agents.common import start_agent
 from feat.common import (fiber, serialization, formatable, manhole,
                          error, text_helper, )
@@ -6,12 +9,15 @@ from feat.agents.migration import protocol, spec
 
 
 @agent.register('migration_agent')
-class MigrationAgent(agent.BaseAgent):
+class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
         state.medium.register_interest(protocol.Replier)
+        state.medium.enable_channel('tunnel')
         state.exports = ExportAgents()
+
+        self._set_semaphore(False)
 
     @replay.mutable
     def startup(self, state):
@@ -70,11 +76,21 @@ class MigrationAgent(agent.BaseAgent):
                           for x in state.exports.iter_entries())]
         return "\n".join(resp)
 
+    @manhole.expose()
     @replay.journaled
     def handshake(self, state, recp):
+
+        def parse(response):
+            return AgentEntry(recipient=recp,
+                              name=response.name,
+                              version=response.version)
+
         req = self.initiate_protocol(
             protocol.Requester, recp, spec.Handshake())
-        return req.notify_finish()
+        f = req.notify_finish()
+        f.add_callback(parse)
+        f.add_callback(self._add_export_entry)
+        return f
 
     @manhole.expose()
     @replay.journaled
@@ -108,7 +124,7 @@ class MigrationAgent(agent.BaseAgent):
         recp = recipient.IRecipient(recp)
         tunel = state.exports.get_by_name(export)
 
-        own = self.get_own_address()
+        own = self.get_own_address(tunel.recipient.channel)
         cmd = spec.PrepareMigration(recipient=recp,
                                     migration_agent=own,
                                     host_cmd=self._get_host_cmd())
@@ -120,7 +136,7 @@ class MigrationAgent(agent.BaseAgent):
     def join_migrations(self, state, migration_ids, export=None):
         tunel = state.exports.get_by_name(export)
 
-        own = self.get_own_address()
+        own = self.get_own_address(tunel.recipient.channel)
         cmd = spec.JoinMigrations(migration_ids=migration_ids,
                                   migration_agent=own,
                                   host_cmd=self._get_host_cmd())
@@ -171,7 +187,103 @@ class MigrationAgent(agent.BaseAgent):
         req = self.initiate_protocol(protocol.Requester, tunel.recipient, cmd)
         return req.notify_finish()
 
+    @manhole.expose()
+    @replay.mutable
+    def spawn_next_agent(self, state):
+
+        def handle_success(entry):
+            f = self.remove_import_entry(entry)
+            f.add_callback(fiber.drop_param, self.spawn_next_agent)
+            return f
+
+        def handle_failure(fail, entry):
+            msg = ("Failed to start agent, import entry: %r" % entry)
+            self.raise_alert(msg, alert.Severity.high)
+
+        if state.spawn_running:
+            return
+
+        self._set_semaphore(True)
+
+        entry = self.get_top_import_entry()
+        if entry is not None:
+            factory = descriptor.lookup(entry.agent_type)
+            if factory is None:
+                raise ValueError('Unknown agent type: %r' %
+                                 (entry.agent_type, ))
+            doc = factory()
+            kwargs = dict()
+            if entry.blackbox:
+                kwargs['blackbox'] == entry.blackbox
+            f = self.save_document(doc)
+            f.add_callback(fiber.inject_param, 2, self.initiate_protocol,
+                           start_agent.GloballyStartAgent, **kwargs)
+            f.add_callback(fiber.call_param, 'notify_finish')
+            f.add_callbacks(fiber.drop_param, handle_failure,
+                            cbargs=(handle_success, entry),
+                            ebargs=(entry, ))
+            f.add_both(fiber.bridge_param, self._set_semaphore, False)
+
+            return f
+
+    ### Managing list of import entries stored in descriptor ###
+
+    @replay.mutable
+    def add_import_entry(self, state, entry):
+
+        def do_add(desc, entry):
+            desc.import_entries.append(entry)
+
+        f = self.update_descriptor(do_add, entry)
+        f.add_callback(fiber.drop_param, self.call_next, self.spawn_next_agent)
+        return f
+
+    @manhole.expose()
+    @replay.mutable
+    def remove_import_entry(self, state, index_or_entry):
+
+        def do_remove(desc, entry):
+            desc.import_entries.remove(entry)
+
+        def trigger_event_if_empty():
+            if self.get_top_import_entry() is None:
+                self.callback_event('import_entries_empty', None)
+
+        if isinstance(index_or_entry, int):
+            entry = self.get_descriptor().import_entries[index_or_entry]
+        else:
+            entry = index_or_entry
+
+        f = self.update_descriptor(do_remove, entry)
+        f.add_callback(fiber.drop_param, trigger_event_if_empty)
+        return f
+
+    @manhole.expose()
+    def get_top_import_entry(self):
+        entries = self.get_descriptor().import_entries
+        if entries:
+            return entries[0]
+
+    @manhole.expose()
+    def show_import_entries(self):
+        t = text_helper.Table(fields=('Agent Type', 'Blackbox', ),
+                              lengths=(40, 100, ))
+        return t.render((x.agent_type, pformat(x.blackbox), )
+                        for x in self.get_descriptor().import_entries)
+
+    def wait_for_empty_import_entries(self):
+        f = fiber.succeed()
+        desc = self.get_descriptor()
+        if desc.import_entries:
+            f.add_callback(fiber.drop_param,
+                           self.wait_for_event, 'import_entries_empty')
+        return f
+
     ### private ###
+
+    @replay.mutable
+    def _set_semaphore(self, state, val):
+        state.spawn_running = val
 
     @replay.immutable
     def _get_host_cmd(self, state):
@@ -199,21 +311,12 @@ class MigrationAgent(agent.BaseAgent):
     @replay.mutable
     def _got_local(self, state, recp):
 
-        def parse(response):
-            return AgentEntry(recipient=recp,
-                              name=response.name,
-                              version=response.version)
-
         if len(recp) == 0:
-            raise error.FeatError("Export service not found.")
-        fibers = list()
-        for r in recp:
-            f = self.handshake(r)
-            f.add_callback(parse)
-            f.add_callback(self._add_export_entry)
-            fibers.append(f)
-        f = fiber.FiberList(fibers)
-        return f.succeed()
+            self.info("Failed discovering local export agent. But no "
+                      "worries, you can retry by calling discover_local(). ")
+            return
+
+        return fiber.FiberList([self.handshake(r) for r in recp]).succeed()
 
     @replay.mutable
     def _add_export_entry(self, state, entry):
@@ -233,17 +336,10 @@ class MigrationAgent(agent.BaseAgent):
         def render_response(resp):
             return spec.HandleImportResponse()
 
-        factory = descriptor.lookup(agent_type)
-        if factory is None:
-            raise ValueError('Unknown agent type: %r' % (agent_type, ))
-        doc = factory()
-        kwargs = dict()
-        if blackbox:
-            kwargs['blackbox'] == blackbox
-        f = self.save_document(doc)
-        f.add_callback(fiber.inject_param, 2, self.initiate_protocol,
-                       start_agent.GloballyStartAgent, **kwargs)
-        f.add_callback(fiber.call_param, 'notify_finish')
+        entry = ImportEntry(agent_type=agent_type,
+                            blackbox=blackbox)
+
+        f = self.add_import_entry(entry)
         f.add_callback(render_response)
         return f
 
@@ -334,23 +430,23 @@ class ApplyMigration(task.BaseTask):
         if not state.migration.completed:
             cmd = spec.ApplyNextMigrationStep(
                 migration_id=state.migration.ident)
-            req = self._request(cmd)
-            f = req.notify_finish()
+            f = state.agent.wait_for_empty_import_entries()
+            f.add_callback(fiber.drop_param, self._request, cmd)
             f.add_callback(self._store_migration)
             f.add_callback(fiber.drop_param, self._next)
             return f
         else:
             cmd = spec.ForgetMigration(
                 migration_id=state.migration.ident)
-            req = self._request(cmd)
-            f = req.notify_finish()
+            f = self._request(cmd)
             f.add_callback(fiber.override_result, "All ok!")
             return f
 
-    @replay.immutable
+    @replay.mutable
     def _request(self, state, cmd):
-        return state.agent.initiate_protocol(
+        req = state.agent.initiate_protocol(
             protocol.Requester, state.recipient, cmd)
+        return req.notify_finish()
 
     @replay.mutable
     def _store_migration(self, state, migration):
@@ -363,3 +459,13 @@ class Descriptor(descriptor.Descriptor):
 
     # agent_id -> [PendingNotification]
     formatable.field('pending_notifications', dict())
+    # [ImportEntry]
+    formatable.field('import_entries', list())
+
+
+@serialization.register
+class ImportEntry(formatable.Formatable):
+    type_name = 'import_entry'
+
+    formatable.field('agent_type', None)
+    formatable.field('blackbox', None)

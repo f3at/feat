@@ -40,8 +40,10 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
+        tun = tunneling.Backend(version=self._tunneling_version,
+                                bridge=self._tunneling_bridge)
         d = ag.initiate(self._database, self._journaler, self,
-                        self._messaging, self._tunneling)
+                        self._messaging, tun)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -167,8 +169,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
-        self._tunneling = tunneling.Backend(version=tunneling_version,
-                                            bridge=tunneling_bridge)
+        self._tunneling_version = tunneling_version
+        self._tunneling_bridge = tunneling_bridge or tunneling.Bridge()
         self._database = database.Database()
         jouropts = dict()
         if jourfile:
@@ -196,6 +198,25 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._journaler.configure_with(self._jourwriter)
         return defer.DeferredList([d1, d2])
 
+    def get_local(self, name):
+        return self._parser.get_local(name)
+
+    def set_local(self, name, value):
+        self._parser.set_local(value, name)
+
+    def count_agents(self, agent_type=None):
+        return len([x for x in self.iter_agents(agent_type)])
+
+    def freeze_all(self):
+        '''
+        Stop all activity of the agents running.
+        '''
+        d = defer.succeed(None)
+        for x in self.iter_agents():
+            d.addCallback(defer.drop_param, x._cancel_long_running_protocols)
+            d.addCallback(defer.drop_param, x.wait_for_protocols_finish)
+        return d
+
     @defer.inlineCallbacks
     def destroy(self):
         '''
@@ -209,7 +230,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         del(self._journaler)
         del(self._jourwriter)
         del(self._messaging)
-        del(self._tunneling)
+        del(self._tunneling_bridge)
         del(self._database)
         del(self._agencies)
         del(self._breakpoints)
@@ -231,7 +252,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def is_idle(self):
         return (self._messaging.is_idle()
-                and self._tunneling.is_idle()
+                and self._tunneling_bridge.is_idle()
                 and self.are_agents_idle())
 
     def are_agents_idle(self):

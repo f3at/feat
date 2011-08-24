@@ -11,6 +11,7 @@ from feat.common import text_helper, defer, reflect
 from feat.common.serialization import pytree
 from feat.simulation import driver
 from feat.agencies import replay
+from feat.agencies.emu import tunneling
 from feat.agents.base import dbtools
 from feat.agents.base.agent import registry_lookup
 
@@ -69,7 +70,25 @@ def format_journal(journal, prefix=""):
     return "".join(parts)
 
 
-class SimulationTest(common.TestCase):
+class OverrideConfigMixin(object):
+
+    def override_config(self, agent_type, config):
+        if not hasattr(self, 'overriden_configs'):
+            self.overriden_configs = dict()
+            self.addCleanup(self.revert_overrides)
+        factory = registry_lookup(agent_type)
+        self.overriden_configs[agent_type] = factory.configuration_doc_id
+        factory.configuration_doc_id = config.doc_id
+
+    def revert_overrides(self):
+        if self.overriden_configs is None:
+            return
+        for key, value in self.overriden_configs.iteritems():
+            factory = registry_lookup(key)
+            factory.configuration_doc_id = value
+
+
+class SimulationTest(common.TestCase, OverrideConfigMixin):
 
     configurable_attributes = ['skip_replayability', 'jourfile', 'save_stats']
     skip_replayability = False
@@ -80,7 +99,6 @@ class SimulationTest(common.TestCase):
         common.TestCase.__init__(self, *args, **kwargs)
         initial_documents = dbtools.get_current_initials()
         self.addCleanup(dbtools.reset_documents, initial_documents)
-        self.overriden_configs = None
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -98,23 +116,21 @@ class SimulationTest(common.TestCase):
         return d
 
     def get_local(self, *names):
-        results = map(lambda name: self.driver._parser.get_local(name), names)
+        results = map(lambda name: self.driver.get_local(name), names)
         if len(results) == 1:
             return results[0]
         else:
             return tuple(results)
 
     def set_local(self, name, value):
-        self.driver._parser.set_local(value, name)
+        self.driver.set_local(name, value)
 
     @defer.inlineCallbacks
     def tearDown(self):
         # First get the current exception before anything else
         exc_type, _, _ = sys.exc_info()
 
-        for x in self.driver.iter_agents():
-            yield x._cancel_long_running_protocols()
-            yield x.wait_for_protocols_finish()
+        yield self.driver.freeze_all()
 
         yield common.TestCase.tearDown(self)
 
@@ -325,24 +341,74 @@ class SimulationTest(common.TestCase):
             raise
 
     def count_agents(self, agent_type=None):
-        return len([x for x in self.driver.iter_agents(agent_type)])
-
-    def override_config(self, agent_type, config):
-        if self.overriden_configs is None:
-            self.overriden_configs = dict()
-            self.addCleanup(self.revert_overrides)
-        factory = registry_lookup(agent_type)
-        self.overriden_configs[agent_type] = factory.configuration_doc_id
-        factory.configuration_doc_id = config.doc_id
-
-    def revert_overrides(self):
-        if self.overriden_configs is None:
-            return
-        for key, value in self.overriden_configs.iteritems():
-            factory = registry_lookup(key)
-            factory.configuration_doc_id = value
+        return self.driver.count_agents(agent_type)
 
     def assert_document_not_found(self, doc_id):
         d = self.driver.get_document(doc_id)
         self.assertFailure(d, NotFoundError)
+        return d
+
+
+class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
+
+    configurable_attributes = ['save_journal', 'clusters']
+    save_journal = False
+    clusters = 2
+
+    def __init__(self, *args, **kwargs):
+        common.TestCase.__init__(self, *args, **kwargs)
+        initial_documents = dbtools.get_current_initials()
+        self.addCleanup(dbtools.reset_documents, initial_documents)
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+        bridge = tunneling.Bridge()
+        jourfiles = ["%s_%d.sqlite3" % (self._testMethodName, index, )
+                     if self.save_journal else None
+                     for index in range(self.clusters)]
+        self.drivers = [driver.Driver(tunneling_bridge=bridge,
+                                      jourfile=jourfile)
+                        for jourfile in jourfiles]
+        yield defer.DeferredList([x.initiate() for x in self.drivers])
+        yield self.prolog()
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+
+        def freeze_and_destroy(driver):
+            d = driver.freeze_all()
+            d.addCallback(defer.drop_param, driver.destroy)
+            return d
+
+        yield defer.DeferredList([freeze_and_destroy(x)
+                                  for x in self.drivers])
+
+        for k, v in self.__dict__.items():
+            if str(k)[0] == "_":
+                continue
+            delattr(self, k)
+        yield common.TestCase.tearDown(self)
+
+    @defer.inlineCallbacks
+    def wait_for_idle(self, timeout, freq=0.05):
+
+        def all_idle():
+            return all([x.is_idle() for x in self.drivers])
+
+        try:
+            yield self.wait_for(all_idle, timeout, freq)
+        except FailTest:
+            for driver, index in zip(self.drivers, range(len(self.drivers))):
+                self.info("Inspecting driver #%d", index)
+                for agent in driver.iter_agents():
+                    activity = agent.show_activity()
+                    if activity is None:
+                        continue
+                    self.info(activity)
+            raise
+
+    def process(self, driver, script):
+        d = self.cb_after(None, driver._parser, 'on_finish')
+        driver.process(script)
         return d

@@ -2,6 +2,7 @@ import operator
 import uuid
 import copy
 
+import feat
 from feat.agents.base import (agent, replay, manager, contractor,
                               message, task, document, dbtools, sender, )
 from feat.agents.common import (rpc, export, host, start_agent, )
@@ -9,7 +10,7 @@ from feat.common import (formatable, serialization, log, fiber,
                          text_helper, manhole, first, )
 from feat.agents.migration import protocol, spec
 
-from feat.interface.recipient import *
+from feat.interface.recipient import IRecipients, IRecipient
 
 
 Migratability = export.Migratability
@@ -28,6 +29,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
+        state.medium.enable_channel('tunnel')
         # result of the view query for th shard structure
         state.shards = list()
         # registry of know migrations to be able to speak with
@@ -49,7 +51,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
         '''
         config = state.medium.get_configuration()
         return spec.HandshakeResponse(name=config.sitename,
-                                      version=config.version)
+                                      version=feat.version)
 
     @replay.journaled
     def migration_get_shard_structure(self, state):
@@ -249,7 +251,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def unlock_host(self, state, recp):
-        return self.call_remote(recp, 'unregister_from_migration', 'manual')
+        return self.call_remote(recp, 'unregister_from_migration', ['manual'])
 
     ### private ###
 
@@ -828,7 +830,6 @@ class ExportAgentConfiguration(document.Document):
     document.field('notification_period', 12)
     document.field('default_host_cmd', '/bin/true')
     document.field('sitename', 'local')
-    document.field('version', 1)
 
 
 dbtools.initial_data(ExportAgentConfiguration)
