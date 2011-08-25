@@ -19,7 +19,7 @@ class Process(base.Base):
         self.config['local_ini'] = os.path.join(workspace, 'local.ini')
         self.config['host'] = '127.0.0.1'
         import feat
-        couchpy = os.path.join(feat.__path__[0], 'bin', 'couchpy')
+        couchpy = os.path.join(feat.__path__[0], 'bin', 'feat-couchpy')
         self.config['couchpy'] = couchpy
 
     @replay.side_effect
