@@ -74,7 +74,7 @@ DEFAULT_CATEGORIES = {'access': Access.none,
                       'address': Address.none,
                       'storage': Storage.none}
 
-DEFAULT_PORTS_RANGES = [('misc', 8000, 9000)]
+DEFAULT_PORTS_RANGES = {'misc': (8000, 9000)}
 
 
 @document.register

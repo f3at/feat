@@ -13,7 +13,7 @@ from feat.common import fiber, manhole, serialization, defer
 
 from feat.agencies.interface import NotFoundError
 from feat.interface.protocols import InterestType
-from feat.interface.agent import Access, Address, Storage, CategoryError
+from feat.interface.agent import CategoryError
 
 
 @serialization.register
@@ -363,7 +363,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
         self.info("Setting host ports ranges to: %s",
                   ", ".join(["%s=%s:%s" % (g, s, e)
-                             for g, (s, e)  in ports_ranges.items()]))
+                             for g, (s, e) in ports_ranges.items()]))
 
         for name, (first, last) in ports_ranges.items():
             state.resources.define(name, resource.Range, first, last)

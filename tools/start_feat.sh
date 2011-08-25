@@ -94,4 +94,4 @@ fi
 echo "Starting F3AT..."
 $ENV $FEAT -m "$master_host" -H "$master_host" \
            -L "$LOGDIR" -R "$RUNDIR" $daemon_args \
-           -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" $force_args
+           -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" $force_args "$@"
