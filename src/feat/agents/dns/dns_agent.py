@@ -122,15 +122,13 @@ class DNSAgent(agent.BaseAgent):
         self.error("Network error: port %d is not available." % state.port)
         #FIXME: should retry or shutdown the agent
 
-    @replay.immutable
-    def killed(self, state):
-        state.labour.cleanup()
+    @replay.journaled
+    def on_killed(self, state):
+        return fiber.wrap_defer(state.labour.cleanup)
 
-    @replay.mutable
+    @replay.journaled
     def shutdown(self, state):
-        f = state.labour.cleanup()
-        f.add_callback(fiber.drop_result, agent.BaseAgent.shutdown, self)
-        return f
+        return fiber.wrap_defer(state.labour.cleanup)
 
     @manhole.expose()
     @replay.mutable
