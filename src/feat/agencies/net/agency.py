@@ -1,5 +1,4 @@
 import sys
-import optparse
 import re
 import types
 import os
@@ -19,137 +18,16 @@ from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
 
-from feat.agencies.net import messaging
-from feat.agencies.net import database
+from feat.agencies.net import messaging, database, options
 
 from feat.interface.agent import IAgentFactory, AgencyAgentState
 from feat.interface.agency import ExecMode
 from feat.agencies.interface import NotFoundError
-from feat.agencies.net.broker import BrokerRole, DEFAULT_SOCKET_PATH
+from feat.agencies.net.broker import BrokerRole
 
-
-DEFAULT_MSG_HOST = "localhost"
-DEFAULT_MSG_PORT = 5672
-DEFAULT_MSG_USER = "guest"
-DEFAULT_MSG_PASSWORD = "guest"
-DEFAULT_DB_HOST = database.DEFAULT_DB_HOST
-DEFAULT_DB_PORT = database.DEFAULT_DB_PORT
-DEFAULT_DB_NAME = database.DEFAULT_DB_NAME
-DEFAULT_JOURFILE = 'journal.sqlite3'
-DEFAULT_GW_PORT = 5500
-
-# Only for command-line options
-DEFAULT_MH_PUBKEY = "public.key"
-DEFAULT_MH_PRIVKEY = "private.key"
-DEFAULT_MH_AUTH = "authorized_keys"
-DEFAULT_MH_PORT = 6000
-
-DEFAULT_ENABLE_SPAWNING_SLAVE = True
-DEFAULT_RUNDIR = "/var/log/feat"
-DEFAULT_LOGDIR = "/var/log/feat"
-DEFAULT_DAEMONIZE = False
 
 GATEWAY_PORT_COUNT = 100
-
 HOST_RESTART_RETRY_INTERVAL = 5
-DEFAULT_FORCE_HOST_RESTART = False
-MASTER_LOG_LINK = "feat.master.log"
-
-
-def add_options(parser):
-    # Agency related options
-    group = optparse.OptionGroup(parser, "Agency options")
-    group.add_option('-j', '--jourfile',
-                     action="store", dest="agency_journal",
-                     help=("journal filename (default: %s)"
-                           % DEFAULT_JOURFILE))
-    group.add_option('-S', '--socket-path', dest="agency_socket_path",
-                     help=("path to the unix socket used by the agency"
-                           "(default: %s)" % DEFAULT_SOCKET_PATH),
-                     metavar="PATH")
-    group.add_option('-b', '--no-slave',
-                     dest="agency_enable_spawning_slave", action="store_false",
-                     help=("Disable spawning slave agency"))
-    group.add_option('-R', '--rundir',
-                     action="store", dest="agency_rundir",
-                     help=("Rundir of the agency (default: %s)" %
-                           DEFAULT_RUNDIR))
-    group.add_option('-L', '--logdir',
-                      action="store", dest="agency_logdir",
-                      help=("agent log directory (default: %s)" %
-                            DEFAULT_LOGDIR))
-    group.add_option('-D', '--daemonize',
-                     action="store_true", dest="agency_daemonize",
-                     help="run in background as a daemon")
-    group.add_option('--force-host-restart',
-                     action="store_true", dest="agency_force_host_restart",
-                     help=("force restarting host agent which descriptor "
-                           "exists in database."))
-
-    parser.add_option_group(group)
-
-    # Messaging related options
-    group = optparse.OptionGroup(parser, "Messaging options")
-    group.add_option('-m', '--msghost', dest="msg_host",
-                     help=("host of messaging server to connect to "
-                           "(default: %s)" % DEFAULT_MSG_HOST),
-                     metavar="HOST")
-    group.add_option('-p', '--msgport', dest="msg_port",
-                     help=("port of messaging server to connect to "
-                           "(default: %s" % DEFAULT_MSG_PORT),
-                     metavar="PORT", type="int")
-    group.add_option('-u', '--msguser', dest="msg_user",
-                     help=("username for messaging server (default: %s)" %
-                           DEFAULT_MSG_USER),
-                     metavar="USER")
-    group.add_option('-c', '--msgpass', dest="msg_password",
-                     help=("password to messaging server (default: %s)" %
-                           DEFAULT_MSG_PASSWORD),
-                     metavar="PASSWORD")
-    parser.add_option_group(group)
-
-    # database related options
-    group = optparse.OptionGroup(parser, "Database options")
-    group.add_option('-H', '--dbhost', dest="db_host",
-                     help=("host of database server to connect to "
-                           "(default: %s)" % DEFAULT_DB_HOST),
-                     metavar="HOST")
-    group.add_option('-P', '--dbport', dest="db_port",
-                     help=("port of messaging server to connect to "
-                           "(default: %s)" % DEFAULT_DB_PORT),
-                     metavar="PORT", type="int")
-    group.add_option('-N', '--dbname', dest="db_name",
-                     help=("host of database server to connect to "
-                           "(default: %s)" % DEFAULT_DB_NAME),
-                     metavar="NAME")
-    parser.add_option_group(group)
-
-    # manhole specific
-    group = optparse.OptionGroup(parser, "Manhole options")
-    group.add_option('-k', '--pubkey', dest='manhole_public_key',
-                     help=("public key file used by the manhole "
-                           "(default: %s)" % DEFAULT_MH_PUBKEY))
-    group.add_option('-K', '--privkey', dest='manhole_private_key',
-                     help=("private key file used by the manhole "
-                           "(default: %s)" % DEFAULT_MH_PRIVKEY))
-    group.add_option('-A', '--authorized', dest='manhole_authorized_keys',
-                     help=("file with authorized keys to be used by manhole "
-                           "(default: %s)" % DEFAULT_MH_AUTH))
-    group.add_option('-M', '--manhole', type="int", dest='manhole_port',
-                     help=("port for the manhole to listen (default: %s)" %
-                           DEFAULT_MH_PORT), metavar="PORT")
-    parser.add_option_group(group)
-
-    # gateway specific
-    group = optparse.OptionGroup(parser, "Gateway options")
-    group.add_option('-w', '--gateway-port', type="int", dest='gateway_port',
-                     help=("port for the gateway to listen (default: %s)" %
-                           DEFAULT_GW_PORT), metavar="PORT")
-    parser.add_option_group(group)
-
-
-def check_options(opts, args):
-    return opts, args
 
 
 class AgencyAgent(agency.AgencyAgent):
@@ -172,33 +50,33 @@ class Agency(agency.Agency):
         return agency
 
     def __init__(self,
-                 msg_host=DEFAULT_MSG_HOST,
-                 msg_port=DEFAULT_MSG_PORT,
-                 msg_user=DEFAULT_MSG_USER,
-                 msg_password=DEFAULT_MSG_PASSWORD,
-                 db_host=DEFAULT_DB_HOST,
-                 db_port=DEFAULT_DB_PORT,
-                 db_name=DEFAULT_DB_NAME,
-                 public_key=DEFAULT_MH_PUBKEY,
-                 private_key=DEFAULT_MH_PRIVKEY,
-                 authorized_keys=DEFAULT_MH_AUTH,
-                 manhole_port=DEFAULT_MH_PORT,
-                 agency_journal=DEFAULT_JOURFILE,
-                 socket_path=DEFAULT_SOCKET_PATH,
-                 gateway_port=DEFAULT_GW_PORT,
-                 enable_spawning_slave=DEFAULT_ENABLE_SPAWNING_SLAVE,
+                 msg_host=options.DEFAULT_MSG_HOST,
+                 msg_port=options.DEFAULT_MSG_PORT,
+                 msg_user=options.DEFAULT_MSG_USER,
+                 msg_password=options.DEFAULT_MSG_PASSWORD,
+                 db_host=options.DEFAULT_DB_HOST,
+                 db_port=options.DEFAULT_DB_PORT,
+                 db_name=options.DEFAULT_DB_NAME,
+                 public_key=options.DEFAULT_MH_PUBKEY,
+                 private_key=options.DEFAULT_MH_PRIVKEY,
+                 authorized_keys=options.DEFAULT_MH_AUTH,
+                 manhole_port=options.DEFAULT_MH_PORT,
+                 agency_journal=options.DEFAULT_JOURFILE,
+                 socket_path=options.DEFAULT_SOCKET_PATH,
+                 gateway_port=options.DEFAULT_GW_PORT,
+                 enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
                  rundir=None,
                  logdir=None,
-                 daemonize=DEFAULT_DAEMONIZE,
-                 force_host_restart=DEFAULT_FORCE_HOST_RESTART):
+                 daemonize=options.DEFAULT_DAEMONIZE,
+                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART):
 
         agency.Agency.__init__(self)
 
         curdir = os.path.abspath(os.curdir)
         if rundir is None:
-            rundir = DEFAULT_RUNDIR if daemonize else curdir
+            rundir = options.DEFAULT_RUNDIR if daemonize else curdir
         if logdir is None:
-            logdir = DEFAULT_LOGDIR if daemonize else curdir
+            logdir = options.DEFAULT_LOGDIR if daemonize else curdir
 
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -375,7 +253,7 @@ class Agency(agency.Agency):
 
         self._redirect_text_log()
         self._create_pid_file()
-        self._link_log_file(MASTER_LOG_LINK)
+        self._link_log_file(options.MASTER_LOG_LINK)
 
         if 'enable_host_restart' not in self._broker.shared_state:
             value = self.config['agency']['force_host_restart']
@@ -791,7 +669,8 @@ class Agency(agency.Agency):
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")
-        self.debug("Retrying in %d seconds", HOST_RESTART_RETRY_INTERVAL)
+        self.debug("Retrying in %d seconds",
+                   HOST_RESTART_RETRY_INTERVAL)
         time.callLater(HOST_RESTART_RETRY_INTERVAL,
                        self._start_host_agent_if_necessary)
 

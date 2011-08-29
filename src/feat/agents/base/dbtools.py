@@ -1,12 +1,12 @@
 import copy
 import optparse
 
-from twisted.internet import defer, reactor
+from twisted.internet import reactor
 
 from feat.agents.base import document, view
-from feat.agencies.net import database
+from feat.agencies.net import options, database
 from feat.agencies.interface import ConflictError
-from feat.common import log
+from feat.common import log, defer
 
 
 _documents = []
@@ -59,25 +59,15 @@ def push_initial_data(connection):
     yield connection.save_document(design)
 
 
-DEFAULT_DB_HOST = database.DEFAULT_DB_HOST
-DEFAULT_DB_PORT = database.DEFAULT_DB_PORT
-DEFAULT_DB_NAME = database.DEFAULT_DB_NAME
-
-
 def parse_options():
-    usage = "%prog -H host -P port -N name push"
-    parser = optparse.OptionParser(usage)
-        # database related options
-    parser.add_option('-H', '--dbhost', dest="db_host",
-                      help="host of database server to connect to",
-                      metavar="HOST", default=DEFAULT_DB_HOST)
-    parser.add_option('-P', '--dbport', dest="db_port",
-                      help="port of messaging server to connect to",
-                      metavar="PORT", default=DEFAULT_DB_PORT, type="int")
-    parser.add_option('-N', '--dbname', dest="db_name",
-                      help="host of database server to connect to",
-                      metavar="NAME", default=DEFAULT_DB_NAME)
-    return parser.parse_args()
+    parser = optparse.OptionParser()
+    options.add_general_options(parser)
+    options.add_db_options(parser)
+    opts, args = parser.parse_args()
+    opts.db_host = opts.db_host or options.DEFAULT_DB_HOST
+    opts.db_port = opts.db_port or options.DEFAULT_DB_PORT
+    opts.db_name = opts.db_name or options.DEFAULT_DB_NAME
+    return opts, args
 
 
 def create_db(connection):
@@ -97,7 +87,7 @@ def script():
         def body(connection):
             log.info('script', "I will push %d documents.", len(_documents))
             d = create_db(connection)
-            d.addCallback(lambda _: push_initial_data(connection))
+            d.addCallback(defer.drop_param, push_initial_data, connection)
             return d
 
         d.addCallback(body)
@@ -118,6 +108,6 @@ class dbscript(object):
         return self._deferred, args
 
     def __exit__(self, type, value, traceback):
-        self._deferred.addBoth(lambda _: reactor.stop())
+        self._deferred.addBoth(defer.drop_param, reactor.stop)
         reactor.callWhenRunning(self._deferred.callback, self.connection)
         reactor.run()

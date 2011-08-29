@@ -8,78 +8,12 @@ from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
 from feat.agencies.net import agency as net_agency, standalone
-from feat.common import log, run, defer, reflect
+from feat.agencies.net.options import add_options, OptionError
+from feat.common import log, run, defer
 from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
-
-
-def parse_config_file(option, opt_str, value, parser):
-    import ConfigParser
-    try:
-        cfg = ConfigParser.ConfigParser()
-        cfg.readfp(open(value, 'r'))
-        for dest, value in cfg.items('Feat'):
-            values = value.split()
-            opt = parser.get_option('--'+dest)
-            if not opt:
-                raise OptionError("Invalid option %s defined in"
-                                  "config file" % dest)
-            for value in values:
-                opt.process(opt_str, value, parser.values, parser)
-    except IOError:
-        print 'Config file not found, skipping ...'
-
-
-def _load_module(option, opt, value, parser):
-    try:
-        reflect.named_module(value)
-    except ImportError:
-        raise OptionError("Unknown module %s" % value)
-
-
-def add_options(parser):
-    parser.add_option('-d', '--debug',
-                      action="store", type="string", dest="debug",
-                      help="Set debug levels.")
-    parser.add_option('-i', '--import', help='import specified module',
-                      action='callback', callback=_load_module,
-                      type="str", metavar="MODULE")
-    parser.add_option('-a', '--agent', dest="agents", action="append",
-                      help="Start an agent of specified type.",
-                      metavar="AGENT_NAME", default=[])
-    parser.add_option('-t', '--host-def', dest="hostdef",
-                      help="Host definition document identifier.",
-                      metavar="HOST_DEF_ID", default=None)
-    parser.add_option('-r', '--host-resource', dest="hostres",
-                      help="Add a resource to the host agent. "
-                           "Format: RES_NAME:RES_MAX. Example: 'epu:42'.",
-                      metavar="HOST_DEF_ID", action="append", default=[])
-    parser.add_option('-z', '--host-ports-ranges', dest="hostports",
-                      help=("Add available port ranges by groups to the "
-                            "host agent. "
-                            "Format: GROUP_NAME:PORT_MIN:PORT_MAX. Example: "
-                            "'worker:1000:2000'."),
-                      metavar="HOST_DEF_ID", action="append", default=[])
-    parser.add_option('-g', '--host-category', dest="hostcat",
-                    help="Add a category to the host agent. "
-                         "Format: CAT_NAME:CAT_VALUE.",
-                    metavar="HOST_DEF_ID", action="append", default=[])
-    parser.add_option('-C', '--config-file', action='callback',
-                      help="Config file, the configuration loaded from the \
-                      configuration file will overwrite other \
-                      parameters defined",
-                      callback=parse_config_file, nargs=1,
-                      type="string", dest='config_file')
-    parser.add_option('-X', '--standalone',
-                      action="store_true", dest="standalone",
-                      help="run agent in standalone agency (default: False)",
-                      default=False)
-    parser.add_option('--kwargs',
-                      action="store", dest="standalone_kwargs",
-                      help="serialized kwargs to pass to standalone agent",
-                      default=None)
 
 
 def check_options(opts, args):
@@ -145,7 +79,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
     parser = parser or optparse.OptionParser()
     add_options(parser)
-    net_agency.add_options(parser)
 
     with _Bootstrap(parser=parser, args=args) as bootstrap:
         agency = bootstrap.agency
@@ -203,10 +136,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
             d.addCallback(defer.drop_param, agency.spawn_agent,
                           opts.agents[0], **kwargs)
         return d
-
-
-class OptionError(Exception):
-    pass
 
 
 class _Bootstrap(object):

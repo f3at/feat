@@ -11,6 +11,7 @@ from feat.test import common
 from feat.process import couchdb, rabbitmq, standalone
 from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, database, broker
+from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, dbtools, partners, replay
 from feat.common import serialization, fiber, log, first
 from feat.process.base import DependencyError
@@ -72,7 +73,7 @@ class UnitTestCase(common.TestCase):
 
     def testDefaultConfig(self):
         parser = optparse.OptionParser()
-        agency.add_options(parser)
+        options_module.add_options(parser)
         options = parser.get_default_values()
         self.assertTrue(hasattr(options, 'msg_host'))
         self.assertTrue(hasattr(options, 'msg_port'))
@@ -86,21 +87,28 @@ class UnitTestCase(common.TestCase):
         self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
         self.assertTrue(hasattr(options, 'manhole_port'))
         a = agency.Agency.from_config(dict())
-        self.assertEqual(a.config['msg']['host'], agency.DEFAULT_MSG_HOST)
-        self.assertEqual(a.config['msg']['port'], agency.DEFAULT_MSG_PORT)
-        self.assertEqual(a.config['msg']['user'], agency.DEFAULT_MSG_USER)
+        self.assertEqual(a.config['msg']['host'],
+                         options_module.DEFAULT_MSG_HOST)
+        self.assertEqual(a.config['msg']['port'],
+                         options_module.DEFAULT_MSG_PORT)
+        self.assertEqual(a.config['msg']['user'],
+                         options_module.DEFAULT_MSG_USER)
         self.assertEqual(a.config['msg']['password'],
-                         agency.DEFAULT_MSG_PASSWORD)
-        self.assertEqual(a.config['db']['host'], agency.DEFAULT_DB_HOST)
-        self.assertEqual(a.config['db']['port'], agency.DEFAULT_DB_PORT)
-        self.assertEqual(a.config['db']['name'], agency.DEFAULT_DB_NAME)
+                         options_module.DEFAULT_MSG_PASSWORD)
+        self.assertEqual(a.config['db']['host'],
+                         options_module.DEFAULT_DB_HOST)
+        self.assertEqual(a.config['db']['port'],
+                         options_module.DEFAULT_DB_PORT)
+        self.assertEqual(a.config['db']['name'],
+                         options_module.DEFAULT_DB_NAME)
         self.assertEqual(a.config['manhole']['public_key'],
-                         agency.DEFAULT_MH_PUBKEY)
+                         options_module.DEFAULT_MH_PUBKEY)
         self.assertEqual(a.config['manhole']['private_key'],
-                         agency.DEFAULT_MH_PRIVKEY)
+                         options_module.DEFAULT_MH_PRIVKEY)
         self.assertEqual(a.config['manhole']['authorized_keys'],
-                         agency.DEFAULT_MH_AUTH)
-        self.assertEqual(a.config['manhole']['port'], agency.DEFAULT_MH_PORT)
+                         options_module.DEFAULT_MH_AUTH)
+        self.assertEqual(a.config['manhole']['port'],
+                         options_module.DEFAULT_MH_PORT)
 
 
 class StandalonePartners(partners.Partners):

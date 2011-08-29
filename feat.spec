@@ -24,7 +24,6 @@ Requires:	python-twisted-core
 Requires:	python-twisted-web
 #Requires:	couchdb >= 0.10
 #Requires:	python-txamqp >= 0.3
-#Requires:	amqp
 #Requires:	rabbitmq-server >= 2.0
 Provides:	%{name}
 
@@ -39,20 +38,53 @@ CFLAGS="$RPM_OPT_FLAGS" %{__python} setup.py build
 
 %install
 rm -rf $RPM_BUILD_ROOT
-%{__python} setup.py install --skip-build --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
+%{__python} setup.py install --skip-build --root=$RPM_BUILD_ROOT \
+     --record=INSTALLED_FILES
 
 install -m 644 src/feat/agencies/net/amqp0-8.xml \
      $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/net/amqp0-8.xml
+
+# create config dir
+install -d $RPM_BUILD_ROOT%{_sysconfdir}/feat
+install -m 644  \
+        conf/feat.ini \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
+install -m 644  \
+        conf/public.key \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/public.key
+install -m 644  \
+        conf/private.key \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/private.key
+install -m 644  \
+        conf/authorized_keys \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/authorized_keys
+
+install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+install -m 755 \
+        conf/redhat/feat \
+	        $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+
+# create log and run and cache and lib rrd directory
+install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
+install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 
 %files
 %defattr(-,root,root,-)
 %{python_sitelib}/*
 %_usr/bin/*
+%{_sysconfdir}/rc.d/init.d/feat
+%attr(775,root,flumotion) %{_sysconfdir}/feat
+%attr(775,root,flumotion) %{_localstatedir}/run/feat
+%attr(775,root,flumotion) %{_localstatedir}/log/feat
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Mon Aug 29 2011 Marek Kowalski <mkowalski@flumotion.com>
+- 0.1.2-5
+- Add service scripts
+
 * Thu Jul 28 2011 Marek Kowalski <mkowalski@flumotion.com>
 - 0.1.2-4
 - Remove obsolete executable scripts

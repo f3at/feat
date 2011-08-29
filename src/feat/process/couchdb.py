@@ -18,8 +18,17 @@ class Process(base.Base):
         self.config['log'] = os.path.join(workspace, 'couch_test.log')
         self.config['local_ini'] = os.path.join(workspace, 'local.ini')
         self.config['host'] = '127.0.0.1'
-        import feat
-        couchpy = os.path.join(feat.__path__[0], 'bin', 'feat-couchpy')
+        couchpy = base.which('feat-couchpy', os.environ['PATH'])
+        if not couchpy:
+            # workaround to work with tests (when we don't have bin in path)
+            import feat
+            bin_path = os.path.abspath(os.path.join(
+                feat.__path__[0], '..', '..', 'bin'))
+            couchpy = base.which('feat-couchpy', bin_path)
+            if couchpy is None:
+                raise base.DependencyError(
+                    'feat-couchpy script is not in a path')
+
         self.config['couchpy'] = couchpy
 
     @replay.side_effect

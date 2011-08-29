@@ -1,8 +1,9 @@
 from feat.common import defer, log, first
-from feat.agents.base import descriptor, dbtools
+from feat.agents.base import descriptor
 from feat.agents.common import host
+from feat.agents.base import dbtools
 
-from feat.agencies.interface import *
+from feat.agencies.interface import IDatabaseClient, NotFoundError
 
 
 @defer.inlineCallbacks

@@ -12,9 +12,10 @@ setup(name='feat',
       packages=(find_packages(where='src') +
                 find_packages('src/feat/extern/paisley')),
       scripts=['bin/feat',
-               'src/feat/bin/host.py',
-               'src/feat/bin/feat-couchpy',
-               'src/feat/bin/standalone.py'],
+               'bin/feat-couchpy',
+               'bin/feat-dbload',
+               'bin/feat-locate',
+               'bin/feat-service'],
 
       package_data={'': ['src/feat/agencies/net/amqp0-8.xml']},
       include_package_data=True,

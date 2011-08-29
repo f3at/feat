@@ -1,0 +1,42 @@
+#!/usr/bin/python2.6
+import optparse
+import sys
+import os
+
+from feat.common import run, log
+from feat.agencies import bootstrap
+from feat.agencies.net import options as options_module
+
+
+def setup_log(debug):
+    log.FluLogKeeper.init()
+    if debug:
+        log.FluLogKeeper.set_debug(debug)
+
+if __name__ == '__main__':
+    usage = "usage: feat [options] {start|stop|status}"
+    parser = optparse.OptionParser(usage)
+    options_module.add_options(parser)
+    options, args = parser.parse_args()
+    try:
+        command = sys.argv[-1]
+    except IndexError:
+        print parser.usage
+        sys.exit(0)
+
+    try:
+        if command == 'start':
+            bootstrap.bootstrap(args=sys.argv[1:-1])
+        elif command == 'stop':
+            setup_log(options.debug)
+            os.system('ssh localhost -p %d "shutdown()"' %
+                      (options.manhole_port, ))
+        elif command == 'status':
+            setup_log(options.debug)
+            run.status(processName='', rundir=options.agency_rundir)
+        else:
+            sys.stderr.write("No such command '%s'\n" % command)
+            sys.stderr.write(parser.usage)
+            sys.exit(1)
+    except KeyboardInterrupt:
+        pass

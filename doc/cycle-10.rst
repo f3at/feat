@@ -17,3 +17,20 @@ Also in previous sprint the allocation used by the agent is storend in his own d
 
     desc = state.medium.get_descriptor()
     ports = desc.resource['streamer_ports'].values
+* The service and startup scripts has been all moved from FLT to FEAT. All feat related config is now stored in /etc/feat/feat.ini file. FLT package should now store it's config in /etc/feat/flt.ini, the config should look somewhat like this: ::
+
+    [Feat]
+    import: flt.everything
+    agent: happy_agent
+
+To make it being loaded you need to include a line in feat.ini: ::
+
+    [Feat]
+    config-file: /etc/feat/flt.ini
+
+Following executables should be removed from FLT:
+- dbload - to prepare the database one should run *feat-dbload -C /etc/feat/feat.ini*
+- service.py - to start service you may use *feat-service {start|stop|restart}* or init scripts.
+- init scripts (feat provides it, name of service is feat)
+
+From now on, by default feat uses logdir: /var/log/feat, and rundir: /var/run/feat. It runs as the user flumotion, so you would have to investigate issues with flumotion-agent not starting without super privileges.
