@@ -711,7 +711,8 @@ def moveLogFiles(out_filename, err_filename):
                   src, dst, e)
 
     global _stdout, _stderr
-    doMove(_stdout, out_filename)
+    if _stdout:
+        doMove(_stdout, out_filename)
     if _stdout != _stderr:
         doMove(_stderr, err_filename)
 
