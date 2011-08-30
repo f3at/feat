@@ -154,9 +154,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
         descriptors = descriptors or []
 
-        agency.set_host_def(hostdef)
-        d = agency.initiate()
-
         if not opts.standalone:
             # specific to running normal agency
             for name in opts.agents:
@@ -192,12 +189,14 @@ def bootstrap(parser=None, args=None, descriptors=None):
                 hostdef.ports_ranges = ports_ranges
 
             agency.set_host_def(hostdef)
+            d = agency.initiate()
 
             for desc in descriptors:
                 log.debug("feat", "Starting agent with descriptor %r", desc)
                 d.addCallback(defer.drop_param, agency.spawn_agent, desc)
         else:
             # standalone specific
+            d = agency.initiate()
             kwargs = opts.standalone_kwargs or dict()
             d.addCallback(defer.drop_param, agency.spawn_agent,
                           opts.agents[0], **kwargs)
