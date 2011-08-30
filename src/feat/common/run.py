@@ -13,7 +13,7 @@ def status(rundir='/tmp', processType=PROCESS_TYPE, processName=None):
     pid = get_pid(rundir, processType, processName)
     if not pid:
         print "%s %s not running" % (processType, processName)
-        return
+        sys.exit(3)
     if check_pid_running(pid):
         print "%s %s is running with pid %d" % (processType, processName, pid)
     else:
