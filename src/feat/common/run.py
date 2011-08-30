@@ -9,7 +9,7 @@ from feat.common import log
 PROCESS_TYPE = "feat"
 
 
-def status(processName, rundir='/tmp', processType=PROCESS_TYPE):
+def status(rundir='/tmp', processType=PROCESS_TYPE, processName=None):
     pid = get_pid(rundir, processType, processName)
     if not pid:
         print "%s %s not running" % (processType, processName)
@@ -21,7 +21,7 @@ def status(processName, rundir='/tmp', processType=PROCESS_TYPE):
         sys.exit(3)
 
 
-def stop(processName, rundir='/tmp', processType=PROCESS_TYPE):
+def stop(rundir='/tmp', processType=PROCESS_TYPE, processName=None):
     pid = get_pid(rundir, processType, processName)
     if not pid:
         print "%s %s not running" % (processType, processName)
