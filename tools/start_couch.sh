@@ -16,7 +16,7 @@ database_dir = /tmp/couchdb/db
 view_index_dir = /tmp/couchdb/db
 
 [query_servers]
-python = ${_my_path}/../src/feat/bin/feat-couchpy
+python = ${_my_path}/../bin/feat-couchpy
 
 [httpd]
 bind_address = ${HOST:-127.0.0.1}
