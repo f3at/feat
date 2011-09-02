@@ -134,8 +134,9 @@ class DNSAgent(agent.BaseAgent):
     @replay.mutable
     def add_mapping(self, state, prefix, ip):
         self.log(state.resolver.records)
-        if not state.resolver.add_record(prefix, state.suffix,
-                                         ip, state.aa_ttl):
+        record = dns.Record_A(ip, state.aa_ttl)
+        name = state.resolver.format_name(prefix, state.suffix)
+        if not state.resolver.add_record(name, record):
             self.log("Keeping DNS mapping from %s to %s", prefix, ip)
             return False
         state.labour.notify_slaves()
@@ -145,8 +146,9 @@ class DNSAgent(agent.BaseAgent):
     @manhole.expose()
     @replay.mutable
     def remove_mapping(self, state, prefix, ip):
-        if not state.resolver.remove_record(prefix, state.suffix,
-                                            ip, state.aa_ttl):
+        record = dns.Record_A(ip, state.aa_ttl)
+        name = state.resolver.format_name(prefix, state.suffix)
+        if not state.resolver.remove_record(name, record):
             self.log("Unknown DNS mapping prefix %s %s", prefix, ip)
             return False
         self.debug("Removing DNS mapping from %s to %s", prefix, ip)
@@ -155,8 +157,34 @@ class DNSAgent(agent.BaseAgent):
 
     @manhole.expose()
     @replay.mutable
+    def add_alias(self, state, prefix, alias):
+        self.log(state.resolver.records)
+        name = state.resolver.format_name(prefix, state.suffix)
+        record = dns.Record_CNAME(name, state.aa_ttl)
+        if not state.resolver.add_record(alias, record):
+            self.log("Keeping DNS alias from %s to %s", prefix, alias)
+            return False
+        state.labour.notify_slaves()
+        self.debug("DNS alias from %s to %s added", prefix, alias)
+        return True
+
+    @manhole.expose()
+    @replay.mutable
+    def remove_alias(self, state, prefix, alias):
+        name = state.resolver.format_name(prefix, state.suffix)
+        record = dns.Record_CNAME(name, state.aa_ttl)
+        if not state.resolver.remove_record(alias, record):
+            self.log("Unknown DNS alias prefix %s %s", prefix, alias)
+            return False
+        self.debug("Removing DNS alias from %s to %s", prefix, alias)
+        state.labour.notify_slaves()
+        return True
+
+    @manhole.expose()
+    @replay.mutable
     def lookup_address(self, state, name, _address):
         records = state.resolver.get_records(name)
+        records = filter(lambda r: r.TYPE == dns.A, records)
         if not records:
             self.debug("Failed to resolve A query for %s", name)
             return []
@@ -164,6 +192,19 @@ class DNSAgent(agent.BaseAgent):
         self.debug("Resolved A query for %s (TTL %d)",
                                name, state.ns_ttl)
         return ips
+
+    @manhole.expose()
+    @replay.mutable
+    def lookup_alias(self, state, name):
+        records = state.resolver.get_records(name)
+        records = filter(lambda r: r.TYPE == dns.CNAME, records)
+        if not records:
+            self.debug("Failed to resolve CNAME query for %s", name)
+            return None, None
+        alias = (str(records[0].name), records[0].ttl)
+        self.debug("Resolved CNAME query for %s (TTL %d)",
+                               name, state.ns_ttl)
+        return alias
 
     @manhole.expose()
     @replay.mutable
@@ -221,23 +262,21 @@ class Resolver(authority.PySourceAuthority):
             dns.Record_NS(ns, ns_ttl))
         self.cache = {}
 
-    def add_record(self, prefix, suffix, ip, ttl):
-        name = self._format_name(prefix, suffix)
-        r = dns.Record_A(ip, ttl)
+    def add_record(self, name, record):
         records = self.records.get(name, [])
-        if r in records:
+        if record in records:
             return False
-        self.records.setdefault(name, []).append(r)
+        if record.TYPE == dns.CNAME and records:
+            return False
+        self.records.setdefault(name, []).append(record)
         self._update_serial()
         return True
 
-    def remove_record(self, prefix, suffix, ip, ttl):
-        name = self._format_name(prefix, suffix)
-        r = dns.Record_A(ip, ttl)
+    def remove_record(self, name, record):
         records = self.records.get(name, [])
-        if r not in records:
+        if record not in records:
             return False
-        records.remove(r)
+        records.remove(record)
         if not records:
             self.records.pop(name, None)
         self._update_serial()
@@ -246,7 +285,7 @@ class Resolver(authority.PySourceAuthority):
     def get_records(self, name):
         return self.records.get(name, [])
 
-    def _format_name(self, prefix, suffix):
+    def format_name(self, prefix, suffix):
         return prefix+"."+suffix
 
     def _update_serial(self):
@@ -279,8 +318,9 @@ class DNSMappingContractor(contractor.BaseContractor):
     @replay.immutable
     def granted(self, state, grant):
         prefix = grant.payload['prefix']
-        ip = grant.payload['ip']
-        self.tell_agent(prefix, ip)
+        mtype = grant.payload['mtype']
+        mapping = grant.payload['mapping']
+        self.tell_agent(mtype, prefix, mapping)
         payload = dict(suffix=state.agent.get_suffix())
         state.medium.finalize(message.FinalReport(payload=payload))
 
@@ -293,8 +333,11 @@ class AddMappingContractor(DNSMappingContractor):
     protocol_id = 'add-dns-mapping'
 
     @replay.immutable
-    def tell_agent(self, state, prefix, ip):
-        state.agent.add_mapping(prefix, ip)
+    def tell_agent(self, state, mtype, prefix, mapping):
+        if mtype == dns.A:
+            state.agent.add_mapping(prefix, mapping)
+        elif mtype == dns.CNAME:
+            state.agent.add_alias(prefix, mapping)
 
 
 class RemoveMappingContractor(DNSMappingContractor):
@@ -302,8 +345,11 @@ class RemoveMappingContractor(DNSMappingContractor):
     protocol_id = 'remove-dns-mapping'
 
     @replay.immutable
-    def tell_agent(self, state, prefix, ip):
-        state.agent.remove_mapping(prefix, ip)
+    def tell_agent(self, state, mtype, prefix, mapping):
+        if mtype == dns.A:
+            state.agent.remove_mapping(prefix, mapping)
+        elif mtype == dns.CNAME:
+            state.agent.remove_alias(prefix, mapping)
 
 
 class MappingUpdatesCollector(collector.BaseCollector):
@@ -326,3 +372,11 @@ class MappingUpdatesCollector(collector.BaseCollector):
     @replay.immutable
     def action_remove_mapping(self, state, prefix, ip):
         state.agent.remove_mapping(prefix, ip)
+
+    @replay.immutable
+    def action_add_alias(self, state, prefix, alias):
+        state.agent.add_alias(prefix, alias)
+
+    @replay.immutable
+    def action_remove_alias(self, state, prefix, alias):
+        state.agent.remove_alias(prefix, alias)

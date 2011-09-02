@@ -23,6 +23,7 @@ class Agent(agent.BaseAgent):
     def initiate(self, state, prefix, ip):
         state.prefix = prefix
         state.ip = ip
+        state.alias = '%s.example.lan' % prefix
         state.mapper = dns.new_mapper(self)
 
     @replay.mutable
@@ -56,6 +57,22 @@ class Agent(agent.BaseAgent):
     @replay.mutable
     def do_add_with_mapper(self, state, prefix, ip):
         return state.mapper.add_mapping(prefix, ip)
+
+    @replay.mutable
+    def register_alias_with_mapper(self, state):
+        return state.mapper.add_alias(state.prefix, state.alias)
+
+    @replay.mutable
+    def unregister_alias_with_mapper(self, state):
+        return state.mapper.remove_alias(state.prefix, state.alias)
+
+    @replay.mutable
+    def register_alias(self, state):
+        return dns.add_alias(self, state.prefix, state.alias)
+
+    @replay.mutable
+    def unregister_alias(self, state):
+        return dns.remove_alias(self, state.prefix, state.alias)
 
 
 @common.attr(timescale=0.1)
@@ -116,6 +133,23 @@ class DNSAgentTest(common.SimulationTest):
         res = yield dns.remove_mapping("dummy.test.lan", "0.0.0.0")
         self.assertFalse(res)
         res = yield dns.remove_mapping("dummy.test.lan", "123.45.67.89")
+        self.assertTrue(res)
+
+    @defer.inlineCallbacks
+    def testAliases(self):
+        dns = self.get_local("dns1")
+
+        res = yield dns.remove_alias("dummy", "mycname.example.com")
+        self.assertFalse(res)
+        res = yield dns.add_alias("dummy", "mycname.example.com")
+        self.assertTrue(res)
+        res = yield dns.add_alias("dummy", "mycname.example.com")
+        self.assertFalse(res)
+        res = yield dns.add_alias("2aliases", "mycname.example.com")
+        self.assertFalse(res)
+        res = yield dns.remove_alias("dummy", "error.example.com")
+        self.assertFalse(res)
+        res = yield dns.remove_alias("dummy", "mycname.example.com")
         self.assertTrue(res)
 
     @defer.inlineCallbacks
@@ -260,4 +294,103 @@ class DNSAgentTest(common.SimulationTest):
         # Test multiple removal
 
         yield agent2.unregister_with_mapper()
+        yield self.wait_for_idle(10)
+
+    @defer.inlineCallbacks
+    def testAliasMappingBroadcast(self):
+
+        @defer.inlineCallbacks
+        def assertAlias(name, expected, exp_ttl = 300):
+            for dns_medium in self.driver.iter_agents("dns_agent"):
+                dns_agent = dns_medium.get_agent()
+                alias, _ = yield dns_agent.lookup_alias(name)
+                self.assertEqual(expected, alias)
+
+        agent1 = self.get_local("agent1")
+        agent2 = self.get_local("agent2")
+
+        yield assertAlias("", None)
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", None)
+
+        # Test mapping addition
+
+        yield agent1.register_alias()
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+
+        yield agent2.register_alias()
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+
+
+        ## Test mapping multiple addition
+
+        yield agent1.register_alias()
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+
+        # Test mapping removal
+
+        yield agent1.unregister_alias()
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+
+        yield agent2.unregister_alias()
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", None)
+
+        # Test multiple removal
+
+        yield agent2.unregister_alias()
+
+    @defer.inlineCallbacks
+    def testAliasMappingBroadcastWithNotification(self):
+
+        @defer.inlineCallbacks
+        def assertAlias(name, expected, exp_ttl = 300):
+            for dns_medium in self.driver.iter_agents("dns_agent"):
+                dns_agent = dns_medium.get_agent()
+                alias, _ = yield dns_agent.lookup_alias(name)
+                self.assertEqual(expected, alias)
+
+        agent1 = self.get_local("agent1")
+        agent2 = self.get_local("agent2")
+
+        yield assertAlias("", None)
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", None)
+
+        # Test mapping addition
+
+        yield agent1.register_alias_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+
+        yield agent2.register_alias_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+
+
+        ## Test mapping multiple addition
+
+        yield agent1.register_alias_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+
+        # Test mapping removal
+
+        yield agent1.unregister_alias_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+
+        yield agent2.unregister_alias_with_mapper()
+        yield self.wait_for_idle(10)
+        yield assertAlias("foo.bar.example.lan", None)
+        yield assertAlias("spam.beans.example.lan", None)
+
+
+        # Test multiple removal
+
+        yield agent2.unregister_alias_with_mapper()
         yield self.wait_for_idle(10)

@@ -1,17 +1,30 @@
 from feat.agents.base import replay, manager, poster, message, recipient
 from feat.common import fiber
+from twisted.names import dns
 
 
 def add_mapping(agent, prefix, ip):
     """Adds a mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, AddMappingManager, prefix, ip)
+    return _broadcast(agent, AddMappingManager, dns.A, prefix, ip)
 
 
 def remove_mapping(agent, prefix, ip):
     """Removes a mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, RemoveMappingManager, prefix, ip)
+    return _broadcast(agent, RemoveMappingManager, dns.A, prefix, ip)
+
+
+def add_alias(agent, prefix, alias):
+    """Adds an alias mapping with a contract.
+    It has high latency but gives some kind of guarantee."""
+    return _broadcast(agent, AddMappingManager, dns.CNAME, prefix, alias)
+
+
+def remove_alias(agent, prefix, alias):
+    """Removes an alias mapping with a contract.
+    It has high latency but gives some kind of guarantee."""
+    return _broadcast(agent, RemoveMappingManager, dns.CNAME, prefix, alias)
 
 
 def new_mapper(agent):
@@ -27,16 +40,18 @@ class DNSMappingManager(manager.BaseManager):
     announce_timeout = 3
 
     @replay.immutable
-    def initiate(self, state, prefix, ip):
+    def initiate(self, state, mtype, prefix, mapping):
         state.prefix = prefix
-        state.ip = ip
+        state.mtype = mtype
+        state.mapping = mapping
         state.medium.announce(message.Announcement())
 
     @replay.immutable
     def closed(self, state):
         msg = message.Grant()
         msg.payload['prefix'] = state.prefix
-        msg.payload['ip'] = state.ip
+        msg.payload['mtype'] = state.mtype
+        msg.payload['mapping'] = state.mapping
 
         state.medium.grant([(bid, msg) for bid in state.medium.get_bids()])
 
@@ -68,6 +83,14 @@ class MappingUpdatesPoster(poster.BasePoster):
     @replay.side_effect
     def remove_mapping(self, prefix, ip):
         self.notify("remove_mapping", prefix, ip)
+
+    @replay.side_effect
+    def add_alias(self, prefix, alias):
+        self.notify("add_alias", prefix, alias)
+
+    @replay.side_effect
+    def remove_alias(self, prefix, alias):
+        self.notify("remove_alias", prefix, alias)
 
     ### Overridden Methods ###
 
