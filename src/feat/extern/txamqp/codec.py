@@ -180,6 +180,8 @@ class Codec:
         value = self.decode_longstr()
       elif type == "I":
         value = self.decode_long()
+      elif type == "F":
+        value = self.decode_table()
       else:
         raise ValueError(repr(type))
       result[key] = value
