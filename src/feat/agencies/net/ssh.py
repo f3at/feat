@@ -34,6 +34,7 @@ from twisted.internet import reactor
 from twisted.conch.insults import insults
 
 from feat.common import log, manhole, reflect
+from feat.agents.base import recipient
 
 
 def commands_factory(agency):
@@ -74,6 +75,12 @@ class Commands(manhole.Manhole, manhole.Parser):
         '''Download the document given the id.'''
         conn = self.agency._database.get_connection()
         return conn.get_document(doc_id)
+
+    @manhole.expose()
+    def recp(self, a_id, shard):
+        '''get_document(agent_id, shard) -> Construct IRecipient poining to
+        the agent'''
+        return recipient.Agent(a_id, shard)
 
     @manhole.expose()
     def pprint(self, obj):

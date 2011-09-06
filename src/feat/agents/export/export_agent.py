@@ -145,6 +145,9 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
     @replay.mutable
     def join_migrations(self, state, migrations_or_ids, host_cmd=None,
                         migration_agent=None):
+        if not migrations_or_ids:
+            raise ValueError("join_migration() expects a list of migration"
+                             "or it's ids to join, got: %r", migrations_or_ids)
         migrations = map(self._get_migration, migrations_or_ids)
         for migration in migrations:
             if not migration.is_completable():

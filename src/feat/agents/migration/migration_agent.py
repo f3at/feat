@@ -142,6 +142,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
         f.add_callback(self.join_migrations, export)
         return f
 
+    @manhole.expose()
     @replay.journaled
     def prepare_host_migration(self, state, recp, export=None):
         '''prepare_host_migration(self, recp, export=current) -> creates
@@ -159,6 +160,11 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
     @replay.journaled
     def join_migrations(self, state, migration_ids, export=None):
+        if not migration_ids:
+            raise ValueError("Empty migration_ids: %r. This usually means "
+                             "that none of the joined migrations is "
+                             "completable", migration_ids)
+
         tunel = state.exports.get_by_name(export)
 
         own = self.get_own_address(tunel.recipient.channel)
