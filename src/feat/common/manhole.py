@@ -7,8 +7,8 @@ from functools import partial
 from twisted.internet import defer
 from twisted.spread import pb
 
-from feat.common import (decorator, annotate, enum, log,
-                         error_handler, container, )
+from feat.common import (decorator, annotate, enum, log, reflect,
+                         error_handler, container, text_helper, )
 
 
 class SecurityLevel(enum.Enum):
@@ -63,12 +63,12 @@ class Manhole(annotate.Annotable, pb.Referenceable):
 
     @expose()
     def help(self):
-        '''help() -> Prints exposed methods and their docstrings.'''
+        '''Prints exposed methods and their docstrings.'''
         cmds = self.get_exposed_cmds()
-        return "\n".join([self._format_help(x) for x in cmds.values()])
-
-    def _format_help(self, method):
-        return "%s %s" % (method.__name__.ljust(25), method.__doc__)
+        t = text_helper.Table(fields=['command', 'doc'],
+                              lengths=[50, 85])
+        return t.render((reflect.formatted_function_name(x), x.__doc__, )
+                        for x in cmds.values())
 
     def get_exposed_cmds(self, lvl=SecurityLevel.safe):
         return dict((fun_id, v.get(lvl), )

@@ -288,8 +288,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @manhole.expose()
     @replay.journaled
     def breakup(self, state, recp):
-        '''breakup(recp) -> Order the agent to break the partnership with
-        the given recipient'''
+        '''Order the agent to break the partnership with the given
+        recipient'''
         recp = recipient.IRecipient(recp)
         partner = self.find_partner(recp)
         if partner:
@@ -317,8 +317,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @manhole.expose()
     @replay.immutable
     def query_partners(self, state, name_or_class):
-        '''query_partners(name_or_class) ->
-              Query the partners by the relation name or partner class.'''
+        '''Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
 
     @manhole.expose()
@@ -337,7 +336,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @manhole.expose()
     @replay.immutable
     def get_own_address(self, state, channel_type="default"):
-        '''get_own_address() -> Return IRecipient representing the agent.'''
+        '''Return IRecipient representing the agent.'''
         return state.medium.get_own_address(channel_type)
 
     @replay.immutable

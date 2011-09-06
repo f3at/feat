@@ -613,7 +613,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     def get_agent(self):
-        '''get_agent() -> Returns the agent side instance.'''
+        '''Returns the agent side instance.'''
         return self.agent
 
     @manhole.expose()
@@ -898,7 +898,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._terminate_procedure(generate_body)
 
     def _terminate(self):
-        '''terminate() -> Shutdown agent gently removing the descriptor and
+        '''Shutdown agent gently removing the descriptor and
         notifying partners.'''
 
         def generate_body():
@@ -1246,8 +1246,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     def find_agent(self, desc):
-        '''find_agent(agent_id_or_descriptor) -> Gives medium class of the
-        agent if the agency hosts it.'''
+        '''Gives medium class of the agent if the agency hosts it.'''
         agent_id = (desc.doc_id
                     if isinstance(desc, descriptor.Descriptor)
                     else desc)
@@ -1258,14 +1257,14 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
-        '''snapshot_agents(force=False): snapshot agents if number of entries
-        from last snapshot if greater than 1000. Use force=True to override.'''
+        '''snapshot agents if number of entries from last snapshot if greater
+        than 1000. Use force=True to override.'''
         for agent in self._agents:
             agent.check_if_should_snapshot(force)
 
     @manhole.expose()
     def list_agents(self):
-        '''list_agents() -> List agents hosted by the agency.'''
+        '''List agents hosted by the agency.'''
         t = text_helper.Table(fields=("Agent ID", "Agent class", "State"),
                               lengths=(40, 25, 15))
 
@@ -1275,12 +1274,12 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     def get_nth_agent(self, n):
-        '''get_nth_agent(n) -> Get the agent by his index in the list.'''
+        '''Get the agent by his index in the list.'''
         return self._agents[n]
 
     @manhole.expose()
     def get_agents(self):
-        '''get_agents() -> Get the list of agents hosted by this agency.'''
+        '''Get the list of agents hosted by this agency.'''
         return self._agents
 
     ### protected ###

@@ -126,8 +126,8 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def spawn_agent(self, desc, **kwargs):
-        '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
-        agent running in this agency to spawn a new agent of the given type.'''
+        '''tells the host agent running in this agency to spawn a new agent
+        of the given type.'''
         self._to_spawn.append((desc, kwargs, ))
         return self._flush_agents_to_spawn()
 
@@ -324,8 +324,7 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def full_shutdown(self, stop_process=False):
-        '''full_shutdown() -> Terminate all the slave agencies and shutdowns
-        itself.'''
+        '''Terminate all the slave agencies and shutdowns itself.'''
         self._shutting_down = True
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._broker.shutdown_slaves)
@@ -334,8 +333,7 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def shutdown(self, stop_process=False):
-        '''shutdown() -> Shutdown the agency in gentel manner (terminating
-        all the agents).'''
+        '''Shutdown the agency in gentel manner (terminate all the agents).'''
         self._shutting_down = True
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
@@ -440,15 +438,13 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def reconfigure_messaging(self, msg_host, msg_port):
-        '''reconfigure_messaging(host, port) -> force messaging reconnector
-        to the connect to the (host, port)'''
+        '''force messaging reconnector to the connect to the (host, port)'''
         messaging = self._backends["default"]
         messaging.reconfigure(msg_host, msg_port)
 
     @manhole.expose()
     def reconfigure_database(self, host, port, name='feat'):
-        '''reconfigure_database(host, port, name=\'feat\') -> force database
-        reconnector to connect to the (host, port, db_name)'''
+        '''force database reconnector to connect to the (host, port, name)'''
         self._database.reconfigure(host, port, name)
 
     @manhole.expose()
@@ -470,14 +466,13 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def find_agent_locally(self, agent_id):
-        '''find_agent_locally(agent_id_or_descriptor) -> Same as find_agent
-        but only checks in scope of this agency.'''
+        '''Same as find_agent but only checks in scope of this agency.'''
         return agency.Agency.find_agent(self, agent_id)
 
     @manhole.expose()
     def find_agent(self, agent_id):
-        '''find_agent(agent_id_or_descriptor) -> Gives medium class or its
-        pb refrence of the agent if this agency hosts it.'''
+        '''Gives medium class or its pb refrence of the agent if this agency
+        hosts it.'''
         return self._broker.find_agent(agent_id)
 
     def iter_agency_ids(self):
@@ -486,7 +481,7 @@ class Agency(agency.Agency):
     @manhole.expose()
     @defer.inlineCallbacks
     def list_slaves(self):
-        '''list_slaves() -> Print information about the slave agencies.'''
+        '''Print information about the slave agencies.'''
         resp = []
         for slave_id, slave in self._broker.slaves.iteritems():
             resp += ["#### Slave %s ####" % slave_id]
@@ -497,8 +492,7 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def get_slave(self, slave_id):
-        '''get_slave(slave_id) -> Give the reference to the nth slave
-        agency.'''
+        '''Give the reference to the nth slave agency.'''
         return self._broker.slaves[slave_id].reference
 
     # Config manipulation (standalone agencies receive the configuration

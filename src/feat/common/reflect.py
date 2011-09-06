@@ -1,3 +1,4 @@
+import inspect
 import sys
 import types
 
@@ -78,6 +79,32 @@ def inside_class_definition(depth):
             and sys.version_info[:3] > (2, 2, 0))):
         return False
     return True
+
+
+def formatted_function_name(function):
+    if hasattr(function, 'original_func'):
+        function = function.original_func
+    argspec = inspect.getargspec(function)
+    defaults = argspec.defaults and list(argspec.defaults) or list()
+
+    if argspec.args and argspec.args[0] == 'self':
+        argspec.args.pop(0)
+    if argspec.args and argspec.args[0] == 'state':
+        argspec.args.pop(0)
+
+    args = argspec.args or list()
+    display_args = [x if len(defaults) < -index \
+                    else "%s=%s" % (x, defaults[index])
+                    for x, index in zip(args, range(-len(args), 0, 1))]
+    if argspec.varargs:
+        display_args += ['*%s' % (argspec.varargs)]
+    if argspec.keywords:
+        display_args += ['**%s' % (argspec.keywords)]
+
+    text = "%s(" % (function.__name__, )
+    text += ', '.join(display_args)
+    text += ')'
+    return text
 
 
 ### Private Methods ###

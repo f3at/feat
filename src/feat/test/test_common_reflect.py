@@ -146,3 +146,29 @@ class TestIntrospection(common.TestCase):
     def testGettingCanonicalNameFromClass(self):
         self.assertEqual('feat.test.test_common_reflect.Dummy',
                          Dummy.name)
+
+    def testFormatedFunctionName(self):
+        self.assertEqual('simple(a, b)',
+                         reflect.formatted_function_name(simple))
+        self.assertEqual('defaults(a, b=3)',
+                         reflect.formatted_function_name(defaults))
+        self.assertEqual('varargs(a, b=None, *args)',
+                         reflect.formatted_function_name(varargs))
+        self.assertEqual('kwargs(a=None, b=3, *args, **kwargs)',
+                         reflect.formatted_function_name(kwargs))
+
+
+def simple(a, b):
+    pass
+
+
+def defaults(a, b=3):
+    pass
+
+
+def varargs(a, b=None, *args):
+    pass
+
+
+def kwargs(a=None, b=3, *args, **kwargs):
+    pass
