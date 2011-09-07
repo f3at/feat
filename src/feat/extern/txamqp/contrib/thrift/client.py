@@ -21,4 +21,4 @@ class ThriftTwistedDelegate(TwistedDelegate):
             else:
                 (yield self.client.thriftBasicReturnQueue(thriftClientName))\
                        .put(msg)
-            
+

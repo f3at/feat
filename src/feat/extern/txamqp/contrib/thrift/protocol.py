@@ -57,7 +57,7 @@ class ThriftAMQClient(AMQClient):
         log.msg("Consuming messages on queue: %s" % responseQueue)
 
         thriftClientName = clientClass.__name__ + routingKey
-        
+
         amqpTransport = TwistedAMQPTransport(
             channel, serviceExchange, routingKey, clientName=thriftClientName,
             replyTo=responseQueue, replyToField=self.replyToField)
@@ -79,7 +79,7 @@ class ThriftAMQClient(AMQClient):
 
 
         basicReturnQueue = yield self.thriftBasicReturnQueue(thriftClientName)
-        
+
         d = basicReturnQueue.get()
         d.addCallback(self.parseClientUnrouteableMessage, channel,
             basicReturnQueue, thriftClient, iprot_factory=iprot_factory)
@@ -103,12 +103,12 @@ class ThriftAMQClient(AMQClient):
             pass
         else:
             log.msg('Missing rseqid! fname = %r, rseqid = %s, mtype = %r, routing key = %r, client = %r, msg.content.body = %r' % (fname, rseqid, mtype, msg.routing_key, thriftClient, msg.content.body))
-            
+
         method = getattr(thriftClient, 'recv_' + fname)
         method(iprot, mtype, rseqid)
 
         channel.basic_ack(deliveryTag, True)
-        
+
         d = queue.get()
         d.addCallback(self.parseClientMessage, channel, queue, thriftClient,
             iprot_factory=iprot_factory)
@@ -149,7 +149,7 @@ class ThriftAMQClient(AMQClient):
         # The queue is closed. Catch the exception and cleanup as needed.
         failure.trap(Closed)
         self.handleClosedClientQueue(failure)
-    
+
     def handleClientQueueError(self, failure):
         pass
 
@@ -212,7 +212,7 @@ class ThriftAMQClient(AMQClient):
         # The queue is closed. Catch the exception and cleanup as needed.
         failure.trap(Closed)
         self.handleClosedServerQueue(failure)
-    
+
     def handleServerQueueError(self, failure):
         pass
 
