@@ -455,7 +455,7 @@ class StartAgent(task.BaseTask):
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
             own_shard = state.agent.get_shard_id()
             state.descriptor.shard = own_shard
-        state.descriptor.resource = allocation.alloc
+        state.descriptor.resources = allocation.alloc
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)

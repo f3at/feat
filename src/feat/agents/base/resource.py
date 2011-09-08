@@ -317,6 +317,9 @@ class AllocatedRange(serialization.Serializable):
     def add_value(self, value):
         self.values.add(value)
 
+    def __repr__(self):
+        return str(self.values)
+
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return NotImplemented
