@@ -4,7 +4,7 @@ FEAT => F3AT => Flumotion Asynchronous Autonomous Agent Toolkit
 
 Get the code::
 
-	git clone --recursive git@github.com:F3AT/F3AT.git feat
+	git clone --recursive git@github.com:f3at/feat.git
 	cd feat
 
 If you forgot parameter "--recursive" then you should then do::
@@ -19,6 +19,7 @@ From source directory.
 
 To run the tests::
 
+        cd src
 	make
 
 
