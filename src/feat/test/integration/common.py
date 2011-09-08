@@ -92,7 +92,6 @@ class OverrideConfigMixin(object):
     def override_agent(self, agent_type, factory):
         if not hasattr(self, 'overriden_agents'):
             self.overriden_agents = dict()
-            self.addCleanup(self.revert_overrides_agents)
 
         old = registry.registry_lookup(agent_type)
         self.overriden_agents[agent_type] = old
@@ -109,7 +108,6 @@ class OverrideConfigMixin(object):
     def override_config(self, agent_type, config):
         if not hasattr(self, 'overriden_configs'):
             self.overriden_configs = dict()
-            self.addCleanup(self.revert_overrides_config)
         factory = registry.registry_lookup(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
@@ -120,6 +118,10 @@ class OverrideConfigMixin(object):
         for key, value in self.overriden_configs.iteritems():
             factory = registry.registry_lookup(key)
             factory.configuration_doc_id = value
+
+    def tearDown(self):
+        self.revert_overrides_agents()
+        self.revert_overrides_config()
 
 
 class SimulationTest(common.TestCase, OverrideConfigMixin):
@@ -180,6 +182,7 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
             if exc_type is None or exc_type is StopIteration:
                 yield self._check_replayability()
         finally:
+            OverrideConfigMixin.tearDown(self)
             # remove leaking memory during the tests
             yield self.driver.destroy()
             for k, v in self.__dict__.items():
@@ -241,6 +244,7 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
         initial_documents = dbtools.get_current_initials()
+
         self.addCleanup(dbtools.reset_documents, initial_documents)
 
     @defer.inlineCallbacks
@@ -267,6 +271,7 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
         yield defer.DeferredList([freeze_and_destroy(x)
                                   for x in self.drivers])
 
+        OverrideConfigMixin.tearDown(self)
         for k, v in self.__dict__.items():
             if str(k)[0] == "_":
                 continue

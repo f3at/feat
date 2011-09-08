@@ -27,7 +27,6 @@ registry = dict()
 @decorator.parametrized_class
 def register(klass, name, configuration_id=None):
     klass = override(name, klass, configuration_id)
-    serialization.register(klass)
     return klass
 
 
@@ -43,4 +42,5 @@ def override(name, klass, configuration_id=None):
     klass.descriptor_type = name
     klass.type_name = name + ":data"
     klass.configuration_doc_id = doc_id
+    serialization.register(klass)
     return klass
