@@ -495,6 +495,10 @@ class AgentMixin(object):
         return state.resources.get_allocation(allocation_id)
 
     @replay.immutable
+    def get_allocation_expiration(self, state, allocation_id):
+        return state.resources.get_allocation_expiration(allocation_id)
+
+    @replay.immutable
     def list_resource(self, state):
         allocated = state.resources.allocated()
         totals = state.resources.get_totals()
@@ -627,6 +631,10 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         except KeyError:
             raise AllocationNotFound("Allocation with id=%s not found" %
                                      allocation_id)
+
+    @replay.immutable
+    def get_allocation_expiration(self, state, allocation_id):
+        return state.modifications.get_expiration(allocation_id)
 
     @replay.mutable
     def release(self, state, allocation_id):

@@ -232,7 +232,8 @@ class Journaler(log.Logger, common.StateMachineMixin):
             category=category,
             file_path=file_path,
             line_num=line_num,
-            message=message)
+            message=message,
+            timestamp=int(time.time_no_sfx()))
         self.insert_entry(**data)
 
         if self.should_keep_on_logging_to_flulog:
@@ -641,13 +642,13 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         result = dict()
 
         if data['entry_type'] == 'journal':
-            to_copy = ('fiber_depth', 'instance_id', 'entry_type')
+            to_copy = ('fiber_depth', 'instance_id', 'entry_type', 'timestamp')
             to_decode = ('agent_id', 'function_id', 'fiber_id', )
             to_blob = ('journal_id', 'args', 'kwargs', 'side_effects',
                        'result', )
         elif data['entry_type'] == 'log':
             to_copy = ('level', 'log_name', 'category', 'line_num',
-                       'entry_type')
+                       'entry_type', 'timestamp')
             to_decode = ('file_path', )
             to_blob = ('message', )
         else:
@@ -764,24 +765,25 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         def do_insert_entry(connection, history_id, data):
             command = text_helper.format_block("""
-            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        strftime('%s', 'now'))
+            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (history_id,
                           data['journal_id'], data['function_id'],
                           data['fiber_id'], data['fiber_depth'],
                           data['args'], data['kwargs'],
-                          data['side_effects'], data['result'], ))
+                          data['side_effects'], data['result'],
+                          data['timestamp']))
 
         def do_insert_log(connection, data):
             command = text_helper.format_block("""
-            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (data['message'], int(data['level']),
                           data['category'], data['log_name'],
-                          data['file_path'], data['line_num']))
+                          data['file_path'], data['line_num'],
+                          data['timestamp']))
 
         def transaction(connection, cache):
             entries = cache.fetch()
@@ -963,7 +965,8 @@ class AgencyJournalEntry(object):
             'function_id': function_id,
             'fiber_id': None,
             'fiber_depth': None,
-            'side_effects': list()}
+            'side_effects': list(),
+            'timestamp': int(time.time_no_sfx())}
 
         self._not_serialized = {
             'args': args or None,

@@ -238,6 +238,10 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
             d.addCallback(defer.drop_param, x.wait_for_protocols_finish)
         return d
 
+    def snapshot_all_agents(self):
+        for medium in self.iter_agents():
+            medium.check_if_should_snapshot(force=True)
+
     @defer.inlineCallbacks
     def destroy(self):
         '''

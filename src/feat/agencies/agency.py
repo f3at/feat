@@ -276,7 +276,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_hostname(self):
         return self.agency.get_hostname()
 
-    @replay.named_side_effect('AgencyAgent.get_hostname')
+    @replay.named_side_effect('AgencyAgent.get_ip')
     def get_ip(self):
         return self.agency.get_ip()
 
@@ -428,6 +428,19 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):
         self.call_next(self._terminate)
+
+    @manhole.expose()
+    @serialization.freeze_tag('AgencyAgency.terminate_hard')
+    def terminate_hard(self):
+        '''Kill the agent without notifying anybody.'''
+
+        def generate_body():
+            d = defer.succeed(None)
+            # run IAgent.killed() and wait for the listeners to finish the job
+            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
+            return d
+
+        return self._terminate_procedure(generate_body)
 
     # get_mode() comes from dependency.AgencyAgentDependencyMixin
 
@@ -859,6 +872,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return
         self._set_state(AgencyAgentState.terminating)
 
+        self.log('Begging termination procedure, storing snapshot.')
+        self.check_if_should_snapshot(force=True)
+
         # Revoke all interests
         [self.revoke_interest(i.agent_factory)
          for i in list(self._iter_interests())]
@@ -905,18 +921,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _cancel_long_running_protocols(self):
         return defer.DeferredList([defer.maybeDeferred(x.cancel)
                                    for x in self._long_running_protocols])
-
-    @manhole.expose()
-    def terminate_hard(self):
-        '''Kill the agent without notifying anybody.'''
-
-        def generate_body():
-            d = defer.succeed(None)
-            # run IAgent.killed() and wait for the listeners to finish the job
-            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
-            return d
-
-        return self._terminate_procedure(generate_body)
 
     def _terminate(self):
         '''Shutdown agent gently removing the descriptor and

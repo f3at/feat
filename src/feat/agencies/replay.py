@@ -23,7 +23,7 @@ from pprint import pformat
 
 from zope.interface import implements, classProvides
 
-from feat.common import serialization, log, text_helper
+from feat.common import serialization, log, text_helper, deep_compare
 from feat.agents.base import replay
 from feat.common.serialization import banana
 
@@ -428,6 +428,7 @@ class Replay(log.FluLogKeeper, log.Logger):
     def apply_snapshot(self, entry):
         old_agent, old_protocols = self.agent, self.protocols
         self.reset()
+        self.set_current_time(entry._timestamp)
         args, kwargs = replay.replay(entry, entry.get_arguments)
         self._restore_snapshot(*args, **kwargs)
         self._check_snapshot(old_agent, old_protocols)
@@ -485,10 +486,15 @@ class Replay(log.FluLogKeeper, log.Logger):
         # we are replaynig - hence we have no state to compare to
         if old_agent is not None:
             if self.agent != old_agent:
+                comp = deep_compare(self.agent._get_state(),
+                                    old_agent._get_state())
+                info = "  INFO:        %s: %s\n" % comp if comp else ""
+
                 raise ReplayError("States of current agent mismatch the "
-                                  "old agent\nOld: %r\nLoaded: %r."
-                                  % (old_agent._get_state(),
-                                     self.agent._get_state()))
+                                  "old agent\nInfo: %s\nOld: %s\nLoaded: %s."
+                                  % (info,
+                                     pformat(old_agent._get_state()),
+                                     pformat(self.agent._get_state())))
             if len(self.protocols) != len(old_protocols):
                 raise ReplayError("The number of protocols mismatch. "
                                   "\nOld: %r\nLoaded: %r"
@@ -653,6 +659,10 @@ class AgencyAgent(BaseReplayDummy):
     def get_hostname(self):
         pass
 
+    @replay.named_side_effect('AgencyAgent.get_ip')
+    def get_ip(self):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_descriptor')
     def get_descriptor(self):
         pass
@@ -726,6 +736,10 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):
+        raise RuntimeError('This should never be called!')
+
+    @serialization.freeze_tag('AgencyAgency.terminate_hard')
+    def terminate_hard(self):
         raise RuntimeError('This should never be called!')
 
     @serialization.freeze_tag('AgencyAgency.save_document')
@@ -921,6 +935,7 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
         pass
 
     @replay.named_side_effect('AgencyManager.terminate')
+    @serialization.freeze_tag('AgencyManager.terminate')
     def terminate(self, result=None):
         pass
 

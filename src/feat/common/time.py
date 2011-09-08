@@ -54,6 +54,10 @@ def time():
              time scaling mechanism.
     @rtype: float
     '''
+    return time_no_sfx()
+
+
+def time_no_sfx():
     real_time = reactor.seconds()
     return real_time / _get_scale()
 

@@ -251,9 +251,9 @@ class DNSAgent(agent.BaseAgent):
         return unicode(socket.gethostbyname(socket.gethostname()))
 
 
-class Resolver(authority.PySourceAuthority):
-
-    implements(ISerializable)
+@serialization.register
+class Resolver(serialization.Serializable,
+               authority.PySourceAuthority):
 
     type_name = "dns-resolver"
 

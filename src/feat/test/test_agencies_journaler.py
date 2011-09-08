@@ -24,7 +24,7 @@ import tempfile
 import os
 
 from feat.test import common
-from feat.common import defer
+from feat.common import defer, time
 from feat.agencies import journaler
 from feat.common.serialization import banana
 
@@ -210,7 +210,8 @@ class DBTests(common.TestCase):
             'fiber_id': 'some fiber id',
             'fiber_depth': 1,
             'result': self.serializer.convert(None),
-            'side_effects': self.serializer.convert(list())}
+            'side_effects': self.serializer.convert(list()),
+            'timestamp': int(time.time())}
 
         defaults.update(opts)
         return defaults

@@ -24,7 +24,7 @@ import heapq
 from zope.interface import implements, classProvides
 
 from feat.common import serialization
-from feat.interface.generic import *
+from feat.interface.generic import ITimeProvider
 
 
 __all__ = ("MroDict", "Empty", "ExpDict", "ExpQueue")
@@ -60,11 +60,11 @@ class MroDict(object):
         return ProxyDict(self._get_tag(owner), kwargs)
 
     def __set__(self, instance, value):
-        return NotImplemetedError(
+        return NotImplementedError(
             "You are doing something you shouldn't be doing")
 
     def __delete__(self, instance):
-        return NotImplemetedError(
+        return NotImplementedError(
             "You are doing something you shouldn't be doing")
 
     ### endof descriptor protocol ###
@@ -220,6 +220,12 @@ class ExpDict(ExpBase):
         item = self._get_item(key)
         return default if item is None else item.value
 
+    def get_expiration(self, key):
+        item = self._get_item(key)
+        if item is None:
+            raise KeyError(key)
+        return item.exp
+
     def iterkeys(self):
         '''Returns an iterator over the dictionary keys.'''
         self._lazy_pack()
@@ -302,6 +308,10 @@ class ExpDict(ExpBase):
     def __ne__(self, other):
         eq = self.__eq__(other)
         return eq if eq == NotImplemented else not eq
+
+    def __repr__(self):
+        values = ["%s=%s" % (k, v) for k, v in self.iteritems()]
+        return "<xdict: {%s}>" % (", ".join(values), )
 
     ### ISerializable Method ###
 
