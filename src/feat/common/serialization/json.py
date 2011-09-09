@@ -76,8 +76,8 @@ class Serializer(base.Serializer):
 
     pack_dict = dict
 
-    def __init__(self, indent=None, separators=None, externalizer=None,
-                 source_ver=None, target_ver=None):
+    def __init__(self, indent=None, separators=None, force_unicode=False,
+                 externalizer=None, source_ver=None, target_ver=None):
         base.Serializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                  freezer_caps=JSON_FREEZER_CAPS,
                                  externalizer=externalizer,
@@ -85,6 +85,7 @@ class Serializer(base.Serializer):
                                  target_ver=target_ver)
         self._indent = indent
         self._separators = separators
+        self._force_unicode = force_unicode
 
     ### Overridden Methods ###
 
@@ -108,6 +109,8 @@ class Serializer(base.Serializer):
         # we try to decode the string from default encoding
         try:
             value = data.decode(DEFAULT_ENCODING)
+            if self._force_unicode:
+                return value
             return [ENCODED_ATOM, DEFAULT_ENCODING, value]
         except UnicodeDecodeError:
             # if it fail store it as base64 encoded bytes

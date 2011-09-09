@@ -413,7 +413,8 @@ class Peer(httpclient.Connection):
         vin = self._tunnel._version
         vtar = self._target_version
         vout = vtar if vtar is not None else vin
-        serializer = json.Serializer(indent=2, source_ver=vin, target_ver=vout)
+        serializer = json.Serializer(indent=2, force_unicode=True,
+                                     source_ver=vin, target_ver=vout)
         self._headers["user-agent"] = http.compose_user_agent(FEAT_IDENT, vout)
         return serializer.convert(data)
 
