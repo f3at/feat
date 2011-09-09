@@ -1,0 +1,142 @@
+#
+# OpenSSL configuration file for FEAT development root CA.
+#
+
+HOME			= .
+RANDFILE		= ./.rnd
+oid_section		= feat_oids
+
+[ feat_oids ]
+# Fake OIDS ! ! !
+Feat-CPS		= 1.3.6.1.4.1.31012.1.1 # Certification Practice Statement
+Feat-CA-Cert		= 1.3.6.1.4.1.31012.1.2 # Subordinate CA Certificate
+Feat-MAIL-Cert		= 1.3.6.1.4.1.31012.2.1 # Mail Certificate
+Feat-CODE-Cert		= 1.3.6.1.4.1.31012.2.2 # Code Signature Certificate
+Feat-TLS-MAIL-Cert	= 1.3.6.1.4.1.31012.3.1 # Secure Communications Mail Server Certificate
+Feat-TLS-WEB-Cert	= 1.3.6.1.4.1.31012.3.2 # Secure Communications Web Server Certificate
+
+
+####################################################################
+[ ca ]
+default_ca	= CA_default
+
+####################################################################
+[ CA_default ]
+dir		= .
+certs		= $dir/certs
+crl_dir		= $dir/crl
+database	= $dir/index.txt
+unique_subject	= no
+new_certs_dir	= $dir/newcerts
+certificate	= $dir/ca_public_cert.pem
+serial		= $dir/serial
+crlnumber	= $dir/crlnumber
+crl		= $dir/crl/ca.crl
+private_key	= $dir/private/ca_private_key.pem
+RANDFILE	= $dir/private/.rand
+x509_extensions	= sub_ca_cert
+name_opt 	= ca_default
+cert_opt 	= ca_default
+crl_extensions	= crl_ext
+default_days	= 2920
+default_crl_days= 365
+default_md	= sha1
+preserve	= no
+policy		= policy_match
+
+[ sub_ca_cert ]
+basicConstraints	= CA:true
+keyUsage		= critical, cRLSign, keyCertSign
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid, issuer
+authorityInfoAccess	= caIssuers;URI:http://www.flumotion.net/feat/dev_ca/cainfo.html
+crlDistributionPoints	= URI:http://www.flumotion.net/feat/dev_crl/ca.crl
+certificatePolicies	= ia5org,@Feat_CPS,@Feat_CA_policy
+
+[ Feat_CPS ]
+policyIdentifier	= Feat-CPS
+CPS.1			= "http://www.flumotion.net/feat/dev_ca/feat_cps.html"
+userNotice.1		= @Feat_CPS_Notice
+
+[ Feat_CPS_Notice ]
+explicitText		= "Flumotion Services S.A. Development Certification Practice Statement"
+
+[ Feat_CA_policy ]
+policyIdentifier = Feat-CA-Cert
+userNotice.2     = @Feat_CA_Notice
+
+[ Feat_CA_Notice ]
+explicitText  = "Flumotion Services S.A. Development CA Certificate Policy"
+
+[ crl_ext ]
+crlDistributionPoints   = URI:http://www.flumotion.net/feat/dev_crl/root_ca.crl
+
+[ req ]
+dir			= .
+default_bits		= 2048
+default_keyfile		= $dir/private/new_private_key.pem
+distinguished_name	= req_distinguished_name
+attributes		= req_attributes
+x509_extensions		= v3_ca
+
+[ req_attributes ]
+challengePassword       = A challenge password (between 6 and 20 characters)
+challengePassword_min   = 6
+challengePassword_max   = 20
+
+[ v3_ca ]
+basicConstraints	= CA:true
+keyUsage		= critical, cRLSign, keyCertSign
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid:always, issuer:always
+authorityInfoAccess	= caIssuers;URI:http://www.flumotion.net/feat/dev_ca/cainfo.html
+crlDistributionPoints   = URI:http://www.flumotion.net/feat/dev_crl/root_ca.crl
+certificatePolicies     = ia5org,@Feat_CPS
+
+[ req_distinguished_name ]
+commonName			= Certification Authority Name (Common Name)
+commonName_max			= 64
+0.organizationName		= Organization Name (eg, company)
+0.organizationName_default	= Flumotion Services S.A.
+1.organizationName		= Internet Company Web Site
+1.organizationName_default	= http://www.flumotion.net/feat
+organizationalUnitName		= Organizational Unit Name (eg, section)
+organizationalUnitName_default	= Feat Core Team
+emailAddress			= Email Address (max 64 characters)
+emailAddress_default		= coreteam@flumotion.com
+emailAddress_max		= 64
+localityName			= Locality Name (eg, city)
+localityName_default		= Barcelona
+countryName			= Country Name (2 letter code)
+countryName_default		= ES
+countryName_min			= 2
+countryName_max			= 2
+stateOrProvinceName		= State or Province Name (full name)
+stateOrProvinceName_default	= Spain
+# SET-ex3				= SET extension number 3
+
+#######################
+##  Policy Sections  ##
+#######################
+
+# For the CA only
+[ policy_match ]
+organizationName	= match
+organizationalUnitName	= match
+commonName		= supplied
+emailAddress		= optional
+localityName		= optional
+stateOrProvinceName	= match
+countryName		= match
+
+# For every certificate (Public Key)
+[ policy_anything ]
+organizationName	= optional
+organizationalUnitName	= optional
+commonName		= supplied
+emailAddress		= optional
+localityName		= optional
+stateOrProvinceName	= optional
+countryName		= optional
+
+# End File
