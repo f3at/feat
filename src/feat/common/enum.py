@@ -75,7 +75,7 @@ class MetaEnum(type):
             if not int(key) in cls._values:
                 raise KeyError("There is no enum with key %d" % key)
             return cls._values[key]
-        if isinstance(key, str):
+        if isinstance(key, (str, unicode)):
             if not key in cls._names:
                 raise KeyError("There is no enum with name %s" % key)
             return cls._names[key]
