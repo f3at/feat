@@ -48,8 +48,8 @@ class BaseResource(webserver.BasicResource):
     def render_footer(self, doc):
         doc.extend(["</BODY></HTML>"])
 
-    def redirect(self, path, host=None, port=None):
-        url = http.compose(path, host=host, port=port)
+    def redirect(self, path, host=None, port=None, scheme=None):
+        url = http.compose(path, host=host, port=port, scheme=scheme)
         raise http.MovedPermanently(location=url)
 
 
@@ -212,13 +212,13 @@ class Agencies(BaseResource):
         if result is not None:
             host, port, is_remote = result
             if is_remote:
-                self.redirect(request.path, host, port)
+                self.redirect(request.path, host, port, request.scheme)
 
     def _agency_located(self, result, request, location, remaining):
         if result is None:
             return None
         host, port, _is_remote = result
-        self.redirect(request.path, host, port)
+        self.redirect(request.path, host, port, request.scheme)
 
 
 class Agents(BaseResource):
@@ -331,7 +331,8 @@ class Agents(BaseResource):
         if result is None:
             return None
         host, port, _is_remote = result
-        url = http.compose(request.path, host=host, port=port)
+        url = http.compose(request.path, host=host, port=port,
+                           scheme=request.scheme)
         raise http.MovedPermanently(location=url)
 
 
@@ -359,15 +360,15 @@ class Agency(BaseResource):
 
             if 'shutdown_agency' in params:
                 time.callLater(1, self.model.shutdown_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
             if 'terminate_agency' in params:
                 time.callLater(1, self.model.terminate_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
             if 'kill_agency' in params:
                 time.callLater(1, self.model.kill_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
         agents_url = "/agents"
 
@@ -430,9 +431,10 @@ class Agency(BaseResource):
         self.render_footer(doc)
         response.writelines(doc)
 
-    def _redirect_to_top(self):
+    def _redirect_to_top(self, request):
         self.redirect("/", self.model.get_hostname(),
-                      self.model.default_gateway_port)
+                      self.model.default_gateway_port,
+                      request.scheme)
 
 
 class Agent(BaseResource):

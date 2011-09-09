@@ -40,6 +40,7 @@ from feat.process import standalone
 from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
+from feat.web import security
 
 from feat.agencies.net import database, messaging, tunneling, options
 from feat.agencies.net.broker import BrokerRole
@@ -88,8 +89,11 @@ class Agency(agency.Agency):
                  agency_journal=options.DEFAULT_JOURFILE,
                  socket_path=options.DEFAULT_SOCKET_PATH,
                  gateway_port=options.DEFAULT_GW_PORT,
+                 gateway_p12=options.DEFAULT_GW_P12_FILE,
+                 allow_tcp_gateway=options.DEFAULT_ALLOW_TCP_GATEWAY,
                  tunneling_host=None,
                  tunneling_port=options.DEFAULT_TUNNEL_PORT,
+                 tunneling_p12=options.DEFAULT_TUNNEL_P12_FILE,
                  enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
                  rundir=None,
                  logdir=None,
@@ -118,7 +122,10 @@ class Agency(agency.Agency):
                           agency_journal=agency_journal,
                           socket_path=socket_path,
                           gateway_port=gateway_port,
+                          gateway_p12=gateway_p12,
+                          allow_tcp_gateway=allow_tcp_gateway,
                           tunneling_port=tunneling_port,
+                          tunneling_p12=tunneling_p12,
                           enable_spawning_slave=enable_spawning_slave,
                           rundir=rundir,
                           logdir=logdir,
@@ -192,16 +199,10 @@ class Agency(agency.Agency):
         db = database.Database(dbc['host'], int(dbc['port']), dbc['name'])
         db.redirect_log(self)
 
-        mc = self.config['msg']
-        mesg_backend = messaging.Messaging(mc['host'], int(mc['port']),
-                                           mc['user'], mc['password'])
-        mesg_backend.redirect_log(self)
-
-        tc = self.config["tunnel"]
-        start_port = int(tc["port"])
-        port_range = range(start_port, start_port + TUNNELING_PORT_COUNT)
-        tunnel_backend = tunneling.Backend(tc["host"], port_range)
-        tunnel_backend.redirect_log(self)
+        backends = []
+        backends.append(self._initiate_messaging(self.config['msg']))
+        backends.append(self._initiate_tunneling(self.config['tunnel']))
+        backends = filter(None, backends)
 
         jour = journaler.Journaler(self)
         self._journal_writer = None
@@ -228,7 +229,7 @@ class Agency(agency.Agency):
 
         d = defer.succeed(None)
         d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, db, jour, mesg_backend, tunnel_backend)
+                  self, db, jour, *backends)
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
@@ -339,7 +340,8 @@ class Agency(agency.Agency):
     def on_broker_disconnect(self, pre_state):
         self._ssh.stop_listening()
         d = self._journaler.close(flush_writer=False)
-        d.addCallback(defer.drop_param, self._gateway.cleanup)
+        if self._gateway:
+            d.addCallback(defer.drop_param, self._gateway.cleanup)
 
         if pre_state == BrokerRole.master:
             d.addCallback(defer.drop_param, run.delete_pidfile,
@@ -392,7 +394,8 @@ class Agency(agency.Agency):
     def _disconnect(self):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
-        d.addCallback(defer.drop_param, self._gateway.cleanup)
+        if self._gateway:
+            d.addCallback(defer.drop_param, self._gateway.cleanup)
         d.addCallback(defer.drop_param, self._journaler.close)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
@@ -532,16 +535,30 @@ class Agency(agency.Agency):
     # Config manipulation (standalone agencies receive the configuration
     # in the environment).
 
-    def _init_config(self, msg_host=None, msg_port=None,
-                     msg_user=None, msg_password=None,
-                     db_host=None, db_port=None, db_name=None,
-                     public_key=None, private_key=None,
-                     authorized_keys=None, manhole_port=None,
-                     agency_journal=None, socket_path=None,
+    def _init_config(self,
+                     msg_host=None,
+                     msg_port=None,
+                     msg_user=None,
+                     msg_password=None,
+                     db_host=None,
+                     db_port=None,
+                     db_name=None,
+                     public_key=None,
+                     private_key=None,
+                     authorized_keys=None,
+                     manhole_port=None,
+                     agency_journal=None,
+                     socket_path=None,
                      gateway_port=None,
-                     tunneling_host=None, tunneling_port=None,
+                     gateway_p12=None,
+                     allow_tcp_gateway=None,
+                     tunneling_host=None,
+                     tunneling_port=None,
+                     tunneling_p12=None,
                      enable_spawning_slave=None,
-                     rundir=None, logdir=None, daemonize=None,
+                     rundir=None,
+                     logdir=None,
+                     daemonize=None,
                      force_host_restart=None):
 
         msg_conf = dict(host=msg_host,
@@ -569,9 +586,16 @@ class Agency(agency.Agency):
                            daemonize=daemonize,
                            force_host_restart=force_host_restart)
 
-        gateway_conf = dict(port=gateway_port)
+        gateway_conf = dict(port=gateway_port,
+                            p12=gateway_p12,
+                            allow_tcp=allow_tcp_gateway)
 
-        tunnel_conf = dict(host=tunneling_host, port=tunneling_port)
+        if tunneling_host is None:
+            tunneling_host = socket.gethostbyaddr(socket.gethostname())[0]
+
+        tunnel_conf = dict(host=tunneling_host,
+                           port=tunneling_port,
+                           p12=tunneling_p12)
 
         self.config = dict()
         self.config['msg'] = msg_conf
@@ -625,6 +649,52 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+    def _initiate_messaging(self, config):
+        try:
+            host = config['host']
+            port = int(config['port'])
+            username = config['user']
+            password = config['password']
+
+            self.info("Setting up messaging using %s@%s:%d", username,
+                      host, port)
+
+            backend = messaging.Messaging(host, port, username, password)
+            backend.redirect_log(self)
+            return backend
+        except Exception as e:
+            msg = "Failed to setup messaging backend"
+            error.handle_exception(self, e, msg)
+            # For now we do not support not having messaging backend
+            raise
+
+    def _initiate_tunneling(self, config):
+        try:
+            host = config["host"]
+            port = int(config["port"])
+            p12 = config["p12"]
+            port_range = range(port, port + TUNNELING_PORT_COUNT)
+
+            self.info("Setting up tunneling on %s ports %d-%d "
+                      "using PKCS12 %r", host, port_range[0],
+                      port_range[-1], p12)
+
+            csec = security.ClientContextFactory(p12_filename=p12,
+                                                 verify_ca_from_p12=True)
+            cpol = security.ClientPolicy(csec)
+            ssec = security.ServerContextFactory(p12_filename=p12,
+                                                 verify_ca_from_p12=True)
+            spol = security.ServerPolicy(ssec)
+            backend = tunneling.Backend(host, port_range,
+                                        client_security_policy=cpol,
+                                        server_security_policy=spol)
+            backend.redirect_log(self)
+            return backend
+        except Exception as e:
+            msg = "Failed to setup tunneling backend"
+            error.handle_exception(self, e, msg)
+        return None
 
     def _start_host_agent_if_necessary(self):
         '''
@@ -756,17 +826,41 @@ class Agency(agency.Agency):
             self._snapshot_task.cancel()
         self._snapshot_task = None
 
+    def _create_gateway(self, config):
+        try:
+            port = int(config["port"])
+            p12 = config["p12"]
+            allow_tcp = config["allow_tcp"]
+            range = (port, port + GATEWAY_PORT_COUNT)
+
+            if not os.path.exists(p12):
+                if not allow_tcp:
+                    self.warning("No gateway PKCS12 specified or file "
+                                 "not found, gateway disabled: %s", p12)
+                    return
+                sec = security.UnsecuredPolicy()
+                self.info("Setting up TCP gateway on ports %d-%d",
+                          range[0], range[-1])
+            else:
+                fac = security.ServerContextFactory(p12_filename=p12,
+                                                    verify_ca_from_p12=True)
+                sec = security.ServerPolicy(fac)
+                self.info("Setting up SSL gateway on ports %d-%d "
+                          "using PKCS12 %r", range[0], range[-1], p12)
+
+            return gateway.Gateway(self, range, security_policy=sec)
+        except Exception as e:
+            error.handle_exception(self, e, "Failed to setup gateway")
+
     def _start_slave_gateway(self):
-        master_port = int(self.config["gateway"]["port"])
-        range = (master_port, master_port + GATEWAY_PORT_COUNT)
-        self._gateway = gateway.Gateway(self, range)
-        self._gateway.initiate_slave()
+        self._gateway = self._create_gateway(self.config["gateway"])
+        if self._gateway:
+            self._gateway.initiate_slave()
 
     def _start_master_gateway(self):
-        master_port = int(self.config["gateway"]["port"])
-        range = (master_port, master_port + GATEWAY_PORT_COUNT)
-        self._gateway = gateway.Gateway(self, range)
-        self._gateway.initiate_master()
+        self._gateway = self._create_gateway(self.config["gateway"])
+        if self._gateway:
+            self._gateway.initiate_master()
 
     def _create_pid_file(self):
         rundir = self.config['agency']['rundir']

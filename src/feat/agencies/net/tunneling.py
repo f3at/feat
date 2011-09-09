@@ -17,7 +17,8 @@ class Backend(log.LogProxy, log.Logger, common.ConnectionManager):
 
     channel_type = CHANNEL_TYPE
 
-    def __init__(self, host, port_range, version=None, registry=None):
+    def __init__(self, host, port_range, version=None, registry=None,
+                 server_security_policy=None, client_security_policy=None):
         log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
         common.ConnectionManager.__init__(self)
@@ -25,8 +26,11 @@ class Backend(log.LogProxy, log.Logger, common.ConnectionManager):
         self._pending_dispatches = 0
         self._channels = {} # {CHANNEL_ID: Channel}
 
-        self._tunnel = tunnel.Tunnel(self, port_range, self, public_host=host,
-                                     version=version, registry=registry)
+        t = tunnel.Tunnel(self, port_range, self, public_host=host,
+                          version=version, registry=registry,
+                          server_security_policy=server_security_policy,
+                          client_security_policy=client_security_policy)
+        self._tunnel = t
         self._tunnel.start_listening()
         self._route = self._tunnel.uri
         self.info("Listening for tunneling connections on %s", self._route)

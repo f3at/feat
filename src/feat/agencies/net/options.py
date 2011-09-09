@@ -33,8 +33,13 @@ DEFAULT_MSG_USER = "guest"
 DEFAULT_MSG_PASSWORD = "guest"
 
 DEFAULT_JOURFILE = 'journal.sqlite3'
+
 DEFAULT_GW_PORT = 5500
+DEFAULT_GW_P12_FILE = "/etc/feat/gateway.p12"
+DEFAULT_ALLOW_TCP_GATEWAY = False
+
 DEFAULT_TUNNEL_PORT = 5400
+DEFAULT_TUNNEL_P12_FILE = "/etc/feat/tunneling.p12"
 
 # Only for command-line options
 DEFAULT_MH_PUBKEY = "public.key"
@@ -152,6 +157,12 @@ def add_tunnel_options(parser):
                      help=("first port of tunneling port range"
                            "(default: %s" % DEFAULT_TUNNEL_PORT),
                      metavar="PORT", type="int")
+    group.add_option('-T', '--tunnel-p12', type="str", dest='tunnel_p12',
+                     help=("tunnel PKCS12 file to use for certificate and "
+                           "private key; used for server side and and client "
+                           " side; peers will be checked against the "
+                           "contained CA certificates (default: %s)"
+                           % DEFAULT_GW_P12_FILE), metavar="FILE")
     parser.add_option_group(group)
 
 
@@ -195,8 +206,19 @@ def add_gw_options(parser):
     # gateway specific
     group = optparse.OptionGroup(parser, "Gateway options")
     group.add_option('-w', '--gateway-port', type="int", dest='gateway_port',
-                     help=("port for the gateway to listen (default: %s)" %
+                     help=("first port for the gateway port range "
+                           "for the gateway to listen on (default: %s)" %
                            DEFAULT_GW_PORT), metavar="PORT")
+    group.add_option('-G', '--gateway-p12', type="str", dest='gateway_p12',
+                     help=("gateway PKCS12 file to use for certificate and "
+                           "private key; connecting client certificate will "
+                           " be checked against the contained CA "
+                           "certificates (default: %s)" % DEFAULT_GW_P12_FILE),
+                           metavar="FILE")
+    group.add_option('--allow-tcp-gateway', action="store_true",
+                     dest='gateway_allow_tcp',
+                     help=("if no PKCS12 is specified start the gateway "
+                           "anyway without SSL."))
     parser.add_option_group(group)
 
 

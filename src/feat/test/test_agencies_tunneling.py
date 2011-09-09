@@ -21,6 +21,9 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+
+import os
+
 from twisted.internet import defer
 
 from feat.agencies import tunneling
@@ -28,6 +31,7 @@ from feat.agencies.emu import tunneling as emu_tunneling
 from feat.agencies.net import tunneling as net_tunneling
 from feat.agents.base import message, recipient
 from feat.common import serialization
+from feat.web import security
 
 from . import common
 
@@ -251,7 +255,7 @@ class TestEmuTunneling(common.TestCase, TestMixin):
         return common.TestCase.tearDown(self)
 
 
-class TestNetTunneling(common.TestCase, TestMixin):
+class TestNetTCPTunneling(common.TestCase, TestMixin):
 
     timeout = 5
 
@@ -268,6 +272,89 @@ class TestNetTunneling(common.TestCase, TestMixin):
         self.backend2 = net_tunneling.Backend("localhost",
                                               port_range=port_range,
                                               version=2, registry=registry2)
+
+        return common.TestCase.setUp(self)
+
+    def tearDown(self):
+        self.backend1.disconnect()
+        self.backend2.disconnect()
+        return common.TestCase.tearDown(self)
+
+
+class TestNetSSLTunneling(common.TestCase, TestMixin):
+
+    timeout = 5
+
+    def setUp(self):
+        root = os.path.join(os.path.dirname(__file__), "data")
+        svr_key = os.path.join(root, "ca1_server1_key.pem")
+        svr_cert = os.path.join(root, "ca1_server1_cert.pem")
+        cli_key = os.path.join(root, "ca1_client1_key.pem")
+        cli_cert = os.path.join(root, "ca1_client1_cert.pem")
+        ca_certs = os.path.join(root, "ca1_certs.pem")
+
+        svr_fac = security.ServerContextFactory(svr_key, svr_cert, ca_certs)
+        svr_sec = security.ServerPolicy(svr_fac)
+        cli_fac = security.ClientContextFactory(cli_key, cli_cert, ca_certs)
+        cli_sec = security.ClientPolicy(cli_fac)
+
+        port_range = range(4000, 4100)
+        registry1 = serialization.get_registry().clone()
+        registry1.register(Notification1)
+        self.backend1 = net_tunneling.Backend("localhost",
+                                              port_range=port_range,
+                                              version=1, registry=registry1,
+                                              server_security_policy=svr_sec,
+                                              client_security_policy=cli_sec)
+
+        registry2 = serialization.get_registry().clone()
+        registry2.register(Notification2)
+        self.backend2 = net_tunneling.Backend("localhost",
+                                              port_range=port_range,
+                                              version=2, registry=registry2,
+                                              server_security_policy=svr_sec,
+                                              client_security_policy=cli_sec)
+
+        return common.TestCase.setUp(self)
+
+    def tearDown(self):
+        self.backend1.disconnect()
+        self.backend2.disconnect()
+        return common.TestCase.tearDown(self)
+
+
+class TestNetSSLTunnelingWithPKCS12(common.TestCase, TestMixin):
+
+    timeout = 5
+
+    def setUp(self):
+        root = os.path.join(os.path.dirname(__file__), "data")
+        svr_p12 = os.path.join(root, "ca1_server1.p12")
+        cli_p12 = os.path.join(root, "ca1_client1.p12")
+
+        svr_fac = security.ServerContextFactory(p12_filename=svr_p12,
+                                                verify_ca_from_p12=True)
+        svr_sec = security.ServerPolicy(svr_fac)
+        cli_fac = security.ClientContextFactory(p12_filename=cli_p12,
+                                                verify_ca_from_p12=True)
+        cli_sec = security.ClientPolicy(cli_fac)
+
+        port_range = range(4000, 4100)
+        registry1 = serialization.get_registry().clone()
+        registry1.register(Notification1)
+        self.backend1 = net_tunneling.Backend("localhost",
+                                              port_range=port_range,
+                                              version=1, registry=registry1,
+                                              server_security_policy=svr_sec,
+                                              client_security_policy=cli_sec)
+
+        registry2 = serialization.get_registry().clone()
+        registry2.register(Notification2)
+        self.backend2 = net_tunneling.Backend("localhost",
+                                              port_range=port_range,
+                                              version=2, registry=registry2,
+                                              server_security_policy=svr_sec,
+                                              client_security_policy=cli_sec)
 
         return common.TestCase.setUp(self)
 

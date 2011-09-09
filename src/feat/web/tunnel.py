@@ -7,7 +7,7 @@ from zope.interface import Interface, implements
 import feat
 from feat.common import log, defer, error, time
 from feat.common.serialization import json
-from feat.web import http, httpserver, httpclient
+from feat.web import http, security, httpserver, httpclient
 
 DEFAULT_REQUEST_TIMEOUT = 5*60
 DEFAULT_RESPONSE_TIMEOUT = 5*60+1
@@ -42,7 +42,9 @@ class Tunnel(log.LogProxy, log.Logger):
     jitter = 0.11962656472
 
     def __init__(self, log_keeper, port_range, dispatcher,
-                 public_host=None, version=None, registry=None):
+                 public_host=None, version=None, registry=None,
+                 server_security_policy=None,
+                 client_security_policy=None):
         log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, log_keeper)
 
@@ -60,7 +62,10 @@ class Tunnel(log.LogProxy, log.Logger):
         ver = version if version is not None else feat.version
         self._version = int(ver)
         self._registry = registry
-        self._scheme = http.Schemes.HTTP
+        self._scheme = None
+
+        self._server_security = security.ensure_policy(server_security_policy)
+        self._client_security = security.ensure_policy(client_security_policy)
 
         self._server = httpserver.Factory(self, self)
         self._server.request_factory_class = RequestFactory
@@ -124,9 +129,15 @@ class Tunnel(log.LogProxy, log.Logger):
 
     def start_listening(self):
         assert self._port is None, "Already listening"
+        if self._server_security.use_ssl:
+            ctx_factory = self._server_security.get_ssl_context_factory()
+            setup = self._create_ssl_setup(self._server, ctx_factory)
+        else:
+            setup = self._create_tcp_setup(self._server)
+
         for port in self._port_range:
             try:
-                self._port = reactor.listenTCP(port, self._server)
+                setup(port)
                 break
             except tw_error.CannotListenError:
                 continue
@@ -175,6 +186,22 @@ class Tunnel(log.LogProxy, log.Logger):
 
     ### private ###
 
+    def _create_tcp_setup(self, server):
+
+        def setup(port):
+            self._port = reactor.listenTCP(port, self._server)
+            self._scheme = http.Schemes.HTTP
+
+        return setup
+
+    def _create_ssl_setup(self, server, context_factory):
+
+        def setup(port):
+            self._port = reactor.listenSSL(port, server, context_factory)
+            self._scheme = http.Schemes.HTTPS
+
+        return setup
+
     def _add_pending(self, key, location, data, expiration, d=None):
         if key not in self._pendings:
             self._pendings[key] = []
@@ -188,7 +215,7 @@ class Tunnel(log.LogProxy, log.Logger):
 
         # Quarantined until connected
         self._quarantined.add(key)
-        peer = Peer(self, key)
+        peer = Peer(self, key, self._client_security)
         self._peers[key] = peer
 
         if self._version:
@@ -313,7 +340,7 @@ class Peer(httpclient.Connection):
     First head() should be called to setup serializer and version,
     If not, the other side may not understand the current version."""
 
-    def __init__(self, tunnel, key):
+    def __init__(self, tunnel, key, security_policy=None):
         # Overriding default factory timeouts plus a small margin
         if tunnel.response_timeout is not None:
             self.response_timeout = tunnel.response_timeout
@@ -322,7 +349,9 @@ class Peer(httpclient.Connection):
             self.idle_timeout = tunnel.idle_timeout
 
         _scheme, host, port = key
-        httpclient.Connection.__init__(self, host, port=port, logger=tunnel)
+        httpclient.Connection.__init__(self, host, port=port,
+                                       security_policy=security_policy,
+                                       logger=tunnel)
         self._tunnel = tunnel
         self._key = key
         self._peer_version = None
