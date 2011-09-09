@@ -34,3 +34,12 @@ Following executables should be removed from FLT:
 - init scripts (feat provides it, name of service is feat)
 
 From now on, by default feat uses logdir: /var/log/feat, and rundir: /var/run/feat. It runs as the user flumotion, so you would have to investigate issues with flumotion-agent not starting without super privileges.
+
+* Feat gateway is now forced to use SSL, if no PKCS12 is passed with command line argument "-G",
+  the gateway will be disabled. For development purpose, the file "conf/gateway.p12" can be used for the server,
+  and "conf/dummy.p12" for clients, the client PKCS12 should be imported in the web browser.
+
+* If really needed the gateway can be forced to use normal UNSECURE HTTP, for this pass the command line argument --allow-tcp-gateway.
+
+* To enable the tunneling backend SSL certificate and key must be provided as a PKCS12 through the command line parameter "-T".
+  If not provided the tunneling backend will be disabled. For development purpose the file "conf/tunneling.p12" can be used.
