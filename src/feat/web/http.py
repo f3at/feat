@@ -22,11 +22,8 @@
 import urllib
 import urlparse
 
-from OpenSSL import SSL
+from zope.interface import Interface
 
-from zope.interface import Interface, Attribute, implements
-
-from twisted.internet import ssl
 from twisted.protocols import basic
 from twisted.web import http
 
@@ -240,49 +237,7 @@ class IExpirationPolicy(Interface):
     """Place holder."""
 
 
-class ISecurityPolicy(Interface):
-
-    use_ssl = Attribute("")
-
-    def get_ssl_context_factory(self):
-        """Returns an SSL context factory."""
-
-
-### Basic Implementations ###
-
-
-class UnsecuredPolicy(object):
-
-    implements(ISecurityPolicy)
-
-    ### ISecurityPolicy Methods ###
-
-    @property
-    def use_ssl(self):
-        return False
-
-    def get_ssl_context_factory(self):
-        return None
-
-
-class DefaultSSLPolicy(object):
-
-    implements(ISecurityPolicy)
-
-    def __init__(self, serverKeyFilename, serverCertFilename,
-                 sslMethod=SSL.SSLv23_METHOD):
-        self._factory = ssl.DefaultOpenSSLContextFactory(serverKeyFilename,
-                                                         serverCertFilename,
-                                                         sslMethod)
-
-    ### ISecurityPolicy Methods ###
-
-    @property
-    def use_ssl(self):
-        return False
-
-    def get_ssl_context_factory(self):
-        return self._factory
+### Implementations ###
 
 
 class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):

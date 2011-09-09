@@ -321,9 +321,8 @@ class Peer(httpclient.Connection):
         if tunnel.idle_timeout is not None:
             self.idle_timeout = tunnel.idle_timeout
 
-        scheme, host, port = key
-        httpclient.Connection.__init__(self, host, port=port, scheme=scheme,
-                                       logger=tunnel)
+        _scheme, host, port = key
+        httpclient.Connection.__init__(self, host, port=port, logger=tunnel)
         self._tunnel = tunnel
         self._key = key
         self._peer_version = None

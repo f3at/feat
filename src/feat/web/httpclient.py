@@ -4,7 +4,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import ClientFactory
 
 from feat.common import defer, error, log, time
-from feat.web import http
+from feat.web import http, security
 
 
 DEFAULT_CONNECT_TIMEOUT = 30
@@ -216,7 +216,6 @@ class Connection(log.LogProxy, log.Logger):
     factory = Factory
 
     default_http_protocol = http.Protocols.HTTP11
-    default_http_scheme = http.Schemes.HTTP
 
     connect_timeout = DEFAULT_CONNECT_TIMEOUT
     response_timeout = None # Default factory one
@@ -224,25 +223,20 @@ class Connection(log.LogProxy, log.Logger):
 
     bind_address = None
 
-    def __init__(self, host, port=None, scheme=None,
-                 protocol=None, logger=None):
+    def __init__(self, host, port=None, protocol=None,
+                 security_policy=None, logger=None):
         logger = logger if logger is not None else log.FluLogKeeper()
         log.LogProxy.__init__(self, logger)
         log.Logger.__init__(self, logger)
 
-        if scheme is not None and not isinstance(scheme, http.Schemes):
-            raise TypeError("Invalid HTTP scheme")
-
-        if protocol is not None and not isinstance(scheme, http.Protocols):
-            raise TypeError("Invalid HTTP protocol")
-
         self._host = host
         self._port = port
+        self._security_policy = security.ensure_policy(security_policy)
 
-        if scheme is None:
-            self._http_scheme = self.default_http_scheme
+        if self._security_policy.use_ssl:
+            self._http_scheme = http.Schemes.HTTPS
         else:
-            self._http_scheme = scheme
+            self._http_scheme = http.Schemes.HTTP
 
         if self._port is None:
             if self._http_scheme is http.Schemes.HTTP:
@@ -300,16 +294,14 @@ class Connection(log.LogProxy, log.Logger):
             kwargs['timeout'] = self.connect_timeout
         kwargs['bindAddress'] = self.bind_address
 
-        if self._http_scheme is http.Schemes.HTTP:
-            reactor.connectTCP(self._host, self._port, factory, **kwargs)
+        if self._security_policy.use_ssl:
+            context_factory = self._security_policy.get_ssl_context_factory()
+            reactor.connectSSL(self._host, self._port,
+                               factory, context_factory, **kwargs)
             return d
 
-        if self._http_scheme is http.Schemes.HTTPS:
-            from twisted.internet.ssl import ClientContextFactory
-            context = ClientContextFactory()
-            reactor.connectSSL(self._host, self._port,
-                               factory, context, **kwargs)
-            return d
+        reactor.connectTCP(self._host, self._port, factory, **kwargs)
+        return d
 
     def _on_connected(self, protocol):
         self._protocol = protocol

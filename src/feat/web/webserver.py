@@ -30,7 +30,7 @@ from twisted.python.failure import Failure
 from twisted.web import server, resource, http as twhttp
 
 from feat.common import log, defer, error
-from feat.web import http, compat, document, auth
+from feat.web import http, compat, document, auth, security
 
 
 ### Errors ###
@@ -378,12 +378,13 @@ class Server(log.LogProxy, log.Logger):
         self._port = port
         self._resource = root_resource
         self._registry = registry or document.get_registry()
-        self._policy = security_policy or http.UnsecuredPolicy()
+        self._policy = security.ensure_policy(security_policy)
         self._secured = False
         self._identity = server_identity
         self._authenticator = default_authenticator
         self._authorizer = default_authorizer
 
+        self._scheme = None
         self._mime_types = {}
 
         self._listener = None
@@ -396,8 +397,10 @@ class Server(log.LogProxy, log.Logger):
             ssl_context_factory = self._policy.get_ssl_context_factory()
             listener = reactor.listenSSL(self._port, site, ssl_context_factory)
             self._secured = True
+            self._scheme = http.Schemes.HTTPS
         else:
             listener = reactor.listenTCP(self._port, site)
+            self._scheme = http.Schemes.HTTP
         self._listener = listener
         return defer.succeed(self)
 
@@ -423,6 +426,10 @@ class Server(log.LogProxy, log.Logger):
     @property
     def is_secured(self):
         return self._secured
+
+    @property
+    def scheme(self):
+        return self._scheme
 
     @property
     def identity(self):
@@ -985,6 +992,10 @@ class Request(log.Logger, log.LogProxy):
     @property
     def is_secured(self):
         return self._server.is_secured
+
+    @property
+    def scheme(self):
+        return self._server.scheme
 
     @property
     def domain(self):
