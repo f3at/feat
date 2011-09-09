@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import types
@@ -270,7 +291,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                             if cls._handlers[k] == factory and k != '_default')
         except StopIteration:
             existing = None
-        if existing:
+        if existing and existing[0] != factory:
             raise DefinitionError(
                 "Factory %r is already defined for the key %r. Factories "
                 "shouldn't be reused! Create another subclass." % existing)
@@ -340,7 +361,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         f = fiber.succeed()
         if allocation_id:
             f.add_callback(fiber.drop_param,
-                           state.agent.check_allocation_exists,
+                           state.agent.get_allocation,
                            allocation_id)
         f.add_callback(fiber.drop_param, self.initiate_partner, partner)
         f.add_callback(fiber.drop_param, state.agent.update_descriptor,
@@ -489,7 +510,7 @@ class RecipientFromPartner(recipient.Recipient):
 
     def __init__(self, partner):
         recipient.Recipient.__init__(self, partner.recipient.key,
-                                     partner.recipient.shard)
+                                     partner.recipient.route)
 
 
 components.registerAdapter(RecipientFromPartner, BasePartner,

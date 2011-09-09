@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import pprint
 import binascii
 import base64
@@ -13,6 +34,7 @@ from twisted.internet import reactor
 from twisted.conch.insults import insults
 
 from feat.common import log, manhole, reflect
+from feat.agents.base import recipient
 
 
 def commands_factory(agency):
@@ -38,52 +60,58 @@ class Commands(manhole.Manhole, manhole.Parser):
 
     @manhole.expose()
     def locals(self):
-        '''locals() -> Print defined locals names.'''
+        '''Print defined locals names.'''
         return "\n".join(self._locals.keys())
 
     @manhole.expose()
     def exit(self):
-        '''exit() -> Close connection.'''
+        '''Close connection.'''
         self.output.write("Happy hacking!")
         self.output.nextLine()
         self.output.loseConnection()
 
     @manhole.expose()
     def get_document(self, doc_id):
-        '''get_document(doc_id) -> Download the document given the id.'''
+        '''Download the document given the id.'''
         conn = self.agency._database.get_connection()
         return conn.get_document(doc_id)
 
     @manhole.expose()
+    def recp(self, a_id, shard):
+        '''get_document(agent_id, shard) -> Construct IRecipient poining to
+        the agent'''
+        return recipient.Agent(a_id, shard)
+
+    @manhole.expose()
     def pprint(self, obj):
-        '''pprint(obj) -> Preaty print the object'''
+        '''Preaty print the object'''
         return pprint.pformat(obj)
 
     @manhole.expose()
     def list_get(self, llist, index):
-        """list_get(list, n) -> Get the n'th element of the list"""
+        """Get the n'th element of the list"""
         return llist[index]
 
     @manhole.expose()
     def shutdown(self):
-        """shutdown() -> Perfrom full agency shutdown. Cleanup slave agency and
+        """Perfrom full agency shutdown. Cleanup slave agency and
         agents descriptor."""
         return self.agency.full_shutdown(stop_process=True)
 
     @manhole.expose()
     def import_module(self, module):
-        '''import_module(canonical_name) -> Load the given module to memory.'''
+        '''Load the given module to memory.'''
         return reflect.named_module(module)
 
     @manhole.expose()
     def get_agent(self, agent_type, index=0):
-        '''get_agent(agent_type, index=0) -> Returns the agent instance for the
+        '''Returns the agent instance for the
         given agent_type. Optional index tells which one to give.'''
         return self.get_medium(agent_type, index).get_agent()
 
     @manhole.expose()
     def get_medium(self, agent_type, index=0):
-        '''get_medium(agent_type, index=0) -> Returns the medium class for the
+        '''Returns the medium class for the
         given agent_type. Optional index tells which one to give.'''
         mediums = list(x for x in self.agency._agents
                        if x.get_descriptor().document_type == agent_type)
@@ -96,8 +124,7 @@ class Commands(manhole.Manhole, manhole.Parser):
 
     @manhole.expose()
     def restart_agent(self, agent_id, **kwargs):
-        '''restart_agent(agent_id, **kwargs) -> tells the host agent running
-        in this agency to restart the agent.'''
+        '''tells the host agent running in this agency to restart the agent.'''
         host_medium = self.get_medium('host_agent')
         agent = host_medium.get_agent()
         d = host_medium.get_document(agent_id)

@@ -1,3 +1,25 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
+import inspect
 import sys
 import types
 
@@ -78,6 +100,32 @@ def inside_class_definition(depth):
             and sys.version_info[:3] > (2, 2, 0))):
         return False
     return True
+
+
+def formatted_function_name(function):
+    if hasattr(function, 'original_func'):
+        function = function.original_func
+    argspec = inspect.getargspec(function)
+    defaults = argspec.defaults and list(argspec.defaults) or list()
+
+    if argspec.args and argspec.args[0] == 'self':
+        argspec.args.pop(0)
+    if argspec.args and argspec.args[0] == 'state':
+        argspec.args.pop(0)
+
+    args = argspec.args or list()
+    display_args = [x if len(defaults) < -index \
+                    else "%s=%s" % (x, defaults[index])
+                    for x, index in zip(args, range(-len(args), 0, 1))]
+    if argspec.varargs:
+        display_args += ['*%s' % (argspec.varargs)]
+    if argspec.keywords:
+        display_args += ['**%s' % (argspec.keywords)]
+
+    text = "%s(" % (function.__name__, )
+    text += ', '.join(display_args)
+    text += ')'
+    return text
 
 
 ### Private Methods ###

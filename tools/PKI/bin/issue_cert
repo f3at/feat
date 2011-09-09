@@ -1,0 +1,112 @@
+#!/bin/bash
+
+ROOT=$(cd $(dirname $0); cd ..; pwd)
+USAGE="$0 CA_NAME PREFIX [ssl_client|ssl_server] [TYPE_SPECIFIC]"
+source "$ROOT/bin/generic.env"
+
+CA_NAME="$1"
+PREFIX="$2"
+CERT_TYPE="$3"
+shift; shift; shift
+
+check_arg "CA name not specified" "$CA_NAME"
+check_arg "Certificate prefix not specified" "$PREFIX"
+check_arg "Certificate type not specified" "$CERT_TYPE"
+
+source "$ROOT/bin/ca.env" use "$CA_NAME"
+
+REQ_CONF_FILE="$CONF_DIR/${CERT_TYPE}_req.cnf"
+CERT_EXT_FILE="$CONF_DIR/${CERT_TYPE}_cert.ext"
+PRIV_KEY="$PRIV_DIR/${PREFIX}_private_key.pem"
+PUB_REQ="$REQ_DIR/${PREFIX}_public_key_req.pem"
+PUB_CERT="$CERTS_DIR/${PREFIX}_public_cert.pem"
+PKCS12="$CERTS_DIR/$PREFIX.p12"
+PURPOSE=
+
+if [ -e "$PUB_CERT" ]; then
+    echo "Certificate already exists: $PUB_CERT"
+    exit 1
+fi
+
+source "$CONF_DIR/subject.env"
+
+case "x$CERT_TYPE" in
+
+    xssl_client )
+        USAGE="$0 CA_NAME PREFIX ssl_client NAME SURNAME EMAIL"
+        PURPOSE="sslclient"
+        NAME="$1"
+        SURNAME="$2"
+        EMAIL="$3"
+        check_arg "Name not specified" "$NAME"
+        check_arg "Surname not specified" "$SURNAME"
+        check_arg "eMail not specified" "$EMAIL"
+        REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$NAME $SURNAME/emailAddress=$EMAIL/name=$NAME/surname=$SURNAME/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
+        echo "Generating client $NAME $SURNAME credencials..."
+        ;;
+
+    xssl_server )
+        USAGE="$0 CA_NAME PREFIX ssl_server HOSTNAME"
+        PURPOSE="sslserver"
+        HOSTNAME="$1"
+        check_arg "Hostname not specified" "$HOSTNAME"
+        REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$HOSTNAME/emailAddress=$EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
+        echo "Generating server $HOSTNAME credencials..."
+        ;;
+
+    * ) usage "Invalid certificate type. Supported types: ssl_server, ssl_client";;
+
+esac
+
+if [ ! -e "$REQ_CONF_FILE" ]; then
+    usage "Config file not found for certificate type '$CERT_TYPE'"
+fi
+
+if [ ! -e "$CERT_EXT_FILE" ]; then
+    usage "Certificate extensions file not found for certificate type '$CERT_TYPE'"
+fi
+
+echo " * Generating private key and certificate request..."
+pki_openssl req \
+  -config "$REQ_CONF_FILE" \
+  -new -nodes -batch \
+  -subj "$REQ_SUBJ" \
+  -keyout "$PRIV_KEY" \
+  -out "$PUB_REQ" \
+  "Failed to generate private key"
+
+echo " * Generating certificate..."
+pki_openssl ca \
+  -policy policy_anything -batch \
+  -out "$PUB_CERT" \
+  -extfile "$CERT_EXT_FILE" \
+  -infiles "$PUB_REQ" \
+  "Failed to generate certificate"
+
+echo " * Generating PKCS12..."
+
+pki_openssl pkcs12 \
+  -export \
+  -passout pass: \
+  -in "$PUB_CERT" \
+  -inkey "$PRIV_KEY" \
+  -certfile "$GLOBAL_CA_PUB_CERTS" \
+  -name "$PREFIX" \
+  -out "$PKCS12" \
+  "Failed to generate PKCS12"
+
+echo " * Verifying Certification Chain..."
+$OPENSSL_CMD verify -CAfile "$GLOBAL_CA_PUB_CERTS" "$PUB_CERT"
+
+if [[ "x$PURPOSE" != "x" ]]; then
+    echo " * Verifying $CERT_TYPE purpose..."
+    $OPENSSL_CMD verify -purpose $PURPOSE -CAfile "$GLOBAL_CA_PUB_CERTS" "$PUB_CERT"
+fi
+
+echo "WARNING: $PREFIX PKCS12 is not encrypted"
+echo "INFO:"
+echo "  Private Key: $PRIV_KEY"
+echo "  Certificate: $PUB_CERT"
+echo "  CA Chain:    $GLOBAL_CA_PUB_CERTS"
+echo "  PKCS12:      $PKCS12"
+echo "Done."

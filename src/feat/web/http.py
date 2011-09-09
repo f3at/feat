@@ -1,14 +1,33 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import urllib
 import urlparse
 
-from OpenSSL import SSL
+from zope.interface import Interface
 
-from zope.interface import Interface, Attribute, implements
-
-from twisted.internet import ssl
+from twisted.protocols import basic
 from twisted.web import http
 
-from feat.common import error, enum
+from feat.common import log, timeout, error, enum
 from feat.web import compat
 
 
@@ -22,13 +41,43 @@ DEFAULT_URL_ENCODING = "utf8"
 DEFAULT_URL_HTTP_PORT = 80
 DEFAULT_URL_HTTPS_PORT = 443
 
+FIRSTLINE_TIMEOUT = 60 # Maximum time after connection to receive data
+REQUEST_TIMEOUT = 60 # Maximum time after request start to receive all headers
+IDLE_TIMEOUT = 60 # Maximum time without receiving any data
+INACTIVITY_TIMEOUT = 300 # Maximum time between two requests
+
+MULTIFIELD_HEADERS = set(["accept",
+                          "accept-charset",
+                          "accept-encoding",
+                          "accept-language",
+                          "accept-ranges",
+                          "allow",
+                          "cache-control",
+                          "connection",
+                          "content-encoding",
+                          "content-language",
+                          "expect",
+                          "pragma",
+                          "proxy-authenticate",
+                          "te",
+                          "trailer",
+                          "transfer-encoding",
+                          "upgrade",
+                          "via",
+                          "warning",
+                          "www-authenticate",
+                          # extensions for wms
+                          "x-accept-authentication",
+                          "supported"])
+
 
 ### Enums ###
 
 
 class Schemes(enum.Enum):
 
-    HTTP, HTTPS = range(2)
+    HTTP = enum.value(0, "http")
+    HTTPS = enum.value(1, "https")
 
 
 class Status(enum.Enum):
@@ -38,6 +87,7 @@ class Status(enum.Enum):
     ACCEPTED = http.ACCEPTED
     NO_CONTENT = http.NO_CONTENT
     MOVED_PERMANENTLY = http.MOVED_PERMANENTLY
+    FOUND = http.FOUND
     BAD_REQUEST = http.BAD_REQUEST
     UNAUTHORIZED = http.UNAUTHORIZED
     FORBIDDEN = http.FORBIDDEN
@@ -58,7 +108,8 @@ class Status(enum.Enum):
 
 class Protocols(enum.Enum):
 
-    HTTP10, HTTP11 = range(2)
+    HTTP10 = enum.value(0, "HTTP/1.0")
+    HTTP11 = enum.value(1, "HTTP/1.1")
 
 
 class Methods(enum.Enum):
@@ -67,6 +118,10 @@ class Methods(enum.Enum):
 
 
 ### Errors ###
+
+
+class ParseError(error.FeatError):
+    pass
 
 
 class HTTPError(error.FeatError):
@@ -182,52 +237,294 @@ class IExpirationPolicy(Interface):
     """Place holder."""
 
 
-class ISecurityPolicy(Interface):
-
-    use_ssl = Attribute("")
-
-    def get_ssl_context_factory(self):
-        """Returns an SSL context factory."""
+### Implementations ###
 
 
-### Basic Implementations ###
+class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 
+    log_category = "http-parser"
 
-class UnsecuredPolicy(object):
+    max_headers = 20
 
-    implements(ISecurityPolicy)
+    STATE_REQLINE = 0
+    STATE_HEADERS = 1
+    STATE_BODY = 2
 
-    ### ISecurityPolicy Methods ###
+    firstline_timeout = FIRSTLINE_TIMEOUT
+    headers_timeout = REQUEST_TIMEOUT
+    idle_timeout = IDLE_TIMEOUT
+    inactivity_timeout = INACTIVITY_TIMEOUT
 
-    @property
-    def use_ssl(self):
-        return False
+    def __init__(self, log_keeper):
+        log.Logger.__init__(self, log_keeper)
 
-    def get_ssl_context_factory(self):
-        return None
+        self.add_timeout("firstline", self.firstline_timeout,
+                         self._on_firstline_timeout)
+        self.add_timeout("headers", self.headers_timeout,
+                         self._on_headers_timeout)
+        self.add_timeout("idle", self.idle_timeout,
+                         self._on_idle_timeout)
+        self.add_timeout("inactivity", self.inactivity_timeout,
+                         self._on_inactivity_timeout)
 
+        self._reset()
 
-class DefaultSSLPolicy(object):
+    ### public ###
 
-    implements(ISecurityPolicy)
+    def is_idle(self):
+        return self._state == self.STATE_REQLINE
 
-    def __init__(self, serverKeyFilename, serverCertFilename,
-                 sslMethod=SSL.SSLv23_METHOD):
-        self._factory = ssl.DefaultOpenSSLContextFactory(serverKeyFilename,
-                                                         serverCertFilename,
-                                                         sslMethod)
+    ### virtual###
 
-    ### ISecurityPolicy Methods ###
+    def onConnectionMade(self):
+        pass
 
-    @property
-    def use_ssl(self):
-        return False
+    def onConnectionLost(self, reason):
+        pass
 
-    def get_ssl_context_factory(self):
-        return self._factory
+    ### protected virtual ###
+
+    def process_setup(self):
+        pass
+
+    def process_reset(self):
+        pass
+
+    def process_cleanup(self, reason):
+        pass
+
+    def process_request_line(self, line):
+        pass
+
+    def process_length(self, length):
+        pass
+
+    def process_extend_header(self, name, values):
+        pass
+
+    def process_set_header(self, name, value):
+        pass
+
+    def process_body_start(self):
+        pass
+
+    def process_body_data(self, data):
+        pass
+
+    def process_body_finished(self):
+        pass
+
+    def process_timeout(self):
+        pass
+
+    def process_error(self, exception):
+        pass
+
+    ### overridden ###
+
+    def connectionMade(self):
+        peer = self.transport.getPeer()
+        self.log_name = "%s:%s" % (peer.host, peer.port)
+        self.debug('Connection made')
+        self.process_setup()
+        self.reset_timeout("firstline")
+        self.onConnectionMade()
+
+    def lineReceived(self, line):
+        self.cancel_timeout("firstline")
+        self.reset_timeout("idle")
+
+        if self._state == self.STATE_REQLINE:
+            # We are waiting for a request line
+            self._got_request_line(line)
+        elif self._state == self.STATE_HEADERS:
+            # We are waiting for a header line
+            self._got_header_line(line)
+        else:
+            self.log("Content: %s", line)
+            self._handle_received(line)
+
+    def rawDataReceived(self, data):
+        if self._length:
+            self.log("Content: %d bytes out of %d, %d bytes remaining",
+                     len(data), self._length, self._remaining)
+            self._remaining -= len(data)
+
+        self.reset_timeout("idle")
+
+        self._handle_received(data)
+
+    def connectionLost(self, reason):
+        self.debug('Connection lost: %s', reason.getErrorMessage())
+
+        self.cancel_all_timeouts()
+
+        if self._body_decoder is not None:
+            try:
+                self._body_decoder.noMoreData()
+            except Exception as e:
+                self._error(e)
+            else:
+                self.process_body_finished()
+
+        self._reset()
+
+        self.process_cleanup(reason)
+
+        self.onConnectionLost(reason)
+
+    ### private ###
+
+    def _on_firstline_timeout(self):
+        self.warning("First line timeout")
+        self._body_decoder = None
+        self.process_timeout()
+
+    def _on_headers_timeout(self):
+        self.warning("Headers timeout")
+        self.process_timeout()
+
+    def _on_inactivity_timeout(self):
+        self.warning("Inactivity timeout")
+        self.process_timeout()
+
+    def _on_idle_timeout(self):
+        self.warning("Idle timeout")
+        self.process_timeout()
+
+    def _reset(self):
+        self._state = self.STATE_REQLINE
+        self._header = ''
+        self._header_count = 0
+        self._length = 0
+        self._remaining = 0
+        self._body_decoder = None
+        self.process_reset()
+        self.debug('Ready for new request')
+
+    def _handle_received(self, data):
+        self._body_decoder.dataReceived(data)
+
+    def _got_request_line(self, line):
+        self.log(">>> %s", line)
+        assert self._state == self.STATE_REQLINE
+        self.cancel_timeout("inactivity")
+        self.reset_timeout("headers")
+
+        self.process_request_line(line)
+
+        # Now waiting for headers
+        self._state = self.STATE_HEADERS
+
+    def _got_header_line(self, line):
+        assert self._state == self.STATE_HEADERS
+
+        if line == '':
+            if self._header:
+                self._got_header_entry(self._header)
+            self._header = ''
+            self._got_all_headers()
+        elif line[0] in ' \t':
+            # Multi-lines header
+            self._header = self._header + '\n' + line
+        else:
+            if self._header:
+                self._got_header_entry(self._header)
+            self._header = line
+
+    def _got_header_entry(self, line):
+        self.log(">>> %s", line)
+
+        self._header_count += 1
+        if self._header_count > self.max_headers:
+            self._error(ParseError("Too much http headers"))
+            return
+
+        header, data = line.split(':', 1)
+        header = header.lower()
+        data = data.strip()
+
+        if header == 'content-length':
+            length = int(data)
+            self.process_length(length)
+            self._length = length
+            self._remaining = length
+            self._setup_identity_decoding(length)
+        elif header == 'transfer-encoding':
+            if data.lower() != "chunked":
+                error = ParseError("Unsupported transfer encoding: %s" % data)
+                self._error(error)
+                return
+            self._setup_chunked_decoding()
+
+        if is_header_multifield(header):
+            values = [f.strip() for f in data.split(",")]
+            self.process_extend_header(header, values)
+        else:
+            self.process_set_header(header, data)
+
+    def _got_all_headers(self):
+        self.debug("All headers received")
+        assert self._state == self.STATE_HEADERS
+
+        self.cancel_timeout("headers")
+        self._state = self.STATE_BODY
+
+        self.process_body_start()
+
+        if self._body_decoder is None:
+            self._got_all_content()
+            return
+
+        self.setRawMode()
+
+    def _got_all_content(self, extra=''):
+        self.debug("All content received")
+
+        self.cancel_timeout("idle")
+        self.reset_timeout("inactivity")
+
+        self.process_body_finished()
+
+        self._reset()
+
+        self.setLineMode(extra)
+
+    def _setup_identity_decoding(self, length):
+        if length == 0:
+            return
+
+        decoder = http._IdentityTransferDecoder(length,
+                                                self._got_decoder_data,
+                                                self._all_data_decoded)
+
+        self._body_decoder = decoder
+
+    def _setup_chunked_decoding(self):
+        decoder = http._ChunkedTransferDecoder(self._got_decoder_data,
+                                               self._all_data_decoded)
+        self._body_decoder = decoder
+
+    def _got_decoder_data(self, data):
+        self.process_body_data(data)
+
+    def _all_data_decoded(self, extra):
+        self._got_all_content(extra)
+
+    def _error(self, exception):
+        self._body_decoder = None
+        self.process_error(exception)
 
 
 ### Utility Functions ###
+
+
+def is_header_multifield(name):
+    return name in MULTIFIELD_HEADERS
+
+
+def get_status_message(status_code, default="Unknown"):
+    return http.RESPONSES.get(status_code, default)
 
 
 def tuple2path(location, encoding=DEFAULT_URL_ENCODING):
@@ -269,22 +566,60 @@ def parse(url, default_port=None, default_https_port=None):
     query = parts.query
     if path == "":
         path = "/"
-    return scheme, host, port, path, query
+    return Schemes[scheme], host, port, path, query
 
 
-def compose(path, host=None, port=None, scheme=None):
+def join_locations(*locations):
+    if not locations:
+        return None
+
+    last = locations[0]
+    result = [last]
+    for loc in locations[1:]:
+        if not loc:
+            continue
+        if last and last[-1] == "/":
+            if loc[0] == "/":
+                new = loc[1:]
+            else:
+                new = loc
+        else:
+            if loc and loc[0] == "/":
+                new = loc
+            else:
+                new = "/" + loc
+        if new:
+            result.append(new)
+            last = new
+
+    return "".join(result)
+
+
+def append_location(url, location):
+    scheme, host, port, path, query = parse(url)
+    return compose(join_locations(path, location), query, host, port, scheme)
+
+
+def compose(path=None, query=None, host=None, port=None, scheme=None):
     if host is None:
         # Relative url
+        path = path if path is not None else ""
+        if query:
+            return "%s?%s" % (path, query)
         return path
 
     result = []
-    result.append(scheme or "http")
+    result.append(scheme.name if scheme is not None else "http")
     result.append("://")
     result.append(str(host))
     if port and port != 80:
         result.append(":")
         result.append(str(port))
+    path = path if path is not None else "/"
     result.append(path)
+    if query:
+        result.append("?")
+        result.append(query)
 
     return "".join(result)
 
@@ -327,6 +662,54 @@ def does_accept_mime_type(mime_type, mime_tree):
         if (sub in subtree) or ("*" in subtree):
             return True
     return False
+
+
+def parse_response_status(line):
+    parts = line.split(' ', 2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        status_code = int(parts[1])
+    except ValueError:
+        return None
+
+    try:
+        status = Status[status_code]
+        protocol = Protocols[parts[0]]
+    except KeyError:
+        return None
+
+    return protocol, status
+
+
+def parse_user_agent(agent_header):
+    agents = agent_header.split(" ", 1)
+    parts = agents[0].split(",", 1)
+    name, version = parts[0].split("/", 1)
+    digits = version.split(".")
+
+    def try2convert(s):
+        try:
+            return int(s)
+        except ValueError:
+            return s
+
+    return name, tuple([try2convert(s) for s in digits])
+
+
+def parse_host(host_header, scheme=Schemes.HTTP):
+    parts = host_header.rsplit(":", 1)
+    if len(parts) > 1:
+        try:
+            return parts[0], int(parts[1])
+        except ValueError:
+            return None
+    if scheme is Schemes.HTTP:
+        return parts[0], DEFAULT_URL_HTTP_PORT
+    if scheme is Schemes.HTTPS:
+        return parts[0], DEFAULT_URL_HTTP_PORT
+    return parts[0]
 
 
 def parse_content_type(value):
@@ -374,6 +757,14 @@ def parse_accepted_languages(value):
     return dict([parse_accepted_language(p) for p in value.split(',')])
 
 
+def compose_user_agent(name, version=None):
+    if version is None:
+        return name
+    if isinstance(version, int):
+        return "%s/%d" % (name, version)
+    return "%s/%s" % (name, ".".join([str(i) for i in version]))
+
+
 def compose_accepted_types(types):
     results = []
     if isinstance(types, (list, tuple)):
@@ -418,6 +809,40 @@ def compose_content_type(content_type, charset=None):
     if charset in ('iso-8859-1', 'us-ascii'):
         return content_type
     return "%s; charset=%s" % (content_type, charset)
+
+
+def compose_response(status, protocol=None, message=None, buffer=None):
+    buffer = buffer if buffer is not None else []
+    protocol = protocol if protocol is not None else Protocols.HTTP11
+    message = message if message is not None else get_status_message(status)
+    buffer.append("%s %d %s" % (protocol.name, status, message))
+    return buffer
+
+
+def compose_request(method, uri, protocol=None, buffer=None):
+    buffer = buffer if buffer is not None else []
+    protocol = protocol if protocol is not None else Protocols.HTTP11
+    buffer.append("%s %s %s" % (method.name, uri, protocol.name))
+    return buffer
+
+
+def compose_headers(headers, buffer=None):
+    buffer = buffer if buffer is not None else []
+    for name, value in headers.iteritems():
+        capname = '-'.join([p.capitalize() for p in name.split('-')])
+        if is_header_multifield(name):
+            buffer.append("%s: %s" % (capname, ", ".join(value)))
+        else:
+            buffer.append("%s: %s" % (capname, value))
+    return buffer
+
+
+def compose_cookies(cookies, buffer=None):
+    buffer = buffer if buffer is not None else []
+    for name, payload in cookies.iteritems():
+        cookie = "%s=%s" % (name, payload)
+        buffer.append("%s: %s" % ("Set-Cookie", cookie))
+    return buffer
 
 
 ### Private Stuff ###

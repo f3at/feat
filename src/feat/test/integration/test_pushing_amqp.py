@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from feat.test.integration import common
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
@@ -68,10 +89,9 @@ class TestWithRabbit(common.SimulationTest):
         self.server = messaging.Messaging('127.0.0.1',
                                           self.rabbit.get_config()['port'])
         self.web = StubAgent()
-        self.connection = yield self.server.get_connection(self.web)
-        pb = self.connection.personal_binding(self.web.get_queue_name(),
-                                              'exchange')
-        yield pb.created
+        self.connection = yield self.server.new_channel(self.web)
+        pb = self.connection.bind(self.web.get_agent_id(), 'exchange')
+        yield pb.wait_created()
 
         # setup our agent
         yield common.SimulationTest.setUp(self)
@@ -103,7 +123,7 @@ class TestWithRabbit(common.SimulationTest):
     def testWebGetsMessage(self):
         cb = self.cb_after(None, self.web, 'on_message')
         yield self.agent.get_agent().push_msg(message.BaseMessage(),
-                                              self.web.get_queue_name())
+                                              self.web.get_agent_id())
         yield cb
         self.assertIsInstance(self.web.messages[0], message.BaseMessage)
 

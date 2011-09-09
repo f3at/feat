@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import sqlite3
@@ -211,7 +232,8 @@ class Journaler(log.Logger, common.StateMachineMixin):
             category=category,
             file_path=file_path,
             line_num=line_num,
-            message=message)
+            message=message,
+            timestamp=int(time.time_no_sfx()))
         self.insert_entry(**data)
 
         if self.should_keep_on_logging_to_flulog:
@@ -620,13 +642,13 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         result = dict()
 
         if data['entry_type'] == 'journal':
-            to_copy = ('fiber_depth', 'instance_id', 'entry_type')
+            to_copy = ('fiber_depth', 'instance_id', 'entry_type', 'timestamp')
             to_decode = ('agent_id', 'function_id', 'fiber_id', )
             to_blob = ('journal_id', 'args', 'kwargs', 'side_effects',
                        'result', )
         elif data['entry_type'] == 'log':
             to_copy = ('level', 'log_name', 'category', 'line_num',
-                       'entry_type')
+                       'entry_type', 'timestamp')
             to_decode = ('file_path', )
             to_blob = ('message', )
         else:
@@ -743,24 +765,25 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         def do_insert_entry(connection, history_id, data):
             command = text_helper.format_block("""
-            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                        strftime('%s', 'now'))
+            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (history_id,
                           data['journal_id'], data['function_id'],
                           data['fiber_id'], data['fiber_depth'],
                           data['args'], data['kwargs'],
-                          data['side_effects'], data['result'], ))
+                          data['side_effects'], data['result'],
+                          data['timestamp']))
 
         def do_insert_log(connection, data):
             command = text_helper.format_block("""
-            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (data['message'], int(data['level']),
                           data['category'], data['log_name'],
-                          data['file_path'], data['line_num']))
+                          data['file_path'], data['line_num'],
+                          data['timestamp']))
 
         def transaction(connection, cache):
             entries = cache.fetch()
@@ -942,7 +965,8 @@ class AgencyJournalEntry(object):
             'function_id': function_id,
             'fiber_id': None,
             'fiber_depth': None,
-            'side_effects': list()}
+            'side_effects': list(),
+            'timestamp': int(time.time_no_sfx())}
 
         self._not_serialized = {
             'args': args or None,

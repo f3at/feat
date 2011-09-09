@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
@@ -166,7 +187,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyManager.announce')
     def announce(self, announce):
-        announce = announce.clone()
+        announce = announce.duplicate()
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
 
@@ -194,7 +215,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         if not rejection:
             rejection = message.Rejection()
         else:
-            rejection = rejection.clone()
+            rejection = rejection.duplicate()
         contractor.on_event(rejection)
 
     @serialization.freeze_tag('AgencyManager.grant')
@@ -207,7 +228,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             grants = [grants]
         # clone the grant messages, not to mess with the
         # state on the agent side
-        grants = [(bid, grant.clone(), ) for bid, grant in grants]
+        grants = [(bid, grant.duplicate(), ) for bid, grant in grants]
 
         self._cancel_expiration_call()
         self._set_state(ContractState.granted)
@@ -491,7 +512,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
-        bid = bid.clone()
+        bid = bid.duplicate()
         self.debug("Sending bid %r", bid)
         assert isinstance(bid, message.Bid)
 
@@ -510,20 +531,21 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyContractor.handover')
     @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
-        bid = bid.clone()
-        self.debug('Sending bid of the nested contractor: %r.', bid)
-        assert isinstance(bid, message.Bid)
+        new_bid = bid.duplicate()
+        new_bid.reply_to = bid.reply_to
+        self.debug('Sending bid of the nested contractor: %r.', new_bid)
+        assert isinstance(new_bid, message.Bid)
 
         self._ensure_state(ContractState.announced)
         self._set_state(ContractState.delegated)
 
-        self.bid = self._handover_message(bid)
+        self.bid = self._handover_message(new_bid)
         time.callLater(0, self._terminate, None)
         return self.bid
 
     @replay.named_side_effect('AgencyContractor.refuse')
     def refuse(self, refusal):
-        refusal = refusal.clone()
+        refusal = refusal.duplicate()
         self.debug("Sending refusal %r", refusal)
         assert isinstance(refusal, message.Refusal)
 
@@ -536,7 +558,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyContractor.defect')
     def defect(self, cancellation):
-        cancellation = cancellation.clone()
+        cancellation = cancellation.duplicate()
         self.debug("Sending cancelation %r", cancellation)
         assert isinstance(cancellation, message.Cancellation)
 
@@ -549,7 +571,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyContractor.finalize')
     def finalize(self, report):
-        report = report.clone()
+        report = report.duplicate()
         self.debug("Sending final report %r", report)
         assert isinstance(report, message.FinalReport)
 

@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
@@ -67,7 +88,7 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     @replay.named_side_effect('AgencyRequester.request')
     def request(self, request):
-        request = request.clone()
+        request = request.duplicate()
         self.log("Sending request: %r.", request)
         self._ensure_state(RequestState.requested)
 
@@ -171,7 +192,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyReplier.reply')
     @replay.named_side_effect('AgencyReplier.reply')
     def reply(self, reply):
-        reply = reply.clone()
+        reply = reply.duplicate()
         self.debug("Sending reply: %r", reply)
         self._send_message(reply, self.request.expiration_time)
         self._cancel_expiration_call()

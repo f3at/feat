@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import socket
 
 from twisted.internet import defer
@@ -56,29 +77,6 @@ class HostAgentTests(common.SimulationTest):
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
-
-    @defer.inlineCallbacks
-    def testAllocatePorts(self):
-        agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        self.assertEqual(len(ports), 10)
-
-    @defer.inlineCallbacks
-    def testAllocatePortsAndRelease(self):
-        agent = self.get_local('agent')
-        ports = yield agent.allocate_ports(10)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
-
-    def testSetPortsUsed(self):
-        agent = self.get_local('agent')
-        ports = range(5000, 5010)
-        agent.set_ports_used(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS - 10)
-        agent.release_ports(ports)
-        self.assertEqual(agent.get_num_free_ports(), self.NUM_PORTS)
 
 
 @common.attr(timescale=0.05)
@@ -304,7 +302,9 @@ class RequestingAgent(agent.BaseAgent):
     def request(self, state, shard, resc=dict()):
         desc = Descriptor3()
         if resc:
-            desc.resources = resource.ScalarResource(**resc)
+            desc.resources = params = dict(
+                [key, resource.AllocatedScalar(val)]
+                for key, val in resc.iteritems())
         f = self.save_document(desc)
         f.add_callback(lambda desc:
                        host.start_agent_in_shard(self, desc, shard))
@@ -350,7 +350,7 @@ class SimulationStartAgentContract(common.SimulationTest):
     def testRunningContract(self):
         self.assertEqual(3, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('contract-running-agent'))
-        shard = self.agent.get_own_address().shard
+        shard = self.agent.get_shard_id()
         yield self.agent.request(shard)
         self.assertEqual(2, self.count_agents('contract-running-agent'))
 
@@ -361,13 +361,14 @@ class SimulationStartAgentContract(common.SimulationTest):
 
     @defer.inlineCallbacks
     def testRunningWithSpecificResource(self):
-        shard = self.agent.get_own_address().shard
+        shard = self.agent.get_shard_id()
         res = dict(epu=20, core=1)
         recp = yield self.agent.request(shard, res)
         doc = yield self.driver._database_connection.get_document(
             IRecipient(recp).key)
-        self.assertIsInstance(doc.resources, resource.ScalarResource)
-        self.assertEqual(res, doc.resources.values)
+        self.assertIsInstance(doc.resources, dict)
+        for key, val in res.iteritems():
+            self.assertEqual(val, doc.resources[key].value)
         host_id = doc.partners[0].recipient.key
         host_medium = yield self.driver.find_agent(host_id)
         host = host_medium.get_agent()
@@ -375,12 +376,12 @@ class SimulationStartAgentContract(common.SimulationTest):
         self.assertEqual(1, allocated['core'])
 
         # now use start_agent directly
-        desc = Descriptor3(resources=resource.ScalarResource(core=1))
+        desc = Descriptor3(resources=dict(core=resource.AllocatedScalar(1)))
         desc = yield self.driver._database_connection.save_document(desc)
         self.info('starting')
         recp = yield host.start_agent(desc)
         desc = yield self.driver._database_connection.reload_document(desc)
-        self.assertIsInstance(desc.resources, resource.ScalarResource)
-        self.assertEqual({'core': 1}, desc.resources.values)
+        self.assertIsInstance(desc.resources, dict)
+        self.assertEqual(['core'], desc.resources.keys())
         _, allocated = yield host.list_resource()
         self.assertEqual(2, allocated['core'])

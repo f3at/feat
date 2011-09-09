@@ -1,9 +1,30 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import heapq
 
 from zope.interface import implements, classProvides
 
 from feat.common import serialization
-from feat.interface.generic import *
+from feat.interface.generic import ITimeProvider
 
 
 __all__ = ("MroDict", "Empty", "ExpDict", "ExpQueue")
@@ -39,11 +60,11 @@ class MroDict(object):
         return ProxyDict(self._get_tag(owner), kwargs)
 
     def __set__(self, instance, value):
-        return NotImplemetedError(
+        return NotImplementedError(
             "You are doing something you shouldn't be doing")
 
     def __delete__(self, instance):
-        return NotImplemetedError(
+        return NotImplementedError(
             "You are doing something you shouldn't be doing")
 
     ### endof descriptor protocol ###
@@ -199,6 +220,12 @@ class ExpDict(ExpBase):
         item = self._get_item(key)
         return default if item is None else item.value
 
+    def get_expiration(self, key):
+        item = self._get_item(key)
+        if item is None:
+            raise KeyError(key)
+        return item.exp
+
     def iterkeys(self):
         '''Returns an iterator over the dictionary keys.'''
         self._lazy_pack()
@@ -216,6 +243,12 @@ class ExpDict(ExpBase):
             if item.exp is None or item.exp > now:
                 yield item.value
                 now = self._time.get_time()
+
+    def values(self):
+        return list(self.itervalues())
+
+    def keys(self):
+        return list(self.iterkeys())
 
     def iteritems(self):
         '''Returns an iterator over tuples (key, value).'''
@@ -275,6 +308,10 @@ class ExpDict(ExpBase):
     def __ne__(self, other):
         eq = self.__eq__(other)
         return eq if eq == NotImplemented else not eq
+
+    def __repr__(self):
+        values = ["%s=%s" % (k, v) for k, v in self.iteritems()]
+        return "<xdict: {%s}>" % (", ".join(values), )
 
     ### ISerializable Method ###
 

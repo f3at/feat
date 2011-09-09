@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import StringIO
@@ -5,7 +26,7 @@ import uuid
 
 from feat.common import log, manhole, defer, reflect, time
 from feat.agencies import journaler
-from feat.agencies.emu import messaging, database
+from feat.agencies.emu import messaging, tunneling, database
 from feat.test import factories
 from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
@@ -40,7 +61,10 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        d = ag.initiate(self._messaging, self._database, self._journaler, self)
+        tun = tunneling.Backend(version=self._tunneling_version,
+                                bridge=self._tunneling_bridge)
+        d = ag.initiate(self._database, self._journaler, self,
+                        self._messaging, tun)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -159,12 +183,15 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     log_category = 'simulation-driver'
 
-    def __init__(self, jourfile=None):
+    def __init__(self, jourfile=None,
+                 tunneling_version=None, tunneling_bridge=None):
         log.FluLogKeeper.__init__(self)
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 
         self._messaging = messaging.Messaging()
+        self._tunneling_version = tunneling_version
+        self._tunneling_bridge = tunneling_bridge or tunneling.Bridge()
         self._database = database.Database()
         jouropts = dict()
         if jourfile:
@@ -192,6 +219,29 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._journaler.configure_with(self._jourwriter)
         return defer.DeferredList([d1, d2])
 
+    def get_local(self, name):
+        return self._parser.get_local(name)
+
+    def set_local(self, name, value):
+        self._parser.set_local(value, name)
+
+    def count_agents(self, agent_type=None):
+        return len([x for x in self.iter_agents(agent_type)])
+
+    def freeze_all(self):
+        '''
+        Stop all activity of the agents running.
+        '''
+        d = defer.succeed(None)
+        for x in self.iter_agents():
+            d.addCallback(defer.drop_param, x._cancel_long_running_protocols)
+            d.addCallback(defer.drop_param, x.wait_for_protocols_finish)
+        return d
+
+    def snapshot_all_agents(self):
+        for medium in self.iter_agents():
+            medium.check_if_should_snapshot(force=True)
+
     @defer.inlineCallbacks
     def destroy(self):
         '''
@@ -205,6 +255,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         del(self._journaler)
         del(self._jourwriter)
         del(self._messaging)
+        del(self._tunneling_bridge)
         del(self._database)
         del(self._agencies)
         del(self._breakpoints)
@@ -225,7 +276,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     yield agent
 
     def is_idle(self):
-        return self._messaging.is_idle() and self.are_agents_idle()
+        return (self._messaging.is_idle()
+                and self._tunneling_bridge.is_idle()
+                and self.are_agents_idle())
 
     def are_agents_idle(self):
         return all([agent.is_idle() for agent in self.iter_agents()])

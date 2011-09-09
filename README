@@ -2,23 +2,16 @@ FEAT => F3AT => Flumotion Asynchronous Autonomous Agent Toolkit
 
 === Repository ===
 
-Web Browser::
-
-	http://thinkmux/cgit/messy/
-
 Get the code::
 
-	git clone --recursive ssh://git@thinkmux.fluendo.lan/srv/git/messy messi
-	cd messi
+	git clone --recursive git@github.com:f3at/feat.git
+	cd feat
 
 If you forgot parameter "--recursive" then you should then do::
 
 	git submodule init
 	git submodule update
 
-Checkout development branch::
-
-	git co development
 
 === Make Commands ===
 
@@ -26,6 +19,7 @@ From source directory.
 
 To run the tests::
 
+        cd src
 	make
 
 

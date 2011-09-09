@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
@@ -7,7 +28,7 @@ from twisted.internet import defer, reactor
 from zope.interface import implements
 
 from feat.agencies.emu import messaging
-from feat.agents.base import descriptor, message
+from feat.agents.base import descriptor, message, recipient
 from feat.interface import agent
 
 from . import common
@@ -139,17 +160,17 @@ class TestMessaging(common.TestCase):
     def setUp(self):
         self.messaging = messaging.Messaging()
         self.agent = common.StubAgent()
-        self.connection = yield self.messaging.get_connection(self.agent)
+        self.connection = yield self.messaging.new_channel(self.agent)
 
     def testCreateConnection(self):
         self.assertTrue(isinstance(self.connection, messaging.Connection))
         self.assertEqual(1, len(self.messaging._queues))
 
-        self.connection.disconnect()
+        self.connection.release()
 
     def test1To1Binding(self):
-        key = self.agent.get_queue_name()
-        binding = self.connection.personal_binding(key)
+        key = self.agent.get_agent_id()
+        binding = self.connection.bind(key)
         self.assertEqual(1, len(self.connection.get_bindings()))
 
         exchange = self.messaging._exchanges.values()[0]
@@ -175,13 +196,13 @@ class TestMessaging(common.TestCase):
 
     @defer.inlineCallbacks
     def testTwoAgentsWithSameBinding(self):
-        second_agent = common.StubAgent()
-        second_connection = yield self.messaging.get_connection(second_agent)
-        agents = [self.agent, second_agent]
+        agent2 = common.StubAgent()
+        second_connection = yield self.messaging.new_channel(agent2)
+        agents = [self.agent, agent2]
         connections = [self.connection, second_connection]
 
         key = 'some key'
-        bindings = map(lambda x: x.personal_binding(key), connections)
+        bindings = map(lambda x: x.bind(key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
@@ -204,10 +225,11 @@ class TestMessaging(common.TestCase):
         yield d
 
     def testPublishingByAgent(self):
-        key = self.agent.get_queue_name()
+        key = self.agent.get_agent_id()
         msg = message.BaseMessage(payload='some message')
-        self.connection.personal_binding(key, 'lobby')
-        self.connection.publish(key, 'lobby', msg)
+        self.connection.bind(key, 'lobby')
+        recip = recipient.Recipient(key, 'lobby')
+        self.connection.post(recip, msg)
         d = defer.Deferred()
 
         def asserts(d):

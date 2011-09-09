@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 #!/usr/bin/python2.6
 import tempfile
 import os
@@ -8,72 +29,12 @@ from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
 from feat.agencies.net import agency as net_agency, standalone
-from feat.common import log, run, defer, reflect
+from feat.agencies.net.options import add_options, OptionError
+from feat.common import log, run, defer
 from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
-
-
-def parse_config_file(option, opt_str, value, parser):
-    import ConfigParser
-    try:
-        cfg = ConfigParser.ConfigParser()
-        cfg.readfp(open(value, 'r'))
-        for dest, value in cfg.items('Feat'):
-            values = value.split()
-            opt = parser.get_option('--'+dest)
-            if not opt:
-                raise OptionError("Invalid option %s defined in"
-                                  "config file" % dest)
-            for value in values:
-                opt.process(opt_str, value, parser.values, parser)
-    except IOError:
-        print 'Config file not found, skipping ...'
-
-
-def _load_module(option, opt, value, parser):
-    try:
-        reflect.named_module(value)
-    except ImportError:
-        raise OptionError("Unknown module %s" % value)
-
-
-def add_options(parser):
-    parser.add_option('-d', '--debug',
-                      action="store", type="string", dest="debug",
-                      help="Set debug levels.")
-    parser.add_option('-i', '--import', help='import specified module',
-                      action='callback', callback=_load_module,
-                      type="str", metavar="MODULE")
-    parser.add_option('-a', '--agent', dest="agents", action="append",
-                      help="Start an agent of specified type.",
-                      metavar="AGENT_NAME", default=[])
-    parser.add_option('-t', '--host-def', dest="hostdef",
-                      help="Host definition document identifier.",
-                      metavar="HOST_DEF_ID", default=None)
-    parser.add_option('-r', '--host-resource', dest="hostres",
-                      help="Add a resource to the host agent. "
-                           "Format: RES_NAME:RES_MAX. Example: 'epu:42'.",
-                      metavar="HOST_DEF_ID", action="append", default=[])
-    parser.add_option('-g', '--host-category', dest="hostcat",
-                    help="Add a category to the host agent. "
-                         "Format: CAT_NAME:CAT_VALUE.",
-                    metavar="HOST_DEF_ID", action="append", default=[])
-    parser.add_option('-C', '--config-file', action='callback',
-                      help="Config file, the configuration loaded from the \
-                      configuration file will overwrite other \
-                      parameters defined",
-                      callback=parse_config_file, nargs=1,
-                      type="string", dest='config_file')
-    parser.add_option('-X', '--standalone',
-                      action="store_true", dest="standalone",
-                      help="run agent in standalone agency (default: False)",
-                      default=False)
-    parser.add_option('--kwargs',
-                      action="store", dest="standalone_kwargs",
-                      help="serialized kwargs to pass to standalone agent",
-                      default=None)
 
 
 def check_options(opts, args):
@@ -139,7 +100,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
     parser = parser or optparse.OptionParser()
     add_options(parser)
-    net_agency.add_options(parser)
 
     with _Bootstrap(parser=parser, args=args) as bootstrap:
         agency = bootstrap.agency
@@ -148,7 +108,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
         opts, args = check_options(opts, args)
 
         descriptors = descriptors or []
-        d = agency.initiate()
 
         if not opts.standalone:
             # specific to running normal agency
@@ -160,7 +119,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
                 descriptors.append(factory())
 
             hostdef = opts.hostdef
-            if opts.hostres or opts.hostcat:
+
+            if opts.hostres or opts.hostcat or opts.hostports:
                 hostdef = host.HostDef()
                 for resdef in opts.hostres:
                     parts = resdef.split(":", 1)
@@ -170,29 +130,33 @@ def bootstrap(parser=None, args=None, descriptors=None):
                         try:
                             value = int(parts[1])
                         except ValueError:
-                            raise OptionError("Invalid host resource: %s"
-                                              % resdef)
+                            raise OptionError(
+                                "Invalid host resource: %s" % resdef)
                     hostdef.resources[name] = value
 
                 for catdef in opts.hostcat:
                     name, value = check_category(catdef)
                     hostdef.categories[name] = value
 
+                if opts.hostports:
+                    hostdef.ports_ranges = dict()
+                for ports in opts.hostports:
+                    group, start, stop = tuple(ports.split(":"))
+                    hostdef.ports_ranges[group] = (int(start), int(stop))
+
             agency.set_host_def(hostdef)
 
+            d = agency.initiate()
             for desc in descriptors:
                 log.debug("feat", "Starting agent with descriptor %r", desc)
                 d.addCallback(defer.drop_param, agency.spawn_agent, desc)
         else:
             # standalone specific
             kwargs = opts.standalone_kwargs or dict()
+            d = agency.initiate()
             d.addCallback(defer.drop_param, agency.spawn_agent,
                           opts.agents[0], **kwargs)
         return d
-
-
-class OptionError(Exception):
-    pass
 
 
 class _Bootstrap(object):

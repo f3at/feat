@@ -1,9 +1,29 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from feat.agents.base import (requester, replay, message, document,
                               manager, descriptor, )
 from feat.common import fiber
-
-from feat.interface.recipient import IRecipient
 from feat.interface.agent import Access, Address, Storage
+from feat.interface.recipient import IRecipient
 
 
 __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
@@ -64,14 +84,31 @@ class NoHostFound(Exception):
     pass
 
 
+DEFAULT_RESOURCES = {"host": 1,
+                     "bandwidth": 100,
+                     "epu": 500,
+                     "core": 2,
+                     "mem": 1000}
+
+
+DEFAULT_CATEGORIES = {'access': Access.none,
+                      'address': Address.none,
+                      'storage': Storage.none}
+
+DEFAULT_PORTS_RANGES = {'misc': (8000, 9000)}
+
+
 @document.register
 class HostDef(document.Document):
 
     document_type = "hostdef"
 
     # The resources available for this host type.
-    document.field('resources', {})
-    document.field('categories', {})
+    document.field('resources', DEFAULT_RESOURCES)
+    document.field('categories', DEFAULT_CATEGORIES)
+    # List of ports ranges used for allocating new ports
+    # name -> (first, last)
+    document.field('ports_ranges', DEFAULT_PORTS_RANGES)
 
 
 def start_agent(agent, recp, desc, allocation_id=None, *args, **kwargs):
@@ -191,9 +228,6 @@ class StartAgentRequester(requester.BaseRequester):
 
 @descriptor.register("host_agent")
 class Descriptor(descriptor.Descriptor):
-
-    # Range used for allocating new ports
-    document.field('port_range', (5000, 5999, ))
 
     @property
     def hostname(self):

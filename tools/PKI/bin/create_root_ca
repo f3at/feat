@@ -1,0 +1,46 @@
+#!/bin/bash
+
+ROOT=$(cd $(dirname $0); cd ..; pwd)
+USAGE="$0"
+source "$ROOT/bin/generic.env"
+
+echo "Creating Root CA..."
+
+echo " * Setting up directory structure..."
+source "$ROOT/bin/ca.env" create root
+
+ROOT_CA_PUB_REQ="$CA_DIR/root_ca_public_key_req.pem"
+ROOT_CA_EXP_DAYS=5840 # 16 years
+
+echo " * Generating private key and certificate request..."
+source "$CONF_DIR/subject.env"
+REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$SUBJ_ROOT_CA_CN/emailAddress=$SUBJ_EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
+pki_openssl req \
+  -nodes -new -batch \
+  -subj "$REQ_SUBJ" \
+  -keyout "$ROOT_CA_PRIV_KEY" \
+  -out "$ROOT_CA_PUB_REQ" \
+  "Failed to create CA private key"
+
+echo " * Generating certificate..."
+pki_openssl ca \
+  -create_serial -batch -selfsign \
+  -out "$ROOT_CA_PUB_CERT" \
+  -days $ROOT_CA_EXP_DAYS \
+  -keyfile "$ROOT_CA_PRIV_KEY" \
+  -extensions v3_ca \
+  -infiles "$ROOT_CA_PUB_REQ" \
+  "Failed to generate CA certificate"
+
+echo " * Exporting certificate to DER format..."
+pki_openssl x509 \
+  -in "$ROOT_CA_PUB_CERT" -out "$ROOT_CA_PUB_CERT_DER" -outform DER \
+  "Failed to convert CA certificate to DER format"
+
+pki_cp "$ROOT_CA_PUB_CERT" "$GLOBAL_CA_PUB_CERTS"
+
+echo "WARNING: Root CA private key is not encrypted"
+echo "INFO:"
+echo "  Private Key: $ROOT_CA_PRIV_KEY"
+echo "  Certificate: $ROOT_CA_PUB_CERT"
+echo "Done."

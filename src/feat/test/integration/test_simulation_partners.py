@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
@@ -41,7 +62,7 @@ class ResponsablePartner(partners.BasePartner):
 
     def on_restarted(self, agent, old_recipient):
         assert old_recipient
-        assert self.recipient.shard == 'shard'
+        assert self.recipient.route == 'shard'
         agent.done_migrated()
 
     def on_buried(self, agent, brothers):
@@ -65,7 +86,7 @@ class Agent(agent.BaseAgent, resource.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
-        state.resources.define('foo', 2)
+        state.resources.define('foo', resource.Scalar, 2)
         state.received_brothers = list()
         state.migrated = False
 
@@ -250,6 +271,7 @@ class PartnershipTest(common.SimulationTest):
             partner = agent.query_partners('all')[0]
             self.assertTrue(partner.allocation_id is not None)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testEstablishPartnershipWithPreAllocaton(self):
         i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
@@ -263,6 +285,7 @@ class PartnershipTest(common.SimulationTest):
         self.assert_partners(agents, [0, 0])
         r_alloc = yield self.receiver.get_agent().release_resource(r_alloc.id)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testEstablishPartnershipWithUnknownAllocaton(self):
         i_alloc = yield self.initiator.get_agent().allocate_resource(foo=1)
@@ -287,7 +310,7 @@ class PartnershipTest(common.SimulationTest):
         resp = yield monitor.notify_died(irecv, iinit)
         self.assertEqual('ACCEPT_RESPONSABILITY', resp)
 
-        new_address = recipient.Agent(agent_id = iinit.key, shard=u'shard')
+        new_address = recipient.Agent(agent_id = iinit.key, route=u'shard')
         yield monitor.notify_restarted(irecv, iinit, new_address)
         yield self.wait_for_idle(3)
         self.assertTrue(self.receiver.get_agent().has_migrated())

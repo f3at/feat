@@ -1,31 +1,40 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import socket
 import operator
 
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
                               problem, task, requester, )
-from feat.agents.common import rpc, monitor, export
+from feat.agents.common import host, rpc, monitor, export
 from feat.agents.common import shard as common_shard
-from feat.agents.common.host import check_categories, Descriptor
-from feat.agents.host import port_allocator
-from feat.interface.protocols import InterestType
+from feat.agents.common.host import check_categories
 from feat.common import fiber, manhole, serialization, defer
+
 from feat.agencies.interface import NotFoundError
-from feat.interface.agent import Access, Address, Storage, CategoryError
-
-DEFAULT_RESOURCES = {"host": 1,
-                     "bandwidth": 100,
-                     "epu": 500,
-                     "core": 2,
-                     "mem": 1000}
-
-
-DEFAULT_CATEGORIES = {'access': Access.none,
-                      'address': Address.none,
-                      'storage': Storage.none}
+from feat.interface.protocols import InterestType
+from feat.interface.agent import CategoryError
 
 
 @serialization.register
@@ -48,7 +57,7 @@ class ShardPartner(agent.BasePartner):
     type_name = 'host->shard'
 
     def initiate(self, agent):
-        f = agent.switch_shard(self.recipient.shard)
+        f = agent.switch_shard(self.recipient.route)
         f.add_callback(fiber.drop_param, agent.callback_event,
                        'joined_to_shard', None)
         return f
@@ -114,8 +123,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
             problem.SolveProblemInterest(MissingShard))
         state.medium.register_interest(
             problem.SolveProblemInterest(RestartShard))
-        ports = state.medium.get_descriptor().port_range
-        state.port_allocator = port_allocator.PortAllocator(self, ports)
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
@@ -271,29 +278,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         return state.medium.get_ip()
 
     @rpc.publish
-    @replay.mutable
-    def allocate_ports(self, state, number):
-        try:
-            return state.port_allocator.reserve_ports(number)
-        except port_allocator.PortAllocationError as e:
-            return fiber.fail(e)
-
-    @rpc.publish
-    @replay.mutable
-    def release_ports(self, state, ports):
-        return state.port_allocator.release_ports(ports)
-
-    @rpc.publish
-    @replay.mutable
-    def set_ports_used(self, state, ports):
-        return state.port_allocator.set_ports_used(ports)
-
-    @rpc.publish
-    @replay.immutable
-    def get_num_free_ports(self, state):
-        return state.port_allocator.num_free()
-
-    @rpc.publish
     def premodify_allocation(self, allocation_id, **delta):
         return resource.AgentMixin.premodify_allocation(self,
                 allocation_id, **delta)
@@ -345,7 +329,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
     @replay.immutable
     def _load_definition(self, state, hostdef=None):
         if not hostdef:
-            return self._apply_defaults()
+            self.info("No host definition specified, using default values")
+            hostdef = host.HostDef()
 
         if isinstance(hostdef, document.Document):
             return self._apply_definition(hostdef)
@@ -365,10 +350,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
     def _apply_definition(self, hostdef):
         self._setup_resources(hostdef.resources)
         self._setup_categories(hostdef.categories)
-
-    def _apply_defaults(self):
-        self._setup_resources(DEFAULT_RESOURCES)
-        self._setup_categories(DEFAULT_CATEGORIES)
+        self._setup_ports_ranges(hostdef.ports_ranges)
 
     @replay.mutable
     def _setup_resources(self, state, resources):
@@ -381,7 +363,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                              for n, v in resources.iteritems()]))
 
         for name, total in resources.iteritems():
-            state.resources.define(name, total)
+            state.resources.define(name, resource.Scalar, total)
 
     @replay.mutable
     def _setup_categories(self, state, categories):
@@ -393,6 +375,19 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                   ", ".join(["%s=%s" % (n, v.name)
                              for n, v in categories.iteritems()]))
         state.categories = categories
+
+    @replay.mutable
+    def _setup_ports_ranges(self, state, ports_ranges):
+        if not ports_ranges:
+            self.warning("Host do not have any ports ranges defined")
+            return
+
+        self.info("Setting host ports ranges to: %s",
+                  ", ".join(["%s=%s:%s" % (g, s, e)
+                             for g, (s, e) in ports_ranges.items()]))
+
+        for name, (first, last) in ports_ranges.items():
+            state.resources.define(name, resource.Range, first, last)
 
     @replay.immutable
     def check_requirements(self, state, doc):
@@ -458,9 +453,9 @@ class StartAgent(task.BaseTask):
         which shard it will endup. If it is None or set to lobby, the HA
         will update the field to match his own'''
         if state.descriptor.shard is None or state.descriptor.shard == 'lobby':
-            own_shard = state.agent.get_own_address().shard
+            own_shard = state.agent.get_shard_id()
             state.descriptor.shard = own_shard
-        state.descriptor.resource = allocation.scalar
+        state.descriptor.resources = allocation.alloc
         f = fiber.succeed(state.descriptor)
         f.add_callback(state.agent.save_document)
         f.add_callback(self._store_descriptor)
@@ -469,7 +464,7 @@ class StartAgent(task.BaseTask):
     @replay.mutable
     def _validate_allocation(self, state):
         if state.allocation_id:
-            return state.agent.check_allocation_exists(state.allocation_id)
+            return state.agent.get_allocation(state.allocation_id)
         else:
             resources = state.descriptor.extract_resources()
             f = state.agent.allocate_resource(**resources)
@@ -499,7 +494,7 @@ class MissingShard(problem.BaseProblem):
 
     def solve_localy(self):
         own_address = self.agent.get_own_address()
-        return self.agent.start_own_shard(own_address.shard)
+        return self.agent.start_own_shard(own_address.route)
 
 
 @serialization.register

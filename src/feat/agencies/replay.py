@@ -1,8 +1,29 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from pprint import pformat
 
 from zope.interface import implements, classProvides
 
-from feat.common import serialization, log, text_helper
+from feat.common import serialization, log, text_helper, deep_compare
 from feat.agents.base import replay
 from feat.common.serialization import banana
 
@@ -380,6 +401,9 @@ class Replay(log.FluLogKeeper, log.Logger):
         if self.medium is not None:
             raise ReplayError(
                 'Replay instance already has the medium reference')
+
+        self.log_category = agent_factory.descriptor_type
+        self.log_name = dummy_id[0]
         self.medium = AgencyAgent(self, dummy_id)
         self.register_dummy(dummy_id, self.medium)
         self.agent = agent_factory(self.medium)
@@ -404,6 +428,7 @@ class Replay(log.FluLogKeeper, log.Logger):
     def apply_snapshot(self, entry):
         old_agent, old_protocols = self.agent, self.protocols
         self.reset()
+        self.set_current_time(entry._timestamp)
         args, kwargs = replay.replay(entry, entry.get_arguments)
         self._restore_snapshot(*args, **kwargs)
         self._check_snapshot(old_agent, old_protocols)
@@ -461,10 +486,15 @@ class Replay(log.FluLogKeeper, log.Logger):
         # we are replaynig - hence we have no state to compare to
         if old_agent is not None:
             if self.agent != old_agent:
+                comp = deep_compare(self.agent._get_state(),
+                                    old_agent._get_state())
+                info = "  INFO:        %s: %s\n" % comp if comp else ""
+
                 raise ReplayError("States of current agent mismatch the "
-                                  "old agent\nOld: %r\nLoaded: %r."
-                                  % (old_agent._get_state(),
-                                     self.agent._get_state()))
+                                  "old agent\nInfo: %s\nOld: %s\nLoaded: %s."
+                                  % (info,
+                                     pformat(old_agent._get_state()),
+                                     pformat(self.agent._get_state())))
             if len(self.protocols) != len(old_protocols):
                 raise ReplayError("The number of protocols mismatch. "
                                   "\nOld: %r\nLoaded: %r"
@@ -602,12 +632,35 @@ class AgencyAgent(BaseReplayDummy):
 
     ### IAgencyAgent Methods ###
 
+    @serialization.freeze_tag('AgencyAgent.get_own_address')
+    @replay.named_side_effect('AgencyAgent.get_own_address')
+    def get_own_address(self, channel_type="default"):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.enable_channel')
+    @replay.named_side_effect('AgencyAgent.enable_channel')
+    def enable_channel(self, channel_type):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.disable_channel')
+    @replay.named_side_effect('AgencyAgent.disable_channel')
+    def disable_channel(self, channel_type):
+        pass
+
+    @serialization.freeze_tag('AgencyAgent.wait_channel')
+    def wait_channel(self, channel_type):
+        pass
+
     @replay.named_side_effect('AgencyAgent.observe')
     def observe(self, _method, *args, **kwargs):
         pass
 
     @replay.named_side_effect('AgencyAgent.get_hostname')
     def get_hostname(self):
+        pass
+
+    @replay.named_side_effect('AgencyAgent.get_ip')
+    def get_ip(self):
         pass
 
     @replay.named_side_effect('AgencyAgent.get_descriptor')
@@ -683,6 +736,10 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):
+        raise RuntimeError('This should never be called!')
+
+    @serialization.freeze_tag('AgencyAgency.terminate_hard')
+    def terminate_hard(self):
         raise RuntimeError('This should never be called!')
 
     @serialization.freeze_tag('AgencyAgency.save_document')
@@ -878,6 +935,7 @@ class AgencyManager(AgencyProtocol, StateMachineSpecific):
         pass
 
     @replay.named_side_effect('AgencyManager.terminate')
+    @serialization.freeze_tag('AgencyManager.terminate')
     def terminate(self, result=None):
         pass
 

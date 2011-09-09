@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from zope.interface import implements
 
 from feat.agents.monitor import monitor_agent
@@ -132,7 +153,7 @@ class NotificationSenderTest(common.TestCase):
         self.clerk = DummyClerk()
         self.task = sender.NotificationSender(self.agent, self.medium)
         yield self.task.initiate(self.clerk)
-        self.recp = recipient.Agent(agent_id='agent_id', shard='shard')
+        self.recp = recipient.Agent(agent_id='agent_id', route='shard')
 
     @defer.inlineCallbacks
     def testDryRunMethod(self):
@@ -209,7 +230,7 @@ class NotificationSenderTest(common.TestCase):
         n2 = self.gen_notification(recipient=self.recp)
         self.task.notify([n1, n2])
 
-        new_recp = recipient.Agent(self.recp.key, shard=u'other shard')
+        new_recp = recipient.Agent(self.recp.key, route=u'other shard')
         self.gen_document(new_recp)
 
         d = self.task.run()
@@ -220,7 +241,7 @@ class NotificationSenderTest(common.TestCase):
 
         self.assert_pending('agent_id', 2)
         for notif in self.agent.descriptor.pending_notifications['agent_id']:
-            self.assertEqual('other shard', notif.recipient.shard)
+            self.assertEqual('other shard', notif.recipient.route)
 
     def assert_pending(self, agent_id, num):
         if num == 0:
@@ -235,7 +256,7 @@ class NotificationSenderTest(common.TestCase):
 
     def gen_document(self, recp):
         self.agent.docs[recp.key] = descriptor.Descriptor(doc_id=recp.key,
-                                                          shard=recp.shard)
+                                                          shard=recp.route)
 
     def succeed_protocol(self, index):
         self.agent.protocols[index].deferred.callback(None)

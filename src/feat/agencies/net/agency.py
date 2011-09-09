@@ -1,8 +1,30 @@
-import sys
-import optparse
-import re
-import types
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import os
+import re
+import socket
+import sys
+import types
+
 
 from twisted.internet import reactor
 from twisted.spread import pb
@@ -11,144 +33,26 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
-from feat.agencies.net import ssh, broker
+from feat.agencies.net import ssh, broker, tunneling
 from feat.common import log, defer, time, first, error, run
 from feat.common import manhole, text_helper
 from feat.process import standalone
+from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
+from feat.web import security
 
-from feat.agencies.net import messaging
-from feat.agencies.net import database
+from feat.agencies.net import database, messaging, tunneling, options
+from feat.agencies.net.broker import BrokerRole
 
 from feat.interface.agent import IAgentFactory, AgencyAgentState
 from feat.interface.agency import ExecMode
 from feat.agencies.interface import NotFoundError
-from feat.agencies.net.broker import BrokerRole, DEFAULT_SOCKET_PATH
 
-
-DEFAULT_MSG_HOST = "localhost"
-DEFAULT_MSG_PORT = 5672
-DEFAULT_MSG_USER = "guest"
-DEFAULT_MSG_PASSWORD = "guest"
-DEFAULT_DB_HOST = database.DEFAULT_DB_HOST
-DEFAULT_DB_PORT = database.DEFAULT_DB_PORT
-DEFAULT_DB_NAME = database.DEFAULT_DB_NAME
-DEFAULT_JOURFILE = 'journal.sqlite3'
-DEFAULT_GW_PORT = 5500
-
-# Only for command-line options
-DEFAULT_MH_PUBKEY = "public.key"
-DEFAULT_MH_PRIVKEY = "private.key"
-DEFAULT_MH_AUTH = "authorized_keys"
-DEFAULT_MH_PORT = 6000
-
-DEFAULT_ENABLE_SPAWNING_SLAVE = True
-DEFAULT_RUNDIR = "/var/log/feat"
-DEFAULT_LOGDIR = "/var/log/feat"
-DEFAULT_DAEMONIZE = False
 
 GATEWAY_PORT_COUNT = 100
-
+TUNNELING_PORT_COUNT = 100
 HOST_RESTART_RETRY_INTERVAL = 5
-DEFAULT_FORCE_HOST_RESTART = False
-MASTER_LOG_LINK = "feat.master.log"
-
-
-def add_options(parser):
-    # Agency related options
-    group = optparse.OptionGroup(parser, "Agency options")
-    group.add_option('-j', '--jourfile',
-                     action="store", dest="agency_journal",
-                     help=("journal filename (default: %s)"
-                           % DEFAULT_JOURFILE))
-    group.add_option('-S', '--socket-path', dest="agency_socket_path",
-                     help=("path to the unix socket used by the agency"
-                           "(default: %s)" % DEFAULT_SOCKET_PATH),
-                     metavar="PATH")
-    group.add_option('-b', '--no-slave',
-                     dest="agency_enable_spawning_slave", action="store_false",
-                     help=("Disable spawning slave agency"))
-    group.add_option('-R', '--rundir',
-                     action="store", dest="agency_rundir",
-                     help=("Rundir of the agency (default: %s)" %
-                           DEFAULT_RUNDIR))
-    group.add_option('-L', '--logdir',
-                      action="store", dest="agency_logdir",
-                      help=("agent log directory (default: %s)" %
-                            DEFAULT_LOGDIR))
-    group.add_option('-D', '--daemonize',
-                     action="store_true", dest="agency_daemonize",
-                     help="run in background as a daemon")
-    group.add_option('--force-host-restart',
-                     action="store_true", dest="agency_force_host_restart",
-                     help=("force restarting host agent which descriptor "
-                           "exists in database."))
-
-    parser.add_option_group(group)
-
-    # Messaging related options
-    group = optparse.OptionGroup(parser, "Messaging options")
-    group.add_option('-m', '--msghost', dest="msg_host",
-                     help=("host of messaging server to connect to "
-                           "(default: %s)" % DEFAULT_MSG_HOST),
-                     metavar="HOST")
-    group.add_option('-p', '--msgport', dest="msg_port",
-                     help=("port of messaging server to connect to "
-                           "(default: %s" % DEFAULT_MSG_PORT),
-                     metavar="PORT", type="int")
-    group.add_option('-u', '--msguser', dest="msg_user",
-                     help=("username for messaging server (default: %s)" %
-                           DEFAULT_MSG_USER),
-                     metavar="USER")
-    group.add_option('-c', '--msgpass', dest="msg_password",
-                     help=("password to messaging server (default: %s)" %
-                           DEFAULT_MSG_PASSWORD),
-                     metavar="PASSWORD")
-    parser.add_option_group(group)
-
-    # database related options
-    group = optparse.OptionGroup(parser, "Database options")
-    group.add_option('-H', '--dbhost', dest="db_host",
-                     help=("host of database server to connect to "
-                           "(default: %s)" % DEFAULT_DB_HOST),
-                     metavar="HOST")
-    group.add_option('-P', '--dbport', dest="db_port",
-                     help=("port of messaging server to connect to "
-                           "(default: %s)" % DEFAULT_DB_PORT),
-                     metavar="PORT", type="int")
-    group.add_option('-N', '--dbname', dest="db_name",
-                     help=("host of database server to connect to "
-                           "(default: %s)" % DEFAULT_DB_NAME),
-                     metavar="NAME")
-    parser.add_option_group(group)
-
-    # manhole specific
-    group = optparse.OptionGroup(parser, "Manhole options")
-    group.add_option('-k', '--pubkey', dest='manhole_public_key',
-                     help=("public key file used by the manhole "
-                           "(default: %s)" % DEFAULT_MH_PUBKEY))
-    group.add_option('-K', '--privkey', dest='manhole_private_key',
-                     help=("private key file used by the manhole "
-                           "(default: %s)" % DEFAULT_MH_PRIVKEY))
-    group.add_option('-A', '--authorized', dest='manhole_authorized_keys',
-                     help=("file with authorized keys to be used by manhole "
-                           "(default: %s)" % DEFAULT_MH_AUTH))
-    group.add_option('-M', '--manhole', type="int", dest='manhole_port',
-                     help=("port for the manhole to listen (default: %s)" %
-                           DEFAULT_MH_PORT), metavar="PORT")
-    parser.add_option_group(group)
-
-    # gateway specific
-    group = optparse.OptionGroup(parser, "Gateway options")
-    group.add_option('-w', '--gateway-port', type="int", dest='gateway_port',
-                     help=("port for the gateway to listen (default: %s)" %
-                           DEFAULT_GW_PORT), metavar="PORT")
-    parser.add_option_group(group)
-
-
-def check_options(opts, args):
-    return opts, args
 
 
 class AgencyAgent(agency.AgencyAgent):
@@ -171,33 +75,38 @@ class Agency(agency.Agency):
         return agency
 
     def __init__(self,
-                 msg_host=DEFAULT_MSG_HOST,
-                 msg_port=DEFAULT_MSG_PORT,
-                 msg_user=DEFAULT_MSG_USER,
-                 msg_password=DEFAULT_MSG_PASSWORD,
-                 db_host=DEFAULT_DB_HOST,
-                 db_port=DEFAULT_DB_PORT,
-                 db_name=DEFAULT_DB_NAME,
-                 public_key=DEFAULT_MH_PUBKEY,
-                 private_key=DEFAULT_MH_PRIVKEY,
-                 authorized_keys=DEFAULT_MH_AUTH,
-                 manhole_port=DEFAULT_MH_PORT,
-                 agency_journal=DEFAULT_JOURFILE,
-                 socket_path=DEFAULT_SOCKET_PATH,
-                 gateway_port=DEFAULT_GW_PORT,
-                 enable_spawning_slave=DEFAULT_ENABLE_SPAWNING_SLAVE,
+                 msg_host=options.DEFAULT_MSG_HOST,
+                 msg_port=options.DEFAULT_MSG_PORT,
+                 msg_user=options.DEFAULT_MSG_USER,
+                 msg_password=options.DEFAULT_MSG_PASSWORD,
+                 db_host=options.DEFAULT_DB_HOST,
+                 db_port=options.DEFAULT_DB_PORT,
+                 db_name=options.DEFAULT_DB_NAME,
+                 public_key=options.DEFAULT_MH_PUBKEY,
+                 private_key=options.DEFAULT_MH_PRIVKEY,
+                 authorized_keys=options.DEFAULT_MH_AUTH,
+                 manhole_port=options.DEFAULT_MH_PORT,
+                 agency_journal=options.DEFAULT_JOURFILE,
+                 socket_path=options.DEFAULT_SOCKET_PATH,
+                 gateway_port=options.DEFAULT_GW_PORT,
+                 gateway_p12=options.DEFAULT_GW_P12_FILE,
+                 allow_tcp_gateway=options.DEFAULT_ALLOW_TCP_GATEWAY,
+                 tunneling_host=None,
+                 tunneling_port=options.DEFAULT_TUNNEL_PORT,
+                 tunneling_p12=options.DEFAULT_TUNNEL_P12_FILE,
+                 enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
                  rundir=None,
                  logdir=None,
-                 daemonize=DEFAULT_DAEMONIZE,
-                 force_host_restart=DEFAULT_FORCE_HOST_RESTART):
+                 daemonize=options.DEFAULT_DAEMONIZE,
+                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART):
 
         agency.Agency.__init__(self)
 
         curdir = os.path.abspath(os.curdir)
         if rundir is None:
-            rundir = DEFAULT_RUNDIR if daemonize else curdir
+            rundir = options.DEFAULT_RUNDIR if daemonize else curdir
         if logdir is None:
-            logdir = DEFAULT_LOGDIR if daemonize else curdir
+            logdir = options.DEFAULT_LOGDIR if daemonize else curdir
 
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -213,6 +122,10 @@ class Agency(agency.Agency):
                           agency_journal=agency_journal,
                           socket_path=socket_path,
                           gateway_port=gateway_port,
+                          gateway_p12=gateway_p12,
+                          allow_tcp_gateway=allow_tcp_gateway,
+                          tunneling_port=tunneling_port,
+                          tunneling_p12=tunneling_p12,
                           enable_spawning_slave=enable_spawning_slave,
                           rundir=rundir,
                           logdir=logdir,
@@ -247,8 +160,8 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def spawn_agent(self, desc, **kwargs):
-        '''spawn_agent(agent_type_or_desc, *args, **kwargs) -> tells the host
-        agent running in this agency to spawn a new agent of the given type.'''
+        '''tells the host agent running in this agency to spawn a new agent
+        of the given type.'''
         self._to_spawn.append((desc, kwargs, ))
         return self._flush_agents_to_spawn()
 
@@ -282,14 +195,15 @@ class Agency(agency.Agency):
         if self.config['agency']['daemonize']:
             os.chdir(self.config['agency']['rundir'])
 
-        mesg = messaging.Messaging(
-            self.config['msg']['host'], int(self.config['msg']['port']),
-            self.config['msg']['user'], self.config['msg']['password'])
-        mesg.redirect_log(self)
-        db = database.Database(
-            self.config['db']['host'], int(self.config['db']['port']),
-            self.config['db']['name'])
+        dbc = self.config['db']
+        db = database.Database(dbc['host'], int(dbc['port']), dbc['name'])
         db.redirect_log(self)
+
+        backends = []
+        backends.append(self._initiate_messaging(self.config['msg']))
+        backends.append(self._initiate_tunneling(self.config['tunnel']))
+        backends = filter(None, backends)
+
         jour = journaler.Journaler(self)
         self._journal_writer = None
 
@@ -315,7 +229,7 @@ class Agency(agency.Agency):
 
         d = defer.succeed(None)
         d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, mesg, db, jour)
+                  self, db, jour, *backends)
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
@@ -374,7 +288,7 @@ class Agency(agency.Agency):
 
         self._redirect_text_log()
         self._create_pid_file()
-        self._link_log_file(MASTER_LOG_LINK)
+        self._link_log_file(options.MASTER_LOG_LINK)
 
         if 'enable_host_restart' not in self._broker.shared_state:
             value = self.config['agency']['force_host_restart']
@@ -426,7 +340,8 @@ class Agency(agency.Agency):
     def on_broker_disconnect(self, pre_state):
         self._ssh.stop_listening()
         d = self._journaler.close(flush_writer=False)
-        d.addCallback(defer.drop_param, self._gateway.cleanup)
+        if self._gateway:
+            d.addCallback(defer.drop_param, self._gateway.cleanup)
 
         if pre_state == BrokerRole.master:
             d.addCallback(defer.drop_param, run.delete_pidfile,
@@ -445,8 +360,7 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def full_shutdown(self, stop_process=False):
-        '''full_shutdown() -> Terminate all the slave agencies and shutdowns
-        itself.'''
+        '''Terminate all the slave agencies and shutdowns itself.'''
         self._shutting_down = True
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._broker.shutdown_slaves)
@@ -455,8 +369,7 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def shutdown(self, stop_process=False):
-        '''shutdown() -> Shutdown the agency in gentel manner (terminating
-        all the agents).'''
+        '''Shutdown the agency in gentel manner (terminate all the agents).'''
         self._shutting_down = True
         self._cancel_snapshoter()
         d = agency.Agency.shutdown(self)
@@ -465,15 +378,24 @@ class Agency(agency.Agency):
             d.addBoth(defer.drop_param, self._stop_process)
         return d
 
-    def upgrade(self, upgrade_cmd):
-        d = agency.Agency.shutdown(self)
-        #TODO: stop reactor and actually run the command (not part of the task)
+    def upgrade(self, upgrade_cmd, testing=False):
+        args = upgrade_cmd.split(" ")
+        command = args.pop(0)
+        process = standalone.Process(self, command, args, os.environ.copy())
+
+        d = self.full_shutdown()
+        d.addBoth(defer.drop_param, process.restart)
+        d.addBoth(defer.drop_param, process.wait_for_state,
+                  ProcessState.finished, ProcessState.failed)
+        if not testing:
+            d.addBoth(defer.drop_param, self._stop_process)
         return d
 
     def _disconnect(self):
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._ssh.stop_listening)
-        d.addCallback(defer.drop_param, self._gateway.cleanup)
+        if self._gateway:
+            d.addCallback(defer.drop_param, self._gateway.cleanup)
         d.addCallback(defer.drop_param, self._journaler.close)
         d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
@@ -553,14 +475,13 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def reconfigure_messaging(self, msg_host, msg_port):
-        '''reconfigure_messaging(host, port) -> force messaging reconnector
-        to the connect to the (host, port)'''
-        self._messaging.reconfigure(msg_host, msg_port)
+        '''force messaging reconnector to the connect to the (host, port)'''
+        messaging = self._backends["default"]
+        messaging.reconfigure(msg_host, msg_port)
 
     @manhole.expose()
     def reconfigure_database(self, host, port, name='feat'):
-        '''reconfigure_database(host, port, name=\'feat\') -> force database
-        reconnector to connect to the (host, port, db_name)'''
+        '''force database reconnector to connect to the (host, port, name)'''
         self._database.reconfigure(host, port, name)
 
     @manhole.expose()
@@ -568,9 +489,8 @@ class Agency(agency.Agency):
         t = text_helper.Table(
             fields=("Connection", "Connected", "Host", "Port", "Reconnect in"),
             lengths=(20, 15, 30, 10, 15))
-
-        iterator = (x.show_status()
-                    for x in (self._messaging, self._database))
+        connections = self._backends.values() + [self._database]
+        iterator = (x.show_status() for x in connections)
         return t.render(iterator)
 
     ### Manhole inspection methods ###
@@ -583,14 +503,13 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def find_agent_locally(self, agent_id):
-        '''find_agent_locally(agent_id_or_descriptor) -> Same as find_agent
-        but only checks in scope of this agency.'''
+        '''Same as find_agent but only checks in scope of this agency.'''
         return agency.Agency.find_agent(self, agent_id)
 
     @manhole.expose()
     def find_agent(self, agent_id):
-        '''find_agent(agent_id_or_descriptor) -> Gives medium class or its
-        pb refrence of the agent if this agency hosts it.'''
+        '''Gives medium class or its pb refrence of the agent if this agency
+        hosts it.'''
         return self._broker.find_agent(agent_id)
 
     def iter_agency_ids(self):
@@ -599,7 +518,7 @@ class Agency(agency.Agency):
     @manhole.expose()
     @defer.inlineCallbacks
     def list_slaves(self):
-        '''list_slaves() -> Print information about the slave agencies.'''
+        '''Print information about the slave agencies.'''
         resp = []
         for slave_id, slave in self._broker.slaves.iteritems():
             resp += ["#### Slave %s ####" % slave_id]
@@ -610,21 +529,36 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def get_slave(self, slave_id):
-        '''get_slave(slave_id) -> Give the reference to the nth slave
-        agency.'''
+        '''Give the reference to the nth slave agency.'''
         return self._broker.slaves[slave_id].reference
 
     # Config manipulation (standalone agencies receive the configuration
     # in the environment).
 
-    def _init_config(self, msg_host=None, msg_port=None,
-                     msg_user=None, msg_password=None,
-                     db_host=None, db_port=None, db_name=None,
-                     public_key=None, private_key=None,
-                     authorized_keys=None, manhole_port=None,
-                     agency_journal=None, socket_path=None,
-                     gateway_port=None, enable_spawning_slave=None,
-                     rundir=None, logdir=None, daemonize=None,
+    def _init_config(self,
+                     msg_host=None,
+                     msg_port=None,
+                     msg_user=None,
+                     msg_password=None,
+                     db_host=None,
+                     db_port=None,
+                     db_name=None,
+                     public_key=None,
+                     private_key=None,
+                     authorized_keys=None,
+                     manhole_port=None,
+                     agency_journal=None,
+                     socket_path=None,
+                     gateway_port=None,
+                     gateway_p12=None,
+                     allow_tcp_gateway=None,
+                     tunneling_host=None,
+                     tunneling_port=None,
+                     tunneling_p12=None,
+                     enable_spawning_slave=None,
+                     rundir=None,
+                     logdir=None,
+                     daemonize=None,
                      force_host_restart=None):
 
         msg_conf = dict(host=msg_host,
@@ -652,7 +586,16 @@ class Agency(agency.Agency):
                            daemonize=daemonize,
                            force_host_restart=force_host_restart)
 
-        gateway_conf = dict(port=gateway_port)
+        gateway_conf = dict(port=gateway_port,
+                            p12=gateway_p12,
+                            allow_tcp=allow_tcp_gateway)
+
+        if tunneling_host is None:
+            tunneling_host = socket.gethostbyaddr(socket.gethostname())[0]
+
+        tunnel_conf = dict(host=tunneling_host,
+                           port=tunneling_port,
+                           p12=tunneling_p12)
 
         self.config = dict()
         self.config['msg'] = msg_conf
@@ -660,6 +603,7 @@ class Agency(agency.Agency):
         self.config['manhole'] = manhole_conf
         self.config['agency'] = agency_conf
         self.config['gateway'] = gateway_conf
+        self.config['tunnel'] = tunnel_conf
 
     def _store_config(self, env):
         '''
@@ -705,6 +649,52 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+    def _initiate_messaging(self, config):
+        try:
+            host = config['host']
+            port = int(config['port'])
+            username = config['user']
+            password = config['password']
+
+            self.info("Setting up messaging using %s@%s:%d", username,
+                      host, port)
+
+            backend = messaging.Messaging(host, port, username, password)
+            backend.redirect_log(self)
+            return backend
+        except Exception as e:
+            msg = "Failed to setup messaging backend"
+            error.handle_exception(self, e, msg)
+            # For now we do not support not having messaging backend
+            raise
+
+    def _initiate_tunneling(self, config):
+        try:
+            host = config["host"]
+            port = int(config["port"])
+            p12 = config["p12"]
+            port_range = range(port, port + TUNNELING_PORT_COUNT)
+
+            self.info("Setting up tunneling on %s ports %d-%d "
+                      "using PKCS12 %r", host, port_range[0],
+                      port_range[-1], p12)
+
+            csec = security.ClientContextFactory(p12_filename=p12,
+                                                 verify_ca_from_p12=True)
+            cpol = security.ClientPolicy(csec)
+            ssec = security.ServerContextFactory(p12_filename=p12,
+                                                 verify_ca_from_p12=True)
+            spol = security.ServerPolicy(ssec)
+            backend = tunneling.Backend(host, port_range,
+                                        client_security_policy=cpol,
+                                        server_security_policy=spol)
+            backend.redirect_log(self)
+            return backend
+        except Exception as e:
+            msg = "Failed to setup tunneling backend"
+            error.handle_exception(self, e, msg)
+        return None
 
     def _start_host_agent_if_necessary(self):
         '''
@@ -782,7 +772,8 @@ class Agency(agency.Agency):
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")
-        self.debug("Retrying in %d seconds", HOST_RESTART_RETRY_INTERVAL)
+        self.debug("Retrying in %d seconds",
+                   HOST_RESTART_RETRY_INTERVAL)
         time.callLater(HOST_RESTART_RETRY_INTERVAL,
                        self._start_host_agent_if_necessary)
 
@@ -835,17 +826,41 @@ class Agency(agency.Agency):
             self._snapshot_task.cancel()
         self._snapshot_task = None
 
+    def _create_gateway(self, config):
+        try:
+            port = int(config["port"])
+            p12 = config["p12"]
+            allow_tcp = config["allow_tcp"]
+            range = (port, port + GATEWAY_PORT_COUNT)
+
+            if not os.path.exists(p12):
+                if not allow_tcp:
+                    self.warning("No gateway PKCS12 specified or file "
+                                 "not found, gateway disabled: %s", p12)
+                    return
+                sec = security.UnsecuredPolicy()
+                self.info("Setting up TCP gateway on ports %d-%d",
+                          range[0], range[-1])
+            else:
+                fac = security.ServerContextFactory(p12_filename=p12,
+                                                    verify_ca_from_p12=True)
+                sec = security.ServerPolicy(fac)
+                self.info("Setting up SSL gateway on ports %d-%d "
+                          "using PKCS12 %r", range[0], range[-1], p12)
+
+            return gateway.Gateway(self, range, security_policy=sec)
+        except Exception as e:
+            error.handle_exception(self, e, "Failed to setup gateway")
+
     def _start_slave_gateway(self):
-        master_port = int(self.config["gateway"]["port"])
-        range = (master_port, master_port + GATEWAY_PORT_COUNT)
-        self._gateway = gateway.Gateway(self, range)
-        self._gateway.initiate_slave()
+        self._gateway = self._create_gateway(self.config["gateway"])
+        if self._gateway:
+            self._gateway.initiate_slave()
 
     def _start_master_gateway(self):
-        master_port = int(self.config["gateway"]["port"])
-        range = (master_port, master_port + GATEWAY_PORT_COUNT)
-        self._gateway = gateway.Gateway(self, range)
-        self._gateway.initiate_master()
+        self._gateway = self._create_gateway(self.config["gateway"])
+        if self._gateway:
+            self._gateway.initiate_master()
 
     def _create_pid_file(self):
         rundir = self.config['agency']['rundir']

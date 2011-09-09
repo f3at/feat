@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from feat.agents.base import task, replay, requester
 
 from feat.common import defer, fiber, serialization, formatable
@@ -124,7 +145,7 @@ class NotificationSender(task.StealthPeriodicTask):
         self.log("Descriptor is still there, waiting patiently for the agent.")
 
         new_recp = IRecipient(desc)
-        if recp != new_recp and new_recp.shard is not None:
+        if recp != new_recp and new_recp.route is not None:
             return self._update_recipient(recp, new_recp)
 
     ### methods for handling the list of notifications ###

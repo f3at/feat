@@ -7,17 +7,19 @@ ROOT=$(cd $(dirname $0); cd ..; pwd)
 ENV="$ROOT/env"
 BIN="$ROOT/bin"
 SRC="$ROOT/src"
+CONF="$ROOT/conf"
 FEAT="$BIN/feat"
 LOGDIR="$ROOT"
 RUNDIR="$ROOT"
 JOURNAL="$LOGDIR/journal.sqlite3"
 LOGFILES="$LOGDIR/feat.*.log"
 PIDFILE="$RUNDIR/feat.pid"
-DBLOAD="$SRC/feat/bin/dbload.py"
-MHDIR="$SRC/feat/bin"
-MHPUB="$MHDIR/public.key"
-MHPRIV="$MHDIR/private.key"
-MHAUTH="$MHDIR/authorized_keys"
+DBLOAD="$BIN/feat-dbload"
+MHPUB="$CONF/public.key"
+MHPRIV="$CONF/private.key"
+MHAUTH="$CONF/authorized_keys"
+GW_P12="$CONF/gateway.p12"
+TUNNEL_P12="$CONF/tunneling.p12"
 
 no_daemon=
 do_cleanup=
@@ -94,4 +96,6 @@ fi
 echo "Starting F3AT..."
 $ENV $FEAT -m "$master_host" -H "$master_host" \
            -L "$LOGDIR" -R "$RUNDIR" $daemon_args \
-           -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" $force_args
+           -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" \
+           -G "$GW_P12" -T "$TUNNEL_P12" \
+           $force_args "$@"

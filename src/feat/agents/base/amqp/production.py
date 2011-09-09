@@ -1,23 +1,49 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
+import warnings
+
 from zope.interface import classProvides, implements
 
 from feat.common import serialization, log
 from feat.agencies.net import messaging
+from feat.agents.base import recipient
 from feat.agents.base.amqp.interface import *
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import replay
+
+from feat.interface.channels import IChannelSink
 
 
 @serialization.register
 class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IAMQPClientFactory)
-    implements(IAMQPClient, IMessagingPeer)
+    implements(IAMQPClient, IMessagingPeer, IChannelSink)
 
     def __init__(self, logger, exchange, exchange_type='fanout',
                  host='localhost', port=5672, vhost='/',
                  user='guest', password='guest'):
         log.Logger.__init__(self, logger)
         log.LogProxy.__init__(self, logger)
-        self._server = None
+        self._backend = None
         self._connection = None
 
         self.exchange = exchange
@@ -32,42 +58,56 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     def connect(self):
         assert self._connection is None
-        self._server = messaging.Messaging(self.host, self.port,
-                                           self.user, self.password)
-        d = self._server.get_connection(self)
-        d.addCallback(self._store_connection)
+        self._backend = messaging.Messaging(self.host, self.port,
+                                            self.user, self.password)
+        d = self._backend.new_channel(self)
+        d.addCallback(self._store_channel)
         d.addCallback(lambda _: self._setup_exchange())
         return d
 
     def publish(self, message, key):
-        assert self._connection is not None
-        return self._connection.publish(key, self.exchange, message)
+        assert self._channel is not None
+        recip = recipient.Recipient(key, self.exchange)
+        return self._channel.post(recip, message)
 
     @replay.side_effect
     def disconnect(self):
-        self._server.disconnect()
-        self._server = None
-        self._connection = None
+        self._backend.disconnect()
+        self._backend = None
+        self._channel = None
 
-    ### IMessagingPeer Methods ###
+    ### IChannelSink ###
+
+    def get_agent_id(self):
+        return None
+
+    def get_shard_id(self):
+        return None
 
     def on_message(self, msg):
         pass
 
+    ### IMessagingPeer ###
+
     def get_queue_name(self):
-        return None
+        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
+                      "please use IChannelSink's get_agent_id() instead.",
+                      DeprecationWarning)
+        return self.get_agent_id()
 
     def get_shard_name(self):
-        return None
+        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
+                      "please use IChannelSink's get_shard_id() instead.",
+                      DeprecationWarning)
+        return self.get_shard_id()
 
     ### private ###
 
-    def _store_connection(self, con):
-        self._connection = con
+    def _store_channel(self, channel):
+        self._channel = channel
 
     def _setup_exchange(self):
-        d = self._connection._messaging.defineExchange(
-            self.exchange, self.exchange_type)
+        d = self._channel._define_exchange(self.exchange, self.exchange_type)
         return d
 
     def __eq__(self, other):

@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
@@ -19,7 +40,12 @@ class MetaEnum(type):
                 if not key.startswith("_"):
                     cls.add(key, value)
 
-    def add(cls, name, value):
+    def add(cls, attr, value):
+        if isinstance(value, tuple) and len(value) == 2:
+            value, name = value
+        else:
+            name = attr
+
         if not isinstance(value, int):
             raise TypeError("Enum value type must be int not %s"
                              % (value.__class__.__name__))
@@ -35,7 +61,7 @@ class MetaEnum(type):
         cls._values[value] = self
         cls._names[name] = self
         cls._items[self] = name
-        setattr(cls, name, self)
+        setattr(cls, attr, self)
 
         return self
 
@@ -49,7 +75,7 @@ class MetaEnum(type):
             if not int(key) in cls._values:
                 raise KeyError("There is no enum with key %d" % key)
             return cls._values[key]
-        if isinstance(key, str):
+        if isinstance(key, (str, unicode)):
             if not key in cls._names:
                 raise KeyError("There is no enum with name %s" % key)
             return cls._names[key]
@@ -59,6 +85,8 @@ class MetaEnum(type):
     __getitem__ = get
 
     def __contains__(cls, key):
+        if isinstance(key, str):
+            return key in cls._names
         if isinstance(key, Enum) and not isinstance(key, cls):
             raise TypeError("Cannot type cast between enums")
         return int(key) in cls._values
@@ -125,3 +153,9 @@ class Enum(int):
         return True
 
     __repr__ = __str__
+
+
+def value(number, name=None):
+    if name is None:
+        return number
+    return number, name

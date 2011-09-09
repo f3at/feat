@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
@@ -109,23 +130,25 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.endpoint, self.queue = self.setup_endpoint()
 
     def testJoinShard(self):
-        self.assertEqual(1, len(self.agent._messaging.get_bindings('lobby')))
+        messaging = self.agent._channels["default"]
+        self.assertEqual(1, len(messaging.get_bindings('lobby')))
 
         self.agent.leave_shard('lobby')
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks
     def testSwitchingShardRebinding(self):
+        messaging = self.agent._channels["default"]
         interest = DummyInterest()
         self.agent.register_interest(interest)
-        self.assertEqual(2, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(2, len(messaging.get_bindings('lobby')))
         yield self.agent.leave_shard('lobby')
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
         yield self.agent.join_shard('new shard')
         self.assertEqual(2,
-                         len(self.agent._messaging.get_bindings('new shard')))
-        self.assertEqual(0, len(self.agent._messaging.get_bindings('lobby')))
+                         len(messaging.get_bindings('new shard')))
+        self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
     @defer.inlineCallbacks
     def testUpdateDocument(self):
@@ -214,7 +237,7 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         def assertsOnMessage(message):
             desc = self.agent.get_descriptor()
             self.assertEqual(desc.shard, \
-                             message.reply_to.shard)
+                             message.reply_to.route)
             self.assertEqual(desc.doc_id, \
                              message.reply_to.key)
             self.assertEqual('Request', message.protocol_type)

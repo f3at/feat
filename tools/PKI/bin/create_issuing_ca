@@ -1,0 +1,71 @@
+#!/bin/bash
+
+ROOT=$(cd $(dirname $0); cd ..; pwd)
+USAGE="$0 CA_NAME"
+source "$ROOT/bin/generic.env"
+
+ISSUING_CA_NAME="$1"
+
+check_arg "No CA name specified" "$ISSUING_CA_NAME"
+
+ISSUING_CA_CAP_NAME=$(echo $ISSUING_CA_NAME | sed -e 's/^./\U&\E/g')
+
+echo "Creating $ISSUING_CA_CAP_NAME CA..."
+
+echo " * Setting up directory structure..."
+source "$ROOT/bin/ca.env" create "$ISSUING_CA_NAME"
+
+source "$ROOT/bin/ca.env" use root
+
+ISSUING_CA_PRIV_KEY="$PRIV_DIR/${ISSUING_CA_NAME}_ca_private_key.pem"
+ISSUING_CA_PUB_REQ="$REQ_DIR/${ISSUING_CA_NAME}_ca_public_key_req.pem"
+ISSUING_CA_PUB_CERT="$CERTS_DIR/${ISSUING_CA_NAME}_ca_public_cert.pem"
+ISSUING_CA_PUB_CERT_DER="$CERTS_DIR/${ISSUING_CA_NAME}_ca_public_cert.der"
+ORIG_ROOT_CA_PUB_CERT="$ROOT_CA_PUB_CERT"
+ORIG_ROOT_CA_PUB_CERT_DER="$ROOT_CA_PUB_CERT_DER"
+
+echo " * Generating private key and certificate request..."
+TMPL_SUB_CA_NAME="$ISSUING_CA_CAP_NAME"
+source "$CONF_DIR/subject.env"
+REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$SUBJ_SUB_CA_CN/emailAddress=$SUBJ_EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
+pki_openssl req \
+  -new -nodes -batch \
+  -subj "$REQ_SUBJ" \
+  -keyout "$ISSUING_CA_PRIV_KEY" \
+  -out "$ISSUING_CA_PUB_REQ" \
+  "Failed to generate CA certification request"
+
+echo " * Generating certificate..."
+pki_openssl ca \
+ -batch \
+ -policy policy_anything \
+ -out "$ISSUING_CA_PUB_CERT" \
+ -infiles "$ISSUING_CA_PUB_REQ" \
+ "Failed to generate CA certificate"
+
+echo " * Converting certificate to DER..."
+pki_openssl x509 \
+  -in "$ISSUING_CA_PUB_CERT" \
+  -out "$ISSUING_CA_PUB_CERT_DER" \
+  -outform DER \
+  "Failed to convert CA certificate to DER format"
+
+echo " * Setting up files..."
+source "$ROOT/bin/ca.env" use "$ISSUING_CA_NAME"
+
+pki_mkfile "$SERIAL_FILE"
+SERIAL=$(python -c "import random; print '%016X' % random.getrandbits(8*8)")
+echo "$SERIAL" > "$SERIAL_FILE"
+
+pki_cp "$ISSUING_CA_PUB_CERT" "$CA_PUB_CERT"
+pki_cp "$ISSUING_CA_PUB_CERT_DER" "$CA_PUB_CERT_DER"
+pki_cp "$ISSUING_CA_PRIV_KEY" "$CA_PRIV_KEY"
+pki_cp "$ORIG_ROOT_CA_PUB_CERT" "$ROOT_CA_PUB_CERT"
+pki_cp "$ORIG_ROOT_CA_PUB_CERT_DER" "$ROOT_CA_PUB_CERT_DER"
+cat "$ROOT_CA_PUB_CERT" "$CA_PUB_CERT" > "$GLOBAL_CA_PUB_CERTS"
+
+echo "WARNING: $ISSUING_CA_CAP_NAME CA private key is not encrypted"
+echo "INFO:"
+echo "  Private Key: $CA_PRIV_KEY"
+echo "  Certificate: $CA_PUB_CERT"
+echo "Done."

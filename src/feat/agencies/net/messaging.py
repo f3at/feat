@@ -1,4 +1,26 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import os
+import warnings
 
 from feat.extern.txamqp import spec
 from feat.extern.txamqp.client import TwistedDelegate
@@ -10,10 +32,12 @@ from zope.interface import implements
 
 from feat.common import log, defer, enum, error_handler, time
 from feat.common.serialization import banana
-from feat.agencies.interface import IConnectionFactory
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
+
+from feat.agencies.interface import IConnectionFactory
+from feat.interface.channels import IBackend
 
 
 class MessagingClient(AMQClient, log.Logger):
@@ -137,9 +161,11 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
 
 class Messaging(ConnectionManager, log.Logger, log.LogProxy):
 
-    implements(IConnectionFactory)
+    implements(IConnectionFactory, IBackend)
 
     log_category = "messaging"
+
+    channel_type = "default"
 
     def __init__(self, host, port, user='guest', password='guest'):
         ConnectionManager.__init__(self)
@@ -158,6 +184,8 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
 
         self._configure(host, port)
 
+    ### public ###
+
     def reconfigure(self, host, port):
         self.disconnect()
         self._configure(host, port)
@@ -166,6 +194,41 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
         eta = self._factory.get_eta_to_reconnect()
         return "Messaging", self.is_connected(), self._host, self._port, eta
 
+    ### IConnectionFactory ###
+
+    def get_connection(self, agent):
+        warnings.warn("IConnectionFactory's get_connection() is deprecated, "
+                      "please use IBackend's new_channel() instead.",
+                      DeprecationWarning)
+        return self.new_channel(agent)
+
+    ### IBackend ####
+
+    def is_idle(self):
+        return True
+
+    # is_disconnected() from common.ConnectionManager
+
+    # wait_connected() from common.ConnectionManager
+
+    def disconnect(self):
+        self.log("Disconnect called.")
+        self._factory.stopTrying()
+        self._connector.disconnect()
+
+    def new_channel(self, agent):
+        d = self._factory.get_client()
+        channel_wrapped = Channel(self, d, self._factory)
+
+        c = Connection(channel_wrapped, agent)
+        return c.initiate()
+
+    # add_disconnected_cb() from common.ConnectionManager
+
+    # add_reconnected_cb() from common.ConnectionManager
+
+    ### private ###
+
     def _configure(self, host, port):
         self._host = host
         self._port = port
@@ -173,18 +236,6 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
                                              self._factory)
         self.log('AMQP connector created. Host: %s, Port: %s',
                  self._host, self._port)
-
-    def disconnect(self):
-        self.log("Disconnect called.")
-        self._factory.stopTrying()
-        self._connector.disconnect()
-
-    def get_connection(self, agent):
-        d = self._factory.get_client()
-        channel_wrapped = Channel(self, d, self._factory)
-
-        c = Connection(channel_wrapped, agent)
-        return c.initiate()
 
 
 def wait_for_channel(method):
@@ -232,6 +283,8 @@ class ProcessingCall(object):
 
 
 class Channel(log.Logger, log.LogProxy, StateMachineMixin):
+
+    channel_type = "default"
 
     def __init__(self, messaging, client_defer, factory):
         StateMachineMixin.__init__(self, ChannelState.recording)
@@ -346,7 +399,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     @wait_for_channel
-    def defineQueue(self, name):
+    def define_queue(self, name):
         self.log('Defining queue: %r', name)
 
         queue = WrappedQueue(self, name)
@@ -357,7 +410,8 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
     @wait_for_channel
     def publish(self, key, shard, message):
-        assert isinstance(message, BaseMessage)
+        assert isinstance(message, BaseMessage), \
+               "Unexpected message class"
         serialized = self.serializer.convert(message)
         content = Content(serialized)
         content.properties['delivery mode'] = 1  # non-persistent
@@ -366,6 +420,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         d = self.channel.basic_publish(exchange=shard, content=content,
                                        routing_key=key, immediate=False)
         d.addCallback(self.tx_commit)
+        d.addCallback(defer.override_result, message)
         return d
 
     @wait_for_channel
@@ -377,21 +432,21 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     @wait_for_channel
-    def defineExchange(self, name, exchange_type="direct"):
+    def define_exchange(self, name, exchange_type="direct"):
         d = self.channel.exchange_declare(
             exchange=name, type=exchange_type, durable=True,
             nowait=False, auto_delete=False)
         return d
 
     @wait_for_channel
-    def createBinding(self, exchange, key, queue):
+    def create_binding(self, exchange, key, queue):
         self.log('Creating binding exchange=%s, key=%s, queue=%s',
                  exchange, key, queue)
         return self.channel.queue_bind(exchange=exchange, routing_key=key,
                                        queue=queue, nowait=False)
 
     @wait_for_channel
-    def deleteBinding(self, exchange, key, queue):
+    def delete_binding(self, exchange, key, queue):
         self.log('Deleting binding exchange=%s, key=%s, queue=%s',
                  exchange, key, queue)
         return self.channel.queue_unbind(exchange=exchange, routing_key=key,
@@ -408,7 +463,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
     def tx_commit(self, *_):
         return self.channel.tx_commit()
 
-    def parseMessage(self, msg):
+    def parse_message(self, msg):
 
         def unwrap(_, msg):
             body = msg.content.body
@@ -440,7 +495,7 @@ class WrappedQueue(Queue, log.Logger):
 
     def _main_loop(self, *_):
         d = self.queue.get()
-        d.addCallback(self.channel.parseMessage)
+        d.addCallback(self.channel.parse_message)
         d.addCallback(self.enqueue)
         d.addCallbacks(self._main_loop, self._error_handler)
 

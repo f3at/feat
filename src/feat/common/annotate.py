@@ -1,7 +1,29 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 from feat.common import reflect
 
 _CLASS_ANNOTATIONS_ATTR = "_class_annotations"
 _ATTRIBUTE_INJECTIONS_ATTR = "_attribute_injections"
+_ANNOTATIONS_PROCESSED = "_annotations_processed"
 
 
 class AnnotationError(Exception):
@@ -11,7 +33,7 @@ class AnnotationError(Exception):
 class MetaAnnotable(type):
 
     def __init__(cls, name, bases, dct):
-        klasses = [cls] + list(cls.mro())
+        klasses = list(reversed(cls.mro()))
 
         # Class Initialization
         method = getattr(cls, "__class__init__", None)
@@ -20,28 +42,34 @@ class MetaAnnotable(type):
 
         # Attribute Injection
         for k in klasses:
-            injections = getattr(k, _ATTRIBUTE_INJECTIONS_ATTR, None)
+            injections = k.__dict__.get(_ATTRIBUTE_INJECTIONS_ATTR, None)
             if injections is not None:
                 for attr, value in injections:
                     setattr(k, attr, value)
                 del injections[:]
 
+        pending_annotations = list()
         # Class Annotations
         for k in klasses:
-            annotations = getattr(k, _CLASS_ANNOTATIONS_ATTR, None)
+            if k.__dict__.get(_ANNOTATIONS_PROCESSED, False):
+                continue
+            is_annotable = issubclass(type(k), MetaAnnotable)
+            annotations = k.__dict__.get(_CLASS_ANNOTATIONS_ATTR, None)
             if annotations is not None:
-                for name, methodName, args, kwargs in annotations:
-                    method = None
-                    for k2 in klasses:
-                        method = getattr(k2, methodName, None)
-                        if method is not None:
-                            break
-                    if method is None:
-                        raise AnnotationError("Bad annotation %s set on class "
-                                              "%s, method %s not found"
-                                              % (name, k, methodName))
-                    method(*args, **kwargs)
-                del annotations[:]
+                if is_annotable:
+                    to_process = pending_annotations + annotations
+                    for name, methodName, args, kwargs in to_process:
+                        method = getattr(k, methodName, None)
+                        if method is None:
+                            raise AnnotationError(
+                                "Bad annotation %s set on class "
+                                "%s, method %s not found"
+                                % (name, k, methodName))
+                        method(*args, **kwargs)
+                    pending_annotations = list()
+                    setattr(k, _ANNOTATIONS_PROCESSED, True)
+                else:
+                    pending_annotations.extend(annotations)
 
         super(MetaAnnotable, cls).__init__(name, bases, dct)
 

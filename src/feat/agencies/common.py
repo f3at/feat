@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
@@ -14,6 +35,7 @@ from feat.interface.serialization import *
 
 from zope.interface import implements, classProvides
 from feat.interface.fiber import ICancellable, FiberCancelled
+from feat.interface.log import LogLevel
 
 
 class Statistics(object):
@@ -113,25 +135,30 @@ class StateMachineMixin(object):
 
     # Make it possible to use mixin without the logging submodule
 
-    def log(self, *args):
+    def log(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.log(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.log, format, args, depth=-3)
 
-    def debug(self, *args):
+    def debug(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.debug(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.debug, format, args, depth=-3)
 
-    def info(self, *args):
+    def info(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.info(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.info, format, args, depth=-3)
 
-    def warning(self, *args):
+    def warning(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.warning(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.warning, format, args, depth=-3)
 
-    def error(self, *args):
+    def error(self, format, *args):
         if isinstance(self, log.Logger):
-            log.Logger.error(self, *args)
+            #TODO: logging depth seems broken, change this when fixed
+            log.Logger.logex(self, LogLevel.error, format, args, depth=-3)
 
     # Fiber Canceller
 
@@ -233,7 +260,7 @@ class AgencyMiddleMixin(object):
 
     def _handover_message(self, msg, remote_id=None):
         msg.receiver_id = remote_id or self.remote_id
-        return self.agent.send_msg(self.recipients, msg, handover=True)
+        return self.agent.send_msg(self.recipients, msg)
 
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''

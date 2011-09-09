@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import types
@@ -109,7 +130,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.journaled
     def initiate_agent(self, state, **keywords):
-        f = self.call_mro('initiate', **keywords)
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param, self.call_mro, 'initiate', **keywords)
         f.add_callback(fiber.drop_param, self._initiate_partners)
         return f
 
@@ -196,6 +218,11 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         desc = state.medium.get_descriptor()
         return desc.doc_id + u"/" + unicode(desc.instance_id)
 
+    @replay.immutable
+    def get_shard_id(self, state):
+        '''Returns current shard identifier.'''
+        return state.medium.get_descriptor().shard
+
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
 
@@ -250,10 +277,6 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
             f.chain(fiber.fail(partners.DoublePartnership(msg)))
             return f
-#        f.add_callback(fiber.drop_param, self.initiate_protocol,
-#                       requester.Propose, recp, allocation_id,
-#                       partner_allocation_id,
-#                       our_role, partner_role, substitute)
         factory = retrying.RetryingProtocolFactory(requester.Propose,
                                                    max_retries=max_retries)
         f.add_callback(fiber.drop_param, self.initiate_protocol,
@@ -286,8 +309,8 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @manhole.expose()
     @replay.journaled
     def breakup(self, state, recp):
-        '''breakup(recp) -> Order the agent to break the partnership with
-        the given recipient'''
+        '''Order the agent to break the partnership with the given
+        recipient'''
         recp = recipient.IRecipient(recp)
         partner = self.find_partner(recp)
         if partner:
@@ -315,8 +338,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @manhole.expose()
     @replay.immutable
     def query_partners(self, state, name_or_class):
-        '''query_partners(name_or_class) ->
-              Query the partners by the relation name or partner class.'''
+        '''Query the partners by the relation name or partner class.'''
         return state.partners.query(name_or_class)
 
     @manhole.expose()
@@ -334,9 +356,9 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @manhole.expose()
     @replay.immutable
-    def get_own_address(self, state):
-        '''get_own_address() -> Return IRecipient representing the agent.'''
-        return recipient.IRecipient(state.medium)
+    def get_own_address(self, state, channel_type="default"):
+        '''Return IRecipient representing the agent.'''
+        return state.medium.get_own_address(channel_type)
 
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):
@@ -363,6 +385,10 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return state.medium.register_interest(*args, **kwargs)
 
     @replay.immutable
+    def revoke_interest(self, state, *args, **kwargs):
+        return state.medium.revoke_interest(*args, **kwargs)
+
+    @replay.immutable
     def get_document(self, state, doc_id):
         return fiber.wrap_defer(state.medium.get_document, doc_id)
 
@@ -386,7 +412,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def discover_service(self, state, string_or_factory,
                          timeout=3, shard='lobby'):
         initiator = manager.DiscoverService(string_or_factory, timeout)
-        recp = recipient.Broadcast(shard=shard,
+        recp = recipient.Broadcast(route=shard,
                                    protocol_id=initiator.protocol_id)
 
         f = fiber.succeed(initiator)

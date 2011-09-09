@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import socket
 import sys
 import os
@@ -11,6 +32,7 @@ from feat.test import common
 from feat.process import couchdb, rabbitmq, standalone
 from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, database, broker
+from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, dbtools, partners, replay
 from feat.common import serialization, fiber, log, first
 from feat.process.base import DependencyError
@@ -72,7 +94,7 @@ class UnitTestCase(common.TestCase):
 
     def testDefaultConfig(self):
         parser = optparse.OptionParser()
-        agency.add_options(parser)
+        options_module.add_options(parser)
         options = parser.get_default_values()
         self.assertTrue(hasattr(options, 'msg_host'))
         self.assertTrue(hasattr(options, 'msg_port'))
@@ -86,21 +108,28 @@ class UnitTestCase(common.TestCase):
         self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
         self.assertTrue(hasattr(options, 'manhole_port'))
         a = agency.Agency.from_config(dict())
-        self.assertEqual(a.config['msg']['host'], agency.DEFAULT_MSG_HOST)
-        self.assertEqual(a.config['msg']['port'], agency.DEFAULT_MSG_PORT)
-        self.assertEqual(a.config['msg']['user'], agency.DEFAULT_MSG_USER)
+        self.assertEqual(a.config['msg']['host'],
+                         options_module.DEFAULT_MSG_HOST)
+        self.assertEqual(a.config['msg']['port'],
+                         options_module.DEFAULT_MSG_PORT)
+        self.assertEqual(a.config['msg']['user'],
+                         options_module.DEFAULT_MSG_USER)
         self.assertEqual(a.config['msg']['password'],
-                         agency.DEFAULT_MSG_PASSWORD)
-        self.assertEqual(a.config['db']['host'], agency.DEFAULT_DB_HOST)
-        self.assertEqual(a.config['db']['port'], agency.DEFAULT_DB_PORT)
-        self.assertEqual(a.config['db']['name'], agency.DEFAULT_DB_NAME)
+                         options_module.DEFAULT_MSG_PASSWORD)
+        self.assertEqual(a.config['db']['host'],
+                         options_module.DEFAULT_DB_HOST)
+        self.assertEqual(a.config['db']['port'],
+                         options_module.DEFAULT_DB_PORT)
+        self.assertEqual(a.config['db']['name'],
+                         options_module.DEFAULT_DB_NAME)
         self.assertEqual(a.config['manhole']['public_key'],
-                         agency.DEFAULT_MH_PUBKEY)
+                         options_module.DEFAULT_MH_PUBKEY)
         self.assertEqual(a.config['manhole']['private_key'],
-                         agency.DEFAULT_MH_PRIVKEY)
+                         options_module.DEFAULT_MH_PRIVKEY)
         self.assertEqual(a.config['manhole']['authorized_keys'],
-                         agency.DEFAULT_MH_AUTH)
-        self.assertEqual(a.config['manhole']['port'], agency.DEFAULT_MH_PORT)
+                         options_module.DEFAULT_MH_AUTH)
+        self.assertEqual(a.config['manhole']['port'],
+                         options_module.DEFAULT_MH_PORT)
 
 
 class StandalonePartners(partners.Partners):
@@ -205,9 +234,10 @@ class MasterDescriptor(descriptor.Descriptor):
 @common.attr('slow', timeout=40)
 class IntegrationTestCase(common.TestCase):
 
-    configurable_attributes = ['run_rabbit', 'run_couch']
+    configurable_attributes = ['run_rabbit', 'run_couch', 'shutdown']
     run_rabbit = True
     run_couch = True
+    shutdown = True
 
     @defer.inlineCallbacks
     def _run_and_configure_db(self):
@@ -383,7 +413,6 @@ class IntegrationTestCase(common.TestCase):
 
         process = yield self.spawn_agency()
         yield self.wait_for_pid(pid_path)
-
         host_desc = yield self.db.get_document(hostname)
         self.assertEqual(1, host_desc.instance_id)
 
@@ -411,6 +440,18 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_backup()
         slave2 = self.agency._broker.slaves.values()[0]
         self.assertNotEqual(slave.slave_id, slave2.slave_id)
+
+    @common.attr(shutdown=False)
+    @defer.inlineCallbacks
+    def testUpgrade(self):
+        self.agency.config['agency']['enable_spawning_slave'] = False
+        yield self.agency.initiate()
+        if os.path.exists("effect.tmp"):
+            os.unlink("effect.tmp")
+        upgrade_cmd = 'touch effect.tmp'
+        yield self.agency.upgrade(upgrade_cmd, testing=True)
+        self.assertTrue(os.path.exists("effect.tmp"))
+        self.assertTrue(self.agency._shutting_down)
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()
@@ -442,7 +483,8 @@ class IntegrationTestCase(common.TestCase):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.wait_for(self.agency.is_idle, 20)
-        yield self.agency.full_shutdown()
+        if self.shutdown:
+            yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()
 

@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
@@ -39,7 +60,43 @@ except ValueError:
     same_value_not_allowed = True
 
 
+class E(enum.Enum):
+
+    a = enum.value(1)
+    b = enum.value(2, "custom name")
+    c = enum.value(4, "#/!@")
+
+
 class TestEnum(common.TestCase):
+
+    def testCustomNames(self):
+        self.assertEqual(E.a, 1)
+        self.assertEqual(E.b, 2)
+        self.assertEqual(E.c, 4)
+        self.assertEqual(E.a.name, "a")
+        self.assertEqual(E.b.name, "custom name")
+        self.assertEqual(E.c.name, "#/!@")
+        self.assertEqual(E["a"], E.a)
+        self.assertEqual(E[u"a"], E.a)
+        self.assertEqual(E["custom name"], E.b)
+        self.assertEqual(E[u"custom name"], E.b)
+        self.assertEqual(E["#/!@"], E.c)
+        self.assertEqual(E[u"#/!@"], E.c)
+        self.assertEqual(E[E.a], E.a)
+        self.assertEqual(E[E.b], E.b)
+        self.assertEqual(E[E.c], E.c)
+        self.assertEqual(E[1], E.a)
+        self.assertEqual(E[2], E.b)
+        self.assertEqual(E[4], E.c)
+        self.assertTrue(E.a in E)
+        self.assertTrue(E.b in E)
+        self.assertTrue(E.c in E)
+        self.assertTrue(1 in E)
+        self.assertTrue(2 in E)
+        self.assertTrue(4 in E)
+        self.assertTrue("a" in E)
+        self.assertTrue("custom name" in E)
+        self.assertTrue("#/!@" in E)
 
     def testLogicalValues(self):
         self.assertTrue(A.a)

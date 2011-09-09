@@ -1,7 +1,29 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import operator
 import uuid
 import copy
 
+import feat
 from feat.agents.base import (agent, replay, manager, contractor,
                               message, task, document, dbtools, sender, )
 from feat.agents.common import (rpc, export, host, start_agent, )
@@ -9,7 +31,7 @@ from feat.common import (formatable, serialization, log, fiber,
                          text_helper, manhole, first, )
 from feat.agents.migration import protocol, spec
 
-from feat.interface.recipient import *
+from feat.interface.recipient import IRecipients, IRecipient
 
 
 Migratability = export.Migratability
@@ -28,6 +50,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
+        state.medium.enable_channel('tunnel')
         # result of the view query for th shard structure
         state.shards = list()
         # registry of know migrations to be able to speak with
@@ -49,7 +72,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
         '''
         config = state.medium.get_configuration()
         return spec.HandshakeResponse(name=config.sitename,
-                                      version=config.version)
+                                      version=feat.version)
 
     @replay.journaled
     def migration_get_shard_structure(self, state):
@@ -122,6 +145,9 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
     @replay.mutable
     def join_migrations(self, state, migrations_or_ids, host_cmd=None,
                         migration_agent=None):
+        if not migrations_or_ids:
+            raise ValueError("join_migration() expects a list of migration"
+                             "or it's ids to join, got: %r", migrations_or_ids)
         migrations = map(self._get_migration, migrations_or_ids)
         for migration in migrations:
             if not migration.is_completable():
@@ -181,7 +207,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
             fields=("Agent_id", "Shard", "Strategy", "Applied",
                     "Cancelled", "Failure"),
             lengths=(40, 40, 20, 15, 15, 40))
-        text = t.render(((x.recipient.key, x.recipient.shard,
+        text = t.render(((x.recipient.key, x.recipient.route,
                           x.strategy.name, x.applied, x.cancelled,
                           x.failure or "")
                          for x in migration.get_steps()))
@@ -249,7 +275,7 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
     @manhole.expose()
     @replay.journaled
     def unlock_host(self, state, recp):
-        return self.call_remote(recp, 'unregister_from_migration', 'manual')
+        return self.call_remote(recp, 'unregister_from_migration', ['manual'])
 
     ### private ###
 
@@ -410,7 +436,7 @@ class ApplyMigrationStep(task.BaseTask):
         if blackbox:
             kwargs['blackbox'] = blackbox
         return host.start_agent_in_shard(state.agent, state.descriptor,
-                                         state.step.recipient.shard,
+                                         state.step.recipient.route,
                                          **kwargs)
 
     @replay.journaled
@@ -791,7 +817,7 @@ class Migration(replay.Replayable):
         resp = dict()
         for step in state.steps:
             if step.strategy == Migratability.host:
-                shard = step.recipient.shard
+                shard = step.recipient.route
                 if shard not in resp:
                     resp[shard] = list()
                 resp[shard].append(step.recipient.key)
@@ -804,7 +830,7 @@ class Migration(replay.Replayable):
         '''
         state.steps = [x for x in state.steps
                        if not (x.strategy == Migratability.locally and
-                               x.recipient.shard == shard)]
+                               x.recipient.route == shard)]
         return self
 
     ### private ###
@@ -828,7 +854,6 @@ class ExportAgentConfiguration(document.Document):
     document.field('notification_period', 12)
     document.field('default_host_cmd', '/bin/true')
     document.field('sitename', 'local')
-    document.field('version', 1)
 
 
 dbtools.initial_data(ExportAgentConfiguration)

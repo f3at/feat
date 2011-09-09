@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import cgi
 import operator
 import socket
@@ -27,8 +48,8 @@ class BaseResource(webserver.BasicResource):
     def render_footer(self, doc):
         doc.extend(["</BODY></HTML>"])
 
-    def redirect(self, path, host=None, port=None):
-        url = http.compose(path, host=host, port=port)
+    def redirect(self, path, host=None, port=None, scheme=None):
+        url = http.compose(path, host=host, port=port, scheme=scheme)
         raise http.MovedPermanently(location=url)
 
 
@@ -191,13 +212,13 @@ class Agencies(BaseResource):
         if result is not None:
             host, port, is_remote = result
             if is_remote:
-                self.redirect(request.path, host, port)
+                self.redirect(request.path, host, port, request.scheme)
 
     def _agency_located(self, result, request, location, remaining):
         if result is None:
             return None
         host, port, _is_remote = result
-        self.redirect(request.path, host, port)
+        self.redirect(request.path, host, port, request.scheme)
 
 
 class Agents(BaseResource):
@@ -310,7 +331,8 @@ class Agents(BaseResource):
         if result is None:
             return None
         host, port, _is_remote = result
-        url = http.compose(request.path, host=host, port=port)
+        url = http.compose(request.path, host=host, port=port,
+                           scheme=request.scheme)
         raise http.MovedPermanently(location=url)
 
 
@@ -338,15 +360,15 @@ class Agency(BaseResource):
 
             if 'shutdown_agency' in params:
                 time.callLater(1, self.model.shutdown_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
             if 'terminate_agency' in params:
                 time.callLater(1, self.model.terminate_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
             if 'kill_agency' in params:
                 time.callLater(1, self.model.kill_agency)
-                return self._redirect_to_top()
+                return self._redirect_to_top(request)
 
         agents_url = "/agents"
 
@@ -409,9 +431,10 @@ class Agency(BaseResource):
         self.render_footer(doc)
         response.writelines(doc)
 
-    def _redirect_to_top(self):
+    def _redirect_to_top(self, request):
         self.redirect("/", self.model.get_hostname(),
-                      self.model.default_gateway_port)
+                      self.model.default_gateway_port,
+                      request.scheme)
 
 
 class Agent(BaseResource):
@@ -575,7 +598,7 @@ class Monitor(Agent):
                             "<TD>", type_name, "</TD>"
                             "<TD><A href='", agent_url, "'>",
                             recip.key, "</A></TD>",
-                            "<TD>", recip.shard, "</TD>"
+                            "<TD>", recip.route, "</TD>"
                             "<TD>", pat["state"].name, "</TD>"
                             "<TD align='right'>", str(pat["counter"]), "</TD>"
                             "</TR>"])

@@ -1,5 +1,27 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import uuid
 from types import NoneType
+import warnings
 
 from twisted.python import components
 from zope.interface import implements
@@ -26,19 +48,26 @@ Types that can be passed as destination includes:
 '''
 
 
+DEFAULT_CHANNEL = "default"
+
+
 class BaseRecipient(serialization.Serializable, pb.Copyable):
 
-    def __init__(self, key, shard):
+    def __init__(self, key, route=None, channel=None):
         self._array = [self]
         self._key = key
-        self._shard = shard
+        self._route = route
+        self._channel = channel or DEFAULT_CHANNEL
 
     def snapshot(self):
-        return {"key": self._key, "shard": self._shard}
+        return {"key": self._key,
+                "route": self._route,
+                "channel": self._channel}
 
     def recover(self, snapshot):
         self._key = snapshot["key"]
-        self._shard = snapshot["shard"]
+        self._route = snapshot["route"]
+        self._channel = snapshot["channel"]
 
     def restored(self):
         self._array = [self]
@@ -49,20 +78,31 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
 
     @property
     def shard(self):
-        return self._shard
+        warnings.warn("Recipient's shard property is deprecated, "
+                      "please use route property instead.",
+                      DeprecationWarning)
+        return self._route
+
+    @property
+    def route(self):
+        return self._route
+
+    @property
+    def channel(self):
+        return self._channel
 
     def __iter__(self):
         return self._array.__iter__()
 
     def __hash__(self):
         # VERY important to support recipient as key in a dictionary or a set
-        return hash((self._key, self._shard))
+        return hash((self._key, self._route))
 
     def __eq__(self, other):
         if not isinstance(other, BaseRecipient):
             return NotImplemented
         return (self.type == other.type
-                and self.shard == other.shard
+                and self.route == other.route
                 and self.key == other.key)
 
     def __ne__(self, other):
@@ -71,7 +111,8 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
         return not self.__eq__(other)
 
     def __repr__(self):
-        return "<Recipient: key=%r, shard=%r>" % (self.key, self.shard, )
+        return ("<Recipient: key=%r, route=%r, %s>"
+                % (self._key, self._route, self._channel))
 
 
 @serialization.register
@@ -81,8 +122,8 @@ class Recipient(BaseRecipient):
 
     type_name = 'recipient'
 
-    def __init__(self, key, shard=None):
-        BaseRecipient.__init__(self, key, shard)
+    def __init__(self, key, route=None, channel=None):
+        BaseRecipient.__init__(self, key, route, channel)
 
     @property
     def type(self):
@@ -96,8 +137,8 @@ class Broadcast(BaseRecipient):
 
     type_name = 'broadcast'
 
-    def __init__(self, protocol_id=None, shard=None):
-        BaseRecipient.__init__(self, protocol_id, shard)
+    def __init__(self, protocol_id=None, route=None, channel=None):
+        BaseRecipient.__init__(self, protocol_id, route, channel)
 
     @property
     def type(self):
@@ -133,13 +174,15 @@ class Recipients(serialization.Serializable, pb.Copyable):
         return hash(self._recipients)
 
     def __eq__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         for el1, el2 in zip(self._recipients, other._recipients):
             if el1 != el2:
                 return False
         return True
 
     def __repr__(self):
-        cont = ["k=%r,s=%r" % (recp.key, recp.shard, )
+        cont = ["k=%r,r=%r" % (recp.key, recp.route, )
                 for recp in self._recipients]
         return "<RecipientsList: %s>" % "; ".join(cont)
 
@@ -160,8 +203,8 @@ class Agent(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, agent_id, shard=None):
-        Recipient.__init__(self, agent_id, shard)
+    def __init__(self, agent_id, route=None, channel=None):
+        Recipient.__init__(self, agent_id, route, channel)
 
 
 @adapter.register(IAgent, IRecipient)
@@ -172,9 +215,9 @@ class RecipientFromAgent(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, agent):
+    def __init__(self, agent, channel=None):
         desc = agent.get_descriptor()
-        Recipient.__init__(self, desc.doc_id, desc.shard)
+        Recipient.__init__(self, desc.doc_id, desc.shard, channel)
 
 
 @adapter.register(message.BaseMessage, IRecipient)
@@ -184,7 +227,9 @@ class RecipientFromMessage(Recipient):
     type_name = 'recipient'
 
     def __init__(self, message):
-        Recipient.__init__(self, message.reply_to.key, message.reply_to.shard)
+        Recipient.__init__(self, message.reply_to.key,
+                           message.reply_to.route,
+                           message.reply_to.channel)
 
 
 @adapter.register(descriptor.Descriptor, IRecipient)
@@ -193,8 +238,8 @@ class RecipientFromDescriptor(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, desc):
-        BaseRecipient.__init__(self, desc.doc_id, desc.shard)
+    def __init__(self, desc, channel=None):
+        BaseRecipient.__init__(self, desc.doc_id, desc.shard, channel)
 
 
 def dummy_agent():

@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 import uuid
 
 from twisted.python import components
@@ -73,7 +94,7 @@ class BaseInterest(log.Logger):
         self.args = args
         self.kwargs = kwargs
 
-        self._lobby_binding = None
+        self._lobby_bindings = None
         self._concurrency = getattr(agent_factory, "concurrency", None)
         self._queue = None
         self._active = 0
@@ -143,31 +164,34 @@ class BaseInterest(log.Logger):
     def bind(self, shard=None):
         if self.agent_factory.interest_type == InterestType.public:
             prot_id = self.agent_factory.protocol_id
-            self.binding = self.agency_agent.create_binding(prot_id, shard)
-            return self.binding
+            self.bindings = self.agency_agent.create_bindings(prot_id, shard)
+            return self.bindings
+        return []
 
     def revoke(self):
         self.clear_queue()
         self.unbind_from_lobby()
         if self.agent_factory.interest_type == InterestType.public:
-            self.binding.revoke()
+            for binding in self.bindings:
+                binding.revoke()
 
     ### IAgencyInterest Method ###
 
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
-        if self._lobby_binding is not None:
+        if self._lobby_bindings:
             return
         prot_id = self.agent_factory.protocol_id
-        binding = self.agency_agent.create_binding(prot_id, 'lobby')
-        self._lobby_binding = binding
+        bindings = self.agency_agent.create_bindings(prot_id, 'lobby')
+        self._lobby_bindings = bindings
 
     @replay.named_side_effect('Interest.unbind_from_lobby')
     def unbind_from_lobby(self):
-        if self._lobby_binding is None:
+        if not self._lobby_bindings:
             return
-        self._lobby_binding.revoke()
-        self._lobby_binding = None
+        for binding in self._lobby_bindings:
+            binding.revoke()
+        self._lobby_bindings = None
 
     ### ISerializable Methods ###
 

@@ -1,3 +1,24 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import sys
@@ -33,6 +54,10 @@ def time():
              time scaling mechanism.
     @rtype: float
     '''
+    return time_no_sfx()
+
+
+def time_no_sfx():
     real_time = reactor.seconds()
     return real_time / _get_scale()
 
@@ -61,6 +86,14 @@ def left(moment):
 
 
 def callLater(_seconds, _f, *args, **kwargs):
+    return call_later(_seconds, _f, *args, **kwargs)
+
+
+def call_next(_f, *args, **kwargs):
+    return call_later(0, _f, *args, **kwargs)
+
+
+def call_later(_seconds, _f, *args, **kwargs):
     '''
     Wrapper for reactor.callLater() aware the time scalling.
     This method should always be used instead directly touching the reactor.
@@ -100,7 +133,7 @@ def wait_for(logger, check, timeout, freq=0.5):
             raise RuntimeError('Timeout error waiting for check %r.'
                                % check.__name__)
         d = defer.Deferred()
-        callLater(freq, d.callback, None)
+        call_later(freq, d.callback, None)
         yield d
 
 
