@@ -1,9 +1,9 @@
 from zope.interface import implements
 
-from feat.agencies import common
-from feat.agencies.tunneling import Channel
+from feat.agencies import common, tunneling
+from feat.agencies.tunneling import Channel, CHANNEL_TYPE
 from feat.common import log, time
-from feat.web import http, tunnel
+from feat.web import tunnel
 
 from feat.interface.channels import IBackend
 from feat.interface.recipient import IRecipients, RecipientType
@@ -15,7 +15,7 @@ class Backend(log.LogProxy, log.Logger, common.ConnectionManager):
 
     log_category = "tunneling"
 
-    channel_type = "tunnel"
+    channel_type = CHANNEL_TYPE
 
     def __init__(self, host, port_range, version=None, registry=None):
         log.LogProxy.__init__(self, log.FluLogKeeper())
@@ -76,13 +76,12 @@ class Backend(log.LogProxy, log.Logger, common.ConnectionManager):
     ### tunnel.ITunnelDispatcher ###
 
     def dispatch(self, uri, data):
-        _scheme, _host, _port, location, _query = http.parse(uri)
-        key = location.lstrip("/")
-        if key not in self._channels:
-            self.warning("Dropping message to unknown agent %s", key)
+        recip = tunneling.parse(uri)
+        if recip.key not in self._channels:
+            self.warning("Dropping message to unknown recipient %s", recip)
             return
         self._pending_dispatches += 1
-        time.call_next(self._dispatch_message, key, data)
+        time.call_next(self._dispatch_message, recip, data)
 
     ### protected ###
 
@@ -101,9 +100,9 @@ class Backend(log.LogProxy, log.Logger, common.ConnectionManager):
     ### private ###
 
     def _post_message(self, recip, message):
-        url = http.append_location(recip.route, recip.key)
-        return self._tunnel.post(url, message)
+        uri = tunneling.compose(recip)
+        return self._tunnel.post(uri, message)
 
-    def _dispatch_message(self, key, message):
+    def _dispatch_message(self, recip, message):
         self._pending_dispatches -= 1
-        self._channels[key]._dispatch(message)
+        self._channels[recip.key]._dispatch(message)

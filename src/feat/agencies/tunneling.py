@@ -24,17 +24,20 @@ from zope.interface import implements
 from feat.agents.base import recipient
 from feat.agents.base.message import BaseMessage
 from feat.common import log, defer
+from feat.web import http
 
 from feat.agencies.interface import IDialogMessage
 from feat.interface.channels import IBackend, IChannel, IChannelSink
 from feat.interface.recipient import IRecipients, RecipientType
+
+CHANNEL_TYPE = "tunnel"
 
 
 class Channel(log.Logger):
 
     implements(IChannel)
 
-    channel_type = "tunnel"
+    channel_type = CHANNEL_TYPE
 
     support_broadcast = False
 
@@ -94,3 +97,16 @@ class Channel(log.Logger):
 
     def _dispatch(self, message):
         self._sink.on_message(message)
+
+
+def parse(connection_string):
+    """Parse a tunnel connection string and build a recipient from it."""
+    scheme, host, port, location, _query = http.parse(str(connection_string))
+    route = http.compose(host=host, port=port, scheme=scheme)
+    key = location.lstrip("/")
+    return recipient.Recipient(key, route, CHANNEL_TYPE)
+
+
+def compose(recip):
+    """Compose a connection string for the given recipient."""
+    return http.append_location(str(recip.route), str(recip.key))

@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 from pprint import pformat
 
+from feat.agencies import tunneling
 from feat.agents.base import (agent, replay, recipient, task, descriptor,
                               alert, notifier, )
 from feat.agents.common import start_agent
@@ -105,6 +106,9 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
             return AgentEntry(recipient=recp,
                               name=response.name,
                               version=response.version)
+
+        if isinstance(recp, (str, unicode)):
+            recp = tunneling.parse(recp)
 
         req = self.initiate_protocol(
             protocol.Requester, recp, spec.Handshake())

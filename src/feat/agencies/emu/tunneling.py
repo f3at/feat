@@ -25,7 +25,7 @@ from zope.interface import implements
 
 import feat
 from feat.agencies import common
-from feat.agencies.tunneling import Channel
+from feat.agencies.tunneling import Channel, CHANNEL_TYPE
 from feat.common import log, time
 from feat.common.serialization import pytree
 
@@ -39,7 +39,7 @@ class Backend(common.ConnectionManager, log.Logger, log.FluLogKeeper):
 
     log_category = "emu-tunneling"
 
-    channel_type = "tunnel"
+    channel_type = CHANNEL_TYPE
 
     def __init__(self, version=None, bridge=None, registry=None):
         common.ConnectionManager.__init__(self)
