@@ -1,0 +1,16 @@
+#!/bin/bash
+
+env_path=$0
+type=`stat -c%f $0`
+
+# If we're a link figure out where are we installed really
+if test $type == 'a1ff'
+then
+   env_path=`readlink $0`
+fi
+
+ROOT=$(cd $(dirname $env_path); pwd)
+export PYTHONPATH=$PYTHONPATH${PYTHONPATH:+:}$ROOT/src
+export PATH=$ROOT/bin:$PATH
+
+exec "$@"

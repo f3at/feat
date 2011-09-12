@@ -542,6 +542,8 @@ class AgentMixin(object):
 @serialization.register
 class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
+    preallocation_timeout = ALLOCATION_TIMEOUT
+
     def __init__(self, agent):
         log.Logger.__init__(self, agent)
         log.LogProxy.__init__(self, agent)
@@ -582,7 +584,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         try:
             alloc = self._generate_allocation(**params)
             state.modifications.set(alloc.id, alloc,
-                                    expiration=ALLOCATION_TIMEOUT,
+                                    expiration=self.preallocation_timeout,
                                     relative=True)
             return alloc
         except NotEnoughResource:

@@ -170,8 +170,7 @@ Below the few examples of code **which should never be written**.::
 Getting around the constrains.
 ------------------------------
 
-So far the limitations presented make the usefulness of the framework questionable. Using twisted without the Deferred would be quite devastating. Also it is quite obvious that in the end we need to call methods which result
-is not deterministic (they use IO). The solution to the problem is quite complex, but can be summarized with the following rule: if something is not beautiful enough to live inside the hamster ball, we need to delegate it outside. Framework supplies us with two powerful tool for performing this task: the *fibers* and the *side effects*.
+So far the limitations presented make the usefulness of the framework questionable. Using twisted without the Deferred would be quite devastating. Also it is quite obvious that in the end we need to call methods which result is not deterministic (they use io operations for example). The solution to the problem is quite complex, but can be summarized with the following rule: if something is not neat enough to live inside the hamster ball, we need to delegate it outside. Framework supplies us with two powerful tool for performing this task: the *fibers* and the *side effects*.
 
 
 Fibers
@@ -389,7 +388,7 @@ Defining and using partners
 No man is an island. Same applies to agents. If your task at hand can be performed by a single agent it means you are wasting time reading this guide.
 
 Framework comes with a handy utility class (feat.agents.base.partners.Partners) which is here to help you manage relations between agents. Lets take a look at the following code: ::
-B
+
 
     class JohnPartner(partners.BasePartner):
         pass
