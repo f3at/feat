@@ -94,4 +94,12 @@ class AgentDependencyMixin(object):
                 'Expected object %r to provide the interface %r!' %\
                 (function, component, ))
 
-        return function(*args, **kwargs)
+        result = function(*args, **kwargs)
+
+        # for purpose of registration we might want to pass the reference
+        # to the dependency to the inside to make it easier to register it
+        if getattr(state.medium, 'keeps_track_of_dependencies', False):
+            state.medium.register_dependency_reference(
+                result, component, mode, args, kwargs)
+
+        return result

@@ -207,6 +207,8 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         self._agencies = list()
         self._breakpoints = dict()
 
+        self._dependency_references = list()
+
     def get_stats(self):
         res = dict(self._messaging.get_stats())
         res.update(dict(self._database.get_stats()))
@@ -227,6 +229,29 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def count_agents(self, agent_type=None):
         return len([x for x in self.iter_agents(agent_type)])
+
+    def register_dependency_reference(self, reference):
+        self._dependency_references.append(reference)
+
+    def find_dependency(self, **conditions):
+
+        def match(ref, conditions):
+            for key, value in conditions.items():
+                if getattr(ref, key) != value:
+                    return False
+            return True
+
+        index = conditions.pop('index', None)
+        matching = [ref for ref in self._dependency_references
+                    if match(ref, conditions)]
+        if not matching:
+            return
+        if len(matching) == 1 and index is None:
+            index = 0
+        if len(matching) > 1 and index is None:
+            raise ValueError('Found %d dependecies matching, you should '
+                             'specify more or pass index.', len(matching))
+        return matching[index].instance
 
     def freeze_all(self):
         '''

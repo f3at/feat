@@ -52,7 +52,7 @@ class BasePoster(protocols.BaseInitiator):
     ### Method to be Overridden ###
 
     def pack_payload(self, *args, **kwargs):
-        return dict(args=args, kwars=kwargs)
+        return dict(args=args, kwargs=kwargs)
 
     ### IAgentPoster Methods ###
 

@@ -23,7 +23,7 @@ from zope.interface import implements
 
 from feat.agencies import agency
 from feat.agents.base import replay
-from feat.common import serialization, manhole, defer, guard
+from feat.common import serialization, manhole, defer, guard, formatable
 
 from feat.interface.protocols import *
 
@@ -60,7 +60,31 @@ class DummyInitiator(serialization.Serializable):
         return False
 
 
+@serialization.register
+class DependencyReference(formatable.Formatable):
+
+    formatable.field('agent_id', None)
+    formatable.field('instance', None)
+    formatable.field('component', None)
+    formatable.field('mode', None)
+    formatable.field('args', None)
+    formatable.field('kwargs', None)
+
+
 class AgencyAgent(agency.AgencyAgent):
+
+    keeps_track_of_dependencies = True
+
+    def register_dependency_reference(self, instance, component, mode,
+                                      args, kwargs):
+        a_id = self._descriptor.doc_id
+        reference = DependencyReference(agent_id=a_id,
+                                        instance=instance,
+                                        component=component,
+                                        mode=mode,
+                                        args=args,
+                                        kwargs=kwargs)
+        self.agency._driver.register_dependency_reference(reference)
 
     ### Overridden Methods ###
 
