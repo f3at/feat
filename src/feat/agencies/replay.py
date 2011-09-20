@@ -429,8 +429,14 @@ class Replay(log.FluLogKeeper, log.Logger):
         old_agent, old_protocols = self.agent, self.protocols
         self.reset()
         self.set_current_time(entry._timestamp)
-        args, kwargs = replay.replay(entry, entry.get_arguments)
-        self._restore_snapshot(*args, **kwargs)
+        args, _kwargs = replay.replay(entry, entry.get_arguments)
+        if not args:
+            # we can get entry without the arguments in case it was
+            # impossible to serialize the snapshot of the agent
+            raise ReplayError("Malformed agent snapshot, reason: %r" %
+                              (entry.result, ))
+        snapshot = args[0]
+        self._restore_snapshot(snapshot)
         self._check_snapshot(old_agent, old_protocols)
         self.agent_type = self.agent.descriptor_type
 

@@ -29,7 +29,7 @@ from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb
 from twisted.internet import reactor
-from twisted.python import log as twisted_log
+from twisted.python import log as twisted_log, failure
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
@@ -887,6 +887,10 @@ class JournalerConnection(log.Logger, log.LogProxy):
             'agency', 'snapshot', snapshot)
         entry.set_result(None)
         entry.commit()
+        f = entry.get_result()
+        if f:
+            self.error('Error snapshoting the agent: %r. It will produce '
+                       'manlformed snapshot.', f.trigger_param)
 
 
 class AgencyJournalSideEffect(object):
