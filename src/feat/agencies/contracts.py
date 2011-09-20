@@ -601,7 +601,7 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         return self.contractor
 
     def cleanup(self):
-        pass
+        self._terminate(None)
 
     # notify_finish() implemented in common.TransientInterestedMediumBase
 

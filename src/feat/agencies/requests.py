@@ -202,7 +202,7 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### IAgencyProtocolInternal Methods ###
 
     def cleanup(self):
-        pass
+        self._terminate(None)
 
     def get_agent_side(self):
         return self.replier

@@ -260,7 +260,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         d = defer.succeed(None)
         for x in self.iter_agents():
             d.addCallback(defer.drop_param, x._cancel_long_running_protocols)
-            d.addCallback(defer.drop_param, x.wait_for_protocols_finish)
+            d.addCallback(defer.drop_param, x._kill_all_protocols)
         return d
 
     def snapshot_all_agents(self):
