@@ -342,7 +342,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     @replay.mutable
     def create(self, state, partner_class, recp,
-               allocation_id=None, role=None, substitute=None):
+               allocation_id=None, role=None, substitute=None,
+               options=dict()):
         found = self.find(recp)
         if found:
             self.info('We already are in partnership with recipient '
@@ -363,7 +364,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             f.add_callback(fiber.drop_param,
                            state.agent.get_allocation,
                            allocation_id)
-        f.add_callback(fiber.drop_param, self.initiate_partner, partner)
+        f.add_callback(fiber.drop_param, self.initiate_partner, partner,
+                       **options)
         f.add_callback(fiber.drop_param, state.agent.update_descriptor,
                        self._append_partner, partner, substitute)
         return f
@@ -373,8 +375,11 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return state.agent.update_descriptor(self._do_update_partner, partner)
 
     @replay.immutable
-    def initiate_partner(self, state, partner):
-        return partner.call_mro('initiate', agent=state.agent)
+    def initiate_partner(self, state, partner, **options):
+        keywords = dict(options)
+        keywords['agent'] = state.agent
+        return partner.call_mro_ex('initiate', keywords,
+                                   raise_on_unconsumed=False)
 
     @replay.mutable
     def receive_notification(self, state, recp, notification_type,

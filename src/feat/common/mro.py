@@ -27,6 +27,9 @@ from feat.common import fiber
 class MroMixin(object):
 
     def call_mro(self, method_name, **keywords):
+        return self.call_mro_ex(method_name, keywords)
+
+    def call_mro_ex(self, method_name, keywords, raise_on_unconsumed=True):
         cls = type(self)
         klasses = list(cls.mro())
         klasses.reverse()
@@ -64,7 +67,7 @@ class MroMixin(object):
             f.add_callback(fiber.drop_param, method, self, **kwargs)
 
         diff = set(keywords.keys()) - consumed_keys
-        if diff:
+        if raise_on_unconsumed and diff:
             msg = ('Unconsumed arguments %r while calling mro method %s' %
                    (diff, method_name))
             raise AttributeError(msg)

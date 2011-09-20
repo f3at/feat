@@ -85,7 +85,8 @@ class ProposalReceiver(BaseReplier):
         f = fiber.Fiber()
         f.add_callback(state.agent.create_partner, request.reply_to,
                        role=request.payload['role'],
-                       allocation_id=request.payload['allocation_id'])
+                       allocation_id=request.payload['allocation_id'],
+                       options=request.payload['options'])
         f.add_callback(fiber.drop_param, self._send_ok)
         f.add_errback(self._send_failed)
         return f.succeed(request.payload['partner_class'])

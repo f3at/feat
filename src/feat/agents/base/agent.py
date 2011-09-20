@@ -261,7 +261,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
                               partner_allocation_id=None,
                               partner_role=None, our_role=None,
                               substitute=None, allow_double=False,
-                              max_retries=0):
+                              max_retries=0, **options):
         f = fiber.succeed()
         found = state.partners.find(recp)
         default_role = getattr(self.partners_class, 'default_role', None)
@@ -282,7 +282,7 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
         f.add_callback(fiber.drop_param, self.initiate_protocol,
                        factory, recp, allocation_id,
                        partner_allocation_id,
-                       our_role, partner_role, substitute)
+                       our_role, partner_role, substitute, options)
         f.add_callback(fiber.call_param, "notify_finish")
         return f
 
@@ -321,9 +321,9 @@ class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.immutable
     def create_partner(self, state, partner_class, recp, allocation_id=None,
-                       role=None, substitute=None):
+                       role=None, substitute=None, options=None):
         return state.partners.create(partner_class, recp, allocation_id, role,
-                                     substitute)
+                                     substitute, options)
 
     @replay.immutable
     def remove_partner(self, state, partner):

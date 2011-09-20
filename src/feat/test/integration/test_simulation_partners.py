@@ -54,6 +54,13 @@ class GettingInfoPartner(partners.BasePartner):
 
 
 @serialization.register
+class ExtraParamsPartner(partners.BasePartner):
+
+    def initiate(self, agent, extra_param):
+        self.param = extra_param
+
+
+@serialization.register
 class ResponsablePartner(partners.BasePartner):
 
     def on_died(self, agent, brothers, monitor):
@@ -77,6 +84,7 @@ class Partners(partners.Partners):
     partners.has_many('info', 'partner-agent', GettingInfoPartner, 'info')
     partners.has_many('caretaker', 'partner-agent', ResponsablePartner,
                       'caretaker')
+    partners.has_many('param', 'partner-agent', ExtraParamsPartner, 'param')
 
 
 @agent.register('partner-agent')
@@ -332,6 +340,18 @@ class PartnershipTest(common.SimulationTest):
         partner_obj = self.receiver.get_agent().query_partners('caretaker')
         self.assertEqual(0, len(partner_obj))
 
+    @defer.inlineCallbacks
+    def testPassingExtraParam(self):
+        yield self._partnership_parametrized(self.initiator, self.receiver,
+                                             extra_param='something',
+                                             bad_name_param='baaad')
+        par = self.initiator.get_agent().query_partners('param')
+        self.assertEqual(1, len(par))
+        self.assertEqual('something', par[0].param)
+        par = self.receiver.get_agent().query_partners('param')
+        self.assertEqual(1, len(par))
+        self.assertEqual('something', par[0].param)
+
     def assert_partners(self, agents, expected):
         for agent, e in zip(agents, expected):
             self.assertEqual(e, len(agent.get_descriptor().partners))
@@ -352,6 +372,11 @@ class PartnershipTest(common.SimulationTest):
 
     def _partnership_taking_care(self, initiator, receiver):
         return self._partnership(initiator, receiver, 'caretaker', 'caretaker')
+
+    def _partnership_parametrized(self, initiator, receiver, **options):
+        return initiator.get_agent().establish_partnership(
+            recipient.IRecipient(receiver), partner_role='param',
+            our_role='param', **options)
 
     def _partnership(self, initiator, receiver,
                      partner_role=None, our_role=None):

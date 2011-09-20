@@ -147,16 +147,20 @@ class Propose(BaseRequester):
 
     @replay.entry_point
     def initiate(self, state, our_alloc_id=None, partner_alloc_id=None,
-                 partner_role=None, our_role=None, substitute=None):
+                 partner_role=None, our_role=None, substitute=None,
+                 options=None):
         state.our_role = our_role
         state.allocation_id = our_alloc_id
         state.substitute = substitute
+        state.options = options
 
         msg = message.RequestMessage(
             payload=dict(
                 partner_class=state.agent.descriptor_type,
                 role=partner_role,
-                allocation_id=partner_alloc_id))
+                allocation_id=partner_alloc_id,
+                options=options))
+
         state.medium.request(msg)
 
     @replay.entry_point
@@ -165,7 +169,7 @@ class Propose(BaseRequester):
             our_role = state.our_role or reply.payload['default_role']
             return state.agent.create_partner(
                 reply.payload['desc'], reply.reply_to, state.allocation_id,
-                our_role, substitute=state.substitute)
+                our_role, substitute=state.substitute, options=state.options)
         else:
             self.info('Received error: %r', reply.payload['fail'])
             f = self._release_allocation()
