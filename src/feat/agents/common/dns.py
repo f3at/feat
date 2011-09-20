@@ -60,7 +60,7 @@ class DNSMappingManager(manager.BaseManager):
 
     announce_timeout = 3
 
-    @replay.immutable
+    @replay.mutable
     def initiate(self, state, mtype, prefix, mapping):
         state.prefix = prefix
         state.mtype = mtype
