@@ -23,7 +23,7 @@
 from setuptools import setup, find_packages
 
 setup(name='feat',
-      version='0.1.2',
+      version='0.10',
       description='Flumotion Asynchronous Autonomous Agent Toolkit',
       author='Flumotion Developers',
       author_email='coreteam@flumotion.com',

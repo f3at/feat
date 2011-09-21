@@ -1,8 +1,8 @@
 %global __python python2.6
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.1.2
-%define unmangled_version 0.1.2
+%define version 0.10
+%define unmangled_version 0.10
 %define build_rev 0
 
 Name:           python-feat
@@ -81,6 +81,10 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Wed Sep 21 2011 Marek Kowalski <mkowalski@flumotion.com>
+- 0.10
+- Bump package version.
+
 * Mon Aug 29 2011 Marek Kowalski <mkowalski@flumotion.com>
 - 0.1.2-5
 - Add service scripts
