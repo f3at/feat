@@ -703,6 +703,11 @@ def reopenOutputFiles():
 
 def moveLogFiles(out_filename, err_filename):
 
+    global _stdout, _stderr
+    if not _stdout and not _stderr:
+        outputToFiles(out_filename, err_filename)
+        return
+
     def doMove(src, dst):
         try:
             os.rename(src, dst)
@@ -710,7 +715,6 @@ def moveLogFiles(out_filename, err_filename):
             error('log', 'Error moving file %s -> %s. Error: %r',
                   src, dst, e)
 
-    global _stdout, _stderr
     doMove(_stdout, out_filename)
     if _stdout != _stderr:
         doMove(_stderr, err_filename)
