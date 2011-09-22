@@ -230,9 +230,6 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def count_agents(self, agent_type=None):
         return len([x for x in self.iter_agents(agent_type)])
 
-    def register_dependency_reference(self, reference):
-        self._dependency_references.append(reference)
-
     def find_dependency(self, **conditions):
 
         def match(ref, conditions):
@@ -241,8 +238,13 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                     return False
             return True
 
+        def iter_dependecies():
+            for medium in self.iter_agents():
+                for x in medium.iter_dependency_references():
+                    yield x
+
         index = conditions.pop('index', None)
-        matching = [ref for ref in self._dependency_references
+        matching = [ref for ref in iter_dependecies()
                     if match(ref, conditions)]
         if not matching:
             return

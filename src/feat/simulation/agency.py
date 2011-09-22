@@ -84,7 +84,17 @@ class AgencyAgent(agency.AgencyAgent):
                                         mode=mode,
                                         args=args,
                                         kwargs=kwargs)
-        self.agency._driver.register_dependency_reference(reference)
+        if hasattr(instance, 'register_simulation_driver'):
+            instance.register_simulation_driver(self.agency._driver)
+
+        if not hasattr(self, '_dependency_references'):
+            self._dependency_references = list()
+        self._dependency_references.append(reference)
+
+    def iter_dependency_references(self):
+        if not hasattr(self, '_dependency_references'):
+            return iter([])
+        return iter(self._dependency_references)
 
     ### Overridden Methods ###
 
