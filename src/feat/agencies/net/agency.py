@@ -332,7 +332,7 @@ class Agency(agency.Agency):
         except OSError:
             pass
         try:
-            os.link(logfile, linkname)
+            os.symlink(logfile, linkname)
         except OSError as e:
             self.warning("Failed to link log file %s to %s: %s",
                          logfile, linkname, error.get_exception_message(e))
