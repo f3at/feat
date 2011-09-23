@@ -33,8 +33,8 @@ class TestObserver(common.TestCase):
         self.assertTrue(d1.called)
 
         self.assertTrue(self.observer.active())
-        f = self.observer.notify_finish()
-        self.assertIsInstance(f, fiber.Fiber)
+        d = self.observer.notify_finish()
+        self.assertIsInstance(d, defer.Deferred)
 
         self.finish.callback('result')
         self.assertFalse(self.observer.active())

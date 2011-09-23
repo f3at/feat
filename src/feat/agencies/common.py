@@ -400,6 +400,9 @@ class Observer(observer.Observer):
     active = replay.side_effect(observer.Observer.active)
     get_result = replay.side_effect(observer.Observer.get_result)
 
+    def notify_finish(self):
+        return fiber.wrap_defer(observer.Observer.notify_finish, self)
+
 
 class ConnectionState(enum.Enum):
 

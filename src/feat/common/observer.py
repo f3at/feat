@@ -66,11 +66,11 @@ class Observer(object):
 
     def notify_finish(self):
         if self._failed:
-            return fiber.fail(self._result)
+            return defer.fail(self._result)
         elif self._finished:
-            return fiber.succeed(self._result)
+            return defer.succeed(self._result)
         else:
-            return fiber.wrap_defer(self._notifier.wait, 'finished')
+            return self._notifier.wait('finished')
 
     def active(self):
         return not self._failed and not self._finished
