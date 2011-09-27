@@ -48,6 +48,7 @@ class MonitoredPartner(agent.BasePartner):
     instance_id = 0
     location = "unknown"
     type_name = "unknown"
+    agent_type = "unknown"
 
     type_name = 'monitor->agent'
 

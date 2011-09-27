@@ -19,18 +19,19 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import operator
 import os
 import warnings
 
 from feat.extern.txamqp import spec
-from feat.extern.txamqp.client import TwistedDelegate
+from feat.extern.txamqp.client import TwistedDelegate, Closed
 from feat.extern.txamqp.protocol import AMQClient
 from feat.extern.txamqp.content import Content
 from feat.extern.txamqp import queue as txamqp_queue
 from twisted.internet import reactor, protocol
 from zope.interface import implements
 
-from feat.common import log, defer, enum, error_handler, time
+from feat.common import log, defer, enum, time, error, container
 from feat.common.serialization import banana
 from feat.agencies.messaging import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
@@ -38,11 +39,10 @@ from feat.agents.base.message import BaseMessage
 
 from feat.agencies.interface import IConnectionFactory
 from feat.interface.channels import IBackend
+from feat.interface.generic import ITimeProvider
 
 
 class MessagingClient(AMQClient, log.Logger):
-
-    _error_handler=error_handler
 
     def __init__(self, factory, delegate, vhost, spec, user, password):
         self._factory = factory
@@ -57,8 +57,8 @@ class MessagingClient(AMQClient, log.Logger):
     def connectionMade(self):
         AMQClient.connectionMade(self)
         d = self.authenticate(self._user, self._password)
-        d.addErrback(self._error_handler)
-        d.addCallback(lambda _: self._factory.clientConnectionMade(self))
+        d.addCallbacks(defer.drop_param, self._error_handler,
+                       callbackArgs=(self._factory.clientConnectionMade, self))
 
     def connectionLost(self, reason):
         self.log("Connection lost. Reason: %s.", reason)
@@ -69,6 +69,10 @@ class MessagingClient(AMQClient, log.Logger):
             self._channel_counter += 1
         self.log('Initializing channel: %d', self._channel_counter)
         return self.channel(self._channel_counter)
+
+    def _error_handler(self, fail):
+        self.warning('Got error authenticating: %r. Hopefully we will get '
+                     'this right during the next reconnection.', fail)
 
 
 class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
@@ -238,29 +242,11 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
                  self._host, self._port)
 
 
-def wait_for_channel(method):
-
-    def wrapped(self, *args, **kwargs):
-        if self.state == ChannelState.recording:
-            self.log('Channel not set yet, adding %s call to the '
-                     'processing chain', method.__name__)
-            return self._append_method_call(method, self, *args, **kwargs)
-        else:
-            pc = ProcessingCall(method, self, *args, **kwargs)
-            self.log('Calling :%r, args: %r, kwargs: %r',
-                     method.__name__, args, kwargs)
-            d = method(self, *args, **kwargs)
-            d.addErrback(self._processing_error_handler, pc)
-            return d
-
-    return wrapped
-
-
 class ChannelState(enum.Enum):
     '''
     recording - all calls requiring connection are added to the processing
                 chain
-    performing - all calls are called intantly
+    performing - all calls are called instantly
     '''
 
     (recording, performing) = range(2)
@@ -268,8 +254,11 @@ class ChannelState(enum.Enum):
 
 class ProcessingCall(object):
 
-    def __init__(self, method, *args, **kwargs):
+    def __init__(self, method, only_when_connected,
+                 remember_between_connections, *args, **kwargs):
         self.method = method
+        self.only_when_connected = only_when_connected
+        self.remember_between_connections = remember_between_connections
         self.args = args
         self.kwargs = kwargs
 
@@ -277,12 +266,12 @@ class ProcessingCall(object):
 
     def perform(self):
         d = defer.maybeDeferred(self.method, *self.args, **self.kwargs)
-        d.addCallback(self.callback.callback)
-
+        d.addCallback(defer.keep_param, self.callback.callback)
         return d
 
 
 class Channel(log.Logger, log.LogProxy, StateMachineMixin):
+    implements(ITimeProvider)
 
     channel_type = "default"
 
@@ -296,12 +285,205 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self.factory = factory
 
         self._queues = []
+        self._is_processing = False
         self._processing_chain = []
+        self._seen_messages = container.ExpDict(self)
 
         self.serializer = banana.Serializer()
         self.unserializer = banana.Unserializer()
 
         client_defer.addCallback(self._setup_with_client)
+
+    ### ITimeProvider ###
+
+    def get_time(self):
+        return time.time()
+
+    ### Public methods exposed to Connection ###
+
+    def configure_queue(self, queue):
+        '''
+        Configures the WrappedQueue to receive messages from the client.
+        @param queue; WrappedQueue
+        '''
+        return self._call_on_channel(self._configure_queue, queue)
+
+    def define_queue(self, name):
+        self.log('Defining queue: %r', name)
+
+        queue = WrappedQueue(self, name)
+        self._queues.append(queue)
+        return self.configure_queue(queue)
+
+    def publish(self, key, shard, message):
+        return self._call_on_channel(self._publish, key, shard, message)
+
+    def disconnect(self):
+        return self._call_on_channel(self._disconnect,
+                                     only_when_connected=True)
+
+    def define_exchange(self, name, exchange_type="direct"):
+        return self._call_on_channel(self._define_exchange,
+                                     name, exchange_type)
+
+    def create_binding(self, exchange, key, queue):
+        return self._call_on_channel(self._create_binding,
+                                     exchange, key, queue)
+
+    def delete_binding(self, exchange, key, queue):
+        return self._call_on_channel(self._delete_binding,
+                                     exchange, key, queue)
+
+    def ack(self, message):
+        return self._call_on_channel(self._ack, message,
+                                     only_when_connected=True,
+                                     remember_between_connections=False)
+
+    def parse_message(self, msg):
+        result = self.unserializer.convert(msg.content.body)
+
+        if result.message_id in self._seen_messages:
+            return
+        self._seen_messages.set(result.message_id, True,
+                                expiration=result.expiration_time)
+        return result
+
+
+    ### Private methods operating on the channel ###
+
+    def _configure_queue(self, queue):
+        if queue.queue is not None:
+            self.debug('Skiping queue %r configuration, because it still '
+                       'has the reference to the old queue!', queue.name)
+            return defer.succeed(queue)
+
+        d = self.channel.queue_declare(
+            queue=queue.name, durable=True, auto_delete=False)
+        d.addCallback(defer.drop_param, self.channel.basic_consume,
+                      queue=queue.name, no_ack=False)
+        d.addCallback(operator.attrgetter('consumer_tag'))
+        d.addCallback(self.client.queue)
+        d.addCallback(queue.configure)
+        return d
+
+    def _publish(self, key, shard, message):
+        assert isinstance(message, BaseMessage), "Unexpected message class"
+        if message.expiration_time:
+            delta = message.expiration_time - time.time()
+            if delta < 0:
+                self.log('Not sending expired message. msg=%s, shard=%s, '
+                         'key=%s, delta=%r', message, shard, key, delta)
+                return
+        serialized = self.serializer.convert(message)
+        content = Content(serialized)
+        content.properties['delivery mode'] = 1  # non-persistent
+
+        self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
+        d = self.channel.basic_publish(exchange=shard, content=content,
+                                       routing_key=key, immediate=False)
+        d.addCallback(defer.drop_param, self.channel.tx_commit)
+        d.addCallback(defer.override_result, message)
+        return d
+
+    def _disconnect(self):
+        # Both methods needs to be called. Closes channel locally the other
+        # one sends channel close. Yes, it is very bizzare.
+        d = self.channel.channel_close()
+        d.addCallback(self.channel.close)
+        return d
+
+    def _define_exchange(self, name, exchange_type):
+        d = self.channel.exchange_declare(
+            exchange=name, type=exchange_type, durable=True,
+            nowait=False, auto_delete=False)
+        return d
+
+    def _create_binding(self, exchange, key, queue):
+        self.log('Creating binding exchange=%s, key=%s, queue=%s',
+                 exchange, key, queue)
+        return self.channel.queue_bind(exchange=exchange, routing_key=key,
+                                       queue=queue, nowait=False)
+
+    def _delete_binding(self, exchange, key, queue):
+        self.log('Deleting binding exchange=%s, key=%s, queue=%s',
+                 exchange, key, queue)
+        return self.channel.queue_unbind(exchange=exchange, routing_key=key,
+                                         queue=queue)
+
+    def _ack(self, message):
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param, self.channel.basic_ack,
+                      message.delivery_tag)
+        d.addCallback(defer.drop_param, self.channel.tx_commit)
+        return d
+
+    ### Private methods managing processing chain ###
+
+    def _call_on_channel(self, method, *args, **kwargs):
+
+        only_when_connected = kwargs.pop('only_when_connected', False)
+        remember_between_connections = \
+                            kwargs.pop('remember_between_connections', True)
+        if only_when_connected and self._cmp_state(ChannelState.recording):
+            self.log("Ignoring call of %r as currently we are disconnected.",
+                     method)
+            return
+        pc = ProcessingCall(method, only_when_connected,
+                            remember_between_connections,
+                            *args, **kwargs)
+        self._processing_chain.append(pc)
+        self.process_next()
+
+        return pc.callback
+
+    def process_next(self):
+        if not self._is_processing:
+            self._is_processing = True
+            d = defer.Deferred()
+            d.addCallback(self._process_next)
+            d.addBoth(self._finish_processing)
+            time.callLater(0, d.callback, None)
+
+    def _finish_processing(self, param):
+        self._is_processing = False
+        return param
+
+    def _process_next(self, _param):
+        if self._cmp_state(ChannelState.recording):
+            return
+
+        if len(self._processing_chain) == 0:
+            return
+
+        call = self._processing_chain.pop(0)
+        self.log('Calling :%r, args: %r, kwargs: %r',
+                 call.method.__name__, call.args, call.kwargs)
+        d = call.perform()
+        d.addCallbacks(self._process_next,
+                       self._processing_error_handler,
+                       errbackArgs=(call, ))
+        return d
+
+    def _processing_error_handler(self, f, call):
+        if f.check(Closed):
+            self.log("Failed performing the call because connection has "
+                     "been lost. This is normal, don't panic.")
+            return
+        error.handle_failure(
+            self, f, 'Failed to perfrom the ProcessingCall. '
+            'Method being processed: %r, args: %r, kwargs: %r',
+            call.method.__name__, call.args, call.kwargs)
+        self._set_state(ChannelState.recording)
+        self._processing_chain.insert(0, call)
+
+    def _cleanup_processing_chain(self):
+        """Called on reconnection. Removes all the entries which are don't
+        have the remember_between_connections flag set"""
+        self.log("Removing stale processing chain entries.")
+        self._processing_chain = [x for x in self._processing_chain
+                                  if x.remember_between_connections]
+
+    ### Private methods managing setup and resetup ###
 
     def _setup_with_client(self, client):
         self._ensure_state(ChannelState.recording)
@@ -326,7 +508,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         def errback(fail):
             self.log("_setup_with_client failed with the error: %r. "
                      "Hopefully we will get this right after the next "
-                     "reconnection.", fail)
+                     "reconnection.", error.get_failure_message(fail))
 
         d = client.get_free_channel()
         d.addCallback(open_channel)
@@ -341,6 +523,9 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         self.client = None
         self.channel = None
+        for queue in self._queues:
+            queue.queue = None
+
         self.factory.add_connection_made_cb(
             ).addCallback(self._setup_with_client)
 
@@ -350,127 +535,21 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             # Reason for different error handler here is, that we just
             # want to do nothing. If this request failed, we will get
             # it right after the next reconnection.
-            self.log('get_queue_consumer() call failed with error: %r',
+            self.log('_configure_queue() call failed with error: %r',
                      f.getErrorMessage())
 
-        for queue in self._queues:
-            if queue.queue is not None:
-                self.warning('Reconfiguring queue: %r, but it still has the '
-                             'reference to the old queue!')
-            d = self.get_queue_consumer(queue.name)
-            d.addCallback(queue.configure)
+        def configure(queue):
+            d = self._configure_queue(queue)
             d.addErrback(noop)
+            return d
 
-        self._set_state(ChannelState.performing)
-        self._process_next()
+        self._cleanup_processing_chain()
 
-    def _append_method_call(self, method, *args, **kwargs):
-        self._ensure_state(ChannelState.recording)
-
-        pc = ProcessingCall(method, *args, **kwargs)
-        self._processing_chain.append(pc)
-        return pc.callback
-
-    def _process_next(self, *_):
-        self._ensure_state(ChannelState.performing)
-
-        if len(self._processing_chain) > 0:
-            call = self._processing_chain.pop(0)
-            self.log('Calling :%r, args: %r, kwargs: %r',
-                     call.method.__name__, call.args, call.kwargs)
-            d = call.perform()
-            d.addCallbacks(self._process_next, self._processing_error_handler,
-                           errbackArgs=(call, ))
-
-    def _processing_error_handler(self, f, call):
-        self.error('Processing failed: %r.', f.getErrorMessage())
-        self.error('Method being processed: %r, args: %r, kwargs: %r',
-                   call.method.__name__, call.args, call.kwargs)
-        self._set_state(ChannelState.recording)
-        self._processing_chain.insert(0, call)
-
-    @wait_for_channel
-    def get_queue_consumer(self, name):
-        d = self.channel.queue_declare(
-            queue=name, durable=True, auto_delete=False)
-        d.addCallback(lambda _:
-                      self.channel.basic_consume(queue=name, no_ack=False))
-        d.addCallback(lambda resp: self.client.queue(resp.consumer_tag))
-        return d
-
-    @wait_for_channel
-    def define_queue(self, name):
-        self.log('Defining queue: %r', name)
-
-        queue = WrappedQueue(self, name)
-        self._queues.append(queue)
-        d = self.get_queue_consumer(name)
-        d.addCallback(queue.configure)
-        return d
-
-    @wait_for_channel
-    def publish(self, key, shard, message):
-        assert isinstance(message, BaseMessage), \
-               "Unexpected message class"
-        serialized = self.serializer.convert(message)
-        content = Content(serialized)
-        content.properties['delivery mode'] = 1  # non-persistent
-
-        self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
-        d = self.channel.basic_publish(exchange=shard, content=content,
-                                       routing_key=key, immediate=False)
-        d.addCallback(self.tx_commit)
-        d.addCallback(defer.override_result, message)
-        return d
-
-    @wait_for_channel
-    def disconnect(self):
-        # Both methods needs to be called. Closes channel locally the other
-        # one sends channel close. Yes, it is very bizzare.
-        d = self.channel.channel_close()
-        d.addCallback(self.channel.close)
-        return d
-
-    @wait_for_channel
-    def define_exchange(self, name, exchange_type="direct"):
-        d = self.channel.exchange_declare(
-            exchange=name, type=exchange_type, durable=True,
-            nowait=False, auto_delete=False)
-        return d
-
-    @wait_for_channel
-    def create_binding(self, exchange, key, queue):
-        self.log('Creating binding exchange=%s, key=%s, queue=%s',
-                 exchange, key, queue)
-        return self.channel.queue_bind(exchange=exchange, routing_key=key,
-                                       queue=queue, nowait=False)
-
-    @wait_for_channel
-    def delete_binding(self, exchange, key, queue):
-        self.log('Deleting binding exchange=%s, key=%s, queue=%s',
-                 exchange, key, queue)
-        return self.channel.queue_unbind(exchange=exchange, routing_key=key,
-                                         queue=queue)
-
-    @wait_for_channel
-    def ack(self, message):
-        self.log("Sending ack for the message.")
-        d = self.channel.basic_ack(message.delivery_tag)
-        d.addCallback(self.tx_commit)
-        return d
-
-    @wait_for_channel
-    def tx_commit(self, *_):
-        return self.channel.tx_commit()
-
-    def parse_message(self, msg):
-
-        def unwrap(_, msg):
-            body = msg.content.body
-            return self.unserializer.convert(body)
-
-        d = self.ack(msg)
-        d.addCallback(unwrap, msg)
+        defers = [configure(queue) for queue in self._queues]
+        d = defer.DeferredList(defers, consumeErrors=True)
+        d.addCallback(defer.drop_param,
+                      self._set_state, ChannelState.performing)
+        d.addCallback(defer.drop_param, self.process_next)
         return d
 
 
@@ -481,6 +560,7 @@ class WrappedQueue(Queue, log.Logger):
         Queue.__init__(self, name)
 
         self.channel = channel
+        # TimeoutDeferred queue representning instance inside the txAMQP lib
         self.queue = None
 
     def configure(self, bare_queue):
@@ -494,18 +574,23 @@ class WrappedQueue(Queue, log.Logger):
         return self
 
     def _main_loop(self, *_):
+
+        def parse_and_enqueue(msg):
+            parsed = self.channel.parse_message(msg)
+            if parsed is not None:
+                self.enqueue(parsed)
+
         d = self.queue.get()
-        d.addCallback(self.channel.parse_message)
-        d.addCallback(self.enqueue)
+        d.addCallback(defer.keep_param, parse_and_enqueue)
+        d.addCallback(self.channel.ack)
         d.addCallbacks(self._main_loop, self._error_handler)
 
     def _error_handler(self, f):
-        exception = f.value
-        if isinstance(exception, txamqp_queue.Closed):
+        if f.check(Closed, txamqp_queue.Closed):
+            self.queue = None
             if self.channel.factory.continueTrying:
                 self.log('Queue closed. Waiting to be reconfigured '
                          'with the new queue')
-                self.queue = None
             else:
                 self.log("Queue closed cleanly. Terminating")
         else:

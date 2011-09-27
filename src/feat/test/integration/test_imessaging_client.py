@@ -21,6 +21,8 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
@@ -44,7 +46,8 @@ def m(payload):
     '''
     Wraps the payload into BaseMessage.
     '''
-    return message.BaseMessage(payload=payload)
+    m_id = str(uuid.uuid1())
+    return message.BaseMessage(payload=payload, message_id=m_id)
 
 
 def unwrap(msg):
