@@ -72,7 +72,7 @@ class ChangeListener(log.Logger):
     def _trigger_change(self, doc_id, rev):
         listeners = self._listeners.get(doc_id, list())
         for cb, _ in listeners:
-            reactor.callLater(0, cb, doc_id, rev)
+            reactor.callLater(0, cb, doc_id, rev) #@UndefinedVariable
 
 
 class Connection(log.Logger):
@@ -82,14 +82,19 @@ class Connection(log.Logger):
 
     def __init__(self, database):
         log.Logger.__init__(self, database)
-        self.database = IDatabaseDriver(database)
-        self.serializer = json.Serializer()
-        self.unserializer = json.PaisleyUnserializer()
+        self._database = IDatabaseDriver(database)
+        self._serializer = json.Serializer()
+        self._unserializer = json.PaisleyUnserializer()
 
-        self.listener_id = None
-        self.change_cb = None
-        # rev -> doc_id
-        self.known_revisions = container.ExpDict(self)
+        self._listener_id = None
+        self._change_cb = None
+        # Changed to use a normal dictionary.
+        # It will grow boundless up to the number of documents
+        # modified by the connection. It is a kind of memory leak
+        # done to temporarily resolve the problem of notifications
+        # received after the expiration time due to reconnection
+        # killing agents.
+        self._known_revisions = {} # {DOC_ID: (REV_INDEX, REV_HASH)}
 
     ### ITimeProvider
 
@@ -99,17 +104,17 @@ class Connection(log.Logger):
     ### IDatabaseClient
 
     def create_database(self):
-        return self.database.create_db()
+        return self._database.create_db()
 
     def save_document(self, doc):
-        serialized = self.serializer.convert(doc)
-        d = self.database.save_doc(serialized, doc.doc_id)
+        serialized = self._serializer.convert(doc)
+        d = self._database.save_doc(serialized, doc.doc_id)
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
-    def get_document(self, id):
-        d = self.database.open_doc(id)
-        d.addCallback(self.unserializer.convert)
+    def get_document(self, doc_id):
+        d = self._database.open_doc(doc_id)
+        d.addCallback(self._unserializer.convert)
         d.addCallback(self._notice_doc_revision)
         return d
 
@@ -119,32 +124,33 @@ class Connection(log.Logger):
 
     def delete_document(self, doc):
         assert isinstance(doc, document.Document)
-        d = self.database.delete_doc(doc.doc_id, doc.rev)
+        d = self._database.delete_doc(doc.doc_id, doc.rev)
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
     def changes_listener(self, doc_ids, callback):
         assert isinstance(doc_ids, (tuple, list, ))
         assert callable(callback)
-        self.change_cb = callback
-        d = self.database.listen_changes(doc_ids, self._on_change)
+        self._change_cb = callback
+        d = self._database.listen_changes(doc_ids, self._on_change)
 
         def set_listener_id(l_id):
-            self.listener_id = l_id
+            self._listener_id = l_id
+
         d.addCallback(set_listener_id)
         return d
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
-        d = self.database.query_view(factory, **options)
+        d = self._database.query_view(factory, **options)
         d.addCallback(self._parse_view_results, factory, options)
         return d
 
     def disconnect(self):
-        if self.listener_id:
-            self.database.cancel_listener(self.listener_id)
-            self.listener_id = None
-            self.change_cb = None
+        if self._listener_id:
+            self._database.cancel_listener(self._listener_id)
+            self._listener_id = None
+            self._change_cb = None
 
     ### private
 
@@ -159,24 +165,39 @@ class Connection(log.Logger):
     def _on_change(self, doc_id, rev):
         self.log('Change notification received doc_id: %r, rev: %r',
                  doc_id, rev)
-        key = (doc_id, rev, )
-        known = self.known_revisions.get(key, False)
-        if known:
-            self.log('Ignoring change notification, it is ours.')
-        elif callable(self.change_cb):
-            self.change_cb(doc_id, rev)
+
+        # FIXME: This should be done in higher levels
+        if doc_id in self._known_revisions:
+            rev_index, rev_hash = self._parse_doc_revision(rev)
+            last_index, last_hash = self._known_revisions[doc_id]
+
+            if last_index > rev_index:
+                self.log("Ignoring old change notification for "
+                         "document %s revision %s", doc_id, rev)
+                return
+
+            if (last_index == rev_index) and (last_hash == rev_hash):
+                self.log("Ignoring last change notificatigon for "
+                         "document %s revision %s", doc_id, rev)
+                return
+
+        if callable(self._change_cb):
+            self._change_cb(doc_id, rev)
 
     def _update_id_and_rev(self, resp, doc):
         doc.doc_id = unicode(resp.get('id', None))
         doc.rev = unicode(resp.get('rev', None))
-        # store information about rev and doc_id in ExpDict for 1 second
-        # so that we can ignore change callback which we trigger
         self._notice_doc_revision(doc)
         return doc
 
     def _notice_doc_revision(self, doc):
         self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
                  doc.doc_id, doc.rev)
-        self.known_revisions.set((doc.doc_id, doc.rev, ), True,
-                                 expiration=5, relative=True)
+        # FIXME: This should be done in other way, agent mediums already
+        #        know and store this information
+        self._known_revisions[doc.doc_id] = self._parse_doc_revision(doc.rev)
         return doc
+
+    def _parse_doc_revision(self, rev):
+        rev_index, rev_hash = rev.split("-", 1)
+        return int(rev_index), rev_hash
