@@ -471,10 +471,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.warning('Tried to cancel nonexisting call id: %r', call_id)
             return
 
-        self.log('Canceling delayed call with id %r (active: %s)',
-                 call_id, call.active())
         if not call.active():
-            self.log('Tried to cancel nonactive call id: %r', call_id)
             return
         call.cancel()
 
@@ -992,7 +989,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _store_delayed_call(self, call_id, call, busy):
         if call.active():
-            self.log('Storing delayed call with id %r', call_id)
             self._delayed_calls.set(call_id, (busy, call), call.getTime() + 1)
 
     def _cancel_all_delayed_calls(self):
