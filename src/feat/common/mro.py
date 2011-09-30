@@ -21,20 +21,17 @@
 # Headers in this file shall remain intact.
 import inspect
 
-from feat.common import fiber
+from feat.common import fiber, defer
 
 
-class MroMixin(object):
+class Common(object):
 
-    def call_mro(self, method_name, **keywords):
-        return self.call_mro_ex(method_name, keywords)
-
-    def call_mro_ex(self, method_name, keywords, raise_on_unconsumed=True):
+    def _get_mro_call_list(self, method_name, keywords, raise_on_unconsumed):
         cls = type(self)
         klasses = list(cls.mro())
         klasses.reverse()
 
-        f = fiber.succeed()
+        call_list = list()
 
         consumed_keys = set()
         for klass in klasses:
@@ -64,7 +61,7 @@ class MroMixin(object):
                                "of the method %r" % (arg, method))
                         raise AttributeError(msg)
 
-            f.add_callback(fiber.drop_param, method, self, **kwargs)
+            call_list.append((method, kwargs, ))
 
         diff = set(keywords.keys()) - consumed_keys
         if raise_on_unconsumed and diff:
@@ -72,4 +69,32 @@ class MroMixin(object):
                    (diff, method_name))
             raise AttributeError(msg)
 
+        return call_list
+
+
+class FiberMroMixin(Common):
+
+    def call_mro(self, method_name, **keywords):
+        return self.call_mro_ex(method_name, keywords)
+
+    def call_mro_ex(self, method_name, keywords, raise_on_unconsumed=True):
+        f = fiber.succeed()
+        call_list = self._get_mro_call_list(
+            method_name, keywords, raise_on_unconsumed)
+        for method, kwargs in call_list:
+            f.add_callback(fiber.drop_param, method, self, **kwargs)
         return f
+
+
+class DeferredMroMixin(Common):
+
+    def call_mro(self, method_name, **keywords):
+        return self.call_mro_ex(method_name, keywords)
+
+    def call_mro_ex(self, method_name, keywords, raise_on_unconsumed=True):
+        d = defer.succeed(None)
+        call_list = self._get_mro_call_list(
+            method_name, keywords, raise_on_unconsumed)
+        for method, kwargs in call_list:
+            d.addCallback(defer.drop_param, method, self, **kwargs)
+        return d

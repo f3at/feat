@@ -62,11 +62,44 @@ class AgencyAgent(agency.AgencyAgent):
         return self.agency.gateway_port
 
 
+class Shutdown(agency.Shutdown):
+
+    def stage_slaves(self):
+        if self.opts.get('full_shutdown', False):
+            return self.friend._broker.shutdown_slaves()
+
+    def stage_agents(self):
+        self.friend._cancel_snapshoter()
+
+    def stage_internals(self):
+        return self.friend._disconnect()
+
+    def stage_process(self):
+        d = defer.succeed(None)
+
+        u_cmd = self.opts.get('upgrade_cmd', None)
+        if u_cmd is not None:
+            args = u_cmd.split(" ")
+            command = args.pop(0)
+            process = standalone.Process(self.friend, command, args,
+                                         os.environ.copy())
+
+            d = process.restart()
+            d.addBoth(defer.drop_param, process.wait_for_state,
+                      ProcessState.finished, ProcessState.failed)
+
+        if self.opts.get('stop_process', False):
+            d.addBoth(defer.drop_param, reactor.stop)
+        return d
+
+
 class Agency(agency.Agency):
 
     agency_agent_factory = AgencyAgent
 
     broker_factory = broker.Broker
+
+    shutdown_factory = Shutdown
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -145,9 +178,6 @@ class Agency(agency.Agency):
         # flag saying that we are in the process of starting the Host Agent,
         # it's used not to do this more than once
         self._starting_host = False
-        # flag set when we enter the agency shutdown. It's used not to trigger
-        # starting new host agent while we are shutting down the agency
-        self._shutting_down = False
         # list of agent types or descriptors to spawn when the host agent
         # is ready. Format (agent_type_or_desc, args, kwargs)
         self._to_spawn = list()
@@ -354,42 +384,22 @@ class Agency(agency.Agency):
         return self._journal_writer
 
     def on_killed(self):
-        d = agency.Agency.on_killed(self)
-        d.addCallback(defer.drop_param, self._disconnect)
-        return d
+        return self._shutdown(stop_process=False, gentle=False)
 
     @manhole.expose()
     def full_shutdown(self, stop_process=False):
         '''Terminate all the slave agencies and shutdowns itself.'''
-        self._shutting_down = True
-        d = defer.succeed(None)
-        d.addCallback(defer.drop_param, self._broker.shutdown_slaves)
-        d.addCallback(defer.drop_param, self.shutdown, stop_process)
-        return d
+        return self._shutdown(full_shutdown=True, stop_process=stop_process,
+                              gentle=True)
 
     @manhole.expose()
     def shutdown(self, stop_process=False):
         '''Shutdown the agency in gentel manner (terminate all the agents).'''
-        self._shutting_down = True
-        self._cancel_snapshoter()
-        d = agency.Agency.shutdown(self)
-        d.addCallback(defer.drop_param, self._disconnect)
-        if stop_process:
-            d.addBoth(defer.drop_param, self._stop_process)
-        return d
+        return self._shutdown(stop_process=stop_process, gentle=True)
 
     def upgrade(self, upgrade_cmd, testing=False):
-        args = upgrade_cmd.split(" ")
-        command = args.pop(0)
-        process = standalone.Process(self, command, args, os.environ.copy())
-
-        d = self.full_shutdown()
-        d.addBoth(defer.drop_param, process.restart)
-        d.addBoth(defer.drop_param, process.wait_for_state,
-                  ProcessState.finished, ProcessState.failed)
-        if not testing:
-            d.addBoth(defer.drop_param, self._stop_process)
-        return d
+        return self._shutdown(full_shutdown=True, stop_process=not testing,
+                              upgrade_cmd=upgrade_cmd, gentle=True)
 
     def _disconnect(self):
         d = defer.succeed(None)
@@ -715,7 +725,7 @@ class Agency(agency.Agency):
                      'master agency')
             return
 
-        if self._shutting_down:
+        if self._shutdown_task is not None:
             self.log('Not starting host agent, because the agency '
                      'is about to terminate itself')
             return
@@ -883,7 +893,7 @@ class Agency(agency.Agency):
                        PATH=path)
             return command, args, env
 
-        if self._shutting_down:
+        if self._shutdown_task is not None:
             return
 
         if self._broker.is_master() and not self._broker.has_slave():
@@ -895,8 +905,3 @@ class Agency(agency.Agency):
             return p.restart()
         else:
             return
-
-    ### slave agency process related
-
-    def _stop_process(self):
-        reactor.stop()

@@ -67,6 +67,13 @@ class E(enum.Enum):
     c = enum.value(4, "#/!@")
 
 
+class F(enum.Enum):
+
+    b = enum.value(2, "custom name")
+    a = enum.value(1)
+    c = enum.value(4, "#/!@")
+
+
 class TestEnum(common.TestCase):
 
     def testCustomNames(self):
@@ -204,3 +211,16 @@ class TestEnum(common.TestCase):
     def testMetaErrors(self):
         self.assertTrue(string_not_allowed)
         self.assertTrue(same_value_not_allowed)
+
+    def testOrderIter(self):
+        expecteds = [A.a, A.b, A.c, A.d]
+        for en in A:
+            expected = expecteds.pop(0)
+            self.assertEqual(expected, en)
+        self.assertEqual([], expecteds)
+
+        expecteds = [F.a, F.b, F.c]
+        for en in F:
+            expected = expecteds.pop(0)
+            self.assertEqual(expected, en)
+        self.assertEqual([], expecteds)

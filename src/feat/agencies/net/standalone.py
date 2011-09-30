@@ -54,7 +54,7 @@ class Agency(agency.Agency):
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
-        self.kill()
+        return self._shutdown(stop_process=True)
 
     def wait_running(self):
         return self._notifications.wait("running")
@@ -81,14 +81,3 @@ class Agency(agency.Agency):
     def notify_failed(self, failure, agent_id):
         self._error_handler(failure)
         return self._broker.fail_event(failure, agent_id, 'started')
-
-    @manhole.expose()
-    def kill(self):
-        '''kill() -> Terminate the process of the standalone.'''
-        self.info('kill() called. Shuting down')
-        d = self.shutdown()
-        d.addCallback(lambda _: self._stop_process())
-        return d
-
-    def _stop_process(self):
-        reactor.stop()

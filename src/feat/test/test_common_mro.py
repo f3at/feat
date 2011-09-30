@@ -25,7 +25,7 @@ from feat.test import common
 from feat.common import mro, defer, fiber
 
 
-class MroTestBase(mro.MroMixin):
+class MroTestBase(mro.FiberMroMixin):
 
     def __init__(self):
         self._calls = None

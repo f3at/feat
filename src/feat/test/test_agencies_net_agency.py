@@ -413,8 +413,13 @@ class IntegrationTestCase(common.TestCase):
 
         process = yield self.spawn_agency()
         yield self.wait_for_pid(pid_path)
-        host_desc = yield self.db.get_document(hostname)
-        self.assertEqual(1, host_desc.instance_id)
+
+        @defer.inlineCallbacks
+        def host_descriptor():
+            host_desc = yield self.db.get_document(hostname)
+            defer.returnValue(host_desc.instance_id == 1)
+
+        yield self.wait_for(host_descriptor, 5)
 
         yield self.agency.initiate()
         yield self.wait_for_slave()
@@ -451,7 +456,6 @@ class IntegrationTestCase(common.TestCase):
         upgrade_cmd = 'touch effect.tmp'
         yield self.agency.upgrade(upgrade_cmd, testing=True)
         self.assertTrue(os.path.exists("effect.tmp"))
-        self.assertTrue(self.agency._shutting_down)
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()

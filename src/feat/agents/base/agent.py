@@ -87,7 +87,7 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
 
-class BaseAgent(mro.MroMixin, log.Logger, log.LogProxy, replay.Replayable,
+class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
                 manhole.Manhole, rpc.AgentMixin, export.AgentMigrationBase,
                 dependency.AgentDependencyMixin, monitor.AgentMixin):
 

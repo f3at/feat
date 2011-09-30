@@ -28,7 +28,6 @@ import uuid
 import weakref
 import warnings
 import socket
-from pprint import pformat
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -40,14 +39,14 @@ from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
-                         first, error)
+                         first, error, enum, )
 
 # Import interfaces
 from interface import (IAgencyAgentInternal, IMessagingPeer,
                        IFirstMessage, IAgencyInterestInternalFactory,
                        IDialogMessage, IAgencyProtocolInternal,
                        IAgencyInitiatorFactory, NotFoundError, ConflictError,
-                       IDbConnectionFactory, IConnectionFactory, IJournaler,
+                       IDbConnectionFactory, IJournaler,
                        ILongRunningProtocol, )
 from feat.interface.agency import IAgency, ExecMode
 from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
@@ -1029,6 +1028,31 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return defer.DeferredList(defers) if defers else defer.succeed(None)
 
 
+class ShutdownStage(enum.Enum):
+
+    initiated, slaves, agents, internals, process = range(5)
+
+
+class Shutdown(common.Procedure):
+
+    stages = ShutdownStage
+
+    def stage_initiated(self):
+        self.debug("Starting agency shutdown. Options: %r", self.opts)
+
+    def stage_agents(self):
+        if self.opts.get('gentle', True):
+            d = defer.DeferredList([x._terminate()
+                                    for x in self.friend._agents])
+        else:
+            d = defer.DeferredList([x.on_killed()
+                                    for x in self.friend._agents])
+        return d
+
+    def stage_internals(self):
+        return self.friend._disconnect_backends()
+
+
 class Agency(log.LogProxy, log.Logger, manhole.Manhole,
              dependency.AgencyDependencyMixin, common.ConnectionManager):
 
@@ -1039,6 +1063,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     agency_agent_factory = AgencyAgent
 
     _error_handler = error_handler
+
+    shutdown_factory = Shutdown
 
     def __init__(self):
         log.LogProxy.__init__(self, log.FluLogKeeper())
@@ -1056,6 +1082,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # IDbConnectionFactory
         self._database = None
         self._hostname = None
+
+        self._shutdown_task = None
 
         self._backends = {} # {CHANNEL_TYPE: IBackend}
 
@@ -1140,21 +1168,15 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
-        d = defer.DeferredList([x._terminate() for x in self._agents])
-        d.addBoth(self._disconnect_backends)
-        d.addBoth(defer.override_result, self)
-        return d
+        return self._shutdown(gentle=True)
 
     def upgrade(self, upgrade_cmd):
         '''Called as the result of upgrade process triggered by host agent.'''
-        return self.shutdown()
+        return self._shutdown(gentle=True)
 
     def on_killed(self):
         '''Called when the agency process is terminating. (SIGTERM)'''
-        d = defer.DeferredList([x.on_killed() for x in self._agents])
-        d.addBoth(self._disconnect_backends)
-        d.addCallback(defer.override_result, self)
-        return d
+        return self._shutdown(gentle=False)
 
     def register_agent(self, medium):
         self._agents.append(medium)
@@ -1306,6 +1328,13 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### protected ###
 
+    def _shutdown(self, **opts):
+        if self._shutdown_task is not None:
+            return self._shutdown_task.reentrant_call(**opts)
+        else:
+            self._shutdown_task = type(self).shutdown_factory(self, **opts)
+            return self._shutdown_task.initiate()
+
     def _new_channel(self, channel_type, agency_agent):
         assert channel_type in self._backends, "Channel type not supported"
         return self._backends[channel_type].new_channel(agency_agent)
@@ -1332,7 +1361,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self._on_connected()
 
-    def _disconnect_backends(self, param):
+    def _disconnect_backends(self):
         defers = []
         for backend in self._backends.itervalues():
             defers.append(backend.disconnect())
@@ -1341,5 +1370,4 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             d = defer.DeferredList(defer)
         else:
             d = defer.succeed(None)
-        d.addCallback(defer.override_result, param)
         return d

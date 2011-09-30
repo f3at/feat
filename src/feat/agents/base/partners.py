@@ -129,7 +129,7 @@ def _inject_definition(relation, descriptor_type, factory, role, force):
 
 
 @serialization.register
-class BasePartner(serialization.Serializable, mro.MroMixin):
+class BasePartner(serialization.Serializable, mro.FiberMroMixin):
 
     type_name = 'partner'
 

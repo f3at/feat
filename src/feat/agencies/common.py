@@ -23,19 +23,17 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from zope.interface import classProvides
-from twisted.python import failure
-
-from feat.common import log, defer, fiber, observer, time, enum
-from feat.common import serialization, error_handler
-from feat.agents.base import replay
-
-from feat.interface.protocols import *
-from feat.interface.serialization import *
-
 from zope.interface import implements, classProvides
 from feat.interface.fiber import ICancellable, FiberCancelled
 from feat.interface.log import LogLevel
+from twisted.python import failure
+
+from feat.common import log, defer, fiber, observer, time, enum
+from feat.common import serialization, error_handler, mro, error, first
+from feat.agents.base import replay
+
+from feat.interface.protocols import ProtocolFailed, ProtocolExpired
+from feat.interface.serialization import IRestorator
 
 
 class Statistics(object):
@@ -451,3 +449,51 @@ class ConnectionManager(StateMachineMixin):
     def _check_callable(self, method):
         if not callable(method):
             raise AttributeError("Expected callable, got %r" % method)
+
+
+class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
+
+    stages = None
+
+    def __init__(self, friend, **opts):
+        if self.stages is None:
+            raise NotImplementedError("stages attribute needs to be set")
+
+        log.Logger.__init__(self, friend)
+        initial_state = first(iter(self.stages))
+        StateMachineMixin.__init__(self, initial_state)
+
+        self.friend = friend
+        self.opts = opts
+        self._observer = observer.Observer(self._initiate)
+
+    ### public methods ###
+
+    def initiate(self):
+        return self._observer.initiate()
+
+    def reentrant_call(self, **opts):
+        self.debug('%s called in reentrant way in stage: %r',
+                   type(self).__name__, self.state)
+        if opts != self.opts:
+            self.debug('Reconfiguring %r -> %r', self.opts, opts)
+            self.opts = opts
+        return self._observer.notify_finish()
+
+    ### private ###
+
+    def _initiate(self):
+        d = defer.succeed(None)
+        for stage in self.stages:
+            method_name = "stage_%s" % (stage.name, )
+
+            d.addBoth(self._print_log, stage)
+            d.addBoth(defer.drop_param, self._set_state, stage)
+            d.addBoth(defer.drop_param, self.call_mro, method_name)
+        return d
+
+    def _print_log(self, param, stage):
+        self.log('Entering stage %s. Defer result at this point: %r',
+                 stage.name, param)
+        if isinstance(param, failure.Failure):
+            error.handle_failure(self, param, 'Failure in previous stage: ')

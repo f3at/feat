@@ -122,7 +122,8 @@ def wait_for(logger, check, timeout, freq=0.5):
     waiting = 0
 
     while True:
-        if check():
+        value = yield check()
+        if value:
             logger.info('Check %r positive, continuing with the test.',
                       check.__name__)
             break

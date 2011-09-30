@@ -25,7 +25,7 @@ from feat.agencies import agency
 from feat.agents.base import replay
 from feat.common import serialization, manhole, defer, guard, formatable
 
-from feat.interface.protocols import *
+from feat.interface.protocols import IInitiator, IInitiatorFactory
 
 
 @serialization.register
@@ -110,9 +110,17 @@ class AgencyAgent(agency.AgencyAgent):
         return dummy
 
 
+class Shutdown(agency.Shutdown):
+
+    def stage_process(self):
+        self.friend._driver.remove_agency(self.friend)
+
+
 class Agency(agency.Agency):
 
     agency_agent_factory = AgencyAgent
+
+    shutdown_factory = Shutdown
 
     def __init__(self):
         agency.Agency.__init__(self)
@@ -170,12 +178,6 @@ class Agency(agency.Agency):
         triggered correctly.
         '''
         if not hasattr(self, '_upgrade_cmd'):
-            raise AssertationError('upgrade() has not been called for this'
+            raise AssertionError('upgrade() has not been called for this'
                                    ' agency.')
         return self._upgrade_cmd
-
-    def shutdown(self):
-        d = agency.Agency.shutdown(self)
-        if hasattr(self, '_driver'):
-            d.addCallback(defer.drop_param, self._driver.remove_agency, self)
-        return d
