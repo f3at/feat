@@ -81,6 +81,12 @@ class IResourceDefinition(Interface):
         Give object representing the total available.
         '''
 
+    def zero():
+        """
+        Return a new instance of IAllocatedResource representing the zero
+        element of the group.
+        """
+
 
 class IAllocatedResource(Interface):
 
@@ -101,6 +107,13 @@ class IAllocatedResource(Interface):
         """
         Return a new instance of IAllocatedResource representing the zero
         element of the group.
+        """
+
+    def get_delta(*args):
+        """
+        Return the parametrs to be passed to modify method to get as the
+        result the IAllocatedResource analogical to the one created with args.
+        Represents the substraction operation of the group.
         """
 
 
@@ -176,6 +189,10 @@ class Range(serialization.Serializable):
 
     def get_total(self):
         return (self.first, self.last)
+
+    @staticmethod
+    def zero():
+        return AllocatedRange()
 
     ### private ####
 
@@ -269,6 +286,10 @@ class Scalar(serialization.Serializable):
     def get_total(self):
         return self.total
 
+    @staticmethod
+    def zero():
+        return AllocatedScalar(0)
+
     ### private ####
 
     def __eq__(self, other):
@@ -295,10 +316,11 @@ class AllocatedRange(serialization.Serializable):
     ### IAllocatedResource ###
 
     def extract_init_arguments(self):
-        return len(self.values)
+        return (len(self.values), )
 
-    def zero(self):
-        return AllocatedRange()
+    @staticmethod
+    def zero():
+        return Range.zero()
 
     def add(self, other):
         for val in other.values:
@@ -311,6 +333,13 @@ class AllocatedRange(serialization.Serializable):
                     raise ValueError("%r not in %r" % (-val, self.values))
                 self.values.remove(-val)
         return len(self.values) > 0
+
+    def get_delta(self, values):
+        delta = len(self.values) - values
+        if delta > 0:
+            return ('release', delta)
+        elif delta < 0:
+            return ('add', -delta)
 
     ### public ###
 
@@ -343,10 +372,11 @@ class AllocatedScalar(serialization.Serializable):
     ### IAllocatedResource ###
 
     def extract_init_arguments(self):
-        return self.value
+        return (self.value, )
 
-    def zero(self):
-        return AllocatedScalar(0)
+    @staticmethod
+    def zero():
+        return Scalar.zero()
 
     def add(self, other):
         tmp = self.value + other.value
@@ -354,6 +384,9 @@ class AllocatedScalar(serialization.Serializable):
             raise ValueError("Value needs to be positive. Got %r", tmp)
         self.value = tmp
         return not self.value == 0
+
+    def get_delta(self, value):
+        return value - self.value
 
     ### private ###
 
@@ -416,7 +449,8 @@ class Allocation(serialization.Serializable):
         for name, alloc in self.alloc.items():
             if name in change.deltas:
                 if not alloc.add(change.deltas[name]):
-                    del(alloc[name])
+                    del(self.alloc[name])
+
         return self
 
     def __repr__(self):
@@ -496,6 +530,10 @@ class AgentMixin(object):
     @replay.immutable
     def get_allocation(self, state, allocation_id):
         return state.resources.get_allocation(allocation_id)
+
+    @replay.immutable
+    def get_allocation_delta(self, state, allocation_id, **resource):
+        return state.resources.get_allocation_delta(allocation_id, **resource)
 
     @replay.immutable
     def get_allocation_expiration(self, state, allocation_id):
@@ -594,6 +632,12 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
     def confirm(self, state, allocation_id):
         alloc = state.modifications.pop(allocation_id, None)
         if alloc is None:
+            alloc = self._get_confirmed().get(allocation_id, None)
+            if alloc is not None:
+                self.log('confirm() called on already confirmed allocation. '
+                         'Ignoring.')
+                return fiber.succeed(alloc)
+
             raise AllocationNotFound("Allocation with id=%s not found" %
                                      allocation_id)
         return self._append_to_descriptor(alloc)
@@ -618,6 +662,28 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             return change
         except NotEnoughResource:
             return None
+
+    @replay.mutable
+    def get_allocation_delta(self, state, allocation_id, **resource):
+        deltas = dict()
+        alloc = self.get_allocation(allocation_id)
+        for name, args in resource.iteritems():
+            definition = self._get_definition(name)
+            if not isinstance(args, (tuple, list)):
+                args = (args, )
+            alloc_resource = alloc.alloc.get(name, None)
+            if alloc_resource is None:
+                alloc_resource = definition.zero()
+            delta = alloc_resource.get_delta(*args)
+            if delta:
+                deltas[name] = delta
+
+        for name, alloc_resource in alloc.alloc.iteritems():
+            if name not in resource:
+                definition = self._get_definition(name)
+                args = definition.zero().extract_init_arguments()
+                deltas[name] = alloc_resource.get_delta(*args)
+        return deltas
 
     @replay.immutable
     def check_allocated(self, state, allocation_id):

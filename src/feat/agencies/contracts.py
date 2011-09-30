@@ -268,7 +268,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             cancellation = message.Cancellation(reason=reason)
             contractor.on_event(cancellation)
 
-        self._run_and_terminate(self.manager.cancelled)
+        self._run_and_terminate(self.manager.cancelled, cancellation)
 
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self, result=None):

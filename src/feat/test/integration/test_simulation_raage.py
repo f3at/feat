@@ -71,6 +71,8 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         hostdef.categories = {"access": Access.private,
                               "address": Address.dynamic,
                               "storage": Storage.static}
+        hostdef.ports_ranges = {"port": (1000, 1050)}
+
         self.set_local("hostdef", hostdef)
 
         yield self.process(setup)
@@ -82,12 +84,6 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         self.host_agent = self.get_local('host_agent')
         medium = yield self.driver.find_agent(self.get_local('req_desc'))
         self.req_agent = medium.get_agent()
-
-    def testValidateProlog(self):
-        self.assertEqual(1, self.count_agents('host_agent'))
-        self.assertEqual(1, self.count_agents('shard_agent'))
-        self.assertEqual(1, self.count_agents('raage_agent'))
-        self.assertEqual(1, self.count_agents('requesting_agent'))
 
     @defer.inlineCallbacks
     def testFindHost(self):
@@ -101,6 +97,29 @@ class SingleHostAllocationSimulation(common.SimulationTest):
                 yield self.req_agent.request_resource(resources, categories)
         checkAllocation(self, self.host_agent, resources)
         self.assertEqual(recipient.IRecipient(self.host_medium), irecipient)
+
+    @defer.inlineCallbacks
+    def testModifingAllocationWithContract(self):
+        # first request the same
+        desc = yield self.driver.get_document(self.req_agent.get_agent_id())
+        resc = desc.extract_resources()
+        allocation_id, irecipient = \
+                yield self.req_agent.request_resource(resc, {}, desc.doc_id)
+        req_par = yield self.host_agent.find_partner(desc.doc_id)
+        self.assertEqual(req_par.allocation_id, allocation_id)
+
+        # now lests modify
+        resc['port'] = 3
+        resc['host'] = 1
+        allocation_id, irecipient = \
+                yield self.req_agent.request_resource(resc, {}, desc.doc_id)
+        self.assertEqual(req_par.allocation_id, allocation_id)
+        checkAllocation(self, self.host_agent, {'port': [1000, 1001, 1002],
+                                                'host': 1})
+        alloc = self.host_agent.get_allocation(allocation_id)
+        self.assertEqual(set([1000, 1001, 1002]), alloc.alloc['port'].values)
+        self.assertEqual(1, alloc.alloc['host'].value)
+        self.assertEqual(1, alloc.alloc['epu'].value)
 
     @defer.inlineCallbacks
     def testNoHostFree(self):

@@ -58,7 +58,8 @@ class GloballyStartAgent(task.BaseTask):
         resc = state.descriptor.extract_resources()
         f = raage.retrying_allocate_resource(
             state.agent, resources=resc,
-            categories=state.factory.categories, max_retries=3)
+            categories=state.factory.categories, max_retries=3,
+            agent_id=state.descriptor.doc_id)
         f.add_callback(self._request_starting_host)
         return f
 

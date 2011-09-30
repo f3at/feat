@@ -21,7 +21,6 @@
 # Headers in this file shall remain intact.
 import os
 import sys
-import types
 import uuid
 import warnings
 
@@ -30,9 +29,11 @@ from zope.interface import implements
 
 from feat.common import log, error, defer, decorator, text_helper
 
-from feat.interface.log import *
-from feat.interface.fiber import *
-from feat.interface.serialization import *
+from feat.interface.log import LogLevel
+from feat.interface.fiber import (IFiber, FiberError, IFiberDescriptor,
+                                  TriggerType, FiberCancelled,
+                                  FiberTriggerError, FiberStartupError)
+from feat.interface.serialization import ISnapshotable
 
 
 SECTION_STATE_TAG = "__fiber_section_dict__"
@@ -87,6 +88,10 @@ def call_param(_param, _attr_name, *args, **kwargs):
     return _method(*args, **kwargs)
 
 
+def getattr_param(_param, _attr_name):
+    return getattr(_param, _attr_name)
+
+
 def inject_param(_param, _index, _method, *args, **kwargs):
     assert callable(_method), "method %r is not callable" % (_method, )
     args = args[:_index] + (_param, ) + args[_index:]
@@ -102,6 +107,8 @@ def handle_failure(failure, message, logger=None):
 
 
 def raise_error(_param, _error_type, *args, **kwargs):
+    if issubclass(_error_type, error.FeatError) and 'cause' not in kwargs:
+        kwargs['cause'] = _param
     raise _error_type(*args, **kwargs)
 
 

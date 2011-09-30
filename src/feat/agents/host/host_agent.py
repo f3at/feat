@@ -30,7 +30,7 @@ from feat.agents.base import (agent, contractor, recipient, message,
 from feat.agents.common import host, rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
-from feat.common import fiber, manhole, serialization, defer
+from feat.common import fiber, manhole, serialization, defer, error
 
 from feat.agencies.interface import NotFoundError
 from feat.interface.protocols import InterestType
@@ -556,33 +556,56 @@ class HostAllocationContractor(contractor.BaseContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
-        categories = announcement.payload['categories']
-        ret = check_categories(state.agent, categories)
+        # refuse if we are migrating
         if state.agent.is_migrating():
             self._refuse("We are currently migrating.")
             return
 
+        # check that categories match
+        categories = announcement.payload['categories']
+        ret = check_categories(state.agent, categories)
         if not ret:
             self._refuse("Categories doesn't match")
             return
 
         resources = announcement.payload['resources']
-        try:
-            preallocation = state.agent.preallocate_resource(**resources)
-        except resource.UnknownResource:
-            self._refuse("Unknown resource! WTF?")
-            return
 
-        if preallocation is None:
+        # check if we are asked for the allocation
+        # for the partner we are already hosting
+        agent_id = announcement.payload['agent_id']
+        partner = agent_id and state.agent.find_partner(agent_id)
+        state.allocation_id = None
+        if partner:
+            delta = state.agent.get_allocation_delta(
+                partner.allocation_id, **resources)
+            if delta:
+                try:
+                    preallocation = state.agent.premodify_allocation(
+                        partner.allocation_id, **delta)
+                    cost = 0
+                except resource.UnknownResource:
+                    self._refuse("Unknown resource! WTF?")
+                    return
+            else:
+                preallocation = None
+                state.allocation_id = partner.allocation_id
+                cost = 0
+        else:
+            try:
+                preallocation = state.agent.preallocate_resource(**resources)
+                cost = 10
+            except resource.UnknownResource:
+                self._refuse("Unknown resource! WTF?")
+                return
+
+        if preallocation is None and state.allocation_id is None:
             self._refuse("Not enough resource")
             return
 
-        state.preallocation_id = preallocation.id
+        state.preallocation_id = preallocation and preallocation.id
         # Create a bid
         bid = message.Bid()
-        bid.payload['allocation_id'] = state.preallocation_id
-
-        bid = self._get_cost(bid)
+        bid.payload['cost'] = cost
         state.medium.bid(bid)
 
     @replay.immutable
@@ -600,10 +623,15 @@ class HostAllocationContractor(contractor.BaseContractor):
 
     @replay.entry_point
     def granted(self, state, grant):
-        f = fiber.Fiber()
-        f.add_callback(state.agent.confirm_allocation)
+        f = fiber.succeed()
+        if state.preallocation_id:
+            f.add_callback(fiber.drop_param, state.agent.confirm_allocation,
+                           state.preallocation_id)
+            f.add_callback(fiber.getattr_param, 'id')
+        else: #already allocated and nothing to be changed
+            f.add_callback(fiber.override_result, state.allocation_id)
         f.add_callbacks(self._finalize, self._granted_failed)
-        return f.succeed(state.preallocation_id)
+        return f
 
     ### Private ###
 
@@ -616,15 +644,10 @@ class HostAllocationContractor(contractor.BaseContractor):
         return self.release_preallocation()
 
     @replay.mutable
-    def _finalize(self, state, allocation):
+    def _finalize(self, state, allocation_id):
         report = message.FinalReport()
-        report.payload['allocation_id'] = allocation.id
+        report.payload['allocation_id'] = allocation_id
         state.medium.finalize(report)
-
-    @replay.immutable
-    def _get_cost(self, state, bid):
-        bid.payload['cost'] = 0
-        return bid
 
 
 class StartAgentReplier(replier.BaseReplier):
@@ -660,6 +683,7 @@ class StartAgentContractor(contractor.BaseContractor):
     def announced(self, state, announce):
         state.descriptor = announce.payload['descriptor']
         state.factory = agent.registry_lookup(state.descriptor.document_type)
+        state.keep_allocated = False
 
         if state.agent.is_migrating():
             self._refuse()
@@ -670,7 +694,21 @@ class StartAgentContractor(contractor.BaseContractor):
             return
 
         resc = state.descriptor.extract_resources()
-        alloc = state.agent.preallocate_resource(**resc)
+        agent_id = state.descriptor.doc_id
+        partner = agent_id and state.agent.find_partner(agent_id)
+        if partner and partner.allocation_id:
+            cost = 0
+            delta = state.agent.get_allocation_delta(
+                partner.allocation_id, **resc)
+            if delta:
+                alloc = state.agent.premodify_allocation(
+                    partner.allocation_id, **delta)
+            else:
+                alloc = state.agent.get_allocation(partner.allocation_id)
+                state.keep_allocated = True
+        else:
+            cost = 10
+            alloc = state.agent.preallocate_resource(**resc)
 
         if alloc is None:
             self._refuse()
@@ -679,11 +717,12 @@ class StartAgentContractor(contractor.BaseContractor):
         state.alloc_id = alloc.id
 
         bid = message.Bid()
+        bid.payload = dict(cost=cost)
         state.medium.bid(bid)
 
     @replay.mutable
     def _release_allocation(self, state, *_):
-        if state.alloc_id:
+        if state.alloc_id and not state.keep_allocated:
             return state.agent.release_resource(state.alloc_id)
 
     @replay.mutable
@@ -705,9 +744,9 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.entry_point
     def granted(self, state, grant):
         f = state.agent.confirm_allocation(state.alloc_id)
-        f.add_callback(fiber.drop_param, state.agent.start_agent,
-                       state.descriptor.doc_id, state.alloc_id,
-                       **grant.payload['kwargs'])
+        f.add_callback(fiber.getattr_param, 'id')
+        f.add_callback(fiber.inject_param, 1, state.agent.start_agent,
+                       state.descriptor.doc_id, **grant.payload['kwargs'])
         f.add_callbacks(self._finalize, self._starting_failed)
         return f
 
@@ -718,6 +757,7 @@ class StartAgentContractor(contractor.BaseContractor):
 
     @replay.immutable
     def _starting_failed(self, state, fail):
+        error.handle_failure(self, fail, 'Starting failed, cancelling')
         msg = message.Cancellation(reason=fail)
         f = self._release_allocation()
         f.add_callback(fiber.drop_param, state.medium.defect,

@@ -20,7 +20,7 @@
 
 # Headers in this file shall remain intact.
 from feat.agents.base import manager, replay, message, descriptor
-from feat.common import error
+from feat.common import error, fiber
 
 __all__ = ['allocate_resource', 'AllocationManager', 'discover', 'Descriptor']
 
@@ -33,32 +33,30 @@ class AllocationFailedError(error.FeatError):
 
 
 def allocate_resource(agent, resources, shard=None,
-                      categories={}, max_distance=None):
-
-    def on_error(f):
-        raise AllocationFailedError(resources, cause=f)
+                      categories={}, max_distance=None,
+                      agent_id=None):
 
     f = discover(agent, shard)
-    f.add_callback(lambda recp: agent.initiate_protocol(
-        AllocationManager, recp, resources, categories, max_distance))
-    f.add_callback(lambda x: x.notify_finish())
-    f.add_errback(on_error)
+    f.add_callback(fiber.inject_param, 1, agent.initiate_protocol,
+        AllocationManager, resources, categories, max_distance, agent_id)
+    f.add_callback(fiber.call_param, 'notify_finish')
+    f.add_errback(fiber.raise_error, AllocationFailedError, resources)
     return f
 
 
 def retrying_allocate_resource(agent, resources, shard=None,
                                categories={}, max_distance=None,
-                               max_retries=3):
+                               agent_id=None, max_retries=3):
 
     def on_error(f):
         raise AllocationFailedError(resources, cause=f)
 
     f = discover(agent, shard)
-    f.add_callback(lambda recp: agent.retrying_protocol(
-        AllocationManager, recp, max_retries=max_retries,
-        args=(resources, categories, max_distance, )))
-    f.add_callback(lambda x: x.notify_finish())
-    f.add_errback(on_error)
+    f.add_callback(fiber.inject_param, 1, agent.retrying_protocol,
+        AllocationManager, max_retries=max_retries,
+        args=(resources, categories, max_distance, agent_id, ))
+    f.add_callback(fiber.call_param, 'notify_finish')
+    f.add_errback(fiber.raise_error, AllocationFailedError, resources)
     return f
 
 
@@ -73,13 +71,14 @@ class AllocationManager(manager.BaseManager):
     announce_timeout = 6
 
     @replay.entry_point
-    def initiate(self, state, resources, categories, max_distance):
+    def initiate(self, state, resources, categories, max_distance, agent_id):
         self.log("initiate manager")
         state.resources = resources
         msg = message.Announcement()
         msg.max_distance = max_distance
         msg.payload['resources'] = state.resources
         msg.payload['categories'] = categories
+        msg.payload['agent_id'] = agent_id
         state.medium.announce(msg)
 
     @replay.entry_point

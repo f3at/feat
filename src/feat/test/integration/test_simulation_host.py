@@ -299,8 +299,8 @@ class HostAgentCheckTest(common.SimulationTest):
 class RequestingAgent(agent.BaseAgent):
 
     @replay.mutable
-    def request(self, state, shard, resc=dict()):
-        desc = Descriptor3()
+    def request(self, state, shard, resc=dict(), desc=None):
+        desc = desc or Descriptor3()
         if resc:
             desc.resources = params = dict(
                 [key, resource.AllocatedScalar(val)]
@@ -385,3 +385,28 @@ class SimulationStartAgentContract(common.SimulationTest):
         self.assertEqual(['core'], desc.resources.keys())
         _, allocated = yield host.list_resource()
         self.assertEqual(2, allocated['core'])
+
+    @defer.inlineCallbacks
+    def testRestartingWithModifiedResource(self):
+        shard = self.agent.get_shard_id()
+        res = dict(epu=20, core=1)
+        recp = yield self.agent.request(shard, res)
+        desc = yield self.driver.get_document(IRecipient(recp).key)
+        medium = yield self.driver.find_agent(recp)
+        self.assertTrue(medium is not None)
+        host = medium.get_agent().query_partners('hosts')[0]
+        self.assertIsInstance(host, agent.HostPartner)
+        yield medium.terminate_hard()
+
+        res = dict(epu=10)
+        new_recp = yield self.agent.request(shard, res, desc)
+        self.assertEqual(recp, new_recp)
+        medium = yield self.driver.find_agent(recp)
+        self.assertTrue(medium is not None)
+        new_host = medium.get_agent().query_partners('hosts')[0]
+        self.assertEqual(host, new_host)
+
+        host_medium = yield self.driver.find_agent(host.recipient)
+        host_a = host_medium.get_agent()
+        _, allocated = host_a.list_resource()
+        self.assertEqual(0, allocated['core'])

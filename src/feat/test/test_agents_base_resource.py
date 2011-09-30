@@ -104,12 +104,28 @@ class PortResourceTest(common.TestCase, Common):
     timeout = 1
 
     def setUp(self):
-
         self.allocations = dict()
         self.agent = DummyAgent(self, self.allocations)
         self.resources = resource.Resources(self.agent)
 
         self.resources.define('streamer', resource.Range, 1000, 1004)
+        self.resources.define('slots', resource.Range, 1000, 1004)
+
+    @defer.inlineCallbacks
+    def testGettingDeltas(self):
+        alloc = yield self.resources.allocate(streamer=3)
+        delta = yield self.resources.get_allocation_delta(alloc.id, streamer=5)
+        self.assertEqual(dict(streamer=('add', 2)), delta)
+        delta = yield self.resources.get_allocation_delta(alloc.id)
+        self.assertEqual(dict(streamer=('release', 3)), delta)
+        delta = yield self.resources.get_allocation_delta(alloc.id, slots=4)
+        exp = dict(streamer=('release', 3), slots=('add', 4))
+        self.assertEqual(exp, delta)
+
+        # now bad requests
+        d = self.resources.get_allocation_delta(alloc.id, unknown=4)
+        self.assertFailure(d, resource.UnknownResource)
+        yield d
 
     @defer.inlineCallbacks
     def testSimpleAllocate(self):
@@ -117,7 +133,7 @@ class PortResourceTest(common.TestCase, Common):
         res = alloc.alloc['streamer']
         self.assertIsInstance(res, resource.AllocatedRange)
         self.assertEqual(set([1000, 1001, 1002]), res.values)
-        self._assert_allocated([[1000, 1001, 1002]])
+        self._assert_allocated([[], [1000, 1001, 1002]])
 
     @defer.inlineCallbacks
     def testOverallocateAndFragmenting(self):
@@ -126,24 +142,24 @@ class PortResourceTest(common.TestCase, Common):
         self.assertTrue(alloc2 is None)
         self.assertFalse(alloc1 is None)
         yield self.resources.confirm(alloc1.id)
-        self._assert_allocated([[1000, 1001, 1002]])
+        self._assert_allocated([[], [1000, 1001, 1002]])
 
         alloc = yield self.resources.allocate(streamer=1)
-        self._assert_allocated([[1000, 1001, 1002, 1003]])
+        self._assert_allocated([[], [1000, 1001, 1002, 1003]])
         yield self.resources.allocate(streamer=1)
-        self._assert_allocated([[1000, 1001, 1002, 1003, 1004]])
+        self._assert_allocated([[], [1000, 1001, 1002, 1003, 1004]])
         yield self.resources.release(alloc.id)
-        self._assert_allocated([[1000, 1001, 1002, 1004]])
+        self._assert_allocated([[], [1000, 1001, 1002, 1004]])
 
     @defer.inlineCallbacks
     def testModifing(self):
         alloc1 = yield self.resources.allocate(streamer=3)
-        self._assert_allocated([[1000, 1001, 1002]])
+        self._assert_allocated([[], [1000, 1001, 1002]])
         mod = yield self.resources.premodify(alloc1.id,
             streamer=('release', 1000, 'add', 1))
-        self._assert_allocated([[1000, 1001, 1002, 1003]])
+        self._assert_allocated([[], [1000, 1001, 1002, 1003]])
         yield self.resources.confirm(mod.id)
-        self._assert_allocated([[1001, 1002, 1003]])
+        self._assert_allocated([[], [1001, 1002, 1003]])
 
         n = yield self.resources.premodify(alloc1.id,
                                            streamer=('add_specific', 1002))
@@ -151,10 +167,10 @@ class PortResourceTest(common.TestCase, Common):
 
         mod = yield self.resources.premodify(alloc1.id,
                                              streamer=('add', 2))
-        self._assert_allocated([[1000, 1001, 1002, 1003, 1004]])
+        self._assert_allocated([[], [1000, 1001, 1002, 1003, 1004]])
         # now expire
         self.agent.time += 15
-        self._assert_allocated([[1001, 1002, 1003]])
+        self._assert_allocated([[], [1001, 1002, 1003]])
 
 
 @common.attr(timescale=0.05)
@@ -488,3 +504,15 @@ class ResourcesTest(common.TestCase, Common):
         unserialize = pytree.unserialize
         Ins = pytree.Instance
         self.assertEqual(allocation, unserialize(serialize(allocation)))
+
+    @defer.inlineCallbacks
+    def testGettingDeltas(self):
+        alloc = yield self.resources.allocate(a=3, b=2)
+        delta = yield self.resources.get_allocation_delta(alloc.id, a=5)
+        self.assertEqual(dict(a=2, b=-2), delta)
+
+        delta = yield self.resources.get_allocation_delta(alloc.id, a=3)
+        self.assertEqual(dict(b=-2), delta)
+
+        delta = yield self.resources.get_allocation_delta(alloc.id, a=3, b=4)
+        self.assertEqual(dict(b=2), delta)

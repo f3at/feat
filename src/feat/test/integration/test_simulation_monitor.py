@@ -22,17 +22,17 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
-import operator
 
 from feat import everything
 from feat.agents.base import recipient, descriptor, agent, partners, replay
-from feat.agents.base import dbtools
-from feat.agents.common import monitor
-from feat.common import first, serialization, defer, time, fiber
+from feat.agents.base import dbtools, resource
+from feat.agents.common import monitor, host, start_agent
+from feat.common import first, serialization, defer
 from feat.common.text_helper import format_block
+from feat.gateway import dummies
 
-from feat.interface.recipient import *
-from feat.agents.monitor.interface import *
+from feat.interface.recipient import IRecipient
+from feat.agents.monitor.interface import PatientState
 
 from feat.test.integration import common
 from feat.agents.monitor import monitor_agent
@@ -935,6 +935,68 @@ class TestRealMonitoring(common.SimulationTest):
         hosts = [IRecipient(h)
                  for h in agent.query_partners_with_role("all", "host")]
         self.assertTrue(IRecipient(agent) in hosts)
+
+    @common.attr(hosts_per_shard=2)
+    @defer.inlineCallbacks
+    def testReusingAllocation(self):
+        drv = self.driver
+
+        components = ("feat.agents.monitor.interface.IIntensiveCareFactory",
+                      "feat.agents.monitor.interface.IPacemakerFactory",
+                      "feat.agents.monitor.interface.IClerkFactory")
+        agency = yield drv.spawn_agency(*components)
+        hostdef1 = host.HostDef()
+        hostdef1.resources['special'] = 1
+
+        # host1 has special resource
+        desc = yield drv.descriptor_factory('host_agent')
+        h1 = yield agency.start_agent(desc, hostdef=hostdef1)
+
+        yield self.wait_for_idle(20)
+
+        # host2 doesn't have special resource
+        agency = yield drv.spawn_agency(*components)
+        desc = yield drv.descriptor_factory('host_agent')
+        h2 = yield agency.start_agent(desc)
+        yield self.wait_for_idle(20)
+
+        # now spawn a special agent
+
+        desc = dummies.DummyWhereverStandaloneDescriptor()
+        desc.resources = dict(special=resource.AllocatedScalar(1))
+        desc = yield drv.save_document(desc)
+
+        task = yield h2.initiate_protocol(start_agent.GloballyStartAgent, desc)
+        yield task.notify_finish()
+        yield self.wait_for_idle(20)
+
+        dummy = first(
+            drv.iter_agents('dummy_wherever_standalone'))
+        host_p = dummy.get_agent().query_partners('hosts')[0]
+        self.assertEqual(host_p.recipient.key, h1.get_descriptor().doc_id)
+
+        ma = first(drv.iter_agents('monitor_agent'))
+        yield self.wait_monitored(dummy, ma, 10)
+
+        # now terminate the dummy by modifying it's descriptor,
+        # we modify the resource section to append some allocation
+        # let it be restarted and assert it reuses the resource
+        desc = yield drv.reload_document(desc)
+        desc.resources['core'] = resource.AllocatedScalar(1)
+        desc = yield drv.save_document(desc)
+        yield common.delay(None, 1)
+        self.assertEqual(0, self.count_agents('dummy_wherever_standalone'))
+
+        yield common.delay(None, 10)
+        yield self.wait(20, ma)
+
+        self.assertEqual(1, self.count_agents('dummy_wherever_standalone'))
+        dummy = first(
+            drv.iter_agents('dummy_wherever_standalone')).get_agent()
+        host_p = dummy.query_partners('hosts')[0]
+        _, allocated = h1.get_agent().list_resource()
+        self.assertEqual(1, allocated['special'])
+        self.assertEqual(1, allocated['core'])
 
     @common.attr(hosts_per_shard=2)
     @defer.inlineCallbacks

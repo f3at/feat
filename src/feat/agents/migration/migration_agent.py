@@ -24,7 +24,7 @@ from pprint import pformat
 from feat.agencies import tunneling
 from feat.agents.base import (agent, replay, recipient, task, descriptor,
                               alert, notifier, )
-from feat.agents.common import start_agent
+from feat.agents.common import start_agent, export
 from feat.common import (fiber, serialization, formatable, manhole,
                          error, text_helper, )
 from feat.agents.migration import protocol, spec
@@ -32,6 +32,8 @@ from feat.agents.migration import protocol, spec
 
 @agent.register('migration_agent')
 class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
+
+    migratability = export.Migratability.not_migratable
 
     @replay.mutable
     def initiate(self, state):

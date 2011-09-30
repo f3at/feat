@@ -29,9 +29,10 @@ class RequestingAgent(agent.BaseAgent):
 
     @manhole.expose()
     @replay.mutable
-    def request_resource(self, state, resources, categories):
+    def request_resource(self, state, resources, categories, agent_id=None):
         self.info('Requesting resoruce %r category %r', resources, categories)
-        return raage.allocate_resource(self, resources, categories=categories)
+        return raage.allocate_resource(self, resources, categories=categories,
+                                       agent_id=agent_id)
 
     @manhole.expose()
     @replay.mutable

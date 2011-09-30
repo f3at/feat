@@ -865,7 +865,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def _terminate_procedure(self, body):
         assert callable(body)
 
-        if self._cmp_state(AgencyAgentState.terminating):
+        if self._cmp_state((AgencyAgentState.terminating,
+                            AgencyAgentState.terminated)):
             return
         self._set_state(AgencyAgentState.terminating)
 

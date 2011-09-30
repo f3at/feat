@@ -198,9 +198,10 @@ class StartAgentManager(manager.BaseManager):
     @replay.entry_point
     def closed(self, state):
         bids = state.medium.get_bids()
+        bid = message.Bid.pick_best(bids)[0]
         grant = message.Grant()
         grant.payload['kwargs'] = state.kwargs
-        state.medium.grant((bids[0], grant))
+        state.medium.grant((bid, grant))
 
     @replay.entry_point
     def completed(self, state, reports):
