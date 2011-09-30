@@ -108,11 +108,6 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
             state.notifiers.append(labour)
         state.alerts = blackbox or dict()
 
-    @replay.immutable
-    def startup(self, state):
-        for labour in state.notifiers:
-            labour.startup()
-
     @replay.journaled
     def get_migration_state(self, state):
         '''
