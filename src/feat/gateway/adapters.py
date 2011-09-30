@@ -26,7 +26,7 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.agencies import agency
-from feat.agencies.net import agency as net_agency
+from feat.agencies.net import agency as net_agency, options
 from feat.agencies.net.broker import BrokerRole
 from feat.agents.base import partners, resource
 from feat.common import adapter, log
@@ -64,7 +64,7 @@ class Agency(object):
 
     @property
     def default_gateway_port(self):
-        return net_agency.DEFAULT_GW_PORT
+        return options.DEFAULT_GW_PORT
 
     def shutdown_agency(self):
         return self._agency.shutdown(stop_process=True)
