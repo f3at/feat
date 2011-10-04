@@ -24,7 +24,7 @@
 from twisted.spread import pb
 
 from feat.common import decorator, fiber, first
-from feat.agents.base import document, registry
+from feat.agents.base import document, registry, resource
 
 
 field = document.field
@@ -86,8 +86,11 @@ class Descriptor(document.Document, pb.Copyable):
 
     def extract_resources(self):
         if self.resources:
-            iterator = self.resources.iteritems()
-            return dict(([name, allocated_resource.extract_init_arguments()]
-                         for name, allocated_resource in iterator))
+            resp = dict()
+            for name, value in self.resources.iteritems():
+                if resource.IAllocatedResource.providedBy(value):
+                    value = value.extract_init_arguments()
+                resp[name] = value
+            return resp
         else:
             return registry.registry_lookup(self.document_type).resources
