@@ -379,6 +379,11 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         content.properties['delivery mode'] = 1  # non-persistent
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
+        if shard is None:
+            self.error('Tried to sent message to exchange=None. This would '
+                       'mess up the whole txamqp library state, therefore '
+                       'this message is ignored')
+            return defer.succeed(None)
         d = self.channel.basic_publish(exchange=shard, content=content,
                                        routing_key=key, immediate=False)
         d.addCallback(defer.drop_param, self.channel.tx_commit)
