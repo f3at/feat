@@ -86,6 +86,13 @@ class Partners(partners.Partners):
 class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
     implements(agent.IAgentFactory)
 
+    ### used by partnership protocol ###
+
+    @property
+    def identity_for_partners(cls):
+        return getattr(cls.partners_class, 'identity_for_partners',
+                       cls.descriptor_type)
+
 
 class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
                 manhole.Manhole, rpc.AgentMixin, export.AgentMigrationBase,

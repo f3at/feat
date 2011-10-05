@@ -96,7 +96,7 @@ class ProposalReceiver(BaseReplier):
         default_role = getattr(state.agent.partners_class, 'default_role',
                                None)
         payload = {'ok': True,
-                   'desc': state.agent.descriptor_type,
+                   'desc': type(state.agent).identity_for_partners,
                    'default_role': default_role}
         self._reply(payload)
 

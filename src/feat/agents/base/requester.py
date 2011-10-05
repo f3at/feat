@@ -156,7 +156,7 @@ class Propose(BaseRequester):
 
         msg = message.RequestMessage(
             payload=dict(
-                partner_class=state.agent.descriptor_type,
+                partner_class=type(state.agent).identity_for_partners,
                 role=partner_role,
                 allocation_id=partner_alloc_id,
                 options=options))
