@@ -102,12 +102,13 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         self.call_next(self._bind)
         return self
 
-    @serialization.freeze_tag('RetryingProtocol.notify_finish')
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         return common.TransientInitiatorMediumBase.notify_finish(self)
 
     def call_later(self, _time, _method, *args, **kwargs):
-        return self.medium.call_later(_time, _method, *args, **kwargs)
+        return self.medium.call_later_ex(_time, _method, args, kwargs,
+                                         busy=self.busy)
 
     ### ILongRunningProtocol Methods ###
 

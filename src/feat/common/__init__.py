@@ -112,7 +112,7 @@ def deep_compare(expected, value):
 
         if len(d1) != len(d2):
             msg = ("Expected %d attribute(s) and got %d"
-                   % (len(v1), len(v2)))
+                   % (len(d1), len(d2)))
             return path, msg
 
         for k in d1:

@@ -545,6 +545,16 @@ class BaseReplayDummy(log.LogProxy, log.Logger):
     def snapshot(self):
         return self._dummy_id
 
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
+        return True
+
+    def __ne__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
+        return False
+
 
 class StateMachineSpecific(object):
 
