@@ -444,7 +444,7 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.immutable
     def observe(self, state, _method, *args, **kwargs):
-        state.medium.observe(_method, *args, **kwargs)
+        return state.medium.observe(_method, *args, **kwargs)
 
     ### Private Methods ###
 

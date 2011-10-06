@@ -476,6 +476,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     #StateMachineMixin
 
+    @replay.named_side_effect('AgencyAgent.get_machine_state')
     def get_machine_state(self):
         return self._get_machine_state()
 
