@@ -43,6 +43,7 @@ class GloballyStartAgent(task.BaseTask):
     @replay.entry_point
     def initiate(self, state, desc, **kwargs):
         state.descriptor = desc
+        state.max_retries = kwargs.pop('_max_retries', 3)
         state.keywords = kwargs
         state.factory = agent.registry_lookup(state.descriptor.document_type)
         # we are setting shard=None here first, because of the logic in
@@ -58,7 +59,8 @@ class GloballyStartAgent(task.BaseTask):
         resc = state.descriptor.extract_resources()
         f = raage.retrying_allocate_resource(
             state.agent, resources=resc,
-            categories=state.factory.categories, max_retries=3,
+            categories=state.factory.categories,
+            max_retries=state.max_retries,
             agent_id=state.descriptor.doc_id)
         f.add_callback(self._request_starting_host)
         return f
