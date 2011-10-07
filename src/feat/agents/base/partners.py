@@ -26,7 +26,7 @@ import types
 from twisted.python import components
 
 from feat.common import log, serialization, fiber, defer, annotate
-from feat.common import formatable, time, mro, error_handler
+from feat.common import formatable, time, mro, error_handler, error
 from feat.agents.base import replay, recipient, requester
 
 from feat.interface.protocols import *
@@ -469,6 +469,10 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     def _call_next_cb(self, state, partner, method_name,
                       update_descriptor, **kwargs):
         f = partner.call_mro(method_name, agent=state.agent, **kwargs)
+        f.add_errback(fiber.inject_param, 1,
+                      error.handle_failure, self,
+                      "%s() method of %s returned the failure.", method_name,
+                      partner)
         if update_descriptor:
             f.add_callback(defer.drop_param, self.update_partner, partner)
         return f
