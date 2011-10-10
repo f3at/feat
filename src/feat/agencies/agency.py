@@ -676,7 +676,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         def wait_for_protocol(protocol):
             d = protocol.notify_finish()
-            d.addErrback(Failure.trap, ProtocolFailed)
+            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
             return d
 
         a = [interest.wait_finished() for interest in self._iter_interests()]
@@ -955,7 +955,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         def expire_one(prot):
             d = defer.succeed(None)
             d.addCallback(defer.drop_param, prot.cleanup)
-            d.addErrback(Failure.trap, ProtocolFailed)
+            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
             return d
 
         d = defer.DeferredList([expire_one(x)

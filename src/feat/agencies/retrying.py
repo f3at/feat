@@ -22,12 +22,14 @@
 from twisted.python.failure import Failure
 from zope.interface import implements
 
+from feat.agents.base import replay
 from feat.agencies import common
-from feat.common import log, defer, serialization
+from feat.common import log, defer, serialization, error
 
-from feat.agencies.interface import *
-from feat.interface.serialization import *
-from feat.interface.protocols import *
+from feat.agencies.interface import (IAgencyInitiatorFactory,
+                                     ILongRunningProtocol)
+from feat.interface.serialization import ISerializable
+from feat.interface.protocols import IInitiatorFactory, ProtocolFailed
 
 
 @serialization.register
@@ -110,6 +112,15 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         return self.medium.call_later_ex(_time, _method, args, kwargs,
                                          busy=self.busy)
 
+    @replay.named_side_effect('RetryingProtocol.get_status')
+    def get_status(self):
+        res = dict()
+        res['attempt'] = self.attempt
+        res['max_retries'] = self.max_retries
+        res['delay'] = self.delay
+        res['running_now'] = self._initiator is not None
+        return res
+
     ### ILongRunningProtocol Methods ###
 
     @serialization.freeze_tag('RetryingProtocol.cancel')
@@ -122,7 +133,7 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         if self._initiator:
             #FIXME: we shouldn't have to use _get_state()
             d = self._initiator._get_state().medium.expire_now()
-            d.addErrback(Failure.trap, ProtocolFailed)
+            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
             return d
 
     def is_idle(self):

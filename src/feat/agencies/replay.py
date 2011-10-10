@@ -1021,6 +1021,10 @@ class RetryingProtocol(AgencyProtocol):
     def cancel(self):
         pass
 
+    @replay.named_side_effect('RetryingProtocol.get_status')
+    def get_status(self):
+        pass
+
 
 class PeriodicProtocol(AgencyProtocol):
 
