@@ -8,7 +8,7 @@
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
 Version: 	%{version}
-Release: 	%{?build_rev}%{?dist}
+Release: 	%{build_rev}%{?dist}
 Source0: 	feat-%{unmangled_version}.tar.gz
 
 Group:          Development/Languages
