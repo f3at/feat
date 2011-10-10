@@ -129,8 +129,10 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         state.medium = agent.IAgencyAgent(medium)
         state.partners = self.partners_class(self)
 
+    ### Used by gateway model ###
+
     @replay.immutable
-    def get_status(self, state):
+    def get_agent_status(self, state):
         return state.medium.state
 
     ### IAgent Methods ###

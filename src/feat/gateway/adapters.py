@@ -101,7 +101,7 @@ class Agent(object):
 
     @property
     def agent_status(self):
-        return self._agent.get_status()
+        return self._agent.get_agent_status()
 
     @property
     def agency_id(self):

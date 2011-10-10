@@ -262,7 +262,8 @@ class ExportTest(common.SimulationTest, Common):
         # now perform the last step - termination of the host
         migration = yield self.export_agent.apply_next_step(migration)
         yield self.wait_for_idle(10)
-        self.assertEqual(AgencyAgentState.terminated, self.host1.get_status())
+        self.assertEqual(AgencyAgentState.terminated,
+                         self.host1.get_agent_status())
         agency1 = self.get_local('agency1')
         self.assertEqual('special command', agency1.get_upgrade_command())
         self.assertEqual(3, self.count_agents('host_agent'))
