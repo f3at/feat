@@ -307,7 +307,7 @@ class Agency(agency.Agency):
 
     def on_become_master(self):
         self._ssh.start_listening()
-        filename = os.path.join(self.config['agency']['rundir'],
+        filename = os.path.join(self.config['agency']['logdir'],
                                 self.config['agency']['journal'])
         self._journal_writer = journaler.SqliteWriter(
             self, filename=filename, encoding='zip',
