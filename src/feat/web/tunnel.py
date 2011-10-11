@@ -7,7 +7,7 @@ from zope.interface import Interface, implements
 import feat
 from feat.common import log, defer, error, time
 from feat.common.serialization import json
-from feat.web import http, security, httpserver, httpclient
+from feat.web import http, security, base, httpserver, httpclient
 
 DEFAULT_REQUEST_TIMEOUT = 5*60
 DEFAULT_RESPONSE_TIMEOUT = 5*60+1
@@ -25,7 +25,7 @@ class ITunnelDispatcher(Interface):
         """Dispatches a message."""
 
 
-class Tunnel(log.LogProxy, log.Logger):
+class Tunnel(base.RangeServer):
 
     implements(httpserver.IHTTPServerOwner)
 
@@ -45,32 +45,20 @@ class Tunnel(log.LogProxy, log.Logger):
                  public_host=None, version=None, registry=None,
                  server_security_policy=None,
                  client_security_policy=None):
-        log.LogProxy.__init__(self, log_keeper)
-        log.Logger.__init__(self, log_keeper)
+        base.RangeServer.__init__(self, port_range,
+                                  hostname=public_host,
+                                  security_policy=server_security_policy,
+                                  log_keeper=log_keeper)
 
-        if public_host is None:
-            public_host = socket.gethostbyaddr(socket.gethostname())[0]
-
-        if isinstance(port_range, int):
-            port_range = [port_range]
-
-        self._port_range = port_range
         self._dispatcher = ITunnelDispatcher(dispatcher)
-        self._public_host = public_host
 
         ### protected attributes, used by Peer and/or Request ###
         ver = version if version is not None else feat.version
         self._version = int(ver)
         self._registry = registry
-        self._scheme = None
 
-        self._server_security = security.ensure_policy(server_security_policy)
         self._client_security = security.ensure_policy(client_security_policy)
 
-        self._server = httpserver.Factory(self, self)
-        self._server.request_factory_class = RequestFactory
-
-        self._port = None
         self._uri = None
 
         self._retries = {} # {PEER_KEY: IDelayedCall}
@@ -84,10 +72,6 @@ class Tunnel(log.LogProxy, log.Logger):
         return self._version
 
     @property
-    def port(self):
-        return None if self._port is None else self._port.getHost().port
-
-    @property
     def uri(self):
         return self._uri
 
@@ -96,7 +80,7 @@ class Tunnel(log.LogProxy, log.Logger):
             return False
         if self._pendings:
             return False
-        if not self._server.is_idle():
+        if not self.factory.is_idle():
             return False
         for peer in self._peers.itervalues():
             if not peer.is_idle():
@@ -127,44 +111,11 @@ class Tunnel(log.LogProxy, log.Logger):
         self._post(key, location, data, exp, now, d)
         return d
 
-    def start_listening(self):
-        assert self._port is None, "Already listening"
-        if self._server_security.use_ssl:
-            ctx_factory = self._server_security.get_ssl_context_factory()
-            setup = self._create_ssl_setup(self._server, ctx_factory)
-        else:
-            setup = self._create_tcp_setup(self._server)
-
-        for port in self._port_range:
-            try:
-                setup(port)
-                break
-            except tw_error.CannotListenError:
-                continue
-
-        if self._port is None:
-            msg = ("Couldn't listen on any of the %d port(s) "
-                   "from range starting with %d"
-                   % (len(self._port_range), self._port_range[0]))
-            return defer.fail(tw_error.CannotListenError(msg))
-
-        self._uri = "http://%s:%d/" % (self._public_host, self.port)
-        return defer.succeed(self._uri)
-
-    def stop_listening(self):
-        if self._port is not None:
-            d = defer.maybeDeferred(self._port.stopListening)
-            d.addCallback(defer.override_result, None)
-            self._port = None
-            self._url = None
-            return d
-        return defer.succeed(None)
-
     def disconnect(self):
         self._cancel_retries()
         for peer in self._peers.values():
             peer.disconnect()
-        self._server.disconnect()
+        base.RangeServer.disconnect(self)
 
     ### httpserver.IHTTPServerOwner ###
 
@@ -173,6 +124,19 @@ class Tunnel(log.LogProxy, log.Logger):
 
     def onServerConnectionLost(self, channel, reason):
         pass
+
+    ### overridden ###
+
+    def _create_factory(self):
+        factory = httpserver.Factory(self, self)
+        factory.request_factory_class = RequestFactory
+        return factory
+
+    def _on_listening(self):
+        self._uri = "http://%s:%d/" % (self.hostname, self.port)
+
+    def _on_stopped(self):
+        self._uri = None
 
     ### protected ##
 
@@ -185,22 +149,6 @@ class Tunnel(log.LogProxy, log.Logger):
         self._dispatcher.dispatch(uri, data)
 
     ### private ###
-
-    def _create_tcp_setup(self, server):
-
-        def setup(port):
-            self._port = reactor.listenTCP(port, self._server)
-            self._scheme = http.Schemes.HTTP
-
-        return setup
-
-    def _create_ssl_setup(self, server, context_factory):
-
-        def setup(port):
-            self._port = reactor.listenSSL(port, server, context_factory)
-            self._scheme = http.Schemes.HTTPS
-
-        return setup
 
     def _add_pending(self, key, location, data, expiration, d=None):
         if key not in self._pendings:
