@@ -193,6 +193,7 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
     epu_in_new_cluster = 50
 
     def setUp(self):
+        self.assert_not_skipped()
         config = export_agent.ExportAgentConfiguration(
             doc_id = 'test-export-config',
             sitename = 'testing_site',

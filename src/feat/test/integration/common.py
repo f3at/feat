@@ -23,7 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import sys
 
-from twisted.trial.unittest import FailTest
+from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.common import text_helper, defer, reflect
@@ -44,7 +44,15 @@ break_errback_chain = common.break_errback_chain
 
 
 class IntegrationTest(common.TestCase):
-    pass
+    skip_coverage = True
+
+    def setUp(self):
+        self.assert_not_skipped()
+        return common.TestCase.setUp(self)
+
+    def assert_not_skipped(self):
+        if self.skip_coverage and sys.gettrace():
+            raise SkipTest("Test Skipped during coverage")
 
 
 def jid2str(jid):
@@ -128,6 +136,7 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
 
     configurable_attributes = ['skip_replayability', 'jourfile', 'save_stats']
     skip_replayability = False
+    skip_coverage = True
     jourfile = None
     save_stats = False
 
@@ -136,8 +145,13 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
         initial_documents = dbtools.get_current_initials()
         self.addCleanup(dbtools.reset_documents, initial_documents)
 
+    def assert_not_skipped(self):
+        if self.skip_coverage and sys.gettrace():
+            raise SkipTest("Test Skipped during coverage")
+
     @defer.inlineCallbacks
     def setUp(self):
+        self.assert_not_skipped()
         yield common.TestCase.setUp(self)
         self.driver = driver.Driver(jourfile=self.jourfile)
         yield self.driver.initiate()
@@ -240,6 +254,7 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
     configurable_attributes = ['save_journal', 'clusters']
     save_journal = False
     clusters = 2
+    skip_coverage = True
 
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
@@ -247,8 +262,13 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
 
         self.addCleanup(dbtools.reset_documents, initial_documents)
 
+    def assert_not_skipped(self):
+        if self.skip_coverage and sys.gettrace():
+            raise SkipTest("Test Skipped during coverage")
+
     @defer.inlineCallbacks
     def setUp(self):
+        self.assert_not_skipped()
         yield common.TestCase.setUp(self)
         bridge = tunneling.Bridge()
         jourfiles = ["%s_%d.sqlite3" % (self._testMethodName, index, )

@@ -189,16 +189,16 @@ class BrokerTest(common.TestCase):
         self.assertIn('key', master.shared_state)
         self.assertEquals('value', master.shared_state['key'])
 
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertIn('key', slave1.shared_state)
         self.assertEquals('value', slave1.shared_state['key'])
         yield slave2.initiate_broker()
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertIn('key', slave2.shared_state)
         self.assertEquals('value', slave2.shared_state['key'])
         slave2.shared_state['key'] = 'other value'
         self.assertEqual('other value', slave2.shared_state['key'])
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertEqual('other value', master.shared_state['key'])
 
         # test deleting
@@ -206,39 +206,39 @@ class BrokerTest(common.TestCase):
         yield slave1.disconnect()
         del(slave2.shared_state['key'])
         self.assertNotIn('key', slave2.shared_state)
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertNotIn('key', master.shared_state)
 
         yield slave1.initiate_broker()
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertNotIn('key', slave1.shared_state)
 
         # test clear() method
         master.shared_state['new_key'] = 2
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         slave1.shared_state.clear()
         self.assertNotIn('new_key', slave1.shared_state)
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertNotIn('new_key', slave2.shared_state)
         self.assertNotIn('new_key', master.shared_state)
 
         # test pop() method
         master.shared_state['new_key'] = 2
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertIn('new_key', slave2.shared_state)
         self.assertEqual(2, slave2.shared_state.pop('new_key'))
         self.assertNotIn('new_key', slave2.shared_state)
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertNotIn('new_key', slave2.shared_state)
         self.assertNotIn('new_key', slave1.shared_state)
         self.assertNotIn('new_key', master.shared_state)
 
         # test popitem() method
         master.shared_state['new_key'] = 2
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertEqual(('new_key', 2), slave2.shared_state.popitem())
         self.assertNotIn('new_key', slave2.shared_state)
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertNotIn('new_key', slave2.shared_state)
         self.assertNotIn('new_key', slave1.shared_state)
 
@@ -249,7 +249,7 @@ class BrokerTest(common.TestCase):
         self.assertIn('b', slave1.shared_state)
         self.assertEqual(3, slave1.shared_state['a'])
         self.assertEqual(5, slave1.shared_state['b'])
-        yield common.delay(None, 0.01)
+        yield common.delay(None, 0.1)
         self.assertIn('a', master.shared_state)
         self.assertIn('b', master.shared_state)
         self.assertEqual(3, master.shared_state['a'])

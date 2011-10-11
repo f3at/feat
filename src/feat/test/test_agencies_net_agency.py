@@ -234,6 +234,7 @@ class MasterDescriptor(descriptor.Descriptor):
 @common.attr('slow', timeout=40)
 class IntegrationTestCase(common.TestCase):
 
+    skip_coverage = True
     configurable_attributes = ['run_rabbit', 'run_couch', 'shutdown']
     run_rabbit = True
     run_couch = True

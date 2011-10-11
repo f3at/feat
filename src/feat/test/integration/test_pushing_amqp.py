@@ -82,6 +82,7 @@ class TestWithRabbit(common.SimulationTest):
 
     @defer.inlineCallbacks
     def setUp(self):
+        self.assert_not_skipped()
         # run rabbitmq
         yield self.run_rabbit()
 

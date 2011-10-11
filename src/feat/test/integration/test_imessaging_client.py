@@ -273,9 +273,11 @@ class RabbitSpecific(object):
 
 class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
+        yield common.IntegrationTest.setUp(self)
         self.messaging = emu_messaging.Messaging()
-        return self.init_agents()
+        yield self.init_agents()
 
 
 @attr('slow')
@@ -288,6 +290,7 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
 
     @defer.inlineCallbacks
     def setUp(self):
+        yield common.IntegrationTest.setUp(self)
         if messaging is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)

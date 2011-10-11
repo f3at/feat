@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 import collections
 import functools
+import sys
 import uuid
 import warnings
 
@@ -109,6 +110,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
     # define names of class variables here, which values can be change
     # with the @attr decorator
     configurable_attributes = []
+    skip_coverage = False
 
     def __init__(self, methodName=' impossible-name '):
         log.FluLogKeeper.__init__(self)
@@ -151,7 +153,12 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
             if value is not None:
                 setattr(self, attr, value)
 
+    def assert_not_skipped(self):
+        if self.skip_coverage and sys.gettrace():
+            raise unittest.SkipTest("Test Skipped during coverage")
+
     def setUp(self):
+        self.assert_not_skipped()
         # Scale time if configured
         scale = util.acquireAttribute(self._parents, 'timescale', None)
         if scale is not None:
