@@ -34,7 +34,7 @@ from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker, tunneling
-from feat.common import log, defer, time, first, error, run
+from feat.common import log, defer, time, first, error, run, signal
 from feat.common import manhole, text_helper
 from feat.process import standalone
 from feat.process.base import ProcessState
@@ -320,6 +320,8 @@ class Agency(agency.Agency):
         self._create_pid_file()
         self._link_log_file(options.MASTER_LOG_LINK)
 
+        signal.signal(signal.SIGUSR1, self._sigusr1_handler)
+
         if 'enable_host_restart' not in self._broker.shared_state:
             value = self.config['agency']['force_host_restart']
             self._broker.shared_state['enable_host_restart'] = value
@@ -367,7 +369,16 @@ class Agency(agency.Agency):
             self.warning("Failed to link log file %s to %s: %s",
                          logfile, linkname, error.get_exception_message(e))
 
+    def _sigusr1_handler(self, _signum, _frame):
+        self.full_shutdown(stop_process=True)
+
     def on_broker_disconnect(self, pre_state):
+        try:
+            signal.unregister(signal.SIGUSR1, self._sigusr1_handler)
+        except ValueError:
+            # this is expected result in case of slave agencies
+            pass
+
         self._ssh.stop_listening()
         d = self._journaler.close(flush_writer=False)
         if self._gateway:

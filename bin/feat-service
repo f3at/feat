@@ -20,12 +20,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
+import time
 import optparse
 import sys
-import os
 
-from feat.common import run, log
+from feat.common import run, log, signal
 from feat.agencies import bootstrap
 from feat.agencies.net import options as options_module
 
@@ -51,8 +50,16 @@ if __name__ == '__main__':
             bootstrap.bootstrap(args=sys.argv[1:-1])
         elif command == 'stop':
             setup_log(options.debug)
-            os.system('ssh localhost -p %d "shutdown()"' %
-                      (options.manhole_port, ))
+            pid = run.get_pid(options.agency_rundir)
+            if pid is None:
+                sys.stderr.write("PID file not found!\n")
+                sys.exit(1)
+            if not run.signal_pid(pid, signal.SIGUSR1):
+                sys.stderr.write("Process with PID %d not found!\n" % (pid, ))
+                sys.exit(1)
+            while run.get_pid(options.agency_rundir):
+                time.sleep(0.1)
+            sys.stdout.write("Done.\n")
         elif command == 'status':
             setup_log(options.debug)
             run.status(processName='', rundir=options.agency_rundir)

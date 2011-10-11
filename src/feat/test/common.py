@@ -33,7 +33,7 @@ from twisted.scripts import trial
 from feat.agencies.emu import agency
 from feat.agencies.interface import IMessagingPeer
 from feat.agents.base import message, recipient, agent
-from feat.common import log, defer, decorator, journal, time
+from feat.common import log, defer, decorator, journal, time, signal
 
 from feat.interface.generic import ITimeProvider
 from feat.interface.channels import IChannelSink
@@ -348,6 +348,7 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
     def tearDown(self):
         time.reset()
+        signal.reset()
 
     ### ITimeProvider Methods ###
 

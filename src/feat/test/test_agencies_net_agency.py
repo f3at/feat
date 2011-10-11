@@ -491,6 +491,7 @@ class IntegrationTestCase(common.TestCase):
             yield self.agency.full_shutdown()
         yield self.db_process.terminate()
         yield self.msg_process.terminate()
+        yield common.TestCase.tearDown(self)
 
     @defer.inlineCallbacks
     def assert_has_logs(self, agent_type, agent_id):
