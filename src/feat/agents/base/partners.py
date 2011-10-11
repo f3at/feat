@@ -26,10 +26,10 @@ import types
 from twisted.python import components
 
 from feat.common import log, serialization, fiber, defer, annotate
-from feat.common import formatable, time, mro, error_handler, error
+from feat.common import formatable, mro, error_handler, error
 from feat.agents.base import replay, recipient, requester
 
-from feat.interface.protocols import *
+from feat.interface.protocols import IInitiator
 
 
 def accept_responsability(initiator):
@@ -216,6 +216,19 @@ class BasePartner(serialization.Serializable, mro.FiberMroMixin):
                  self.recipient, self.allocation_id, self.role, )
 
 
+class Continuation(object):
+
+    def __init__(self):
+        self._list = list()
+
+    def call_next(self, _method, *args, **kwargs):
+        self._list.append((_method, args, kwargs))
+
+    def perform(self, call_next):
+        for method, args, kwargs in self._list:
+            call_next(method, *args, **kwargs)
+
+
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
     default_handler = BasePartner
@@ -365,21 +378,29 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
                            state.agent.get_allocation,
                            allocation_id)
         f.add_callback(fiber.drop_param, self.initiate_partner, partner,
-                       **options)
-        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
-                       self._append_partner, partner, substitute)
+                       substitute, **options)
         return f
 
     @replay.mutable
     def update_partner(self, state, partner):
-        return state.agent.update_descriptor(self._do_update_partner, partner)
+        return state.agent.update_descriptor(self._do_update_partner,
+                                             partner)
 
     @replay.immutable
-    def initiate_partner(self, state, partner, **options):
+    def initiate_partner(self, state, partner, substitute=None, **options):
+        continuation = Continuation()
+
         keywords = dict(options)
         keywords['agent'] = state.agent
-        return partner.call_mro_ex('initiate', keywords,
-                                   raise_on_unconsumed=False)
+        keywords['call_next'] = continuation.call_next
+
+        f = partner.call_mro_ex('initiate', keywords,
+                                raise_on_unconsumed=False)
+        f.add_callback(fiber.drop_param, state.agent.update_descriptor,
+                       self._do_update_partner, partner, substitute)
+        f.add_callback(fiber.bridge_param, continuation.perform,
+                       state.agent.call_next)
+        return f
 
     @replay.mutable
     def receive_notification(self, state, recp, notification_type,
@@ -468,13 +489,19 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     @replay.immutable
     def _call_next_cb(self, state, partner, method_name,
                       update_descriptor, **kwargs):
-        f = partner.call_mro(method_name, agent=state.agent, **kwargs)
+        continuation = Continuation()
+        keywords = dict(agent=state.agent, call_next=continuation.call_next)
+        keywords.update(kwargs)
+        f = partner.call_mro_ex(method_name, keywords,
+                                raise_on_unconsumed=False)
         f.add_errback(fiber.inject_param, 1,
                       error.handle_failure, self,
                       "%s() method of %s returned the failure.", method_name,
                       partner)
         if update_descriptor:
             f.add_callback(defer.drop_param, self.update_partner, partner)
+        f.add_callback(defer.drop_param, continuation.perform,
+                       state.agent.call_next)
         return f
 
     def _get_relation(self, name):
@@ -483,21 +510,16 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         except KeyError:
             raise ValueError('Unknown relation name %r: ' % (name, ))
 
-    def _do_update_partner(self, desc, partner):
+    def _do_update_partner(self, desc, partner, substitute=None):
+        if substitute:
+            self._remove_partner(desc, substitute)
         found = [x for x in desc.partners
                  if x.recipient.key == partner.recipient.key]
         if len(found) != 1:
-            self.error('Trying to update partner %r failed. Not found in %r',
-                       partner, desc.partners)
+            desc.partners.append(partner)
         else:
             index = desc.partners.index(found[0])
             desc.partners[index] = partner
-            return partner
-
-    def _append_partner(self, desc, partner, substitute):
-        if substitute:
-            self._remove_partner(desc, substitute)
-        desc.partners.append(partner)
         return partner
 
     def _remove_partner(self, desc, partner):
