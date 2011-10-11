@@ -1,0 +1,47 @@
+Release notes for FEAT 0.10.5
+
+
+The Feat team announces
+the first release of development 0.10 branch
+of Flumotion Asynchronous Autonomous Agent Toolkit.
+
+FEAT is a python framework based on Twisted, CouchDB and RabbitMQ
+to simplify the development of distributed applications.
+It focuses on splitting functionality into autonomous agents.
+It provides abstractions for agents, partnerships and
+communication protocols between agents, collaborative problem solving,
+agent monitoring and automatic recovery, agent migration between clusters.
+Accent is put on code decoupling, unit testing,
+system simulation and execution trace debugging.
+Live administration and inspection is possible using the internal SSH server
+or the REST API through SSL.
+
+FEAT is released under the GPL.
+
+
+Download
+
+You can find source releases of feat in github.com downloads section.
+
+	https://github.com/f3at/feat
+
+
+Developers
+
+You can browse the source code on github.com:
+
+  https://github.com/f3at/feat
+
+
+Contributors to this release
+
+Adrian Hermoso <ahermoso@flumotion.com>
+Andoni Morales Alastruey <amorales@flumotion.com>
+Josep Joan Ribas <jribas@flumotion.com>
+Julien Le Goff <jlegoff@flumotion.com>
+Marek Kowalski <mkowalski@flumotion.com>
+Pau Capella <pcapella@flumotion.com>
+Sebastien Merle <s.merle@gmail.com>
+Theodoros Paschidis <tpaschidis@flumotion.com>
+Thomas Vander Stichele <thomas (at) apestaart (dot) org>
+Xavier Queralt <xqueralt@flumotion.com>

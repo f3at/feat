@@ -1,15 +1,15 @@
 %global __python python2.6
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.10
-%define unmangled_version 0.10
+%define version 0.10.5
+%define unmangled_version 0.10.5
 %define build_rev 0
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
-Version: 	%{version}
-Release: 	%{build_rev}%{?dist}
-Source0: 	feat-%{unmangled_version}.tar.gz
+Version:        %{version}
+Release:        %{?build_rev}%{?dist}
+Source0:        feat-%{unmangled_version}.tar.gz
 
 Group:          Development/Languages
 License:        Propietary
@@ -19,13 +19,12 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires:  python-devel
 BuildRequires:  python-setuptools >= 0.6c9
-Requires:	python-simplejson
-Requires:	python-twisted-core
-Requires:	python-twisted-web
-#Requires:	couchdb >= 0.10
-#Requires:	python-txamqp >= 0.3
-#Requires:	rabbitmq-server >= 2.0
-Provides:	%{name}
+Requires:       python-twisted-core
+Requires:       python-twisted-web
+#Requires:      couchdb >= 0.10
+#Requires:      python-txamqp >= 0.3
+#Requires:      rabbitmq-server >= 2.0
+Provides:       %{name}
 
 %description
 Flumotion Asynchronous Autonomous Agent Toolkit
@@ -58,11 +57,17 @@ install -m 644  \
 install -m 644  \
         conf/authorized_keys \
               $RPM_BUILD_ROOT%{_sysconfdir}/feat/authorized_keys
+install -m 644  \
+        conf/tunneling.p12 \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/tunneling.p12
+install -m 644  \
+        conf/gateway.p12 \
+              $RPM_BUILD_ROOT%{_sysconfdir}/feat/gateway.p12
 
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 install -m 755 \
         conf/redhat/feat \
-	        $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+            $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 
 # create log and run and cache and lib rrd directory
 install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
@@ -81,6 +86,10 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Tue Oct 11 2011 Sebastien Merle <s.merle@gmail.com>
+- 0.10.5
+- FEAT Release 0.10.5.
+
 * Wed Sep 21 2011 Marek Kowalski <mkowalski@flumotion.com>
 - 0.10
 - Bump package version.

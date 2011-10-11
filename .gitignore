@@ -8,3 +8,4 @@ src/test.log
 src/master.log
 src/standalone.log
 *.pyc
+feat.egg-info/
