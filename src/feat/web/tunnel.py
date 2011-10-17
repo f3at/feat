@@ -1,11 +1,9 @@
 import random
-import socket
 
-from twisted.internet import reactor, error as tw_error
 from zope.interface import Interface, implements
 
 import feat
-from feat.common import log, defer, error, time
+from feat.common import defer, error, time
 from feat.common.serialization import json
 from feat.web import http, security, base, httpserver, httpclient
 

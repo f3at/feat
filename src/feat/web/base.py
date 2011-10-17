@@ -1,13 +1,9 @@
-import random
 import socket
 
 from twisted.internet import reactor, error as tw_error
-from zope.interface import Interface, implements
 
-import feat
-from feat.common import log, defer, error, time
-from feat.common.serialization import json
-from feat.web import http, security, httpserver, httpclient
+from feat.common import log, defer
+from feat.web import http, security
 
 
 class RangeServer(log.LogProxy, log.Logger):
@@ -134,7 +130,7 @@ class RangeServer(log.LogProxy, log.Logger):
     def _create_tcp_setup(self, factory):
 
         def setup(port):
-            self._port = reactor.listenTCP(port, factory)
+            self._port = reactor.listenTCP(port, factory) #@UndefinedVariable
             self._scheme = http.Schemes.HTTP
 
         return setup
@@ -142,7 +138,8 @@ class RangeServer(log.LogProxy, log.Logger):
     def _create_ssl_setup(self, server, ssl_ctx_factory):
 
         def setup(port):
-            self._port = reactor.listenSSL(port, server, ssl_ctx_factory)
+            self._port = reactor.listenSSL(port, server, #@UndefinedVariable
+                                           ssl_ctx_factory)
             self._scheme = http.Schemes.HTTPS
 
         return setup
