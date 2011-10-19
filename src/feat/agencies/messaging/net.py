@@ -33,12 +33,11 @@ from zope.interface import implements
 
 from feat.common import log, defer, enum, time, error, container
 from feat.common.serialization import banana
-from feat.agencies.messaging import Connection, Queue
+from feat.agencies.messaging.rabbitmq import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
 
-from feat.agencies.interface import IConnectionFactory
-from feat.interface.channels import IBackend
+from feat.agencies.messaging.interface import IMessagingClient
 from feat.interface.generic import ITimeProvider
 
 
@@ -163,13 +162,11 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self._wait_for_client = defer.Deferred()
 
 
-class Messaging(ConnectionManager, log.Logger, log.LogProxy):
+class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
 
-    implements(IConnectionFactory, IBackend)
+    implements(IMessagingClient)
 
-    log_category = "messaging"
-
-    channel_type = "default"
+    log_category = "net-rabbitmq"
 
     def __init__(self, host, port, user='guest', password='guest'):
         ConnectionManager.__init__(self)
@@ -198,14 +195,6 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
         eta = self._factory.get_eta_to_reconnect()
         return "Messaging", self.is_connected(), self._host, self._port, eta
 
-    ### IConnectionFactory ###
-
-    def get_connection(self, agent):
-        warnings.warn("IConnectionFactory's get_connection() is deprecated, "
-                      "please use IBackend's new_channel() instead.",
-                      DeprecationWarning)
-        return self.new_channel(agent)
-
     ### IBackend ####
 
     def is_idle(self):
@@ -220,12 +209,15 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
         self._factory.stopTrying()
         self._connector.disconnect()
 
-    def new_channel(self, agent):
+    def connect(self):
+        # TODO: Move here establishing tcp connection
+        pass
+
+    def new_channel(self, agent, queue_name=None):
         d = self._factory.get_client()
         channel_wrapped = Channel(self, d, self._factory)
 
-        c = Connection(channel_wrapped, agent)
-        return c.initiate()
+        return Connection(channel_wrapped, agent, queue_name)
 
     # add_disconnected_cb() from common.ConnectionManager
 
@@ -326,11 +318,11 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return self._call_on_channel(self._define_exchange,
                                      name, exchange_type)
 
-    def create_binding(self, exchange, key, queue):
+    def create_binding(self, exchange, queue, key):
         return self._call_on_channel(self._create_binding,
                                      exchange, key, queue)
 
-    def delete_binding(self, exchange, key, queue):
+    def delete_binding(self, exchange, queue, key):
         return self._call_on_channel(self._delete_binding,
                                      exchange, key, queue)
 

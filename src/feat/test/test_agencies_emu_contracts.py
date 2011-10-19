@@ -28,7 +28,7 @@ from feat.agencies.contracts import ContractorState
 from feat.agents.base import (descriptor, contractor, replay,
                               message, manager, recipient)
 from feat.interface import contracts, protocols
-from feat.common import time, defer
+from feat.common import time, defer, first
 
 from . import common
 
@@ -237,8 +237,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         def asserts_on_manager(_):
             self.assertEqual(contracts.ContractState.closed, self.medium.state)
             self.assertEqual(2, len(self.medium.contractors))
-            for bid in self.medium.contractors:
-                self.assertTrue(isinstance(bid, message.Bid))
+            for x in self.medium.contractors.values():
+                self.assertTrue(isinstance(x.bid, message.Bid))
 
             return self.manager
 
@@ -295,8 +295,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, sending grants')
-            to_grant = filter(lambda x: x.payload['cost'] < 3,
-                              state.medium.contractors)
+            to_grant = [x.bid for x in state.medium.contractors.values()
+                        if x.bid.payload['cost'] < 3]
             params = map(lambda bid: (bid, message.Grant(), ),
                          to_grant)
             state.medium.grant(params)
@@ -306,9 +306,14 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(defer.drop_param, self.send_announce, self.manager)
         d.addCallback(defer.drop_param, self._consume_all)
-        d.addCallback(self._put_bids, (3, 2, 1, ))
 
-        d.addCallback(self.cb_after, obj=self.manager, method='closed')
+        def put_bids(results):
+            cb = self.cb_after(None, obj=self.manager, method='closed')
+            self._put_bids(results, (3, 2, 1, ))
+            return cb
+
+        d.addCallback(put_bids)
+
         d.addCallback(lambda _: self.queues[0].get())
         d.addCallback(self.assertIsInstance, message.Rejection)
         d.addCallback(lambda _: self.queues[1].get())
@@ -336,8 +341,10 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, terminating.')
-            to_elect = filter(lambda x: x.payload['cost'] == 3,
-                              state.medium.contractors)[0]
+            bidded = state.medium.contractors.with_state(ContractorState.bid)
+            to_elect = first(x.bid for x in bidded
+                             if x.bid.payload['cost'] == 3)
+
             state.medium.elect(to_elect)
             state.medium.terminate()
 
@@ -346,9 +353,13 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
 
         d.addCallback(defer.drop_param, self.send_announce, self.manager)
         d.addCallback(defer.drop_param, self._consume_all)
-        d.addCallback(self._put_bids, (3, 2, 1, ))
 
-        d.addCallback(self.cb_after, obj=self.manager, method='closed')
+        def put_bids(results):
+            cb = self.cb_after(None, obj=self.manager, method='closed')
+            self._put_bids(results, (3, 2, 1, ))
+            return cb
+
+        d.addCallback(put_bids)
         d.addCallback(lambda _: self.assert_queue_empty(self.queues[0]))
         d.addCallback(lambda _: self.queues[1].get())
         d.addCallback(self.assertIsInstance, message.Rejection)
@@ -363,7 +374,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
                         ContractorState.elected)))
 
         d.addCallback(asserts_on_manager)
-
         d.addCallback(self.assertUnregistered,
                       contracts.ContractState.terminated)
 
@@ -426,8 +436,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(), ),
-                         state.medium.contractors.keys())
+            params = [(x.bid, message.Grant(), )
+                      for x in state.medium.contractors.values()]
             state.medium.grant(params)
 
         d = self.start_manager()
@@ -482,8 +492,8 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
         @replay.immutable
         def closed_handler(s, state):
             s.log('Contracts closed, granting everybody')
-            params = map(lambda bid: (bid, message.Grant(), ),
-                         state.medium.contractors.keys())
+            params = map(lambda x: (x.bid, message.Grant(), ),
+                         state.medium.contractors.values())
             state.medium.grant(params)
 
         d = self.start_manager()
@@ -550,8 +560,6 @@ class TestManager(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(3, self.medium.expected_bids)
             self.assertEqual(contracts.ContractState.closed, self.medium.state)
             self.assertEqual(3, len(self.medium.contractors))
-            for bid in self.medium.contractors:
-                self.assertTrue(isinstance(bid, message.Bid))
 
             return self.manager
 
@@ -672,7 +680,8 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             bid = self.contractor._get_medium().own_bid
             reply_to = msg.reply_to
             msg.reply_to = None # Set by the backend
-            self.assertEqual(bid, msg)
+            self.assertEqual(type(bid), type(msg))
+            self.assertEqual(msg.message_id, msg.message_id)
             medium = self.agent
             self.assertEqual(medium.get_agent_id(), reply_to.key)
             self.assertEqual(medium.get_shard_id(), reply_to.route)
@@ -704,7 +713,10 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         def asserts_on_bid(msg):
             self.assertEqual(message.Bid, msg.__class__)
-            self.assertEqual(self.contractor._get_medium().bid, msg)
+            a = self.contractor._get_medium().bid
+            b = msg
+            self.assertEqual(type(a), type(b))
+            self.assertEqual(a.message_id, msg.message_id)
             self.assertEqual(self.endpoint, msg.reply_to)
 
         d.addCallback(asserts_on_bid)
@@ -757,28 +769,6 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             self.assertEqual(message.Grant, call.args[0].__class__)
 
         d.addCallback(asserts)
-
-        return d
-
-    def testGrantWithUpdater(self):
-        d = self.recv_announce()
-        d.addCallback(self._get_contractor)
-        d.addCallback(self.send_bid, 1)
-        d.addCallback(self.recv_grant, update_report=1)
-
-        d.addCallback(self.queue.get) # this is a bid
-
-        def assert_msg_is_report(msg):
-            self.assertEqual(message.UpdateReport, msg.__class__)
-            self.log("Received report message")
-
-        for x in range(3):
-            d.addCallback(self.queue.get)
-            d.addCallback(assert_msg_is_report)
-
-        d.addCallback(self._get_contractor)
-        d.addCallback(
-            lambda contractor: contractor._get_medium()._terminate(None))
 
         return d
 

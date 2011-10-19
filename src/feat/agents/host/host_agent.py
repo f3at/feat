@@ -243,7 +243,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         This method is called by the export agent at the end of the life
         of the host agent.
         '''
-        state.medium.upgrade_agency(upgrade_cmd)
+        self.call_next(state.medium.upgrade_agency, upgrade_cmd)
 
     @manhole.expose()
     @replay.journaled

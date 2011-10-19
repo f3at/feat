@@ -124,6 +124,9 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         if self.factory and self.factory.timeout:
             return self.expire_now()
         #FIXME: calling expired anyway when no timeout is not the way
+        self.debug('Task which is expiring: %s, initiated with args: %r, '
+                   'kwargs: %r.', type(self.task).__name__, self.args,
+                   self.kwargs)
         return self._call(self.task.expired)
 
     @replay.named_side_effect('AgencyTask.terminate')

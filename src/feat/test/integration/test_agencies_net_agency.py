@@ -147,7 +147,7 @@ class StandaloneAgent(agent.BaseAgent):
     @staticmethod
     def get_cmd_line(desc, **kwargs):
         src_path = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), '..', '..'))
+            os.path.dirname(__file__), '..', '..', '..'))
         bin_path = os.path.abspath(os.path.join(
             src_path, '..', 'bin'))
 
@@ -155,7 +155,7 @@ class StandaloneAgent(agent.BaseAgent):
         s_kwargs = serialization.json.serialize(kwargs)
 
         command = 'feat'
-        args = ['-i', 'feat.test.test_agencies_net_agency',
+        args = ['-i', 'feat.test.integration.test_agencies_net_agency',
                 '-L', os.path.curdir,
                 '-R', os.path.curdir,
                 '-D',
@@ -308,6 +308,7 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_host_agent(20)
         host_a = self.agency._get_host_agent()
         yield host_a.wait_for_ready()
+        self.info("Host agent is ready, starting standalone agent.")
 
         yield self.agency.spawn_agent("standalone")
 
@@ -396,10 +397,8 @@ class IntegrationTestCase(common.TestCase):
 
         yield self.wait_for(self.agency.is_idle, 20)
 
-        # now delete the host agents descriptor to look what happens
-        agent_id = medium.get_descriptor().doc_id
-        desc = yield self.db.get_document(agent_id)
-        yield self.db.delete_document(desc)
+        # now terminate the host agents to look what happens
+        agent_id = yield medium.terminate_hard()
 
         yield medium.wait_for_state(AgencyAgentState.terminated)
 

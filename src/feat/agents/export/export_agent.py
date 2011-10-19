@@ -50,7 +50,6 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.mutable
     def initiate(self, state):
-        state.medium.enable_channel('tunnel')
         # result of the view query for th shard structure
         state.shards = list()
         # registry of know migrations to be able to speak with

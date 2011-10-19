@@ -19,24 +19,22 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import warnings
-
 from zope.interface import classProvides, implements
 
-from feat.common import serialization, log
-from feat.agencies.net import messaging
+from feat.common import serialization, log, defer
+from feat.agencies.messaging import net
 from feat.agents.base import recipient
-from feat.agents.base.amqp.interface import *
-from feat.agencies.interface import IMessagingPeer
+
 from feat.agents.base import replay
 
-from feat.interface.channels import IChannelSink
+from feat.agents.base.amqp.interface import IAMQPClientFactory, IAMQPClient
+from feat.agencies.messaging.interface import ISink
 
 
 @serialization.register
 class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IAMQPClientFactory)
-    implements(IAMQPClient, IMessagingPeer, IChannelSink)
+    implements(IAMQPClient, ISink)
 
     def __init__(self, logger, exchange, exchange_type='fanout',
                  host='localhost', port=5672, vhost='/',
@@ -58,11 +56,12 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
 
     def connect(self):
         assert self._connection is None
-        self._backend = messaging.Messaging(self.host, self.port,
-                                            self.user, self.password)
-        d = self._backend.new_channel(self)
-        d.addCallback(self._store_channel)
-        d.addCallback(lambda _: self._setup_exchange())
+        self._backend = net.RabbitMQ(self.host, self.port,
+                                     self.user, self.password)
+
+        self._channel = self._backend.new_channel(self)
+        d = self._channel.initiate()
+        d.addCallback(defer.drop_param, self._setup_exchange)
         return d
 
     def publish(self, message, key):
@@ -87,24 +86,7 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     def on_message(self, msg):
         pass
 
-    ### IMessagingPeer ###
-
-    def get_queue_name(self):
-        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
-                      "please use IChannelSink's get_agent_id() instead.",
-                      DeprecationWarning)
-        return self.get_agent_id()
-
-    def get_shard_name(self):
-        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
-                      "please use IChannelSink's get_shard_id() instead.",
-                      DeprecationWarning)
-        return self.get_shard_id()
-
     ### private ###
-
-    def _store_channel(self, channel):
-        self._channel = channel
 
     def _setup_exchange(self):
         d = self._channel._define_exchange(self.exchange, self.exchange_type)

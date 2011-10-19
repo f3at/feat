@@ -21,15 +21,10 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-import uuid
-
 from twisted.internet import defer, reactor
-from zope.interface import implements
 
-from feat.agencies.emu import messaging
-from feat.agents.base import descriptor, message, recipient
-from feat.interface import agent
+from feat.agencies.messaging import emu
+from feat.agents.base import message, recipient
 
 from . import common
 
@@ -55,7 +50,7 @@ class TestQueue(common.TestCase):
         self.received.append(msg)
 
     def setUp(self):
-        self.queue = messaging.Queue(name="test")
+        self.queue = emu.Queue(name="test")
         self.received = []
 
     def testQueueConsumers(self):
@@ -93,40 +88,40 @@ class TestQueue(common.TestCase):
 class TestExchange(common.TestCase):
 
     def setUp(self):
-        self.exchange = messaging.Exchange(name='test')
-        self.queues = map(lambda x: messaging.Queue(name='queue %d' % x), \
+        self.exchange = emu.DirectExchange(name='test')
+        self.queues = map(lambda x: emu.Queue(name='queue %d' % x), \
                               range(3))
 
     def testQueueBindingAndUnbinding(self):
         for queue in self.queues:
-            self.exchange._bind(queue.name, queue)
+            self.exchange.bind(queue, queue.name)
 
         self.assertEqual(3, len(self.exchange._bindings.keys()))
         for key in self.exchange._bindings:
             self.assertTrue(isinstance(self.exchange._bindings[key], list))
             self.assertEqual(1, len(self.exchange._bindings[key]))
 
-        self.exchange._bind('queue 1', self.queues[0])
+        self.exchange.bind(self.queues[0], 'queue 1')
         self.assertEqual(2, len(self.exchange._bindings['queue 1']))
-        self.exchange._unbind('queue 1', self.queues[0])
+        self.exchange.unbind(self.queues[0], 'queue 1')
 
         for queue in self.queues:
-            self.exchange._unbind(queue.name, queue)
+            self.exchange.unbind(queue, queue.name)
 
         self.assertEqual(0, len(self.exchange._bindings))
 
     def testNotDoublingBindings(self):
         queue = self.queues[0]
-        self.exchange._bind(queue.name, queue)
+        self.exchange.bind(queue, queue.name)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
 
-        self.exchange._bind(queue.name, queue)
+        self.exchange.bind(queue, queue.name)
         self.assertEqual(1, len(self.exchange._bindings[queue.name]))
 
     def testPublishingSameKey(self):
         routing_key = 'some key'
         for queue in self.queues:
-            self.exchange._bind(routing_key, queue)
+            self.exchange.bind(queue, routing_key)
 
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
@@ -139,7 +134,7 @@ class TestExchange(common.TestCase):
     def testPublishingOneQueueBound(self):
         routing_key = 'some key'
         queue = self.queues[0]
-        self.exchange._bind(routing_key, queue)
+        self.exchange.bind(queue, routing_key)
 
         for x in range(5):
             self.exchange.publish('Msg %d' % x, routing_key)
@@ -158,19 +153,22 @@ class TestMessaging(common.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.messaging = messaging.Messaging()
+        self.messaging = emu.RabbitMQ()
         self.agent = common.StubAgent()
-        self.connection = yield self.messaging.new_channel(self.agent)
+        self.connection = self.messaging.new_channel(
+            self.agent, self.agent.get_agent_id())
+        yield self.connection.initiate()
 
     def testCreateConnection(self):
-        self.assertTrue(isinstance(self.connection, messaging.Connection))
+        self.assertTrue(isinstance(self.connection, emu.Connection))
         self.assertEqual(1, len(self.messaging._queues))
 
         self.connection.release()
 
     def test1To1Binding(self):
         key = self.agent.get_agent_id()
-        binding = self.connection.bind(key)
+        route = self.agent.get_shard_id()
+        binding = self.connection.bind(route, key)
         self.assertEqual(1, len(self.connection.get_bindings()))
 
         exchange = self.messaging._exchanges.values()[0]
@@ -197,37 +195,32 @@ class TestMessaging(common.TestCase):
     @defer.inlineCallbacks
     def testTwoAgentsWithSameBinding(self):
         agent2 = common.StubAgent()
-        second_connection = yield self.messaging.new_channel(agent2)
+        second_connection = self.messaging.new_channel(
+            agent2, agent2.get_agent_id())
+        yield second_connection.initiate()
         agents = [self.agent, agent2]
         connections = [self.connection, second_connection]
 
         key = 'some key'
-        bindings = map(lambda x: x.bind(key), connections)
+        route = self.agent.get_shard_id()
+        bindings = map(lambda x: x.bind(route, key), connections)
 
         self.assertEqual(1, len(self.messaging._exchanges))
         exchange = self.messaging._exchanges.values()[0]
         exchange.publish('some message', key)
 
-        d = defer.Deferred()
+        yield common.delay(None, 0.1)
 
-        def asserts(finished):
-            for agent in agents:
-                self.assertEqual(1, len(agent.messages))
-            finished.callback(None)
-        reactor.callLater(0.1, asserts, d)
+        for agent in agents:
+            self.assertEqual(1, len(agent.messages))
 
-        def revoke_bindings(_):
-            map(lambda x: x.revoke(), bindings)
-            self.assertEqual(0, len(self.connection.get_bindings()))
-
-        d.addCallback(revoke_bindings)
-
-        yield d
+        map(lambda x: x.revoke(), bindings)
+        self.assertEqual(0, len(self.connection.get_bindings()))
 
     def testPublishingByAgent(self):
         key = self.agent.get_agent_id()
         msg = message.BaseMessage(payload='some message')
-        self.connection.bind(key, 'lobby')
+        self.connection.bind('lobby', key)
         recip = recipient.Recipient(key, 'lobby')
         self.connection.post(recip, msg)
         d = defer.Deferred()

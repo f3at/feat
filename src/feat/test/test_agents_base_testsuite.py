@@ -154,7 +154,6 @@ class TestHamsterball(testsuite.TestCase):
         args = (
             testsuite.message(payload=dict(level=0, joining_agent=address)), )
         expected = [
-            testsuite.side_effect('AgencyAgent.get_own_address',
-                                  address, args=("default", )),
+            testsuite.side_effect('AgencyAgent.get_own_address', address),
             testsuite.side_effect('AgencyManager.announce', args=args)]
         output, state = self.ball.call(expected, manager.initiate)

@@ -27,19 +27,19 @@ from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 from feat.test.common import attr, delay, StubAgent, Mock
-from feat.agencies.emu import messaging as emu_messaging
+from feat.agencies.messaging import emu
 from feat.agents.base import message, recipient
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
 
 
 try:
-    from feat.agencies.net import messaging
+    from feat.agencies.messaging import net
 except ImportError as e:
     messaging = None
     import_error = e
 
-from . import common
+from feat.test.integration import common
 
 
 def m(payload):
@@ -72,9 +72,11 @@ class TestCase(object):
         self.connections = list()
         bindings = list()
         for agent in self.agents:
-            connection = yield self.messaging.new_channel(agent)
+            connection = self.messaging.new_channel(agent,
+                                                    agent.get_agent_id())
+            yield connection.initiate()
             self.connections.append(connection)
-            pb = connection.bind(agent.get_agent_id())
+            pb = connection.bind('lobby', agent.get_agent_id())
             bindings.append(pb)
         yield defer.DeferredList(map(lambda b: b.wait_created(), bindings))
 
@@ -97,7 +99,7 @@ class TestCase(object):
     @defer.inlineCallbacks
     def testMultipleAgentsWithSameBinding(self):
         key = 'some key'
-        bindings = map(lambda x: x.bind(key), self.connections)
+        bindings = map(lambda x: x.bind('lobby', key), self.connections)
         yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
         recip = recipient.Recipient(key, 'lobby')
         self.connections[0].post(recip, m('some message'))
@@ -114,8 +116,8 @@ class TestCase(object):
         key = 'some key'
         msg = m("only for connection 0")
 
-        bindings = [self.connections[0].bind(key, shard),
-                    self.connections[1].bind(key)]
+        bindings = [self.connections[0].bind(shard, key),
+                    self.connections[1].bind('lobby', key)]
         yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
 
         d = self.cb_after(None, obj=self.agents[0], method="on_message")
@@ -133,8 +135,8 @@ class TestCase(object):
         key = 'some key'
         msg = m("only for connection 0")
 
-        bindings = [self.connections[0].bind(key, shard),
-                    self.connections[1].bind(key)]
+        bindings = [self.connections[0].bind(shard, key),
+                    self.connections[1].bind('lobby', key)]
         yield defer.DeferredList(map(lambda x: x.wait_created(), bindings))
 
         yield defer.DeferredList(map(lambda x: x.revoke(), bindings))
@@ -255,13 +257,14 @@ class RabbitSpecific(object):
         '''
         agent = StubAgent()
         self.agents = [agent]
-        channel = yield self.messaging.new_channel(agent)
-
+        channel = self.messaging.new_channel(agent,
+                                             agent.get_agent_id())
+        yield channel.initiate()
         # wait for connection to be established
-        client = yield channel._messaging.factory.add_connection_made_cb()
+        client = yield channel._client.factory.add_connection_made_cb()
 
-        self.assertIsInstance(client, messaging.MessagingClient)
-        binding = channel.bind(agent.get_agent_id())
+        self.assertIsInstance(client, net.MessagingClient)
+        binding = channel.bind(agent.get_shard_id(), agent.get_agent_id())
         yield binding.wait_created()
 
         d = self.cb_after(None, agent, 'on_message')
@@ -276,7 +279,7 @@ class EmuMessagingIntegrationTest(common.IntegrationTest, TestCase):
     @defer.inlineCallbacks
     def setUp(self):
         yield common.IntegrationTest.setUp(self)
-        self.messaging = emu_messaging.Messaging()
+        self.messaging = emu.RabbitMQ()
         yield self.init_agents()
 
 
@@ -291,7 +294,7 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
     @defer.inlineCallbacks
     def setUp(self):
         yield common.IntegrationTest.setUp(self)
-        if messaging is None:
+        if net is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)
 
@@ -302,7 +305,7 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
 
         yield self.process.restart()
 
-        self.messaging = messaging.Messaging(
+        self.messaging = net.RabbitMQ(
             '127.0.0.1', self.process.get_config()['port'])
         yield self.init_agents()
         self.log('Setup finished, starting the testcase.')

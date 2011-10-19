@@ -23,14 +23,14 @@ from zope.interface import classProvides, implements
 
 from feat.common import serialization, log, defer
 from feat.agents.base.amqp.interface import *
-from feat.agencies.interface import IMessagingPeer
+
 from feat.agents.base import replay
 
 
 @serialization.register
 class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IAMQPClientFactory)
-    implements(IAMQPClient, IMessagingPeer)
+    implements(IAMQPClient)
 
     def __init__(self, logger, exchange, exchange_type='fanout',
                  host='localhost', port=5672, vhost='/',

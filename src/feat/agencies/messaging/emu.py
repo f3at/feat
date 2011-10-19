@@ -22,25 +22,81 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import functools
-import warnings
 
 from zope.interface import implements
 from feat.common import log, defer
-from feat.agencies.messaging import Connection, Queue
-from feat.agencies.interface import IConnectionFactory
+from feat.agencies.messaging.rabbitmq import Connection, Queue
+from feat.agents.base.message import BaseMessage
+
 from feat.agencies import common
 
-from feat.interface.channels import IBackend
+from feat.agencies.messaging.interface import IMessagingClient
 
 
-class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
-                common.Statistics):
+class DirectExchange(object):
 
-    implements(IConnectionFactory, IBackend)
+    def __init__(self, name):
+        self.name = name
+        # key -> [ list of queues ]
+        self._bindings = {}
 
-    log_category = "emu-messaging"
+    def bind(self, queue, key):
+        assert isinstance(queue, Queue)
 
-    channel_type = "default"
+        list_for_key = self._bindings.get(key, [])
+        if not queue in list_for_key:
+            list_for_key.append(queue)
+        self._bindings[key] = list_for_key
+
+    def unbind(self, queue, key):
+        list_for_key = self._bindings.get(key, [])
+        if queue in list_for_key:
+            list_for_key.remove(queue)
+            if len(list_for_key) == 0:
+                del(self._bindings[key])
+
+    def publish(self, message, key):
+        assert message is not None
+        list_for_key = self._bindings.get(key, [])
+        for queue in list_for_key:
+            queue.enqueue(message)
+
+
+class FanoutExchange(object):
+
+    def __init__(self, name):
+        self.name = name
+        # [ list of queues ]
+        self._bindings = []
+
+    def bind(self, queue, key=None):
+        assert isinstance(queue, Queue)
+        assert key is None, key
+
+        self._bindings.append(queue)
+
+    def unbind(self, queue, key=None):
+        assert key is None, key
+
+        self._bindings.remove(queue)
+
+    def publish(self, message, key=None):
+        assert message is not None
+        assert key is None, key
+
+        for queue in self._bindings:
+            queue.enqueue(message)
+
+
+class RabbitMQ(common.ConnectionManager, log.Logger, log.FluLogKeeper,
+               common.Statistics):
+
+    implements(IMessagingClient)
+
+    log_category = "emu-rabbitmq"
+
+    exchange_factories = {'fanout': FanoutExchange,
+                          'direct': DirectExchange}
 
     def __init__(self):
         common.ConnectionManager.__init__(self)
@@ -54,15 +110,17 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
         self._exchanges = {}
         self._on_connected()
 
-    ### IConnectionFactory ###
+        self._enabled = True
 
-    def get_connection(self, agent):
-        warnings.warn("IConnectionFactory's get_connection() is deprecated, "
-                      "please use IBackend's new_channel() instead.",
-                      DeprecationWarning)
-        return self.new_channel(agent)
+    ### called by simulation driver ###
 
-    ### IBackend ####
+    def disable(self):
+        self._enabled = False
+
+    def enable(self):
+        self._enabled = True
+
+    ### IMessagingClient ###
 
     def is_idle(self):
         return all(q.is_idle() for q in self._queues.itervalues())
@@ -75,9 +133,12 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
         # nothing to do here
         pass
 
-    def new_channel(self, agent):
-        c = Connection(self, agent)
-        return c.initiate()
+    def new_channel(self, sink, queue_name=None):
+        return Connection(self, sink, queue_name)
+
+    def connect(self):
+        # nothing to do here, in future here implement timouts and/or failures
+        pass
 
     # add_disconnected_cb() from common.ConnectionManager
 
@@ -88,11 +149,13 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
     def define_exchange(self, name, exchange_type=None):
         assert name is not None
 
+        factory = self.exchange_factories[exchange_type]
+
         exchange = self._get_exchange(name)
         if not exchange:
             self.log("Defining exchange: %r" % name)
             self.increase_stat('exchanges declared')
-            exchange = Exchange(name)
+            exchange = factory(name)
             self._exchanges[name] = exchange
         return exchange
 
@@ -110,6 +173,12 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
         return queue
 
     def publish(self, key, shard, message):
+        assert isinstance(message, BaseMessage), str(type(message))
+
+        if not self._enabled:
+            self.log("RabbitMQ is disabled, message will not be really sent")
+            return defer.succeed(message)
+
         exchange = self._get_exchange(shard)
         if exchange:
             self.increase_stat('messages published')
@@ -118,16 +187,15 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
             self.error("Exchange %r not found!" % shard)
         return defer.succeed(message)
 
-    def create_binding(self, exchange, key, queue):
+    def create_binding(self, exchange, queue, key=None):
         ex = self._get_exchange(exchange)
         que = self._get_queue(queue)
-        ex._bind(key, que)
+        ex.bind(que, key)
 
-    def delete_binding(self, exchange, key, queue):
+    def delete_binding(self, exchange, queue, key=None):
         ex = self._get_exchange(exchange)
         que = self._get_queue(queue)
-        ex._unbind(key, que)
-
+        ex.unbind(que, key)
 
     ### private ###
 
@@ -136,32 +204,3 @@ class Messaging(common.ConnectionManager, log.Logger, log.FluLogKeeper,
 
     def _get_queue(self, name):
         return self._queues.get(name, None)
-
-
-class Exchange(object):
-
-    def __init__(self, name):
-        self.name = name
-        # key -> [ list of queues ]
-        self._bindings = {}
-
-    def _bind(self, key, queue):
-        assert isinstance(queue, Queue)
-
-        list_for_key = self._bindings.get(key, [])
-        if not queue in list_for_key:
-            list_for_key.append(queue)
-        self._bindings[key] = list_for_key
-
-    def _unbind(self, key, queue):
-        list_for_key = self._bindings.get(key, [])
-        if queue in list_for_key:
-            list_for_key.remove(queue)
-            if len(list_for_key) == 0:
-                del(self._bindings[key])
-
-    def publish(self, message, key):
-        assert message is not None
-        list_for_key = self._bindings.get(key, [])
-        for queue in list_for_key:
-            queue.enqueue(message)

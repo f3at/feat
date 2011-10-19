@@ -19,22 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agencies import agency, journaler
-from feat.common import defer
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
 
-from feat.agencies.emu import messaging
-from feat.agencies.emu import database
-
-
-class Agency(agency.Agency):
-
-    def initiate(self):
-        mesg = messaging.Messaging()
-        db = database.Database()
-        writer = journaler.SqliteWriter(self)
-        journal = journaler.Journaler(self)
-        journal.configure_with(writer)
-        d = writer.initiate()
-        d.addCallback(defer.drop_param, agency.Agency.initiate,
-                      self, db, journal, mesg)
-        return d
+from .messaging import *

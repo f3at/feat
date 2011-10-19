@@ -45,6 +45,8 @@ class FirstMessageMixin(formatable.Formatable):
 class BaseMessage(formatable.Formatable):
 
     formatable.field('message_id', None)
+    # IRecipient
+    formatable.field('recipient', None)
     formatable.field('protocol_id', None)
     formatable.field('protocol_type', None)
     formatable.field('expiration_time', None)
@@ -157,9 +159,7 @@ class Rejection(ContractMessage):
 
 @serialization.register
 class Grant(ContractMessage):
-
-     # set it to number to receive frequent reports
-    formatable.field('update_report', None)
+    pass
 
 
 @serialization.register

@@ -48,26 +48,20 @@ Types that can be passed as destination includes:
 '''
 
 
-DEFAULT_CHANNEL = "default"
-
-
 class BaseRecipient(serialization.Serializable, pb.Copyable):
 
-    def __init__(self, key, route=None, channel=None):
+    def __init__(self, key, route=None):
         self._array = [self]
         self._key = key
         self._route = route
-        self._channel = channel or DEFAULT_CHANNEL
 
     def snapshot(self):
         return {"key": self._key,
-                "route": self._route,
-                "channel": self._channel}
+                "route": self._route}
 
     def recover(self, snapshot):
         self._key = snapshot["key"]
         self._route = snapshot["route"]
-        self._channel = snapshot["channel"]
 
     def restored(self):
         self._array = [self]
@@ -86,10 +80,6 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
     @property
     def route(self):
         return self._route
-
-    @property
-    def channel(self):
-        return self._channel
 
     def __iter__(self):
         return self._array.__iter__()
@@ -111,8 +101,8 @@ class BaseRecipient(serialization.Serializable, pb.Copyable):
         return not self.__eq__(other)
 
     def __repr__(self):
-        return ("<Recipient: key=%r, route=%r, %s>"
-                % (self._key, self._route, self._channel))
+        return ("<Recipient: key=%r, route=%r>"
+                % (self._key, self._route))
 
 
 @serialization.register
@@ -122,8 +112,8 @@ class Recipient(BaseRecipient):
 
     type_name = 'recipient'
 
-    def __init__(self, key, route=None, channel=None):
-        BaseRecipient.__init__(self, key, route, channel)
+    def __init__(self, key, route=None):
+        BaseRecipient.__init__(self, key, route)
 
     @property
     def type(self):
@@ -137,8 +127,8 @@ class Broadcast(BaseRecipient):
 
     type_name = 'broadcast'
 
-    def __init__(self, protocol_id=None, route=None, channel=None):
-        BaseRecipient.__init__(self, protocol_id, route, channel)
+    def __init__(self, protocol_id=None, route=None):
+        BaseRecipient.__init__(self, protocol_id, route)
 
     @property
     def type(self):
@@ -203,8 +193,8 @@ class Agent(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, agent_id, route=None, channel=None):
-        Recipient.__init__(self, agent_id, route, channel)
+    def __init__(self, agent_id, route=None):
+        Recipient.__init__(self, agent_id, route)
 
 
 @adapter.register(IAgent, IRecipient)
@@ -215,9 +205,9 @@ class RecipientFromAgent(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, agent, channel=None):
+    def __init__(self, agent):
         desc = agent.get_descriptor()
-        Recipient.__init__(self, desc.doc_id, desc.shard, channel)
+        Recipient.__init__(self, desc.doc_id, desc.shard)
 
 
 @adapter.register(message.BaseMessage, IRecipient)
@@ -228,8 +218,7 @@ class RecipientFromMessage(Recipient):
 
     def __init__(self, message):
         Recipient.__init__(self, message.reply_to.key,
-                           message.reply_to.route,
-                           message.reply_to.channel)
+                           message.reply_to.route)
 
 
 @adapter.register(descriptor.Descriptor, IRecipient)
@@ -238,8 +227,8 @@ class RecipientFromDescriptor(Recipient):
 
     type_name = 'recipient'
 
-    def __init__(self, desc, channel=None):
-        BaseRecipient.__init__(self, desc.doc_id, desc.shard, channel)
+    def __init__(self, desc):
+        BaseRecipient.__init__(self, desc.doc_id, desc.shard)
 
 
 def dummy_agent():

@@ -23,7 +23,6 @@ import collections
 import functools
 import sys
 import uuid
-import warnings
 
 from zope.interface import implements
 from twisted.internet import reactor
@@ -31,13 +30,14 @@ from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
 
-from feat.agencies.emu import agency
-from feat.agencies.interface import IMessagingPeer
+from feat.agencies.emu import database
+from feat.agencies import agency, messaging, journaler
+from feat.agencies.messaging import emu, rabbitmq
 from feat.agents.base import message, recipient, agent
 from feat.common import log, defer, decorator, journal, time, signal
 
 from feat.interface.generic import ITimeProvider
-from feat.interface.channels import IChannelSink
+from feat.agencies.messaging.interface import ISink
 
 # Import for registering stuff
 from feat import everything
@@ -425,7 +425,17 @@ class AgencyTestHelper(object):
     def setUp(self):
         self.agency = agency.Agency()
         self.guid = None
-        return self.agency.initiate()
+        self._messaging = emu.RabbitMQ()
+        mesg = rabbitmq.Client(self._messaging, 'agency_queue')
+        db = database.Database()
+        writer = journaler.SqliteWriter(self)
+        journal = journaler.Journaler(self)
+        journal.configure_with(writer)
+
+        d = writer.initiate()
+        d.addCallback(defer.drop_param, self.agency.initiate,
+                      db, journal, mesg)
+        return d
 
     def setup_endpoint(self):
         '''
@@ -437,9 +447,10 @@ class AgencyTestHelper(object):
                         messages from components being tested
         '''
         endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
-        messaging = self.agency._backends["default"]
+        messaging = self._messaging
+
         queue = messaging.define_queue(endpoint.key)
-        messaging.define_exchange(endpoint.route)
+        messaging.define_exchange(endpoint.route, 'direct')
         messaging.create_binding(
             endpoint.route, endpoint.key, endpoint.key)
         return endpoint, queue
@@ -497,7 +508,8 @@ class AgencyTestHelper(object):
         msg.sender_id = self.guid
         msg.traversal_id = traversal_id or str(uuid.uuid1())
 
-        return self.recv_msg(msg, expiration_time=expiration_time)
+        return self.recv_msg(msg, expiration_time=expiration_time,
+                             public=True)
 
     def recv_grant(self, _, update_report=None):
         msg = message.Grant()
@@ -528,9 +540,10 @@ class AgencyTestHelper(object):
         d.addCallback(defer.override_result, result)
         return d
 
-    def recv_msg(self, msg, reply_to=None, key='dummy-contract',
-                  expiration_time=None):
-        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+    def recv_msg(self, msg, reply_to=None, key=None,
+                  expiration_time=None, public=False):
+        d = self.cb_after(arg=None, obj=self.agent._messaging,
+                          method='on_message')
 
         msg.reply_to = reply_to or self.endpoint
         msg.expiration_time = expiration_time or (time.future(10))
@@ -539,14 +552,16 @@ class AgencyTestHelper(object):
         msg.message_id = str(uuid.uuid1())
         msg.receiver_id = self.remote_id
 
+        key = 'dummy-contract' if public else self.agent._descriptor.doc_id
         shard = self.agent._descriptor.shard
-        messaging = self.agent._channels["default"]
-        recip = recipient.Recipient(key, shard)
-        messaging.post(recip, msg)
+        factory = recipient.Broadcast if public else recipient.Agent
+        msg.recipient = factory(key, shard)
+        self.agency._messaging.dispatch(msg)
         return d
 
     def reply(self, msg, reply_to, original_msg):
-        d = self.cb_after(arg=None, obj=self.agent, method='on_message')
+        d = self.cb_after(arg=None, obj=self.agent._messaging,
+                          method='on_message')
 
         dest = recipient.IRecipient(original_msg)
 
@@ -557,14 +572,14 @@ class AgencyTestHelper(object):
         msg.protocol_type = original_msg.protocol_type
         msg.receiver_id = original_msg.sender_id
 
-        messaging = self.agent._channels["default"]
-        messaging.post(dest, msg)
+        msg.recipient = dest
+        self.agency._messaging.dispatch(msg)
         return d
 
 
 class StubAgent(object):
 
-    implements(IMessagingPeer, IChannelSink)
+    implements(ISink)
 
     def __init__(self):
         self.queue_name = str(uuid.uuid1())
@@ -580,20 +595,6 @@ class StubAgent(object):
 
     def on_message(self, msg):
         self.messages.append(msg)
-
-    ### IMessagingPeer ###
-
-    def get_queue_name(self):
-        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
-                      "please use IChannelSink's get_agent_id() instead.",
-                      DeprecationWarning)
-        return self.get_agent_id()
-
-    def get_shard_name(self):
-        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
-                      "please use IChannelSink's get_shard_id() instead.",
-                      DeprecationWarning)
-        return self.get_shard_id()
 
 
 @agent.register('descriptor')

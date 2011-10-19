@@ -26,7 +26,8 @@ import uuid
 
 from feat.common import log, manhole, defer, reflect, time
 from feat.agencies import journaler
-from feat.agencies.emu import messaging, tunneling, database
+from feat.agencies.emu import database
+from feat.agencies.messaging import emu, rabbitmq, tunneling
 from feat.test import factories
 from feat.agents.base import document, dbtools
 from feat.agents.shard import shard_agent
@@ -61,10 +62,17 @@ class Commands(manhole.Manhole):
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
             ag.set_mode(comp, ExecMode.production)
-        tun = tunneling.Backend(version=self._tunneling_version,
-                                bridge=self._tunneling_bridge)
-        d = ag.initiate(self._database, self._journaler, self,
-                        self._messaging, tun)
+
+        tun_backend = tunneling.EmuBackend(version=self._tunneling_version,
+                                           bridge=self._tunneling_bridge)
+
+        counter = getattr(self, '_agency_counter', -1)
+        self._agency_counter = counter + 1
+        queue_name = "agency_%d" % (self._agency_counter, )
+        msg = rabbitmq.Client(self._messaging, queue_name)
+        tun = tunneling.Tunneling(tun_backend)
+
+        d = ag.initiate(self._database, self._journaler, self, msg, tun)
         d.addCallback(defer.override_result, ag)
         return d
 
@@ -189,7 +197,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 
-        self._messaging = messaging.Messaging()
+        self._messaging = emu.RabbitMQ()
         self._tunneling_version = tunneling_version
         self._tunneling_bridge = tunneling_bridge or tunneling.Bridge()
         self._database = database.Database()
@@ -255,6 +263,12 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
                              'specify more or pass index.', len(matching))
         return matching[index].instance
 
+    def disable_rabbitmq(self):
+        self._messaging.disable()
+
+    def enable_rabbitmq(self):
+        self._messaging.enable()
+
     def freeze_all(self):
         '''
         Stop all activity of the agents running.
@@ -305,10 +319,10 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def is_idle(self):
         return (self._messaging.is_idle()
                 and self._tunneling_bridge.is_idle()
-                and self.are_agents_idle())
+                and self.are_agencies_idle())
 
-    def are_agents_idle(self):
-        return all([agent.is_idle() for agent in self.iter_agents()])
+    def are_agencies_idle(self):
+        return all([agency.is_idle() for agency in self.iter_agencies()])
 
     def register_breakpoint(self, name):
         if name in self._breakpoints:

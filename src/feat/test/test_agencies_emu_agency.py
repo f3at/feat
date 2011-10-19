@@ -130,7 +130,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.endpoint, self.queue = self.setup_endpoint()
 
     def testJoinShard(self):
-        messaging = self.agent._channels["default"]
+        messaging = self.agent._messaging
         self.assertEqual(1, len(messaging.get_bindings('lobby')))
 
         self.agent.leave_shard('lobby')
@@ -138,7 +138,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testSwitchingShardRebinding(self):
-        messaging = self.agent._channels["default"]
+        messaging = self.agent._messaging
         interest = DummyInterest()
         self.agent.register_interest(interest)
         self.assertEqual(2, len(messaging.get_bindings('lobby')))
@@ -358,7 +358,10 @@ class TestRequests(common.TestCase, common.AgencyTestHelper):
         self.assertTrue(requester.got_response)
         self.assertEqual(0, len(sender._protocols))
 
-        self.assertEqual(0, len(receiver._protocols))
+        def check():
+            return len(receiver._protocols) == 0
+
+        yield self.wait_for(check, 1, freq=0.01)
         self.assertEqual(1, receiver.agent.got_payload)
 
     def _build_req_msg(self, recp):

@@ -69,9 +69,10 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         self.manager = manager
         self.recipient = recipient.IRecipient(bid)
 
-        if bid in self.manager.contractors:
+        key = bid.reply_to.key
+        if key in self.manager.contractors:
             raise RuntimeError('Contractor for the bid already registered!')
-        self.manager.contractors[bid] = self
+        self.manager.contractors[key] = self
 
     ### Private Methods ###
 
@@ -122,14 +123,14 @@ class ManagerContractors(dict):
 
     def by_message(self, msg):
         key = msg.reply_to.key
-        match = filter(lambda x: x.reply_to.key == key, self.keys())
-        if len(match) != 1:
-            raise ValueError("Could not find ManagerContractor for msg: %r",
-                             msg)
-        return self.get(match[0])
+        return self.get(key, None)
 
     def get_bids(self):
         return self.with_state(ContractorState.bid)
+
+    def get_expiration_time(self):
+        return max([x.bid.expiration_time
+                    for x in self.with_state(ContractorState.bid)])
 
 
 class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
@@ -211,7 +212,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                             ContractState.granted,
                             ContractState.closed])
 
-        contractor = self.contractors[bid]
+        contractor = self.contractors.by_message(bid)
         if not rejection:
             rejection = message.Rejection()
         else:
@@ -240,7 +241,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         # send a grant event to the contractors
         for bid, grant in grants:
             grant.expiration_time = expiration_time
-            contractor = self.contractors[bid]
+            contractor = self.contractors.by_message(bid)
             contractor.on_event(grant)
 
         # send the rejections to all the contractors we are not granting
@@ -250,7 +251,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
     @serialization.freeze_tag('AgencyManager.elect')
     @replay.named_side_effect('AgencyManager.elect')
     def elect(self, bid):
-        contractor = self.contractors.get(bid, None)
+        contractor = self.contractors.by_message(bid)
         if not contractor:
             self.debug('Asked to elect() an unknown bid. Ignoring.')
             return
@@ -316,7 +317,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': ContractState.announced,
                  'state_before': ContractState.announced},
             message.Duplicate:\
-                {'method': self._on_refusal,
+                {'method': self._on_duplicate,
                  'state_after': ContractState.announced,
                  'state_before': ContractState.announced},
             message.FinalReport:\
@@ -360,15 +361,23 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         ManagerContractor(self, refusal, ContractorState.refused)
         self._check_if_should_goto_close()
 
+    def _on_duplicate(self, duplicate):
+        contractor = self.contractors.by_message(duplicate)
+        if contractor:
+            self.log("Ignoring duplicate, we already received a bid"
+                     " from this contractor.")
+        else:
+            self._on_refusal(duplicate)
+
     def _on_report(self, report):
         self.log('Received report: %r', report)
 
-        try:
-            contractor = self.contractors.by_message(report)
-        except ValueError as e:
-            self.warning("%s Ignoring", str(e))
+        contractor = self.contractors.by_message(report)
+        if not contractor:
+            self.warning("Couldn't find a contractor matching the report: %r "
+                         ".Contractors are: %r", report,
+                         self.contractors.keys())
             return False
-
         contractor.on_event(report)
         if len(self.contractors.with_state(ContractorState.granted)) == 0:
             self._on_complete()
@@ -377,10 +386,11 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.log('Received cancellation: %r. Reason: %r',
                  cancellation, cancellation.reason)
 
-        try:
-            contractor = self.contractors.by_message(cancellation)
-        except ValueError as e:
-            self.warning("%s Ignoring", str(e))
+        contractor = self.contractors.by_message(cancellation)
+        if not contractor:
+            self.warning("Couldn't find a contractor matching the "
+                         "cancellation: %r .Contractors are: %r", report,
+                         self.contractors.keys())
             return False
 
         reason = "Other contractor cancelled the job with reason: %s" %\
@@ -427,8 +437,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
             self._run_and_terminate(self.manager.expired)
 
     def _close_announce_period(self):
-        expiration_time = max(map(lambda bid: bid.expiration_time,
-                                  self.contractors))
+        expiration_time = self.contractors.get_expiration_time()
         self._expire_at(expiration_time, ContractState.expired,
                         self.manager.expired)
         self._set_state(ContractState.closed)
@@ -651,38 +660,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering contractor")
-        self._cancel_reporter()
         self.agent.unregister_protocol(self)
         common.TransientInterestedMediumBase._terminate(self, result)
         return defer.succeed(self)
-
-    ### Update reporter stuff ###
-
-    def _cancel_reporter(self):
-        if self._reporter_call and self._reporter_call.active():
-            self._reporter_call.cancel()
-            self.log("Canceling periodical reporter")
-
-    def _setup_reporter(self):
-        frequency = self.grant.update_report
-
-        def send_report():
-            report = message.UpdateReport()
-            self._update(report)
-            bind()
-
-        def bind():
-            self._reporter_call = time.callLater(frequency, send_report)
-
-        bind()
-
-    def _update(self, report):
-        self.debug("Sending update report %r", report)
-        assert isinstance(report, message.UpdateReport)
-        self._ensure_state(ContractState.granted)
-
-        report = self._send_message(report)
-        return report
 
     ### Required by TransientInterestedMediumBase ###
 
@@ -712,8 +692,6 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         self.update_manager_address(grant.reply_to)
 
         self._call(self.contractor.granted, grant)
-        if grant.update_report:
-            self._setup_reporter()
 
     def _on_ack(self, msg):
         self._run_and_terminate(self.contractor.acknowledged, msg)

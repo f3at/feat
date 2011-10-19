@@ -25,11 +25,11 @@
 from zope.interface import Interface, Attribute
 
 __all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
-           "IConnectionFactory", "IAgencyAgentInternal",
+           "IAgencyAgentInternal",
            "IAgencyInitiatorFactory", "IAgencyInterestFactory",
            "IAgencyInterestInternalFactory", "ILongRunningProtocol",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
-           "IMessagingClient", "IMessagingPeer", "IDatabaseClient",
+           "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
            "NotConnectedError",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
@@ -101,7 +101,14 @@ class IAgencyAgentInternal(Interface):
         pass
 
     def create_binding(prot_id, shard):
-        pass
+        '''
+        @return: feat.agencies.messaging.interface.IChannelBinding
+        '''
+
+    def release_binding(binding):
+        '''
+        @type binding: feat.agencies.messaging.interface.IChannelBinding
+        '''
 
     def register_protocol(protocol):
         '''@type protocol: IAgencyProtocolInternal'''
@@ -183,88 +190,6 @@ class ILongRunningProtocol(Interface):
 
     def notify_finish():
         '''Returns a deferred fired when the protocol finishes.'''
-
-
-class IConnectionFactory(Interface):
-    '''
-    Responsible for creating connection to messaging server.
-    Should be implemented by messaging drivers passed to the agency.
-    '''
-
-    def get_connection(agent):
-        '''
-        Instantiate the connection for the agent.
-
-        @params agent: Agent to connect to.
-        @type agent: L{feat.agency.interfaces.IMessagingPeer}
-        @returns: L{IMessagingClient}
-        '''
-
-
-class IMessagingClient(Interface):
-    '''
-    Interface used by L{IAgencyAgent} to send messages and maintain bindings.
-    ** DEPRECATED **
-    '''
-
-    def publish(key, shard, message):
-        '''
-        Send message.
-
-        @param key: Will be passed to the exchange as the routing key.
-        @param shard: Identifier of the exchange we are sending message to.
-        @param message: Message body.
-        @type message: subclass of L{feat.agents.message.BaseMessage}
-        '''
-
-    def disconnect():
-        '''
-        Disconnect client from messaging server.
-        '''
-
-    def personal_binding(key, shard):
-        '''
-        Creates a personal binding (direct binding of the key to personal
-        agents queue).
-
-        @param key: Routing key to bind to.
-        @param shard: Optional. Shard identifier to bind in. If None uses
-                      the agents shard.
-        '''
-
-    def get_bindings(shard):
-        '''
-        Returns the list of binding maintained by the messaging client.
-
-        @param shard: Optional. If specified limits the result to the selected
-                      shard. If None return all.
-        @returns: List of subclasses of bindings.
-        @return_type: list
-        '''
-
-
-class IMessagingPeer(Interface):
-    '''
-    Interface which agent needs to implement to use messaging connection.
-    Required by (feat.agencies.messaging.Connection)
-    ** DEPRECATED **
-    '''
-
-    def get_queue_name():
-        '''
-        Return the name of the queue to listen too.
-        Return value of None means: do not create any queue or consumer.
-        '''
-
-    def get_shard_name():
-        '''
-        Return the name of exchange to bind to.
-        '''
-
-    def on_message(message):
-        '''
-        Callback called after the message arrives.
-        '''
 
 
 class IFirstMessage(Interface):

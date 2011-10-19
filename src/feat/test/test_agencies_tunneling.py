@@ -21,19 +21,38 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
+import uuid
 import os
 
 from twisted.internet import defer
 
-from feat.agencies import tunneling
-from feat.agencies.emu import tunneling as emu_tunneling
-from feat.agencies.net import tunneling as net_tunneling
+from feat.agencies.messaging import tunneling
 from feat.agents.base import message, recipient
 from feat.common import serialization
 from feat.web import security
 
 from . import common
+
+
+class StubChannel(object):
+
+    def __init__(self, backend):
+        self.backend = backend
+        self.messages = list()
+        self.recipient = recipient.dummy_agent()
+
+        # recp -> uri
+        self.routes = dict()
+
+        self.backend.connect(self)
+        self.backend.add_route(self.recipient, self.backend.route)
+
+    def create_external_route(self, backend_id, uri=None, recipient=None):
+        self.routes[recipient] = uri
+        self.backend.add_route(recipient, uri)
+
+    def _dispatch(self, msg):
+        self.messages.append(msg)
 
 
 class Notification1(message.Notification):
@@ -68,151 +87,81 @@ class Notification2(Notification1):
 
 class TestMixin(object):
 
-    def testCreateChannel(self):
-        agent = common.StubAgent()
-        channel = yield self.backend1.new_channel(agent)
-        self.assertTrue(isinstance(channel, tunneling.Channel))
-        channel.release()
-
     @defer.inlineCallbacks
     def testSimplePostMessage(self):
-        agent = common.StubAgent()
-        channel = yield self.backend1.new_channel(agent)
+        channel = StubChannel(self.backend1)
 
-        msg = message.BaseMessage(payload='some message')
-        recip = self._mk_recip(agent)
+        msg = message.BaseMessage(payload='some message',
+                                  recipient=channel.recipient)
 
-        channel.post(recip, msg)
-
-        yield self.wait_for_idle()
-
-        self.assertEqual(1, len(agent.messages))
-        self.assertEqual('some message', agent.messages[0].payload)
-
-        channel.release()
-
-        msg = message.BaseMessage(payload='other message')
-        recip = self._mk_recip(agent)
-
-        channel.post(recip, msg)
+        self.backend1.post(msg)
 
         yield self.wait_for_idle()
 
-        self.assertEqual(1, len(agent.messages))
+        self.assertEqual(1, len(channel.messages))
+        self.assertEqual('some message', channel.messages[0].payload)
 
     @defer.inlineCallbacks
     def testDialog(self):
-        agent1 = common.StubAgent()
-        agent2 = common.StubAgent()
+        channel1 = StubChannel(self.backend1)
+        channel2 = StubChannel(self.backend2)
 
-        channel1 = yield self.backend1.new_channel(agent1)
-        channel2 = yield self.backend1.new_channel(agent2)
-
-        recip1 = self._mk_recip(agent1)
-        recip2 = self._mk_recip(agent2)
+        self.backend1.add_route(channel2.recipient, self.backend2.route)
+        self.backend2.add_route(channel1.recipient, self.backend1.route)
 
         msg1 = message.DialogMessage()
         msg1.payload = "spam"
+        msg1.recipient = channel2.recipient
 
-        channel1.post(recip2, msg1)
+        self.backend1.post(msg1)
 
         yield self.wait_for_idle()
 
-        self.assertEqual(len(agent2.messages), 1)
-        msg1b = agent2.messages[0]
+        self.assertEqual(len(channel2.messages), 1)
+        msg1b = channel2.messages[0]
         self.assertEqual(msg1b.payload, "spam")
-        self.assertEqual(msg1b.reply_to.key, agent1.get_agent_id())
-        self.assertEqual(msg1b.reply_to.channel, self.backend1.channel_type)
-        self.assertEqual(msg1b.reply_to.route, self.backend1.route)
 
         msg2 = message.DialogMessage()
         msg2.payload = "bacon"
+        msg2.recipient = channel1.recipient
 
-        channel2.post(msg1b.reply_to, msg2)
+        self.backend2.post(msg2)
 
         yield self.wait_for_idle()
 
-        self.assertEqual(len(agent1.messages), 1)
-        msg2b = agent1.messages[0]
+        self.assertEqual(len(channel1.messages), 1)
+        msg2b = channel1.messages[0]
         self.assertEqual(msg2b.payload, "bacon")
-        self.assertEqual(msg2b.reply_to.key, agent2.get_agent_id())
-        self.assertEqual(msg2b.reply_to.channel, self.backend1.channel_type)
-        self.assertEqual(msg2b.reply_to.route, self.backend1.route)
-
-        msg3 = message.DialogMessage()
-        msg3.payload = "eggs"
-        msg3.reply_to = recip1
-
-        channel1.post(recip2, msg3)
-
-        yield self.wait_for_idle()
-
-        self.assertEqual(len(agent2.messages), 2)
-        msg1b = agent2.messages[1]
-        self.assertEqual(msg1b.payload, "eggs")
-        self.assertEqual(msg1b.reply_to.key, agent1.get_agent_id())
-        self.assertEqual(msg1b.reply_to.channel, self.backend1.channel_type)
-        self.assertEqual(msg1b.reply_to.route, self.backend1.route)
-
-    @defer.inlineCallbacks
-    def testMultipleRecipients(self):
-        agent1 = common.StubAgent()
-        agent2 = common.StubAgent()
-        agent3 = common.StubAgent()
-        agent4 = common.StubAgent()
-
-        channel1 = yield self.backend1.new_channel(agent1)
-        yield self.backend1.new_channel(agent2)
-        yield self.backend1.new_channel(agent3)
-
-        recip1 = self._mk_recip(agent1)
-        recip2 = self._mk_recip(agent2)
-        recip3 = self._mk_recip(agent3)
-        recip4 = self._mk_recip(agent4)
-
-        msg = message.BaseMessage(payload='beans')
-
-        channel1.post([recip1, recip2, recip3, recip4], msg)
-
-        yield self.wait_for_idle()
-
-        self.assertEqual(len(agent1.messages), 1)
-        self.assertEqual(len(agent2.messages), 1)
-        self.assertEqual(len(agent3.messages), 1)
-        self.assertEqual(len(agent4.messages), 0)
-        self.assertEqual(agent1.messages[0].payload, "beans")
-        self.assertEqual(agent2.messages[0].payload, "beans")
-        self.assertEqual(agent3.messages[0].payload, "beans")
 
     @defer.inlineCallbacks
     def testConvertion(self):
-        agent1 = common.StubAgent()
-        channel1 = yield self.backend1.new_channel(agent1)
+        channel1 = StubChannel(self.backend1)
+        channel2 = StubChannel(self.backend2)
 
-        agent2 = common.StubAgent()
-        channel2 = yield self.backend2.new_channel(agent2)
+        self.backend1.add_route(channel2.recipient, self.backend2.route)
+        self.backend2.add_route(channel1.recipient, self.backend1.route)
 
         msg = Notification1()
         msg.payload["value"] = "33"
-        recip2 = self._mk_recip(agent2, self.backend2)
+        msg.recipient = channel2.recipient
 
-        channel1.post(recip2, msg)
+        self.backend1.post(msg)
 
         yield self.wait_for_idle()
 
-        self.assertEqual(1, len(agent2.messages))
-        self.assertEqual(agent2.messages[0].payload, {"value": 33})
+        self.assertEqual(1, len(channel2.messages))
+        self.assertEqual(channel2.messages[0].payload, {"value": 33})
 
         msg = Notification2()
         msg.payload["value"] = 66
-        recip1 = self._mk_recip(agent1, self.backend1)
+        msg.recipient = channel1.recipient
 
-        channel2.post(recip1, msg)
+        self.backend2.post(msg)
 
         yield self.wait_for_idle()
 
-        self.assertEqual(1, len(agent1.messages))
-        self.assertEqual(agent1.messages[0].payload, {"value": "66"})
+        self.assertEqual(1, len(channel1.messages))
+        self.assertEqual(channel1.messages[0].payload, {"value": "66"})
 
     ### private ###
 
@@ -223,29 +172,23 @@ class TestMixin(object):
 
         return self.wait_for(check, 20)
 
-    def _mk_recip(self, agent, backend=None):
-        backend = backend if backend is not None else self.backend1
-        return recipient.Recipient(agent.get_agent_id(),
-                                   backend.route,
-                                   backend.channel_type)
-
 
 class TestEmuTunneling(common.TestCase, TestMixin):
 
     timeout = 5
 
     def setUp(self):
-        bridge = emu_tunneling.Bridge()
+        bridge = tunneling.Bridge()
 
         registry1 = serialization.get_registry().clone()
         registry1.register(Notification1)
-        self.backend1 = emu_tunneling.Backend(version=1, bridge=bridge,
-                                              registry=registry1)
+        self.backend1 = tunneling.EmuBackend(version=1, bridge=bridge,
+                                             registry=registry1)
 
         registry2 = serialization.get_registry().clone()
         registry2.register(Notification2)
-        self.backend2 = emu_tunneling.Backend(version=2, bridge=bridge,
-                                              registry=registry2)
+        self.backend2 = tunneling.EmuBackend(version=2, bridge=bridge,
+                                             registry=registry2)
 
         return common.TestCase.setUp(self)
 
@@ -263,15 +206,15 @@ class TestNetTCPTunneling(common.TestCase, TestMixin):
         port_range = range(4000, 4100)
         registry1 = serialization.get_registry().clone()
         registry1.register(Notification1)
-        self.backend1 = net_tunneling.Backend("localhost",
+        self.backend1 = tunneling.Backend("localhost",
                                               port_range=port_range,
                                               version=1, registry=registry1)
 
         registry2 = serialization.get_registry().clone()
         registry2.register(Notification2)
-        self.backend2 = net_tunneling.Backend("localhost",
-                                              port_range=port_range,
-                                              version=2, registry=registry2)
+        self.backend2 = tunneling.Backend("localhost",
+                                          port_range=port_range,
+                                          version=2, registry=registry2)
 
         return common.TestCase.setUp(self)
 
@@ -301,19 +244,19 @@ class TestNetSSLTunneling(common.TestCase, TestMixin):
         port_range = range(4000, 4100)
         registry1 = serialization.get_registry().clone()
         registry1.register(Notification1)
-        self.backend1 = net_tunneling.Backend("localhost",
-                                              port_range=port_range,
-                                              version=1, registry=registry1,
-                                              server_security_policy=svr_sec,
-                                              client_security_policy=cli_sec)
+        self.backend1 = tunneling.Backend("localhost",
+                                          port_range=port_range,
+                                          version=1, registry=registry1,
+                                          server_security_policy=svr_sec,
+                                          client_security_policy=cli_sec)
 
         registry2 = serialization.get_registry().clone()
         registry2.register(Notification2)
-        self.backend2 = net_tunneling.Backend("localhost",
-                                              port_range=port_range,
-                                              version=2, registry=registry2,
-                                              server_security_policy=svr_sec,
-                                              client_security_policy=cli_sec)
+        self.backend2 = tunneling.Backend("localhost",
+                                          port_range=port_range,
+                                          version=2, registry=registry2,
+                                          server_security_policy=svr_sec,
+                                          client_security_policy=cli_sec)
 
         return common.TestCase.setUp(self)
 
@@ -342,19 +285,19 @@ class TestNetSSLTunnelingWithPKCS12(common.TestCase, TestMixin):
         port_range = range(4000, 4100)
         registry1 = serialization.get_registry().clone()
         registry1.register(Notification1)
-        self.backend1 = net_tunneling.Backend("localhost",
-                                              port_range=port_range,
-                                              version=1, registry=registry1,
-                                              server_security_policy=svr_sec,
-                                              client_security_policy=cli_sec)
+        self.backend1 = tunneling.Backend("localhost",
+                                          port_range=port_range,
+                                          version=1, registry=registry1,
+                                          server_security_policy=svr_sec,
+                                          client_security_policy=cli_sec)
 
         registry2 = serialization.get_registry().clone()
         registry2.register(Notification2)
-        self.backend2 = net_tunneling.Backend("localhost",
-                                              port_range=port_range,
-                                              version=2, registry=registry2,
-                                              server_security_policy=svr_sec,
-                                              client_security_policy=cli_sec)
+        self.backend2 = tunneling.Backend("localhost",
+                                          port_range=port_range,
+                                          version=2, registry=registry2,
+                                          server_security_policy=svr_sec,
+                                          client_security_policy=cli_sec)
 
         return common.TestCase.setUp(self)
 

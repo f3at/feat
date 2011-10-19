@@ -94,7 +94,7 @@ class BaseInterest(log.Logger):
         self.args = args
         self.kwargs = kwargs
 
-        self._lobby_bindings = None
+        self._lobby_binding = None
         self._concurrency = getattr(agent_factory, "concurrency", None)
         self._queue = None
         self._active = 0
@@ -164,34 +164,33 @@ class BaseInterest(log.Logger):
     def bind(self, shard=None):
         if self.agent_factory.interest_type == InterestType.public:
             prot_id = self.agent_factory.protocol_id
-            self.bindings = self.agency_agent.create_bindings(prot_id, shard)
-            return self.bindings
+            self.binding = self.agency_agent.create_binding(prot_id, shard,
+                                                             public=True)
+            return self.binding
         return []
 
     def revoke(self):
         self.clear_queue()
         self.unbind_from_lobby()
         if self.agent_factory.interest_type == InterestType.public:
-            for binding in self.bindings:
-                binding.revoke()
+            self.agency_agent.revoke_binding(self.binding)
 
     ### IAgencyInterest Method ###
 
     @replay.named_side_effect('Interest.bind_to_lobby')
     def bind_to_lobby(self):
-        if self._lobby_bindings:
+        if self._lobby_binding:
             return
         prot_id = self.agent_factory.protocol_id
-        bindings = self.agency_agent.create_bindings(prot_id, 'lobby')
-        self._lobby_bindings = bindings
+        self._lobby_binding = self.agency_agent.create_binding(
+            prot_id, 'lobby', public=True)
 
     @replay.named_side_effect('Interest.unbind_from_lobby')
     def unbind_from_lobby(self):
-        if not self._lobby_bindings:
+        if not self._lobby_binding:
             return
-        for binding in self._lobby_bindings:
-            binding.revoke()
-        self._lobby_bindings = None
+        self.agency_agent.revoke_binding(self._lobby_binding)
+        self._lobby_binding = None
 
     ### ISerializable Methods ###
 

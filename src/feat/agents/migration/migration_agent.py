@@ -21,7 +21,6 @@
 # Headers in this file shall remain intact.
 from pprint import pformat
 
-from feat.agencies import tunneling
 from feat.agents.base import (agent, replay, recipient, task, descriptor,
                               alert, notifier, )
 from feat.agents.common import start_agent, export
@@ -38,7 +37,6 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
     @replay.mutable
     def initiate(self, state):
         state.medium.register_interest(protocol.Replier)
-        state.medium.enable_channel('tunnel')
         state.exports = ExportAgents()
 
         self._set_semaphore(False)
@@ -109,9 +107,6 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
                               name=response.name,
                               version=response.version)
 
-        if isinstance(recp, (str, unicode)):
-            recp = tunneling.parse(recp)
-
         req = self.initiate_protocol(
             protocol.Requester, recp, spec.Handshake())
         f = req.notify_finish()
@@ -152,7 +147,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
         recp = recipient.IRecipient(recp)
         tunel = state.exports.get_by_name(export)
 
-        own = self.get_own_address(tunel.recipient.channel)
+        own = self.get_own_address()
         cmd = spec.PrepareMigration(recipient=recp,
                                     migration_agent=own,
                                     host_cmd=self._get_host_cmd())
@@ -169,7 +164,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
         tunel = state.exports.get_by_name(export)
 
-        own = self.get_own_address(tunel.recipient.channel)
+        own = self.get_own_address()
         cmd = spec.JoinMigrations(migration_ids=migration_ids,
                                   migration_agent=own,
                                   host_cmd=self._get_host_cmd())
