@@ -178,7 +178,7 @@ class Notifier(object):
         self._notifications = {}
 
     def wait(self, notification):
-        d = Deferred()
+        d = Deferred(self._remove_deferred)
         self._store(notification, d)
         return d
 
@@ -198,6 +198,11 @@ class Notifier(object):
         if notification not in self._notifications:
             self._notifications[notification] = []
         self._notifications[notification].append(d)
+
+    def _remove_deferred(self, d):
+        for list_for_notification in self._notifications.values():
+            if d in list_for_notification:
+                list_for_notification.remove(d)
 
     def _pop(self, notification):
         if notification in self._notifications:

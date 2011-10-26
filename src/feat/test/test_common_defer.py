@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from twisted.internet import reactor
 
 from feat.common import defer
 
@@ -140,6 +141,17 @@ class TestNotifier(common.TestCase):
 
         n.errback("barr", Exception())
         self.assertEqual(counters["barr"], 1)
+
+    @common.attr(timeout=1)
+    @defer.inlineCallbacks
+    def testCancellingWaitEvent(self):
+        n = defer.Notifier()
+        d = n.wait('some_event')
+        self.assertFailure(d, defer.CancelledError)
+        reactor.callLater(0.02, d.cancel)
+        yield d
+
+        n.callback('some_event', 1) #doesn't cause as deferred is removed
 
 
 class Canceller(object):
