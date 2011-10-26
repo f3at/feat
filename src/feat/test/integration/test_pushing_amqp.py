@@ -89,6 +89,7 @@ class TestWithRabbit(common.SimulationTest):
         # get connection faking the web team listening
         self.server = net.RabbitMQ('127.0.0.1',
                                    self.rabbit.get_config()['port'])
+        yield self.server.connect()
         self.web = StubAgent()
         self.connection = self.server.new_channel(self.web,
                                                   self.web.get_agent_id())

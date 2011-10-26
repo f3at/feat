@@ -87,6 +87,7 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
 
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._server.connect)
+        d.addErrback(self._timeout_connecting)
         d.addCallback(defer.override_result, self)
         return d
 
@@ -133,6 +134,14 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
 
     def on_message(self, message):
         self._channel.post(message.recipient, message)
+
+    ### private ###
+
+    def _timeout_connecting(self, fail):
+        fail.trap(defer.TimeoutError)
+        self.info("Timeout exceeded while connecting to RabbitMQ server. "
+                  "Backend will cary on without the connection and let the "
+                  "reconnector handle it... someday.")
 
 
 class FinishConnection(Exception):

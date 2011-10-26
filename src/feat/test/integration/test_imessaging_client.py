@@ -23,10 +23,11 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.internet import defer
+from twisted.internet import reactor
 from twisted.trial.unittest import SkipTest
 
 from feat.test.common import attr, delay, StubAgent, Mock
+from feat.common import defer
 from feat.agencies.messaging import emu
 from feat.agents.base import message, recipient
 from feat.process import rabbitmq
@@ -307,9 +308,57 @@ class RabbitIntegrationTest(common.IntegrationTest, TestCase,
 
         self.messaging = net.RabbitMQ(
             '127.0.0.1', self.process.get_config()['port'])
+        yield self.messaging.connect()
         yield self.init_agents()
         self.log('Setup finished, starting the testcase.')
 
     def tearDown(self):
         self.messaging.disconnect()
         return self.process.terminate()
+
+
+@attr('slow')
+class ConnectionProblemsTest(common.IntegrationTest):
+    """
+    This test case connects to not existing rabbitmq first and than
+    corrects it's error.
+    """
+    number_of_agents = 2
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        if net is None:
+            raise SkipTest('Skipping the test because of missing '
+                           'dependecies: %r' % import_error)
+
+        try:
+            self.process = rabbitmq.Process(self)
+        except DependencyError as e:
+            raise SkipTest(str(e))
+
+        yield self.process.restart()
+
+        port = self.process.get_config()['port']
+        #noone is listening at this address
+        self.messaging = net.RabbitMQ('not.existing.host.com',
+                                      port, timeout=0.1)
+
+        connect_d = self.messaging.connect()
+        self.assertFailure(connect_d, defer.TimeoutError)
+
+        yield connect_d
+
+        self.info('Will reconfigure messaging in 2 seconds')
+        reactor.callLater(5, self.messaging.reconfigure, '127.0.0.1', port)
+
+        yield self.init_agents()
+
+    def tearDown(self):
+        self.messaging.disconnect()
+        return self.process.terminate()
+
+    # Copy only one test case and methods it depends from,
+    # the point is too check that one test work.
+    _agent = TestCase._agent.__func__
+    init_agents = TestCase.init_agents.__func__
+    testTwoAgentsTalking = TestCase.testTwoAgentsTalking.__func__

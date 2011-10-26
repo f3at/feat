@@ -58,6 +58,7 @@ class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
         assert self._connection is None
         self._backend = net.RabbitMQ(self.host, self.port,
                                      self.user, self.password)
+        self._backend.connect()
 
         self._channel = self._backend.new_channel(self)
         d = self._channel.initiate()

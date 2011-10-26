@@ -168,22 +168,22 @@ class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
 
     log_category = "net-rabbitmq"
 
-    def __init__(self, host, port, user='guest', password='guest'):
+    def __init__(self, host, port, user='guest', password='guest',
+                 timeout=5):
         ConnectionManager.__init__(self)
         log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         self._user = user
         self._password = password
-        self._host = None
-        self._port = None
+        self._host = host
+        self._port = port
+        self._timeout_connecting = timeout
 
         self._factory = AMQFactory(self, TwistedDelegate(),
                                    self._user, self._password,
                                    on_connected=self._on_connected,
                                    on_disconnected=self._on_disconnected)
-
-        self._configure(host, port)
 
     ### public ###
 
@@ -210,8 +210,10 @@ class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
         self._connector.disconnect()
 
     def connect(self):
-        # TODO: Move here establishing tcp connection
-        pass
+        self._configure(self._host, self._port)
+        timeout = self._timeout_connecting
+        msg = "Timeout exceeded while trying to connect to messaging server"
+        return defer.Timeout(timeout, self.wait_connected(), msg)
 
     def new_channel(self, agent, queue_name=None):
         d = self._factory.get_client()
