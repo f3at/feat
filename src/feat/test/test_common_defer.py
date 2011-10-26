@@ -140,3 +140,69 @@ class TestNotifier(common.TestCase):
 
         n.errback("barr", Exception())
         self.assertEqual(counters["barr"], 1)
+
+
+class Canceller(object):
+
+    def __init__(self):
+        self.called = False
+
+    def cancel(self, d):
+        self.called = True
+
+
+class SpecialError(Exception):
+    pass
+
+
+class TestTimeout(common.TestCase):
+
+    @defer.inlineCallbacks
+    def testItTimeoutsCorrectly(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        self.assertFailure(timeout, defer.TimeoutError)
+        yield common.delay(None, 0.03)
+        self.assertTrue(canceller.called)
+
+    @defer.inlineCallbacks
+    def testCallbackInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFalse(timeout.called)
+        self.assertFalse(master.called)
+        master.callback("result")
+        res = yield timeout
+        self.assertEqual('result', res)
+        self.assertFalse(canceller.called)
+
+    @defer.inlineCallbacks
+    def testErrbackInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFalse(timeout.called)
+        self.assertFalse(master.called)
+        master.errback(SpecialError("result"))
+        self.assertFailure(timeout, SpecialError)
+        yield timeout
+        self.assertFalse(canceller.called)
+
+    @defer.inlineCallbacks
+    def testCancelingInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.05, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFailure(timeout, defer.CancelledError)
+        timeout.cancel()
+        yield common.delay(None, 0.01)
+        self.assertTrue(canceller.called)

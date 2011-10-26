@@ -22,13 +22,14 @@
 import warnings
 
 from twisted.internet.defer import *
-from twisted.internet.defer import returnValue, passthru, setDebugging
+from twisted.internet.defer import (returnValue, passthru, FirstError,
+                                    setDebugging, CancelledError, )
 from twisted.python import failure
 
-from feat.common import log, decorator, error
+from feat.common import log, decorator, error, time
 
-from feat.interface.log import *
-from feat.interface.fiber import *
+#from feat.interface.log import *
+from feat.interface.fiber import IFiber
 
 
 def drop_result(_result, _method, *args, **kwargs):
@@ -201,3 +202,40 @@ class Notifier(object):
     def _pop(self, notification):
         if notification in self._notifications:
             return self._notifications.pop(notification)
+
+
+class TimeoutError(Exception):
+    pass
+
+
+class Timeout(DeferredList):
+
+    def __init__(self, timeout, deferred, message="Timeout expired"):
+        self._master = deferred
+        self._control = Deferred()
+
+        self._call_later = time.call_later(
+            timeout, self._control.errback, TimeoutError(message))
+
+        DeferredList.__init__(self,
+                              [self._master, self._control],
+                              fireOnOneCallback=True,
+                              fireOnOneErrback=True,
+                              consumeErrors=True)
+        self.addCallbacks(self._callback, self._errback)
+
+    def _callback(self, result):
+        self.cancel()
+        return result[0]
+
+    def _errback(self, fail):
+        if fail.check(FirstError):
+            fail = fail.value.subFailure
+        self.cancel()
+        return fail
+
+    def cancel(self):
+        if self._call_later.active():
+            self._call_later.cancel()
+        self._master.cancel()
+        self._control.cancel()

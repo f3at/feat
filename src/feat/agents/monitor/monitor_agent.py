@@ -682,9 +682,13 @@ class HandleDeath(task.BaseTask):
             return
         if isinstance(response, partners.ResponsabilityAccepted):
             state.so_took_reponsability = True
-            time_left = time.left(response.expiration_time)
+            time_left = self._time_left(response.expiration_time)
             state.timeout_call_id = state.agent.call_later(
                 time_left, self._timeout_waiting_for_restart)
+
+    @replay.side_effect
+    def _time_left(self, moment):
+        return time.left(moment)
 
     @replay.mutable
     def _ensure_someone_took_responsability(self, state, _responses):
