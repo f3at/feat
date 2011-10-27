@@ -344,6 +344,12 @@ class IAgencyAgent(Interface):
         Cancels the delayed call.
         '''
 
+    def is_connected():
+        '''
+        @return: Flag saying if RabbitMQ and CouchDB connection is established
+        @rtype: C{bool}
+        '''
+
 
 class IAgent(Interface):
     '''

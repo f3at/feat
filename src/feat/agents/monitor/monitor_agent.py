@@ -227,6 +227,8 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         config = state.medium.get_configuration()
         state.medium.initiate_protocol(CheckNeighboursTask,
                                        config.neighbours_check_period)
+        if not state.medium.is_connected():
+            state.clerk.on_disconnected()
 
     @replay.journaled
     def on_disconnect(self, state):

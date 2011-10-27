@@ -796,6 +796,10 @@ class AgencyAgent(BaseReplayDummy):
     def cancel_delayed_call(self, call_id):
         pass
 
+    @replay.named_side_effect("AgencyAgent.is_connected")
+    def is_connected(self):
+        pass
+
     @replay.named_side_effect('AgencyAgent.get_machine_state')
     def get_machine_state(self):
         pass

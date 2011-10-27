@@ -447,6 +447,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return
         call.cancel()
 
+    @replay.named_side_effect("AgencyAgent.is_connected")
+    def is_connected(self):
+        return self.agency.is_connected()
+
     #StateMachineMixin
 
     @replay.named_side_effect('AgencyAgent.get_machine_state')
