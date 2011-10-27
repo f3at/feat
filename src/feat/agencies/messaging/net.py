@@ -398,10 +398,14 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     def _create_binding(self, exchange, key, queue):
-        self.log('Creating binding exchange=%s, key=%s, queue=%s',
-                 exchange, key, queue)
-        return self.channel.queue_bind(exchange=exchange, routing_key=key,
-                                       queue=queue, nowait=False)
+        exchange_type = 'direct' if key is not None else 'fanout'
+        self.log('Creating binding exchange=%s, exchange_type=%s, key=%s, '
+                 'queue=%s', exchange, exchange_type, key, queue)
+        d = self._define_exchange(exchange, exchange_type)
+        d.addCallback(defer.drop_param, self.channel.queue_bind,
+                      exchange=exchange, routing_key=key,
+                      queue=queue, nowait=False)
+        return d
 
     def _delete_binding(self, exchange, key, queue):
         self.log('Deleting binding exchange=%s, key=%s, queue=%s',
@@ -464,10 +468,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     def _processing_error_handler(self, f, call):
-        if f.check(Closed):
-            self.log("Failed performing the call because connection has "
-                     "been lost. This is normal, don't panic.")
-            return
         error.handle_failure(
             self, f, 'Failed to perfrom the ProcessingCall. '
             'Method being processed: %r, args: %r, kwargs: %r',

@@ -380,15 +380,15 @@ class IntegrationTestCase(common.TestCase):
         It reconfigures it, and asserts that host agent has been started
         normally. Than it simulates host agent being burried (by deleting
         the descriptor) and asserts that the new host agent has been started.
+
+        Only database server is necessary to run now. The messaging is
+        configured at the end of the test to check that it gets connected.
         '''
         yield self.agency.initiate()
         self.assertEqual(None, self.agency._get_host_medium())
-        self.info("Starting rabbit")
-        msg_host, msg_port = yield self._run_and_configure_msg()
-        self.info("Starting couch")
+        self.info("Starting CouchDb.")
         db_host, db_port, db_name = yield self._run_and_configure_db()
-        self.info("Reconfiguring the agency")
-        self.agency.reconfigure_messaging(msg_host, msg_port)
+        self.info("Reconfiguring the agencies database.")
         self.agency.reconfigure_database(db_host, db_port, db_name)
 
         yield self.wait_for_host_agent(10)
@@ -398,6 +398,7 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for(self.agency.is_idle, 20)
 
         # now terminate the host agents to look what happens
+        self.info("Killing host agent.")
         agent_id = yield medium.terminate_hard()
 
         yield medium.wait_for_state(AgencyAgentState.terminated)
@@ -405,6 +406,14 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_host_agent(10)
         new_medium = self.agency._get_host_medium()
         yield new_medium.wait_for_state(AgencyAgentState.ready)
+
+        self.info("Starting RabbitMQ.")
+        msg_host, msg_port = yield self._run_and_configure_msg()
+        self.agency.reconfigure_messaging(msg_host, msg_port)
+
+        yield common.delay(None, 5)
+        output = yield self.msg_process.rabbitmqctl('list_exchanges')
+        self.assertIn(new_medium.get_shard_id(), output)
 
     @defer.inlineCallbacks
     def testBackupAgency(self):

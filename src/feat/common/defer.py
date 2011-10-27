@@ -28,7 +28,7 @@ from twisted.python import failure
 
 from feat.common import log, decorator, error, time
 
-#from feat.interface.log import *
+from feat.interface.log import LogLevel
 from feat.interface.fiber import IFiber
 
 
@@ -132,7 +132,7 @@ def maybeDeferred(f, *args, **kw):
     """
     try:
         result = f(*args, **kw)
-    except Exception, e:
+    except Exception:
         return fail(failure.Failure())
 
     if IFiber.providedBy(result):

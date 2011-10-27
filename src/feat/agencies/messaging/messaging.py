@@ -2,7 +2,7 @@ import uuid
 
 from zope.interface import implements
 
-from feat.common import log, defer, first, container, time
+from feat.common import log, defer, first, container, time, error
 from feat.agencies.messaging import routing
 from feat.agencies import common
 from feat.agents.base.message import BaseMessage
@@ -226,6 +226,7 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
     ### managing backends connected ###
 
     def add_backend(self, backend):
+        self.log('Adding backend: %r', backend)
         backend = IBackend(backend)
         self._backends[backend.channel_type] = backend
         if len(self._backends) == 1:
@@ -233,7 +234,13 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
 
         backend.add_disconnected_cb(self._on_disconnected)
         backend.add_reconnected_cb(self._check_connections)
-        return backend.initiate(self)
+
+        d = defer.succeed(self)
+        d.addCallback(backend.initiate)
+        d.addErrback(self._add_backend_errback, backend.channel_type)
+        d.addCallback(defer.drop_param, self._check_connections)
+        d.addCallback(defer.override_result, None)
+        return d
 
     def disconnect_backends(self):
         defers = []
@@ -308,6 +315,12 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
     def _dispatch_internal(self, message, outgoing):
         self._pending_dispatches -= 1
         self.routing.dispatch(message, outgoing)
+
+    def _add_backend_errback(self, fail, channel_type):
+        error.handle_failure(self, fail, "Failed adding backend %r. "
+                             "I will remove it and carry on working.",
+                             channel_type)
+        del(self._backends[channel_type])
 
 
 class Binding(object):

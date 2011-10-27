@@ -780,7 +780,7 @@ class Agency(agency.Agency):
 
         doc_id = self.get_hostname()
         d = defer.Deferred()
-        d.addCallback(defer.drop_param, self.wait_connected)
+        d.addCallback(defer.drop_param, self._database.wait_connected)
         d.addCallback(defer.drop_param, conn.get_document, doc_id)
         d.addCallbacks(handle_success_on_get, handle_error_on_get,
                        errbackArgs=(conn, doc_id, ))

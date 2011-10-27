@@ -776,12 +776,20 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Tell the agency we are no more
         d.addBoth(defer.drop_param, self._unregister_from_agency)
         d.addErrback(self._handle_failure)
-        # Close the messaging connection
-        d.addBoth(defer.drop_param, self._messaging.release)
-        d.addErrback(self._handle_failure)
-        # Close the database connection
-        d.addBoth(defer.drop_param, self._database.disconnect)
-        d.addErrback(self._handle_failure)
+        if self._messaging:
+            # Close the messaging connection
+            d.addBoth(defer.drop_param, self._messaging.release)
+            d.addErrback(self._handle_failure)
+        else:
+            d.addCallback(defer.drop_param, self.warning,
+                          "Agent doesn't have _messaging reference.")
+        if self._database:
+            # Close the database connection
+            d.addBoth(defer.drop_param, self._database.disconnect)
+            d.addErrback(self._handle_failure)
+        else:
+            d.addCallback(defer.drop_param, self.warning,
+                          "Agent doesn't have _database reference.")
         d.addBoth(defer.drop_param,
                   self._set_state, AgencyAgentState.terminated)
         d.addErrback(self._handle_failure)
@@ -978,11 +986,11 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._messaging.add_disconnected_cb(self._on_disconnected)
         self._messaging.add_reconnected_cb(self._check_msg_and_db_state)
 
-        self._check_msg_and_db_state()
-
-        backend_init = [self._messaging.add_backend(backend)
-                        for backend in backends]
-        d = defer.DeferredList(backend_init)
+        d = defer.succeed(None)
+        for backend in backends:
+            d.addCallback(defer.drop_param,
+                          self._messaging.add_backend, backend)
+        d.addCallback(defer.drop_param, self._check_msg_and_db_state)
         return d
 
     @property
@@ -1010,7 +1018,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         medium = self.agency_agent_factory(self, factory, descriptor)
         self.register_agent(medium)
 
-        d = self.wait_connected()
+        d = self._database.wait_connected()
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
         return d
 

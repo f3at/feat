@@ -75,7 +75,6 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
     def initiate(self, messaging):
         self._messaging = messaging
 
-
         if self._server.is_connected():
             self._on_connected()
 
@@ -362,8 +361,6 @@ class PersonalBinding(BaseBinding):
         self._queue_name = queue_name
 
         d = defer.succeed(None)
-        d.addCallback(defer.drop_param, self._channel._define_exchange,
-                      self._recipient.route)
         d.addCallback(defer.drop_param, self._channel._create_binding,
                       recipient, queue_name)
         d.addCallbacks(self._on_created, self._on_failed)

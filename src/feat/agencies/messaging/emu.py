@@ -189,6 +189,9 @@ class RabbitMQ(common.ConnectionManager, log.Logger, log.FluLogKeeper,
 
     def create_binding(self, exchange, queue, key=None):
         ex = self._get_exchange(exchange)
+        if ex is None:
+            exchange_type = 'direct' if key is not None else 'fanout'
+            ex = self.define_exchange(exchange, exchange_type)
         que = self._get_queue(queue)
         ex.bind(que, key)
 
