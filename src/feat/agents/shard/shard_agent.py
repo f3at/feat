@@ -27,10 +27,9 @@ from feat.agents.base import (agent, message, contractor, manager, recipient,
                               replay, partners, resource, document, dbtools,
                               task, poster, notifier)
 from feat.agents.common import rpc, raage, host, monitor, export
-from feat.common import fiber, defer, serialization, manhole, enum
+from feat.common import fiber, serialization, manhole, enum
 
-from feat.interface.protocols import *
-from feat.interface.contracts import *
+from feat.interface.protocols import ProtocolFailed
 
 
 @serialization.register
@@ -708,17 +707,25 @@ class JoinShardContractor(contractor.NestingContractor):
 
     @replay.mutable
     def announced(self, state, announcement):
-        allocation = (not state.agent.is_migrating() and
-                      state.agent.preallocate_resource(hosts=1))
-
-        if allocation is not None:
-            state.preallocation_id = allocation.id
+        # handle restarts of host agent, he should join the same shard
+        existing = state.agent.find_partner(announcement.reply_to.key)
+        if existing:
+            state.preallocation_id = existing.allocation_id
+            state.existing = existing
             bid = message.Bid()
-            # we want to favor filling up the farthers
-            # shards from the entry point
-            bid.payload['cost'] = -announcement.level
+            bid.payload['cost'] = -100 #this bid should win
         else:
-            bid = None
+            allocation = (not state.agent.is_migrating() and
+                          state.agent.preallocate_resource(hosts=1))
+
+            if allocation is not None:
+                state.preallocation_id = allocation.id
+                bid = message.Bid()
+                # we want to favor filling up the farthers
+                # shards from the entry point
+                bid.payload['cost'] = -announcement.level
+            else:
+                bid = None
 
         f = fiber.Fiber()
 
@@ -765,7 +772,9 @@ class JoinShardContractor(contractor.NestingContractor):
 
     @replay.immutable
     def release_preallocation(self, state, *_):
-        if getattr(state, 'preallocation_id', None):
+        if getattr(state, 'existing', None):
+            state.agent.remove_partner(state.existing)
+        elif getattr(state, 'preallocation_id', None):
             return state.agent.release_resource(state.preallocation_id)
 
     announce_expired = release_preallocation
@@ -780,7 +789,8 @@ class JoinShardContractor(contractor.NestingContractor):
         f.add_callback(state.agent.confirm_allocation)
         f.add_callback(
             fiber.drop_param, state.agent.establish_partnership,
-            grant.payload['joining_agent'], state.preallocation_id)
+            grant.payload['joining_agent'], state.preallocation_id,
+            allow_double=True)
         f.add_callback(state.medium.update_manager_address)
         f.add_callbacks(self._finalize, self._granted_failed)
         return f

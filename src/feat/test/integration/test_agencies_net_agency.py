@@ -397,15 +397,22 @@ class IntegrationTestCase(common.TestCase):
 
         yield self.wait_for(self.agency.is_idle, 20)
 
-        # now terminate the host agents to look what happens
+        # now terminate the host agents by deleting his descriptor
         self.info("Killing host agent.")
-        agent_id = yield medium.terminate_hard()
+        agent_id = medium.get_agent_id()
+        desc = yield self.db.get_document(agent_id)
+        old_shard = desc.shard
+
+        yield self.db.delete_document(desc)
 
         yield medium.wait_for_state(AgencyAgentState.terminated)
 
         yield self.wait_for_host_agent(10)
         new_medium = self.agency._get_host_medium()
         yield new_medium.wait_for_state(AgencyAgentState.ready)
+
+        new_shard = new_medium.get_shard_id()
+        self.assertEqual(old_shard, new_shard)
 
         self.info("Starting RabbitMQ.")
         msg_host, msg_port = yield self._run_and_configure_msg()
