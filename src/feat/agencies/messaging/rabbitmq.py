@@ -201,9 +201,10 @@ class Connection(log.Logger):
             self._consume_deferred.errback(ex)
         return self._client.disconnect()
 
-    def bind(self, route, key):
+    def bind(self, route, key=None):
         recip = recipient.Recipient(key=key, route=route)
-        return PersonalBinding(self, self._queue_name, recip)
+        exchange_type = 'fanout' if key is None else 'direct'
+        return PersonalBinding(self, self._queue_name, recip, exchange_type)
 
     def get_bindings(self, route=None):
         if route is None:
@@ -221,9 +222,7 @@ class Connection(log.Logger):
     def _define_exchange(self, route, exchange_type="direct"):
         return self._client.define_exchange(route, exchange_type)
 
-    def _create_binding(self, recipient, queue_name):
-        route = recipient.route
-        key = recipient.key
+    def _create_binding(self, queue_name, route, key=None):
         return self._client.create_binding(route, queue_name, key)
 
     def _delete_binding(self, recipient, queue_name):
@@ -356,13 +355,21 @@ class BaseBinding(object):
 
 class PersonalBinding(BaseBinding):
 
-    def __init__(self, agent_channel, queue_name, recipient):
+    def __init__(self, agent_channel, queue_name, recipient,
+                 exchange_type='direct'):
         BaseBinding.__init__(self, agent_channel, recipient)
         self._queue_name = queue_name
 
+        if exchange_type == 'direct':
+            key = recipient.key
+        elif exchange_type == 'fanout':
+            key = None
+        else:
+            raise ValueError("Unknown exchange type: %r" % (exchange_type, ))
+
         d = defer.succeed(None)
         d.addCallback(defer.drop_param, self._channel._create_binding,
-                      recipient, queue_name)
+                      queue_name, recipient.route, key)
         d.addCallbacks(self._on_created, self._on_failed)
 
     def revoke(self):

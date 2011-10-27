@@ -21,10 +21,11 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from twisted.internet import defer, reactor
+from twisted.internet import reactor
 
 from feat.agencies.messaging import emu
 from feat.agents.base import message, recipient
+from feat.common import defer
 
 from . import common
 
@@ -85,7 +86,43 @@ class TestQueue(common.TestCase):
         return d
 
 
-class TestExchange(common.TestCase):
+class TestFanoutExchange(common.TestCase):
+
+    def setUp(self):
+        self.exchange = emu.FanoutExchange(name='test')
+        self.queues = map(lambda x: emu.Queue(name='queue %d' % x), \
+                              range(3))
+
+    def testQueueBindingAndUnbinding(self):
+        for queue in self.queues:
+            self.exchange.bind(queue)
+
+        self.assertEqual(3, len(self.exchange._bindings))
+        for binding in self.exchange._bindings:
+            self.assertIsInstance(binding, emu.Queue)
+
+        self.exchange.bind(self.queues[0])
+        self.assertEqual(3, len(self.exchange._bindings))
+
+        for queue in self.queues:
+            self.exchange.unbind(queue)
+
+        self.assertEqual(0, len(self.exchange._bindings))
+
+    def testPublishing(self):
+        for queue in self.queues:
+            self.exchange.bind(queue)
+
+        for x in range(5):
+            self.exchange.publish('Msg %d' % x)
+
+        for queue in self.queues:
+            self.assertEqual(5, len(queue._messages))
+            expected = ['Msg 0', 'Msg 1', 'Msg 2', 'Msg 3', 'Msg 4']
+            self.assertEqual(expected, queue._messages)
+
+
+class TestDirectExchange(common.TestCase):
 
     def setUp(self):
         self.exchange = emu.DirectExchange(name='test')
@@ -191,6 +228,23 @@ class TestMessaging(common.TestCase):
         d.addCallback(revoke_binding)
 
         return d
+
+    @defer.inlineCallbacks
+    def testBindingToFanoutExchange(self):
+        route = self.agent.get_shard_id()
+        binding = self.connection.bind(route)
+        self.assertEqual(1, len(self.connection.get_bindings()))
+
+        exchange = self.messaging._exchanges.values()[0]
+        self.assertIsInstance(exchange, emu.FanoutExchange)
+
+        exchange.publish('Message')
+
+        def check():
+            return len(self.agent.messages) == 1
+
+        yield self.wait_for(check, 1, 0.01)
+        self.assertEqual(['Message'], self.agent.messages)
 
     @defer.inlineCallbacks
     def testTwoAgentsWithSameBinding(self):

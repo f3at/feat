@@ -374,7 +374,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
         if shard is None:
-            self.error('Tried to sent message to exchange=None. This would '
+            self.error('Tried to send message to exchange=None. This would '
                        'mess up the whole txamqp library state, therefore '
                        'this message is ignored')
             return defer.succeed(None)

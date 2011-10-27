@@ -70,19 +70,29 @@ class FanoutExchange(object):
         self._bindings = []
 
     def bind(self, queue, key=None):
-        assert isinstance(queue, Queue)
-        assert key is None, key
+        assert isinstance(queue, Queue), type(Queue)
+        if key is not None:
+            raise AttributeError("Specified key for fanout exchange. Key: %r" %
+                                (key, ))
 
-        self._bindings.append(queue)
+        if queue not in self._bindings:
+            self._bindings.append(queue)
 
     def unbind(self, queue, key=None):
-        assert key is None, key
+        if key is not None:
+            raise AttributeError("Specified key for fanout exchange. Key: %r" %
+                                (key, ))
 
-        self._bindings.remove(queue)
+        try:
+            self._bindings.remove(queue)
+        except ValueError:
+            self.error("Queue %r not bounded too exchange %r" % (queue, self))
 
     def publish(self, message, key=None):
         assert message is not None
-        assert key is None, key
+        if key is not None:
+            raise AttributeError("Specified key for fanout exchange. Key: %r" %
+                                (key, ))
 
         for queue in self._bindings:
             queue.enqueue(message)
