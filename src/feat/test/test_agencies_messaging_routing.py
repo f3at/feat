@@ -2,13 +2,13 @@ import uuid
 
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, time
 from feat.test import common
 
 from feat.agencies.messaging import routing
 from feat.agents.base import message, recipient
 
-from feat.interface.recipient import RecipientType
+from feat.interface.generic import ITimeProvider
 
 
 class BaseDummySink(log.Logger):
@@ -64,7 +64,10 @@ class BaseDummySink(log.Logger):
 class Agent(BaseDummySink):
 
     def init(self):
-        self.recp = recipient.dummy_agent()
+        if self.key:
+            self.recp = recipient.Agent(self.key[0], self.key[1])
+        else:
+            self.recp = recipient.dummy_agent()
         self.key = self.key or (self.recp.key, self.recp.route)
         self.final = True
         self.interest(self.recp.key, final=True)
@@ -159,7 +162,7 @@ class Agency(log.LogProxy):
 
     def __init__(self, logger, bridge=None, master=True, master_broker=None):
         log.LogProxy.__init__(self, logger)
-        self.table = routing.Table(self)
+        self.table = routing.Table(self, ITimeProvider(logger))
         if master:
             self.rabbit = RabbitMQ(self, self.table, bridge)
             self.broker = MasterBroker(self, self.table)
@@ -170,35 +173,56 @@ class Agency(log.LogProxy):
         return self.table.dispatch(message)
 
 
-def direct((key, shard)):
+def direct((key, shard), expiration_time=None):
     recp = recipient.Agent(key, shard)
     return message.BaseMessage(recipient=recp,
-                               message_id=str(uuid.uuid1()))
+                               message_id=str(uuid.uuid1()),
+                               expiration_time=expiration_time)
 
 
-def broadcast(key, shard='shard'):
+def broadcast(key, shard='shard', expiration_time=None):
     recp = recipient.Broadcast(key, shard)
     return message.BaseMessage(recipient=recp,
-                               message_id=str(uuid.uuid1()))
+                               message_id=str(uuid.uuid1()),
+                               expiration_time=expiration_time)
 
 
 class Host(object):
 
     def __init__(self, logger, bridge):
+        self.logger = logger
         self.master = Agency(logger, bridge)
-        self.agents = [Agent(logger, self.master.table, self.master.rabbit),
-                       Agent(logger, self.master.table, self.master.rabbit)]
-        self.slaves = [Agency(logger, master=False,
+        self.agents = []
+        self.add_agent()
+        self.add_agent()
+        self.slaves = [Agency(self.logger, master=False,
                               master_broker=self.master.broker)
                        for x in range(2)]
         for s in self.slaves:
-            agent = Agent(logger, s.table, s.broker)
+            agent = Agent(self.logger, s.table, s.broker)
             self.agents.append(agent)
+
+    def add_agent(self, agent_id=None):
+        opts = {}
+        if agent_id:
+            opts['key'] = agent_id
+        agent = Agent(self.logger, self.master.table, self.master.rabbit,
+                      **opts)
+        self.agents.append(agent)
 
 
 class TestRouting(common.TestCase):
 
+    implements(ITimeProvider)
+
+    def get_time(self):
+        return self._time
+
+    def sleep(self, seconds):
+        self._time += seconds
+
     def setUp(self):
+        self._time = time.time()
         bridge = Bridge(self)
         self.hosts = [Host(self, bridge) for x in range(3)]
 
@@ -353,6 +377,45 @@ class TestRouting(common.TestCase):
         self.assert_delivered(self.hosts[2].agents[2], m)
         self.assert_not_delivered(self.hosts[2].agents[3], m)
         self.assert_delivered(self.hosts[2].master.rabbit, m)
+
+    def testBroadcastAndLaterExpressInterest(self):
+        key = 'public-protocol'
+        m = broadcast(key, expiration_time=self.get_time() + 1)
+
+        self.hosts[0].master.dispatch(m)
+        for host in self.hosts:
+            self.assert_not_delivered(host.agents[0], m)
+            self.assert_not_delivered(host.agents[1], m)
+            self.assert_not_delivered(host.agents[2], m)
+            self.assert_not_delivered(host.agents[3], m)
+            self.assert_delivered(host.master.rabbit, m)
+
+        self.hosts[0].agents[0].public_interest(key)
+        self.assert_delivered(self.hosts[0].agents[0], m)
+
+        self.sleep(2)
+
+        self.hosts[1].agents[0].public_interest(key)
+        self.assert_not_delivered(self.hosts[1].agents[0], m)
+
+    def testDirectMessageBeforeAgentBinds(self):
+        agent_id = 'some_agent'
+        key = (agent_id, 'shard')
+        m = direct(key, expiration_time=self.get_time() + 1)
+
+        self.hosts[0].master.dispatch(m)
+        for host in self.hosts:
+            self.assert_not_delivered(host.agents[0], m)
+            self.assert_not_delivered(host.agents[1], m)
+            self.assert_not_delivered(host.agents[2], m)
+            self.assert_not_delivered(host.agents[3], m)
+            self.assert_delivered(host.master.rabbit, m)
+
+        self.hosts[0].add_agent(key)
+        self.assert_delivered(self.hosts[0].agents[-1], m)
+
+        self.hosts[0].agents[0].public_interest(key)
+        self.assert_not_delivered(self.hosts[1].agents[0], m)
 
     def assert_delivered(self, sink, msg):
         m_id = msg.message_id

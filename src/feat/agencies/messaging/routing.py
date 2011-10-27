@@ -1,11 +1,13 @@
 import operator
 
+from zope.interface import implements
+
 from feat.agents.base.message import BaseMessage
 
-from feat.agencies.messaging.interface import ISink
-from feat.interface.recipient import RecipientType
+from feat.common import log, container, time
 
-from feat.common import log
+from feat.agencies.messaging.interface import ISink
+from feat.interface.generic import ITimeProvider
 
 
 class Route(object):
@@ -34,11 +36,23 @@ class Route(object):
 
 class Table(log.Logger):
 
-    def __init__(self, logger):
+    implements(ITimeProvider)
+
+    def __init__(self, logger, time_provider=None):
         log.Logger.__init__(self, logger)
 
         self._routes = list()
         self._outgoing_sink = None
+
+        self._time_provider = time_provider and ITimeProvider(time_provider)
+
+        self._message_store = MessageStore(self)
+
+    ### ITimeProvider ###
+
+    def get_time(self):
+        return self._time_provider and self._time_provider.get_time() or \
+               time.time()
 
     ### public ###
 
@@ -57,6 +71,11 @@ class Table(log.Logger):
             raise AttributeError('Routes in routing table need to '
                                  'have the key')
         self.log("Appending inbound route: %r", route)
+
+        to_deliver = self._message_store.match_to_route(route)
+        for message in to_deliver:
+                self._send_to_route(message, route)
+
         self._routes.append(route)
         self._fix_order()
 
@@ -73,17 +92,16 @@ class Table(log.Logger):
 
     def dispatch(self, message, outgoing=True):
 
-        def do_route(message, route):
-            message = message.clone()
-            route.owner.on_message(message)
-
         for route in self._routes:
             self.log("Analizing route %r, matching=%r", route,
                      route.match(message))
             if route.match(message):
-                do_route(message, route)
+                self._send_to_route(message, route)
                 if route.final:
                     return
+
+        self._message_store.insert(message)
+
         if outgoing and self._outgoing_sink:
             self.log('Routing to default sink: %r', self._outgoing_sink)
             message = message.clone()
@@ -94,3 +112,41 @@ class Table(log.Logger):
     def _fix_order(self):
         self._routes = sorted(self._routes,
                               key=operator.attrgetter('priority'))
+
+    def _send_to_route(self, message, route):
+        message = message.clone()
+        route.owner.on_message(message)
+
+
+class MessageStore(object):
+    """
+    I'm a class responsible for holding the message until they expiration
+    time and match them to correct routes.
+    """
+
+    def __init__(self, time_provider):
+        self._store = container.ExpDict(time_provider)
+
+    def insert(self, message):
+        if not isinstance(message, BaseMessage):
+            raise TypeError('Expected BaseMessage got %r' % (message, ))
+
+        # ignore messages without expiration time (would leak)
+        if message.expiration_time is not None:
+            self._store.set(message.message_id, message,
+                            message.expiration_time)
+
+    def remove(self, message):
+        if not isinstance(message, BaseMessage):
+            raise TypeError('Expected BaseMessage got %r' % (message, ))
+
+        self._store.pop(message.message_id, None)
+
+    def match_to_route(self, route):
+        if not isinstance(route, Route):
+            raise TypeError('Expected Route got %r' % (route, ))
+
+        matching = [x for x in self._store.itervalues() if route.match(x)]
+        if route.final:
+            [self.remove(x) for x in matching]
+        return matching
