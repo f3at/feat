@@ -147,7 +147,7 @@ class StandaloneAgent(agent.BaseAgent):
     @staticmethod
     def get_cmd_line(desc, **kwargs):
         src_path = os.path.abspath(os.path.join(
-            os.path.dirname(__file__), '..', '..'))
+            os.path.dirname(__file__), '..', '..', '..'))
         bin_path = os.path.abspath(os.path.join(
             src_path, '..', 'bin'))
 
@@ -155,7 +155,7 @@ class StandaloneAgent(agent.BaseAgent):
         s_kwargs = serialization.json.serialize(kwargs)
 
         command = 'feat'
-        args = ['-i', 'feat.test.test_agencies_net_agency',
+        args = ['-i', 'feat.test.integration.test_agencies_net_agency',
                 '-L', os.path.curdir,
                 '-R', os.path.curdir,
                 '-D',
@@ -308,6 +308,7 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_host_agent(20)
         host_a = self.agency._get_host_agent()
         yield host_a.wait_for_ready()
+        self.info("Host agent is ready, starting standalone agent.")
 
         yield self.agency.spawn_agent("standalone")
 
@@ -379,15 +380,15 @@ class IntegrationTestCase(common.TestCase):
         It reconfigures it, and asserts that host agent has been started
         normally. Than it simulates host agent being burried (by deleting
         the descriptor) and asserts that the new host agent has been started.
+
+        Only database server is necessary to run now. The messaging is
+        configured at the end of the test to check that it gets connected.
         '''
         yield self.agency.initiate()
         self.assertEqual(None, self.agency._get_host_medium())
-        self.info("Starting rabbit")
-        msg_host, msg_port = yield self._run_and_configure_msg()
-        self.info("Starting couch")
+        self.info("Starting CouchDb.")
         db_host, db_port, db_name = yield self._run_and_configure_db()
-        self.info("Reconfiguring the agency")
-        self.agency.reconfigure_messaging(msg_host, msg_port)
+        self.info("Reconfiguring the agencies database.")
         self.agency.reconfigure_database(db_host, db_port, db_name)
 
         yield self.wait_for_host_agent(10)
@@ -396,9 +397,12 @@ class IntegrationTestCase(common.TestCase):
 
         yield self.wait_for(self.agency.is_idle, 20)
 
-        # now delete the host agents descriptor to look what happens
-        agent_id = medium.get_descriptor().doc_id
+        # now terminate the host agents by deleting his descriptor
+        self.info("Killing host agent.")
+        agent_id = medium.get_agent_id()
         desc = yield self.db.get_document(agent_id)
+        old_shard = desc.shard
+
         yield self.db.delete_document(desc)
 
         yield medium.wait_for_state(AgencyAgentState.terminated)
@@ -406,6 +410,17 @@ class IntegrationTestCase(common.TestCase):
         yield self.wait_for_host_agent(10)
         new_medium = self.agency._get_host_medium()
         yield new_medium.wait_for_state(AgencyAgentState.ready)
+
+        new_shard = new_medium.get_shard_id()
+        self.assertEqual(old_shard, new_shard)
+
+        self.info("Starting RabbitMQ.")
+        msg_host, msg_port = yield self._run_and_configure_msg()
+        self.agency.reconfigure_messaging(msg_host, msg_port)
+
+        yield common.delay(None, 5)
+        output = yield self.msg_process.rabbitmqctl('list_exchanges')
+        self.assertIn(new_medium.get_shard_id(), output)
 
     @defer.inlineCallbacks
     def testBackupAgency(self):

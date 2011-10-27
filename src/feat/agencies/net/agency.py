@@ -33,7 +33,9 @@ from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient, descriptor
 from feat.agents.common import host
 from feat.agencies import agency, journaler
-from feat.agencies.net import ssh, broker, tunneling
+from feat.agencies.net import ssh, broker, database, options
+from feat.agencies.net.broker import BrokerRole
+from feat.agencies.messaging import net, tunneling, rabbitmq
 from feat.common import log, defer, time, first, error, run, signal
 from feat.common import manhole, text_helper
 from feat.process import standalone
@@ -41,9 +43,6 @@ from feat.process.base import ProcessState
 from feat.gateway import gateway
 from feat.utils import locate
 from feat.web import security
-
-from feat.agencies.net import database, messaging, tunneling, options
-from feat.agencies.net.broker import BrokerRole
 
 from feat.interface.agent import IAgentFactory, AgencyAgentState
 from feat.interface.agency import ExecMode
@@ -497,8 +496,8 @@ class Agency(agency.Agency):
     @manhole.expose()
     def reconfigure_messaging(self, msg_host, msg_port):
         '''force messaging reconnector to the connect to the (host, port)'''
-        messaging = self._backends["default"]
-        messaging.reconfigure(msg_host, msg_port)
+        self._messaging.create_external_route(
+            'rabbitmq', host=msg_host, port=msg_port)
 
     @manhole.expose()
     def reconfigure_database(self, host, port, name='feat'):
@@ -681,9 +680,10 @@ class Agency(agency.Agency):
             self.info("Setting up messaging using %s@%s:%d", username,
                       host, port)
 
-            backend = messaging.Messaging(host, port, username, password)
+            backend = net.RabbitMQ(host, port, username, password)
             backend.redirect_log(self)
-            return backend
+            client = rabbitmq.Client(backend, self.agency_id)
+            return client
         except Exception as e:
             msg = "Failed to setup messaging backend"
             error.handle_exception(self, e, msg)
@@ -711,7 +711,9 @@ class Agency(agency.Agency):
                                         client_security_policy=cpol,
                                         server_security_policy=spol)
             backend.redirect_log(self)
-            return backend
+            frontend = tunneling.Tunneling(backend)
+            return frontend
+
         except Exception as e:
             msg = "Failed to setup tunneling backend"
             error.handle_exception(self, e, msg)
@@ -778,7 +780,7 @@ class Agency(agency.Agency):
 
         doc_id = self.get_hostname()
         d = defer.Deferred()
-        d.addCallback(defer.drop_param, self.wait_connected)
+        d.addCallback(defer.drop_param, self._database.wait_connected)
         d.addCallback(defer.drop_param, conn.get_document, doc_id)
         d.addCallbacks(handle_success_on_get, handle_error_on_get,
                        errbackArgs=(conn, doc_id, ))
@@ -789,14 +791,15 @@ class Agency(agency.Agency):
         d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
         d.addErrback(self._host_restart_failed)
 
-        time.callLater(0, d.callback, None)
+        time.call_next(d.callback, None)
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")
-        self.debug("Retrying in %d seconds",
-                   HOST_RESTART_RETRY_INTERVAL)
-        time.callLater(HOST_RESTART_RETRY_INTERVAL,
-                       self._start_host_agent_if_necessary)
+        if self._shutdown_task is None:
+            self.debug("Retrying in %d seconds",
+                       HOST_RESTART_RETRY_INTERVAL)
+            time.call_later(HOST_RESTART_RETRY_INTERVAL,
+                            self._start_host_agent_if_necessary)
 
     def _get_host_agent(self):
         medium = self._get_host_medium()

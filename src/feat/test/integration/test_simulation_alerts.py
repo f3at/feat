@@ -78,7 +78,6 @@ class AlertAgentTest(common.SimulationTest):
         yield agent1.raise_alert("alert_text1", alert.Severity.high)
         yield self.wait_for_idle(10)
 
-
         self.assertEqual(2, len(agent2.get_alerts()))
         self.assertEqual(alert.Severity.high, agent2.get_alert("alert_text1"))
 

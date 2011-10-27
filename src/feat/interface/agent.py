@@ -105,14 +105,11 @@ class IAgencyAgent(Interface):
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
 
-    def enable_channel(channel_type):
-        """Enable specified channel type for this agent."""
+    def remove_external_route(backend_id, **kwargs):
+        pass
 
-    def disable_channel(channel_type):
-        """Disable specified channel type for this agent."""
-
-    def wait_channel(channel_type):
-        """Wait for the specified channel type to be setup."""
+    def create_external_route(backend_id, **kwargs):
+        pass
 
     def observe(callable, *args, **kwargs):
         """
@@ -345,6 +342,12 @@ class IAgencyAgent(Interface):
     def cancel_delayed_call(call_id):
         '''
         Cancels the delayed call.
+        '''
+
+    def is_connected():
+        '''
+        @return: Flag saying if RabbitMQ and CouchDB connection is established
+        @rtype: C{bool}
         '''
 
 

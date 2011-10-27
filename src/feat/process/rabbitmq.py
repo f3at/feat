@@ -25,6 +25,7 @@ import uuid
 
 from feat.process import base
 from feat.agents.base import replay
+from feat.common import defer
 
 
 class Process(base.Base):
@@ -69,8 +70,9 @@ class Process(base.Base):
     def rabbitmqctl(self, command):
         process = RabbitMQCtl(self, self.env, command)
         d = process.restart()
-        d.addCallback(
-            lambda _: process.wait_for_state(base.ProcessState.finished))
+        d.addCallback(defer.drop_param,
+            process.wait_for_state, base.ProcessState.finished)
+        d.addCallback(defer.override_result, process.result)
         return d
 
     def rabbitmqctl_dump(self, command):
@@ -100,3 +102,10 @@ class RabbitMQCtl(base.Base):
         self.command = '/usr/lib/rabbitmq/bin/rabbitmqctl'
         self.env = env
         self.args = arg_line.split()
+        self.result = defer.Deferred()
+
+    def on_finished(self, exc):
+        self.result.callback(self._control.out_buffer)
+
+    def on_failed(self, exc):
+        self.result.errback(exc)

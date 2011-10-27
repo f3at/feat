@@ -34,7 +34,7 @@ from twisted.python.failure import Failure
 from zope.interface import implements
 
 # Import feat modules
-from feat.agencies import common, dependency, retrying, periodic
+from feat.agencies import common, dependency, retrying, periodic, messaging
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.common import (log, defer, fiber, serialization, journal, time,
@@ -42,15 +42,15 @@ from feat.common import (log, defer, fiber, serialization, journal, time,
                          first, error, enum, )
 
 # Import interfaces
-from interface import (IAgencyAgentInternal, IMessagingPeer,
+from interface import (IAgencyAgentInternal,
                        IFirstMessage, IAgencyInterestInternalFactory,
-                       IDialogMessage, IAgencyProtocolInternal,
+                       IAgencyProtocolInternal,
                        IAgencyInitiatorFactory, NotFoundError, ConflictError,
                        IDbConnectionFactory, IJournaler,
                        ILongRunningProtocol, )
+from feat.interface.recipient import IRecipient
 from feat.interface.agency import IAgency, ExecMode
 from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
-from feat.interface.channels import IBackend, IChannelSink
 from feat.interface.generic import ITimeProvider
 from feat.interface.journal import IRecorderNode, IJournalKeeper, IRecorder
 from feat.interface.protocols import (IInterest, ProtocolFailed,
@@ -67,8 +67,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   common.StateMachineMixin):
 
     implements(IAgencyAgent, IAgencyAgentInternal, ITimeProvider,
-               IRecorderNode, IJournalKeeper, ISerializable, IMessagingPeer,
-               IChannelSink)
+               IRecorderNode, IJournalKeeper, ISerializable)
 
     type_name = "agent-medium" # this is used by ISerializable
 
@@ -101,10 +100,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._protocols = {} # {puid: IAgencyProtocolInternal}
         self._interests = {} # {protocol_type: {protocol_id: IInterest}}
         self._long_running_protocols = [] # Long running protocols
-        self._channels = {} # {CHANNEL_TYPE: IChannel}
+
         self._notifier = defer.Notifier()
 
         self._database = None
+        self._messaging = None
         self._configuration = None
 
         self._updating = False
@@ -113,9 +113,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Terminating flag, used to not to run
         # termination procedure more than once
         self._terminating = False
-
-        # traversal_id -> True
-        self._traversal_ids = container.ExpDict(self)
 
         self._entries_since_snapshot = 0
 
@@ -128,12 +125,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         setter = lambda value, name: setattr(self, name, value)
 
-        self._channels["default"] = None
-
         d = defer.Deferred()
         d.addCallback(defer.drop_param,
-                      self.agency._backends["default"].new_channel, self)
-        d.addCallback(self._set_channel, "default")
+                      self.agency._messaging.get_connection, self)
+        d.addCallback(setter, "_messaging")
         d.addCallback(defer.drop_param,
                       self.agency._database.get_connection)
         d.addCallback(setter, '_database')
@@ -229,41 +224,23 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @serialization.freeze_tag('AgencyAgent.get_own_address')
     @replay.named_side_effect('AgencyAgent.get_own_address')
-    def get_own_address(self, channel_type="default"):
-        channel = self._channels.get(channel_type)
-        if channel is None:
-            self.warning("Address requested for unknown channel type %r",
-                         channel_type)
-            return None
-        return channel.get_recipient()
+    def get_own_address(self):
+        return IRecipient(self._descriptor)
 
-    @serialization.freeze_tag('AgencyAgent.enable_channel')
-    @replay.named_side_effect('AgencyAgent.enable_channel')
-    def enable_channel(self, channel_type):
-        assert channel_type not in self._channels, "Channel type not supported"
-        self._channels[channel_type] = None # Prevent multiple calls
-        d = self.agency._new_channel(channel_type, self)
-        d.addCallback(self._set_channel, channel_type)
-        d.addErrback(defer.handle_failure,
-                     "Failure enabling channel %s" % channel_type, self)
+    @serialization.freeze_tag('AgencyAgent.create_external_route')
+    @replay.named_side_effect('AgencyAgent.create_external_route')
+    def create_external_route(self, backend_id, **kwargs):
+        self._messaging.create_external_route(backend_id, **kwargs)
 
-    @serialization.freeze_tag('AgencyAgent.disable_channel')
-    @replay.named_side_effect('AgencyAgent.disable_channel')
-    def disable_channel(self, channel_type):
-        assert channel_type in self._channels, "Channel type not supported"
-        assert self._channels[channel_type] is not None, \
-               "enable_channel not yet terminated"
-        self._channels[channel_type].release()
-        del self._channels[channel_type]
-        self.debug("Channel %s disabled for agent %s",
-                   channel_type, self.get_full_id())
+    @serialization.freeze_tag('AgencyAgent.remove_external_route')
+    @replay.named_side_effect('AgencyAgent.remove_external_route')
+    def remove_external_route(self, backend_id, **kwargs):
+        self._messaging.remove_external_route(backend_id, **kwargs)
 
-    @serialization.freeze_tag('AgencyAgent.wait_channel')
-    def wait_channel(self, channel_type):
-        channel = self._channels.get(channel_type, None)
-        if channel is None:
-            return self._notifier.wait(channel_type)
-        return defer.succeed(self)
+    @replay.named_side_effect('AgencyAgent.get_tunneling_url')
+    @serialization.freeze_tag('AgencyAgent.get_tunneling_url')
+    def get_tunneling_url(self):
+        return self._messaging.get_tunneling_url()
 
     @replay.named_side_effect('AgencyAgent.observe')
     def observe(self, _method, *args, **kwargs):
@@ -306,26 +283,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def join_shard(self, shard):
         self.log("Joining shard %r", shard)
         # Rebind agents queue
-        bindings = self.create_bindings(self._descriptor.doc_id, shard)
+        self.create_binding(self._descriptor.doc_id, shard, public=False)
         # Iterate over interest and create bindings
         for interest in self._iter_interests():
-            bindings.extend(interest.bind(shard))
-        return defer.DeferredList([b.wait_created() for b in bindings])
+            interest.bind(shard)
 
+    @serialization.freeze_tag('AgencyAgent.upgrade_agency')
     @replay.named_side_effect('AgencyAgent.upgrade_agency')
     def upgrade_agency(self, upgrade_cmd):
-        self.call_next(self.agency.upgrade, upgrade_cmd)
+        self.agency.upgrade(upgrade_cmd)
 
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
         self.log("Leaving shard %r", shard)
-        defers = []
-        for channel in self._channels.itervalues():
-            bindings = channel.get_bindings()
-            defers.extend([b.revoke() for b in bindings])
-        d = defer.DeferredList(defers)
-        d.addCallback(defer.override_result, None)
-        return None
+        bindings = self._messaging.get_bindings(shard)
+        for x in bindings:
+            self._messaging.revoke_binding(x)
 
     @replay.named_side_effect('AgencyAgent.register_interest')
     def register_interest(self, agent_factory, *args, **kwargs):
@@ -474,6 +447,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return
         call.cancel()
 
+    @replay.named_side_effect("AgencyAgent.is_connected")
+    def is_connected(self):
+        return self.agency.is_connected()
+
     #StateMachineMixin
 
     @replay.named_side_effect('AgencyAgent.get_machine_state')
@@ -512,10 +489,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### IAgencyAgentInternal Methods ###
 
-    def create_bindings(self, key, shard=None):
+    def create_binding(self, key, shard=None, public=False):
         '''Used by Interest instances.'''
-        bindings = [c.bind(key, shard) for c in self._channels.itervalues()]
-        return filter(None, bindings)
+        shard = shard or self.get_shard_id()
+        factory = recipient.Broadcast if public else recipient.Agent
+        recp = factory(key, shard)
+        return self._messaging.create_binding(recp)
+
+    def revoke_binding(self, binding):
+        self._messaging.revoke_binding(binding)
 
     def register_protocol(self, protocol):
         protocol = IAgencyProtocolInternal(protocol)
@@ -538,107 +520,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def send_msg(self, recipients, msg):
         assert msg.expiration_time is not None
-
-        msg.message_id = str(uuid.uuid1())
-
-        channels = dict([(k, []) for k in self._channels])
-        for recip in recipient.IRecipients(recipients):
-            channel_type = recip.channel
-            if channel_type not in channels:
-                self.error("Dropping message to %r, channel %s not found",
-                           recip, channel_type)
-                continue
-            channels[channel_type].append(recip)
-
-        for channel_type, recipients in channels.iteritems():
-            channel = self._channels[channel_type]
-            if channel is None:
-                self.error("Dropping %d message(s), channel %s "
-                           "not initialized yet",
-                           len(recipients), channel_type)
-                continue
-
-            channel.post(recipients, msg.clone())
-
+        self._messaging.post(recipients, msg)
         return msg
-
-    ### IChannelSink ###
-
-    # get_agent_id() already defined
-
-    # get_shard_id() already defined
-
-    def on_message(self, msg):
-        '''
-        When a message with an already known traversal_id is received,
-        we try to build a duplication message and send it in to a protocol
-        dependent recipient. This is used in contracts traversing
-        the graph, when the contract has reached again the same shard.
-        This message is necessary, as silently ignoring the incoming bids
-        adds a lot of latency to the nested contracts (it is waiting to receive
-        message from all the recipients).
-        '''
-        self.log('Received message: %r', msg)
-
-        # Check if it isn't expired message
-        time_left = time.left(msg.expiration_time)
-        if time_left < 0:
-            self.log('Throwing away expired message. Time left: %s, '
-                     'msg_class: %r', time_left, msg.get_msg_class())
-            return False
-
-        # Check for known traversal ids:
-        if IFirstMessage.providedBy(msg):
-            t_id = msg.traversal_id
-            if t_id is None:
-                self.warning(
-                    "Received corrupted message. The traversal_id is None ! "
-                    "Message: %r", msg)
-                return False
-            if t_id in self._traversal_ids:
-                self.log('Throwing away already known traversal id %r, '
-                         'msg_class: %r', msg.get_msg_class(), t_id)
-                recp = msg.duplication_recipient()
-                if recp:
-                    resp = msg.duplication_message()
-                    self.send_msg(recp, resp)
-                return False
-            else:
-                self._traversal_ids.set(t_id, True, msg.expiration_time)
-
-        # Handle registered dialog
-        if IDialogMessage.providedBy(msg):
-            recv_id = msg.receiver_id
-            if recv_id is not None and recv_id in self._protocols:
-                protocol = self._protocols[recv_id]
-                protocol.on_message(msg)
-                return True
-
-        # Handle new conversation coming in (interest)
-        p_type = msg.protocol_type
-        if p_type in self._interests:
-            p_id = msg.protocol_id
-            interest = self._interests[p_type].get(p_id)
-            if interest and interest.schedule_message(msg):
-                return True
-
-        self.warning("Couldn't find appropriate protocol for message: "
-                     "%s", msg.get_msg_class())
-        return False
-
-    ### IMessagingPeer ###
-
-    def get_queue_name(self):
-        warnings.warn("IMessagingPeer's get_queue_name() is deprecated, "
-                      "please use IChannelSink's get_agent_id() instead.",
-                      DeprecationWarning)
-        return self.get_agent_id()
-
-    def get_shard_name(self):
-        warnings.warn("IMessagingPeer's get_shard_name() is deprecated, "
-                      "please use IChannelSink's get_shard_id() instead.",
-                      DeprecationWarning)
-        return self.get_shard_id()
 
     ### Introspection Methods ###
 
@@ -897,12 +780,20 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Tell the agency we are no more
         d.addBoth(defer.drop_param, self._unregister_from_agency)
         d.addErrback(self._handle_failure)
-        # Close the messaging connection
-        d.addBoth(defer.drop_param, self._release_channels)
-        d.addErrback(self._handle_failure)
-        # Close the database connection
-        d.addBoth(defer.drop_param, self._database.disconnect)
-        d.addErrback(self._handle_failure)
+        if self._messaging:
+            # Close the messaging connection
+            d.addBoth(defer.drop_param, self._messaging.release)
+            d.addErrback(self._handle_failure)
+        else:
+            d.addCallback(defer.drop_param, self.warning,
+                          "Agent doesn't have _messaging reference.")
+        if self._database:
+            # Close the database connection
+            d.addBoth(defer.drop_param, self._database.disconnect)
+            d.addErrback(self._handle_failure)
+        else:
+            d.addCallback(defer.drop_param, self.warning,
+                          "Agent doesn't have _database reference.")
         d.addBoth(defer.drop_param,
                   self._set_state, AgencyAgentState.terminated)
         d.addErrback(self._handle_failure)
@@ -1015,19 +906,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addErrback(self._error_handler)
         return d
 
-    def _release_channels(self):
-        # Wait for uninitialized channels
-        not_initialized = [k for k, v in self._channels.iteritems()
-                           if v is None]
-        if not_initialized:
-            d = defer.DeferredList([self.wait_channel(k)
-                                    for k in not_initialized])
-            d.addCallback(defer.drop_param, self._release_channels)
-            return d
-
-        defers = filter(None, [c.release() for c in self._channels.values()])
-        return defer.DeferredList(defers) if defers else defer.succeed(None)
-
 
 class ShutdownStage(enum.Enum):
 
@@ -1082,11 +960,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._jourconn = None
         # IDbConnectionFactory
         self._database = None
-        self._hostname = None
+        self._ip = unicode(socket.gethostbyname(socket.gethostname()))
+        self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
 
         self._shutdown_task = None
-
-        self._backends = {} # {CHANNEL_TYPE: IBackend}
 
         self._agency_id = str(uuid.uuid1())
         self.log_name = self._agency_id
@@ -1101,26 +978,24 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
-        self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
-        self._ip = unicode(socket.gethostbyname(socket.gethostname()))
         self._database = IDbConnectionFactory(database)
+        self._messaging = messaging.Messaging(self)
         self._journaler = IJournaler(journaler)
 
         self._jourconn = self._journaler.get_connection(self)
         self.redirect_log(self._jourconn)
 
-        for backend in backends:
-            backend = IBackend(backend)
-            self._backends[backend.channel_type] = backend
-            backend.add_disconnected_cb(self._on_disconnected)
-            backend.add_reconnected_cb(self._check_msg_and_db_state)
-
         self._database.add_disconnected_cb(self._on_disconnected)
         self._database.add_reconnected_cb(self._check_msg_and_db_state)
+        self._messaging.add_disconnected_cb(self._on_disconnected)
+        self._messaging.add_reconnected_cb(self._check_msg_and_db_state)
 
-        self._check_msg_and_db_state()
-
-        return defer.succeed(self)
+        d = defer.succeed(None)
+        for backend in backends:
+            d.addCallback(defer.drop_param,
+                          self._messaging.add_backend, backend)
+        d.addCallback(defer.drop_param, self._check_msg_and_db_state)
+        return d
 
     @property
     def agency_id(self):
@@ -1147,7 +1022,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         medium = self.agency_agent_factory(self, factory, descriptor)
         self.register_agent(medium)
 
-        d = self.wait_connected()
+        d = self._database.wait_connected()
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
         return d
 
@@ -1206,7 +1081,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                                "over it.", key)
 
     def is_idle(self):
-        return all([x.is_idle() for x in self._agents])
+        return all([x.is_idle() for x in self._agents]) and\
+               self._messaging.is_idle()
 
     ### Journaling Methods ###
 
@@ -1351,11 +1227,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             medium.on_reconnect()
 
     def _check_msg_and_db_state(self):
-        backends = self._backends
+        messaging = self._messaging
         database = self._database
 
-        backends_connected = [b.is_connected() for b in backends.itervalues()]
-        all_connected = all(backends_connected) and database.is_connected()
+        all_connected = messaging.is_connected() and database.is_connected()
 
         if not all_connected:
             self._on_disconnected()
@@ -1363,12 +1238,4 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             self._on_connected()
 
     def _disconnect_backends(self):
-        defers = []
-        for backend in self._backends.itervalues():
-            defers.append(backend.disconnect())
-        defers = filter(None, defers)
-        if defers:
-            d = defer.DeferredList(defer)
-        else:
-            d = defer.succeed(None)
-        return d
+        return self._messaging.disconnect_backends()

@@ -78,7 +78,7 @@ class Tunnel(base.RangeServer):
             return False
         if self._pendings:
             return False
-        if not self.factory.is_idle():
+        if self.factory is not None and not self.factory.is_idle():
             return False
         for peer in self._peers.itervalues():
             if not peer.is_idle():

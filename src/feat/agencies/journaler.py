@@ -28,8 +28,8 @@ import types
 from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb
-from twisted.internet import reactor
-from twisted.python import log as twisted_log, failure
+
+from twisted.python import log as twisted_log
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
@@ -38,14 +38,14 @@ from feat.agencies import common
 from feat.common.serialization import banana
 from feat.extern.log import log as flulog
 
-from feat.interface.journal import *
-from feat.interface.serialization import *
-from feat.agencies.interface import *
-from feat.interface.log import *
+from feat.interface.journal import IJournalSideEffect, IJournalEntry
+from feat.interface.serialization import IExternalizer
+from feat.interface.log import ILogKeeper
+from feat.agencies.interface import (IJournaler, IJournalWriter, IRecord,
+                                     IJournalerConnection)
 
 
 class State(enum.Enum):
-
     '''
     disconnected - there is no connection to database
     connected - connection is ready, entries can be insterted
@@ -606,7 +606,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         if self._filename == ':memory:':
             return
         self.log('Installing SIGHUP handler.')
-        handler = signal.signal(signal.SIGHUP, self._sighup_handler)
+        signal.signal(signal.SIGHUP, self._sighup_handler)
         self._sighup_installed = True
 
     def _uninstall_sighup(self):

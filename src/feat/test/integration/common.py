@@ -29,7 +29,7 @@ from feat.test import common
 from feat.common import text_helper, defer, reflect
 from feat.simulation import driver
 from feat.agencies import replay
-from feat.agencies.emu import tunneling
+from feat.agencies.messaging import tunneling
 from feat.agents.base import dbtools, registry
 
 from feat.agencies.interface import NotFoundError

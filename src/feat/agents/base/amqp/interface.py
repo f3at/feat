@@ -38,7 +38,7 @@ class IAMQPClientFactory(Interface):
         @param port: port to connect to (default 5672)
         @param vhost: vhost to connect to (default "/")
         @param user: user to use for authentication (default "guest")
-        @param passwrod: password to use for authentication (default "guest")
+        @param password: password to use for authentication (default "guest")
         @param exchange: name of the exchange (required)
         @param exchange_type: type of exchange to create (default "fanout"),
                               other possible values: direct, topic

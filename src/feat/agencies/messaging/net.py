@@ -33,12 +33,11 @@ from zope.interface import implements
 
 from feat.common import log, defer, enum, time, error, container
 from feat.common.serialization import banana
-from feat.agencies.messaging import Connection, Queue
+from feat.agencies.messaging.rabbitmq import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
 
-from feat.agencies.interface import IConnectionFactory
-from feat.interface.channels import IBackend
+from feat.agencies.messaging.interface import IMessagingClient
 from feat.interface.generic import ITimeProvider
 
 
@@ -163,30 +162,28 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self._wait_for_client = defer.Deferred()
 
 
-class Messaging(ConnectionManager, log.Logger, log.LogProxy):
+class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
 
-    implements(IConnectionFactory, IBackend)
+    implements(IMessagingClient)
 
-    log_category = "messaging"
+    log_category = "net-rabbitmq"
 
-    channel_type = "default"
-
-    def __init__(self, host, port, user='guest', password='guest'):
+    def __init__(self, host, port, user='guest', password='guest',
+                 timeout=5):
         ConnectionManager.__init__(self)
         log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         self._user = user
         self._password = password
-        self._host = None
-        self._port = None
+        self._host = host
+        self._port = port
+        self._timeout_connecting = timeout
 
         self._factory = AMQFactory(self, TwistedDelegate(),
                                    self._user, self._password,
                                    on_connected=self._on_connected,
                                    on_disconnected=self._on_disconnected)
-
-        self._configure(host, port)
 
     ### public ###
 
@@ -197,14 +194,6 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
     def show_status(self):
         eta = self._factory.get_eta_to_reconnect()
         return "Messaging", self.is_connected(), self._host, self._port, eta
-
-    ### IConnectionFactory ###
-
-    def get_connection(self, agent):
-        warnings.warn("IConnectionFactory's get_connection() is deprecated, "
-                      "please use IBackend's new_channel() instead.",
-                      DeprecationWarning)
-        return self.new_channel(agent)
 
     ### IBackend ####
 
@@ -220,12 +209,17 @@ class Messaging(ConnectionManager, log.Logger, log.LogProxy):
         self._factory.stopTrying()
         self._connector.disconnect()
 
-    def new_channel(self, agent):
+    def connect(self):
+        self._configure(self._host, self._port)
+        timeout = self._timeout_connecting
+        msg = "Timeout exceeded while trying to connect to messaging server"
+        return defer.Timeout(timeout, self.wait_connected(), msg)
+
+    def new_channel(self, agent, queue_name=None):
         d = self._factory.get_client()
         channel_wrapped = Channel(self, d, self._factory)
 
-        c = Connection(channel_wrapped, agent)
-        return c.initiate()
+        return Connection(channel_wrapped, agent, queue_name)
 
     # add_disconnected_cb() from common.ConnectionManager
 
@@ -326,11 +320,11 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return self._call_on_channel(self._define_exchange,
                                      name, exchange_type)
 
-    def create_binding(self, exchange, key, queue):
+    def create_binding(self, exchange, queue, key):
         return self._call_on_channel(self._create_binding,
                                      exchange, key, queue)
 
-    def delete_binding(self, exchange, key, queue):
+    def delete_binding(self, exchange, queue, key):
         return self._call_on_channel(self._delete_binding,
                                      exchange, key, queue)
 
@@ -380,7 +374,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
         if shard is None:
-            self.error('Tried to sent message to exchange=None. This would '
+            self.error('Tried to send message to exchange=None. This would '
                        'mess up the whole txamqp library state, therefore '
                        'this message is ignored')
             return defer.succeed(None)
@@ -404,10 +398,14 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     def _create_binding(self, exchange, key, queue):
-        self.log('Creating binding exchange=%s, key=%s, queue=%s',
-                 exchange, key, queue)
-        return self.channel.queue_bind(exchange=exchange, routing_key=key,
-                                       queue=queue, nowait=False)
+        exchange_type = 'direct' if key is not None else 'fanout'
+        self.log('Creating binding exchange=%s, exchange_type=%s, key=%s, '
+                 'queue=%s', exchange, exchange_type, key, queue)
+        d = self._define_exchange(exchange, exchange_type)
+        d.addCallback(defer.drop_param, self.channel.queue_bind,
+                      exchange=exchange, routing_key=key,
+                      queue=queue, nowait=False)
+        return d
 
     def _delete_binding(self, exchange, key, queue):
         self.log('Deleting binding exchange=%s, key=%s, queue=%s',
@@ -470,10 +468,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     def _processing_error_handler(self, f, call):
-        if f.check(Closed):
-            self.log("Failed performing the call because connection has "
-                     "been lost. This is normal, don't panic.")
-            return
         error.handle_failure(
             self, f, 'Failed to perfrom the ProcessingCall. '
             'Method being processed: %r, args: %r, kwargs: %r',

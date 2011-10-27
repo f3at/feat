@@ -227,6 +227,8 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         config = state.medium.get_configuration()
         state.medium.initiate_protocol(CheckNeighboursTask,
                                        config.neighbours_check_period)
+        if not state.medium.is_connected():
+            state.clerk.on_disconnected()
 
     @replay.journaled
     def on_disconnect(self, state):
@@ -682,9 +684,13 @@ class HandleDeath(task.BaseTask):
             return
         if isinstance(response, partners.ResponsabilityAccepted):
             state.so_took_reponsability = True
-            time_left = time.left(response.expiration_time)
+            time_left = self._time_left(response.expiration_time)
             state.timeout_call_id = state.agent.call_later(
                 time_left, self._timeout_waiting_for_restart)
+
+    @replay.side_effect
+    def _time_left(self, moment):
+        return time.left(moment)
 
     @replay.mutable
     def _ensure_someone_took_responsability(self, state, _responses):

@@ -28,7 +28,7 @@ from feat.interface.agency import ExecMode
 from feat.common import fiber, manhole, defer
 from feat.common.text_helper import format_block
 from feat.test.common import delay, StubAgent, attr
-from feat.agencies.net import messaging
+from feat.agencies.messaging import net
 
 from twisted.trial.unittest import SkipTest
 
@@ -87,11 +87,14 @@ class TestWithRabbit(common.SimulationTest):
         yield self.run_rabbit()
 
         # get connection faking the web team listening
-        self.server = messaging.Messaging('127.0.0.1',
-                                          self.rabbit.get_config()['port'])
+        self.server = net.RabbitMQ('127.0.0.1',
+                                   self.rabbit.get_config()['port'])
+        yield self.server.connect()
         self.web = StubAgent()
-        self.connection = yield self.server.new_channel(self.web)
-        pb = self.connection.bind(self.web.get_agent_id(), 'exchange')
+        self.connection = self.server.new_channel(self.web,
+                                                  self.web.get_agent_id())
+        yield self.connection.initiate()
+        pb = self.connection.bind('exchange', self.web.get_agent_id())
         yield pb.wait_created()
 
         # setup our agent

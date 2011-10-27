@@ -365,9 +365,9 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @manhole.expose()
     @replay.immutable
-    def get_own_address(self, state, channel_type="default"):
+    def get_own_address(self, state):
         '''Return IRecipient representing the agent.'''
-        return state.medium.get_own_address(channel_type)
+        return state.medium.get_own_address()
 
     @replay.immutable
     def initiate_protocol(self, state, *args, **kwargs):
@@ -447,6 +447,18 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @replay.immutable
     def observe(self, state, _method, *args, **kwargs):
         return state.medium.observe(_method, *args, **kwargs)
+
+    @replay.immutable
+    def get_tunneling_url(self, state):
+        return state.medium.get_tunneling_url()
+
+    @replay.journaled
+    def add_tunneling_route(self, state, recp, url):
+        state.medium.create_external_route('tunnel', recipient=recp, uri=url)
+
+    @replay.journaled
+    def remove_tunneling_route(self, state, recp, url):
+        state.medium.remove_external_route('tunnel', recipient=recp, uri=url)
 
     ### Private Methods ###
 

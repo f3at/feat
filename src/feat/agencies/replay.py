@@ -650,21 +650,22 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgent.get_own_address')
     @replay.named_side_effect('AgencyAgent.get_own_address')
-    def get_own_address(self, channel_type="default"):
+    def get_own_address(self):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.enable_channel')
-    @replay.named_side_effect('AgencyAgent.enable_channel')
-    def enable_channel(self, channel_type):
+    @serialization.freeze_tag('AgencyAgent.create_external_route')
+    @replay.named_side_effect('AgencyAgent.create_external_route')
+    def create_external_route(self, backend_id, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.disable_channel')
-    @replay.named_side_effect('AgencyAgent.disable_channel')
-    def disable_channel(self, channel_type):
+    @serialization.freeze_tag('AgencyAgent.remove_external_route')
+    @replay.named_side_effect('AgencyAgent.remove_external_route')
+    def remove_external_route(self, backend_id, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.wait_channel')
-    def wait_channel(self, channel_type):
+    @replay.named_side_effect('AgencyAgent.get_tunneling_url')
+    @serialization.freeze_tag('AgencyAgent.get_tunneling_url')
+    def get_tunneling_url(self):
         pass
 
     @replay.named_side_effect('AgencyAgent.observe')
@@ -695,6 +696,7 @@ class AgencyAgent(BaseReplayDummy):
     def get_mode(self, component):
         pass
 
+    @serialization.freeze_tag('AgencyAgent.upgrade_agency')
     @replay.named_side_effect('AgencyAgent.upgrade_agency')
     def upgrade_agency(self, upgrade_cmd):
         pass
@@ -792,6 +794,10 @@ class AgencyAgent(BaseReplayDummy):
 
     @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
     def cancel_delayed_call(self, call_id):
+        pass
+
+    @replay.named_side_effect("AgencyAgent.is_connected")
+    def is_connected(self):
         pass
 
     @replay.named_side_effect('AgencyAgent.get_machine_state')

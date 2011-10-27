@@ -62,12 +62,26 @@ class TestAgent(agent.BaseAgent):
         state.medium.revoke_interest(DummyPrivateContractor)
 
     @replay.immutable
-    def enable_tunneling(self, state):
-        state.medium.enable_channel("tunnel")
+    def enable_tunneling(self, state, uris, recipients):
+        for uri, recp in zip(uris, recipients):
+            self.add_tunnel(recp, uri)
 
     @replay.immutable
-    def disable_tunneling(self, state):
-        state.medium.disable_channel("tunnel")
+    def disable_tunneling(self, state, uris, recipients):
+        for uri, recp in zip(uris, recipients):
+            self.remove_tunnel(recp, uri)
+
+    @replay.immutable
+    def get_tunneling_url(self, state):
+        return state.medium.get_tunneling_url()
+
+    @replay.immutable
+    def add_tunnel(self, state, recp, uri):
+        state.medium.create_external_route('tunnel', uri=uri, recipient=recp)
+
+    @replay.immutable
+    def remove_tunnel(self, state, recp):
+        state.medium.remove_external_route('tunnel', uri=uri, recipient=recp)
 
     @replay.immutable
     def post_public_notification(self, state, recipients, payload):
@@ -273,16 +287,12 @@ class TunnellingTest(common.SimulationTest):
         self.ha2 = self.get_local('ha2')
         self.ha3 = self.get_local('ha3')
 
-    def testValidateProlog(self):
-        iter_agents = self.driver.iter_agents
-        self.assertEqual(3, len(list(iter_agents("host_agent"))))
-        self.assertEqual(2, len(list(iter_agents("shard_agent"))))
-        self.assertEqual(6, len(list(iter_agents("test_agent"))))
-
     ### Tunneling backend tests ###
 
     @defer.inlineCallbacks
     def testTunnelingBackendContracts(self):
+        self.driver.disable_rabbitmq()
+
         a1, a2 = self.get_host_agents("test_agent", self.ha1)
         a3, a4 = self.get_host_agents("test_agent", self.ha2)
         a5, a6 = self.get_host_agents("test_agent", self.ha3)
@@ -294,19 +304,14 @@ class TunnellingTest(common.SimulationTest):
         for a, n in zip(agents, payloads):
             a.set_private_payload(n)
 
-        for a in agents:
-            # Agent must have a channel to be able
-            # to get it's address through it
-            a.enable_tunneling()
-            recipients.append(a.get_own_address("tunnel"))
-            a.disable_tunneling()
+        recipients = [a.get_own_address() for a in agents]
+        uris = [a.get_tunneling_url() for a in agents]
 
         a1.start_private_contract(recipients, "spam", "tomato")
         yield self.wait_for_idle(20)
         self.check_private_contract(agents, [([], [], [])]*6)
         self.full_reset()
 
-        agents[1].enable_interest()
         agents[2].enable_interest()
         agents[3].enable_interest()
         agents[5].enable_interest()
@@ -316,20 +321,21 @@ class TunnellingTest(common.SimulationTest):
         self.check_private_contract(agents, [([], [], [])]*6)
         self.full_reset()
 
-        agents[0].enable_tunneling()
-        agents[1].enable_tunneling()
-        agents[3].enable_tunneling()
-        agents[5].enable_tunneling()
+        agents[0].enable_tunneling(uris, recipients)
+        agents[1].enable_interest()
+        agents[1].enable_tunneling(uris, recipients)
+        agents[3].enable_tunneling(uris, recipients)
+        agents[5].enable_tunneling(uris, recipients)
 
         a1.start_private_contract(recipients, "spam", "tomato")
         yield self.wait_for_idle(20)
         self.check_private_contract(agents,
-                                    [([], ["bacon", "beans", "tomato"], []),
-                                     (["spam"], [], []),
-                                     ([], [], []),
-                                     (["spam"], [], ["spam"]),
-                                     ([], [], []),
-                                     (["spam"], [], [])])
+                        [([], ["bacon", "beans", "egg", "tomato"], []),
+                         (["spam"], [], []),
+                         (["spam"], [], []),
+                         (["spam"], [], ["spam"]),
+                         ([], [], []),
+                         (["spam"], [], [])])
         self.full_reset()
 
         agents[0].enable_interest()
@@ -341,73 +347,35 @@ class TunnellingTest(common.SimulationTest):
         a4.start_private_contract(recipients, "more spam", "beans")
         yield self.wait_for_idle(20)
         self.check_private_contract(agents,
-                                    [(["more spam"], [], []),
-                                     ([], [], []),
-                                     ([], [], []),
-                                     ([], ["beans", "spam"], []),
-                                     ([], [], []),
-                                     (["more spam"], [], ["tomato"])])
+                            [(["more spam"], [], []),
+                            ([], [], []),
+                            (["more spam"], [], []),
+                            ([], ["beans", "egg", "sausage", "spam"], []),
+                            (["more spam"], [], []),
+                            (["more spam"], [], ["tomato"])])
         self.full_reset()
 
-    @defer.inlineCallbacks
-    def testMixedBackendContracts(self):
-        a1, a2 = self.get_host_agents("test_agent", self.ha1)
-        a3, a4 = self.get_host_agents("test_agent", self.ha2)
-        a5, a6 = self.get_host_agents("test_agent", self.ha3)
-
-        agents = [a1, a2, a3, a4, a5, a6]
-        payloads = ["spam", "bacon", "egg", "tomato", "sausage", "beans"]
-        default_recipients = []
-        tunnel_recipients = []
-
-        for a, n in zip(agents, payloads):
-            a.set_private_payload(n)
-
-        for a in agents:
-            # Agent must have a channel to be able
-            # to get it's address through it
-            a.enable_tunneling()
-            tunnel_recipients.append(a.get_own_address("tunnel"))
-            default_recipients.append(a.get_own_address())
-            a.disable_tunneling()
-
-        for a in agents:
-            a.enable_interest()
-            a.enable_tunneling()
-
-        tr = tunnel_recipients
-        dr = default_recipients
-        mixed_recipients = [dr[0], dr[1], tr[2], tr[3], dr[4], tr[5]]
-        a3.start_private_contract(mixed_recipients, "lovely spam", "sausage")
-        yield self.wait_for_idle(20)
-        self.check_private_contract(agents,
-                                    [(["lovely spam"], [], []),
-                                     (["lovely spam"], [], []),
-                                     (["lovely spam"], ["bacon", "beans",
-                                                        "egg", "sausage",
-                                                        "spam", "tomato"], []),
-                                     (["lovely spam"], [], []),
-                                     (["lovely spam"], [], ["egg"]),
-                                     (["lovely spam"], [], [])])
-        self.full_reset()
-
+    @common.attr(skip="This testcase is should be removed or fixed. "
+                 "The problem is that it was testing the behaviour which is "
+                 "changed, namely: that agents don't receive notifications "
+                 "if they don't enable the tunneling channel")
     @defer.inlineCallbacks
     def testTunnelingBackendDirectNotifications(self):
-        a1, a2 = self.get_host_agents("test_agent", self.ha1)
-        a3, a4 = self.get_host_agents("test_agent", self.ha2)
-        a5, a6 = self.get_host_agents("test_agent", self.ha3)
+        self.driver.disable_rabbitmq()
 
-        agents = [a1, a2, a3, a4, a5, a6]
+        a1, _ = self.get_host_agents("test_agent", self.ha1)
+        a3, _ = self.get_host_agents("test_agent", self.ha2)
+        a5, _ = self.get_host_agents("test_agent", self.ha3)
+
+        agents = [a1, a3, a5]
         recipients = []
 
-        for a in agents:
-            a.enable_tunneling()
-            recipients.append(a.get_own_address("tunnel"))
-            a.disable_tunneling()
+        recipients = [a.get_own_address() for a in agents]
+        uris = [a.get_tunneling_url() for a in agents]
 
         a1.post_private_notification(recipients, "spam")
         yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [[]]*6)
+        self.check_private_notification(agents, [[]]*3)
         self.full_reset()
 
         for a in agents:
@@ -415,58 +383,43 @@ class TunnellingTest(common.SimulationTest):
 
         a1.post_private_notification(recipients, "spam")
         yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [[]]*6)
+        self.check_private_notification(agents, [[]]*3)
         self.full_reset()
 
-        for a in (a1, a4, a5):
-            a.enable_tunneling()
+        for a in (a1, a5):
+            a.enable_tunneling(uris, recipients)
 
         a1.post_private_notification(recipients, "bacon")
         yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [["bacon"], [], [],
-                                                 ["bacon"], ["bacon"], []])
+        self.check_private_notification(agents, [["bacon"], [], ["bacon"]])
         self.full_reset()
 
-        for a in (a1, a4, a5):
-            a.disable_tunneling()
+        for a in (a1, a5):
+            a.disable_tunneling(uris, recipients)
 
-        for a in (a2, a3, a6):
-            a.enable_tunneling()
+        for a in (a3, ):
+            a.enable_tunneling(uris, recipients)
 
         # a1 disabled the channel, nothing will got through
         a1.post_private_notification(recipients, "eggs")
         yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [[]]*6)
+        self.check_private_notification(agents, [[]]*3)
         self.full_reset()
 
         # a2 is enabled so everything should be fine
-        a2.post_private_notification(recipients, "eggs")
-        yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [[], ["eggs"], ["eggs"],
-                                                 [], [], ["eggs"]])
-        self.full_reset()
+        for a in (a1, a5):
+            a.enable_tunneling(uris, recipients)
 
-        for a in (a1, a4, a5):
-            a.enable_tunneling()
-
-        a6.post_private_notification(recipients, "tomato")
-        yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [["tomato"], ["tomato"],
-                                                 ["tomato"], ["tomato"],
-                                                 ["tomato"], ["tomato"]])
-        self.full_reset()
-
-        for a in (a2, a3, a5):
+        for a in (a3, a5):
             a.disable_interest()
 
         a5.post_private_notification(recipients, "sausage")
         yield self.wait_for_idle(20)
-        self.check_private_notification(agents, [["sausage"], [],
-                                                 [], ["sausage"],
-                                                 [], ["sausage"]])
+        self.check_private_notification(agents, [["sausage"], [], []])
+
         self.full_reset()
 
-        for a in (a2, a3, a5):
+        for a in (a3, a5):
             a.enable_interest()
 
         r = recipients

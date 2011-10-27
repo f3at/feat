@@ -235,6 +235,7 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
         agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('host_agent'))
         host2 = _.get_agent()
+        wait_for_idle()
         host2.start_agent(descriptor_factory('export_agent'))
         wait_for_idle()
         """)
@@ -268,8 +269,10 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
         self.alert = first(
             self.drivers[1].iter_agents('alert_agent')).get_agent()
 
-        recp = yield self.export.get_own_address('tunnel')
+        recp = yield self.export.get_own_address()
         self.assertIsInstance(recp, recipient.Recipient)
+        url = self.export.get_tunneling_url()
+        yield self.migration.add_tunneling_route(recp, url)
         yield self.migration.handshake(recp)
         yield self.migration.set_current('testing_site')
 

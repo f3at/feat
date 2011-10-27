@@ -121,7 +121,7 @@ class TestAgentCallbacks(common.TestCase, common.AgencyTestHelper):
         agent.set_started()
         yield medium.wait_for_state(AgencyAgentState.ready)
 
-        messaging = self.agency._backends["default"]
+        messaging = self.agency._messaging
         database = self.agency._database
 
         messaging._on_disconnected()

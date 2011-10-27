@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from twisted.internet import reactor
 
 from feat.common import defer
 
@@ -140,3 +141,80 @@ class TestNotifier(common.TestCase):
 
         n.errback("barr", Exception())
         self.assertEqual(counters["barr"], 1)
+
+    @common.attr(timeout=1)
+    @defer.inlineCallbacks
+    def testCancellingWaitEvent(self):
+        n = defer.Notifier()
+        d = n.wait('some_event')
+        self.assertFailure(d, defer.CancelledError)
+        reactor.callLater(0.02, d.cancel)
+        yield d
+
+        n.callback('some_event', 1) #doesn't cause as deferred is removed
+
+
+class Canceller(object):
+
+    def __init__(self):
+        self.called = False
+
+    def cancel(self, d):
+        self.called = True
+
+
+class SpecialError(Exception):
+    pass
+
+
+class TestTimeout(common.TestCase):
+
+    @defer.inlineCallbacks
+    def testItTimeoutsCorrectly(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        self.assertFailure(timeout, defer.TimeoutError)
+        yield common.delay(None, 0.03)
+        self.assertTrue(canceller.called)
+
+    @defer.inlineCallbacks
+    def testCallbackInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFalse(timeout.called)
+        self.assertFalse(master.called)
+        master.callback("result")
+        res = yield timeout
+        self.assertEqual('result', res)
+        self.assertFalse(canceller.called)
+
+    @defer.inlineCallbacks
+    def testErrbackInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.02, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFalse(timeout.called)
+        self.assertFalse(master.called)
+        master.errback(SpecialError("result"))
+        self.assertFailure(timeout, SpecialError)
+        yield timeout
+        self.assertFalse(canceller.called)
+
+    @defer.inlineCallbacks
+    def testCancelingInTime(self):
+        canceller = Canceller()
+        master = defer.Deferred(canceller.cancel)
+        timeout = defer.Timeout(0.05, master)
+        self.assertFalse(timeout.called)
+        yield common.delay(None, 0.01)
+        self.assertFailure(timeout, defer.CancelledError)
+        timeout.cancel()
+        yield common.delay(None, 0.01)
+        self.assertTrue(canceller.called)
