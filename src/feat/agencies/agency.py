@@ -1212,10 +1212,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             self._shutdown_task = type(self).shutdown_factory(self, **opts)
             return self._shutdown_task.initiate()
 
-    def _new_channel(self, channel_type, agency_agent):
-        assert channel_type in self._backends, "Channel type not supported"
-        return self._backends[channel_type].new_channel(agency_agent)
-
     ### private ###
 
     def _notify_agents_about_disconnection(self):

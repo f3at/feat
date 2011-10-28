@@ -269,6 +269,10 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
         return 'tunnel' in self._backends and \
                self._backends['tunnel'].route or None
 
+    def show_connection_status(self):
+        if 'rabbitmq' in self._backends:
+            return self._backends['rabbitmq'].show_connection_status()
+
     ### Managing connected status ###
 
     # _on_disconnected from ConnectionManager

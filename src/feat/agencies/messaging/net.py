@@ -191,9 +191,9 @@ class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
         self.disconnect()
         self._configure(host, port)
 
-    def show_status(self):
+    def show_connection_status(self):
         eta = self._factory.get_eta_to_reconnect()
-        return "Messaging", self.is_connected(), self._host, self._port, eta
+        return "RabbitMQ", self.is_connected(), self._host, self._port, eta
 
     ### IBackend ####
 

@@ -509,8 +509,8 @@ class Agency(agency.Agency):
         t = text_helper.Table(
             fields=("Connection", "Connected", "Host", "Port", "Reconnect in"),
             lengths=(20, 15, 30, 10, 15))
-        connections = self._backends.values() + [self._database]
-        iterator = (x.show_status() for x in connections)
+        connections = [self._database, self._messaging]
+        iterator = (x.show_connection_status() for x in connections)
         return t.render(iterator)
 
     ### Manhole inspection methods ###

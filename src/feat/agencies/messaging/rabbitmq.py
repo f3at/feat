@@ -134,6 +134,11 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
     def on_message(self, message):
         self._channel.post(message.recipient, message)
 
+    ### public ###
+
+    def show_connection_status(self):
+        return self._server.show_connection_status()
+
     ### private ###
 
     def _timeout_connecting(self, fail):

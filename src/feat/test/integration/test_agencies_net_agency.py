@@ -24,6 +24,7 @@ import sys
 import os
 import optparse
 import operator
+import re
 
 from twisted.internet import defer
 from twisted.spread import pb
@@ -414,6 +415,8 @@ class IntegrationTestCase(common.TestCase):
         new_shard = new_medium.get_shard_id()
         self.assertEqual(old_shard, new_shard)
 
+        self.assertFalse(self.is_rabbit_connected())
+
         self.info("Starting RabbitMQ.")
         msg_host, msg_port = yield self._run_and_configure_msg()
         self.agency.reconfigure_messaging(msg_host, msg_port)
@@ -421,6 +424,8 @@ class IntegrationTestCase(common.TestCase):
         yield common.delay(None, 5)
         output = yield self.msg_process.rabbitmqctl('list_exchanges')
         self.assertIn(new_medium.get_shard_id(), output)
+
+        self.assertTrue(self.is_rabbit_connected())
 
     @defer.inlineCallbacks
     def testBackupAgency(self):
@@ -528,6 +533,10 @@ class IntegrationTestCase(common.TestCase):
         set2 = set(ids_got)
         self.assertTrue(set1.issubset(set2),
                         "%r is not subset of %r" % (set1, set2, ))
+
+    def is_rabbit_connected(self):
+        s = self.agency.show_connections()
+        return re.search('RabbitMQ\s+True', s) is not None
 
     def wait_for_host_agent(self, timeout):
 

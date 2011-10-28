@@ -77,10 +77,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._configure(host, port, name)
         self._setup_notifier()
 
-    def show_status(self):
+    def show_connection_status(self):
         eta = self.reconnector and self.reconnector.active() and \
               time.left(self.reconnector.getTime())
-        return "Database", self.is_connected(), self.host, self.port, eta
+        return "CouchDB", self.is_connected(), self.host, self.port, eta
 
     ### IDbConnectionFactory
 
