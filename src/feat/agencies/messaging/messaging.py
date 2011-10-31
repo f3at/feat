@@ -196,6 +196,7 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
 
         self._pending_dispatches = 0
         self._on_connected()
+        self._notifier = defer.Notifier()
 
     ### public ###
 
@@ -225,12 +226,10 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
 
     ### managing backends connected ###
 
-    def add_backend(self, backend):
+    def add_backend(self, backend, can_become_outgoing=True):
         self.log('Adding backend: %r', backend)
         backend = IBackend(backend)
         self._backends[backend.channel_type] = backend
-        if len(self._backends) == 1:
-            self.routing.set_outgoing_sink(backend)
 
         backend.add_disconnected_cb(self._on_disconnected)
         backend.add_reconnected_cb(self._check_connections)
@@ -239,8 +238,30 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
         d.addCallback(backend.initiate)
         d.addErrback(self._add_backend_errback, backend.channel_type)
         d.addCallback(defer.drop_param, self._check_connections)
+        if can_become_outgoing and len(self._backends) == 1:
+            d.addCallback(defer.drop_param,
+                          self.routing.set_outgoing_sink, backend)
+        d.addCallback(defer.drop_param, self._notifier.callback,
+                      backend.channel_type, backend)
         d.addCallback(defer.override_result, None)
         return d
+
+    def remove_backend(self, backend_id):
+        if backend_id not in self._backends:
+            self.error("Backend %r not found! Backends now: %r", backend_id,
+                       self._backends.keys())
+            return
+        backend = self._backends.pop(backend_id)
+        self.routing.remove_sink(backend)
+
+    def get_backend(self, backend_id):
+        back = self._backends.get(backend_id)
+        if back is None:
+            msg = ("get_backend(%r) called but backends are: %r" %
+                   (backend_id, self._backends.keys(), ))
+            return defer.Timeout(15, self._notifier.wait(backend_id),
+                                 message=msg)
+        return back
 
     def disconnect_backends(self):
         defers = []

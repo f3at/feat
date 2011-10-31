@@ -21,8 +21,6 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import warnings
-
 from zope.interface import implements
 
 from twisted.internet import reactor

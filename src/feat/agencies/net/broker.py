@@ -246,6 +246,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                       if not x.is_standalone)
         return slave is not None
 
+    @manhole.expose()
     def shutdown_slaves(self):
         if self.is_master():
 
@@ -418,6 +419,13 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         if self.is_slave():
             return self._master.callRemote(
                 'unregister_agent_local', self.agency.agency_id, agent_id)
+
+    @manhole.expose()
+    def get_broker_backend(self):
+        if self.is_slave():
+            return self._master.callRemote('get_broker_backend')
+        else:
+            return self.agency.get_broker_backend()
 
     def is_standalone(self):
         return self._is_standalone

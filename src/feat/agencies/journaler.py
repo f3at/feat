@@ -233,7 +233,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
             file_path=file_path,
             line_num=line_num,
             message=message,
-            timestamp=int(time.time_no_sfx()))
+            timestamp=int(time.time()))
         self.insert_entry(**data)
 
         if self.should_keep_on_logging_to_flulog:
@@ -244,7 +244,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
 
     def _schedule_flush(self):
         if self._flush_task is None:
-            self._flush_task = time.callLater(0, self._flush)
+            self._flush_task = time.call_next(self._flush)
 
     @in_state(State.connected)
     def _flush(self):
@@ -341,7 +341,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
             return defer.succeed(None)
         else:
             d = self._semaphore.run(self._push_entries)
-            d.addCallback(defer.drop_param, self._flush_next)
+            d.addCallback(defer.drop_param, time.call_next, self._flush_next)
             return d
 
     def _push_entries(self):
@@ -970,7 +970,7 @@ class AgencyJournalEntry(object):
             'fiber_id': None,
             'fiber_depth': None,
             'side_effects': list(),
-            'timestamp': int(time.time_no_sfx())}
+            'timestamp': int(time.time())}
 
         self._not_serialized = {
             'args': args or None,

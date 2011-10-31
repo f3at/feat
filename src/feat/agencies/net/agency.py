@@ -35,7 +35,7 @@ from feat.agents.common import host
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
-from feat.agencies.messaging import net, tunneling, rabbitmq
+from feat.agencies.messaging import net, tunneling, rabbitmq, unix
 from feat.common import log, defer, time, first, error, run, signal
 from feat.common import manhole, text_helper
 from feat.process import standalone
@@ -228,11 +228,6 @@ class Agency(agency.Agency):
         db = database.Database(dbc['host'], int(dbc['port']), dbc['name'])
         db.redirect_log(self)
 
-        backends = []
-        backends.append(self._initiate_messaging(self.config['msg']))
-        backends.append(self._initiate_tunneling(self.config['tunnel']))
-        backends = filter(None, backends)
-
         jour = journaler.Journaler(self)
         self._journal_writer = None
 
@@ -258,7 +253,7 @@ class Agency(agency.Agency):
 
         d = defer.succeed(None)
         d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, db, jour, *backends)
+                  self, db, jour)
         d.addBoth(defer.drop_param, self._broker.initiate_broker)
         d.addBoth(defer.override_result, self)
         return d
@@ -325,7 +320,17 @@ class Agency(agency.Agency):
             value = self.config['agency']['force_host_restart']
             self._broker.shared_state['enable_host_restart'] = value
 
+        backends = []
+        backends.append(self._initiate_messaging(self.config['msg']))
+        backends.append(self._initiate_tunneling(self.config['tunnel']))
+        backends.append(unix.Master(self._broker))
+        backends = filter(None, backends)
+
         d = defer.succeed(None)
+        for backend in backends:
+            d.addCallback(defer.drop_param,
+                          self._messaging.add_backend, backend)
+
         if self.config['agency']['enable_spawning_slave']:
             d.addCallback(defer.drop_param, self._spawn_backup_agency)
 
@@ -342,6 +347,9 @@ class Agency(agency.Agency):
         self._journal_writer.initiate()
         self._redirect_text_log()
         self._start_slave_gateway()
+
+        backend = unix.Slave(self._broker)
+        return self._messaging.add_backend(backend)
 
     def _redirect_text_log(self):
         if self.config['agency']['daemonize']:
@@ -377,6 +385,8 @@ class Agency(agency.Agency):
         except ValueError:
             # this is expected result in case of slave agencies
             pass
+
+        self._messaging.remove_backend('unix')
 
         self._ssh.stop_listening()
         d = self._journaler.close(flush_writer=False)
@@ -682,7 +692,7 @@ class Agency(agency.Agency):
 
             backend = net.RabbitMQ(host, port, username, password)
             backend.redirect_log(self)
-            client = rabbitmq.Client(backend, self.agency_id)
+            client = rabbitmq.Client(backend, self.get_hostname())
             return client
         except Exception as e:
             msg = "Failed to setup messaging backend"
@@ -919,3 +929,8 @@ class Agency(agency.Agency):
             return p.restart()
         else:
             return
+
+    def get_broker_backend(self):
+        if self.role != broker.BrokerRole.master:
+            raise RuntimeError("We are not a master, wtf?!")
+        return self._messaging.get_backend('unix')

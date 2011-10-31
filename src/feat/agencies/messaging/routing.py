@@ -33,6 +33,19 @@ class Route(object):
                 (self.key, self.priority, self.final,
                  type(self.owner).__name__))
 
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.owner == other.owner and \
+               self.priority == other.priority and \
+               self.key == other.key and \
+               self.final == other.final
+
+    def __ne__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return not self.__eq__(other)
+
 
 class Table(log.Logger):
 
@@ -89,6 +102,10 @@ class Table(log.Logger):
         for route in self._routes:
             if route.owner == sink:
                 self.remove_route(route)
+
+        if self._outgoing_sink == sink:
+            self.info("Outgoing sink removed, setting to None.")
+            self._outgoing_sink = None
 
     def dispatch(self, message, outgoing=True):
 
