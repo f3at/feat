@@ -946,6 +946,66 @@ class Shutdown(common.Procedure):
         return self.friend._disconnect_backends()
 
 
+class StartupStage(enum.Enum):
+
+    initiated, configure, messaging, database, journaler, \
+            private, host_agent = range(7)
+
+
+class Startup(common.Procedure):
+
+    stages = StartupStage
+
+    def stage_initiated(self):
+        self.debug("Starting agency. Options: %r", self.opts)
+
+    def stage_configure(self):
+        self.friend._hostname = \
+                unicode(socket.gethostbyaddr(socket.gethostname())[0])
+        self.friend._ip = unicode(socket.gethostbyname(socket.gethostname()))
+        self._db = self.opts.get('database', None)
+        self._backends = self.opts.get('backends', [])
+        self._messaging = self.opts.get('messaging',
+                                        messaging.Messaging(self.friend))
+        self._journaler = self.opts.get('journaler', None)
+        self._start_host_agent = self.opts.get('start_host_agent', False)
+
+    def stage_journaler(self):
+        if self._journaler is None:
+            return
+
+        self.friend._journaler = IJournaler(self._journaler)
+        self.friend._jourconn = self._journaler.get_connection(self.friend)
+        self.friend.redirect_log(self.friend._jourconn)
+
+    def stage_messaging(self):
+        self.friend._messaging = self._messaging
+
+        self._messaging.add_disconnected_cb(self.friend._on_disconnected)
+        self._messaging.add_reconnected_cb(self.friend._check_msg_and_db_state)
+        d = defer.succeed(None)
+        for backend in self._backends:
+            d.addCallback(defer.drop_param,
+                          self._messaging.add_backend, backend)
+        return d
+
+    def stage_database(self):
+        if self._db is None:
+            return
+
+        d = self.friend._database = IDbConnectionFactory(self._db)
+        d.add_disconnected_cb(self.friend._on_disconnected)
+        d.add_reconnected_cb(self.friend._check_msg_and_db_state)
+
+    def stage_host_agent(self):
+        if not self._start_host_agent:
+            return
+        return self.friend._start_host_agent(True)
+
+    def stage_private(self):
+        self.friend._check_msg_and_db_state()
+
+
 class Agency(log.LogProxy, log.Logger, manhole.Manhole,
              dependency.AgencyDependencyMixin, common.ConnectionManager):
 
@@ -958,6 +1018,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     _error_handler = error_handler
 
     shutdown_factory = Shutdown
+    startup_factory = Startup
 
     def __init__(self):
         log.LogProxy.__init__(self, log.FluLogKeeper())
@@ -987,29 +1048,13 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Public Methods ###
 
-    def initiate(self, database, journaler, *backends):
+    def initiate(self, database=None, journaler=None, *backends):
         '''
         Asynchronous part of agency initialization. Needs to be called before
         agency is used for anything.
         '''
-        self._database = IDbConnectionFactory(database)
-        self._messaging = messaging.Messaging(self)
-        self._journaler = IJournaler(journaler)
-
-        self._jourconn = self._journaler.get_connection(self)
-        self.redirect_log(self._jourconn)
-
-        self._database.add_disconnected_cb(self._on_disconnected)
-        self._database.add_reconnected_cb(self._check_msg_and_db_state)
-        self._messaging.add_disconnected_cb(self._on_disconnected)
-        self._messaging.add_reconnected_cb(self._check_msg_and_db_state)
-
-        d = defer.succeed(None)
-        for backend in backends:
-            d.addCallback(defer.drop_param,
-                          self._messaging.add_backend, backend)
-        d.addCallback(defer.drop_param, self._check_msg_and_db_state)
-        return d
+        return self._initiate(database=database, journaler=journaler,
+                              backends=backends)
 
     @property
     def agency_id(self):
@@ -1222,6 +1267,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         return self._agents
 
     ### protected ###
+
+    def _initiate(self, **opts):
+        self._startup_task = type(self).startup_factory(self, **opts)
+        return self._startup_task.initiate()
 
     def _shutdown(self, **opts):
         if self._shutdown_task is not None:

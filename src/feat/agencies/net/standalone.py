@@ -29,9 +29,16 @@ from feat.common import manhole, defer
 from feat.interface.recipient import IRecipient
 
 
+class Startup(agency.Startup):
+
+    def stage_finish(self):
+        self.friend._notifications.callback("running", self)
+
+
 class Agency(agency.Agency):
 
     broker_factory = broker.StandaloneBroker
+    startup_factory = Startup
 
     def __init__(self, options=None):
         agency.Agency.__init__(self)
@@ -45,12 +52,6 @@ class Agency(agency.Agency):
     def initiate(self):
         reactor.callWhenRunning(self._initiate)
         return defer.succeed(self)
-
-    def _initiate(self):
-        d = agency.Agency.initiate(self)
-        d.addCallback(defer.drop_param, self._notifications.callback,
-                      "running", self)
-        return d
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)

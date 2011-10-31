@@ -61,6 +61,43 @@ class AgencyAgent(agency.AgencyAgent):
         return self.agency.gateway_port
 
 
+class Startup(agency.Startup):
+
+    def stage_configure(self):
+        self.c = self.friend.config
+        if self.c['agency']['daemonize']:
+            os.chdir(self.c['agency']['rundir'])
+
+        dbc = self.c['db']
+        self._db = database.Database(dbc['host'],
+                                     int(dbc['port']), dbc['name'])
+        self._journaler = journaler.Journaler(self)
+
+    def stage_private(self):
+        reactor.addSystemEventTrigger('before', 'shutdown',
+                                      self.friend.on_killed)
+
+        mc = self.c['manhole']
+        ssh_port = int(mc["port"]) if mc["port"] is not None else None
+
+        self.friend._ssh = ssh.ListeningPort(self.friend,
+                                      ssh.commands_factory(self.friend),
+                                      public_key=mc["public_key"],
+                                      private_key=mc["private_key"],
+                                      authorized_keys=mc["authorized_keys"],
+                                      port=ssh_port)
+
+        socket_path = self.c['agency']['socket_path']
+        self.friend._broker = self.friend.broker_factory(self.friend, socket_path,
+                                on_master_cb=self.friend.on_become_master,
+                                on_slave_cb=self.friend.on_become_slave,
+                                on_disconnected_cb=self.friend.on_broker_disconnect,
+                                on_remove_slave_cb=self.friend.on_remove_slave)
+
+        self.friend._setup_snapshoter()
+        return self.friend._broker.initiate_broker()
+
+
 class Shutdown(agency.Shutdown):
 
     def stage_slaves(self):
@@ -100,6 +137,7 @@ class Agency(agency.Agency):
     broker_factory = broker.Broker
 
     shutdown_factory = Shutdown
+    startup_factory = Startup
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -220,44 +258,6 @@ class Agency(agency.Agency):
                 desc = factory()
             desc = yield medium.save_document(desc)
             yield agent.start_agent(desc, **kwargs)
-
-    def initiate(self):
-        if self.config['agency']['daemonize']:
-            os.chdir(self.config['agency']['rundir'])
-
-        dbc = self.config['db']
-        db = database.Database(dbc['host'], int(dbc['port']), dbc['name'])
-        db.redirect_log(self)
-
-        jour = journaler.Journaler(self)
-        self._journal_writer = None
-
-        reactor.addSystemEventTrigger('before', 'shutdown',
-                                      self.on_killed)
-
-        mc = self.config['manhole']
-        ssh_port = int(mc["port"]) if mc["port"] is not None else None
-        self._ssh = ssh.ListeningPort(self, ssh.commands_factory(self),
-                                      public_key=mc["public_key"],
-                                      private_key=mc["private_key"],
-                                      authorized_keys=mc["authorized_keys"],
-                                      port=ssh_port)
-
-        socket_path = self.config['agency']['socket_path']
-        self._broker = self.broker_factory(self, socket_path,
-                                on_master_cb=self.on_become_master,
-                                on_slave_cb=self.on_become_slave,
-                                on_disconnected_cb=self.on_broker_disconnect,
-                                on_remove_slave_cb=self.on_remove_slave)
-
-        self._setup_snapshoter()
-
-        d = defer.succeed(None)
-        d.addBoth(defer.drop_param, agency.Agency.initiate,
-                  self, db, jour)
-        d.addBoth(defer.drop_param, self._broker.initiate_broker)
-        d.addBoth(defer.override_result, self)
-        return d
 
     ### public ###
 
