@@ -20,6 +20,7 @@ Maintainer: U{Thomas Vander Stichele <thomas at apestaart dot org>}
 import errno
 import sys
 import os
+import shutil
 import fnmatch
 import time
 import types
@@ -710,8 +711,8 @@ def moveLogFiles(out_filename, err_filename):
 
     def doMove(src, dst):
         try:
-            os.rename(src, dst)
-        except OSError as e:
+            shutil.move(src, dst)
+        except IOError as e:
             error('log', 'Error moving file %s -> %s. Error: %r',
                   src, dst, e)
 
@@ -721,6 +722,7 @@ def moveLogFiles(out_filename, err_filename):
 
     _stdout = out_filename
     _stderr = err_filename
+    reopenOutputFiles()
 
 
 def outputToFiles(stdout=None, stderr=None):
