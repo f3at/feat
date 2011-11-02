@@ -137,7 +137,7 @@ class ProtoSerializationTest(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
         desc1 = descriptor_factory('protoser_test_agent')
         desc2 = descriptor_factory('protoser_test_agent')

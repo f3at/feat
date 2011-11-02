@@ -109,22 +109,17 @@ class ExportTest(common.SimulationTest, Common):
     def prolog(self):
         setup = text_helper.format_block("""
         agency1 = spawn_agency()
-        agency1.start_agent(descriptor_factory('host_agent'))
-        host1 = _.get_agent()
-        _.wait_for_ready()
+        host1 = agency1.get_host_agent()
 
         agency2 = spawn_agency()
-        agency2.start_agent(descriptor_factory('host_agent'))
-        host2 = _.get_agent()
-        host2.wait_for_ready()
+        host2 = agency2.get_host_agent()
 
         host2.start_agent(descriptor_factory('export_agent'))
         host2.start_agent(descriptor_factory('alert_agent'))
         wait_for_idle()
 
         agency3 = spawn_agency()
-        agency3.start_agent(descriptor_factory('host_agent'))
-        host3 = _.get_agent()
+        host3 = agency3.get_host_agent()
         host3.wait_for_ready()
         signal_desc = descriptor_factory('test_signal_agent')
         signal = host3.start_agent(signal_desc)
@@ -132,8 +127,7 @@ class ExportTest(common.SimulationTest, Common):
                           dependency=signal)
 
         agency4 = spawn_agency()
-        agency4.start_agent(descriptor_factory('host_agent'))
-        host4 = _.get_agent()
+        host4 = agency4.get_host_agent()
         host4.wait_for_ready()
         host4.start_agent(descriptor_factory('test_worker_agent'),\
                           dependency=signal)
@@ -362,13 +356,10 @@ class TestShutingDownShard(common.SimulationTest, Common):
         setup = text_helper.format_block("""
         # starts 2 shards, second of which runs the export agent
         agency1 = spawn_agency()
-        agency1.start_agent(descriptor_factory('host_agent'))
-        host1 = _.get_agent()
+        host1 = agency1.get_host_agent()
 
         agency1 = spawn_agency()
-        agency1.start_agent(descriptor_factory('host_agent'))
-        host2 = _.get_agent()
-        host2.wait_for_ready()
+        host2 = agency1.get_host_agent()
         host2.start_agent(descriptor_factory('export_agent'))
 
         wait_for_idle()

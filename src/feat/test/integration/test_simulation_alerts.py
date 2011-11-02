@@ -46,7 +46,7 @@ class AlertAgentTest(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
 
         d1 = descriptor_factory('alert_test_agent')

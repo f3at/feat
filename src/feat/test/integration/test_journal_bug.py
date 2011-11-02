@@ -66,7 +66,7 @@ class UnserializableTest(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
 
         d = descriptor_factory('sample_agent')
         m = agency.start_agent(d)

@@ -81,15 +81,12 @@ class RemotePremodifyTest(common.SimulationTest, Common):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef)
         agency.disable_protocol('setup-monitoring', 'Task')
 
-        host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent_mod')
 
-        host_medium = agency.start_agent(host_desc, hostdef=hostdef, \
-        run_startup=False)
-        host_agent = host_medium.get_agent()
+        host_agent = agency.get_host_agent()
 
         host_agent.start_agent(req_desc)
         """)
@@ -109,7 +106,7 @@ class RemotePremodifyTest(common.SimulationTest, Common):
     @common.attr(jourfile='jorunal.sqlite3', timescale=1)
     def testValidateProlog(self):
         agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(2, len(agents))
+        self.assertEqual(5, len(agents))
 
     @defer.inlineCallbacks
     def testHostPremodify(self):
