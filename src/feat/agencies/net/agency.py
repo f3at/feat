@@ -51,7 +51,6 @@ from feat.agencies.interface import NotFoundError
 
 GATEWAY_PORT_COUNT = 100
 TUNNELING_PORT_COUNT = 100
-HOST_RESTART_RETRY_INTERVAL = 5
 
 
 class AgencyAgent(agency.AgencyAgent):
@@ -61,9 +60,50 @@ class AgencyAgent(agency.AgencyAgent):
         return self.agency.gateway_port
 
 
+class Startup(agency.Startup):
+
+    def stage_configure(self):
+        self.c = self.friend.config
+        if self.c['agency']['daemonize']:
+            os.chdir(self.c['agency']['rundir'])
+
+        dbc = self.c['db']
+        self._db = database.Database(dbc['host'],
+                                     int(dbc['port']), dbc['name'])
+        self._journaler = journaler.Journaler(self)
+
+    def stage_private(self):
+        reactor.addSystemEventTrigger('before', 'shutdown',
+                                      self.friend.on_killed)
+
+        mc = self.c['manhole']
+        ssh_port = int(mc["port"]) if mc["port"] is not None else None
+
+        self.friend._ssh = ssh.ListeningPort(self.friend,
+                                      ssh.commands_factory(self.friend),
+                                      public_key=mc["public_key"],
+                                      private_key=mc["private_key"],
+                                      authorized_keys=mc["authorized_keys"],
+                                      port=ssh_port)
+
+        socket_path = self.c['agency']['socket_path']
+        self.friend._broker = self.friend.broker_factory(self.friend,
+                socket_path, on_master_cb=self.friend.on_become_master,
+                on_slave_cb=self.friend.on_become_slave,
+                on_disconnected_cb=self.friend.on_broker_disconnect,
+                on_remove_slave_cb=self.friend.on_remove_slave)
+
+        self.friend._setup_snapshoter()
+        return self.friend._broker.initiate_broker()
+
+
 class Shutdown(agency.Shutdown):
 
     def stage_slaves(self):
+        if self.friend._broker is None:
+            self.warning("Broker was not initialized yet and its shutdown "
+                         "will be skipped")
+            return
         if self.opts.get('full_shutdown', False):
             gentle = self.opts.get('gentle', False)
             return self.friend._broker.shutdown_slaves(gentle=gentle)
@@ -100,6 +140,8 @@ class Agency(agency.Agency):
     broker_factory = broker.Broker
 
     shutdown_factory = Shutdown
+
+    start_host_agent = True
 
     @classmethod
     def from_config(cls, env, options=None):
@@ -168,22 +210,10 @@ class Agency(agency.Agency):
         self._ssh = None
         self._broker = None
         self._gateway = None
+        self._snapshot_task = None
 
         # this is default mode for the dependency modules
         self._set_default_mode(ExecMode.production)
-
-        # hostdef to pass to the Host Agent we run
-        self._hostdef = None
-
-        # flag saying that we are in the process of starting the Host Agent,
-        # it's used not to do this more than once
-        self._starting_host = False
-        # list of agent types or descriptors to spawn when the host agent
-        # is ready. Format (agent_type_or_desc, args, kwargs)
-        self._to_spawn = list()
-        # semaphore preventing multiple entries into logic spawning agents
-        # by host agent
-        self._flushing_sem = defer.DeferredSemaphore(1)
 
     def wait_event(self, agent_id, event):
         return self._broker.wait_event(agent_id, event)
@@ -261,21 +291,6 @@ class Agency(agency.Agency):
 
     ### public ###
 
-    def set_host_def(self, hostdef):
-        '''
-        Sets the hostdef param which will get passed to the Host Agent which
-        the agency starts if it becomes the master.
-        '''
-        if not isinstance(hostdef,
-                          (host.HostDef, unicode, str, types.NoneType)):
-            raise AttributeError("Expected attribute 1 to be a HostDef or "
-                                 "a document id got %r instead." %
-                                 (hostdef, ))
-        if self._hostdef is not None:
-            self.info("Overwriting previous hostdef, which was %r",
-                      self._hostdef)
-        self._hostdef = hostdef
-
     @property
     def role(self):
         return self._broker.state
@@ -336,13 +351,14 @@ class Agency(agency.Agency):
         if self.config['agency']['enable_spawning_slave']:
             d.addCallback(defer.drop_param, self._spawn_backup_agency)
 
-        d.addCallback(defer.drop_param, self._start_host_agent_if_necessary)
+        d.addCallback(defer.drop_param, self._start_host_agent)
         return d
 
     def on_remove_slave(self):
         return self._spawn_backup_agency()
 
     def on_become_slave(self):
+        self.start_host_agent = False
         self._ssh.stop_listening()
         self._journal_writer = journaler.BrokerProxyWriter(self._broker)
         self._journaler.configure_with(self._journal_writer)
@@ -440,11 +456,14 @@ class Agency(agency.Agency):
 
     def _disconnect(self):
         d = defer.succeed(None)
-        d.addCallback(defer.drop_param, self._ssh.stop_listening)
+        if self._ssh:
+            d.addCallback(defer.drop_param, self._ssh.stop_listening)
         if self._gateway:
             d.addCallback(defer.drop_param, self._gateway.cleanup)
-        d.addCallback(defer.drop_param, self._journaler.close)
-        d.addCallback(defer.drop_param, self._broker.disconnect)
+        if self._journaler:
+            d.addCallback(defer.drop_param, self._journaler.close)
+        if self._broker:
+            d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
 
     def register_agent(self, medium):
@@ -456,7 +475,7 @@ class Agency(agency.Agency):
         agent_id = medium.get_agent_id()
         self._broker.push_event(agent_id, 'unregistered')
         self._broker.unregister_agent(medium)
-        self._start_host_agent_if_necessary()
+        self._start_host_agent()
 
     @manhole.expose()
     def start_agent(self, descriptor, **kwargs):
@@ -632,7 +651,6 @@ class Agency(agency.Agency):
                            enable_spawning_slave=enable_spawning_slave,
                            daemonize=daemonize,
                            force_host_restart=force_host_restart)
-
         gateway_conf = dict(port=gateway_port,
                             p12=gateway_p12,
                             allow_tcp=allow_tcp_gateway)
@@ -746,95 +764,18 @@ class Agency(agency.Agency):
             error.handle_exception(self, e, msg)
         return None
 
-    def _start_host_agent_if_necessary(self):
-        '''
-        This method starts saves the host agent descriptor and runs it.
-        To make this happen following conditions needs to be fulfilled:
-        - it is a master agency,
-        - we are not starting a host agent already,
-        - we are not terminating,
-        - and last but not least, we dont have a host agent running.
-        '''
-
-        def set_flag(value):
-            self._starting_host = value
-
-
+    def _can_start_host_agent(self, startup=False):
         if self.role != BrokerRole.master:
             self.log('Not starting host agent, because we are not the '
                      'master agency')
-            return
+            return False
+        return agency.Agency._can_start_host_agent(self, startup)
 
-        if self._shutdown_task is not None:
-            self.log('Not starting host agent, because the agency '
-                     'is about to terminate itself')
-            return
+    def _host_agent_restart_enabled(self):
+        return self._broker.shared_state['enable_host_restart']
 
-        if self._get_host_agent():
-            self.log('Not starting host agent, because we already '
-                     ' have one')
-            return
-
-        if self._starting_host:
-            self.log('Not starting host agent, because we are already '
-                     'starting one.')
-            return
-
-        def handle_error_on_get(fail, connection, doc_id):
-            fail.trap(NotFoundError)
-            desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
-            self.log("Host Agent descriptor not found in database, "
-                     "creating a brand new instance.")
-            return connection.save_document(desc)
-
-        def handle_success_on_get(desc):
-            if not self._broker.shared_state['enable_host_restart']:
-                msg = ("Descriptor of host agent has been found in "
-                       "database (hostname: %s). This should not happen "
-                       "on the first run. If you really want to restart "
-                       "the host agent include --force-host-restart "
-                       "options to feat script." % desc.doc_id)
-                self.error(msg)
-                d = self.full_shutdown(stop_process=True)
-                d.addBoth(defer.raise_error, RuntimeError, msg)
-                return d
-            self.log("Host Agent descriptor found in database, will restart.")
-            return desc
-
-        set_flag(True)
-        self.info('Starting host agent.')
-        conn = self._database.get_connection()
-
-        doc_id = self.get_hostname()
-        d = defer.Deferred()
-        d.addCallback(defer.drop_param, self._database.wait_connected)
-        d.addCallback(defer.drop_param, conn.get_document, doc_id)
-        d.addCallbacks(handle_success_on_get, handle_error_on_get,
-                       errbackArgs=(conn, doc_id, ))
-        d.addCallback(self.start_agent, hostdef=self._hostdef)
-        d.addBoth(defer.bridge_param, set_flag, False)
-        d.addCallback(defer.drop_param, self._broker.shared_state.__setitem__,
-                      'enable_host_restart', True)
-        d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
-        d.addErrback(self._host_restart_failed)
-
-        time.call_next(d.callback, None)
-
-    def _host_restart_failed(self, failure):
-        error.handle_failure(self, failure, "Failure during host restart")
-        if self._shutdown_task is None:
-            self.debug("Retrying in %d seconds",
-                       HOST_RESTART_RETRY_INTERVAL)
-            time.call_later(HOST_RESTART_RETRY_INTERVAL,
-                            self._start_host_agent_if_necessary)
-
-    def _get_host_agent(self):
-        medium = self._get_host_medium()
-        return medium and medium.get_agent()
-
-    def _get_host_medium(self):
-        return first((x for x in self._agents
-                      if x.get_descriptor().document_type == 'host_agent'))
+    def _on_host_started(self):
+        self._broker.shared_state['enable_host_restart'] = True
 
     @defer.inlineCallbacks
     def _find_agent(self, agent_id):

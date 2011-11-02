@@ -59,10 +59,6 @@ class Agency(agency.Agency):
     def wait_running(self):
         return self._notifications.wait("running")
 
-    def _start_host_agent_if_necessary(self):
-        # Disable host agent startup for standalone agencies.
-        pass
-
     def _flush_agents_body(self):
         if self._to_spawn:
             aid, kwargs = self._to_spawn.pop(0)

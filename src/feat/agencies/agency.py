@@ -28,6 +28,7 @@ import uuid
 import weakref
 import warnings
 import socket
+import types
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -35,11 +36,14 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency, retrying, periodic, messaging
+from feat.agencies.messaging.interface import IBackend
+from feat.agencies.interface import IDbConnectionFactory
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
+from feat.agents.common import host
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
-                         first, error, enum, )
+                         first, error, enum)
 
 # Import interfaces
 from interface import (IAgencyAgentInternal,
@@ -60,6 +64,7 @@ from feat.interface.serialization import ISerializable, IExternalizer
 
 # How many entries should be between two snapshot at minimum
 MIN_ENTRIES_PER_SNAPSHOT = 600
+HOST_RESTART_RETRY_INTERVAL = 5
 
 
 class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
@@ -946,6 +951,65 @@ class Shutdown(common.Procedure):
         return self.friend._disconnect_backends()
 
 
+class StartupStage(enum.Enum):
+
+    initiated, configure, messaging, database, journaler, \
+            private, host_agent, finish = range(8)
+
+
+class Startup(common.Procedure):
+
+    stages = StartupStage
+
+    def stage_initiated(self):
+        self.debug("Starting agency. Options: %r", self.opts)
+
+    def stage_configure(self):
+        self._db = self.opts.get('database', None)
+        self._backends = self.opts.get('backends', [])
+        self._messaging = self.opts.get('messaging',
+                                        messaging.Messaging(self.friend))
+        self._journaler = self.opts.get('journaler', None)
+
+    def stage_journaler(self):
+        if self._journaler is None:
+            return
+
+        self.friend._journaler = IJournaler(self._journaler)
+        self.friend._jourconn = self._journaler.get_connection(self.friend)
+        self.friend.redirect_log(self.friend._jourconn)
+
+    def stage_messaging(self):
+        self.friend._messaging = self._messaging
+
+        self._messaging.add_disconnected_cb(self.friend._on_disconnected)
+        self._messaging.add_reconnected_cb(self.friend._check_msg_and_db_state)
+        d = defer.succeed(None)
+        for backend in self._backends:
+            d.addCallback(defer.drop_param,
+                          self._messaging.add_backend, backend)
+        return d
+
+    def stage_database(self):
+        if self._db is None:
+            return
+
+        d = self.friend._database = IDbConnectionFactory(self._db)
+        d.add_disconnected_cb(self.friend._on_disconnected)
+        d.add_reconnected_cb(self.friend._check_msg_and_db_state)
+
+    def stage_private(self):
+        self.friend._check_msg_and_db_state()
+
+    def stage_host_agent(self):
+        if not self.friend.start_host_agent:
+            return
+        return self.friend._start_host_agent(True)
+
+    def stage_finish(self):
+        pass
+
+
 class Agency(log.LogProxy, log.Logger, manhole.Manhole,
              dependency.AgencyDependencyMixin, common.ConnectionManager):
 
@@ -958,6 +1022,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     _error_handler = error_handler
 
     shutdown_factory = Shutdown
+
+    start_host_agent = False
 
     def __init__(self):
         log.LogProxy.__init__(self, log.FluLogKeeper())
@@ -978,9 +1044,23 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
 
         self._shutdown_task = None
+        self._startup_task = None
 
         self._agency_id = str(uuid.uuid1())
         self.log_name = self._agency_id
+
+        # hostdef to pass to the Host Agent we run
+        self._hostdef = None
+
+        # flag saying that we are in the process of starting the Host Agent,
+        # it's used not to do this more than once
+        self._starting_host = False
+        # list of agent types or descriptors to spawn when the host agent
+        # is ready. Format (agent_type_or_desc, args, kwargs)
+        self._to_spawn = list()
+        # semaphore preventing multiple entries into logic spawning agents
+        # by host agent
+        self._flushing_sem = defer.DeferredSemaphore(1)
 
         self.add_reconnected_cb(self._notify_agents_about_reconnection)
         self.add_disconnected_cb(self._notify_agents_about_disconnection)
@@ -1225,7 +1305,41 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         '''Get the list of agents hosted by this agency.'''
         return self._agents
 
+    @manhole.expose()
+    def get_host_agent(self):
+        medium = self._get_host_medium()
+        return medium and medium.get_agent()
+
+    def set_host_def(self, hostdef):
+        '''
+        Sets the hostdef param which will get passed to the Host Agent which
+        the agency starts if it becomes the master.
+        '''
+        if not isinstance(hostdef,
+                          (host.HostDef, unicode, str, types.NoneType)):
+            raise AttributeError("Expected attribute 1 to be a HostDef or "
+                                 "a document id got %r instead." %
+                                 (hostdef, ))
+        if self._hostdef is not None:
+            self.info("Overwriting previous hostdef, which was %r",
+                      self._hostdef)
+        self._hostdef = hostdef
+
+    @manhole.expose()
+    def spawn_agent(self, desc, **kwargs):
+        '''tells the host agent running in this agency to spawn a new agent
+        of the given type.'''
+        self._to_spawn.append((desc, kwargs, ))
+        return self._flush_agents_to_spawn()
+
+
     ### protected ###
+
+    def _initiate(self, **opts):
+        self._startup_task = type(self).startup_factory(self, **opts)
+        d = self._startup_task.initiate()
+        d.addBoth(defer.bridge_result, setattr, self, '_startup_task', None)
+        return d
 
     def _shutdown(self, **opts):
         if self._shutdown_task is not None:
@@ -1234,7 +1348,132 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             self._shutdown_task = type(self).shutdown_factory(self, **opts)
             return self._shutdown_task.initiate()
 
+    def _can_start_host_agent(self, startup=False):
+        # allow host start in the startup procedure, only if the 'startup'
+        # flag is passed
+        if self._startup_task and not startup:
+            self.error('Not starting host agent, because the agency '
+                       'spawns it on startup')
+            return False
+
+        if self._shutdown_task is not None:
+            self.error('Not starting host agent, because the agency '
+                     'is about to terminate itself')
+            return False
+
+        if self.get_host_agent():
+            self.error('Not starting host agent, because we already '
+                     ' have one')
+            return False
+
+        if self._starting_host:
+            self.error('Not starting host agent, because we are already '
+                     'starting one.')
+            return False
+        return True
+
+    def _host_agent_restart_enabled(self):
+        return True
+
+    def _on_host_started(self):
+        pass
+
+    def _get_host_agent_id(self):
+        return self.get_hostname()
+
+    def _start_host_agent(self, startup=False):
+        '''
+        This method starts saves the host agent descriptor and runs it.
+        To make this happen following conditions needs to be fulfilled:
+        - it is a master agency,
+        - we are not starting a host agent already,
+        - we are not terminating,
+        - and last but not least, we dont have a host agent running.
+        '''
+
+        def set_flag(value):
+            self._starting_host = value
+
+        if not self._can_start_host_agent(startup):
+            return
+
+        def handle_error_on_get(fail, connection, doc_id):
+            fail.trap(NotFoundError)
+            desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
+            self.log("Host Agent descriptor not found in database, "
+                     "creating a brand new instance.")
+            return connection.save_document(desc)
+
+        def handle_success_on_get(desc):
+            if not self._host_agent_restart_enabled():
+                msg = ("Descriptor of host agent has been found in "
+                       "database (hostname: %s). This should not happen "
+                       "on the first run. If you really want to restart "
+                       "the host agent include --force-host-restart "
+                       "options to feat script." % desc.doc_id)
+                self.error(msg)
+                d = self.full_shutdown(stop_process=True)
+                d.addBoth(defer.raise_error, RuntimeError, msg)
+                return d
+            self.log("Host Agent descriptor found in database, will restart.")
+            return desc
+
+        set_flag(True)
+        self.info('Starting host agent.')
+        conn = self._database.get_connection()
+
+        doc_id = self._get_host_agent_id()
+        d = defer.Deferred()
+        d.addCallback(defer.drop_param, self._database.wait_connected)
+        d.addCallback(defer.drop_param, conn.get_document, doc_id)
+        d.addCallbacks(handle_success_on_get, handle_error_on_get,
+                       errbackArgs=(conn, doc_id, ))
+        d.addCallback(self.start_agent, hostdef=self._hostdef)
+        d.addBoth(defer.bridge_param, set_flag, False)
+        d.addCallback(defer.drop_param, self._on_host_started)
+        d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
+        d.addErrback(self._host_restart_failed)
+        time.callLater(0, d.callback, None)
+
+    def _flush_agents_to_spawn(self):
+        return self._flushing_sem.run(self._flush_agents_body)
+
     ### private ###
+
+    def _get_host_medium(self):
+        return first((x for x in self._agents
+                      if x.get_descriptor().document_type == 'host_agent'))
+
+    @defer.inlineCallbacks
+    def _flush_agents_body(self):
+        medium = self._get_host_medium()
+        if medium is None:
+            msg = "Host Agent not ready yet, agent will be spawned later."
+            defer.returnValue(msg)
+        yield medium.wait_for_state(AgencyAgentState.ready)
+        agent = medium.get_agent()
+        while True:
+            try:
+                to_spawn = self._to_spawn.pop(0)
+            except IndexError:
+                break
+            desc, kwargs = to_spawn
+            if not isinstance(desc, descriptor.Descriptor):
+                factory = descriptor.lookup(desc)
+                if factory is None:
+                    raise ValueError(
+                        'No descriptor factory found for agent %r' % desc)
+                desc = factory()
+            desc = yield medium.save_document(desc)
+            # FIXME: make sure to remove the descriptor if start fails
+            yield agent.start_agent(desc, **kwargs)
+
+    def _host_restart_failed(self, failure):
+        error.handle_failure(self, failure, "Failure during host restart")
+        self.debug("Retrying in %d seconds",
+                   HOST_RESTART_RETRY_INTERVAL)
+        time.callLater(HOST_RESTART_RETRY_INTERVAL,
+                       self._start_host_agent)
 
     def _notify_agents_about_disconnection(self):
         for medium in self.iter_agents():
