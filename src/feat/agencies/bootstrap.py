@@ -19,7 +19,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-#!/usr/bin/python2.6
 import tempfile
 import os
 import optparse
