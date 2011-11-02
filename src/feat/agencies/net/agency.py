@@ -65,7 +65,8 @@ class Shutdown(agency.Shutdown):
 
     def stage_slaves(self):
         if self.opts.get('full_shutdown', False):
-            return self.friend._broker.shutdown_slaves()
+            gentle = self.opts.get('gentle', False)
+            return self.friend._broker.shutdown_slaves(gentle=gentle)
 
     def stage_agents(self):
         self.friend._cancel_snapshoter()
@@ -377,7 +378,7 @@ class Agency(agency.Agency):
                          logfile, linkname, error.get_exception_message(e))
 
     def _sigusr1_handler(self, _signum, _frame):
-        self.full_shutdown(stop_process=True)
+        self.full_kill(stop_process=True)
 
     def on_broker_disconnect(self, pre_state):
         try:
@@ -413,9 +414,21 @@ class Agency(agency.Agency):
                               gentle=True)
 
     @manhole.expose()
+    def full_kill(self, stop_process=False):
+        '''
+        Terminate all the slave agencies without shutting down the agents.
+        '''
+        return self._shutdown(full_shutdown=True, stop_process=stop_process,
+                              gentle=False)
+
+    @manhole.expose()
     def shutdown(self, stop_process=False):
         '''Shutdown the agency in gentel manner (terminate all the agents).'''
         return self._shutdown(stop_process=stop_process, gentle=True)
+
+    @manhole.expose()
+    def kill(self, stop_process=False):
+        return self._shutdown(stop_process=stop_process, gentle=False)
 
     def upgrade(self, upgrade_cmd, testing=False):
         return self._shutdown(full_shutdown=True, stop_process=not testing,

@@ -247,7 +247,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         return slave is not None
 
     @manhole.expose()
-    def shutdown_slaves(self):
+    def shutdown_slaves(self, gentle=False):
         if self.is_master():
 
             def error_handler(f):
@@ -259,7 +259,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
 
             def kill_slave(slave):
                 self.log('slave is %r', slave)
-                d = slave.callRemote('shutdown', stop_process=True)
+                d = slave.callRemote('_shutdown',
+                                     stop_process=True, gentle=gentle)
                 d.addErrback(error_handler)
                 return d
 

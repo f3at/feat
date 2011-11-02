@@ -1046,6 +1046,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         '''Called when the agency is ordered to shutdown all the agents..'''
         return self._shutdown(gentle=True)
 
+    def kill(self):
+        '''Called when the agency is ordered to shutdown all the agents..'''
+        return self._shutdown(gentle=False)
+
     def upgrade(self, upgrade_cmd):
         '''Called as the result of upgrade process triggered by host agent.'''
         return self._shutdown(gentle=True)
@@ -1211,6 +1215,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self._shutdown_task = type(self).shutdown_factory(self, **opts)
             return self._shutdown_task.initiate()
+
+    remote__shutdown = _shutdown # used by Broker
 
     ### private ###
 
