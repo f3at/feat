@@ -21,31 +21,36 @@
 # Headers in this file shall remain intact.
 from feat.agents.base import replay, manager, poster, message, recipient
 from feat.common import fiber
-from twisted.names import dns
+
+from feat.agents.dns.interface import RecordType
 
 
 def add_mapping(agent, prefix, ip):
     """Adds a mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, AddMappingManager, dns.A, prefix, ip)
+    return _broadcast(agent, AddMappingManager, RecordType.record_A,
+                      prefix, ip)
 
 
 def remove_mapping(agent, prefix, ip):
     """Removes a mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, RemoveMappingManager, dns.A, prefix, ip)
+    return _broadcast(agent, RemoveMappingManager,
+                      RecordType.record_A, prefix, ip)
 
 
 def add_alias(agent, prefix, alias):
     """Adds an alias mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, AddMappingManager, dns.CNAME, prefix, alias)
+    return _broadcast(agent, AddMappingManager, RecordType.record_CNAME,
+                      prefix, alias)
 
 
 def remove_alias(agent, prefix, alias):
     """Removes an alias mapping with a contract.
     It has high latency but gives some kind of guarantee."""
-    return _broadcast(agent, RemoveMappingManager, dns.CNAME, prefix, alias)
+    return _broadcast(agent, RemoveMappingManager, RecordType.record_CNAME,
+                      prefix, alias)
 
 
 def new_mapper(agent):

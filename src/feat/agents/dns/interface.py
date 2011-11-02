@@ -19,14 +19,17 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+from feat.common import formatable, enum, serialization
+
 from zope.interface import Interface
 
-__all__ = ["IDNSServerLabourFactory", "IDNSServerLabour"]
+__all__ = ["IDNSServerLabourFactory", "IDNSServerLabour", "Record",
+           "RecordType"]
 
 
 class IDNSServerLabourFactory(Interface):
 
-    def __call__(patron, resolver, slaves, suffix):
+    def __call__(patron, notify_cfg, suffix, ip, ns, ns_ttl):
         '''
         @returns: L{IManagerLabour}
         '''
@@ -34,15 +37,30 @@ class IDNSServerLabourFactory(Interface):
 
 class IDNSServerLabour(Interface):
 
-    def initiate():
-        '''Initialises the labour.'''
-
     def startup(port):
         '''Startups the labour, starting to listen
         on specified port for DNS queries.'''
 
     def cleanup():
-        '''Cleanup the labour, stop listening for DNS queries.'''
+        '''Cleanup the labour, stop listening for DNS queries.
+        @rtype: Deferred'''
 
-    def notify_slaves(self):
-        '''Notify slaves for zones updates'''
+    def update_records(name, records):
+        '''Update the dns records for the given name.
+        @type record: list of Record'''
+
+
+class RecordType(enum.Enum):
+    record_A, record_CNAME = range(2)
+
+
+@serialization.register
+class Record(formatable.Formatable):
+
+    type_name = 'dns_record'
+
+    # L{RecordType}
+    formatable.field('type', None)
+    formatable.field('name', None)
+    formatable.field('ttl', None)
+    formatable.field('ip', None)

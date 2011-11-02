@@ -92,16 +92,6 @@ class Agent(agent.BaseAgent):
         return dns.remove_alias(self, state.prefix, state.alias)
 
 
-skip_reason = format_block("""
-This test is skipped because it was passing before only because there was
-no wait_for_idle() in prolog. Consequently it was testing anything.
-To fix it the refactoring of DNS agent is needed. The Resolver class
-which is leaving inside a state needs to become really serializable (now
-the snapshot() method is sanitized). Moreover we might have to define
-serialization adapters for the objects defined in twisted.names.dns module:
-Record_A, Name, Record_CNAME, Record_NS, etc""")
-
-
 @common.attr(timescale=0.1)
 @common.attr('slow')
 class DNSAgentTest(common.SimulationTest):
@@ -248,7 +238,6 @@ class DNSAgentTest(common.SimulationTest):
 
         yield agent2.unregister()
 
-    @common.attr(skip=skip_reason)
     @defer.inlineCallbacks
     def testMappingBroadcastWithNotification(self):
 
@@ -328,50 +317,48 @@ class DNSAgentTest(common.SimulationTest):
     @defer.inlineCallbacks
     def testAliasMappingBroadcast(self):
 
-        @defer.inlineCallbacks
         def assertAlias(name, expected, exp_ttl = 300):
             for dns_medium in self.driver.iter_agents("dns_agent"):
                 dns_agent = dns_medium.get_agent()
-                alias, _ = yield dns_agent.lookup_alias(name)
+                alias, _ = dns_agent.lookup_alias(name)
                 self.assertEqual(expected, alias)
 
         agent1 = self.get_local("agent1")
         agent2 = self.get_local("agent2")
 
-        yield assertAlias("", None)
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", None)
+        assertAlias("", None)
+        assertAlias("foo.bar.example.lan", None)
+        assertAlias("spam.beans.example.lan", None)
 
         # Test mapping addition
 
         yield agent1.register_alias()
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
 
         yield agent2.register_alias()
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
-        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
 
 
         ## Test mapping multiple addition
 
         yield agent1.register_alias()
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
 
         # Test mapping removal
 
         yield agent1.unregister_alias()
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        assertAlias("foo.bar.example.lan", None)
+        assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
 
         yield agent2.unregister_alias()
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", None)
+        assertAlias("foo.bar.example.lan", None)
+        assertAlias("spam.beans.example.lan", None)
 
         # Test multiple removal
 
         yield agent2.unregister_alias()
 
-    @common.attr(skip=skip_reason)
     @defer.inlineCallbacks
     def testAliasMappingBroadcastWithNotification(self):
 
