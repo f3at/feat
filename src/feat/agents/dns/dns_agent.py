@@ -22,10 +22,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import socket
-import time
-
-from zope.interface import implements
-from twisted.names import common, dns, authority
 
 from feat.agents.base import replay, agent, dependency, contractor, collector
 from feat.agents.base import descriptor, document, dbtools, message
@@ -33,8 +29,8 @@ from feat.agents.common import export
 from feat.agents.dns import production, simulation
 from feat.common import fiber, manhole, formatable, serialization
 
-from feat.agents.dns.interface import IDNSServerLabourFactory
-from feat.interface.serialization import ISerializable
+from feat.agents.dns.interface import (IDNSServerLabourFactory, Record,
+                                       RecordType)
 from feat.interface.agency import ExecMode
 from feat.interface.agent import Address
 from feat.interface.protocols import InterestType
@@ -42,13 +38,6 @@ from feat.interface.protocols import InterestType
 DEFAULT_PORT = 5553
 DEFAULT_AA_TTL = 300
 DEFAULT_NS_TTL = 300
-
-
-def get_serial():
-    """
-    The serial on the zone files is the UNIX epoch time
-    """
-    return int(time.time())
 
 
 @serialization.register
@@ -103,6 +92,8 @@ class DNSAgent(agent.BaseAgent):
                  ns=None, suffix=None):
         config = state.medium.get_configuration()
 
+        state.records = dict()
+
         state.port = port or config.port
         state.ns_ttl = ns_ttl or config.ns_ttl
         state.aa_ttl = aa_ttl or config.aa_ttl
@@ -114,13 +105,11 @@ class DNSAgent(agent.BaseAgent):
                    "aa_ttl=%d, ns=%s, suffix=%s", state.port, state.ns_ttl,
                    state.aa_ttl, state.ns, state.suffix)
 
-        state.resolver = Resolver(state.suffix, state.ns, state.notify_cfg,
-                                  self._get_ip(), state.ns_ttl)
+        ip = state.medium.get_ip()
+        state.labour = self.dependency(
+            IDNSServerLabourFactory, self, state.notify_cfg, state.suffix,
+            ip, state.ns, state.ns_ttl)
 
-        state.labour = self.dependency(IDNSServerLabourFactory,
-                                       self, state.resolver,
-                                       state.notify_cfg.slaves,
-                                       state.suffix)
 
         ami = state.medium.register_interest(AddMappingContractor)
         rmi = state.medium.register_interest(RemoveMappingContractor)
@@ -130,18 +119,13 @@ class DNSAgent(agent.BaseAgent):
         rmi.bind_to_lobby()
         muc.bind_to_lobby()
 
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param, state.labour.initiate)
-        return f
-
     @replay.journaled
     def startup(self, state):
         self.startup_monitoring()
-        if state.labour.startup(state.port):
-            self.info("Listening on port %d", state.port)
-            return
-        self.error("Network error: port %d is not available." % state.port)
-        #FIXME: should retry or shutdown the agent
+        if not state.labour.startup(state.port):
+            raise RuntimeError(
+                "Network error: port %d is not available." % state.port)
+        self.info("Listening on port %d", state.port)
 
     @replay.journaled
     def on_killed(self, state):
@@ -154,77 +138,73 @@ class DNSAgent(agent.BaseAgent):
     @manhole.expose()
     @replay.mutable
     def add_mapping(self, state, prefix, ip):
-        self.log(state.resolver.records)
-        record = dns.Record_A(ip, state.aa_ttl)
-        name = state.resolver.format_name(prefix, state.suffix)
-        if not state.resolver.add_record(name, record):
-            self.log("Keeping DNS mapping from %s to %s", prefix, ip)
+        name = self._format_name(prefix, state.suffix)
+        record = Record(name=name, ip=ip, ttl=state.aa_ttl,
+                        type=RecordType.record_A)
+        if not self._add_record(record):
             return False
-        state.labour.notify_slaves()
-        self.debug("DNS mapping from %s to %s added", prefix, ip)
+        state.labour.update_records(name, self.get_records(name))
         return True
 
     @manhole.expose()
     @replay.mutable
     def remove_mapping(self, state, prefix, ip):
-        record = dns.Record_A(ip, state.aa_ttl)
-        name = state.resolver.format_name(prefix, state.suffix)
-        if not state.resolver.remove_record(name, record):
-            self.log("Unknown DNS mapping prefix %s %s", prefix, ip)
+        name = self._format_name(prefix, state.suffix)
+        record = Record(name=name, ip=ip, ttl=state.aa_ttl,
+                        type=RecordType.record_A)
+        if not self._remove_record(record):
+            self.log("Unknown DNS mapping prefix %s %s", record.name, ip)
             return False
-        self.debug("Removing DNS mapping from %s to %s", prefix, ip)
-        state.labour.notify_slaves()
+        self.debug("Removing DNS mapping from %s to %s", record.name, ip)
+        state.labour.update_records(name, self.get_records(name))
         return True
 
     @manhole.expose()
     @replay.mutable
     def add_alias(self, state, prefix, alias):
-        self.log(state.resolver.records)
-        name = state.resolver.format_name(prefix, state.suffix)
-        record = dns.Record_CNAME(name, state.aa_ttl)
-        if not state.resolver.add_record(alias, record):
-            self.log("Keeping DNS alias from %s to %s", prefix, alias)
+        name = self._format_name(prefix, state.suffix)
+        record = Record(name=alias, ip=name, ttl=state.aa_ttl,
+                        type=RecordType.record_CNAME)
+        if not self._add_record(record):
+            self.log("Keeping DNS alias from %s to %s", name, alias)
             return False
-        state.labour.notify_slaves()
-        self.debug("DNS alias from %s to %s added", prefix, alias)
+        state.labour.update_records(name, self.get_records(name))
         return True
 
     @manhole.expose()
     @replay.mutable
     def remove_alias(self, state, prefix, alias):
-        name = state.resolver.format_name(prefix, state.suffix)
-        record = dns.Record_CNAME(name, state.aa_ttl)
-        if not state.resolver.remove_record(alias, record):
-            self.log("Unknown DNS alias prefix %s %s", prefix, alias)
+        name = self._format_name(prefix, state.suffix)
+        record = Record(name=alias, ip=name, ttl=state.aa_ttl,
+                        type=RecordType.record_CNAME)
+        if not self._remove_record(record):
+            self.log("Unknown DNS alias prefix %s %s", name, alias)
             return False
-        self.debug("Removing DNS alias from %s to %s", prefix, alias)
-        state.labour.notify_slaves()
+        state.labour.update_records(name, self.get_records(name))
         return True
 
     @manhole.expose()
-    @replay.mutable
+    @replay.immutable
     def lookup_address(self, state, name, _address):
-        records = state.resolver.get_records(name)
-        records = filter(lambda r: r.TYPE == dns.A, records)
+        records = [r for r in self.get_records(name)
+                   if r.type == RecordType.record_A]
         if not records:
             self.debug("Failed to resolve A query for %s", name)
             return []
-        ips = [(r.dottedQuad(), r.ttl) for r in records]
-        self.debug("Resolved A query for %s (TTL %d)",
-                               name, state.ns_ttl)
+        ips = [(r.ip, r.ttl) for r in records]
+        self.debug("Resolved A query for %s (TTL %d)", name, state.ns_ttl)
         return ips
 
     @manhole.expose()
-    @replay.mutable
+    @replay.immutable
     def lookup_alias(self, state, name):
-        records = state.resolver.get_records(name)
-        records = filter(lambda r: r.TYPE == dns.CNAME, records)
+        records = [r for r in self.get_records(name)
+                   if r.type == RecordType.record_CNAME]
         if not records:
             self.debug("Failed to resolve CNAME query for %s", name)
             return None, None
-        alias = (str(records[0].name), records[0].ttl)
-        self.debug("Resolved CNAME query for %s (TTL %d)",
-                               name, state.ns_ttl)
+        alias = (str(records[0].ip), records[0].ttl)
+        self.debug("Resolved CNAME query for %s (TTL %d)", name, state.ns_ttl)
         return alias
 
     @manhole.expose()
@@ -238,7 +218,34 @@ class DNSAgent(agent.BaseAgent):
     def get_suffix(self, state):
         return state.suffix
 
+    @replay.immutable
+    def get_records(self, state, name):
+        return state.records.get(name, [])
+
     ### Private Methods ###
+
+    @replay.mutable
+    def _add_record(self, state, record):
+        records = state.records.get(record.name, [])
+        if record in records:
+            return False
+        if record.type == RecordType.record_CNAME and records:
+            return False
+        records.append(record)
+        self.debug("DNS mapping type: %s from %s to %s added", record.type,
+                   record.name, record.ip)
+        state.records[record.name] = records
+        return True
+
+    @replay.mutable
+    def _remove_record(self, state, record):
+        records = state.records.get(record.name, [])
+        if record not in records:
+            return False
+        records.remove(record)
+        if not records:
+            state.records.pop(record.name, None)
+        return True
 
     def _lookup_ns(self):
         return socket.getfqdn()
@@ -246,86 +253,8 @@ class DNSAgent(agent.BaseAgent):
     def _lookup_suffix(self):
         return ".".join(socket.getfqdn().split(".")[1:])
 
-    @replay.side_effect
-    def _get_ip(self):
-        return unicode(socket.gethostbyname(socket.gethostname()))
-
-
-@serialization.register
-class Resolver(serialization.Serializable,
-               authority.PySourceAuthority):
-
-    type_name = "dns-resolver"
-
-    def __init__(self, suffix, ns, notify, host_ip, ns_ttl):
-        common.ResolverBase.__init__(self)
-        self.records = {}
-        r_soa = dns.Record_SOA(
-                    # This nameserver's name
-                    mname = ns,
-                    # Mailbox of individual who handles this
-                    rname = "root." + suffix,
-                    # Unique serial identifying this SOA data
-                    serial = get_serial(),
-                    # Time interval before zone should be refreshed
-                    refresh = str(notify.refresh),
-                    # Interval before failed refresh should be retried
-                    retry = str(notify.retry),
-                    # Upper limit on time interval before expiry
-                    expire = str(notify.expire),
-                    # Minimum TTL
-                    minimum = str(notify.minimum))
-        self.soa = (suffix, r_soa)
-        self.records.setdefault(suffix, []).append(r_soa)
-        self.records.setdefault(suffix, []).append(
-            dns.Record_A(address=host_ip))
-        self.records.setdefault(suffix, []).append(
-            dns.Record_NS(ns, ns_ttl))
-        self.cache = {}
-
-    def add_record(self, name, record):
-        records = self.records.get(name, [])
-        if record in records:
-            return False
-        if record.TYPE == dns.CNAME and records:
-            return False
-        self.records.setdefault(name, []).append(record)
-        self._update_serial()
-        return True
-
-    def remove_record(self, name, record):
-        records = self.records.get(name, [])
-        if record not in records:
-            return False
-        records.remove(record)
-        if not records:
-            self.records.pop(name, None)
-        self._update_serial()
-        return True
-
-    def get_records(self, name):
-        return self.records.get(name, [])
-
-    def format_name(self, prefix, suffix):
+    def _format_name(self, prefix, suffix):
         return prefix+"."+suffix
-
-    def _update_serial(self):
-        self.soa[1].serial = dns.str2time(get_serial())
-
-    ### ISerializable Methods ###
-
-    def snapshot(self):
-        return dict()
-
-    def __eq__(self, other):
-        if not isinstance(other, Resolver):
-            return NotImplemented
-        return True
-
-    def __ne__(self, other):
-        if not isinstance(other, Resolver):
-            return NotImplemented
-        return False
 
 
 class DNSMappingContractor(contractor.BaseContractor):
@@ -355,9 +284,9 @@ class AddMappingContractor(DNSMappingContractor):
 
     @replay.immutable
     def tell_agent(self, state, mtype, prefix, mapping):
-        if mtype == dns.A:
+        if mtype == RecordType.record_A:
             state.agent.add_mapping(prefix, mapping)
-        elif mtype == dns.CNAME:
+        elif mtype == RecordType.record_CNAME:
             state.agent.add_alias(prefix, mapping)
 
 
@@ -367,9 +296,9 @@ class RemoveMappingContractor(DNSMappingContractor):
 
     @replay.immutable
     def tell_agent(self, state, mtype, prefix, mapping):
-        if mtype == dns.A:
+        if mtype == RecordType.record_A:
             state.agent.remove_mapping(prefix, mapping)
-        elif mtype == dns.CNAME:
+        elif mtype == RecordType.record_CNAME:
             state.agent.remove_alias(prefix, mapping)
 
 
