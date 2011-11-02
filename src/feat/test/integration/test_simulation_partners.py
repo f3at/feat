@@ -135,7 +135,7 @@ class PartnershipTest(common.SimulationTest):
         # for this tests override DummyAgent with BaseAgent
 
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
         initiator = agency.start_agent(descriptor_factory('partner-agent'))
         receiver = agency.start_agent(descriptor_factory('partner-agent'))

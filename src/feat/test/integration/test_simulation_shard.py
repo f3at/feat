@@ -81,15 +81,9 @@ class StructuralPartners(common.SimulationTest):
         setup = format_block("""
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'))
-
-        wait_for_idle()
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'))
-
-        wait_for_idle()
         """)
 
         yield self.process(setup)
@@ -164,7 +158,7 @@ class TestShardNotification(common.SimulationTest):
 
         drv = self.driver
 
-        agency1 = yield drv.spawn_agency()
+        agency1 = yield drv.spawn_agency(start_host=False)
         agency1.disable_protocol('setup-monitoring', 'Task')
         sa1_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard1")
@@ -178,7 +172,7 @@ class TestShardNotification(common.SimulationTest):
 
         yield self.wait_for_idle(10)
 
-        agency2 = yield drv.spawn_agency()
+        agency2 = yield drv.spawn_agency(start_host=False)
         agency2.disable_protocol('setup-monitoring', 'Task')
         sa2_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard2")
@@ -204,7 +198,7 @@ class TestShardNotification(common.SimulationTest):
 
         check_no_changes(na2b)
 
-        agency3 = yield drv.spawn_agency()
+        agency3 = yield drv.spawn_agency(start_host=False)
         agency3.disable_protocol('setup-monitoring', 'Task')
         sa3_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard3")
@@ -226,7 +220,7 @@ class TestShardNotification(common.SimulationTest):
 
         sa1.terminate()
 
-        yield self.wait_for_idle(10)
+        yield self.wait_for_idle(50)
 
         check_shard_gone(na1, sa2, sa3)
         check_shard_gone(na2a, sa1)
