@@ -48,7 +48,7 @@ class Commands(manhole.Manhole):
         reflect.named_module(module)
 
     @manhole.expose()
-    def spawn_agency(self, *components):
+    def spawn_agency(self, *components, **kwargs):
         '''
         Spawn new agency, returns the reference. Usage:
         > spawn_agency()
@@ -57,7 +57,15 @@ class Commands(manhole.Manhole):
         Components are the canonical names of interfaces classes used by
         dependencies (example: flt.agents.hapi.interface.IServerFactory).
         '''
+        hostdef = kwargs.pop('hostdef', None)
+        ip = kwargs.pop('ip', None)
+        hostname = kwargs.pop('hostname', None)
+        start_host = kwargs.pop('start_host', True)
+        if kwargs:
+            raise AttributeError("Unexpected kwargs argument %r" % (kwargs, ))
+
         ag = agency.Agency()
+        ag.set_host_def(hostdef)
         self._agencies.append(ag)
         for canonical_name in components:
             comp = reflect.named_object(canonical_name)
@@ -72,8 +80,10 @@ class Commands(manhole.Manhole):
         msg = rabbitmq.Client(self._messaging, queue_name)
         tun = tunneling.Tunneling(tun_backend)
 
-        d = ag.initiate(self._database, self._journaler, self, msg, tun)
+        d = ag.initiate(self._database, self._journaler, self, ip, hostname,
+                        start_host, msg, tun)
         d.addCallback(defer.override_result, ag)
+        d.addCallback(defer.bridge_result, self.wait_for_idle)
         return d
 
     @manhole.expose()
