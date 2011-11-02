@@ -198,3 +198,7 @@ class Agency(agency.Agency):
             raise AssertionError('upgrade() has not been called for this'
                                    ' agency.')
         return self._upgrade_cmd
+
+    def _get_host_agent_id(self):
+        return self._driver.get_host_agent_id(
+            agency.Agency._get_host_agent_id(self))
