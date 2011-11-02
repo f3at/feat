@@ -490,3 +490,12 @@ class IJournalWriter(Interface):
         """
         Returns bool saying if there are pending entries to get flushed.
         """
+
+
+class IRevisionStore(Interface):
+    '''
+    Private interface implemented by database connection. It is used by
+    RevisionFilter to obtain the information about the documents changed
+    by this connection.'''
+
+    known_revisions = Attribute('dict of doc_id -> (last_index, last_hash)')

@@ -189,16 +189,17 @@ class TestDatabaseIntegration(common.TestCase):
         resp = yield self.database.save_doc(self._gen_doc('someid'))
         yield d
         self.assertEqual(1, len(self.calls))
-        doc_id, rev = self.calls[0]
+        doc_id, rev, deleted = self.calls[0]
         self.assertEqual(doc_id, resp['id'])
         self.assertEqual(rev, resp['rev'])
+        self.assertFalse(deleted)
 
         yield self.database.cancel_listener(listener_id)
         yield self.database.delete_doc(doc_id, rev)
         self.assertEqual(1, len(self.calls))
 
-    def change_cb(self, doc_id, rev):
-        self.calls.append((doc_id, rev, ))
+    def change_cb(self, doc_id, rev, deleted):
+        self.calls.append((doc_id, rev, deleted))
 
     def _gen_doc(self, doc_id):
         return json.dumps({'_id': doc_id})

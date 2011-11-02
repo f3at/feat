@@ -132,7 +132,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             for line in change['changes']:
                 # The changes are analized when there is not http request
                 # pending. Otherwise it can result in race condition problem.
-                self.semaphore.run(self._trigger_change, doc_id, line['rev'])
+                deleted = line.get('deleted', False)
+                self.semaphore.run(self._trigger_change,
+                                   doc_id, line['rev'], deleted)
         else:
             self.info('Bizare notification received from CouchDB: %r', change)
 

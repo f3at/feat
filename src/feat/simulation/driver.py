@@ -356,6 +356,10 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
     def save_document(self, doc):
         return self._database_connection.save_document(doc)
 
+    @manhole.expose()
+    def delete_document(self, doc):
+        return self._database_connection.delete_document(doc)
+
 
 class Output(StringIO.StringIO, object):
     """

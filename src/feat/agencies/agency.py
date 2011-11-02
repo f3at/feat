@@ -392,6 +392,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def delete_document(self, document):
         return self._database.delete_document(document)
 
+    @serialization.freeze_tag('AgencyAgent.register_change_listener')
+    @replay.named_side_effect('AgencyAgent.register_change_listener')
+    def register_change_listener(self, doc_id, callback):
+        self._database.changes_listener((doc_id, ), callback)
+
+    @serialization.freeze_tag('AgencyAgent.cancel_change_listener')
+    @replay.named_side_effect('AgencyAgent.cancel_change_listener')
+    def cancel_change_listener(self, doc_id):
+        self._database.cancel_listener(doc_id)
+
     @serialization.freeze_tag('AgencyAgency.query_view')
     def query_view(self, factory, **options):
         return self._database.query_view(factory, **options)
@@ -659,7 +669,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._database.changes_listener(
             (self._descriptor.doc_id, ), self._descriptor_changed)
 
-    def _descriptor_changed(self, doc_id, rev):
+    def _descriptor_changed(self, doc_id, rev, deleted, own_change):
+        if own_change:
+            self.log("Ignoring old change notification for "
+                     "document %s revision %s", doc_id, rev)
+            return
         self.warning('Received the notification about other database session '
                      'changing our descriptor. This means that I got '
                      'restarted on some other machine and need to commit '

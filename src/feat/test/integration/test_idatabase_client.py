@@ -255,37 +255,47 @@ class TestCase(object):
     def testOtherSession(self):
         self.changes = list()
 
-
         my_doc = DummyDocument(field=u'whatever')
         my_doc = yield self.connection.save_document(my_doc)
         yield self.connection.changes_listener((my_doc.doc_id, ),
                                                self.change_cb)
         my_doc.field = 'sth else'
         yield self.connection.save_document(my_doc)
-        # this change should be ignored
-        self.assertTrue(self._len_changes(0))
+
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+        doc_id, rev, deleted, own_change = self.changes[0]
+        self.assertTrue(own_change)
 
         other_connection = self.database.get_connection()
         my_doc.field = 'sth different'
         yield other_connection.save_document(my_doc)
-        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
-        self.assertEqual(my_doc.rev, self.changes[0][1])
+        yield self.wait_for(self._len_changes(2), 2, freq=0.01)
+        self.assertEqual(my_doc.rev, self.changes[1][1])
+        self.assertFalse(self.changes[1][3])
 
         my_doc.field = 'another'
         yield self.connection.save_document(my_doc)
-        self.assertTrue(self._len_changes(1))
+        yield self.wait_for(self._len_changes(3), 2, freq=0.01)
 
         my_doc = yield other_connection.delete_document(my_doc)
-        yield self.wait_for(self._len_changes(2), 2, freq=0.01)
-        self.assertEqual(my_doc.rev, self.changes[1][1])
+        yield self.wait_for(self._len_changes(4), 2, freq=0.01)
+        doc_id, rev, deleted, own_change = self.changes[3]
+        self.assertFalse(own_change)
+        self.assertEqual(my_doc.rev, rev)
+        self.assertEqual(my_doc.doc_id, doc_id)
+
+        yield self.connection.cancel_listener(my_doc.doc_id)
+        yield self.connection.save_document(my_doc)
+        # give time to notice the change if the listener is still there
+        yield common.delay(None, 0.1)
+        self.assertTrue(self._len_changes(4)())
 
         yield self.connection.disconnect()
 
-
     ### methods specific for testing the notification callbacks
 
-    def change_cb(self, doc, rev):
-        self.changes.append((doc, rev, ))
+    def change_cb(self, doc, rev, deleted, own_change):
+        self.changes.append((doc, rev, deleted, own_change))
 
     def _len_changes(self, expected):
 
