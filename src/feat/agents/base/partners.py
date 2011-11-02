@@ -87,7 +87,7 @@ class OneRelation(Relation):
         if len(match) > 1:
             raise FindPartnerError(
             'Expected at most one partner of the class %r, found %d in %r' %\
-                (self.factory, len(partners), partners))
+                (self.factory, len(match), match))
         elif len(match) == 1:
             return match[0]
 
