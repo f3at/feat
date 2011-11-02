@@ -26,13 +26,14 @@ import uuid
 from twisted.internet import reactor
 from zope.interface import implements
 
-from feat.common import log, container, defer, time
+from feat.common import log, defer, time
 from feat.common.serialization import json
 from feat.agents.base import document
 
-from feat.agencies.interface import IDatabaseClient, IDatabaseDriver
-from feat.interface.generic import *
-from feat.interface.view import *
+from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
+                                     IRevisionStore)
+from feat.interface.generic import ITimeProvider
+from feat.interface.view import IViewFactory
 
 
 class ChangeListener(log.Logger):
@@ -69,24 +70,26 @@ class ChangeListener(log.Logger):
         return list(doc_id for doc_id, value in self._listeners.iteritems()
                     if len(value) > 0)
 
-    def _trigger_change(self, doc_id, rev):
+    def _trigger_change(self, doc_id, rev, deleted):
         listeners = self._listeners.get(doc_id, list())
         for cb, _ in listeners:
-            reactor.callLater(0, cb, doc_id, rev) #@UndefinedVariable
+            reactor.callLater(0, cb, doc_id, rev, deleted)
 
 
-class Connection(log.Logger):
+class Connection(log.Logger, log.LogProxy):
     '''API for agency to call against the database.'''
 
-    implements(IDatabaseClient, ITimeProvider)
+    implements(IDatabaseClient, ITimeProvider, IRevisionStore)
 
     def __init__(self, database):
         log.Logger.__init__(self, database)
+        log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
         self._serializer = json.Serializer()
         self._unserializer = json.PaisleyUnserializer()
 
-        self._listener_id = None
+        # listner_id -> doc_ids
+        self._listeners = dict()
         self._change_cb = None
         # Changed to use a normal dictionary.
         # It will grow boundless up to the number of documents
@@ -96,12 +99,18 @@ class Connection(log.Logger):
         # killing agents.
         self._known_revisions = {} # {DOC_ID: (REV_INDEX, REV_HASH)}
 
-    ### ITimeProvider
+    ### IRevisionStore ###
+
+    @property
+    def known_revisions(self):
+        return self._known_revisions
+
+    ### ITimeProvider ###
 
     def get_time(self):
         return time.time()
 
-    ### IDatabaseClient
+    ### IDatabaseClient ###
 
     def create_database(self):
         return self._database.create_db()
@@ -131,14 +140,20 @@ class Connection(log.Logger):
     def changes_listener(self, doc_ids, callback):
         assert isinstance(doc_ids, (tuple, list, ))
         assert callable(callback)
-        self._change_cb = callback
-        d = self._database.listen_changes(doc_ids, self._on_change)
 
-        def set_listener_id(l_id):
-            self._listener_id = l_id
+        r = RevisionAnalytic(self, callback)
+        d = self._database.listen_changes(doc_ids, r.on_change)
 
-        d.addCallback(set_listener_id)
+        def set_listener_id(l_id, doc_ids):
+            self._listeners[l_id] = doc_ids
+
+        d.addCallback(set_listener_id, doc_ids)
         return d
+
+    def cancel_listener(self, doc_id):
+        for l_id, doc_ids in self._listeners.items():
+            if doc_id in doc_ids:
+                self._cancel_listener(l_id)
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
@@ -147,12 +162,18 @@ class Connection(log.Logger):
         return d
 
     def disconnect(self):
-        if self._listener_id:
-            self._database.cancel_listener(self._listener_id)
-            self._listener_id = None
-            self._change_cb = None
+        for l_id in self._listeners.keys():
+            self._cancel_listener(l_id)
 
     ### private
+
+    def _cancel_listener(self, lister_id):
+        self._database.cancel_listener(lister_id)
+        try:
+            del(self._listeners[lister_id])
+        except KeyError:
+            self.warning('Tried to remove nonexistining listener id %r.',
+                         lister_id)
 
     def _parse_view_results(self, rows, factory, options):
         '''
@@ -161,28 +182,6 @@ class Connection(log.Logger):
         '''
         reduced = factory.use_reduce and options.get('reduce', True)
         return map(lambda row: factory.parse(row[0], row[1], reduced), rows)
-
-    def _on_change(self, doc_id, rev):
-        self.log('Change notification received doc_id: %r, rev: %r',
-                 doc_id, rev)
-
-        # FIXME: This should be done in higher levels
-        if doc_id in self._known_revisions:
-            rev_index, rev_hash = self._parse_doc_revision(rev)
-            last_index, last_hash = self._known_revisions[doc_id]
-
-            if last_index > rev_index:
-                self.log("Ignoring old change notification for "
-                         "document %s revision %s", doc_id, rev)
-                return
-
-            if (last_index == rev_index) and (last_hash == rev_hash):
-                self.log("Ignoring last change notificatigon for "
-                         "document %s revision %s", doc_id, rev)
-                return
-
-        if callable(self._change_cb):
-            self._change_cb(doc_id, rev)
 
     def _update_id_and_rev(self, resp, doc):
         doc.doc_id = unicode(resp.get('id', None))
@@ -193,11 +192,44 @@ class Connection(log.Logger):
     def _notice_doc_revision(self, doc):
         self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
                  doc.doc_id, doc.rev)
-        # FIXME: This should be done in other way, agent mediums already
-        #        know and store this information
-        self._known_revisions[doc.doc_id] = self._parse_doc_revision(doc.rev)
+        self._known_revisions[doc.doc_id] = _parse_doc_revision(doc.rev)
         return doc
 
-    def _parse_doc_revision(self, rev):
-        rev_index, rev_hash = rev.split("-", 1)
-        return int(rev_index), rev_hash
+
+def _parse_doc_revision(rev):
+    rev_index, rev_hash = rev.split("-", 1)
+    return int(rev_index), rev_hash
+
+
+class RevisionAnalytic(log.Logger):
+    '''
+    The point of this class is to analyze if the document change notification
+    has been caused the same or different database connection. It wraps around
+    a callback and adds the own_change flag parameter.
+    It uses private interface of Connection to get the information of the
+    known revisions.
+    '''
+
+    def __init__(self, connection, callback):
+        log.Logger.__init__(self, connection)
+        assert callable(callback), type(callback)
+
+        self.connection = IRevisionStore(connection)
+        self._callback = callback
+
+    def on_change(self, doc_id, rev, deleted):
+        self.log('Change notification received doc_id: %r, rev: %r, '
+                 'deleted: %r', doc_id, rev, deleted)
+
+        own_change = False
+        if doc_id in self.connection.known_revisions:
+            rev_index, rev_hash = _parse_doc_revision(rev)
+            last_index, last_hash = self.connection.known_revisions[doc_id]
+
+            if last_index > rev_index:
+                own_change = True
+
+            if (last_index == rev_index) and (last_hash == rev_hash):
+                own_change = True
+
+        self._callback(doc_id, rev, deleted, own_change)

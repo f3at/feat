@@ -259,6 +259,28 @@ class IAgencyAgent(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
+    def register_change_listener(doc_id, callback):
+        '''
+        Registers for receiving notifications about the document changes.
+        @param doc_id: id of the document
+        @param callback: callable to be called, it will be called with the
+                         following parametes:
+                         - doc_id
+                         - rev
+                         - deleted (flag)
+                         - own_change (flag saying if the notification was
+                           triggered by the change done on the same
+                           connection)
+        @return: None
+        '''
+
+    def cancel_change_listener(doc_id):
+        '''
+        Unregister agent from receiving the notifications about document
+        changes.
+        @param doc_id: id of the document.
+        '''
+
     def query_view(factory, **options):
         '''
         Queries the database view.
