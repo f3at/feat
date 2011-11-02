@@ -217,6 +217,9 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
         self._dependency_references = list()
 
+        # uuid replacement for host agents
+        self._counter = 0
+
     def get_stats(self):
         res = dict(self._messaging.get_stats())
         res.update(dict(self._database.get_stats()))
@@ -340,6 +343,10 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
 
     def finished_processing(self):
         '''Called when the protocol runs out of data to process'''
+
+    def get_host_agent_id(self, agent_id):
+        self._counter += 1
+        return '%s_%s' % (agent_id, self._counter)
 
     # Delegation of IDatabase methods for tests
 
