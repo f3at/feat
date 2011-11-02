@@ -116,11 +116,25 @@ class Shutdown(agency.Shutdown):
         self.friend._driver.remove_agency(self.friend)
 
 
+class Startup(agency.Startup):
+
+    def stage_configure(self):
+        ip = self.opts.get('ip')
+        if ip is not None:
+            self.friend._ip = ip
+        hostname = self.opts.get('hostname')
+        if hostname is not None:
+            self.friend._hostname = hostname
+
+
 class Agency(agency.Agency):
 
     agency_agent_factory = AgencyAgent
 
     shutdown_factory = Shutdown
+    startup_factory = Startup
+
+    start_host_agent = True
 
     def __init__(self):
         agency.Agency.__init__(self)
@@ -164,9 +178,12 @@ class Agency(agency.Agency):
         if key in self._disabled_protocols:
             self._disabled_protocols.remove(key)
 
-    def initiate(self, database, journaler, driver, *backends):
+    def initiate(self, database, journaler, driver, ip, hostname,
+                 start_host, *backends):
         self._driver = driver
-        return agency.Agency.initiate(self, database, journaler, *backends)
+        self.start_host_agent = start_host
+        return self._initiate(database=database, journaler=journaler, ip=ip,
+                              hostname=hostname, backends=backends)
 
     def upgrade(self, upgrade_cmd):
         self._upgrade_cmd = upgrade_cmd
