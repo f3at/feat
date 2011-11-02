@@ -166,7 +166,9 @@ class StandaloneAgent(agent.BaseAgent):
                 '-a', agent_id]
         if s_kwargs:
             args += ['--kwargs', s_kwargs]
-        env = dict(PYTHONPATH=src_path, FEAT_DEBUG='5', PATH=bin_path)
+        path = ":".join([bin_path, os.environ["PATH"]])
+        pythonpath = ":".join([src_path, os.environ.get("PYTHONPATH", "")])
+        env = dict(PYTHONPATH=pythonpath, FEAT_DEBUG='5', PATH=path)
         return command, args, env
 
 
@@ -309,7 +311,7 @@ class IntegrationTestCase(common.TestCase):
     def testStartStandaloneAgent(self):
         yield self.agency.initiate()
         yield self.wait_for_host_agent(20)
-        host_a = self.agency._get_host_agent()
+        host_a = self.agency.get_host_agent()
         yield host_a.wait_for_ready()
         self.info("Host agent is ready, starting standalone agent.")
 
@@ -363,7 +365,7 @@ class IntegrationTestCase(common.TestCase):
     def testStartStandaloneArguments(self):
         yield self.agency.initiate()
         yield self.wait_for_host_agent(10)
-        host_a = self.agency._get_host_agent()
+        host_a = self.agency.get_host_agent()
 
         # this will be called in the other process
         yield self.agency.spawn_agent('standalone_with_args', foo=4, bar=5)
@@ -394,7 +396,7 @@ class IntegrationTestCase(common.TestCase):
         self.info("Reconfiguring the agencies database.")
         self.agency.reconfigure_database(db_host, db_port, db_name)
 
-        yield self.wait_for_host_agent(10)
+        yield self.wait_for_host_agent(80)
         medium = self.agency._get_host_medium()
         yield medium.wait_for_state(AgencyAgentState.ready)
 
@@ -456,7 +458,6 @@ class IntegrationTestCase(common.TestCase):
 
         pid = run.get_pid(os.path.curdir)
         run.term_pid(pid)
-
         yield self.wait_for_master()
 
         def has_host():
@@ -488,10 +489,14 @@ class IntegrationTestCase(common.TestCase):
     def testUpgrade(self):
         self.agency.config['agency']['enable_spawning_slave'] = False
         yield self.agency.initiate()
+        yield self.wait_for_host_agent(20)
+        yield self.wait_for(self.agency.is_idle, 20)
+
         if os.path.exists("effect.tmp"):
             os.unlink("effect.tmp")
         upgrade_cmd = 'touch effect.tmp'
         yield self.agency.upgrade(upgrade_cmd, testing=True)
+        yield self.wait_for(self.agency.is_idle, 20)
         self.assertTrue(os.path.exists("effect.tmp"))
 
     def spawn_agency(self):
@@ -565,7 +570,7 @@ class IntegrationTestCase(common.TestCase):
 
     def wait_for_standalone(self, timeout=20):
 
-        host_a = self.agency._get_host_agent()
+        host_a = self.agency.get_host_agent()
         self.assertIsNot(host_a, None)
 
         def has_partner():

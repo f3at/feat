@@ -94,12 +94,11 @@ class CommonMixin(object):
     @defer.inlineCallbacks
     def start_host(self, join_shard=True):
         script = format_block("""
-        desc = descriptor_factory('host_agent')
-        agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
-        medium = agency.start_agent(desc, run_startup=False)
-        agent = medium.get_agent()
-        agent.wait_for_ready()
+         desc = descriptor_factory('host_agent')
+         agency = spawn_agency(start_host=False)
+         agency.disable_protocol('setup-monitoring', 'Task')
+         medium = agency.start_agent(desc, run_startup=False)
+         agent = medium.get_agent()
         """)
         yield self.process(script)
         agent = self.get_local('agent')
@@ -230,7 +229,7 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
     def start_shard(self):
         a_id = str(uuid.uuid1())
         script = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('shard_agent', shard='%(shard)s')
         agency.start_agent(desc, run_startup=False)
@@ -435,7 +434,7 @@ class TestProblemResolving(common.SimulationTest, CommonMixin):
     configurable_attributes = ['hosts'] \
                               + common.SimulationTest.configurable_attributes
 
-    timeout = 40
+    timeout = 60
 
     @defer.inlineCallbacks
     def prolog(self):

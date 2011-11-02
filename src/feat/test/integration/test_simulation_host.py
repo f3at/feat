@@ -42,17 +42,11 @@ class HostAgentTests(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(hostname='test.host.lan')
         agency.disable_protocol('setup-monitoring', 'Task')
-        desc = descriptor_factory('host_agent', doc_id='test.host.lan')
-        medium = agency.start_agent(desc, run_startup=False)
-        agent = medium.get_agent()
+        agent = agency.get_host_agent()
         """)
         return self.process(setup)
-
-    def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(1, len(agents))
 
     def testDefaultResources(self):
         agent = self.get_local('agent')
@@ -71,9 +65,8 @@ class HostAgentTests(common.SimulationTest):
         self.assertTrue("address" in cats)
 
     def testHostname(self):
-        expected = 'test.host.lan'
+        expected = 'test.host.lan_1'
         expected_ip = socket.gethostbyname(socket.gethostname())
-        self.assertEqual(self.get_local('desc').hostname, expected)
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
@@ -89,9 +82,8 @@ class HostAgentRestartTest(common.SimulationTest):
         setup = format_block("""
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        desc = descriptor_factory('host_agent', doc_id='test.host.lan')
-        medium = agency.start_agent(desc)
-        agent = medium.get_agent()
+        agent = agency.get_host_agent()
+        medium = find_agent(agent)
         wait_for_idle()
         """)
         yield self.process(setup)
@@ -128,19 +120,13 @@ class HostAgentDefinitionTests(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-        agency1 = spawn_agency()
+        agency1 = spawn_agency(hostdef=hostdef)
         agency1.disable_protocol('setup-monitoring', 'Task')
-        desc1 = descriptor_factory('host_agent')
-        medium1 = agency1.start_agent(desc1, hostdef=hostdef, \
-        run_startup=False)
-        agent1 = medium1.get_agent()
+        agent1 = agency1.get_host_agent()
 
-        agency2 = spawn_agency()
+        agency2 = spawn_agency(hostdef=hostdef_id)
         agency2.disable_protocol('setup-monitoring', 'Task')
-        desc2 = descriptor_factory('host_agent')
-        medium2 = agency2.start_agent(desc2, hostdef=hostdef_id, \
-        run_startup=False)
-        agent2 = medium2.get_agent()
+        agent2 = agency2.get_host_agent()
         """)
 
         hostdef = host.HostDef()
@@ -152,10 +138,6 @@ class HostAgentDefinitionTests(common.SimulationTest):
         self.set_local("hostdef_id", "someid")
 
         return self.process(setup)
-
-    def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(2, len(agents))
 
     def testDefaultResources(self):
 
@@ -180,12 +162,9 @@ class HostAgentRequerimentsTest(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-            agency = spawn_agency()
+            agency = spawn_agency(hostdef=hostdef)
             agency.disable_protocol('setup-monitoring', 'Task')
-            desc = descriptor_factory('host_agent')
-            medium = agency.start_agent(desc, hostdef=hostdef,\
-                                        run_startup=False)
-            agent = medium.get_agent()
+            agent = agency.get_host_agent()
             """)
 
         hostdef = host.HostDef()
@@ -197,10 +176,6 @@ class HostAgentRequerimentsTest(common.SimulationTest):
         self.set_local("hostdef", hostdef)
 
         return self.process(setup)
-
-    def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(1, len(agents))
 
     def testDefaultRequeriments(self):
         agent = self.get_local('agent')
@@ -246,16 +221,13 @@ class HostAgentCheckTest(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-            agency = spawn_agency()
+            agency = spawn_agency(hostdef=hostdef)
             agency.disable_protocol('setup-monitoring', 'Task')
 
-            host_desc = descriptor_factory('host_agent')
             test_desc = descriptor_factory('condition-agent')
             error_desc = descriptor_factory('conditionerror-agent')
 
-            host_medium = agency.start_agent(host_desc, hostdef=hostdef, \
-                                             run_startup=False)
-            host_agent = host_medium.get_agent()
+            host_agent = agency.get_host_agent()
 
             host_agent.start_agent(test_desc)
             host_agent.start_agent(error_desc)
@@ -274,7 +246,8 @@ class HostAgentCheckTest(common.SimulationTest):
 
     def testValidateProlog(self):
         agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(2, len(agents))
+        # host, shard, raage, monitor, condition-agent
+        self.assertEqual(5, len(agents))
 
     @defer.inlineCallbacks
     def testCheckRequeriments(self):
@@ -326,19 +299,13 @@ class SimulationStartAgentContract(common.SimulationTest):
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
-                           run_startup=False)
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
-                           run_startup=False)
 
         agency = spawn_agency()
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent', shard='s1'), \
-                           run_startup=False)
-        agent = _.get_agent()
+        agent = agency.get_host_agent()
         agent.wait_for_ready()
         agent.start_agent(test_desc)
         """)

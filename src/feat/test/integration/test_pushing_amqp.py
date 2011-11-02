@@ -25,7 +25,7 @@ from feat.process.base import DependencyError
 from feat.agents.base import agent, descriptor, dependency, replay, message
 from feat.agents.base.amqp.interface import *
 from feat.interface.agency import ExecMode
-from feat.common import fiber, manhole, defer
+from feat.common import fiber, manhole, defer, first
 from feat.common.text_helper import format_block
 from feat.test.common import delay, StubAgent, attr
 from feat.agencies.messaging import net
@@ -103,7 +103,8 @@ class TestWithRabbit(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency('feat.agents.base.amqp.interface.IAMQPClientFactory')
+        spawn_agency(start_host=False,
+                     'feat.agents.base.amqp.interface.IAMQPClientFactory')
         agency = _
         agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
@@ -113,12 +114,12 @@ class TestWithRabbit(common.SimulationTest):
         """) % dict(port=self.rabbit.get_config()['port'],
                     exchange="'exchange'", type="'direct'")
         yield self.process(setup)
-        self.agent = list(self.driver.iter_agents())[0]
+        self.agent = first(self.driver.iter_agents('test-agent'))
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.agent.terminate()
-        yield self.wait_for_idle(10)
+        yield self.wait_for_idle(80)
         yield self.server.disconnect()
         yield self.rabbit.terminate()
         yield common.SimulationTest.tearDown(self)
@@ -157,13 +158,13 @@ class SimulationWithoutRabbit(common.SimulationTest):
         """) % dict(port=1234,
                     exchange="'exchange'", type="'direct'")
         yield self.process(setup)
-        self.agent = list(self.driver.iter_agents())[0]
+        self.agent = first(self.driver.iter_agents('test-agent')).get_agent()
 
     @defer.inlineCallbacks
     def testWebGetsMessage(self):
-        yield self.agent.get_agent().push_msg(message.BaseMessage(),
+        yield self.agent.push_msg(message.BaseMessage(),
                                               'key')
-        labour = self.agent.get_agent().get_labour()
+        labour = self.agent.get_labour()
         self.assertEqual(1, len(labour.messages))
         self.assertTrue('key' in labour.messages)
 

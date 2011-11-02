@@ -53,7 +53,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         setup = format_block("""
         load('feat.test.integration.resource')
 
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
 
         host_desc = descriptor_factory('host_agent')
@@ -160,32 +160,24 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         load('feat.test.integration.resource')
-        host1_desc = descriptor_factory('host_agent')
-        host2_desc = descriptor_factory('host_agent')
-        host3_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
 
         # First agency will eventually run Host, Shard, Raage and
         # Requesting agent
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(host1_desc, hostdef=hostdef)
-        host = _.get_agent()
+        host = agency.get_host_agent()
 
         wait_for_idle()
         host.start_agent(req_desc)
 
         # Second agency runs the host agent
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(host2_desc, hostdef=hostdef)
-        wait_for_idle()
 
         # Third is like second
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(host3_desc, hostdef=hostdef)
-        wait_for_idle()
         """)
 
         hostdef = host.HostDef()
@@ -297,32 +289,23 @@ class ContractNestingSimulation(common.SimulationTest):
         setup = format_block("""
         # Host 1 will run Raage, Host, Shard and Requesting agents
         load('feat.test.integration.resource')
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef1)
         agency.disable_protocol('setup-monitoring', 'Task')
-        host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
-        agency.start_agent(host_desc, hostdef=hostdef1)
-        host = _.get_agent()
-
-        wait_for_idle()
+        host = agency.get_host_agent()
         host.start_agent(req_desc)
 
         # Host 2 run only host agent
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef1)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef1)
-        wait_for_idle()
 
         # Host 3 will run Shard, Host and Raage
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef2)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
-        wait_for_idle()
 
         # Host 4 will run only host agent
-        agency = spawn_agency()
+        agency = spawn_agency(hostdef=hostdef2)
         agency.disable_protocol('setup-monitoring', 'Task')
-        agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
         """)
 
         # host definition in first shard (no space to allocate)

@@ -254,38 +254,33 @@ class TunnellingTest(common.SimulationTest):
         setup = format_block("""
         agency1 = spawn_agency()
         agency1.disable_protocol('setup-monitoring', 'Task')
-        ha1m = agency1.start_agent(descriptor_factory('host_agent'))
-        ha1 = ha1m.get_agent()
 
         wait_for_idle(20)
 
         agency2 = spawn_agency()
         agency2.disable_protocol('setup-monitoring', 'Task')
-        ha2m = agency2.start_agent(descriptor_factory('host_agent'))
-        ha2 = ha2m.get_agent()
 
         wait_for_idle(20)
 
         agency3 = spawn_agency()
         agency3.disable_protocol('setup-monitoring', 'Task')
-        ha3m = agency3.start_agent(descriptor_factory('host_agent'))
-        ha3 = ha3m.get_agent()
 
         wait_for_idle(20)
 
-        ha1.start_agent(descriptor_factory('test_agent'))
-        ha1.start_agent(descriptor_factory('test_agent'))
-        ha2.start_agent(descriptor_factory('test_agent'))
-        ha2.start_agent(descriptor_factory('test_agent'))
-        ha3.start_agent(descriptor_factory('test_agent'))
-        ha3.start_agent(descriptor_factory('test_agent'))
         """)
 
         yield self.process(setup)
 
-        self.ha1 = self.get_local('ha1')
-        self.ha2 = self.get_local('ha2')
-        self.ha3 = self.get_local('ha3')
+        self.ag1 = self.get_local('agency1')
+        self.ag2 = self.get_local('agency2')
+        self.ag3 = self.get_local('agency3')
+        self.ha1 = self.ag1.get_host_agent()
+        self.ha2 = self.ag2.get_host_agent()
+        self.ha3 = self.ag3.get_host_agent()
+        for ag in [self.ag1, self.ag2, self.ag3]:
+            ag.spawn_agent('test_agent')
+            ag.spawn_agent('test_agent')
+        yield self.wait_for_idle(80)
 
     ### Tunneling backend tests ###
 

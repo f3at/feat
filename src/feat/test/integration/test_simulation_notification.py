@@ -96,7 +96,7 @@ class NotificationTest(common.SimulationTest):
 
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
         cdesc1 = descriptor_factory('collector_test_agent')
         cdesc2 = descriptor_factory('collector_test_agent')

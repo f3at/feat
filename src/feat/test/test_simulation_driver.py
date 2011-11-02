@@ -39,7 +39,7 @@ class TestDriver(common.TestCase):
 
     @defer.inlineCallbacks
     def testSpawnAgency(self):
-        test = 'agency = spawn_agency()\n'
+        test = 'agency = spawn_agency(start_host=False)\n'
         d = self.cb_after(None, self.driver._parser, 'on_finish')
         self.driver.process(test)
         yield d
@@ -65,7 +65,7 @@ class TestDriver(common.TestCase):
     @defer.inlineCallbacks
     def testStartAgent(self):
         test = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(start_host=False)
         agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('descriptor'))
         """)
