@@ -316,6 +316,7 @@ class Agency(agency.Agency):
         self._link_log_file(options.MASTER_LOG_LINK)
 
         signal.signal(signal.SIGUSR1, self._sigusr1_handler)
+        signal.signal(signal.SIGUSR2, self._sigusr2_handler)
 
         if 'enable_host_restart' not in self._broker.shared_state:
             value = self.config['agency']['force_host_restart']
@@ -379,6 +380,9 @@ class Agency(agency.Agency):
 
     def _sigusr1_handler(self, _signum, _frame):
         self.full_kill(stop_process=True)
+
+    def _sigusr2_handler(self, _signum, _frame):
+        self.full_shutdown(stop_process=True)
 
     def on_broker_disconnect(self, pre_state):
         try:
