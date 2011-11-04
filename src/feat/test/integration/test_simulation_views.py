@@ -84,7 +84,6 @@ class ViewTest(common.SimulationTest):
         setup = format_block("""
         desc = descriptor_factory('querying-view-agent')
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         medium = agency.start_agent(desc)
         wait_for_idle()
         """)

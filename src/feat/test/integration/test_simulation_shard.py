@@ -80,10 +80,7 @@ class StructuralPartners(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
-
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         """)
 
         yield self.process(setup)
@@ -159,7 +156,6 @@ class TestShardNotification(common.SimulationTest):
         drv = self.driver
 
         agency1 = yield drv.spawn_agency(start_host=False)
-        agency1.disable_protocol('setup-monitoring', 'Task')
         sa1_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard1")
         sa1 = yield agency1.start_agent(sa1_desc)
@@ -173,7 +169,6 @@ class TestShardNotification(common.SimulationTest):
         yield self.wait_for_idle(10)
 
         agency2 = yield drv.spawn_agency(start_host=False)
-        agency2.disable_protocol('setup-monitoring', 'Task')
         sa2_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard2")
         sa2 = yield agency2.start_agent(sa2_desc)
@@ -199,7 +194,6 @@ class TestShardNotification(common.SimulationTest):
         check_no_changes(na2b)
 
         agency3 = yield drv.spawn_agency(start_host=False)
-        agency3.disable_protocol('setup-monitoring', 'Task')
         sa3_desc = yield drv.descriptor_factory("shard_agent",
                                                 shard=u"shard3")
         sa3 = yield agency3.start_agent(sa3_desc)
