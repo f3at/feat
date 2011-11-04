@@ -57,7 +57,6 @@ class DNSAgentConfiguration(document.Document):
 
     document_type = 'dns_agent_conf'
     document.field('doc_id', u'dns_agent_conf', '_id')
-    document.field('port', DEFAULT_PORT)
     document.field('ns_ttl', DEFAULT_NS_TTL)
     document.field('aa_ttl', DEFAULT_AA_TTL)
     document.field('ns', unicode())
@@ -70,7 +69,12 @@ dbtools.initial_data(DNSAgentConfiguration)
 
 @descriptor.register("dns_agent")
 class Descriptor(descriptor.Descriptor):
-    pass
+
+    descriptor.field('ns', None)
+    descriptor.field('ns_ttl', None)
+    descriptor.field('aa_ttl', None)
+    descriptor.field('suffix', None)
+    descriptor.field('notify', None)
 
 
 @agent.register('dns_agent')
@@ -88,18 +92,18 @@ class DNSAgent(agent.BaseAgent):
     migratability = export.Migratability.not_migratable
 
     @replay.mutable
-    def initiate(self, state, port=None, ns_ttl=None, aa_ttl=None,
-                 ns=None, suffix=None):
+    def initiate(self, state):
         config = state.medium.get_configuration()
+        desc = state.medium.get_descriptor()
 
         state.records = dict()
 
-        state.port = port or config.port
-        state.ns_ttl = ns_ttl or config.ns_ttl
-        state.aa_ttl = aa_ttl or config.aa_ttl
-        state.ns = ns or config.ns or self._lookup_ns()
-        state.suffix = suffix or config.suffix or self._lookup_suffix()
-        state.notify_cfg = config.notify
+        state.port = list(desc.resources['dns'].values)[0]
+        state.ns_ttl = desc.ns_ttl or config.ns_ttl
+        state.aa_ttl = desc.aa_ttl or config.aa_ttl
+        state.ns = desc.ns or config.ns or self._lookup_ns()
+        state.suffix = desc.suffix or config.suffix or self._lookup_suffix()
+        state.notify_cfg = desc.notify or config.notify
 
         self.debug("Initializing DNS agent with: port=%d, ns_ttl=%d, "
                    "aa_ttl=%d, ns=%s, suffix=%s", state.port, state.ns_ttl,
@@ -118,6 +122,8 @@ class DNSAgent(agent.BaseAgent):
         ami.bind_to_lobby()
         rmi.bind_to_lobby()
         muc.bind_to_lobby()
+
+        return self._save_configuration_to_descriptor()
 
     @replay.journaled
     def startup(self, state):
@@ -247,14 +253,24 @@ class DNSAgent(agent.BaseAgent):
             state.records.pop(record.name, None)
         return True
 
+    @replay.side_effect
     def _lookup_ns(self):
         return socket.getfqdn()
 
+    @replay.side_effect
     def _lookup_suffix(self):
         return ".".join(socket.getfqdn().split(".")[1:])
 
     def _format_name(self, prefix, suffix):
         return prefix+"."+suffix
+
+    @agent.update_descriptor
+    def _save_configuration_to_descriptor(self, state, desc):
+        desc.ns_ttl = state.ns_ttl
+        desc.aa_ttl = state.aa_ttl
+        desc.ns = state.ns
+        desc.suffix = state.suffix
+        desc.notify = state.notify_cfg
 
 
 class DNSMappingContractor(contractor.BaseContractor):

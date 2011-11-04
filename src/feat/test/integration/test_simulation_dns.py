@@ -21,11 +21,10 @@
 # Headers in this file shall remain intact.
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, replay
+from feat.agents.base import agent, descriptor, replay, resource
 from feat.agents.common import dns
 
 from feat.common import defer
-from feat.common.text_helper import format_block
 
 
 @descriptor.register("dns_test_agent")
@@ -96,50 +95,53 @@ class Agent(agent.BaseAgent):
 @common.attr('slow')
 class DNSAgentTest(common.SimulationTest):
 
+    @defer.inlineCallbacks
     def prolog(self):
-        setup = format_block("""
-        agency = spawn_agency()
-        d1 = descriptor_factory('dns_test_agent')
-        d2 = descriptor_factory('dns_test_agent')
-        d3 = descriptor_factory('dns_test_agent')
-        d4 = descriptor_factory('dns_agent')
-        d5 = descriptor_factory('dns_agent')
-        m1 = agency.start_agent(d1, prefix='foo.bar', ip='192.168.0.1')
-        m2 = agency.start_agent(d2, prefix='spam.beans', ip='192.168.0.2')
-        m3 = agency.start_agent(d3, prefix='spam.beans', ip='192.168.0.3')
-        m4 = agency.start_agent(d4, suffix='test.lan', ns='my.ns1.lan')
-        m5 = agency.start_agent(d5, suffix='test.lan', \
-                                ns='my.ns2.lan', ns_ttl=42)
-        agent1 = m1.get_agent()
-        agent2 = m2.get_agent()
-        agent3 = m3.get_agent()
-        dns1 = m4.get_agent()
-        dns2 = m5.get_agent()
-        wait_for_idle()
-        """)
-        return self.process(setup)
+        agency = yield self.driver.spawn_agency(start_host=False)
+        agency.disable_protocol('setup-monitoring', 'Task')
+        d1 = yield self.driver.descriptor_factory('dns_test_agent')
+        d2 = yield self.driver.descriptor_factory('dns_test_agent')
+        d3 = yield self.driver.descriptor_factory('dns_test_agent')
+        res = dict(dns=resource.AllocatedRange([8053]))
+        d4 = yield self.driver.descriptor_factory('dns_agent',
+                                                  ns='my.ns1.lan',
+                                                  resources=res,
+                                                  suffix='test.lan')
+        d5 = yield self.driver.descriptor_factory('dns_agent',
+                                                  ns='my.ns2.lan',
+                                                  ns_ttl=42,
+                                                  resources=res,
+                                                  suffix='test.lan')
+        m1 = yield agency.start_agent(d1, prefix='foo.bar', ip='192.168.0.1')
+        m2 = yield agency.start_agent(d2,
+                                      prefix='spam.beans', ip='192.168.0.2')
+        m3 = yield agency.start_agent(d3,
+                                      prefix='spam.beans', ip='192.168.0.3')
+        m4 = yield agency.start_agent(d4)
+        m5 = yield agency.start_agent(d5)
 
-    def testValidateProlog(self):
-        agents = list(self.driver.iter_agents("dns_test_agent"))
-        dnss = list(self.driver.iter_agents("dns_agent"))
-        self.assertEqual(3, len(agents))
-        self.assertEqual(2, len(dnss))
+        self.agent1 = m1.get_agent()
+        self.agent2 = m2.get_agent()
+        self.agent3 = m3.get_agent()
+        self.dns1 = m4.get_agent()
+        self.dns2 = m5.get_agent()
+        yield self.wait_for_idle(10)
 
     @defer.inlineCallbacks
     def testNSLookup(self):
-        dns1 = self.get_local("dns1")
+        dns1 = self.dns1
         ns, ttl = yield dns1.lookup_ns("spam")
         self.assertEqual(ns, "my.ns1.lan")
         self.assertEqual(ttl, 300)
 
-        dns2 = self.get_local("dns2")
+        dns2 = self.dns2
         ns, ttl = yield dns2.lookup_ns("spam")
         self.assertEqual(ns, "my.ns2.lan")
         self.assertEqual(ttl, 42)
 
     @defer.inlineCallbacks
     def testAddressMapping(self):
-        dns = self.get_local("dns1")
+        dns = self.dns1
 
         res = yield dns.remove_mapping("not.existing.test.lan", "0.0.0.0")
         self.assertFalse(res)
@@ -154,7 +156,7 @@ class DNSAgentTest(common.SimulationTest):
 
     @defer.inlineCallbacks
     def testAliases(self):
-        dns = self.get_local("dns1")
+        dns = self.dns1
 
         res = yield dns.remove_alias("dummy", "mycname.example.com")
         self.assertFalse(res)
@@ -182,9 +184,9 @@ class DNSAgentTest(common.SimulationTest):
                 self.assertEqual(set(expected),
                                  set([ip for ip, _ttl in result]))
 
-        agent1 = self.get_local("agent1")
-        agent2 = self.get_local("agent2")
-        agent3 = self.get_local("agent3")
+        agent1 = self.agent1
+        agent2 = self.agent2
+        agent3 = self.agent3
 
         yield assertAddress("", [])
         yield assertAddress("foo.bar", [])
@@ -250,9 +252,9 @@ class DNSAgentTest(common.SimulationTest):
                 self.assertEqual(set(expected),
                                  set([ip for ip, _ttl in result]))
 
-        agent1 = self.get_local("agent1")
-        agent2 = self.get_local("agent2")
-        agent3 = self.get_local("agent3")
+        agent1 = self.agent1
+        agent2 = self.agent2
+        agent3 = self.agent3
 
         yield assertAddress("", [])
         yield assertAddress("foo.bar", [])
@@ -322,8 +324,8 @@ class DNSAgentTest(common.SimulationTest):
                 alias, _ = dns_agent.lookup_alias(name)
                 self.assertEqual(expected, alias)
 
-        agent1 = self.get_local("agent1")
-        agent2 = self.get_local("agent2")
+        agent1 = self.agent1
+        agent2 = self.agent2
 
         assertAlias("", None)
         assertAlias("foo.bar.example.lan", None)
@@ -368,8 +370,8 @@ class DNSAgentTest(common.SimulationTest):
                 alias, _ = yield dns_agent.lookup_alias(name)
                 self.assertEqual(expected, alias)
 
-        agent1 = self.get_local("agent1")
-        agent2 = self.get_local("agent2")
+        agent1 = self.agent1
+        agent2 = self.agent2
 
         yield assertAlias("", None)
         yield assertAlias("foo.bar.example.lan", None)
