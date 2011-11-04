@@ -43,7 +43,6 @@ class HostAgentTests(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency(hostname='test.host.lan')
-        agency.disable_protocol('setup-monitoring', 'Task')
         agent = agency.get_host_agent()
         """)
         return self.process(setup)
@@ -81,7 +80,6 @@ class HostAgentRestartTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agent = agency.get_host_agent()
         medium = find_agent(agent)
         wait_for_idle()
@@ -121,11 +119,9 @@ class HostAgentDefinitionTests(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency(hostdef=hostdef)
-        agency1.disable_protocol('setup-monitoring', 'Task')
         agent1 = agency1.get_host_agent()
 
         agency2 = spawn_agency(hostdef=hostdef_id)
-        agency2.disable_protocol('setup-monitoring', 'Task')
         agent2 = agency2.get_host_agent()
         """)
 
@@ -163,7 +159,6 @@ class HostAgentRequerimentsTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
             agency = spawn_agency(hostdef=hostdef)
-            agency.disable_protocol('setup-monitoring', 'Task')
             agent = agency.get_host_agent()
             """)
 
@@ -222,7 +217,6 @@ class HostAgentCheckTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
             agency = spawn_agency(hostdef=hostdef)
-            agency.disable_protocol('setup-monitoring', 'Task')
 
             test_desc = descriptor_factory('condition-agent')
             error_desc = descriptor_factory('conditionerror-agent')
@@ -298,13 +292,8 @@ class SimulationStartAgentContract(common.SimulationTest):
         test_desc = descriptor_factory('contract-running-agent')
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
-
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
-
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agent = agency.get_host_agent()
         agent.wait_for_ready()
         agent.start_agent(test_desc)

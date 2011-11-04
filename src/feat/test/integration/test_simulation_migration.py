@@ -87,20 +87,16 @@ class TestMigration(common.SimulationTest):
     def prolog(self):
         setup = text_helper.format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         host1 = agency.get_host_agent()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         host1.start_agent(descriptor_factory('test_exportable_agent'))
         wait_for_idle()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         host2 = agency.get_host_agent()
         host2.start_agent(descriptor_factory('export_agent'))
         wait_for_idle()
@@ -206,21 +202,17 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
     def prolog(self):
         setup1 = text_helper.format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         host1 = agency.get_host_agent()
         wait_for_idle()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         host1.start_agent(descriptor_factory('test_exportable_agent'))
         wait_for_idle()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         host2 = agency.get_host_agent()
         host2.start_agent(descriptor_factory('export_agent'))
         wait_for_idle()
@@ -229,7 +221,6 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
 
         setup2 = text_helper.format_block("""
         agency = spawn_agency(hostdef=hostdef1)
-        agency.disable_protocol('setup-monitoring', 'Task')
         host = agency.get_host_agent()
         host.start_agent(descriptor_factory('alert_agent'))
         host.start_agent(descriptor_factory('migration_agent'))
@@ -343,7 +334,6 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
 
         spawn_host = text_helper.format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('host_agent'), hostdef=hostdef2)
         """)
         yield self.process(self.drivers[1], spawn_host)

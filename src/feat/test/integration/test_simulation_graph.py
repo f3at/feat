@@ -96,7 +96,6 @@ class CommonMixin(object):
         script = format_block("""
          desc = descriptor_factory('host_agent')
          agency = spawn_agency(start_host=False)
-         agency.disable_protocol('setup-monitoring', 'Task')
          medium = agency.start_agent(desc, run_startup=False)
          agent = medium.get_agent()
         """)
@@ -117,19 +116,16 @@ class DivorceSimulation(common.SimulationTest, CommonMixin):
     def prolog(self):
         script = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent1 = _.get_agent()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent2 = _.get_agent()
 
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('shard_agent', shard=uuid()), \
         run_startup=False)
         agent3 = _.get_agent()
@@ -230,7 +226,6 @@ class GraphSimulation(common.SimulationTest, CommonMixin):
         a_id = str(uuid.uuid1())
         script = format_block("""
         agency = spawn_agency(start_host=False)
-        agency.disable_protocol('setup-monitoring', 'Task')
         desc = descriptor_factory('shard_agent', shard='%(shard)s')
         agency.start_agent(desc, run_startup=False)
         agent = _.get_agent()

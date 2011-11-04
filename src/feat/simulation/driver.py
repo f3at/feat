@@ -61,6 +61,7 @@ class Commands(manhole.Manhole):
         ip = kwargs.pop('ip', None)
         hostname = kwargs.pop('hostname', None)
         start_host = kwargs.pop('start_host', True)
+        disable_monitoring = kwargs.pop('disable_monitoring', True)
         if kwargs:
             raise AttributeError("Unexpected kwargs argument %r" % (kwargs, ))
 
@@ -73,6 +74,8 @@ class Commands(manhole.Manhole):
 
         tun_backend = tunneling.EmuBackend(version=self._tunneling_version,
                                            bridge=self._tunneling_bridge)
+        if disable_monitoring:
+            ag.disable_protocol('setup-monitoring', 'Task')
 
         counter = getattr(self, '_agency_counter', -1)
         self._agency_counter = counter + 1

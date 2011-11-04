@@ -103,10 +103,9 @@ class TestWithRabbit(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        spawn_agency(start_host=False,
+        spawn_agency(start_host=False, \
                      'feat.agents.base.amqp.interface.IAMQPClientFactory')
         agency = _
-        agency.disable_protocol('setup-monitoring', 'Task')
         descriptor_factory('test-agent')
         agency.start_agent(_, host='127.0.0.1', port=%(port)s, \
                            exchange=%(exchange)s, \

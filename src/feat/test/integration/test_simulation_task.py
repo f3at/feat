@@ -113,7 +113,6 @@ class TaskAgentTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         medium = agency.start_agent(descriptor_factory('task-agent'))
         agent = medium.get_agent()
         """)
