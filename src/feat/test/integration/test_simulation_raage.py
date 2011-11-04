@@ -54,7 +54,6 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         load('feat.test.integration.resource')
 
         agency = spawn_agency(start_host=False)
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         host_desc = descriptor_factory('host_agent')
         req_desc = descriptor_factory('requesting_agent')
@@ -165,7 +164,6 @@ class MultiHostAllocationSimulation(common.SimulationTest):
         # First agency will eventually run Host, Shard, Raage and
         # Requesting agent
         agency = spawn_agency(hostdef=hostdef)
-        agency.disable_protocol('setup-monitoring', 'Task')
         host = agency.get_host_agent()
 
         wait_for_idle()
@@ -173,11 +171,9 @@ class MultiHostAllocationSimulation(common.SimulationTest):
 
         # Second agency runs the host agent
         agency = spawn_agency(hostdef=hostdef)
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         # Third is like second
         agency = spawn_agency(hostdef=hostdef)
-        agency.disable_protocol('setup-monitoring', 'Task')
         """)
 
         hostdef = host.HostDef()
@@ -290,22 +286,18 @@ class ContractNestingSimulation(common.SimulationTest):
         # Host 1 will run Raage, Host, Shard and Requesting agents
         load('feat.test.integration.resource')
         agency = spawn_agency(hostdef=hostdef1)
-        agency.disable_protocol('setup-monitoring', 'Task')
         req_desc = descriptor_factory('requesting_agent')
         host = agency.get_host_agent()
         host.start_agent(req_desc)
 
         # Host 2 run only host agent
         agency = spawn_agency(hostdef=hostdef1)
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         # Host 3 will run Shard, Host and Raage
         agency = spawn_agency(hostdef=hostdef2)
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         # Host 4 will run only host agent
         agency = spawn_agency(hostdef=hostdef2)
-        agency.disable_protocol('setup-monitoring', 'Task')
         """)
 
         # host definition in first shard (no space to allocate)

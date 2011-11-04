@@ -72,7 +72,7 @@ class SingleHostMonitorSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        agency = spawn_agency()
+        agency = spawn_agency(disable_monitoring=False)
 
         req_desc = descriptor_factory('dummy_monitor_agent')
         host_agent = agency.get_host_agent()
@@ -101,7 +101,7 @@ class SingleHostMonitorSimulation(common.SimulationTest):
     @defer.inlineCallbacks
     def testPartnerMonitor(self):
         self.req_agent.start_monitoring()
-        yield self.wait_for_idle(10)
+        yield self.wait_for_idle(20)
         partners = self.monitor_agent.get_descriptor().partners
         self.assertEqual(4, len(partners)) # host, shard, raag, dummy
 
@@ -185,14 +185,11 @@ class RestartingSimulation(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency()
-        agency1.disable_protocol('setup-monitoring', 'Task')
         host = agency1.get_host_agent()
 
         agency2 = spawn_agency()
-        agency2.disable_protocol('setup-monitoring', 'Task')
 
         agency3 = spawn_agency()
-        agency3.disable_protocol('setup-monitoring', 'Task')
         """)
         yield self.process(setup)
         yield self.wait_for_idle(10)
@@ -320,13 +317,13 @@ class MonitoringMonitor(common.SimulationTest):
     @defer.inlineCallbacks
     def prolog(self):
         setup = format_block("""
-        agency1 = spawn_agency()
+        agency1 = spawn_agency(disable_monitoring=False)
         host = agency1.get_host_agent()
         host.wait_for_ready()
 
-        agency2 = spawn_agency()
+        agency2 = spawn_agency(disable_monitoring=False)
 
-        agency3 = spawn_agency()
+        agency3 = spawn_agency(disable_monitoring=False)
         last_host = agency3.get_host_agent()
         """)
         yield self.process(setup)
@@ -451,15 +448,12 @@ class SimulateMultipleMonitors(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency1 = spawn_agency()
-        agency1.disable_protocol('setup-monitoring', 'Task')
         host = agency1.get_host_agent()
         host.start_agent(descriptor_factory('random-agent'))
 
         agency2 = spawn_agency()
-        agency2.disable_protocol('setup-monitoring', 'Task')
 
         agency3 = spawn_agency()
-        agency3.disable_protocol('setup-monitoring', 'Task')
         last_host = agency3.get_host_agent()
         """)
         yield self.process(setup)
@@ -560,7 +554,8 @@ class TestMonitorPartnerships(common.SimulationTest):
     def testMonitorAgentPartnerships(self):
         drv = self.driver
 
-        agency1 = yield drv.spawn_agency(start_host=False)
+        agency1 = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False)
         ha1_desc = yield drv.descriptor_factory("host_agent")
         ha1 = yield agency1.start_agent(ha1_desc)
 
@@ -624,7 +619,8 @@ class TestMonitorPartnerships(common.SimulationTest):
     def testMonitorMonitorPartnerships(self):
         drv = self.driver
 
-        agency1 = yield drv.spawn_agency(start_host=False)
+        agency1 = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False)
         ha1_desc = yield drv.descriptor_factory("host_agent")
         ha1 = yield agency1.start_agent(ha1_desc)
         ha2_desc = yield drv.descriptor_factory("host_agent")
@@ -930,11 +926,12 @@ class TestRealMonitoring(common.SimulationTest):
         # host1 has special resource
         hostdef1 = host.HostDef()
         hostdef1.resources['special'] = 1
-        agency = yield drv.spawn_agency(hostdef=hostdef1, *components)
+        agency = yield drv.spawn_agency(hostdef=hostdef1,
+            disable_monitoring=False, *components)
         h1 = yield agency.get_host_agent()
 
         # host2 doesn't have special resource
-        agency = yield drv.spawn_agency(*components)
+        agency = yield drv.spawn_agency(disable_monitoring=False, *components)
         h2 = yield agency.get_host_agent()
 
         # now spawn a special agent
@@ -983,7 +980,8 @@ class TestRealMonitoring(common.SimulationTest):
         components = ("feat.agents.monitor.interface.IIntensiveCareFactory",
                       "feat.agents.monitor.interface.IPacemakerFactory",
                       "feat.agents.monitor.interface.IClerkFactory")
-        agency = yield drv.spawn_agency(start_host=False, *components)
+        agency = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False, *components)
         ha_desc = yield drv.descriptor_factory("host_agent")
         ha = yield agency.start_agent(ha_desc)
 
@@ -1094,7 +1092,8 @@ class TestRealMonitoring(common.SimulationTest):
         components = ("feat.agents.monitor.interface.IIntensiveCareFactory",
                       "feat.agents.monitor.interface.IPacemakerFactory",
                       "feat.agents.monitor.interface.IClerkFactory")
-        agency = yield drv.spawn_agency(start_host=False, *components)
+        agency = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False, *components)
         ha1_desc = yield drv.descriptor_factory("host_agent")
         ha1 = yield agency.start_agent(ha1_desc)
         ha2_desc = yield drv.descriptor_factory("host_agent")
@@ -1261,7 +1260,8 @@ class TestRealMonitoring(common.SimulationTest):
         components = ("feat.agents.monitor.interface.IIntensiveCareFactory",
                       "feat.agents.monitor.interface.IPacemakerFactory",
                       "feat.agents.monitor.interface.IClerkFactory")
-        agency = yield drv.spawn_agency(start_host=False, *components)
+        agency = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False, *components)
         ha1_desc = yield drv.descriptor_factory("host_agent")
         ha1 = yield agency.start_agent(ha1_desc)
         ha2_desc = yield drv.descriptor_factory("host_agent")
@@ -1433,7 +1433,8 @@ class TestRealMonitoring(common.SimulationTest):
         components = ("feat.agents.monitor.interface.IIntensiveCareFactory",
                       "feat.agents.monitor.interface.IPacemakerFactory",
                       "feat.agents.monitor.interface.IClerkFactory")
-        agency = yield drv.spawn_agency(start_host=False, *components)
+        agency = yield drv.spawn_agency(start_host=False,
+            disable_monitoring=False, *components)
         ha1_desc = yield drv.descriptor_factory("host_agent")
         ha1 = yield agency.start_agent(ha1_desc)
         ha2_desc = yield drv.descriptor_factory("host_agent")

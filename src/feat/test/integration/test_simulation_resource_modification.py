@@ -82,7 +82,6 @@ class RemotePremodifyTest(common.SimulationTest, Common):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency(hostdef=hostdef)
-        agency.disable_protocol('setup-monitoring', 'Task')
 
         req_desc = descriptor_factory('requesting_agent_mod')
 

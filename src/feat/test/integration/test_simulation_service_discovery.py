@@ -59,7 +59,6 @@ class ServiceDiscoverySimulation(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         agency.start_agent(descriptor_factory('discoverer-agent'))
         agent1 = _.get_agent()
         agency.start_agent(descriptor_factory('discoverer-agent'))

@@ -99,7 +99,6 @@ class DNSAgentTest(common.SimulationTest):
     def prolog(self):
         setup = format_block("""
         agency = spawn_agency()
-        agency.disable_protocol('setup-monitoring', 'Task')
         d1 = descriptor_factory('dns_test_agent')
         d2 = descriptor_factory('dns_test_agent')
         d3 = descriptor_factory('dns_test_agent')
