@@ -53,6 +53,24 @@ class DummyDocument(document.Document):
     document.field('value', 0)
 
 
+@document.register
+class ViewDocument(document.Document):
+
+    document_type = 'view-dummy'
+
+    document.field('field', None)
+    document.field('value', 0)
+
+
+class FilteringView(view.BaseView):
+
+    name = 'filter_view'
+
+    def filter(doc, request):
+        return doc.get('.type', None) == 'view-dummy' and\
+               doc['field'] == request['query']['field']
+
+
 class SummingView(view.FormatableView):
 
     name = 'some_view'
@@ -292,6 +310,45 @@ class TestCase(object):
 
         yield self.connection.disconnect()
 
+    @defer.inlineCallbacks
+    def testChangesWithFilterView(self):
+        # create design document
+        views = (FilteringView, )
+        design_doc = view.DesignDocument.generate_from_views(views)
+        yield self.connection.save_document(design_doc)
+
+        yield self.connection.changes_listener(FilteringView, self.change_cb,
+                                               field='value1')
+
+        self.changes = list()
+        my_doc = ViewDocument(field=u'value1')
+        my_doc = yield self.connection.save_document(my_doc)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+        doc_id, rev, deleted, own_change = self.changes.pop()
+        self.assertEqual(doc_id, my_doc.doc_id)
+        self.assertEqual(rev, my_doc.rev)
+        self.assertTrue(own_change)
+        self.assertFalse(deleted)
+
+        other_connection = self.database.get_connection()
+        yield other_connection.changes_listener(FilteringView, self.change_cb,
+                                               field='value2')
+        my_doc2 = ViewDocument(field=u'value2')
+        my_doc2 = yield self.connection.save_document(my_doc2)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+        doc_id, rev, deleted, own_change = self.changes.pop()
+
+        yield self.connection.disconnect()
+        my_doc.value += 1
+        my_doc2.value += 1
+        yield other_connection.save_document(my_doc)
+        yield other_connection.save_document(my_doc2)
+        yield self.wait_for(self._len_changes(1), 2, freq=0.01)
+        doc_id, rev, deleted, own_change = self.changes.pop()
+        self.assertEqual(doc_id, my_doc2.doc_id)
+
+        yield other_connection.disconnect()
+
     ### methods specific for testing the notification callbacks
 
     def change_cb(self, doc, rev, deleted, own_change):
@@ -399,4 +456,5 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
 
     def tearDown(self):
         self.connection.disconnect()
+        self.database.disconnect()
         return self.process.terminate()

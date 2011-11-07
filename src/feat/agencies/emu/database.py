@@ -92,12 +92,18 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             self._expire_cache(doc['_id'])
 
             r = Response(ok=True, id=doc['_id'], rev=doc['_rev'])
-            self._trigger_change(doc['_id'], doc['_rev'], deleted=False)
+            self._analize_changes(doc)
             d.callback(r)
         except (ConflictError, ValueError, ) as e:
             d.errback(e)
 
         return d
+
+    def _analize_changes(self, doc):
+        for filter_i in self._filters.itervalues():
+            if filter_i.match(doc):
+                deleted = doc.get('_deleted', False)
+                filter_i.notified(doc['_id'], doc['_rev'], deleted)
 
     def open_doc(self, doc_id):
         '''Imitated fetching the document from the database.
@@ -133,7 +139,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
             self.log('Marking document %r as deleted', doc_id)
-            self._trigger_change(doc['_id'], doc['_rev'], deleted=True)
+            self._analize_changes(doc)
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
         except (ConflictError, NotFoundError, ) as e:
             d.errback(e)

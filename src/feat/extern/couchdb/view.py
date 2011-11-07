@@ -10,6 +10,7 @@
 """Implementation of a view server for functions written in Python."""
 
 from codecs import BOM_UTF8
+
 import logging
 import os
 import sys
@@ -24,6 +25,10 @@ __docformat__ = 'restructuredtext en'
 log = logging.getLogger('couchdb.view')
 
 
+class CompileError(Exception):
+    pass
+
+
 def run(input=sys.stdin, output=sys.stdout):
     r"""CouchDB view function handler implementation for Python.
 
@@ -31,6 +36,7 @@ def run(input=sys.stdin, output=sys.stdout):
     :param output: the writable file-like object to write output to
     """
     functions = []
+    environments = dict()
 
     def _writejson(obj):
         obj = json.encode(obj)
@@ -51,24 +57,10 @@ def run(input=sys.stdin, output=sys.stdout):
 
     def add_fun(string):
         string = BOM_UTF8 + string.encode('utf-8')
-        globals_ = {}
         try:
-            exec string in {'log': _log}, globals_
-        except Exception, e:
-            return {'error': {
-                'id': 'map_compilation_error',
-                'reason': e.args[0]
-            }}
-        err = {'error': {
-            'id': 'map_compilation_error',
-            'reason': 'string must eval to a function '
-                      '(ex: "def(doc): return 1")'
-        }}
-        if len(globals_) != 1:
-            return err
-        function = globals_.values()[0]
-        if type(function) is not FunctionType:
-            return err
+            function = _compile(string, "map_compilation_error")
+        except CompileError as e:
+            return e.args[0]
         functions.append(function)
         return True
 
@@ -87,26 +79,11 @@ def run(input=sys.stdin, output=sys.stdout):
     def reduce(*cmd, **kwargs):
         code = BOM_UTF8 + cmd[0][0].encode('utf-8')
         args = cmd[1]
-        globals_ = {}
+
         try:
-            exec code in {'log': _log}, globals_
-        except Exception, e:
-            log.error('runtime error in reduce function: %s', e,
-                      exc_info=True)
-            return {'error': {
-                'id': 'reduce_compilation_error',
-                'reason': e.args[0]
-            }}
-        err = {'error': {
-            'id': 'reduce_compilation_error',
-            'reason': 'string must eval to a function '
-                      '(ex: "def(keys, values): return 1")'
-        }}
-        if len(globals_) != 1:
-            return err
-        function = globals_.values()[0]
-        if type(function) is not FunctionType:
-            return err
+            function = _compile(code, "reduce_compilation_error")
+        except CompileError as e:
+            return e.args[0]
 
         rereduce = kwargs.get('rereduce', False)
         results = []
@@ -129,8 +106,77 @@ def run(input=sys.stdin, output=sys.stdout):
         # Note: weird kwargs is for Python 2.5 compat
         return reduce(*cmd, **{'rereduce': True})
 
+    def ddoc_new(name, doc):
+        env = dict()
+        supported_keys = ['filters']
+        for key, section in doc.iteritems():
+            if key not in supported_keys:
+                continue
+            env[key] = dict()
+            id_error = "%s_compilation_error" % (key)
+            for f_name, func_str in section.iteritems():
+                try:
+                    env[key][f_name] = _compile(func_str, id_error)
+                except CompileError as e:
+                    return e.args[0]
+        environments[name] = env
+        return True
+
+    def ddoc_exec(ddoc_name, ref, args):
+        e = environments[ddoc_name]
+        for r in ref:
+            e = e[r]
+        function = e
+        h = handlers[ref[0]]
+
+        return h(*args, **{"function": function})
+
+    def ddoc(*args):
+        args = list(args)
+        n = args.pop(0)
+        if n == 'new':
+            return ddoc_new(*args)
+        return ddoc_exec(n, args.pop(0), args[0])
+
+    def filter(rows, request, dbinfo=None, function=None):
+        request['db'] = dbinfo
+        results = []
+
+        for row in rows:
+            r = function(row, request)
+            if r is True:
+                results.append(True)
+            else:
+                results.append(False)
+
+        return [True, results]
+
+    def _compile(func_str, error_id):
+        globals_ = {}
+
+        try:
+            exec func_str in {'log': _log}, globals_
+        except Exception, e:
+            log.error('runtime error in filter function: %s', e,
+                      exc_info=True)
+            raise CompileError({'error': {
+                'id': error_id,
+                'reason': e.args[0]}})
+        err = {'error': {
+            'id': error_id,
+            'reason': 'string must eval to a function '
+                      '(ex: "def(doc, request): return True")'}}
+        if len(globals_) != 1:
+            raise CompileError(err)
+        function = globals_.values()[0]
+        if type(function) is not FunctionType:
+            raise CompileError(err)
+        return function
+
+
     handlers = {'reset': reset, 'add_fun': add_fun, 'map_doc': map_doc,
-                'reduce': reduce, 'rereduce': rereduce}
+                'reduce': reduce, 'rereduce': rereduce, 'ddoc': ddoc,
+                'filters': filter}
 
     try:
         while True:
@@ -188,8 +234,7 @@ def main():
     try:
         option_list, argument_list = getopt.gnu_getopt(
             sys.argv[1:], 'h',
-            ['version', 'help', 'json-module=', 'debug', 'log-file=']
-        )
+            ['version', 'help', 'json-module=', 'debug', 'log-file='])
 
         message = None
         for option, value in option_list:
@@ -206,13 +251,11 @@ def main():
                 if value == '-':
                     handler = logging.StreamHandler(sys.stderr)
                     handler.setFormatter(logging.Formatter(
-                        ' -> [%(levelname)s] %(message)s'
-                    ))
+                        ' -> [%(levelname)s] %(message)s'))
                 else:
                     handler = logging.FileHandler(value)
                     handler.setFormatter(logging.Formatter(
-                        '[%(asctime)s] [%(levelname)s] %(message)s'
-                    ))
+                        '[%(asctime)s] [%(levelname)s] %(message)s'))
                 log.addHandler(handler)
         if message:
             sys.stdout.write(message)
@@ -221,8 +264,7 @@ def main():
 
     except getopt.GetoptError, error:
         message = '%s\n\nTry `%s --help` for more information.\n' % (
-            str(error), os.path.basename(sys.argv[0])
-        )
+            str(error), os.path.basename(sys.argv[0]))
         sys.stderr.write(message)
         sys.stderr.flush()
         sys.exit(1)

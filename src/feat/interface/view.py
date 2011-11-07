@@ -41,6 +41,7 @@ class IViewFactory(Interface):
         '''
         Function called for every document in the database.
         It has to be a generator yielding tuples (key, value).
+        Optional.
         @param doc: document in couchdb
         @type doc: C{dict}. It always has _id and _rev keys. The rest is
                    specific to the application.
@@ -56,6 +57,14 @@ class IViewFactory(Interface):
         @param keys: Keys generated for the documents being reduced.
         @param values: Values generated for the documents being reduced.
         @return: Resulting value.
+        '''
+
+    def filter(document, request):
+        '''
+        Defined optionaly to create a change/replication filter.
+        @param document: The document to be filtered
+        @param request: The request object (contains the parameters)
+        @return: Flag saying if this document matched the filter.
         '''
 
     def parse(key, value, reduced):

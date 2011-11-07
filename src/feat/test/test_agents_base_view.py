@@ -44,10 +44,18 @@ class ReducingView(view.BaseView):
         return len(values)
 
 
+class FilterView(view.BaseView):
+
+    name = 'some_filter'
+
+    def filter(doc, request):
+        return True
+
+
 class TestDesignDocument(common.TestCase):
 
     def testGenerateDesignDoc(self):
-        views = (SomeView, ReducingView, )
+        views = (SomeView, ReducingView, FilterView, )
         doc = view.DesignDocument.generate_from_views(views)
 
         self.assertIsInstance(doc, view.DesignDocument)
@@ -62,3 +70,8 @@ class TestDesignDocument(common.TestCase):
         self.assertIn('reducing_view', doc.views)
         self.assertIn('map', doc.views['reducing_view'])
         self.assertIn('reduce', doc.views['reducing_view'])
+
+        self.assertEquals(1, len(doc.filters))
+        self.assertIn('some_filter', doc.filters)
+        expected = "def filter(doc, request):\n    return True"
+        self.assertEqual(expected, doc.filters['some_filter'])

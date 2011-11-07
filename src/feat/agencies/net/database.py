@@ -48,6 +48,64 @@ DEFAULT_DB_PORT = 5984
 DEFAULT_DB_NAME = "feat"
 
 
+class Notifier(object):
+
+    def __init__(self, db, filter):
+        self._db = db
+        self._filter = filter
+        self.name = self._filter.name
+        self._params = None
+
+        self.reconfigure()
+
+    def reconfigure(self):
+        # called after changing the database
+        self._changes = ChangeNotifier(self._db.paisley, self._db.db_name)
+        self._changes.addListener(self)
+
+    def setup(self):
+        new_params = self._filter.extract_params()
+        if self._params is not None and \
+           new_params == self._params and \
+           self._changes.isRunning():
+            return defer.succeed(None)
+
+        self._params = new_params
+
+        if self._changes.isRunning():
+            self._changes.stop()
+        d = defer.succeed(None)
+        if new_params is not None:
+            d.addCallback(defer.drop_param, self._db.wait_connected)
+            d.addCallback(defer.drop_param, self._changes.start,
+                           heartbeat=1000, **new_params)
+        else:
+            self._db.log("Stopping notifier: %r", self.name)
+        d.addErrback(self.connectionLost)
+        d.addErrback(failure.Failure.trap, NotConnectedError)
+        return d
+
+    ### paisleys ChangeListener interface
+
+    def changed(self, change):
+        # The change parameter is just an ugly effect of json unserialization
+        # of the couchdb output. It can be many different things, hence the
+        # strange logic above.
+        if "changes" in change:
+            doc_id = change['id']
+            for line in change['changes']:
+                # The changes are analized when there is not http request
+                # pending. Otherwise it can result in race condition problem.
+                deleted = line.get('deleted', False)
+                self._db.semaphore.run(self._filter.notified,
+                                       doc_id, line['rev'], deleted)
+        else:
+            self.info('Bizare notification received from CouchDB: %r', change)
+
+    def connectionLost(self, reason):
+        self._db.connectionLost(reason)
+
+
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     implements(IDbConnectionFactory, IDatabaseDriver)
@@ -64,7 +122,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.db_name = None
         self.host = None
         self.port = None
-        self.notifier = None
+        # name -> Notifier
+        self.notifiers = dict()
 
         self.retry = 0
         self.reconnector = None
@@ -72,10 +131,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._configure(host, port, db_name)
 
     def reconfigure(self, host, port, name):
-        if self.notifier.isRunning():
-            self.notifier.stop()
         self._configure(host, port, name)
-        self._setup_notifier()
 
     def show_connection_status(self):
         eta = self.reconnector and self.reconnector.active() and \
@@ -104,14 +160,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         return self._paisley_call(self.paisley.createDB,
                                   self.db_name)
 
-    def listen_changes(self, doc_ids, callback):
-        d = ChangeListener.listen_changes(self, doc_ids, callback)
-        d.addCallback(defer.bridge_param, self._setup_notifier)
-        return d
+    def disconnect(self):
+        self._cancel_reconnector()
 
-    def cancel_listener(self, listener_id):
-        ChangeListener.cancel_listener(self, listener_id)
-        return self._setup_notifier()
+    # listen_chagnes from ChangeListener
+
+    # cancel_listener from ChangeListener
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
@@ -121,22 +175,23 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         d.addCallback(self._parse_view_result)
         return d
 
-    ### paisleys ChangeListener interface
-
-    def changed(self, change):
-        # The change parameter is just an ugly effect of json unserialization
-        # of the couchdb output. It can be many different things, hence the
-        # strange logic above.
-        if "changes" in change:
-            doc_id = change['id']
-            for line in change['changes']:
-                # The changes are analized when there is not http request
-                # pending. Otherwise it can result in race condition problem.
-                deleted = line.get('deleted', False)
-                self.semaphore.run(self._trigger_change,
-                                   doc_id, line['rev'], deleted)
+    def reconnect(self):
+        # ping database to figure trigger changing state to connected
+        self.retry += 1
+        wait = min(2**(self.retry - 1), 300)
+        self.debug('CouchDB refused connection for %d time. '
+                   'This indicates missconfiguration or temporary '
+                   'network problem. Will try to reconnect in %d seconds.',
+                   self.retry, wait)
+        if self.reconnector is None or not self.reconnector.active():
+            d = defer.Deferred()
+            d.addCallback(defer.drop_param, self._paisley_call,
+                           self.paisley.listDB)
+            d.addErrback(failure.Failure.trap, NotConnectedError)
+            self.reconnector = time.callLater(wait, d.callback, None)
+            return d
         else:
-            self.info('Bizare notification received from CouchDB: %r', change)
+            return self.wait_connected()
 
     def connectionLost(self, reason):
         if reason.check(error.ConnectionDone):
@@ -147,20 +202,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                        "indicate missconfiguration. Take look at it")
             return
         elif reason.check(error.ConnectionRefusedError):
-            self.retry += 1
-            wait = min(2**(self.retry - 1), 300)
-            self.debug('CouchDB refused connection for %d time. '
-                       'This indicates missconfiguration or temporary '
-                       'network problem. Will try to reconnect in %d seconds.',
-                       self.retry, wait)
-            self.reconnector = time.callLater(wait, self._setup_notifier)
-            self._on_disconnected()
+            self.reconnect()
             return
         else:
             # FIXME handle disconnection when network is down
             self._on_disconnected()
             self.warning('Connection to db lost with reason: %r', reason)
-            return self._setup_notifier()
+            self.reconnect()
+            return self._setup_notifiers()
 
     ### private
 
@@ -169,12 +218,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.host, self.port = host, port
         self.paisley = CouchDB(host, port)
         self.db_name = name
-        self.notifier = ChangeNotifier(self.paisley, self.db_name)
-        self.notifier.addListener(self)
 
-        # ping database to figure trigger changing state to connected
-        d = self._paisley_call(self.paisley.listDB)
-        d.addErrback(failure.Failure.trap, NotConnectedError)
+        [notifier.reconfigure() for notifier in self.notifiers.values()]
+        self.reconnect()
+        self._setup_notifiers()
 
     def _parse_view_result(self, resp):
         assert "rows" in resp
@@ -182,31 +229,21 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         for row in resp["rows"]:
             yield row["key"], row["value"]
 
-    def _setup_notifier(self):
-        doc_ids = self._extract_doc_ids()
-        self.log('Setting up the notifier passing. Doc_ids: %r.',
-                 doc_ids)
-        if self.notifier.isRunning():
-            self.notifier.stop()
-        if len(doc_ids) == 0:
-            # Don't run listner if it is not needed,
-            # cancel reconnector if one is running.
-            if self.reconnector and self.reconnector.active():
-                self.reconnector.cancel()
-                self.reconnector = None
-            return
+    def _setup_notifiers(self):
+        defers = list()
+        for notifier in self.notifiers.values():
+            defers.append(notifier.setup())
+        return defer.DeferredList(defers, consumeErrors=True)
 
-        d = self.notifier.start(
-            heartbeat=1000)
-        d.addCallback(self._connected)
-        d.addErrback(self.connectionLost)
-        d.addErrback(failure.Failure.trap, NotConnectedError)
-        return d
+    def _setup_notifier(self, filter):
+        self.log('Setting up the notifier %s', filter.name)
+        notifier = self.notifiers.get(filter.name) or Notifier(self, filter)
+        self.notifiers[filter.name] = notifier
 
-    def _connected(self, _):
-        self.debug('Established persistent connection for receiving '
-                   'notifications.')
-        self._on_connected()
+        return notifier.setup()
+
+    def _on_connected(self):
+        common.ConnectionManager._on_connected(self)
         self._cancel_reconnector()
 
     def _cancel_reconnector(self):
@@ -241,6 +278,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                     status)
         elif failure.check(error.ConnectionRefusedError):
             self._on_disconnected()
+            self.reconnect()
             raise NotConnectedError("Database connection refused.")
         else:
             failure.raiseException()

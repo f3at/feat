@@ -22,6 +22,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
+import urllib
 
 from twisted.internet import reactor
 from zope.interface import implements
@@ -33,7 +34,85 @@ from feat.agents.base import document
 from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
                                      IRevisionStore)
 from feat.interface.generic import ITimeProvider
-from feat.interface.view import IViewFactory
+from feat.interface.view import IViewFactory, DESIGN_DOC_ID
+
+
+class ViewFilter(object):
+
+    def __init__(self, view, params):
+        self.view = view
+        self._request = dict(query=params)
+        self.name = '?'.join([self.view.name, urllib.urlencode(params)])
+        # listener_id -> callback
+        self._listeners = dict()
+
+    def match(self, doc):
+        # used only by emu
+        return self.view.filter(doc, self._request)
+
+    def add_listener(self, callback, listener_id):
+        self._listeners[listener_id] = callback
+
+    def cancel_listener(self, listener_id):
+        popped = self._listeners.pop(listener_id, None)
+        return popped is not None
+
+    def notified(self, doc_id, rev, deleted):
+        for cb in self._listeners.itervalues():
+            reactor.callLater(0, cb, doc_id, rev, deleted)
+
+    def extract_params(self):
+        if not self._listeners:
+            # returning None prevents channel for being established
+            return
+        p = dict(self._request['query'])
+        p['filter'] = "%s/%s" % (DESIGN_DOC_ID, self.view.name)
+        return p
+
+
+class DocIdFilter(object):
+
+    def  __init__(self):
+        self.name = 'doc_ids'
+        # doc_ids -> [(callback, listener_id)]
+        self._listeners = {}
+
+    def match(self, doc):
+        # used only by emu
+        return doc['_id'] in self._listeners.keys()
+
+    def notified(self, doc_id, rev, deleted):
+        listeners = self._listeners.get(doc_id, list())
+        for cb, _ in listeners:
+            reactor.callLater(0, cb, doc_id, rev, deleted)
+
+    def add_listener(self, callback, listener_id, doc_ids):
+        for doc_id in doc_ids:
+            cur = self._listeners.get(doc_id, list())
+            cur.append((callback, listener_id, ))
+            self._listeners[doc_id] = cur
+
+    def cancel_listener(self, listener_id):
+        changed = False
+        for values in self._listeners.itervalues():
+            iterator = (x for x in values if x[1] == listener_id)
+            for matching in iterator:
+                changed = True
+                values.remove(matching)
+        for key, values in self._listeners.items():
+            # cleanup empty entry
+            if not values:
+                del(self._listeners[key])
+
+        return changed
+
+    def extract_params(self):
+        if not self._listeners:
+            # returning None prevents channel for being established
+            return
+        # FIXME: after upgrading couchdb to a version supporting builting
+        # filter for doc_ids, pass here the correct params to trigger using it
+        return dict()
 
 
 class ChangeListener(log.Logger):
@@ -43,37 +122,46 @@ class ChangeListener(log.Logger):
 
     def __init__(self, logger):
         log.Logger.__init__(self, logger)
-        # id -> [(callback, listener_id)]
-        self._listeners = {}
+        # name -> Filter
+        self._filters = dict()
+        self._filters['doc_ids'] = DocIdFilter()
 
-    def listen_changes(self, doc_ids, callback):
+    def listen_changes(self, filter, callback, kwargs=dict()):
         assert callable(callback)
-        assert isinstance(doc_ids, (list, tuple, ))
+
         l_id = str(uuid.uuid1())
-        self.log("Registering listener for doc_ids: %r, callback %r",
-                 doc_ids, callback)
-        for doc_id in doc_ids:
-            cur = self._listeners.get(doc_id, list())
-            cur.append((callback, l_id, ))
-            self._listeners[doc_id] = cur
-        return defer.succeed(l_id)
+
+        if isinstance(filter, (list, tuple, )):
+            doc_ids = list(filter)
+            filter_i = self._filters['doc_ids']
+            filter_i.add_listener(callback, l_id, doc_ids)
+            self.log("Registering listener for doc_ids: %r, callback %r",
+                     doc_ids, callback)
+        elif IViewFactory.providedBy(filter):
+            filter_i = ViewFilter(filter, kwargs)
+            if filter_i.name in self._filters:
+                filter_i = self._filters[filter_i.name]
+            self._filters[filter_i.name] = filter_i
+            filter_i.add_listener(callback, l_id)
+        else:
+            raise AttributeError("Not suported filter. You should pass a list"
+                                 " of document ids or a IViewFactory object")
+        d = self._setup_notifier(filter_i)
+        d.addCallback(defer.override_result, l_id)
+        return d
 
     def cancel_listener(self, listener_id):
-        for values in self._listeners.itervalues():
-            iterator = (x for x in values if x[1] == listener_id)
-            for matching in iterator:
-                values.remove(matching)
+        defers = list()
+        for filter_i in self._filters.itervalues():
+            if filter_i.cancel_listener(listener_id):
+                defers.append(self._setup_notifier(filter_i))
+        return defer.DeferredList(defers, consumeErrors=True)
 
     ### protected
 
-    def _extract_doc_ids(self):
-        return list(doc_id for doc_id, value in self._listeners.iteritems()
-                    if len(value) > 0)
-
-    def _trigger_change(self, doc_id, rev, deleted):
-        listeners = self._listeners.get(doc_id, list())
-        for cb, _ in listeners:
-            reactor.callLater(0, cb, doc_id, rev, deleted)
+    def _setup_notifier(self, filter):
+        # to be overriden in the child classes
+        return defer.succeed(None)
 
 
 class Connection(log.Logger, log.LogProxy):
@@ -137,17 +225,16 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
-    def changes_listener(self, doc_ids, callback):
-        assert isinstance(doc_ids, (tuple, list, ))
+    def changes_listener(self, filter, callback, **kwargs):
         assert callable(callback)
 
         r = RevisionAnalytic(self, callback)
-        d = self._database.listen_changes(doc_ids, r.on_change)
+        d = self._database.listen_changes(filter, r.on_change, kwargs)
 
-        def set_listener_id(l_id, doc_ids):
-            self._listeners[l_id] = doc_ids
+        def set_listener_id(l_id, filter):
+            self._listeners[l_id] = filter
 
-        d.addCallback(set_listener_id, doc_ids)
+        d.addCallback(set_listener_id, filter)
         return d
 
     def cancel_listener(self, doc_id):

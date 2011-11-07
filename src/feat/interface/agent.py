@@ -259,10 +259,11 @@ class IAgencyAgent(Interface):
         @returns: Deferred called with the updated document (latest revision).
         '''
 
-    def register_change_listener(doc_id, callback):
+    def register_change_listener(filter, callback, **kwargs):
         '''
         Registers for receiving notifications about the document changes.
-        @param doc_id: id of the document
+        @param filter: id of the document or a IViewFactory to use for
+                       filtering
         @param callback: callable to be called, it will be called with the
                          following parametes:
                          - doc_id
@@ -271,10 +272,11 @@ class IAgencyAgent(Interface):
                          - own_change (flag saying if the notification was
                            triggered by the change done on the same
                            connection)
+        @params kwargs: Optional keywords to be passed to the changes query.
         @return: None
         '''
 
-    def cancel_change_listener(doc_id):
+    def cancel_change_listener(filter):
         '''
         Unregister agent from receiving the notifications about document
         changes.

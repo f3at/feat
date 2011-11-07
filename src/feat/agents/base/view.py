@@ -27,7 +27,7 @@ from zope.interface import directlyProvides
 from feat.common import formatable, decorator, log, annotate
 from feat.agents.base import document
 
-from feat.interface.view import *
+from feat.interface.view import IViewFactory, DESIGN_DOC_ID
 
 
 @decorator.simple_class
@@ -52,18 +52,11 @@ class BaseView(annotate.Annotable):
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
-        for method_name in 'map', 'reduce':
+        for method_name in 'map', 'reduce', 'filter':
             method = dct.get(method_name, None)
             if callable(method):
                 setattr(cls, method_name, cls._querymethod(method))
         directlyProvides(cls, IViewFactory)
-
-    def map(doc):
-        if False:
-            yield
-
-    def reduce(keys, values):
-        pass
 
     @classmethod
     def parse(cls, key, value, reduced):
@@ -140,6 +133,7 @@ class DesignDocument(document.Document):
     document.field('doc_id', u"_design/%s" % (DESIGN_DOC_ID, ), "_id")
     document.field('language', u'python')
     document.field('views', dict())
+    document.field('filters', dict())
 
     @classmethod
     def generate_from_views(cls, views):
@@ -147,14 +141,18 @@ class DesignDocument(document.Document):
         for view in views:
             view = IViewFactory(view)
             entry = dict()
-            entry['map'] = unicode(view.map.source)
-            if view.use_reduce:
-                if isinstance(view.reduce, (str, unicode, )):
-                    red = unicode(view.reduce)
-                else:
-                    red = unicode(view.reduce.source)
-                entry['reduce'] = red
-            instance.views[view.name] = entry
+            if hasattr(view, 'map'):
+                entry['map'] = unicode(view.map.source)
+                if view.use_reduce:
+                    if isinstance(view.reduce, (str, unicode, )):
+                        red = unicode(view.reduce)
+                    else:
+                        red = unicode(view.reduce.source)
+                    entry['reduce'] = red
+                instance.views[view.name] = entry
+
+            if hasattr(view, 'filter'):
+                instance.filters[view.name] = unicode(view.filter.source)
         return instance
 
 

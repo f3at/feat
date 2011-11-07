@@ -406,12 +406,12 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return fiber.wrap_defer(state.medium.delete_document, doc)
 
     @replay.immutable
-    def register_change_listener(self, state, doc_id, callback):
-        state.medium.register_change_listener(doc_id, callback)
+    def register_change_listener(self, state, filter, callback, **kwargs):
+        state.medium.register_change_listener(filter, callback, **kwargs)
 
     @replay.immutable
-    def cancel_change_listener(self, state, doc_id):
-        state.medium.cancel_change_listener(doc_id)
+    def cancel_change_listener(self, state, filter):
+        state.medium.cancel_change_listener(filter)
 
     @replay.immutable
     def query_view(self, state, factory, **options):
