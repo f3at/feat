@@ -862,31 +862,8 @@ class Agency(agency.Agency):
         self.log("Written pid file %s" % path)
 
     def _spawn_backup_agency(self):
-
-        def get_cmd_line():
-            python_path = ":".join(sys.path)
-            path = os.environ.get("PATH", "")
-            feat_debug = self.get_logging_filter()
-
-            command = 'feat'
-            args = ['-D']
-            env = dict(PYTHONPATH=python_path,
-                       FEAT_DEBUG=feat_debug,
-                       PATH=path)
-            return command, args, env
-
-        if self._shutdown_task is not None:
-            return
-
         if self._broker.is_master() and not self._broker.has_slave():
-            self.log("Spawning backup agency")
-            cmd, cmd_args, env = get_cmd_line()
-            self._store_config(env)
-
-            p = standalone.Process(self, cmd, cmd_args, env)
-            return p.restart()
-        else:
-            return
+            return self._spawn_agency("backup")
 
     def get_broker_backend(self):
         if self.role != broker.BrokerRole.master:

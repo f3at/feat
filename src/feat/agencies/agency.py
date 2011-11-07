@@ -29,6 +29,8 @@ import weakref
 import warnings
 import socket
 import types
+import sys
+import os
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -44,6 +46,7 @@ from feat.agents.common import host
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
                          first, error, enum)
+from feat.process import standalone
 
 # Import interfaces
 from interface import (IAgencyAgentInternal,
@@ -1437,6 +1440,30 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _flush_agents_to_spawn(self):
         return self._flushing_sem.run(self._flush_agents_body)
+
+    def _spawn_agency(self, desc=""):
+
+        def get_cmd_line():
+            python_path = ":".join(sys.path)
+            path = os.environ.get("PATH", "")
+            feat_debug = self.get_logging_filter()
+
+            command = 'feat'
+            args = ['-D']
+            env = dict(PYTHONPATH=python_path,
+                       FEAT_DEBUG=feat_debug,
+                       PATH=path)
+            return command, args, env
+
+        if self._shutdown_task is not None:
+            return
+
+        self.log("Spawning %s agency", desc)
+        cmd, cmd_args, env = get_cmd_line()
+        self._store_config(env)
+
+        p = standalone.Process(self, cmd, cmd_args, env)
+        return p.restart()
 
     ### private ###
 
