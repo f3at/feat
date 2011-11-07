@@ -29,6 +29,8 @@ import weakref
 import warnings
 import socket
 import types
+import sys
+import os
 
 # Import external project modules
 from twisted.python.failure import Failure
