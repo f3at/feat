@@ -1323,7 +1323,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def _initiate(self, **opts):
         self._startup_task = type(self).startup_factory(self, **opts)
         d = self._startup_task.initiate()
-        d.addBoth(defer.bridge_result, setattr, self, '_startup_task', None)
+        d.addBoth(defer.bridge_param, setattr, self, '_startup_task', None)
         return d
 
     def _shutdown(self, **opts):
