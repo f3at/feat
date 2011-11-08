@@ -259,8 +259,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
 
             def kill_slave(slave):
                 self.log('slave is %r', slave)
-                d = slave.callRemote('_shutdown',
-                                     stop_process=True, gentle=gentle)
+                method_to_call = 'shutdown' if gentle else 'kill'
+                d = slave.callRemote(method_to_call, stop_process=True)
                 d.addErrback(error_handler)
                 return d
 

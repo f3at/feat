@@ -1056,12 +1056,16 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def set_logging_filter(self, filter):
         log.FluLogKeeper.set_debug(filter)
 
+    @manhole.expose()
     def shutdown(self):
         '''Called when the agency is ordered to shutdown all the agents..'''
         return self._shutdown(gentle=True)
 
+    @manhole.expose()
     def kill(self):
-        '''Called when the agency is ordered to shutdown all the agents..'''
+        '''
+        Called when the agency terminated as the result of violent shutdown.
+        '''
         return self._shutdown(gentle=False)
 
     def upgrade(self, upgrade_cmd):
@@ -1229,8 +1233,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self._shutdown_task = type(self).shutdown_factory(self, **opts)
             return self._shutdown_task.initiate()
-
-    remote__shutdown = _shutdown # used by Broker
 
     ### private ###
 
