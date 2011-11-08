@@ -24,8 +24,8 @@
 from zope.interface import implements
 
 from feat.agencies.emu import database
-from feat.agents.base import cache, document
-from feat.common import journal, defer, log
+from feat.agents.base import cache, document, view
+from feat.common import journal, defer, log, fiber
 from feat.test import common
 
 from feat.agencies.interface import NotFoundError
@@ -47,14 +47,19 @@ class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     ### used by Cache ###
 
-    def register_change_listener(self, doc_id, cb):
-        self._db.changes_listener((doc_id, ), cb)
+    def register_change_listener(self, doc_id, cb, **kwargs):
+        if isinstance(doc_id, (str, unicode)):
+            doc_id = (doc_id, )
+        self._db.changes_listener(doc_id, cb, **kwargs)
 
     def cancel_change_listener(self, doc_id):
         self._db.cancel_listener(doc_id)
 
     def get_document(self, doc_id):
-        return self._db.get_document(doc_id)
+        return fiber.wrap_defer(self._db.get_document, doc_id)
+
+    def query_view(self, factory, **kwargs):
+        return fiber.wrap_defer(self._db.query_view, factory, **kwargs)
 
     ### IDocumentChangeListner ###
 
@@ -79,6 +84,65 @@ class TestDocument(document.Document):
 
     document_type = 'test_document'
     document.field('field', 0)
+    document.field('zone', None)
+
+
+class TestView(view.BaseView):
+
+    name = 'test_view'
+
+    def map(doc):
+        if doc.get('.type') == 'test_document':
+            zone = doc.get('zone')
+            yield zone, doc.get('_id')
+
+    def filter(doc, request):
+        zone = request['query'].get('zone')
+        return doc.get('.type') == 'test_document' and \
+               (zone is None or zone == doc.get('zone'))
+
+
+class TestCacheWorkingWithViewFilter(common.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+        db = database.Database()
+        self._db = db.get_connection()
+
+        design_doc = view.DesignDocument.generate_from_views((TestView, ))
+        yield self._db.save_document(design_doc)
+
+        self.agent = DummyAgent(self, db.get_connection())
+        filter_params = dict(zone='test_zone')
+        self.cache = cache.DocumentCache(
+            self.agent, self.agent, TestView, filter_params)
+
+        yield self._db.save_document(
+            TestDocument(doc_id=u'test', zone=u'test_zone'))
+        yield self._db.save_document(
+            TestDocument(doc_id=u'test2', zone=u'other_zone'))
+
+    @defer.inlineCallbacks
+    def testItsWorking(self):
+        doc_ids = yield self.cache.load_view(key='test_zone')
+        self.assertEqual(['test'], doc_ids)
+        doc = self.cache.get_document('test')
+        self.assertIsInstance(doc, TestDocument)
+
+        self.assertEqual(0, len(self.agent.notifications))
+
+        doc_ = yield self._db.save_document(
+            TestDocument(doc_id=u'test3', zone=u'test_zone'))
+        yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
+        type_, doc_id, doc = self.agent.notifications.pop()
+        self.assertEqual('change', type_)
+        self.assertEqual(doc_, doc)
+
+        self._db.delete_document(doc_)
+        yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
+        self.assertRaises(NotFoundError, self.cache.get_document, doc_.doc_id)
+        self.assertNotIn(doc_.doc_id, self.cache.get_document_ids())
 
 
 class TestCache(common.TestCase):

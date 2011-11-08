@@ -27,6 +27,7 @@ from feat.agents.base import replay
 from feat.common import log, serialization, fiber, defer
 
 from feat.agencies.interface import NotFoundError
+from feat.interface.view import IViewFactory
 
 
 class IDocumentChangeListener(Interface):
@@ -51,16 +52,21 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     and can trigger callbacks when they change.
     """
 
-    def __init__(self, patron, listener=None):
+    def __init__(self, patron, listener=None,
+                 view_factory=None, filter_params=None):
         log.LogProxy.__init__(self, patron)
         log.Logger.__init__(self, self)
-        replay.Replayable.__init__(self, patron, listener)
+        replay.Replayable.__init__(self, patron, listener,
+                                   view_factory, filter_params)
 
-    def init_state(self, state, agent, listener):
+    def init_state(self, state, agent, listener, view_factory, filter_params):
         state.agent = agent
         state.listener = listener and IDocumentChangeListener(listener)
         # doc_id -> document
         state.documents = dict()
+
+        state.view_factory = view_factory and IViewFactory(view_factory)
+        state.filter_params = filter_params or dict()
 
     @replay.immutable
     def restored(self, state):
@@ -70,15 +76,33 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
 
     ### public ###
 
+    @replay.journaled
+    def load_view(self, state, **params):
+        if not state.view_factory:
+            raise AttributeError("This function call makes sense only if the"
+                                 " cache has been configured to use the view.")
+        f = state.agent.query_view(state.view_factory, **params)
+        f.add_callback(self._view_loaded)
+        f.add_callback(fiber.drop_param, state.agent.register_change_listener,
+                       state.view_factory, self._document_changed,
+                       **state.filter_params)
+        f.add_callback(fiber.drop_param, self.get_document_ids)
+        return f
+
     @replay.immutable
+    def get_document_ids(self, state):
+        return state.documents.keys()
+
+    @replay.journaled
     def add_document(self, state, doc_id):
         if doc_id in state.documents:
             return fiber.succeed(state.documents[doc_id])
-        d = self._update_document(doc_id)
-        d.addCallback(defer.bridge_param,
-                      state.agent.register_change_listener,
-                      doc_id, self._document_changed)
-        return d
+        f = self._update_document(doc_id)
+        if state.view_factory is None:
+            f.add_callback(defer.bridge_param,
+                           state.agent.register_change_listener,
+                           doc_id, self._document_changed)
+        return f
 
     @replay.immutable
     def get_document(self, state, doc_id):
@@ -90,15 +114,22 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.mutable
     def forget_document(self, state, doc_id):
         self._delete_doc(doc_id)
-        state.agent.cancel_change_listener(doc_id)
+        if not state.view_factory:
+            state.agent.cancel_change_listener(doc_id)
 
     ### private ###
 
+    @replay.mutable
+    def _view_loaded(self, state, result):
+        state.documents.clear()
+        fibers = [self._update_document(doc_id) for doc_id in result]
+        return fiber.FiberList(fibers, consumeErrors=True).succeed()
+
     @replay.immutable
     def _update_document(self, state, doc_id):
-        d = state.agent.get_document(doc_id)
-        d.addCallback(self._success_on_get)
-        return d
+        f = state.agent.get_document(doc_id)
+        f.add_callback(self._success_on_get)
+        return f
 
     @replay.mutable
     def _success_on_get(self, state, doc):
@@ -109,15 +140,15 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     def _delete_doc(self, state, doc_id):
         state.documents.pop(doc_id, None)
 
-    @replay.immutable
+    @replay.journaled
     def _document_changed(self, state, doc_id, rev, deleted, own_change):
         if deleted:
             self._delete_doc(doc_id)
             if state.listener:
                 state.listener.on_document_deleted(doc_id)
         else:
-            d = self._update_document(doc_id)
+            f = self._update_document(doc_id)
             if state.listener:
-                d.addCallback(state.listener.on_document_change)
-            d.addCallback(defer.override_result, None)
-            return d
+                f.add_callback(state.listener.on_document_change)
+            f.add_callback(fiber.override_result, None)
+            return f
