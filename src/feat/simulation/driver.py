@@ -86,7 +86,7 @@ class Commands(manhole.Manhole):
         d = ag.initiate(self._database, self._journaler, self, ip, hostname,
                         start_host, msg, tun)
         d.addCallback(defer.override_result, ag)
-        d.addCallback(defer.bridge_result, self.wait_for_idle)
+        d.addCallback(defer.bridge_param, self.wait_for_idle)
         return d
 
     @manhole.expose()
