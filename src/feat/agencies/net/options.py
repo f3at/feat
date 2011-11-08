@@ -20,6 +20,8 @@
 
 # Headers in this file shall remain intact.
 import optparse
+import tempfile
+import os
 
 from feat.common import reflect
 
@@ -54,6 +56,8 @@ DEFAULT_DAEMONIZE = False
 
 DEFAULT_FORCE_HOST_RESTART = False
 MASTER_LOG_LINK = "feat.master.log"
+
+DEFAULT_LOCK_PATH = os.path.join(tempfile.gettempdir(), 'feat.agency.lock')
 
 
 def add_options(parser):
@@ -121,6 +125,10 @@ def add_agency_options(parser):
                       action="store", dest="standalone_kwargs",
                       help="serialized kwargs to pass to standalone agent",
                       default=None)
+    group.add_option('--lock-path',
+                      action="store", dest="lock_path",
+                      help="path for the inter agencies lock (default: "
+                           "$TEMPDIR/feat.lock)", default=DEFAULT_LOCK_PATH)
 
     parser.add_option_group(group)
 

@@ -174,9 +174,10 @@ class Agency(agency.Agency):
                  rundir=None,
                  logdir=None,
                  daemonize=options.DEFAULT_DAEMONIZE,
-                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART):
+                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART,
+                 lock_path=options.DEFAULT_LOCK_PATH):
 
-        agency.Agency.__init__(self)
+        agency.Agency.__init__(self, lock_path)
 
         curdir = os.path.abspath(os.curdir)
         if rundir is None:
