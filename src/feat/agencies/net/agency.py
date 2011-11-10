@@ -91,7 +91,8 @@ class Startup(agency.Startup):
                 socket_path, on_master_cb=self.friend.on_become_master,
                 on_slave_cb=self.friend.on_become_slave,
                 on_disconnected_cb=self.friend.on_broker_disconnect,
-                on_remove_slave_cb=self.friend.on_remove_slave)
+                on_remove_slave_cb=self.friend.on_remove_slave,
+                on_master_missing_cb=self.friend.on_master_missing)
 
         self.friend._setup_snapshoter()
         return self.friend._broker.initiate_broker()
@@ -164,6 +165,7 @@ class Agency(agency.Agency):
                  manhole_port=options.DEFAULT_MH_PORT,
                  agency_journal=options.DEFAULT_JOURFILE,
                  socket_path=options.DEFAULT_SOCKET_PATH,
+                 lock_path=options.DEFAULT_LOCK_PATH,
                  gateway_port=options.DEFAULT_GW_PORT,
                  gateway_p12=options.DEFAULT_GW_P12_FILE,
                  allow_tcp_gateway=options.DEFAULT_ALLOW_TCP_GATEWAY,
@@ -174,10 +176,9 @@ class Agency(agency.Agency):
                  rundir=None,
                  logdir=None,
                  daemonize=options.DEFAULT_DAEMONIZE,
-                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART,
-                 lock_path=options.DEFAULT_LOCK_PATH):
+                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART):
 
-        agency.Agency.__init__(self, lock_path)
+        agency.Agency.__init__(self)
 
         curdir = os.path.abspath(os.curdir)
         if rundir is None:
@@ -198,6 +199,7 @@ class Agency(agency.Agency):
                           manhole_port=manhole_port,
                           agency_journal=agency_journal,
                           socket_path=socket_path,
+                          lock_path=lock_path,
                           gateway_port=gateway_port,
                           gateway_p12=gateway_p12,
                           allow_tcp_gateway=allow_tcp_gateway,
@@ -287,6 +289,9 @@ class Agency(agency.Agency):
 
     def on_remove_slave(self):
         return self._spawn_backup_agency()
+
+    def on_master_missing(self):
+        pass
 
     def on_become_slave(self):
         self.start_host_agent = False
@@ -546,6 +551,7 @@ class Agency(agency.Agency):
                      manhole_port=None,
                      agency_journal=None,
                      socket_path=None,
+                     lock_path=None,
                      gateway_port=None,
                      gateway_p12=None,
                      allow_tcp_gateway=None,
@@ -572,11 +578,13 @@ class Agency(agency.Agency):
                             authorized_keys=authorized_keys,
                             port=manhole_port)
 
-        if socket_path and not os.path.isabs(socket_path):
-            socket_path = os.path.join(rundir, socket_path)
+        for path in [socket_path, lock_path]:
+            if path and not os.path.isabs(path):
+                path = os.path.join(rundir, path)
 
         agency_conf = dict(journal=agency_journal,
                            socket_path=socket_path,
+                           lock_path=lock_path,
                            rundir=rundir,
                            logdir=logdir,
                            enable_spawning_slave=enable_spawning_slave,

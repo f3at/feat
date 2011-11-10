@@ -24,10 +24,10 @@ import functools
 
 from twisted.internet import reactor
 from twisted.internet.error import (CannotListenError, ConnectionRefusedError,
-                                    ConnectionDone, )
+                                    ConnectionDone, ConnectError)
 from twisted.spread import pb, jelly
 
-from feat.common import log, enum, defer, first, error, manhole
+from feat.common import log, enum, defer, first, error, manhole, time
 from feat.agencies import common
 
 
@@ -135,7 +135,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def __init__(self, agency, socket_path=None,
                  on_master_cb=None, on_slave_cb=None,
                  on_disconnected_cb=None, on_remove_slave_cb=None,
-                 standalone=False):
+                 on_master_missing_cb=None, standalone=False):
         log.Logger.__init__(self, agency)
         log.LogProxy.__init__(self, agency)
         common.StateMachineMixin.__init__(self, BrokerRole.disconnected)
@@ -154,6 +154,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         self.on_slave_cb = on_slave_cb
         self.on_disconnected_cb = on_disconnected_cb
         self.on_remove_slave_cb = on_remove_slave_cb
+        self.on_master_missing_cb = on_master_missing_cb
 
         self.shared_state = SharedState(self)
 
@@ -325,6 +326,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._set_state(BrokerRole.disconnected)
         if callable(self.on_disconnected_cb):
             return self.on_disconnected_cb(previous_state)
+
+    def missing_master(self):
+        pass
 
     # events
 
@@ -501,6 +505,13 @@ class SlaveFactory(pb.PBClientFactory, log.Logger):
     def clientConnectionFailed(self, connector, reason):
         pb.PBClientFactory.clientConnectionFailed(self, connector, reason)
         self.info('Client connection failed!. Reason: %r', reason)
+
+        if reason.check(ConnectError):
+            if not self.broker.is_standalone():
+                self.broker.remove_stale_socket()
+            else:
+                self.broker.missing_master()
+
         if reason.check(ConnectionRefusedError):
             self.broker.remove_stale_socket()
             d = self.broker.initiate_broker()
@@ -530,3 +541,23 @@ class StandaloneBroker(Broker):
     def __init__(self, *args, **kwargs):
         Broker.__init__(self, *args, **kwargs)
         self._is_standalone = True
+        self._reconn_dc = None
+
+    def missing_master(self):
+        self._reconn_dc = time.callLater(5, self.initiate_broker)
+        return self.spawn_missing_master()
+
+    def spawn_missing_master(self):
+        '''
+        Notifies the standalone slave agency that the master agency is missing
+        '''
+        d = defer.succeed(None)
+        if callable(self.on_master_missing_cb):
+            d.addCallback(defer.drop_param, self.on_master_missing_cb)
+            d.addErrback(self._handle_critical_error)
+        return d
+
+    def disconnect(self):
+        if self._reconn_dc is not None and self._reconn_dc.active():
+            self._reconn_dc.cancel()
+        return Broker.disconnect(self)

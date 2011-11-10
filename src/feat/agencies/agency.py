@@ -29,8 +29,6 @@ import weakref
 import warnings
 import socket
 import types
-import sys
-import os
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -39,7 +37,6 @@ from zope.interface import implements
 # Import feat modules
 from feat.agencies import common, dependency, retrying, periodic, messaging
 from feat.agencies.messaging.interface import IBackend
-from feat.agencies.net import options
 from feat.agencies.interface import IDbConnectionFactory
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
@@ -1032,7 +1029,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     start_host_agent = False
 
-    def __init__(self, lock_path=options.DEFAULT_LOCK_PATH):
+    def __init__(self):
         log.LogProxy.__init__(self, log.FluLogKeeper())
         log.Logger.__init__(self, self)
         dependency.AgencyDependencyMixin.__init__(self, ExecMode.test)
@@ -1068,8 +1065,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # semaphore preventing multiple entries into logic spawning agents
         # by host agent
         self._flushing_sem = defer.DeferredSemaphore(1)
-
-        self._lock_path = lock_path
 
         self.add_reconnected_cb(self._notify_agents_about_reconnection)
         self.add_disconnected_cb(self._notify_agents_about_disconnection)

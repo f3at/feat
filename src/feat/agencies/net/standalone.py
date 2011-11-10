@@ -24,7 +24,7 @@ import os
 from twisted.internet import reactor
 
 from feat.agencies.net import agency, broker
-from feat.common import manhole, defer
+from feat.common import manhole, defer, time, fcntl
 
 from feat.interface.recipient import IRecipient
 
@@ -35,10 +35,17 @@ class Startup(agency.Startup):
         self.friend._notifications.callback("running", self)
 
 
+class Shutdown(agency.Shutdown):
+
+    def stage_internals(self):
+        self.friend._release_lock()
+
+
 class Agency(agency.Agency):
 
     broker_factory = broker.StandaloneBroker
     startup_factory = Startup
+    shutdown_factory = Shutdown
 
     def __init__(self, options=None):
         agency.Agency.__init__(self)
@@ -48,6 +55,9 @@ class Agency(agency.Agency):
         self._load_config(os.environ, options)
 
         self._notifications = defer.Notifier()
+        self._starting_master = False
+        self._release_lock_cl = None
+        self._lock_file = None
 
     def initiate(self):
         reactor.callWhenRunning(self._initiate)
@@ -59,6 +69,59 @@ class Agency(agency.Agency):
 
     def wait_running(self):
         return self._notifications.wait("running")
+
+    def on_master_missing(self):
+        '''
+        Tries to spawn a master agency if the slave agency failed to connect for
+        several times. To avoid several slave agencies spawning the master
+        agency a file lock is used
+        @param master: Remote reference to the broker object
+        '''
+        self.info("We could not contact the master agency, starting a new one")
+        if self._starting_master:
+            self.info("Master already starting, waiting for it")
+            return
+        if self._shutdown_task is not None:
+            self.info("Not spwaning master because we are about to terminate "
+                      "ourselves")
+            return
+
+        # Try the get an exclusive lock on the master agency startup
+        if self._acquire_lock():
+            self._starting_master = True
+            # Allow restarting a master if we didn't succeed after 10 seconds
+            self._release_lock_cl = time.callLater(10, self._release_lock)
+            return self._spawn_agency("master")
+
+    def on_become_slave(self):
+        if self._release_lock_cl is not None:
+            self._release_lock()
+        return agency.Agency.on_become_slave(self)
+
+    def _acquire_lock(self):
+        if not self._lock_file:
+            self._lock_file = open(self.config['agency']['lock_path'], 'rb+')
+        self.debug("Trying to take a lock on %s to start the master agency",
+                   self._lock_file.name)
+
+        if fcntl.lock(self._lock_file.fileno()):
+            self.debug("Lock taken sucessfully, we will start the master agency")
+            return True
+        self.debug("Could not take the lock to spawn the master agency")
+        return False
+
+    def _release_lock(self):
+        self.debug("Releasing master agency lock")
+        if self._release_lock_cl is not None and \
+                self._release_lock_cl.active():
+            self._release_lock_cl.cancel()
+        self._release_lock_cl = None
+        if self._lock_file is None:
+            return
+        fcntl.unlock(self._lock_file.fileno())
+        self._starting_master = False
+        self._lock_file.close()
+        self._lock_file = None
 
     def _flush_agents_body(self):
         if self._to_spawn:
