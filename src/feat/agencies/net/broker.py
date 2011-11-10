@@ -248,15 +248,15 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     @manhole.expose()
     def shutdown_slaves(self, gentle=False):
+
+        def error_handler(f):
+            if f.check(ConnectionDone, pb.PBConnectionLost):
+                self.log('Swallowing %r - this is expected result.',
+                         f.value.__class__.__name__)
+            else:
+                f.raiseException()
+
         if self.is_master():
-
-            def error_handler(f):
-                if f.check(ConnectionDone, pb.PBConnectionLost):
-                    self.log('Swallowing %r - this is expected result.',
-                             f.value.__class__.__name__)
-                else:
-                    f.raiseException()
-
             def kill_slave(slave):
                 self.log('slave is %r', slave)
                 method_to_call = 'shutdown' if gentle else 'kill'
@@ -267,7 +267,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return defer.DeferredList([kill_slave(x)
                                        for x in self.iter_slaves()])
         elif self.is_slave():
-            self._master.callRemote('shutdown_slaves')
+            d = self._master.callRemote('shutdown_slaves')
+            d.addErrback(error_handler)
+            return d
 
     def append_slave(self, broker, slave_id, slave, standalone):
         self.slaves[slave_id] = SlaveReference(broker, slave_id, slave,
