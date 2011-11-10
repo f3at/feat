@@ -117,12 +117,13 @@ def script():
 class dbscript(object):
 
     def __enter__(self):
+        log.FluLogKeeper.init()
+        log.FluLogKeeper.set_debug('5')
+
         opts, args = parse_options()
         self.connection = create_connection(
             opts.db_host, opts.db_port, opts.db_name)
 
-        log.FluLogKeeper.init()
-        log.FluLogKeeper.set_debug('5')
         log.info('script', "Using host: %s, port: %s, db_name; %s",
                  opts.db_host, opts.db_port, opts.db_name)
         self._deferred = defer.Deferred()
