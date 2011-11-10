@@ -22,32 +22,27 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+# Helper functions arround fcntl
+from feat import hacks
 
-"""
-Because Flumotion is depending heavily on ihooks and relative imports
-are not supported in python 2.6 implementation of ihook, it is not possible
-to import a root module with the same name as the current module.
-This is a probleme for feat's json module because it needs to import
-the root json module. This function just import it from inside another
-pacakge.
-"""
+_fcntl = hacks.import_fcntl()
 
-
-def import_json():
-    import json
-    return json
+# lockf can be used instead, but the lock is shared in the same process. That
+# means we will always succeed takeing the lock from the same process
+LOCK_FN = _fcntl.flock
 
 
-def import_time():
-    import time
-    return time
+def lock(fd, use_flock=False):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        return True
+    except IOError:
+        return False
 
+def unlock(fd, use_flock=False):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_UN)
+        return True
+    except IOError:
+        return False
 
-def import_signal():
-    import signal
-    return signal
-
-
-def import_fcntl():
-    import fcntl
-    return fcntl
