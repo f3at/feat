@@ -46,3 +46,7 @@ class Labour(labour.BaseLabour):
     @replay.side_effect
     def update_records(self, name, records):
         pass
+
+    @replay.side_effect
+    def notify_slaves(self):
+        pass

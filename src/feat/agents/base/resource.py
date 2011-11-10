@@ -580,6 +580,8 @@ class AgentMixin(object):
 @serialization.register
 class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
+    ignored_state_keys = ['agent']
+
     preallocation_timeout = ALLOCATION_TIMEOUT
 
     def __init__(self, agent):

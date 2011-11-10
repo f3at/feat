@@ -31,6 +31,8 @@ class BaseProtocol(log.Logger, replay.Replayable):
 
     implements(IAgentProtocol)
 
+    ignored_state_keys = ['medium', 'agent']
+
     protocol_type = None
     protocol_id = None
 

@@ -76,6 +76,8 @@ class Resolver(authority.PySourceAuthority):
             dns_record = factory(record.ip, record.ttl)
             translated.append(dns_record)
         self.records[name] = translated
+        if not translated:
+            del(self.records[name])
 
         self._update_serial()
 
@@ -121,6 +123,9 @@ class Labour(labour.BaseLabour):
     @replay.side_effect
     def update_records(self, name, records):
         self._resolver.update_records(name, records)
+
+    @replay.side_effect
+    def notify_slaves(self):
         self._notify_slaves()
 
     ### private ###

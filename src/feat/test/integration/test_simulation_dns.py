@@ -19,10 +19,16 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+from twisted.python import failure
+from twisted.trial.unittest import FailTest
+
 from feat.test.integration import common
 
 from feat.agents.base import agent, descriptor, replay, resource
 from feat.agents.common import dns
+from feat.agents.dns.dns_agent import DnsName
+
+from feat.agencies.interface import NotFoundError
 
 from feat.common import defer
 
@@ -142,34 +148,56 @@ class DNSAgentTest(common.SimulationTest):
     @defer.inlineCallbacks
     def testAddressMapping(self):
         dns = self.dns1
+        yield dns.remove_mapping("not.existing", "0.0.0.0")
+        yield self.assert_not_resolves('not.existing.test.lan', "0.0.0.0")
+        yield dns.add_mapping("dummy", "123.45.67.89")
+        yield self.assert_resolves('dummy.test.lan', "123.45.67.89")
+        yield dns.add_mapping("dummy", "123.45.67.89")
+        yield self.assert_resolves('dummy.test.lan', "123.45.67.89")
+        yield dns.remove_mapping("dummy", "0.0.0.0")
+        yield self.assert_resolves('dummy.test.lan', "123.45.67.89")
+        yield dns.remove_mapping("dummy", "123.45.67.89")
+        yield self.assert_not_resolves('dummy.test.lan', "123.45.67.89")
 
-        res = yield dns.remove_mapping("not.existing.test.lan", "0.0.0.0")
-        self.assertFalse(res)
-        res = yield dns.add_mapping("dummy.test.lan", "123.45.67.89")
-        self.assertTrue(res)
-        res = yield dns.add_mapping("dummy.test.lan", "123.45.67.89")
-        self.assertFalse(res)
-        res = yield dns.remove_mapping("dummy.test.lan", "0.0.0.0")
-        self.assertFalse(res)
-        res = yield dns.remove_mapping("dummy.test.lan", "123.45.67.89")
-        self.assertTrue(res)
+    @defer.inlineCallbacks
+    def assert_resolves(self, name, ip):
+        doc_id = DnsName.name_to_id(name)
+        try:
+            doc = yield self.driver.get_document(doc_id)
+        except NotFoundError:
+            raise FailTest("Document id: %s not found, asserting for ip: %r"
+                           % (doc_id, ip))
+        self.assertTrue([x for x in doc.entries if x.ip == ip],
+                        "name %s doesn't resolve to %s" % (name, ip, ))
+
+    def assert_not_resolves(self, name, ip):
+
+        def evaluate(doc):
+            self.assertFalse([x for x in doc.entries if x.ip == ip],
+                             "Name %s resolves to %s. Entries: %r" %
+                             (name, ip, doc.entries, ))
+
+        d = self.driver.get_document(DnsName.name_to_id(name))
+        d.addCallback(evaluate)
+        d.addErrback(failure.Failure.trap, NotFoundError)
+        return d
 
     @defer.inlineCallbacks
     def testAliases(self):
         dns = self.dns1
-
-        res = yield dns.remove_alias("dummy", "mycname.example.com")
-        self.assertFalse(res)
-        res = yield dns.add_alias("dummy", "mycname.example.com")
-        self.assertTrue(res)
-        res = yield dns.add_alias("dummy", "mycname.example.com")
-        self.assertFalse(res)
-        res = yield dns.add_alias("2aliases", "mycname.example.com")
-        self.assertFalse(res)
-        res = yield dns.remove_alias("dummy", "error.example.com")
-        self.assertFalse(res)
-        res = yield dns.remove_alias("dummy", "mycname.example.com")
-        self.assertTrue(res)
+        yield dns.add_alias("dummy", "mycname.example.com")
+        yield self.assert_resolves('dummy.test.lan', "mycname.example.com")
+        yield dns.add_alias("dummy", "mycname.example.com")
+        yield self.assert_resolves('dummy.test.lan', "mycname.example.com")
+        yield dns.add_alias("2aliases", "mycname.example.com")
+        yield self.assert_resolves('2aliases.test.lan', "mycname.example.com")
+        # the folliowing call should overwrite the alias
+        yield dns.add_alias("dummy", "error.example.com")
+        yield self.assert_not_resolves('dummy.test.lan', "mycname.example.com")
+        yield self.assert_resolves('dummy.test.lan', "error.example.com")
+        yield dns.remove_alias("dummy", "error.example.com")
+        yield self.assert_not_resolves('dummy.test.lan', "mycname.example.com")
+        yield self.assert_not_resolves('dummy.test.lan', "error.example.com")
 
     @defer.inlineCallbacks
     def testMappingBroadcast(self):
@@ -328,33 +356,33 @@ class DNSAgentTest(common.SimulationTest):
         agent2 = self.agent2
 
         assertAlias("", None)
-        assertAlias("foo.bar.example.lan", None)
-        assertAlias("spam.beans.example.lan", None)
+        assertAlias("foo.bar.test.lan", None)
+        assertAlias("spam.beans.test.lan", None)
 
         # Test mapping addition
 
         yield agent1.register_alias()
-        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
 
         yield agent2.register_alias()
-        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
-        assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
+        assertAlias("spam.beans.test.lan", "spam.beans.example.lan")
 
 
         ## Test mapping multiple addition
 
         yield agent1.register_alias()
-        assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
 
         # Test mapping removal
 
         yield agent1.unregister_alias()
-        assertAlias("foo.bar.example.lan", None)
-        assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        assertAlias("foo.bar.test.lan", None)
+        assertAlias("spam.beans.test.lan", "spam.beans.example.lan")
 
         yield agent2.unregister_alias()
-        assertAlias("foo.bar.example.lan", None)
-        assertAlias("spam.beans.example.lan", None)
+        assertAlias("foo.bar.test.lan", None)
+        assertAlias("spam.beans.test.lan", None)
 
         # Test multiple removal
 
@@ -374,39 +402,37 @@ class DNSAgentTest(common.SimulationTest):
         agent2 = self.agent2
 
         yield assertAlias("", None)
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", None)
+        yield assertAlias("foo.bar.test.lan", None)
+        yield assertAlias("spam.beans.test.lan", None)
 
         # Test mapping addition
 
         yield agent1.register_alias_with_mapper()
         yield self.wait_for_idle(10)
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        yield assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
 
         yield agent2.register_alias_with_mapper()
         yield self.wait_for_idle(10)
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
-        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        yield assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
+        yield assertAlias("spam.beans.test.lan", "spam.beans.example.lan")
 
 
         ## Test mapping multiple addition
 
         yield agent1.register_alias_with_mapper()
         yield self.wait_for_idle(10)
-        yield assertAlias("foo.bar.example.lan", "foo.bar.test.lan")
+        yield assertAlias("foo.bar.test.lan", "foo.bar.example.lan")
 
         # Test mapping removal
-
         yield agent1.unregister_alias_with_mapper()
         yield self.wait_for_idle(10)
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", "spam.beans.test.lan")
+        yield assertAlias("foo.bar.test.lan", None)
+        yield assertAlias("spam.beans.test.lan", "spam.beans.example.lan")
 
         yield agent2.unregister_alias_with_mapper()
         yield self.wait_for_idle(10)
-        yield assertAlias("foo.bar.example.lan", None)
-        yield assertAlias("spam.beans.example.lan", None)
-
+        yield assertAlias("foo.bar.test.lan", None)
+        yield assertAlias("spam.beans.test.lan", None)
 
         # Test multiple removal
 

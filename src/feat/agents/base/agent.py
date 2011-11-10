@@ -100,6 +100,8 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     __metaclass__ = MetaAgent
 
+    ignored_state_keys = ['medium']
+
     implements(agent.IAgent, generic.ITimeProvider)
 
     partners_class = Partners

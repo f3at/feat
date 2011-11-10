@@ -231,6 +231,8 @@ class Continuation(object):
 
 class Partners(log.Logger, log.LogProxy, replay.Replayable):
 
+    ignored_state_keys = ['medium', 'agent']
+
     default_handler = BasePartner
     default_role = None
 

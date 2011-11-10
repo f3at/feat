@@ -23,8 +23,8 @@ from feat.common import formatable, enum, serialization
 
 from zope.interface import Interface
 
-__all__ = ["IDNSServerLabourFactory", "IDNSServerLabour", "Record",
-           "RecordType"]
+__all__ = ["IDNSServerLabourFactory", "IDNSServerLabour", "RecordA",
+           "RecordCNAME", "RecordType"]
 
 
 class IDNSServerLabourFactory(Interface):
@@ -49,18 +49,38 @@ class IDNSServerLabour(Interface):
         '''Update the dns records for the given name.
         @type record: list of Record'''
 
+    def notify_slave():
+        '''
+        Order the labour to notify slaves about the modifications. Should
+        be done at the end of modifications.
+        '''
+
 
 class RecordType(enum.Enum):
     record_A, record_CNAME = range(2)
 
 
-@serialization.register
-class Record(formatable.Formatable):
+class _BaseRecord(formatable.Formatable):
 
-    type_name = 'dns_record'
-
-    # L{RecordType}
-    formatable.field('type', None)
-    formatable.field('name', None)
     formatable.field('ttl', None)
     formatable.field('ip', None)
+
+
+@serialization.register
+class RecordA(_BaseRecord):
+
+    type_name = 'dns_record_a'
+
+    @property
+    def type(self):
+        return RecordType.record_A
+
+
+@serialization.register
+class RecordCNAME(_BaseRecord):
+
+    type_name = 'dns_record_cname'
+
+    @property
+    def type(self):
+        return RecordType.record_CNAME

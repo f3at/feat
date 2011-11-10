@@ -42,6 +42,8 @@ class BaseCollector(log.Logger, replay.Replayable):
 
     __metaclass__ = Meta
 
+    ignored_state_keys = ['medium', 'agent']
+
     implements(IAgentCollector)
 
     initiator = message.Notification

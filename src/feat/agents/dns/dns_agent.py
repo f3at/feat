@@ -22,15 +22,20 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import socket
+import re
+
+from zope.interface import implements
 
 from feat.agents.base import replay, agent, dependency, contractor, collector
-from feat.agents.base import descriptor, document, dbtools, message
+from feat.agents.base import descriptor, document, dbtools, message, view
+from feat.agents.base import cache
 from feat.agents.common import export
 from feat.agents.dns import production, simulation
 from feat.common import fiber, manhole, formatable, serialization
 
-from feat.agents.dns.interface import (IDNSServerLabourFactory, Record,
-                                       RecordType)
+from feat.agents.dns.interface import (IDNSServerLabourFactory, RecordA,
+                                       RecordCNAME, RecordType)
+from feat.agencies.interface import NotFoundError
 from feat.interface.agency import ExecMode
 from feat.interface.agent import Address
 from feat.interface.protocols import InterestType
@@ -76,9 +81,54 @@ class Descriptor(descriptor.Descriptor):
     descriptor.field('suffix', None)
     descriptor.field('notify', None)
 
+    descriptor.field('pending_updates', list())
+
+
+@document.register
+class DnsName(document.Document):
+
+    document_type = 'dns_name'
+
+    # dns zone this name belongs to
+    document.field('zone', None)
+    # name for which we resolve
+    document.field('name', None)
+    # list of entries [Entry]
+    document.field('entries', list())
+
+    @staticmethod
+    def name_to_id(name):
+        return unicode("dns_%s" % (name, ))
+
+    @staticmethod
+    def id_to_name(doc_id):
+        match = re.search('dns_(.*)', doc_id)
+        if not match:
+            raise AttributeError("doc_id passed: %r is not in recognised "
+                                 "format." % (doc_id, ))
+        return unicode(match.group(1))
+
+
+@view.register
+class DnsView(view.BaseView):
+
+    name = 'dns'
+
+    def map(doc):
+        if doc.get('.type') == 'dns_name':
+            zone = doc.get('zone')
+            yield zone, doc.get('_id')
+
+    def filter(doc, request):
+        zone = request['query'].get('zone')
+        return doc.get('.type') == 'dns_name' and \
+               (zone is None or doc.get('zone') == zone)
+
 
 @agent.register('dns_agent')
 class DNSAgent(agent.BaseAgent):
+
+    implements(cache.IDocumentChangeListener)
 
     categories = {"address": Address.fixed}
 
@@ -91,12 +141,12 @@ class DNSAgent(agent.BaseAgent):
 
     migratability = export.Migratability.not_migratable
 
+    resources = {'dns': 1}
+
     @replay.mutable
     def initiate(self, state):
         config = state.medium.get_configuration()
         desc = state.medium.get_descriptor()
-
-        state.records = dict()
 
         state.port = list(desc.resources['dns'].values)[0]
         state.ns_ttl = desc.ns_ttl or config.ns_ttl
@@ -105,11 +155,11 @@ class DNSAgent(agent.BaseAgent):
         state.suffix = desc.suffix or config.suffix or self._lookup_suffix()
         state.notify_cfg = desc.notify or config.notify
 
-        self.debug("Initializing DNS agent with: port=%d, ns_ttl=%d, "
-                   "aa_ttl=%d, ns=%s, suffix=%s", state.port, state.ns_ttl,
+        ip = state.medium.get_ip()
+        self.debug("Initializing DNS agent with: ip=%r, port=%d, ns_ttl=%d, "
+                   "aa_ttl=%d, ns=%s, suffix=%s", ip, state.port, state.ns_ttl,
                    state.aa_ttl, state.ns, state.suffix)
 
-        ip = state.medium.get_ip()
         state.labour = self.dependency(
             IDNSServerLabourFactory, self, state.notify_cfg, state.suffix,
             ip, state.ns, state.ns_ttl)
@@ -123,6 +173,13 @@ class DNSAgent(agent.BaseAgent):
         rmi.bind_to_lobby()
         muc.bind_to_lobby()
 
+        state.cache = cache.DocumentCache(self, self, DnsView,
+                                          dict(zone=state.suffix))
+        state.queue_holder = cache.DescriptorQueueHolder(
+            self, 'pending_updates')
+        state.document_updater = cache.PersistentUpdater(
+            state.queue_holder, state.cache, state.medium)
+
         return self._save_configuration_to_descriptor()
 
     @replay.journaled
@@ -133,6 +190,12 @@ class DNSAgent(agent.BaseAgent):
                 "Network error: port %d is not available." % state.port)
         self.info("Listening on port %d", state.port)
 
+        state.document_updater.startup()
+
+        f = state.cache.load_view(key=state.suffix)
+        f.add_callback(self._load_documents)
+        return f
+
     @replay.journaled
     def on_killed(self, state):
         return fiber.wrap_defer(state.labour.cleanup)
@@ -141,53 +204,48 @@ class DNSAgent(agent.BaseAgent):
     def shutdown(self, state):
         return fiber.wrap_defer(state.labour.cleanup)
 
+    ### IDocumentChangeListner ###
+
+    @replay.journaled
+    def on_document_change(self, state, doc):
+        state.labour.update_records(doc.name, doc.entries)
+        state.labour.notify_slaves()
+
+    @replay.journaled
+    def on_document_deleted(self, state, doc_id):
+        name = DnsName.id_to_name(doc_id)
+        state.labour.update_records(name, [])
+        state.labour.notify_slaves()
+
+    ### end of IDocumentChangeListner ###
+
     @manhole.expose()
     @replay.mutable
     def add_mapping(self, state, prefix, ip):
         name = self._format_name(prefix, state.suffix)
-        record = Record(name=name, ip=ip, ttl=state.aa_ttl,
-                        type=RecordType.record_A)
-        if not self._add_record(record):
-            return False
-        state.labour.update_records(name, self.get_records(name))
-        return True
+        record = RecordA(ip=unicode(ip), ttl=state.aa_ttl)
+        return self._add_record(name, record)
 
     @manhole.expose()
     @replay.mutable
     def remove_mapping(self, state, prefix, ip):
         name = self._format_name(prefix, state.suffix)
-        record = Record(name=name, ip=ip, ttl=state.aa_ttl,
-                        type=RecordType.record_A)
-        if not self._remove_record(record):
-            self.log("Unknown DNS mapping prefix %s %s", record.name, ip)
-            return False
-        self.debug("Removing DNS mapping from %s to %s", record.name, ip)
-        state.labour.update_records(name, self.get_records(name))
-        return True
+        record = RecordA(ip=unicode(ip), ttl=state.aa_ttl)
+        return self._remove_record(name, record)
 
     @manhole.expose()
     @replay.mutable
     def add_alias(self, state, prefix, alias):
         name = self._format_name(prefix, state.suffix)
-        record = Record(name=alias, ip=name, ttl=state.aa_ttl,
-                        type=RecordType.record_CNAME)
-        if not self._add_record(record):
-            self.log("Keeping DNS alias from %s to %s", name, alias)
-            return False
-        state.labour.update_records(name, self.get_records(name))
-        return True
+        record = RecordCNAME(ip=unicode(alias), ttl=state.aa_ttl)
+        return self._add_record(name, record)
 
     @manhole.expose()
     @replay.mutable
     def remove_alias(self, state, prefix, alias):
         name = self._format_name(prefix, state.suffix)
-        record = Record(name=alias, ip=name, ttl=state.aa_ttl,
-                        type=RecordType.record_CNAME)
-        if not self._remove_record(record):
-            self.log("Unknown DNS alias prefix %s %s", name, alias)
-            return False
-        state.labour.update_records(name, self.get_records(name))
-        return True
+        record = RecordCNAME(ip=unicode(alias), ttl=state.aa_ttl)
+        return self._remove_record(name, record)
 
     @manhole.expose()
     @replay.immutable
@@ -226,32 +284,69 @@ class DNSAgent(agent.BaseAgent):
 
     @replay.immutable
     def get_records(self, state, name):
-        return state.records.get(name, [])
+        doc_id = DnsName.name_to_id(name)
+        try:
+            doc = state.cache.get_document(doc_id)
+            return doc.entries
+        except NotFoundError:
+            return []
 
     ### Private Methods ###
 
     @replay.mutable
-    def _add_record(self, state, record):
-        records = state.records.get(record.name, [])
-        if record in records:
-            return False
-        if record.type == RecordType.record_CNAME and records:
-            return False
-        records.append(record)
-        self.debug("DNS mapping type: %s from %s to %s added", record.type,
-                   record.name, record.ip)
-        state.records[record.name] = records
-        return True
+    def _load_documents(self, state, document_ids):
+        for doc_id in document_ids:
+            doc = state.cache.get_document(doc_id)
+            state.labour.update_records(doc.name, doc.entries)
+        state.labour.notify_slaves()
 
     @replay.mutable
-    def _remove_record(self, state, record):
-        records = state.records.get(record.name, [])
-        if record not in records:
-            return False
-        records.remove(record)
-        if not records:
-            state.records.pop(record.name, None)
-        return True
+    def _add_record(self, state, name, record):
+        doc_id = DnsName.name_to_id(name)
+        return state.document_updater.update(
+            doc_id, '_add_record_body', name, record)
+
+    @replay.mutable
+    def _remove_record(self, state, name, record):
+        doc_id = DnsName.name_to_id(name)
+        return state.document_updater.update(
+            doc_id, '_remove_record_body', record)
+
+    @replay.immutable
+    def _add_record_body(self, state, document, name, record):
+        if not document:
+            doc_id = DnsName.name_to_id(name)
+            document = DnsName(doc_id=doc_id,
+                               name=unicode(name),
+                               zone=unicode(state.suffix))
+        if record in document.entries:
+            self.debug("Not adding the entry %r for name %s, because "
+                       "it's already there.", record, name)
+            raise cache.ResignFromModifying()
+        self.debug("Adding the alias entry %s for name %s", record.ip, name)
+        if record.type == RecordType.record_CNAME and document.entries:
+            self.debug('As we already have some other records for the name '
+                       '%s they I gonna get removed.', name)
+            document.entries = list()
+
+        document.entries.append(record)
+        self.debug("DNS mapping type: %s from %s to %s added",
+                   record.type.name, name, record.ip)
+        return document
+
+    @replay.immutable
+    def _remove_record_body(self, state, document, record):
+        if not document:
+            raise cache.ResignFromModifying()
+
+        if record not in document.entries:
+            raise cache.ResignFromModifying()
+
+        document.entries.remove(record)
+
+        if not document.entries:
+            raise cache.DeleteDocument()
+        return document
 
     @replay.side_effect
     def _lookup_ns(self):
@@ -262,7 +357,7 @@ class DNSAgent(agent.BaseAgent):
         return ".".join(socket.getfqdn().split(".")[1:])
 
     def _format_name(self, prefix, suffix):
-        return prefix+"."+suffix
+        return unicode(prefix+"."+suffix)
 
     @agent.update_descriptor
     def _save_configuration_to_descriptor(self, state, desc):

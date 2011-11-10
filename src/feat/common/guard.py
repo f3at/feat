@@ -64,7 +64,7 @@ class MutableState(serialization.Serializable):
     def __repr__(self):
         return "<MutableState: %s>" % pformat(self.__dict__)
 
-    def __eq__(self, other):
+    def eq(self, other, ignored_keys):
         """
         Comparison of two states is used during replay to say whether we
         obtained the same result. Reference to 'medium' needs to be handled
@@ -73,7 +73,6 @@ class MutableState(serialization.Serializable):
         """
         if type(self) != type(other):
             return NotImplemented
-        ignored_keys = ['medium', 'agent']
         for key in self.__dict__:
             if key in ignored_keys:
                 continue
@@ -81,15 +80,13 @@ class MutableState(serialization.Serializable):
                 return False
             if not self.__dict__[key] == other.__dict__[key]:
                 return False
-        return True
 
-    def __ne__(self, other):
-        if type(self) != type(other):
-            return NotImplemented
-        return not self.__eq__(other)
+        return True
 
 
 class Guarded(serialization.Serializable):
+
+    ignored_state_keys = []
 
     def __init__(self, *args, **kwargs):
         state = MutableState()
@@ -118,7 +115,8 @@ class Guarded(serialization.Serializable):
     def __eq__(self, other):
         if type(other) != type(self):
             return NotImplemented
-        return self._get_state() == other._get_state()
+        return self._get_state().eq(other._get_state(),
+                                    type(self).ignored_state_keys)
 
     def __ne__(self, other):
         if type(self) != type(other):

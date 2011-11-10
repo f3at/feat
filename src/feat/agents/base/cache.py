@@ -21,12 +21,17 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from zope.interface import Interface
+import copy
+import pprint
+import uuid
 
-from feat.agents.base import replay
+from twisted.python import failure
+from zope.interface import Interface, implements
+
+from feat.agents.base import replay, notifier
 from feat.common import log, serialization, fiber, defer
 
-from feat.agencies.interface import NotFoundError
+from feat.agencies.interface import NotFoundError, ConflictError
 from feat.interface.view import IViewFactory
 
 
@@ -44,6 +49,43 @@ class IDocumentChangeListener(Interface):
         '''
 
 
+class IQueueHolder(Interface):
+
+    def next():
+        '''
+        Returns a tuple of (operation_id, doc_id, args, kwargs, item_id) or
+        raises StopIteration.
+        '''
+
+    def enqueue(item_id, operation_id, doc_id, args, kwargs):
+        '''
+        Tells the Queue to append the item to the storage.
+        @returns: Fiber.
+        '''
+
+    def perform(operation_id, document, args, kwargs):
+        '''
+        Synchronous method that perfroms a changes on the document.
+        It may return the modified version of the document or raise:
+        - DeleteDocument - order the document to be deleted.
+        - ResignFromModifying - just cancel the change.
+        '''
+
+    def on_confirm(item_id):
+        '''
+        Callback called when the operation is completed. The QueueHolder
+        should remove the item corresponding to item_id.
+        '''
+
+
+class DeleteDocument(Exception):
+    pass
+
+
+class ResignFromModifying(Exception):
+    pass
+
+
 @serialization.register
 class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     """
@@ -51,6 +93,8 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     documents. I always make sure to have the latest version of the document
     and can trigger callbacks when they change.
     """
+
+    ignored_state_keys = ['agent', 'listener']
 
     def __init__(self, patron, listener=None,
                  view_factory=None, filter_params=None):
@@ -71,7 +115,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.immutable
     def restored(self, state):
         log.LogProxy.__init__(self, state.agent)
-        log.Logger.__init__(self, self.agent)
+        log.Logger.__init__(self, self)
         replay.Replayable.restored(self)
 
     ### public ###
@@ -96,7 +140,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.journaled
     def add_document(self, state, doc_id):
         if doc_id in state.documents:
-            return fiber.succeed(state.documents[doc_id])
+            return fiber.succeed(copy.deepcopy(state.documents[doc_id]))
         f = self._update_document(doc_id)
         if state.view_factory is None:
             f.add_callback(defer.bridge_param,
@@ -109,13 +153,27 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         if doc_id not in state.documents:
             raise NotFoundError(
                 "Document with id: %r not in cache." % (doc_id, ))
-        return state.documents[doc_id]
+        return copy.deepcopy(state.documents[doc_id])
+
+    @replay.immutable
+    def save_document(self, state, document):
+        f = state.agent.save_document(document)
+        f.add_callback(self._store_doc)
+        return f
+
+    @replay.immutable
+    def delete_document(self, state, document):
+        return state.agent.delete_document(document)
 
     @replay.mutable
     def forget_document(self, state, doc_id):
         self._delete_doc(doc_id)
         if not state.view_factory:
             state.agent.cancel_change_listener(doc_id)
+
+    @replay.journaled
+    def update_document(self, state, doc_id):
+        return self._update_document(doc_id)
 
     ### private ###
 
@@ -128,11 +186,12 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.immutable
     def _update_document(self, state, doc_id):
         f = state.agent.get_document(doc_id)
-        f.add_callback(self._success_on_get)
+        f.add_callback(self._store_doc)
+        f.add_errback(self._update_not_found, doc_id)
         return f
 
     @replay.mutable
-    def _success_on_get(self, state, doc):
+    def _store_doc(self, state, doc):
         state.documents[doc.doc_id] = doc
         return doc
 
@@ -140,15 +199,243 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     def _delete_doc(self, state, doc_id):
         state.documents.pop(doc_id, None)
 
+    @replay.mutable
+    def _update_not_found(self, state, fail, doc_id):
+        fail.trap(NotFoundError)
+        self._delete_doc(doc_id)
+        return fail
+
     @replay.journaled
     def _document_changed(self, state, doc_id, rev, deleted, own_change):
         if deleted:
+            self.info('received deleted notifications %r', doc_id)
             self._delete_doc(doc_id)
             if state.listener:
                 state.listener.on_document_deleted(doc_id)
         else:
-            f = self._update_document(doc_id)
+            should_update = doc_id not in state.documents or \
+                            state.documents[doc_id] != rev
+            f = fiber.succeed()
+            if should_update:
+                f.add_callback(fiber.drop_param,
+                               self._update_document, doc_id)
             if state.listener:
                 f.add_callback(state.listener.on_document_change)
             f.add_callback(fiber.override_result, None)
             return f
+
+
+@serialization.register
+class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
+    """
+    I'm a utility used for performing the updates of the documents in
+    CouchDB minding the concurency. I comunicate with two object passed
+    at creation time:
+    - queue_holder is the one who is responsible of storing the information
+      about the tasks to perform, and performing them
+    - cache is holding the documents in memory (DocumentCache instance)
+    """
+
+    ignored_state_keys = ['queue_holder', 'cache', 'medium', 'notifier']
+
+    def __init__(self, queue_holder, cache, medium):
+        log.LogProxy.__init__(self, cache)
+        log.Logger.__init__(self, self)
+        replay.Replayable.__init__(self, queue_holder, cache, medium)
+
+    def init_state(self, state, queue_holder, cache, medium):
+        state.queue_holder = IQueueHolder(queue_holder)
+        state.cache = cache
+        # the medium reference here is for AgentNotifier,
+        # it uses following method from it:
+        # - call_later()
+        # - cancel_delayed_call()
+        # - warning()
+        state.medium = medium
+
+        state.notifier = notifier.AgentNotifier(state.medium)
+        state.working = False
+
+    @replay.immutable
+    def restored(self, state):
+        log.LogProxy.__init__(self, state.cache)
+        log.Logger.__init__(self, state.cache)
+        replay.Replayable.restored(self)
+
+    @replay.immutable
+    def startup(self, state):
+        state.medium.call_next(self._startup)
+
+    @replay.journaled
+    def update(self, state, doc_id, operation_id, *args, **kwargs):
+        item_id = self._uuid()
+        f = state.queue_holder.enqueue(item_id, operation_id, doc_id,
+                                       args, kwargs)
+        f.add_callback(fiber.drop_param, self.startup)
+        f.add_callback(fiber.drop_param, state.notifier.wait, item_id)
+        return f
+
+    ### private ###
+
+    @replay.side_effect
+    def _uuid(self):
+        return str(uuid.uuid1())
+
+    @replay.mutable
+    def _startup(self, state):
+        if state.working:
+            return
+        self._set_working(True)
+
+        try:
+            f = self._process_next()
+            f.add_both(fiber.bridge_param, self._set_working, False)
+            f.add_callback(fiber.drop_param, self.startup)
+            return f
+        except StopIteration:
+            self._set_working(False)
+
+    @replay.journaled
+    def _process_next(self, state):
+        operation_id, doc_id, args, kwargs, item_id = \
+                      state.queue_holder.next()
+
+        return self._retry(operation_id, doc_id, args, kwargs, item_id)
+
+    @replay.journaled
+    def _retry(self, state, operation_id, doc_id, args, kwargs, item_id):
+        try:
+            document = state.cache.get_document(doc_id)
+        except NotFoundError:
+            document = None
+
+        try:
+            document = state.queue_holder.perform(operation_id,
+                                                  document, args, kwargs)
+            return self._call_on_cache(
+                'save_document', document, operation_id,
+                doc_id, args, kwargs, item_id)
+        except ResignFromModifying:
+            self.log("Not performing %s on doc_id %s, handler resigned.",
+                     operation_id, doc_id)
+            return self._update_callback(document, item_id)
+        except DeleteDocument:
+            self.log("Handler %s decided to delete document id: %s",
+                     operation_id, doc_id)
+            return self._call_on_cache(
+                'delete_document', document, operation_id,
+                doc_id, args, kwargs, item_id)
+
+    @replay.journaled
+    def _call_on_cache(self, state, _method, document, operation_id, doc_id,
+                       args, kwargs, item_id):
+        method = getattr(state.cache, _method)
+        f = method(document)
+        f.add_callback(self._update_callback, item_id)
+        f.add_errback(self._update_errback, operation_id, doc_id, args,
+                      kwargs, item_id)
+        return f
+
+    @replay.journaled
+    def _update_callback(self, state, document, item_id):
+        state.notifier.callback(item_id, document)
+        return state.queue_holder.on_confirm(item_id)
+
+    @replay.journaled
+    def _update_errback(self, state, fail, operation_id, doc_id, args,
+                        kwargs, item_id):
+        fail.trap(ConflictError, NotFoundError)
+
+        f = state.cache.update_document(doc_id)
+        f.add_errback(failure.Failure.trap, NotFoundError)
+        f.add_callback(fiber.drop_param, self._retry,
+                       operation_id, doc_id, args, kwargs, item_id)
+        return f
+
+    @replay.mutable
+    def _set_working(self, state, flag):
+        state.working = flag
+
+
+@serialization.register
+class DescriptorQueueHolder(replay.Replayable, log.Logger, log.LogProxy):
+    """
+    I'm an object storing the queue of function calls which will be performed
+    against the documents. I persist this information in the agents descriptor
+    so that it's not lost between the restarts.
+    """
+
+    ignored_state_keys = ['agent']
+
+    implements(IQueueHolder)
+
+    def __init__(self, agent, descriptor_key):
+        log.LogProxy.__init__(self, agent)
+        log.Logger.__init__(self, self)
+        replay.Replayable.__init__(self, agent, descriptor_key)
+
+    def init_state(self, state, agent, descriptor_key):
+        state.agent = agent
+        state.descriptor_key = descriptor_key
+
+        # list of item_id which have been returned by next but not yet
+        # confirmed
+        state.prefetched = list()
+
+    @replay.immutable
+    def restored(self, state):
+        log.LogProxy.__init__(self, state.agent)
+        log.Logger.__init__(self, self)
+        replay.Replayable.restored(self)
+
+    ### IQueueHolder ###
+
+    @replay.mutable
+    def next(self, state):
+        desc = state.agent.get_descriptor()
+        entries = getattr(desc, state.descriptor_key)
+        for o_id, doc_id, args, kwargs, item_id in entries:
+            if item_id not in state.prefetched:
+                state.prefetched.append(item_id)
+                return o_id, doc_id, args, kwargs, item_id
+        raise StopIteration()
+
+    @replay.journaled
+    def enqueue(self, state, item_id, operation_id, doc_id, args, kwargs):
+        return state.agent.update_descriptor(
+            self._append, item_id, operation_id, doc_id, args, kwargs)
+
+    @replay.immutable
+    def perform(self, state, operation_id, document, args, kwargs):
+        method = getattr(state.agent, operation_id)
+        return method(document, *args, **kwargs)
+
+    @replay.mutable
+    def on_confirm(self, state, item_id):
+        if item_id not in state.prefetched:
+            self.warning("This is strange! We got confirm() called about "
+                         "the item_id %r but it was not prefetched. "
+                         "It should never happen.")
+        else:
+            state.prefetched.remove(item_id)
+        return state.agent.update_descriptor(self._remove, item_id)
+
+    ### private ###
+
+    @replay.immutable
+    def _append(self, state, desc,
+                item_id, operation_id, doc_id, args, kwargs):
+        entries = getattr(desc, state.descriptor_key)
+        entries.append((operation_id, doc_id, args, kwargs, item_id))
+
+    @replay.immutable
+    def _remove(self, state, desc, item_id):
+        entries = getattr(desc, state.descriptor_key)
+        matching = [x for x in entries if
+                    x[4] == item_id]
+        for match in matching:
+            entries.remove(match)
+        if not matching:
+            self.warning("We were trying to remove an entry with item_id %r, "
+                         "but it's not there. Entries: %s",
+                         item_id, pprint.pformat(entries))

@@ -678,6 +678,8 @@ class CheckinList(serialization.Serializable, log.Logger):
 @serialization.register
 class Migration(replay.Replayable):
 
+    ignored_state_keys = ['agent']
+
     def init_state(self, state, agent, host_cmd=None, migration_agent=None):
         state.agent = agent
         state.host_cmd = host_cmd

@@ -21,14 +21,21 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import uuid
+
 from zope.interface import implements
 
 from feat.agencies.emu import database
-from feat.agents.base import cache, document, view
-from feat.common import journal, defer, log, fiber
+from feat.agents.base import cache, document, view, descriptor
+from feat.common import journal, defer, log, fiber, time
 from feat.test import common
 
 from feat.agencies.interface import NotFoundError
+
+
+class Descriptor(descriptor.Descriptor):
+
+    descriptor.field('pending_updates', list())
 
 
 class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
@@ -42,8 +49,12 @@ class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
         # db connection
         self._db = db
+        self._descriptor = Descriptor()
 
         self.notifications = list()
+
+        # call_id -> DelayedCall
+        self._delayed_calls = dict()
 
     ### used by Cache ###
 
@@ -58,8 +69,40 @@ class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
     def get_document(self, doc_id):
         return fiber.wrap_defer(self._db.get_document, doc_id)
 
+    def save_document(self, document):
+        return fiber.wrap_defer(self._db.save_document, document)
+
+    def delete_document(self, document):
+        return fiber.wrap_defer(self._db.delete_document, document)
+
     def query_view(self, factory, **kwargs):
         return fiber.wrap_defer(self._db.query_view, factory, **kwargs)
+
+    ### used by DescriptorQueueHolder ###
+
+    def get_descriptor(self):
+        return self._descriptor
+
+    def update_descriptor(self, _method, *args, **kwargs):
+        f = fiber.succeed()
+        f.add_callback(fiber.drop_param,
+                      _method, self._descriptor, *args, **kwargs)
+        return f
+
+    ### used by PersistentUpdater ###
+
+    def call_later(self, _time, _method, *args, **kwargs):
+        id = str(uuid.uuid1())
+        call = time.call_later(_time, _method, *args, **kwargs)
+        self._delayed_calls[id] = call
+        return id
+
+    def call_next(self, _method, *args, **kwargs):
+        self.call_later(0, _method, *args, **kwargs)
+
+    def cancel_delayed_call(self, call_id):
+        call = self._delayed_calls.pop(call_id)
+        call.cancel()
 
     ### IDocumentChangeListner ###
 
@@ -77,6 +120,22 @@ class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
             return len(self.notifications) == num
 
         return check
+
+    def example_operation(self, document, result=None):
+        if isinstance(result, int):
+            document.field = result
+            return document
+        elif result == 'delete':
+            raise cache.DeleteDocument()
+        elif result == 'resign':
+            raise cache.ResignFromModifying()
+        else:
+            raise AttributeError('wtf is %s?' % (result, ))
+
+    def teardown(self):
+        for call in self._delayed_calls.values():
+            if call.active():
+                call.cancel()
 
 
 @document.register
@@ -218,4 +277,131 @@ class TestCache(common.TestCase):
 
     @defer.inlineCallbacks
     def tearDown(self):
+        yield common.TestCase.tearDown(self)
+
+
+class TestDescriptorQueueHolder(common.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+
+        db = database.Database()
+        self._db = db.get_connection()
+        self.agent = DummyAgent(self, db.get_connection())
+
+        self.holder = cache.DescriptorQueueHolder(
+            self.agent, 'pending_updates')
+
+    @defer.inlineCallbacks
+    def testEnqueuAndNext(self):
+        yield self.holder.enqueue('some_id', 'example_operation', 'test_doc',
+                                  (3, ), dict())
+        yield self.holder.enqueue('some_id2', 'example_operation',
+                                  'test_doc', (2, ), dict())
+        yield self.holder.enqueue('some_id3', 'example_operation',
+                                  'test_doc', (1, ), dict())
+
+        desc = self.agent.get_descriptor()
+        self.assertEqual(3, len(desc.pending_updates))
+
+        o_id, doc_id, args, kwargs, item_id = yield self.holder.next()
+        self.assertEqual('test_doc', doc_id)
+        self.assertEqual('some_id', item_id)
+
+        o_id, doc_id, args, kwargs, item_id = yield self.holder.next()
+        self.assertEqual('test_doc', doc_id)
+        self.assertEqual('some_id2', item_id)
+
+        o_id, doc_id, args, kwargs, item_id = yield self.holder.next()
+        self.assertEqual('test_doc', doc_id)
+        self.assertEqual('some_id3', item_id)
+        self.assertEqual((1, ), args)
+
+        d = self.holder.next()
+        self.assertFailure(d, StopIteration)
+        yield d
+
+        doc = self._db.save_document(TestDocument(doc_id=u'test_doc'))
+        doc_ = self.holder.perform(o_id, doc, args, kwargs)
+        self.assertEqual(1, doc_.field)
+
+        yield self.holder.on_confirm('some_id3')
+        self.assertNotIn('some_id3', desc.pending_updates)
+        self.assertEqual(2, len(desc.pending_updates))
+
+        yield self.holder.on_confirm('some_id')
+        self.assertNotIn('some_id', desc.pending_updates)
+        self.assertEqual(1, len(desc.pending_updates))
+
+        yield self.holder.on_confirm('some_id2')
+        self.assertEqual(0, len(desc.pending_updates))
+
+
+class TestPersistentUpdater(common.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+        db = database.Database()
+        self._db = db.get_connection()
+
+        design_doc = view.DesignDocument.generate_from_views((TestView, ))
+        yield self._db.save_document(design_doc)
+
+        self.agent = DummyAgent(self, db.get_connection())
+        filter_params = dict(zone='test_zone')
+        self.cache = cache.DocumentCache(
+            self.agent, self.agent, TestView, filter_params)
+
+        self.holder = cache.DescriptorQueueHolder(
+            self.agent, 'pending_updates')
+        self.updater = cache.PersistentUpdater(
+            self.holder, self.cache, self.agent)
+
+        yield self._db.save_document(
+            TestDocument(doc_id=u'test', zone=u'test_zone'))
+        yield self._db.save_document(
+            TestDocument(doc_id=u'test2', zone=u'other_zone'))
+        yield self.cache.load_view(key='test_zone')
+
+    @defer.inlineCallbacks
+    def testSimpleUpdate(self):
+        doc = yield self._db.get_document('test')
+        doc_ = yield self.updater.update(doc.doc_id, 'example_operation', 3)
+        self.assertEqual(doc_.doc_id, doc.doc_id)
+        self.assertNotEqual(doc_.rev, doc.rev)
+
+    @defer.inlineCallbacks
+    def testDeleting(self):
+        doc = yield self._db.get_document('test')
+        doc_ = yield self.updater.update(doc.doc_id, 'example_operation',
+                                         'delete')
+        self.assertEqual(doc_.doc_id, doc.doc_id)
+        self.assertNotEqual(doc_.rev, doc.rev)
+        d = self._db.get_document('test')
+        self.assertFailure(d, NotFoundError)
+        yield d
+        self.assertRaises(NotFoundError, self.cache.get_document, 'test')
+
+    @defer.inlineCallbacks
+    def testResign(self):
+        doc = yield self._db.get_document('test')
+        doc_ = yield self.updater.update(doc.doc_id, 'example_operation',
+                                         'resign')
+        self.assertEqual(doc_.doc_id, doc.doc_id)
+        self.assertEqual(doc_.rev, doc.rev)
+
+    @defer.inlineCallbacks
+    def testUpdateWithConflict(self):
+        doc = yield self.cache.get_document('test')
+        doc.rev = 'bad revision' # hack. touching rev stored in internal state
+                                 # state of the cache, just to provke conflict
+        doc_ = yield self.updater.update(doc.doc_id, 'example_operation', 3)
+        self.assertEqual(doc_.doc_id, doc.doc_id)
+        self.assertNotEqual(doc_.rev, doc.rev)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        self.agent.teardown()
         yield common.TestCase.tearDown(self)

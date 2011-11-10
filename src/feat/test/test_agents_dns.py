@@ -27,7 +27,7 @@ from twisted.names import client, dns
 from feat.agents.dns import dns_agent, production
 from feat.common import log
 
-from feat.agents.dns.interface import RecordType, Record
+from feat.agents.dns.interface import RecordA, RecordCNAME
 
 from . import common
 
@@ -80,11 +80,8 @@ class TestDNSAgent(common.TestCase):
             self.assertTrue(res)
 
             name = format_name(name, suffix)
-            record = Record(type=RecordType.record_CNAME,
-                            name=alias,
-                            ip=name,
-                            ttl=aa_ttl)
-            labour.update_records(record.name, [record])
+            record = RecordCNAME(ip=name, ttl=aa_ttl)
+            labour.update_records(name, [record])
 
             address = labour.get_host()
             port = address.port
@@ -118,10 +115,7 @@ class TestDNSAgent(common.TestCase):
             res = labour.startup(0)
             self.assertTrue(res)
 
-            records = [Record(type=RecordType.record_A,
-                              name=name,
-                              ttl=aa_ttl,
-                              ip=ip)
+            records = [RecordA(ttl=aa_ttl, ip=ip)
                        for ip in exp_ips]
             labour.update_records(name, records)
 
