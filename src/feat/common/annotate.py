@@ -76,6 +76,7 @@ class MetaAnnotable(type):
 
 class Annotable(object):
     __metaclass__ = MetaAnnotable
+    __slots__ = () # To support sub-classes without __dict__
 
 
 def injectClassCallback(annotationName, depth, methodName, *args, **kwargs):
