@@ -1,0 +1,153 @@
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
+
+import sys
+
+from zope.interface import implements
+
+from feat.common import defer, annotate
+from feat.models import model, action
+from feat.models import utils, meta as models_meta
+
+from feat.models.interface import *
+
+
+def value(value_info):
+    annotate.injectClassCallback("value", 3, "annotate_value", value_info)
+
+
+class MetaAttribute(type(model.AbstractModel)):
+
+    @staticmethod
+    def new(identity, value_info, getter=None, setter=None):
+        cls_name = utils.mk_class_name(identity, "Attribute")
+        cls = MetaAttribute(cls_name, (Attribute, ), {"__slots__": ()})
+        cls.annotate_identity(identity)
+        cls.annotate_value(value_info)
+
+        if getter is not None:
+
+            def _get_attribute(value, context):
+                # Override context key to use the property name
+                context = dict(context)
+                context["key"] = context["model"].name
+                return getter(value, context)
+
+            Action = action.MetaAction.new("get." + identity,
+                                           ActionCategory.retrieve,
+                                           effects=[_get_attribute],
+                                           result_info=value_info,
+                                           is_idempotent=True)
+
+            cls.annotate_action(u"get", Action, label=u"Get",
+                                desc=u"Retrieve the attribute value")
+
+        if setter is not None:
+
+            def _set_attribute(value, context):
+                # Override context key to use the property name
+                context = dict(context)
+                context["key"] = context["model"].name
+                d = setter(value, context)
+                # attribute setter return the validate value
+                d.addCallback(defer.override_result, value)
+                return d
+
+            Action = action.MetaAction.new("set." + identity,
+                                           ActionCategory.update,
+                                           effects=[_set_attribute],
+                                           value_info=value_info,
+                                           result_info=value_info,
+                                           is_idempotent=True)
+
+            cls.annotate_action(u"set", Action, label=u"Set",
+                                desc=u"Update the attribute value")
+
+        return cls
+
+
+class Attribute(model.AbstractModel,
+                model.NoChildrenMixin, model.StaticActionsMixin):
+
+    __slots__ = ()
+
+    implements(IAttribute)
+
+    _value_info = None
+
+    ### IAttribute ###
+
+    @property
+    def value_info(self):
+        return self._value_info
+
+    @property
+    def is_readable(self):
+        return u"get" in self._action_items
+
+    @property
+    def is_writable(self):
+        return u"set" in self._action_items
+
+    @property
+    def is_deletable(self):
+        return u"del" in self._action_items
+
+    def fetch_value(self):
+
+        def perform(action):
+            if action is None:
+                raise NotSupported("Attribute %s not readable" % self.name)
+            return action.perform()
+
+        d = self.fetch_action(u"get")
+        d.addCallback(perform)
+        return d
+
+    def update_value(self, value):
+
+        def perform(action):
+            if action is None:
+                raise NotSupported("Attribute %s not writable" % self.name)
+            return action.perform(value)
+
+        d = self.fetch_action(u"set")
+        d.addCallback(perform)
+        return d
+
+    def delete_value(self):
+
+        def perform(action):
+            if action is None:
+                raise NotSupported("Attribute %s not deletable" % self.name)
+            return action.perform()
+
+        d = self.fetch_action(u"del")
+        d.addCallback(perform)
+        return d
+
+    ### annotations ###
+
+    @classmethod
+    def annotate_value(cls, value_info):
+        """@see: feat.models.attribute.value"""
+        cls._value_info = IValueInfo(value_info)
