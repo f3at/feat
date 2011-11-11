@@ -23,9 +23,46 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import reactor
 
-from feat.common import defer
+from feat.common import defer, time
 
 from . import common
+
+
+def delay_raise(error_factory, delay):
+
+    def raise_error(_param):
+        raise error_factory()
+
+    d = defer.Deferred()
+    d.addCallback(raise_error)
+    time.call_later(delay, d.callback, None)
+    return d
+
+
+class TestDeferUtils(common.TestCase):
+
+    @defer.inlineCallbacks
+    def testJoin(self):
+        res = yield defer.join(common.delay(0, 0.01),
+                               common.delay(1, 0.01),
+                               common.delay(2, 0.01))
+        self.assertEqual(res, [0, 1, 2])
+
+        res = yield defer.join(delay_raise(ValueError, 0.01),
+                               delay_raise(ValueError, 0.01),
+                               delay_raise(ValueError, 0.01))
+        self.assertEqual(res, [])
+
+        res = yield defer.join(common.delay(0, 0.01),
+                               delay_raise(ValueError, 0.01),
+                               common.delay(2, 0.01))
+        self.assertEqual(res, [0, 2])
+
+        res = yield defer.join(1, 2, 3)
+        self.assertEqual(res, [1, 2, 3])
+
+        res = yield defer.join(1, common.delay(2, 0.1), 3)
+        self.assertEqual(res, [1, 2, 3])
 
 
 class TestNotifier(common.TestCase):

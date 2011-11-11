@@ -151,6 +151,34 @@ def maybeDeferred(f, *args, **kw):
         return succeed(result)
 
 
+def join(*values):
+    """
+    @param values: the list of value that could contain deferred
+                      that result should be returned.
+    @type values: list of defer.Deferred
+    @return: a defer.Deferred fired with a list containing the values
+             where the deferreds have been replaced by there callback values.
+             of the specified defer.Deferred whose succeed, the failures
+             are swallowed silently so they should be handled by the caller
+             if something should be done with them.
+    @rtype: defer.Deferred
+    @callback: list of object
+    """
+
+    def wrap_value(value):
+        if isinstance(value, Deferred):
+            return value
+        return succeed(value)
+
+    def filter_result(param):
+        return [result for success, result in param if success]
+
+    deferreds = [wrap_value(v) for v in values]
+    dl = DeferredList(deferreds, consumeErrors=True)
+    dl.addCallback(filter_result)
+    return dl
+
+
 @decorator.simple_function
 def ensure_async(function_original):
     """
