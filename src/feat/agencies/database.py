@@ -126,26 +126,28 @@ class ChangeListener(log.Logger):
         self._filters = dict()
         self._filters['doc_ids'] = DocIdFilter()
 
-    def listen_changes(self, filter, callback, kwargs=dict()):
-        assert callable(callback)
+    def listen_changes(self, filter_, callback, kwargs=dict()):
+        assert callable(callback), ("Callback should be callable, got %r" %
+                                    (callback), )
 
         l_id = str(uuid.uuid1())
 
-        if isinstance(filter, (list, tuple, )):
-            doc_ids = list(filter)
+        if isinstance(filter_, (list, tuple, )):
+            doc_ids = list(filter_)
             filter_i = self._filters['doc_ids']
             filter_i.add_listener(callback, l_id, doc_ids)
             self.log("Registering listener for doc_ids: %r, callback %r",
                      doc_ids, callback)
-        elif IViewFactory.providedBy(filter):
-            filter_i = ViewFilter(filter, kwargs)
+        elif IViewFactory.providedBy(filter_):
+            filter_i = ViewFilter(filter_, kwargs)
             if filter_i.name in self._filters:
                 filter_i = self._filters[filter_i.name]
             self._filters[filter_i.name] = filter_i
             filter_i.add_listener(callback, l_id)
         else:
             raise AttributeError("Not suported filter. You should pass a list"
-                                 " of document ids or a IViewFactory object")
+                                 " of document ids or a IViewFactory object "
+                                 "passed: %r" % (filter_))
         d = self._setup_notifier(filter_i)
         d.addCallback(defer.override_result, l_id)
         return d
@@ -159,7 +161,7 @@ class ChangeListener(log.Logger):
 
     ### protected
 
-    def _setup_notifier(self, filter):
+    def _setup_notifier(self, filter_):
         # to be overriden in the child classes
         return defer.succeed(None)
 
@@ -225,16 +227,16 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
-    def changes_listener(self, filter, callback, **kwargs):
+    def changes_listener(self, filter_, callback, **kwargs):
         assert callable(callback)
 
         r = RevisionAnalytic(self, callback)
-        d = self._database.listen_changes(filter, r.on_change, kwargs)
+        d = self._database.listen_changes(filter_, r.on_change, kwargs)
 
-        def set_listener_id(l_id, filter):
-            self._listeners[l_id] = filter
+        def set_listener_id(l_id, filter_):
+            self._listeners[l_id] = filter_
 
-        d.addCallback(set_listener_id, filter)
+        d.addCallback(set_listener_id, filter_)
         return d
 
     def cancel_listener(self, doc_id):

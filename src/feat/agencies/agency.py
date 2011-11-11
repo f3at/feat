@@ -399,16 +399,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @serialization.freeze_tag('AgencyAgent.register_change_listener')
     @replay.named_side_effect('AgencyAgent.register_change_listener')
-    def register_change_listener(self, filter, callback, **kwargs):
-        if isinstance(filter, (str, unicode)):
-            filter = (filter, )
+    def register_change_listener(self, filter_, callback, **kwargs):
+        if isinstance(filter_, (str, unicode)):
+            filter_ = (filter_, )
 
-        self._database.changes_listener(filter, callback, **kwargs)
+        self._database.changes_listener(filter_, callback, **kwargs)
 
     @serialization.freeze_tag('AgencyAgent.cancel_change_listener')
     @replay.named_side_effect('AgencyAgent.cancel_change_listener')
-    def cancel_change_listener(self, filter):
-        self._database.cancel_listener(filter)
+    def cancel_change_listener(self, filter_):
+        self._database.cancel_listener(filter_)
 
     @serialization.freeze_tag('AgencyAgency.query_view')
     def query_view(self, factory, **options):
@@ -1121,8 +1121,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         return log.FluLogKeeper.get_debug()
 
     @manhole.expose()
-    def set_logging_filter(self, filter):
-        log.FluLogKeeper.set_debug(filter)
+    def set_logging_filter(self, filter_):
+        log.FluLogKeeper.set_debug(filter_)
 
     @manhole.expose()
     def shutdown(self):

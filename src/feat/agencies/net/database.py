@@ -50,9 +50,9 @@ DEFAULT_DB_NAME = "feat"
 
 class Notifier(object):
 
-    def __init__(self, db, filter):
+    def __init__(self, db, filter_):
         self._db = db
-        self._filter = filter
+        self._filter = filter_
         self.name = self._filter.name
         self._params = None
 
@@ -235,10 +235,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             defers.append(notifier.setup())
         return defer.DeferredList(defers, consumeErrors=True)
 
-    def _setup_notifier(self, filter):
-        self.log('Setting up the notifier %s', filter.name)
-        notifier = self.notifiers.get(filter.name) or Notifier(self, filter)
-        self.notifiers[filter.name] = notifier
+    def _setup_notifier(self, filter_):
+        self.log('Setting up the notifier %s', filter_.name)
+        notifier = self.notifiers.get(filter_.name) or Notifier(self, filter_)
+        self.notifiers[filter_.name] = notifier
 
         return notifier.setup()
 
