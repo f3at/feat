@@ -39,7 +39,7 @@ do
         r) db_reset=1;;
         m) master_host="$OPTARG";;
         d) debug="$OPTARG";;
-        ?) printf "Usage: %s: [-cfrt] [-d DEBUG] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
+        ?) printf "Usage: %s: [-ncfrt] [-d DEBUG] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
            exit 2;;
     esac
 done
