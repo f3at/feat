@@ -141,7 +141,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     def add_document(self, state, doc_id):
         if doc_id in state.documents:
             return fiber.succeed(copy.deepcopy(state.documents[doc_id]))
-        f = self._update_document(doc_id)
+        f = self._refresh_document(doc_id)
         if state.view_factory is None:
             f.add_callback(defer.bridge_param,
                            state.agent.register_change_listener,
@@ -157,7 +157,16 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
 
     @replay.immutable
     def save_document(self, state, document):
+
+        def register_listener_if_necessary(doc):
+            if doc.doc_id not in self.documents:
+                state.agent.register_change_listener(doc.doc_id,
+                                                     self._document_changed)
+            return doc
+
         f = state.agent.save_document(document)
+        if state.view_factory is None:
+            f.add_callback(register_listener_if_necessary)
         f.add_callback(self._store_doc)
         return f
 
@@ -172,19 +181,19 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
             state.agent.cancel_change_listener(doc_id)
 
     @replay.journaled
-    def update_document(self, state, doc_id):
-        return self._update_document(doc_id)
+    def refresh_document(self, state, doc_id):
+        return self._refresh_document(doc_id)
 
     ### private ###
 
     @replay.mutable
     def _view_loaded(self, state, result):
         state.documents.clear()
-        fibers = [self._update_document(doc_id) for doc_id in result]
+        fibers = [self._refresh_document(doc_id) for doc_id in result]
         return fiber.FiberList(fibers, consumeErrors=True).succeed()
 
     @replay.immutable
-    def _update_document(self, state, doc_id):
+    def _refresh_document(self, state, doc_id):
         f = state.agent.get_document(doc_id)
         f.add_callback(self._store_doc)
         f.add_errback(self._update_not_found, doc_id)
@@ -208,7 +217,6 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.journaled
     def _document_changed(self, state, doc_id, rev, deleted, own_change):
         if deleted:
-            self.info('received deleted notifications %r', doc_id)
             self._delete_doc(doc_id)
             if state.listener:
                 state.listener.on_document_deleted(doc_id)
@@ -218,7 +226,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
             f = fiber.succeed()
             if should_update:
                 f.add_callback(fiber.drop_param,
-                               self._update_document, doc_id)
+                               self._refresh_document, doc_id)
             if state.listener:
                 f.add_callback(state.listener.on_document_change)
             f.add_callback(fiber.override_result, None)
@@ -262,9 +270,11 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
         log.Logger.__init__(self, state.cache)
         replay.Replayable.restored(self)
 
-    @replay.immutable
+    @replay.mutable
     def startup(self, state):
-        state.medium.call_next(self._startup)
+        if not state.working:
+            state.working = True
+            state.medium.call_next(self._startup)
 
     @replay.journaled
     def update(self, state, doc_id, operation_id, *args, **kwargs):
@@ -283,10 +293,6 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
 
     @replay.mutable
     def _startup(self, state):
-        if state.working:
-            return
-        self._set_working(True)
-
         try:
             f = self._process_next()
             f.add_both(fiber.bridge_param, self._set_working, False)
@@ -346,7 +352,7 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
                         kwargs, item_id):
         fail.trap(ConflictError, NotFoundError)
 
-        f = state.cache.update_document(doc_id)
+        f = state.cache.refresh_document(doc_id)
         f.add_errback(failure.Failure.trap, NotFoundError)
         f.add_callback(fiber.drop_param, self._retry,
                        operation_id, doc_id, args, kwargs, item_id)
