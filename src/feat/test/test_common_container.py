@@ -607,26 +607,31 @@ class TestReplayability(common.TestCase):
         self.assertEqual(t, self.unserialize(self.serialize(t)))
 
 
-class A(object):
+def create_classes():
 
-    registry = MroDict('_mro_registry')
+    class A(object):
 
+        registry = MroDict('_mro_registry')
+        stack = MroList('_mro_stack')
+        dol = MroDictOfList('_mro_dol')
 
-class B(A):
-    pass
+    class B(A):
+        pass
 
+    class C(A):
+        pass
 
-class C(A):
-    pass
+    class D(B):
+        pass
 
-
-class D(B):
-    pass
+    return A, B, C, D
 
 
 class TestMroDict(common.TestCase):
 
     def testItWorks(self):
+        A, B, C, D = create_classes()
+
         A.registry['spam'] = 'a'
         A.registry['eggs'] = 'a'
         B.registry['spam'] = 'b'
@@ -648,3 +653,140 @@ class TestMroDict(common.TestCase):
         a = A()
         self.assertEqual(a.registry['spam'], 'a')
         self.assertEqual(a.registry['eggs'], 'a')
+
+        self.assertEqual(dict(A.registry), {"spam": "a", "eggs": "a"})
+        self.assertEqual(dict(B.registry), {"spam": "b", "eggs": "a"})
+        self.assertEqual(dict(C.registry), {"spam": "c", "eggs": "a"})
+        self.assertEqual(dict(D.registry), {"spam": "d", "eggs": "d"})
+
+
+class TestMroList(common.TestCase):
+
+    def testItWorksS(self):
+        A, B, C, D = create_classes()
+
+        A.stack.append("SPAM")
+        A.stack.append("egg")
+        B.stack.extend(["bacon", "spam"])
+        C.stack.append("spam")
+        C.stack.append("sausage")
+        D.stack.extend(["tomato", "beans"])
+
+        self.assertEqual(len(A.stack), 2)
+        self.assertEqual(len(B.stack), 4)
+        self.assertEqual(len(C.stack), 4)
+        self.assertEqual(len(D.stack), 6)
+
+        self.assertEqual(A.stack[0], "SPAM")
+        self.assertEqual(A.stack[-1], "egg")
+        self.assertEqual(B.stack[0], "SPAM")
+        self.assertEqual(B.stack[-1], "spam")
+        self.assertEqual(C.stack[0], "SPAM")
+        self.assertEqual(C.stack[-1], "sausage")
+        self.assertEqual(D.stack[0], "SPAM")
+        self.assertEqual(D.stack[-1], "beans")
+
+        self.assertTrue("egg" in A.stack)
+        self.assertFalse("bacon" in A.stack)
+        self.assertFalse("sausage" in A.stack)
+        self.assertFalse("tomato" in A.stack)
+
+        self.assertTrue("egg" in B.stack)
+        self.assertTrue("bacon" in B.stack)
+        self.assertFalse("sausage" in B.stack)
+        self.assertFalse("tomato" in B.stack)
+
+        self.assertTrue("egg" in C.stack)
+        self.assertFalse("bacon" in C.stack)
+        self.assertTrue("sausage" in C.stack)
+        self.assertFalse("tomato" in C.stack)
+
+        self.assertTrue("egg" in D.stack)
+        self.assertTrue("bacon" in D.stack)
+        self.assertFalse("sausage" in D.stack)
+        self.assertTrue("tomato" in D.stack)
+
+        self.assertEqual(list(A.stack), ["SPAM", "egg"])
+        self.assertEqual(list(B.stack), ["SPAM", "egg", "bacon", "spam"])
+        self.assertEqual(list(C.stack), ["SPAM", "egg", "spam", "sausage"])
+        self.assertEqual(list(D.stack),
+                         ["SPAM", "egg", "bacon", "spam", "tomato", "beans"])
+
+
+class TestMroDictOfList(common.TestCase):
+
+    def testItWorksS(self):
+        A, B, C, D = create_classes()
+
+        A.dol.put("spam", 1)
+        A.dol.put("egg", 8)
+        B.dol.aggregate("bacon", [4, 7])
+        B.dol.put("spam", 3)
+        C.dol.put("sausage", 9)
+        C.dol.put("egg", 2)
+        D.dol.put("bacon", 5)
+        D.dol.put("egg", 6)
+        D.dol.put("tomato", 0)
+
+        self.assertTrue("spam" in A.dol)
+        self.assertTrue("egg" in A.dol)
+        self.assertFalse("bacon" in A.dol)
+        self.assertFalse("sausage" in A.dol)
+        self.assertFalse("tomato" in A.dol)
+
+        self.assertTrue("spam" in B.dol)
+        self.assertTrue("egg" in B.dol)
+        self.assertTrue("bacon" in B.dol)
+        self.assertFalse("sausage" in B.dol)
+        self.assertFalse("tomato" in B.dol)
+
+        self.assertTrue("spam" in C.dol)
+        self.assertTrue("egg" in C.dol)
+        self.assertFalse("bacon" in C.dol)
+        self.assertTrue("sausage" in C.dol)
+        self.assertFalse("tomato" in C.dol)
+
+        self.assertTrue("spam" in D.dol)
+        self.assertTrue("egg" in D.dol)
+        self.assertTrue("bacon" in D.dol)
+        self.assertFalse("sausage" in D.dol)
+        self.assertTrue("tomato" in D.dol)
+
+        self.assertEqual(len(A.dol), 2)
+        self.assertEqual(len(B.dol), 3)
+        self.assertEqual(len(C.dol), 3)
+        self.assertEqual(len(D.dol), 4)
+
+        self.assertEqual(A.dol["spam"], [1])
+        self.assertEqual(B.dol["spam"], [1, 3])
+        self.assertEqual(C.dol["spam"], [1])
+        self.assertEqual(D.dol["spam"], [1, 3])
+
+        self.assertEqual(A.dol["egg"], [8])
+        self.assertEqual(B.dol["egg"], [8])
+        self.assertEqual(C.dol["egg"], [8, 2])
+        self.assertEqual(D.dol["egg"], [8, 6])
+
+        self.assertEqual(set(iter(A.dol)), set(["spam", "egg"]))
+        self.assertEqual(set(iter(B.dol)), set(["spam", "egg", "bacon"]))
+        self.assertEqual(set(C.dol.iterkeys()),
+                         set(["spam", "egg", "sausage"]))
+        self.assertEqual(set(D.dol.iterkeys()),
+                         set(["spam", "egg", "bacon", "tomato"]))
+
+        self.assertEqual(set([(k, tuple(v)) for k, v in D.dol.iteritems()]),
+                         set([("spam", (1, 3)),
+                              ("egg", (8, 6)),
+                              ("bacon", (4, 7, 5)),
+                              ("tomato", (0, ))]))
+
+        self.assertEqual(set([tuple(v) for v in C.dol.itervalues()]),
+                         set([(1, ), (8, 2), (9, )]))
+
+        self.assertEqual(dict(A.dol), {"spam": [1], "egg": [8]})
+        self.assertEqual(dict(B.dol), {"spam": [1, 3], "egg": [8],
+                                       "bacon": [4, 7]})
+        self.assertEqual(dict(C.dol), {"spam": [1], "egg": [8, 2],
+                                       "sausage": [9]})
+        self.assertEqual(dict(D.dol), {"spam": [1, 3], "egg": [8, 6],
+                                       "bacon": [4, 7, 5], "tomato": [0]})

@@ -27,15 +27,143 @@ from feat.common import serialization
 from feat.interface.generic import ITimeProvider
 
 
-__all__ = ("MroDict", "Empty", "ExpDict", "ExpQueue")
+__all__ = ("MroDict", "MroList", "MroDictOfList",
+           "Empty", "ExpDict", "ExpQueue")
 
 PRECISION = 1e3
 MAX_LAZY_PACK_PER_SECOND = 1
 
 
-class MroDict(object):
+class Empty(Exception):
+    pass
+
+
+class MroDataDescriptor(object):
     """
-    I'm an dictionary which is ment to be used as a class attribute.
+    Base MRO aware descriptor used to create
+    inheritance friendly class level data structure.
+    @cvar proxy_factory: factory to create data structure proxies.
+    """
+
+    proxy_factory = None
+
+    def __init__(self, tag):
+        """
+        @param tag: attribute name used to store private
+                    data inside each classes.
+        @type tag: str
+        """
+        self._tag = tag
+
+    ### descriptor protocol ###
+
+    def __get__(self, obj, owner):
+        klasses = owner.mro()
+        klasses.reverse()
+
+        values = self._create_values()
+        for klass in klasses:
+            if self._has_blackbox(klass):
+                blackbox = self._get_blackbox(klass)
+                result = self._consolidate_values(values, blackbox)
+                values = result if result is not None else values
+
+        return self.proxy_factory(self._ensure_blackbox(owner), values)
+
+    ### endof descriptor protocol ###
+
+    def _has_blackbox(self, cls):
+        return self._tag in cls.__dict__
+
+    def _get_blackbox(self, cls):
+        if self._tag in cls.__dict__:
+            return getattr(cls, self._tag)
+        return None
+
+    def _ensure_blackbox(self, cls):
+        if self._tag not in cls.__dict__:
+            blackbox = self._create_blackbox()
+            setattr(cls, self._tag, blackbox)
+        else:
+            blackbox = getattr(cls, self._tag)
+        return blackbox
+
+    ### virtual ###
+
+    def _create_blackbox(self):
+        """
+        Overrides to create the private data structure
+        each classes hold to store there part of the data.
+        @return: a black box stored in a class, each classes having there own.
+        @rtype: Any
+        """
+
+    def _create_values(self):
+        """
+        Overrides to create the public data structure
+        where all data is consolidated. This is not the proxy
+        but the data passed to the proxy as the consolidated data.
+        @return: a value used to consolidate the private black boxes
+                 and passed to the proxy.
+        @rtype: Any
+        """
+
+    def _consolidate_values(self, values, private):
+        """
+        Overrides to consolidate a public value with private data.
+        @return: the consolidated values.
+        @rtype: Any
+        """
+
+
+class MroProxy(object):
+    """Provides a generic proxy delegating to the values."""
+
+    delegated = []
+
+    def __init__(self, blackbox, values):
+        self._blackbox = blackbox
+        self._values = values
+
+    def __getattr__(self, attr):
+        if attr in self.delegated:
+            value = getattr(self._values, attr)
+            setattr(self, attr, value)
+            return value
+        raise AttributeError(attr)
+
+
+class MroDictProxy(MroProxy):
+    """
+    I provide a dict-like protocol for MRO class dictionaries.
+    I provide some immutable methods and item setting.
+    """
+
+    delegated = ["keys", "values", "items",
+                 "iterkeys", "itervalues", "iteritems", "get"]
+
+    ### dict protocol ###
+
+    def __len__(self):
+        return len(self._values)
+
+    def __contains__(self, value):
+        return value in self._values
+
+    def __getitem__(self, name):
+        return self._values[name]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __setitem__(self, key, value):
+        self._blackbox[key] = value
+        self._values[key] = value
+
+
+class MroDict(MroDataDescriptor):
+    """
+    I'm an dictionary which is meant to be used as a class attribute.
     I'm aware of MRO and show different values depending from which class
     i'm accessed.
 
@@ -45,56 +173,151 @@ class MroDict(object):
     assign it to local variable.
     """
 
-    def __init__(self, tag):
-        self._tag = tag
+    proxy_factory = MroDictProxy
 
-    ### descriptor protocol ###
+    ### overridden ###
 
-    def __get__(self, obj, owner):
-        klasses = owner.mro()
-        klasses.reverse()
+    def _create_blackbox(self):
+        return {}
 
-        kwargs = dict()
-        for klass in klasses:
-            kwargs.update(getattr(klass, self._tag, dict()))
-        return ProxyDict(self._get_tag(owner), kwargs)
+    def _create_values(self):
+        return {}
 
-    def __set__(self, instance, value):
-        return NotImplementedError(
-            "You are doing something you shouldn't be doing")
-
-    def __delete__(self, instance):
-        return NotImplementedError(
-            "You are doing something you shouldn't be doing")
-
-    ### endof descriptor protocol ###
-
-    def _get_tag(self, cls):
-        if self._tag not in cls.__dict__:
-            setattr(cls, self._tag, dict())
-        return getattr(cls, self._tag)
+    def _consolidate_values(self, values, private):
+        values.update(private)
 
 
-class ProxyDict(dict):
-    '''
-    Delegates mutating methods to the owner which is part of the big object.
-    '''
+class MroListProxy(MroProxy):
+    """
+    I provide a list-like protocol to access the MRO list.
+    I provide some immutable methods, append and extend.
+    """
 
-    def __init__(self, owner, kwargs):
-        dict.__init__(self, kwargs.iteritems())
-        self._owner = owner
+    delegated = []
 
-    def __setitem__(self, key, value):
-        self._owner.__setitem__(key, value)
-        dict.__setitem__(self, key, value)
+    ### list protocol ###
 
-    def __delitem__(self, key):
-        self._owner.__delitem__(key)
-        dict.__delitem__(self, key)
+    def __len__(self):
+        return len(self._values)
+
+    def __contains__(self, value):
+        return value in self._values
+
+    def __getitem__(self, index):
+        return self._values[index]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def append(self, value):
+        self._values.append(value)
+        self._blackbox.append(value)
+
+    def extend(self, values):
+        self._values.extend(values)
+        self._blackbox.extend(values)
 
 
-class Empty(Exception):
-    pass
+class MroList(MroDataDescriptor):
+    """
+    I'm a list descriptor providing a list inheriting parent class values
+    with the ability for each classes to add there own values without
+    polluting any of the other base class children.
+    The order of the values is determined by the class MRO order.
+    """
+
+    proxy_factory = MroListProxy
+
+    ### overridden ###
+
+    def _create_blackbox(self):
+        return []
+
+    def _create_values(self):
+        return []
+
+    def _consolidate_values(self, values, private):
+        values.extend(private)
+
+
+class MroDictOfListProxy(MroProxy):
+    """
+    I provide a dict-like protocol to access the MRO dict of list.
+    I provide some immutable methods and methods to append values
+    to a name identifier item.
+    """
+
+    delegated = ["keys", "iterkeys"]
+
+    ### dict protocol ###
+
+    def __len__(self):
+        return len(self._values)
+
+    def __contains__(self, value):
+        return value in self._values
+
+    def __getitem__(self, name):
+        return list(self._values[name])
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def values(self):
+        return list(self.itervalues())
+
+    def itervalues(self):
+        return (list(v) for v in self._values.itervalues())
+
+    def items(self):
+        return list(self.iteritems())
+
+    def iteritems(self):
+        return ((k, list(v)) for k, v in self._values.iteritems())
+
+    def get(self, name, default=None):
+        if name in self._values:
+            return list(self._values.get(name))
+        return default
+
+    ### public ###
+
+    def put(self, name, value):
+        v = self._values.setdefault(name, [])
+        v.append(value)
+        r = self._blackbox.setdefault(name, [])
+        r.append(value)
+
+    def aggregate(self, name, values):
+        v = self._values.setdefault(name, [])
+        v.extend(values)
+        r = self._blackbox.setdefault(name, [])
+        r.extend(values)
+
+
+class MroDictOfList(MroDataDescriptor):
+    """
+    I'm a descriptor providing a collection of values identified by name
+    built from the chain of class inheritance with the ability for each
+    classes to add there own values without polluting any of the other
+    base class children.
+    The order of the values is determined by the class MRO order.
+    """
+
+    proxy_factory = MroDictOfListProxy
+
+    ## overridden ###
+
+    def _create_blackbox(self):
+        return {}
+
+    def _create_values(self):
+        return {}
+
+    def _consolidate_values(self, values, private):
+        for k, v in private.iteritems():
+            l = values.setdefault(k, [])
+            l.extend(v)
 
 
 class ExpBase(object):
