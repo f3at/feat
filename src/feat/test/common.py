@@ -43,6 +43,7 @@ from feat.agencies.messaging.interface import ISink
 from feat import everything
 
 from . import factories
+from twisted.trial.unittest import FailTest
 
 try:
     _getConfig = trial.getConfig
@@ -296,10 +297,50 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
 
         return chain.addBoth(self._assertAsync, check, value, *args, **kwargs)
 
+    def assertAsyncIterEqual(self, chain, expected, value, *args, **kwargs):
+
+        def check(result):
+            self.assertEqual(expected, list(result))
+            return result
+
+        if chain is None:
+            chain = defer.succeed(None)
+
+        return chain.addBoth(self._assertAsync, check, value, *args, **kwargs)
+
     def assertFails(self, exception_class, method, *args, **kwargs):
         d = method(*args, **kwargs)
         self.assertFailure(d, exception_class)
         return d
+
+    @defer.inlineCallbacks
+    def asyncEqual(self, expected, async_value):
+        self.assertTrue(isinstance(async_value, defer.Deferred))
+        value = yield async_value
+        self.assertEqual(value, expected)
+
+    @defer.inlineCallbacks
+    def asyncIterEqual(self, expected, async_iter):
+        self.assertTrue(isinstance(async_iter, defer.Deferred))
+        iterator = yield async_iter
+        self.assertTrue(isinstance(iterator, collections.Iterable))
+        self.assertEqual(list(iterator), expected)
+
+    @defer.inlineCallbacks
+    def asyncErrback(self, error_class, fun, *args, **kwargs):
+        result = fun(*args, **kwargs)
+        self.assertTrue(isinstance(result, defer.Deferred))
+        try:
+            res = yield result
+            self.fail("Expecting asynchronous error %s "
+                      "and got result: %r" % (error_class.__name__, res))
+        except Exception, e:
+            if isinstance(e, FailTest):
+                raise
+            self.assertTrue(isinstance(e, error_class),
+                            "Expecting asynchronous error %s "
+                            "and got %s" % (error_class.__name__,
+                                            type(e).__name__))
 
     def assertAsyncFailure(self, chain, errorKlasses, value, *args, **kwargs):
         '''Adds an asynchronous assertion for failure to the specified chain.
