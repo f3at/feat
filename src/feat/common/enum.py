@@ -85,7 +85,7 @@ class MetaEnum(type):
     __getitem__ = get
 
     def __contains__(cls, key):
-        if isinstance(key, str):
+        if isinstance(key, (str, unicode)):
             return key in cls._names
         if isinstance(key, Enum) and not isinstance(key, cls):
             raise TypeError("Cannot type cast between enums")
