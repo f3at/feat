@@ -72,8 +72,8 @@ class Agency(agency.Agency):
 
     def on_master_missing(self):
         '''
-        Tries to spawn a master agency if the slave agency failed to connect for
-        several times. To avoid several slave agencies spawning the master
+        Tries to spawn a master agency if the slave agency failed to connect
+        for several times. To avoid several slave agencies spawning the master
         agency a file lock is used
         @param master: Remote reference to the broker object
         '''
@@ -105,7 +105,8 @@ class Agency(agency.Agency):
                    self._lock_file.name)
 
         if fcntl.lock(self._lock_file.fileno()):
-            self.debug("Lock taken sucessfully, we will start the master agency")
+            self.debug("Lock taken sucessfully, "
+                       "we will start the master agency")
             return True
         self.debug("Could not take the lock to spawn the master agency")
         return False

@@ -39,10 +39,10 @@ def lock(fd, use_flock=False):
     except IOError:
         return False
 
+
 def unlock(fd, use_flock=False):
     try:
         LOCK_FN(fd, _fcntl.LOCK_UN)
         return True
     except IOError:
         return False
-

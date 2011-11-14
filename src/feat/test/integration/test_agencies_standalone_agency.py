@@ -140,7 +140,6 @@ class IntegrationTestCase(common.TestCase):
         # we should have a pid now
         yield self.wait_for_pid(self.pid_path)
 
-
     @defer.inlineCallbacks
     def testLockAlreadyTaken(self):
         self.lock_fd = open(self.lock_path, 'rb+')
@@ -200,12 +199,14 @@ class IntegrationTestCase(common.TestCase):
         return self.wait_for(pid_created, timeout=20)
 
     def wait_for_master_gone(self, timeout=20):
+
         def broker_disconnected():
             return self.agency._broker.state == BrokerRole.disconnected
 
         return self.wait_for(broker_disconnected, timeout)
 
     def wait_for_master_back(self, timeout=20):
+
         def broker_connected():
             return self.agency._broker.state == BrokerRole.slave
 

@@ -258,6 +258,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                 f.raiseException()
 
         if self.is_master():
+
             def kill_slave(slave):
                 self.log('slave is %r', slave)
                 method_to_call = 'shutdown' if gentle else 'kill'
