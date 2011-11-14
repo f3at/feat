@@ -225,8 +225,7 @@ class RabbitSpecific(object):
         number_of_reconnections = 5
         mock = self.setup_receiver()
 
-        yield self.process.rabbitmqctl_dump(
-            'list_bindings exchange_name queue_name')
+        yield self.process.rabbitmqctl_dump('list_bindings')
 
         for index in range(1, number_of_reconnections + 1):
             d = wait_for_msgs()
