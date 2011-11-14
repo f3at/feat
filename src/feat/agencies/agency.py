@@ -1340,22 +1340,22 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # allow host start in the startup procedure, only if the 'startup'
         # flag is passed
         if self._startup_task and not startup:
-            self.error('Not starting host agent, because the agency '
+            self.debug('Not starting host agent, because the agency '
                        'spawns it on startup')
             return False
 
         if self._shutdown_task is not None:
-            self.error('Not starting host agent, because the agency '
+            self.debug('Not starting host agent, because the agency '
                      'is about to terminate itself')
             return False
 
         if self.get_host_agent():
-            self.error('Not starting host agent, because we already '
+            self.debug('Not starting host agent, because we already '
                      ' have one')
             return False
 
         if self._starting_host:
-            self.error('Not starting host agent, because we are already '
+            self.debug('Not starting host agent, because we are already '
                      'starting one.')
             return False
         return True
