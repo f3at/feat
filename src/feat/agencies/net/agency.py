@@ -23,20 +23,17 @@ import os
 import re
 import socket
 import sys
-import types
-
 
 from twisted.internet import reactor
 from twisted.spread import pb
 
 from feat.agents.base.agent import registry_lookup
-from feat.agents.base import recipient, descriptor
-from feat.agents.common import host
+from feat.agents.base import recipient
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
-from feat.common import log, defer, time, first, error, run, signal
+from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
 from feat.process import standalone
 from feat.process.base import ProcessState
@@ -44,9 +41,8 @@ from feat.gateway import gateway
 from feat.utils import locate
 from feat.web import security
 
-from feat.interface.agent import IAgentFactory, AgencyAgentState
+from feat.interface.agent import IAgentFactory
 from feat.interface.agency import ExecMode
-from feat.agencies.interface import NotFoundError
 
 
 GATEWAY_PORT_COUNT = 100
