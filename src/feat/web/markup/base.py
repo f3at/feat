@@ -20,6 +20,8 @@
 
 # Headers in this file shall remain intact.
 
+from xml.sax import saxutils
+
 from twisted.python import failure
 from zope.interface import implements
 
@@ -53,10 +55,10 @@ class BasePolicy(object):
         return attr.lower()
 
     def convert_attr(self, obj):
-        return str(obj)
+        return unicode(obj)
 
     def write_attr(self, doc, value):
-        doc.write(value)
+        doc.write(saxutils.quoteattr(value))
         return defer.succeed(doc)
 
     def convert_content(self, obj):
@@ -68,7 +70,7 @@ class BasePolicy(object):
         return defer.succeed(doc)
 
     def write_content(self, doc, value):
-        doc.write(value)
+        doc.write(saxutils.escape(value))
         return defer.succeed(doc)
 
     def resolve_attr_error(self, failure):
@@ -272,15 +274,9 @@ class Element(object):
                 return d
 
             if value is not None:
-                doc.write("=\"")
-                d = self._policy.write_attr(doc, value)
-                d.addCallback(close_attr)
-                return d
+                doc.write("=")
+                return self._policy.write_attr(doc, value)
 
-            return doc
-
-        def close_attr(doc):
-            doc.write("\"")
             return doc
 
         def close_tag(doc):
@@ -288,11 +284,11 @@ class Element(object):
                 if self.is_self_closing:
                     doc.write(">")
                 else:
-                    doc.write("/>")
+                    doc.write(" />")
             elif self.content:
                 doc.write(">")
             else:
-                doc.write("/>")
+                doc.write(" />")
             return doc
 
         def close_element(doc, name):
@@ -322,15 +318,10 @@ class Element(object):
 
     def _got_value(self, value, doc, trigger=None):
 
-        def close_attr(doc):
-            doc.write("\"")
-            return doc
-
         if value is not None:
-            doc.write("=\"")
+            doc.write("=")
             d = defer.succeed(doc)
             d.addCallback(self._policy.write_attr, value)
-            d.addCallback(close_attr)
             if trigger is not None:
                 d.addCallback(trigger.callback)
             d.addCallback(defer.override_result, value)

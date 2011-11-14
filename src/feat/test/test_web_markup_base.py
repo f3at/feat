@@ -50,6 +50,16 @@ class TestPolicy(base.BasePolicy):
 
 class TestBaseMarkup(common.TestCase):
 
+    @defer.inlineCallbacks
+    def testEscaping(self):
+        policy = base.BasePolicy()
+        tag = base.ElementBuilder(policy)
+
+        e = tag.A(test="<>&'\"")("<>&'\"")
+        yield self.asyncEqual('<a test="&lt;&gt;&amp;\'&quot;">'
+                              '&lt;&gt;&amp;\'"</a>',
+                              e.as_string())
+
     @common.attr(skip=("trial do not like deferred without handled errbacks\n"
                        "even when it is the expected behaviour."))
     @defer.inlineCallbacks
@@ -157,7 +167,7 @@ class TestBaseMarkup(common.TestCase):
         self.assertEqual(len(e), 2)
         self.assertTrue("a" in e)
         self.assertFalse("c" in e)
-        self.assertTrue(isinstance(e["a"], str))
+        self.assertTrue(isinstance(e["a"], unicode))
         self.assertTrue(isinstance(e["b"], defer.Deferred))
         values = yield defer.join(*(list(e)))
         self.assertEqual(set(values), set(["a", "b"]))
@@ -165,7 +175,7 @@ class TestBaseMarkup(common.TestCase):
         self.assertEqual(len(e), 3)
         self.assertTrue("a" in e)
         self.assertTrue("c" in e)
-        self.assertTrue(isinstance(e["c"], str))
+        self.assertTrue(isinstance(e["c"], unicode))
         self.assertEqual("1", e["a"])
         yield self.asyncEqual("2", e["b"])
         self.assertEqual("3", e["c"])
@@ -194,18 +204,18 @@ class TestBaseMarkup(common.TestCase):
         doc.root()
         doc.node()
         doc.node()
-        yield self.asyncEqual('<root><node><node/></node></root>',
+        yield self.asyncEqual('<root><node><node /></node></root>',
                               doc.as_string())
 
         doc = base.Document(policy)
         doc.root()
         doc.leaf()
         doc.leaf()
-        yield self.asyncEqual('<root><leaf/><leaf/></root>', doc.as_string())
+        yield self.asyncEqual('<root><leaf /><leaf /></root>', doc.as_string())
 
         d = lambda v: common.delay(v, 0.01)
         e = tag.A()(tag.leaf(), d(tag.leaf(a=1)), d(tag.leaf()))
-        yield self.asyncEqual('<a><leaf/><leaf a="1"/><leaf/></a>',
+        yield self.asyncEqual('<a><leaf /><leaf a="1" /><leaf /></a>',
                               e.as_string())
 
     @defer.inlineCallbacks
@@ -270,8 +280,8 @@ class TestBaseMarkup(common.TestCase):
 
         yield self.asyncEqual('<root attr1="45" attr2="XX">'
                               '<sub>VVV</sub>'
-                              '<sub><a/>XXX<b>ZZZ</b><c name="toto"/></sub>'
-                              '<sub>AAA<d/><e/></sub>'
+                              '<sub><a />XXX<b>ZZZ</b><c name="toto" /></sub>'
+                              '<sub>AAA<d /><e /></sub>'
                               '</root>',
                               doc.as_string())
 
@@ -288,8 +298,8 @@ class TestBaseMarkup(common.TestCase):
 
         yield self.asyncEqual('<root attr1="45" attr2="XX">'
                               '<sub>VVV</sub>'
-                              '<sub><a/>XXX<b>ZZZ</b><c name="toto"/></sub>'
-                              '<sub>AAA<d/><e/></sub>'
+                              '<sub><a />XXX<b>ZZZ</b><c name="toto" /></sub>'
+                              '<sub>AAA<d /><e /></sub>'
                               '</root>',
                               doc.as_string())
 
@@ -304,41 +314,41 @@ class TestBaseMarkup(common.TestCase):
         tag = base.ElementBuilder(policy)
         d = lambda v: common.delay(v, 0.01)
 
-        yield check(tag.TOTO()(), "<toto/>")
+        yield check(tag.TOTO()(), "<toto />")
 
-        yield check(tag.TOTO(test=None)(), "<toto test/>")
+        yield check(tag.TOTO(test=None)(), "<toto test />")
 
-        yield check(tag.TOTO(test=d(None))(), "<toto test/>")
+        yield check(tag.TOTO(test=d(None))(), "<toto test />")
 
         yield check(tag.PIM()("aaa", "bbb"),
                     "<pim>aaabbb</pim>")
 
         yield check(tag.PIM()(tag.PAM(), tag.POUM()),
-                    "<pim><pam/><poum/></pim>")
+                    "<pim><pam /><poum /></pim>")
 
         yield check(tag.SPAM(aaa=1, bbb=2, ccc=3)(),
-                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\"/>")
+                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\" />")
 
         yield check(tag.SPAM(BACON=42)("toto", tag.EGG(), "tata"),
-                    "<spam bacon=\"42\">toto<egg/>tata</spam>")
+                    "<spam bacon=\"42\">toto<egg />tata</spam>")
 
         yield check(tag.TOTO()(common.delay(tag.PIM(), 0.02),
                                11,
                                common.delay(tag.PAM(), 0.01),
                                tag.POUM(),
                                common.delay(22, 0.02)),
-                    "<toto><pim/>11<pam/><poum/>22</toto>")
+                    "<toto><pim />11<pam /><poum />22</toto>")
 
         yield check(tag.SPAM(aaa=common.delay(1, 0.02),
                              bbb=2,
                              ccc=common.delay(3, 0.01))(),
-                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\"/>")
+                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\" />")
 
         yield check(tag.A(a=1, b=2)(tag.B(c=3),
                                     tag.D(d=4)(tag.E()(tag.F(e=5)),
                                                tag.G(h=6))),
-                    '<a a="1" b="2"><b c="3"/><d d="4">'
-                    '<e><f e="5"/></e><g h="6"/></d></a>')
+                    '<a a="1" b="2"><b c="3" /><d d="4">'
+                    '<e><f e="5" /></e><g h="6" /></d></a>')
 
         # Now everything asynchronous
         yield check(tag.A(a=d(1), b=d(2))
@@ -347,8 +357,8 @@ class TestBaseMarkup(common.TestCase):
                        (d(tag.E()
                           (d(tag.F(e=d(5))))),
                         d(tag.G(h=d(6)))))),
-                    '<a a="1" b="2"><b c="3"/><d d="4">'
-                    '<e><f e="5"/></e><g h="6"/></d></a>')
+                    '<a a="1" b="2"><b c="3" /><d d="4">'
+                    '<e><f e="5" /></e><g h="6" /></d></a>')
 
     @defer.inlineCallbacks
     def testPolicySpeparator(self):
