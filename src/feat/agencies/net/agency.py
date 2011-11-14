@@ -629,6 +629,10 @@ class Agency(agency.Agency):
                 value = str(env[key])
                 if value == 'None':
                     value = None
+                if value == 'False':
+                    value = False
+                if value == 'True':
+                    value = True
                 if c_key in self.config:
                     self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value
