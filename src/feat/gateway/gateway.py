@@ -30,6 +30,7 @@ from feat.web import security, http, webserver
 
 # Import supported formats
 from feat.models import applicationjson
+from feat.models import texthtml
 
 
 class NoPortAvailableError(Exception):
@@ -59,6 +60,7 @@ class Gateway(log.LogProxy, log.Logger):
                                         security_policy=self._security,
                                         log_keeper=self)
         self._server.initiate()
+        self._server.enable_mime_type(texthtml.MIME_TYPE)
         self._server.enable_mime_type(applicationjson.MIME_TYPE)
         self.info("Master gateway started on port %d", self.port)
 
@@ -74,6 +76,7 @@ class Gateway(log.LogProxy, log.Logger):
                                           log_keeper=self)
                 server.initiate()
                 self._server = server
+                self._server.enable_mime_type(texthtml.MIME_TYPE)
                 self._server.enable_mime_type(applicationjson.MIME_TYPE)
                 self.info("Slave gateway started on port %d", self.port)
                 return
