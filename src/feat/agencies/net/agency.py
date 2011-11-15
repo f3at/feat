@@ -800,7 +800,7 @@ class Agency(agency.Agency):
         path = run.write_pidfile(rundir, file=pid_file)
         self.log("Written pid file %s" % path)
 
-    def _spawn_agency(self, desc=""):
+    def _spawn_agency(self, desc="", args=[]):
 
         def get_cmd_line():
             python_path = ":".join(sys.path)
@@ -808,7 +808,7 @@ class Agency(agency.Agency):
             feat_debug = self.get_logging_filter()
 
             command = 'feat'
-            args = ['-D']
+            args.append('-D')
             env = dict(PYTHONPATH=python_path,
                        FEAT_DEBUG=feat_debug,
                        PATH=path)
