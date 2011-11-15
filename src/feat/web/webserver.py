@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 from cStringIO import StringIO
 import sys
 import time
@@ -235,8 +236,14 @@ class IWebResponse(Interface):
         If not set, the default values will be used.
         """
 
-    def write_object(obj):
-        """Write an object using mime-type negotiation."""
+    def write_object(obj, *args, **kwargs):
+        """
+        Writes an object using mime-type negotiation.
+        The extra arguments and keyworkd arguments are passed
+        through to the writer.
+        @param obj: object to write.
+        @type obj: object
+        """
 
 
 class INegotiable(Interface):
@@ -341,18 +348,18 @@ class BasicResource(BaseResource):
 
     def __init__(self, authenticator=None, authorizer=None):
         BaseResource.__init__(self, authenticator, authorizer)
-        self._childs = {}
+        self._children = {}
 
     def __setitem__(self, name, child):
         child.set_inherited(authenticator=self._authenticator,
                             authorizer=self._authorizer)
-        self._childs[name] = child
+        self._children[name] = child
 
     def __getitem__(self, name):
-        return self._childs[name]
+        return self._children[name]
 
     def __delitem__(self, name):
-        del self._childs[name]
+        del self._children[name]
 
     def locate_resource(self, request, location, remaining):
         if not remaining or remaining == (u'', ):
@@ -361,8 +368,8 @@ class BasicResource(BaseResource):
 
     def locate_child(self, request, location, remaining):
         next = remaining[0]
-        if next in self._childs:
-            return self._childs[next], remaining[1:]
+        if next in self._children:
+            return self.__children[next], remaining[1:]
 
 
 class Server(log.LogProxy, log.Logger):
@@ -663,7 +670,7 @@ class Server(log.LogProxy, log.Logger):
                 raise http.InternalServerError("Invalid Resource Result")
 
             resource = result[0]
-            if isinstance(server, defer.Deferred):
+            if isinstance(resource, defer.Deferred):
                 resource.addCallback(lambda r: (r, ) + result[1:])
                 resource.addCallback(self._resource_located, request, response,
                                     old_res, credentials, old_loc, old_rem)
@@ -767,11 +774,12 @@ class Server(log.LogProxy, log.Logger):
         return self._resource_rendered(d, request, response)
 
     def _resource_rendered(self, data, request, response):
-        d = self._write_data(data, response)
-        if isinstance(d, defer.Deferred):
-            d.addCallback(defer.drop_param,
-                          self._terminate, request, response)
-            return d
+        if data is not response:
+            d = self._write_data(data, response)
+            if isinstance(d, defer.Deferred):
+                d.addCallback(defer.drop_param,
+                              self._terminate, request, response)
+                return d
 
         return self._terminate(request, response)
 
@@ -1305,7 +1313,7 @@ class Response(log.Logger):
         self._update_headers()
 
     @defer.ensure_async
-    def write_object(self, obj):
+    def write_object(self, obj, *args, **kwargs):
         if not self._writing and self._objects:
             raise document.WriteError("Object already written")
 
@@ -1367,7 +1375,7 @@ class Response(log.Logger):
 
             self.prepare()
 
-            d = server.registry.write(self, obj)
+            d = server.registry.write(self, obj, *args, **kwargs)
             d.addCallbacks(self._write_object_succeed,
                            self._write_object_failed,
                            callbackArgs=(obj, ))
