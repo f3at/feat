@@ -103,9 +103,9 @@ class Node(_Base):
 class NodeModel(model.Model):
 
     model.identity('node-model')
-    model.childs('locations', getter.source_get('get_child'),
-                 call.source_call('iter_child_names'),
-                 meta=[('render_array', 3)])
+    model.children('locations', getter.source_get('get_child'),
+                   call.source_call('iter_child_names'),
+                   meta=[('render_array', 3)])
 
 
 # class LocationCollection(model.Collection):
@@ -121,8 +121,8 @@ class LocationModel(model.Model):
 
     model.identity('location-model')
     model.attribute('name', value.String(), getter.source_attr('name'))
-    model.childs('agents', getter.source_get('get_child'),
-                 call.source_call('iter_child_names'))
+    model.children('agents', getter.source_get('get_child'),
+                   call.source_call('iter_child_names'))
 
 
 @adapter.register(Agent, IModel)

@@ -77,7 +77,8 @@ class Relative(Reference):
                 raise BadReference("Base model %s not found in context"
                                    % (self._base, ))
 
-        return tuple(location) + self._location + context.remaining
+        resolved = tuple(location) + self._location + context.remaining
+        return context.make_address(resolved)
 
     ### IRelativeReference ###
 
@@ -103,7 +104,8 @@ class Local(Reference):
 
     def resolve(self, context):
         context = IContext(context)
-        return context.names[:1] + self._location + context.remaining
+        resolved = context.names[:1] + self._location + context.remaining
+        return context.make_address(resolved)
 
     ### ILocalReference ###
 
@@ -120,14 +122,15 @@ class Absolute(Reference):
     _location = None
 
     def __init__(self, root=None, *location):
-        self._root = unicode(root)
+        self._root = root
         self._location = tuple([unicode(i) for i in location])
 
     ### IReference ###
 
     def resolve(self, context):
         context = IContext(context)
-        return (self._root, ) + self._location + context.remaining
+        resolved = (self._root, ) + self._location + context.remaining
+        return context.make_address(resolved)
 
     ### IReference ###
 

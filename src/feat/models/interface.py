@@ -249,7 +249,7 @@ class IMetadataItem(Interface):
     """A metadata atom, containing a name, a format and a list of values."""
 
     name = Attribute("Name of the metadata atom. @type: unicode")
-    value = Attribute("Metadata value. @type: unicode")
+    value = Attribute("Value of metadata atom. @type unicode")
     scheme = Attribute("Metadata format. @type unicode or None")
 
 
@@ -271,6 +271,9 @@ class  IContext(Interface):
     remaining = Attribute("Remaining names to get to the targeted model. "
                           "@type: list of unicode")
 
+    def make_address(self, location):
+        """Make and address from a tuple resolved but a reference."""
+
 
 class IReference(Interface):
     """
@@ -286,14 +289,9 @@ class IReference(Interface):
         Applies the reference to the current context
         and returns a global reference.
         The result will depend on the reference type.
-        @param root: current root identifier.
-        @type root: object
-        @param models: current chain of model.
-        @type models: list of IModel
-        @param location: current location to be resolved.
-        @type location: list of unicode
-        @return: the referenced model root and absolute location
-        @rtype: tuple of object and list of unicode
+        @return: the address build by the context form the result
+                 of resolving the reference.
+        @rtype: object()
         @raise BadReference: if the reference cannot be applied
                              to the specified context.
         """
@@ -613,6 +611,7 @@ class IModelItem(Interface):
                      "@type: unicode")
     label = Attribute("Item short label. @type: unicode or None")
     desc = Attribute("Item long description. @type: unicode or None")
+    reference = Attribute("Reference to the model. @type: IReference")
 
     def browse():
         """
@@ -708,7 +707,7 @@ class IActionParam(Interface):
 ### private interfaces ###
 
 
-class  IValidator(Interface):
+class IValidator(Interface):
 
     def validate(value):
         """
@@ -723,7 +722,7 @@ class  IValidator(Interface):
         """
 
 
-class  IAspect(Interface):
+class IAspect(Interface):
     """Aspect of a model or an action defined by its owner."""
 
     name = Attribute("Aspect name. @type: unicode")

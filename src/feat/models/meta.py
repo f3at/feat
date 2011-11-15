@@ -48,7 +48,6 @@ class Metadata(annotate.Annotable):
 
     _class_meta = container.MroDictOfList("_mro_meta")
     _instance_meta = None
-    aspect = None
 
     __slots__ = ("_instance_meta", )
 
@@ -61,13 +60,6 @@ class Metadata(annotate.Annotable):
         if self._instance_meta is not None:
             items.extend(self._instance_meta.get(name, []))
 
-        # try:
-        #     print type(self.aspect), type(self), self, self.aspect
-        #     aspect_meta = IMetadata(self.aspect)
-        #     items.extend(aspect_meta.get_meta(name))
-        # except TypeError:
-        #     pass
-
         return items
 
     def iter_meta_names(self):
@@ -78,22 +70,11 @@ class Metadata(annotate.Annotable):
         if self._instance_meta is not None:
             names.update(self._instance_meta)
 
-        # try:
-        #     aspect_meta = IMetadata(self.aspect)
-        #     names.update(aspect_meta.iter_meta_names())
-        # except TypeError:
-        #     pass
-
         return iter(names)
 
     def iter_meta(self, *names):
         class_meta = self._class_meta
         instance_meta = self._instance_meta
-
-        # try:
-        #     aspect_meta = IMetadata(self.aspect)
-        # except TypeError:
-        #     aspect_meta = None
 
         if not names:
             names = self.iter_meta_names()
@@ -106,10 +87,6 @@ class Metadata(annotate.Annotable):
             if instance_meta is not None and k in instance_meta:
                 for m in instance_meta[k]:
                     yield m
-
-            # if aspect_meta is not None:
-            #     for m in aspect_meta.get_meta(k):
-            #         yield m
 
     ### protected ###
 

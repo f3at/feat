@@ -24,8 +24,10 @@ import types
 
 from zope.interface import implements
 
-from feat.common import error, annotate, container, defer
-from feat.models import utils, meta as models_meta
+from feat.common import error, annotate, container, defer, error
+from feat.models import utils
+from feat.models import meta as models_meta
+from feat.models import reference as models_reference
 
 from feat.models.interface import IModel, IModelItem, NotSupported
 from feat.models.interface import IActionFactory, IModelFactory
@@ -155,9 +157,9 @@ def action(name, factory, label=None, desc=None):
               label=label, desc=desc)
 
 
-def childs(name, child_source, child_names=None,
-           child_model=None, child_label=None, child_desc=None,
-           label=None, desc=None, meta=None):
+def children(name, child_source, child_names=None,
+             child_model=None, child_label=None, child_desc=None,
+             label=None, desc=None, meta=None):
     """
     Annotate a dynamic collection of sub-models.
     @param name: the name of the collection model containing the sub-models.
@@ -180,7 +182,7 @@ def childs(name, child_source, child_names=None,
     @param desc: the collection description or None.
     @type desc: str or unicode or None
     """
-    _annotate("childs", name, child_source=child_source,
+    _annotate("children", name, child_source=child_source,
               child_names=child_names, child_model=child_model,
               child_label=child_label, child_desc=child_desc,
               label=label, desc=desc, meta=meta)
@@ -488,10 +490,10 @@ class StaticChildrenMixin(object):
         cls._model_items[name] = item
 
     @classmethod
-    def annotate_childs(cls, name, child_source, child_names=None,
+    def annotate_children(cls, name, child_source, child_names=None,
                         child_model=None, child_label=None, child_desc=None,
                         label=None, desc=None, meta=None):
-        """@see: feat.models.model.childs"""
+        """@see: feat.models.model.children"""
         name = _validate_str(name)
         coll_cls = MetaCollection.new(cls._identity + "." + name,
                                       child_source=child_source,
@@ -503,7 +505,6 @@ class StaticChildrenMixin(object):
                                  label=label, desc=desc)
         if meta:
             for decl in meta:
-                print decl
                 item.annotate_meta(*decl)
 
         cls._model_items[name] = item
@@ -686,6 +687,8 @@ class BaseModelItem(models_meta.Metadata):
         return source_getter(None, context)
 
     def _wrap_source(self, source, view=None, model_factory=None):
+        if source is None:
+            return source
         if IModel.providedBy(source):
             return source
         if IReference.providedBy(source):
@@ -709,9 +712,12 @@ class MetaModelItem(type(BaseModelItem)):
             label=None, desc=None):
 
         cls_name = utils.mk_class_name(name, "ModelItem")
+        name = _validate_str(name)
+        ref = models_reference.Relative(name)
         return MetaModelItem(cls_name, (ModelItem, ),
                              {"__slots__": (),
-                              "_name": _validate_str(name),
+                              "_name": name,
+                              "_reference": ref,
                               "_fetcher": _validate_effect(fetcher),
                               "_browser": _validate_effect(browser),
                               "_factory": _validate_model_factory(factory),
@@ -742,6 +748,7 @@ class ModelItem(BaseModelItem):
     implements(IModelItem)
 
     _name = None
+    _reference = None
     _fetcher = None
     _browser = None
     _view = None
@@ -778,6 +785,10 @@ class ModelItem(BaseModelItem):
     @property
     def desc(self):
         return self._desc
+
+    @property
+    def reference(self):
+        return self._reference
 
     def browse(self):
         return self._create_model(self._view, self._browser, self._factory)
@@ -987,13 +998,14 @@ class Collection(AbstractModel, StaticActionsMixin, DynamicItemsMixin):
 
 class DynamicModelItem(BaseModelItem):
 
-    __slots__ = ("_name", "_child")
+    __slots__ = ("_name", "_reference", "_child")
 
     implements(IModelItem, IAspect)
 
     def __init__(self, model, name):
         BaseModelItem.__init__(self, model)
         self._name = name
+        self._reference = models_reference.Relative(name)
         self._child = None
 
     ### overridden ###
@@ -1023,6 +1035,10 @@ class DynamicModelItem(BaseModelItem):
     def desc(self):
         return self.model._item_desc
 
+    @property
+    def reference(self):
+        return self._reference
+
     ### IModelItem ###
 
     def browse(self):
@@ -1034,6 +1050,8 @@ class DynamicModelItem(BaseModelItem):
     ### private ###
 
     def _got_model(self, model):
+        if model is None:
+            return None
         self._child = model
         return self
 

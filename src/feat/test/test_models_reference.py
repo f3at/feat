@@ -23,6 +23,7 @@
 from zope.interface import implements
 
 from feat.models import interface, reference
+from feat.web import http
 
 from . import common
 
@@ -41,8 +42,13 @@ class Context(object):
 
     def __init__(self, idents, names, remaining):
         self.models = [DummyModel(i) for i in idents]
-        self.names = tuple([unicode(i) for i in names])
+        self.names = (names[0], ) + tuple([unicode(i) for i in names[1:]])
         self.remaining = tuple([unicode(i) for i in remaining])
+
+    def make_address(self, location):
+        host, port = location[0]
+        path = "/" + http.tuple2path(location[1:])
+        return http.compose(host=host, port=port, path=path)
 
 
 class TestModelsReference(common.TestCase):
@@ -51,28 +57,31 @@ class TestModelsReference(common.TestCase):
         Ref = reference.Absolute
         Ctx = Context
 
-        ref = Ref("dummy", "a", "b")
+        ref = Ref(("dummy.com", "44"), "a", "b")
         self.assertTrue(interface.IReference.providedBy(ref))
         self.assertTrue(interface.IAbsoluteReference.providedBy(ref))
-        self.assertTrue(isinstance(ref.root, unicode))
+        self.assertTrue(isinstance(ref.root, tuple))
         self.assertTrue(isinstance(ref.location, tuple))
         self.assertTrue(isinstance(ref.location[0], unicode))
         self.assertTrue(isinstance(ref.location[1], unicode))
-        self.assertEqual(Ref("test").root, u"test")
+        self.assertEqual(Ref("test.net").root, u"test.net")
+        self.assertEqual(Ref(("test.net", 44)).root, ("test.net", 44))
         self.assertEqual(Ref("X").location, ())
         self.assertEqual(Ref("X", "a", "b", "c").location, (u"a", u"b", u"c"))
 
-        ref = Ref("RR")
-        ctx = Ctx(("root", ), ("CR", ), ())
-        self.assertEqual(ref.resolve(ctx), ("RR", ))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("RR", ))
+        ref = Ref(("root.com", 44))
+        ctx = Ctx(("RR", ), ("dummy.net", ), ())
+        self.assertEqual(ref.resolve(ctx), "http://root.com:44/")
+        ctx = Ctx(("RR", "Z", "Y"), ("dummy.net", "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://root.com:44/")
 
-        ref = Ref("RR", "a", "b")
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("RR", "a", "b"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx), ("RR", "a", "b", "x", "w"))
+        ref = Ref(("root.com", 44), "a", "b")
+        ctx = Ctx((("root", None), "Z", "Y"),
+                  ("dummy.net", "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://root.com:44/a/b")
+        ctx = Ctx((("root", 44), "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://root.com:44/a/b/x/w")
 
     def testLocalReference(self):
         Ref = reference.Local
@@ -87,16 +96,18 @@ class TestModelsReference(common.TestCase):
         self.assertEqual(ref.location, (u"a", u"b"))
 
         ref = Ref()
-        ctx = Ctx(("root", ), ("CR", ), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", ))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", ))
+        ctx = Ctx(("root", ), (("dummy.net", None), ), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/")
+        ctx = Ctx(("root", "Z", "Y"), (("dummy.net", None), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/")
 
         ref = Ref("a", "b")
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "a", "b"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx), ("CR", "a", "b", "x", "w"))
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/a/b")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/a/b/x/w")
 
     def testRelativeReference(self):
         Ref = reference.Relative
@@ -117,35 +128,41 @@ class TestModelsReference(common.TestCase):
         self.assertEqual(ref.location, (u"a", u"b"))
 
         ref = Ref()
-        ctx = Ctx(("root", ), ("CR", ), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", ))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "z", "y"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx), ("CR", "z", "y", "x", "w"))
+        ctx = Ctx(("root", ), (("dummy.net", 44), ), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net:44/")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", 44), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net:44/z/y")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", 44), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net:44/z/y/x/w")
 
         ref = Ref("a", "b")
-        ctx = Ctx(("root", ), ("CR", ), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "a", "b"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "z", "y", "a", "b"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx),
-                         ("CR", "z", "y", "a", "b", "x", "w"))
+        ctx = Ctx(("root", ), (("dummy.net", None), ), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/a/b")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z/y/a/b")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z/y/a/b/x/w")
 
         ref = Ref(base="Z")
-        ctx = Ctx(("root", ), ("CR", ), ())
+        ctx = Ctx(("root", ), (("dummy.net", None), ), ())
         self.assertRaises(interface.BadReference, ref.resolve, ctx)
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "z"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx), ("CR", "z", "x", "w"))
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z/x/w")
 
         ref = Ref("a", "b", base="Z")
-        ctx = Ctx(("root", ), ("CR", ), ())
+        ctx = Ctx(("root", ), (("dummy.net", None), ), ())
         self.assertRaises(interface.BadReference, ref.resolve, ctx)
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ())
-        self.assertEqual(ref.resolve(ctx), ("CR", "z", "a", "b"))
-        ctx = Ctx(("root", "Z", "Y"), ("CR", "z", "y"), ("x", "w"))
-        self.assertEqual(ref.resolve(ctx),
-                         ("CR", "z", "a", "b", "x", "w"))
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ())
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z/a/b")
+        ctx = Ctx(("root", "Z", "Y"),
+                  (("dummy.net", None), "z", "y"), ("x", "w"))
+        self.assertEqual(ref.resolve(ctx), "http://dummy.net/z/a/b/x/w")

@@ -37,6 +37,16 @@ class DummyView(object):
         self.num = num
 
 
+class DummyContext(object):
+
+    implements(interface.IContext)
+
+    def __init__(self, models=[], names=[], remaining=[]):
+        self.models = tuple(models)
+        self.names = tuple(names)
+        self.remaining = tuple(remaining)
+
+
 class DummySource(object):
 
     def __init__(self):
@@ -126,11 +136,11 @@ class TestModel(model.Model):
     model.view("view2", "test-view", getter.source_get("get_view"),
                label="View 2", desc="Second view")
     model.view("view3", "test-view")
-    model.childs("values",
-                 child_names=call.source_call("iter_names"),
-                 child_source=getter.source_get("get_value"),
-                 child_label="Some Value", child_desc="Some dynamic value",
-                 label="Some Values", desc="Some dynamic values")
+    model.children("values",
+                   child_names=call.source_call("iter_names"),
+                   child_source=getter.source_get("get_value"),
+                   child_label="Some Value", child_desc="Some dynamic value",
+                   label="Some Values", desc="Some dynamic values")
 
 
 class TestView(model.Model):
@@ -255,6 +265,9 @@ class TestModelsModel(common.TestCase):
             self.assertTrue(isinstance(item.name, (unicode, types.NoneType)))
             self.assertTrue(isinstance(item.label, (unicode, types.NoneType)))
             self.assertTrue(isinstance(item.desc, (unicode, types.NoneType)))
+            self.assertTrue(interface.IReference.providedBy(item.reference))
+            ctx = DummyContext()
+            self.assertEqual(item.reference.resolve(ctx), tuple([item.name]))
             model = yield item.fetch()
             self.assertTrue(interface.IModel.providedBy(model))
             model = yield item.browse()
