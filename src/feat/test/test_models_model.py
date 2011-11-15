@@ -46,6 +46,9 @@ class DummyContext(object):
         self.names = tuple(names)
         self.remaining = tuple(remaining)
 
+    def make_address(self, location):
+        return location
+
 
 class DummySource(object):
 
@@ -238,6 +241,7 @@ class TestModelsModel(common.TestCase):
     @defer.inlineCallbacks
     def testModelItems(self):
         s = DummySource()
+        s.child = DummySource()
         m = TestModel(s)
 
         ITEMS = ("attr1", "attr2", "attr3",
@@ -366,7 +370,6 @@ class TestModelsModel(common.TestCase):
     @defer.inlineCallbacks
     def testModelChild(self):
         src = DummySource()
-        src.child = object()
         mdl = TestModel(src)
 
         # child1
@@ -395,6 +398,13 @@ class TestModelsModel(common.TestCase):
         self.assertEqual(child2_item.name, u"child2")
         self.assertEqual(child2_item.label, u"Child 2")
         self.assertEqual(child2_item.desc, None)
+
+        child2 = yield child2_item.browse()
+        self.assertEqual(child2, None)
+        child2 = yield child2_item.fetch()
+        self.assertEqual(child2, None)
+
+        src.child = object()
 
         child2 = yield child2_item.browse()
         yield self.asyncIterEqual([], child2.fetch_actions())
