@@ -249,7 +249,7 @@ class IMetadataItem(Interface):
     """A metadata atom, containing a name, a format and a list of values."""
 
     name = Attribute("Name of the metadata atom. @type: unicode")
-    values = Attribute("List of metadata values. @type list of unicode")
+    value = Attribute("Metadata value. @type: unicode")
     scheme = Attribute("Metadata format. @type unicode or None")
 
 
@@ -518,6 +518,13 @@ class IModel(Interface):
                                to retrieve the model's action.
         @errback NotAvailable: if the model source is not available.
         """
+
+    def perform_action(name, *args, **kwargs):
+        '''
+        Fetch action and perform it passing arguments and keywords.
+        @callback: return value of the action
+        @errback AttributeError: if the action does not exist
+        '''
 
 
 class IAttribute(IModel, IValueInfo):

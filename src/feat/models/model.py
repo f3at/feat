@@ -24,12 +24,12 @@ import types
 
 from zope.interface import implements
 
-from feat.common import error, annotate, container, defer, error
+from feat.common import error, annotate, container, defer
 from feat.models import utils, meta as models_meta
 
-from feat.models.interface import *
+from feat.models.interface import IModel, IModelItem, NotSupported
 from feat.models.interface import IActionFactory, IModelFactory
-from feat.models.interface import IAspect
+from feat.models.interface import IAspect, IReference
 
 
 ### Annotations ###
@@ -157,7 +157,7 @@ def action(name, factory, label=None, desc=None):
 
 def childs(name, child_source, child_names=None,
            child_model=None, child_label=None, child_desc=None,
-           label=None, desc=None):
+           label=None, desc=None, meta=None):
     """
     Annotate a dynamic collection of sub-models.
     @param name: the name of the collection model containing the sub-models.
@@ -183,7 +183,7 @@ def childs(name, child_source, child_names=None,
     _annotate("childs", name, child_source=child_source,
               child_names=child_names, child_model=child_model,
               child_label=child_label, child_desc=child_desc,
-              label=label, desc=desc)
+              label=label, desc=desc, meta=meta)
 
 
 def child_names(effect):
@@ -452,11 +452,15 @@ class StaticChildrenMixin(object):
     ### annotations ###
 
     @classmethod
-    def annotate_child(cls, name, getter, model=None, label=None, desc=None):
+    def annotate_child(cls, name, getter, model=None, label=None, desc=None,
+                       meta=None):
         """@see: feat.models.model.child"""
         name = _validate_str(name)
         item = MetaModelItem.new(name, fetcher=getter, browser=getter,
                                  factory=model, label=label, desc=desc)
+        if meta:
+            for decl in meta:
+                item.annotate_meta(*decl)
         cls._model_items[name] = item
 
     @classmethod
@@ -480,12 +484,13 @@ class StaticChildrenMixin(object):
                                                getter=getter, setter=setter)
         item = MetaModelItem.new(name, factory=attr_cls,
                                  label=label, desc=desc)
+        item.annotate_meta('inline', True)
         cls._model_items[name] = item
 
     @classmethod
     def annotate_childs(cls, name, child_source, child_names=None,
                         child_model=None, child_label=None, child_desc=None,
-                        label=None, desc=None):
+                        label=None, desc=None, meta=None):
         """@see: feat.models.model.childs"""
         name = _validate_str(name)
         coll_cls = MetaCollection.new(cls._identity + "." + name,
@@ -496,6 +501,11 @@ class StaticChildrenMixin(object):
                                       child_desc=child_desc)
         item = MetaModelItem.new(name, factory=coll_cls,
                                  label=label, desc=desc)
+        if meta:
+            for decl in meta:
+                print decl
+                item.annotate_meta(*decl)
+
         cls._model_items[name] = item
 
 
@@ -591,6 +601,11 @@ class StaticActionsMixin(object):
                    for i in self._action_items.itervalues()]
         d = defer.join(*actions)
         d.addCallback(cleanup)
+        return d
+
+    def perform_action(self, name, *args, **kwargs):
+        d = self.fetch_action(name)
+        d.addCallback(defer.call_param, 'perform', *args, **kwargs)
         return d
 
     ### annotations ###
