@@ -108,14 +108,6 @@ class NodeModel(model.Model):
                    meta=[('render_array', 3)])
 
 
-# class LocationCollection(model.Collection):
-
-#     model.identity('loc-collection')
-#     model.child_names(call.source_call('iter_child_names'))
-#     model.child_source(getter.source_get('get_child'))
-#     model.meta('render_array', 3)
-
-
 @adapter.register(Location, IModel)
 class LocationModel(model.Model):
 
