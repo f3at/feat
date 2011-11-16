@@ -87,14 +87,6 @@ class DummyInterest(object):
         self.initiator = message.Announcement
 
 
-class DummyAgencyInterest(protocols.DialogInterest):
-    pass
-
-
-components.registerAdapter(DummyAgencyInterest, IInterest,
-                           IAgencyInterestInternalFactory)
-
-
 class TestDependencies(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
