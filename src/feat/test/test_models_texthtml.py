@@ -45,7 +45,7 @@ class HTMLWriterTest(common.TestCase):
         context = TestContext()
         self.kwargs = dict(context=context)
 
-    def testRenderingDummyModel(self):
+    def testRenderingArray(self):
         r = Node()
         r.append(Location())
         r.append(Location())
@@ -55,6 +55,9 @@ class HTMLWriterTest(common.TestCase):
         n.append(Agent())
 
         self.model = NodeModel(r)
+
+    def testRenderingActionForms(self):
+        self.model = AgentModel(Agent())
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -69,7 +72,8 @@ class HTMLWriterTest(common.TestCase):
 
             static = os.path.join(gateway.__path__[0], 'static')
             dest = os.path.join(os.path.curdir, 'static')
-            shutil.copytree(static, dest)
+            if not os.path.exists(dest):
+                shutil.copytree(static, dest)
 
         yield common.TestCase.tearDown(self)
 
@@ -129,7 +133,8 @@ class NodeModel(model.Model):
     model.identity('node-model')
     model.children('locations', getter.source_get('get_child'),
                    call.source_call('iter_child_names'),
-                   meta=[('render_array', 3)])
+                   meta=[('render_array', 3)],
+                   desc="Locations or whatever")
 
 
 @adapter.register(Location, IModel)
@@ -147,7 +152,8 @@ class ShutdownAction(action.Action):
     action.desc("Some test action")
     action.value(value.Integer())
     action.result(value.String())
-    action.param("toto", value.Integer(), label="Int", desc="Some integer")
+    action.param("toto", value.Integer(), label="Int", desc="Some integer",
+                 is_required=False)
     action.param(u"tata", value.String(default="foo"), False)
     action.param("titi", value.Integer(), is_required=False)
 
@@ -159,5 +165,4 @@ class AgentModel(model.Model):
     model.attribute('name', value.String(), getter.source_attr('name'))
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'))
-
     model.action('shutdown', ShutdownAction)

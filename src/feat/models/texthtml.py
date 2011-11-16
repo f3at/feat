@@ -5,7 +5,7 @@ from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
-from feat.models.interface import IModel, IMetadata
+from feat.models.interface import IModel, IMetadata, ActionCategory
 
 
 MIME_TYPE = "text/html"
@@ -50,21 +50,30 @@ class HTMLWriter(log.Logger):
         title = "Displaying model %r." % (model.identity, )
         markup = Layout(title, context)
 
+        yield self._render_items(model, markup, context)
+        yield self._render_actions(model, markup, context)
+        yield markup.render(doc)
+
+    @defer.inlineCallbacks
+    def _render_items(self, model, markup, context):
         items = yield model.fetch_items()
+        if not items:
+            return
         markup.h3()('List of model items.').close()
         ul = markup.ul(_class="items")
         for item in items:
             li = markup.li()
             if item.name:
                 markup.span(_class='name')(item.name).close()
+
+            if IMetadata.providedBy(item):
+                if item.get_meta('inline'):
+                    li.append(self._format_attribute(item))
+
             if item.label:
                 markup.span(_class='label')(item.label).close()
             if item.desc:
                 markup.span(_class='desc')(item.desc).close()
-
-            if IMetadata.providedBy(item):
-                if item.get_meta('inline'):
-                    markup.append(self._format_attribute(item))
 
             if IMetadata.providedBy(item):
                 if item.get_meta('render_array'):
@@ -74,7 +83,54 @@ class HTMLWriter(log.Logger):
             li.close()
 
         ul.close()
-        yield markup.render(doc)
+        markup.hr()
+
+    @defer.inlineCallbacks
+    def _render_actions(self, model, markup, context):
+        actions = yield model.fetch_actions()
+        if not actions:
+            return
+        markup.h3()('List of model actions.').close()
+        ul = markup.ul(_class="items")
+        for action in actions:
+            li = markup.li()
+            markup.span(_class='name')(action.name).close()
+            self._render_action_form(action, markup, context)
+            li.close()
+        ul.close()
+        markup.hr()
+
+    def _render_action_form(self, action, markup, context):
+        if action.category == ActionCategory.delete:
+            method = "DELETE"
+        elif action.is_idempotent:
+            method = "PUT"
+        else:
+            method = "POST"
+        url = reference.Relative().resolve(context)
+        form = markup.form(method=method, action=url, _class='action_form')
+        div = markup.div()
+        if action.value_info:
+            self._render_param_field(markup, context, action.value_info,
+                                     'value', action.desc, True)
+        for param in action.parameters:
+            self._render_param_field(markup, context, param.info, param.name,
+                                     param.desc, param.is_required)
+        markup.input(type='submit', value='Perform')
+        div.close()
+        form.close()
+
+    def _render_param_field(self, markup, context, value_info, name,
+                            desc, is_required):
+        default = value_info.use_default and value_info.default
+
+        l = markup.label()(name).close()
+        markup.input(type='text', default=default, name=name)
+        if desc:
+            markup.span(_class='desc')(desc).close()
+        if not is_required:
+            markup.span(_class='optional')("Optional").close()
+        markup.br()
 
     @defer.inlineCallbacks
     def _format_attribute(self, item):
