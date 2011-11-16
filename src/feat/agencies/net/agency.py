@@ -353,7 +353,7 @@ class Agency(agency.Agency):
 
         if pre_state == BrokerRole.master:
             d.addCallback(defer.drop_param, run.delete_pidfile,
-                          self.config['agency']['rundir'])
+                          self.config['agency']['rundir'], force=True)
         return d
 
     def get_journal_writer(self):
