@@ -517,11 +517,23 @@ class IModel(Interface):
         @errback NotAvailable: if the model source is not available.
         """
 
-    def perform_action(name, *args, **kwargs):
+    def perform_action(name, **kwargs):
         '''
         Fetch action and perform it passing arguments and keywords.
+        @param name: name of the action to be performed.
+        @type name: str or unicode
+        @param kwargs: action parameters.
+        @type kwargs: dict
+        @return: a deferred fired with the action result.
+        @rtype: defer.Deferred
         @callback: return value of the action
         @errback AttributeError: if the action does not exist
+        @errback TransientError: if the action couldn't be fetched
+                                 for unexpected reasons, but the operation
+                                 could be retried later.
+        @errback Unauthorized: if the the caller is not authorized
+                               to retrieve the model's action.
+        @errback NotAvailable: if the model source is not available.
         '''
 
 
@@ -646,37 +658,33 @@ class IModelAction(Interface):
 
     name = Attribute("Action name unique for all model's actions. "
                      "@type: unicode")
+    reference = Attribute("Action reference. @type: IReference")
     label = Attribute("Action short label. @type: unicode or None")
     desc = Attribute("Action long description. @type: unicode or None")
     category = Attribute("Action category. @type: ActionCategories")
     is_idempotent = Attribute("If performing the action multiple times gives "
                               "the same result as performing it only once. "
                               "@type: bool")
-    value_info = Attribute("Information about the action value or None "
-                           "if the action do not require any value. "
-                           "@type IValueInfo or None")
     parameters = Attribute("List of action parameters. "
                            "@type: list of IActionParam")
     result_info = Attribute("Information about action's result or None "
                             "if the action do not return any result. "
                             "@type: IValueInfo or None")
 
-    def perform(*args, **kwargs):
+    def perform(**kwargs):
         """
-        Performs the action with specified value and parameters.
-        If value is needed it MUST be the first argument,
-        and all parameters MUST be keywords.
+        Performs the action with specified keyword arguments.
         If the action was done successfully, the deferred is fired
         with a value of any type or None. The value could be a model
         itself and most probably a IResponseModel providing more
         information about the outcome of the action alongside the data.
         If the model will perform the action later or it is not finished
         yet it could return a IResponse with response type "accepted".
-        @param value: the action value if required nothing if not.
-        @type value: object
+        @param kwargs: the action arguments.
+        @type kwargs: dict()
         @return: a deferred fired with the action result or None.
         @rtype: defer.Deferred
-        @callback: object
+        @callback: object or None
         @errback TransientError: if the action couldn't be performed for
                                  unexpected reasons but the operation could
                                  be retried later.
@@ -684,8 +692,8 @@ class IModelAction(Interface):
                                to perform the action.
         @errback NotAvailable: if the model source is not available
                                or the action is not enabled.
-        @errback ValueError: if the action value or parameters are wrong.
-        @errback TypeError: if the value or a parameter is missing
+        @errback ValueError: if an action parameter is wrong.
+        @errback TypeError: if a parameter is missing
                             or an unknown parameter was specified.
         @errback ActionFailed: if the action failed in any ways.
         """
@@ -698,8 +706,8 @@ class IActionParam(Interface):
                      "@type: ascii encoded string")
     label = Attribute("Parameter label or None. @type: unicode or None")
     desc = Attribute("Parameter description or None. @type: unicode or None")
-    info = Attribute("Information about the parameter value. "
-                     "@type: IValueInfo")
+    value_info = Attribute("Information about the parameter value. "
+                           "@type: IValueInfo")
     is_required = Attribute("If the parameter is required or optional. "
                             "@type: bool")
 

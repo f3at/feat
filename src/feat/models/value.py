@@ -309,7 +309,6 @@ class ValueOption(object):
 class String(Value):
     """String value definition."""
 
-    label("String")
     value_type(ValueTypes.string)
 
     def __init__(self, *args, **kwargs):
@@ -343,7 +342,6 @@ class String(Value):
 class Integer(Value):
     """Definition of an basic integer value."""
 
-    label("Integer")
     value_type(ValueTypes.integer)
 
     def __init__(self, **kwargs):
@@ -366,7 +364,6 @@ class Enum(Integer):
     """Definition of integer value with a fixed
     set of possible values taken from an enumeration."""
 
-    label("Enumeration")
     value_type(ValueTypes.integer)
     options_only()
 
@@ -394,5 +391,4 @@ class Enum(Integer):
 class Response(Value):
     """Definition of a model value."""
 
-    label("Response")
     value_type(ValueTypes.model)

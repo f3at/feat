@@ -72,22 +72,26 @@ def is_idempotent(is_idempotent=True):
     _annotate("is_idempotent", is_idempotent=is_idempotent)
 
 
-def value(value_info):
+def value(value_info, label=None, desc=None):
     """
     Annotate the value information of the action being defined.
-    @param value_info: the value information of the action.
+    @param value_info: the value parameter information.
     @type value_info: value.IValueInfo
+    @param label: the parameter label or None.
+    @type label: str or unicode or None
+    @param desc: the parameter description or None.
+    @type desc: str or unicode or None
     """
-    _annotate("value", value_info)
+    _annotate("value", value_info, label=label, desc=desc)
 
 
-def param(name, info, is_required=True, label=None, desc=None):
+def param(name, value_info, is_required=True, label=None, desc=None):
     """
-    Annotate the value information of the action being defined.
+    Annotate a parameter of the action being defined.
     @param name: name of the parameter defined (ASCII encoded).
     @type name: str
-    @param info: the paramter value information.
-    @type info: value.IValueInfo
+    @param value_info: the parameter value information.
+    @type value_info: value.IValueInfo
     @param is_required: if the parameter is required or optional.
     @type is_required: bool
     @param label: the parameter label or None.
@@ -95,7 +99,7 @@ def param(name, info, is_required=True, label=None, desc=None):
     @param desc: the parameter description or None.
     @type desc: str or unicode or None
     """
-    _annotate("param", name, info, is_required=is_required,
+    _annotate("param", name, value_info, is_required=is_required,
               label=label, desc=desc)
 
 
@@ -137,11 +141,12 @@ class ActionParam(object):
 
     implements(IActionParam)
 
-    def __init__(self, name, info, is_required=True, label=None, desc=None):
+    def __init__(self, name, value_info,
+                 is_required=True, label=None, desc=None):
         self._name = str(name)
-        self._label = unicode(label) if label is not None else None
-        self._desc = unicode(desc) if desc is not None else None
-        self._info = info
+        self._label = _validate_optstr(label)
+        self._desc = _validate_optstr(desc)
+        self._value_info = IValueInfo(value_info)
         self._is_required = is_required
 
     ### IActionParam ###
@@ -159,8 +164,8 @@ class ActionParam(object):
         return self._desc
 
     @property
-    def info(self):
-        return self._info
+    def value_info(self):
+        return self._value_info
 
     @property
     def is_required(self):
@@ -178,8 +183,10 @@ class MetaAction(type(models_meta.Metadata)):
         cls_name = utils.mk_class_name(name, "Action")
         cls = MetaAction(cls_name, (Action, ), {"__slots__": ()})
         cls.annotate_category(category)
-        cls.annotate_value(value_info)
-        cls.annotate_result(result_info)
+        if value_info is not None:
+            cls.annotate_value(value_info)
+        if result_info is not None:
+            cls.annotate_result(result_info)
         cls.annotate_is_idempotent(is_idempotent)
         cls.annotate_enabled(enabled)
         for e in effects:
@@ -197,7 +204,6 @@ class Action(models_meta.Metadata):
 
     _category = None
     _is_idempotent = None
-    _value_info = None
     _result_info = None
     _enabled = True
     _parameters = container.MroDict("_mro_parameters")
@@ -238,10 +244,6 @@ class Action(models_meta.Metadata):
         return self._is_idempotent
 
     @property
-    def value_info(self):
-        return self._value_info
-
-    @property
     def parameters(self):
         return self._parameters.values()
 
@@ -263,6 +265,16 @@ class Action(models_meta.Metadata):
 
         try:
 
+            if len(args) > 0:
+                values = list(args)
+                values += [kwargs["value"]] if "value" in kwargs else []
+                if len(values) > 1:
+                    raise TypeError("Action %s can only have one value: %s"
+                                    % (self.name,
+                                       ", ".join([repr(v) for v in values])))
+                if args:
+                    kwargs["value"] = args[0]
+
             params = set(kwargs.keys())
             expected = set(parameters.keys())
             required = set([p.name for p in parameters.itervalues()
@@ -278,29 +290,16 @@ class Action(models_meta.Metadata):
 
             validated = {}
             for param_name, param_value in kwargs.iteritems():
-                info = parameters[param_name].info
+                info = parameters[param_name].value_info
                 validated[param_name] = IValidator(info).validate(param_value)
 
             for param in parameters.itervalues():
                 if not param.is_required:
-                    info = param.info
+                    info = param.value_info
                     if param.name not in validated and info.use_default:
                         validated[param.name] = info.default
 
-            if self._value_info is None:
-                if args:
-                    # The action do not allow values
-                    raise TypeError("Action %s do not allow values"
-                                    % self.name)
-            else:
-                if not args:
-                    raise TypeError("No value specified")
-
-                if len(args) > 1:
-                    raise TypeError("Only one value allowed")
-
-                value = args[0]
-                d.addCallback(IValidator(self._value_info).validate)
+            value = validated.pop("value", None)
 
             # We use the model name instead of the action name as key
             context = self._mk_ctx(self.model.name)
@@ -355,11 +354,6 @@ class Action(models_meta.Metadata):
         cls._is_idempotent = bool(is_idempotent)
 
     @classmethod
-    def annotate_value(cls, value_info):
-        """@see: feat.models.action.value"""
-        cls._value_info = _validate_value_info(value_info)
-
-    @classmethod
     def annotate_result(cls, result_info):
         """@see: feat.models.action.result"""
         cls._result_info = _validate_value_info(result_info)
@@ -371,11 +365,18 @@ class Action(models_meta.Metadata):
         cls._enabled = _validate_effect(is_enabled)
 
     @classmethod
-    def annotate_param(cls, name, info, is_required=True,
-                           label=None, desc=None):
+    def annotate_value(cls, value_info, label=None, desc=None):
+        """@see: feat.models.action.value"""
+        param = ActionParam(u"value", value_info, is_required=True,
+                            label=label, desc=desc)
+        cls._parameters[u"value"] = param
+
+    @classmethod
+    def annotate_param(cls, name, value_info, is_required=True,
+                       label=None, desc=None):
         """@see: feat.models.action.parameter"""
         name = _validate_str(name)
-        param = ActionParam(name, info, is_required=is_required,
+        param = ActionParam(name, value_info, is_required=is_required,
                             label=label, desc=desc)
         cls._parameters[name] = param
 

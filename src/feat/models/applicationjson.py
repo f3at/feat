@@ -87,8 +87,6 @@ def render_action(action, context):
     metadata = yield render_metadata(action)
     if metadata:
         result["metadata"] = metadata
-    if action.value_info is not None:
-        result["value"] = render_value(action.value_info)
     if action.result_info is not None:
         result["result"] = render_value(action.result_info)
     params = render_params(action.parameters)
@@ -130,14 +128,13 @@ def render_value(value):
 
 
 def render_params(params):
-    return [render_param(p) for p in params]
+    return dict([(p.name, render_param(p)) for p in params])
 
 
 def render_param(param):
     result = {}
-    result["name"] = param.name
     result["required"] = param.is_required
-    result["info"] = render_value(param.info)
+    result["value"] = render_value(param.value_info)
     if param.label is not None:
         result["label"] = param.label
     if param.desc is not None:

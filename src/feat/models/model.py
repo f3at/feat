@@ -49,14 +49,14 @@ def identity(identity):
     _annotate("identity", identity)
 
 
-def attribute(name, value_info, getter=None, setter=None,
+def attribute(name, value, getter=None, setter=None,
               label=None, desc=None):
     """
     Annotates a model attribute.
     @param name: attribute name, unique for a model.
     @type name: str or unicode
-    @param value_info: attribute type information.
-    @type value_info: IValueInfo
+    @param value: attribute type information.
+    @type value: IValueInfo
     @param getter: an effect or None if the attribute is write-only;
                    the retrieved value that will be validated;
                    see feat.models.call for effect information.
@@ -71,7 +71,7 @@ def attribute(name, value_info, getter=None, setter=None,
     @parama desc: the description of the attribute or None if not documented.
     @type desc: str or unicode or None
     """
-    _annotate("attribute", name, value_info, getter=getter, setter=setter,
+    _annotate("attribute", name, value, getter=getter, setter=setter,
               label=label, desc=desc)
 
 
@@ -291,6 +291,11 @@ class AbstractModel(models_meta.Metadata):
     @property
     def identity(self):
         return self._identity
+
+    def perform_action(self, name, **kwargs):
+        d = self.fetch_action(name)
+        d.addCallback(defer.call_param, 'perform', **kwargs)
+        return d
 
     # provides_item() should be implemented by sub-classes
 
@@ -602,11 +607,6 @@ class StaticActionsMixin(object):
                    for i in self._action_items.itervalues()]
         d = defer.join(*actions)
         d.addCallback(cleanup)
-        return d
-
-    def perform_action(self, name, *args, **kwargs):
-        d = self.fetch_action(name)
-        d.addCallback(defer.call_param, 'perform', *args, **kwargs)
         return d
 
     ### annotations ###

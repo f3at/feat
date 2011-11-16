@@ -82,7 +82,7 @@ class DummyModel(object):
 class TestAction(action.Action):
     action.label("Test Action")
     action.desc("Some test action")
-    action.value(value.Integer())
+    action.value(value.Integer(), label="Value", desc="Value description")
     action.result(value.String())
     action.param("toto", value.Integer(), label="Int", desc="Some integer")
     action.param(u"tata", value.String(default="foo"), False)
@@ -138,10 +138,10 @@ class TestModelsAction(common.TestCase):
             yield fun(*args, **kwargs)
         except Exception, e:
             if not isinstance(e, Error):
-                self.fail("Should have raised %s not %s"
-                          % (Error.__name__, type(e).__name__))
+                self.fail("Should have raised %s not %s: %s"
+                          % (Error.__name__, type(e).__name__, str(e)))
         else:
-            self.fail("Should have raised %s" % Error.__name__)
+            self.fail("Should have raised %s: %s" % (Error.__name__, ))
 
     @defer.inlineCallbacks
     def testAvailability(self):
@@ -228,19 +228,29 @@ class TestModelsAction(common.TestCase):
         self.assertTrue(isinstance(action.label, unicode))
         self.assertEqual(action.desc, u"desc")
         self.assertTrue(isinstance(action.desc, unicode))
-        self.assertTrue(IValueInfo.providedBy(action.value_info))
         self.assertTrue(IValueInfo.providedBy(action.result_info))
         enabled = yield action.fetch_enabled()
         self.assertTrue(enabled)
 
-        self.assertEqual(len(action.parameters), 3)
+        self.assertEqual(len(action.parameters), 4)
         params = dict([(p.name, p) for p in action.parameters])
+
+        param = params["value"]
+        self.assertTrue(IActionParam.providedBy(param))
+        self.assertEqual(param.name, "value")
+        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(IValueInfo.providedBy(param.value_info))
+        self.assertEqual(param.label, u"Value")
+        self.assertTrue(isinstance(param.label, unicode))
+        self.assertEqual(param.desc, u"Value description")
+        self.assertTrue(isinstance(param.desc, unicode))
+        self.assertTrue(param.is_required)
 
         param = params["toto"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "toto")
         self.assertTrue(isinstance(param.name, str))
-        self.assertTrue(IValueInfo.providedBy(param.info))
+        self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, u"Int")
         self.assertTrue(isinstance(param.label, unicode))
         self.assertEqual(param.desc, u"Some integer")
@@ -251,7 +261,7 @@ class TestModelsAction(common.TestCase):
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "titi")
         self.assertTrue(isinstance(param.name, str))
-        self.assertTrue(IValueInfo.providedBy(param.info))
+        self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, None)
         self.assertEqual(param.desc, None)
         self.assertFalse(param.is_required)
@@ -260,7 +270,7 @@ class TestModelsAction(common.TestCase):
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "tata")
         self.assertTrue(isinstance(param.name, str))
-        self.assertTrue(IValueInfo.providedBy(param.info))
+        self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, None)
         self.assertEqual(param.desc, None)
         self.assertFalse(param.is_required)
@@ -295,13 +305,15 @@ class TestModelsAction(common.TestCase):
         self.assertTrue(isinstance(action.label, unicode))
         self.assertEqual(action.desc, u"Some sub action")
         self.assertTrue(isinstance(action.desc, unicode))
-        self.assertTrue(IValueInfo.providedBy(action.value_info))
         self.assertTrue(IValueInfo.providedBy(action.result_info))
         enabled = yield action.fetch_enabled()
         self.assertTrue(enabled)
 
-        self.assertEqual(len(action.parameters), 4)
+        self.assertEqual(len(action.parameters), 5)
         params = dict([(p.name, p) for p in action.parameters])
+
+        param = params[u"value"]
+        self.assertTrue(IActionParam.providedBy(param))
 
         param = params[u"toto"]
         self.assertTrue(IActionParam.providedBy(param))
@@ -316,7 +328,7 @@ class TestModelsAction(common.TestCase):
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "delim")
         self.assertTrue(isinstance(param.name, str))
-        self.assertTrue(IValueInfo.providedBy(param.info))
+        self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, u"Delimiter")
         self.assertTrue(isinstance(param.label, unicode))
         self.assertEqual(param.desc, u"Delimiter parameter")
@@ -357,20 +369,15 @@ class TestModelsAction(common.TestCase):
 
         # No value specified
         yield self.asyncRaises(TypeError, action.perform)
-
         # Missing parameter
         yield self.asyncRaises(TypeError, action.perform, 0)
-
         # Unknown parameter
         yield self.asyncRaises(TypeError, action.perform, 0, foo=0)
-
         # Only one value allowed
         yield self.asyncRaises(TypeError, action.perform, 0, 1, toto=0)
-
         # Invalid values
         yield self.asyncRaises(ValueError, action.perform, "X", toto=0)
         yield self.asyncRaises(ValueError, action.perform, 0, toto="X")
-
         empty = EmptyAction(model)
 
         # Value not allowed
