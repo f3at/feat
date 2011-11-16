@@ -188,6 +188,10 @@ class IWebResponse(Interface):
         """Sets the response status code,
         fail if the headers were already sent."""
 
+    def set_length(length):
+        """Sets the response length if known,
+        fail if the headers were already sent."""
+
     def set_header(key, value):
         """Sets a response header,
         fail if the headers were already sent."""
@@ -1249,6 +1253,9 @@ class Response(log.Logger):
     def set_status(self, code, message=None):
         self._check_header_not_sent()
         self._request._ref.setResponseCode(int(code))
+
+    def set_length(self, length):
+        self.set_header("length", length)
 
     def set_header(self, key, value):
         self._check_header_not_sent()
