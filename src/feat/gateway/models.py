@@ -25,7 +25,7 @@ import signal
 
 from feat.agencies.net import agency as net_agency
 from feat.common import time, adapter
-from feat.models import model, response, value, reference
+from feat.models import model, value, reference
 from feat.models import call, getter, setter
 
 from feat.models.interface import *

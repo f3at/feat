@@ -1,0 +1,41 @@
+
+
+
+/* General content */
+
+body {
+    margin: 0px;
+}
+
+.content {
+    margin: 30px;
+}
+
+
+.header {
+    background: navy;
+    color: red;
+    padding: 10px;
+}
+
+h1 {
+    margin: 10px;
+
+}
+
+/* Arrays */
+
+.array th{
+    background: #803030;
+    padding: 6px;
+}
+
+.array table {
+    border: 1px solid gray;
+    border-collapse: collapse;
+}
+
+.array td {
+    border: 1px solid gray;
+    padding: 4px;
+}

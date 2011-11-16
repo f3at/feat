@@ -1,15 +1,32 @@
+import os
+import glob
+import shutil
 import uuid
 
-# from zope.interface import implements
+from zope.interface import implements
 
 from twisted.trial.unittest import SkipTest
 
 from feat.common import defer, adapter
 from feat.test import common
 from feat.models import texthtml, model, action, value, call, getter, setter
+from feat import gateway
 from feat.web import document
 
-from feat.models.interface import IModel, IAspect
+from feat.models.interface import IModel, IAspect, IContext
+
+
+class TestContext(object):
+
+    implements(IContext)
+
+    def __init__(self):
+        self.names = ()
+        self.models = ()
+        self.remaining = ()
+
+    def make_address(self, path):
+        return '/'.join(path)
 
 
 class HTMLWriterTest(common.TestCase):
@@ -24,7 +41,9 @@ class HTMLWriterTest(common.TestCase):
 
         self.model = None
         self.args = list()
-        self.kwargs = dict()
+
+        context = TestContext()
+        self.kwargs = dict(context=context)
 
     def testRenderingDummyModel(self):
         r = Node()
@@ -47,6 +66,11 @@ class HTMLWriterTest(common.TestCase):
             filename = "%s.html" % (self._testMethodName, )
             with open(filename, 'w') as f:
                 print >> f, self.document.get_data()
+
+            static = os.path.join(gateway.__path__[0], 'static')
+            dest = os.path.join(os.path.curdir, 'static')
+            shutil.copytree(static, dest)
+
         yield common.TestCase.tearDown(self)
 
 
@@ -117,6 +141,17 @@ class LocationModel(model.Model):
                    call.source_call('iter_child_names'))
 
 
+class ShutdownAction(action.Action):
+
+    action.label("Test Action")
+    action.desc("Some test action")
+    action.value(value.Integer())
+    action.result(value.String())
+    action.param("toto", value.Integer(), label="Int", desc="Some integer")
+    action.param(u"tata", value.String(default="foo"), False)
+    action.param("titi", value.Integer(), is_required=False)
+
+
 @adapter.register(Agent, IModel)
 class AgentModel(model.Model):
 
@@ -124,3 +159,5 @@ class AgentModel(model.Model):
     model.attribute('name', value.String(), getter.source_attr('name'))
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'))
+
+    model.action('shutdown', ShutdownAction)

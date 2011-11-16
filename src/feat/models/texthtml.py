@@ -1,6 +1,7 @@
 from zope.interface import implements
 
 from feat.common import log, defer
+from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
@@ -12,10 +13,27 @@ MIME_TYPE = "text/html"
 
 class Layout(html.Document):
 
-    def __init__(self, title, *args, **kwargs):
+    def __init__(self, title, context):
         html.Document.__init__(self, html.StrictPolicy(), title)
+        self._link_static_files(context)
+        self.div(_class='header')(*self._render_header(context)).close()
         self.h1()(title).close()
+
         self.div(_class='content')
+
+    def _link_static_files(self, context):
+        url = reference.Local('static', 'feat.css').resolve(context)
+        self.head.content.append(
+            html.tags.link(_type='text/css', rel='stylesheet', href=url))
+
+    def _render_header(self, context):
+        res = list("History: ")
+        for index in range(len(context.names)):
+            name = context.names[index]
+            path = context.names[:index]
+            url = reference.Local(*path).resolve(context)
+            res.append(html.tags.a(href=url)(name))
+        return res
 
 
 class HTMLWriter(log.Logger):
@@ -27,8 +45,10 @@ class HTMLWriter(log.Logger):
     @defer.inlineCallbacks
     def write(self, doc, model, *args, **kwargs):
         self.log("Rendering html doc for a model: %r", model.identity)
+        context = kwargs['context']
+
         title = "Displaying model %r." % (model.identity, )
-        markup = Layout(title, *args, **kwargs)
+        markup = Layout(title, context)
 
         items = yield model.fetch_items()
         markup.h3()('List of model items.').close()
