@@ -528,17 +528,16 @@ class Server(log.LogProxy, log.Logger):
                 # Asynchronous rendering
                 d.addErrback(self._emergency_termination, request, response)
                 d.addBoth(defer.bridge_param, response._finish)
+            else:
+                response._finish()
 
-                return server.NOT_DONE_YET
-
-            response._finish()
-            return ""
+            return server.NOT_DONE_YET
 
         except:
 
             self._emergency_termination(Failure(), request, response)
             response._finish()
-            return ""
+            return server.NOT_DONE_YET
 
 
     ### private ###
