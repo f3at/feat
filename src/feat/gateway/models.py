@@ -31,7 +31,7 @@ from feat.models import call, getter, setter
 from feat.models.interface import *
 
 #from feat.agencies.interface import AgencyRoles
-#from feat.interface.agent import AgencyAgentState
+from feat.interface.agent import AgencyAgentState
 
 
 @adapter.register(net_agency.Agency, IModel)
@@ -46,11 +46,13 @@ class Root(model.Model):
     model.identity("feet.root")
 
     model.view("agencies", "feat.agencies",
-#               fetch_filter=getter.model_get("_redirect_to_master"),
+               #   fetch_filter=getter.model_get("_redirect_to_master"),
                label="Agencies", desc="Agencies running on this host.")
-#    model.view("agents", "feat.agents",
-#               fetch_filter=getter.model_get("_redirect_to_master"),
-#               label="Agents", desc="Agents running on this host.")
+
+    model.view("agents", "feat.agents",
+               # fetch_filter=getter.model_get("_redirect_to_master"),
+               label="Agents", desc="Agents running on this host.",
+               meta=[('render_array', 3)])
 
     def _redirect_to_master(self, name):
         result = self.source.locate_master()
@@ -71,6 +73,7 @@ class Agencies(model.Collection):
     model.child_names(call.source_call("iter_agency_ids"))
     model.child_source(getter.model_get("_fetch_agency"), "feat.agency",
                        label="Agency", desc="Agency running in this host")
+
 
 #    model.delete("full_shutdown",
 #                 effect.delay(effect.source_call("full_shutdown",
@@ -162,45 +165,62 @@ class Agency(model.Model):
 #    value.options_only()
 #
 #
-#class Agents(collection.Model):
-#    model.identity("feat.agents")
-#
-#    collection.child_names(getter.source_get("iter_agents"))
-#    collection.child_values(getter.source_get("get_agent"),
-#                            label="Agent", desc="Agent running on this host")
-#
-#    model.create("spawn", effect.source_call("spawn_agent"),
-#                 value=AgentTypeValue(),
-#                 result=value.Response(),
-#                 response=response.Created("Agent Created",
-#                                           reference.Relative()),
-#                 label="Spawn Agent", desc="Spawn a new agent on this host")
-#
-#
-#class Agent(model.Model):
-#    model.identity("feat.agent")
-#
-#    model.attribute("type", value.String(), getter.source_attr("agent_type"),
-#                    label="Type", desc="Agent's type")
-#    model.attribute("id", value.String(), getter.source_attr("agent_id"),
-#                    label="Identifier", desc="Agent's unique identifier")
-#    model.attribute("instance", value.Integer(),
-#                    getter.source_attr("instance_id"),
-#                    label="Instance", desc="Agent's instance number")
-#    model.attribute("status", value.Enum(AgencyAgentState),
-#                    effect.source_call("get_agent_status"),
-#                    label="Status", desc="Agent current status")
-#
-#    model.view("resources", "feat.resources",
-#               enabled=effect.model_call("_has_resources"),
-#               label="Resources", desc="Agent's resources.")
-#    model.view("partners", "feat.partners",
-#               label="Partners", desc="Agent's partners")
-#
-#    def _has_resources(self):
-#        return isinstance(self.source, resource.AgentMixin)
-#
-#
+class Agents(model.Collection):
+   model.identity("feat.agents")
+
+   model.child_names(call.model_call("iter_agents"))
+   model.child_source(getter.source_get("get_agent"),
+                      label="Agent", desc="Agent running on this host",
+                      model='feat.agent')
+
+   def iter_agents(self):
+       res = [x.get_agent_id() for x in self.source.iter_agents()]
+       return res
+
+   # model.create("spawn", effect.source_call("spawn_agent"),
+   #              value=AgentTypeValue(),
+   #              result=value.Response(),
+   #              response=response.Created("Agent Created",
+   #                                        reference.Relative()),
+   #              label="Spawn Agent", desc="Spawn a new agent on this host")
+
+
+class Agent(model.Model):
+   model.identity("feat.agent")
+
+   # model.attribute("type", value.String(),
+   #                 getter=call.model_call("get_agent_type"),
+   #                 label="Type", desc="Agent's type")
+   model.attribute("id", value.String(), call.source_call("get_agent_id"),
+                   label="Identifier", desc="Agent's unique identifier")
+   # model.attribute("instance", value.Integer(),
+   #                 call.model_call("get_instance_id"),
+   #                 label="Instance", desc="Agent's instance number")
+   model.attribute("status", value.Enum(AgencyAgentState),
+                   getter=call.source_call("_get_machine_state"),
+                   label="Status", desc="Agent current status")
+
+   def get_agent_type(self):
+       d = self.source.get_descriptor()
+       return d.document_type
+
+   def get_instance_id(self):
+       d = self.source.get_descriptor()
+       return d.instance_id
+
+   def get_agent_state(self):
+       return self.source._get_machine_state()
+
+   # model.view("resources", "feat.resources",
+   #            enabled=effect.model_call("_has_resources"),
+   #            label="Resources", desc="Agent's resources.")
+   # model.view("partners", "feat.partners",
+   #            label="Partners", desc="Agent's partners")
+
+   # def _has_resources(self):
+   #     return isinstance(self.source, resource.AgentMixin)
+
+
 #class Resources(model.Model):
 #    model.identity("feat.resources")
 #

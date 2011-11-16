@@ -96,7 +96,7 @@ def child(name, getter=None, model=None, label=None, desc=None):
               label=label, desc=desc)
 
 
-def view(name, model, value=None, label=None, desc=None):
+def view(name, model, value=None, label=None, desc=None, meta=None):
     """
     Annotate a sub-view to the one being defined.
     A view is another model with the same source
@@ -114,7 +114,7 @@ def view(name, model, value=None, label=None, desc=None):
     @type desc: str or unicode or None
     """
     _annotate("view", name, model=model, value=value,
-              label=label, desc=desc)
+              label=label, desc=desc, meta=meta)
 
 
 def reference(*args, **kwargs):
@@ -472,11 +472,14 @@ class StaticChildrenMixin(object):
 
     @classmethod
     def annotate_view(cls, name, model=None, value=None,
-                      label=None, desc=None):
+                      label=None, desc=None, meta=None):
         """@see: feat.models.model.view"""
         name = _validate_str(name)
         item = MetaModelItem.new(name, factory=model, view=value,
                                  label=label, desc=desc)
+        if meta:
+            for decl in meta:
+                item.annotate_meta(*decl)
         cls._model_items[name] = item
 
     @classmethod

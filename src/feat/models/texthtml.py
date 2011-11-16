@@ -28,10 +28,11 @@ class Layout(html.Document):
 
     def _render_header(self, context):
         res = list("History: ")
-        for index in range(len(context.names)):
+        for index in range(len(context.names[:-1])):
             name = context.names[index]
-            path = context.names[:index]
+            path = context.names[1:index + 1]
             url = reference.Local(*path).resolve(context)
+            res.append("|")
             res.append(html.tags.a(href=url)(name))
         return res
 
@@ -63,8 +64,10 @@ class HTMLWriter(log.Logger):
         ul = markup.ul(_class="items")
         for item in items:
             li = markup.li()
-            if item.name:
-                markup.span(_class='name')(item.name).close()
+            # submodel = yield item.fetch()
+            url = item.reference.resolve(context)
+            markup.span(_class='name')(
+                html.tags.a(href=url)(item.name)).close()
 
             if IMetadata.providedBy(item):
                 if item.get_meta('inline'):
@@ -110,25 +113,21 @@ class HTMLWriter(log.Logger):
         url = reference.Relative().resolve(context)
         form = markup.form(method=method, action=url, _class='action_form')
         div = markup.div()
-        if action.value_info:
-            self._render_param_field(markup, context, action.value_info,
-                                     'value', action.desc, True)
         for param in action.parameters:
-            self._render_param_field(markup, context, param.info, param.name,
-                                     param.desc, param.is_required)
+            self._render_param_field(markup, context, param)
         markup.input(type='submit', value='Perform')
         div.close()
         form.close()
 
-    def _render_param_field(self, markup, context, value_info, name,
-                            desc, is_required):
-        default = value_info.use_default and value_info.default
+    def _render_param_field(self, markup, context, action_param):
+        default = action_param.value_info.use_default and \
+                  action_param.value_info.default
 
-        l = markup.label()(name).close()
-        markup.input(type='text', default=default, name=name)
-        if desc:
-            markup.span(_class='desc')(desc).close()
-        if not is_required:
+        markup.label()(action_param.name).close()
+        markup.input(type='text', default=default, name=action_param.name)
+        if action_param.desc:
+            markup.span(_class='desc')(action_param.desc).close()
+        if not action_param.is_required:
             markup.span(_class='optional')("Optional").close()
         markup.br()
 
