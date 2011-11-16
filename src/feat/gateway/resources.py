@@ -20,6 +20,10 @@
 
 # Headers in this file shall remain intact.
 
+import mimetypes
+import os
+
+from twisted.internet import reactor, threads
 from zope.interface import implements
 
 from feat.common import defer, log
@@ -166,3 +170,76 @@ class Resource(webserver.BaseResource):
     def render_error(self, request, response, error):
         response.force_mime_type("text/plain")
         return "ERROR: " + str(error)
+
+
+class StaticResource(webserver.BaseResource):
+
+    BUFFER_SIZE = 1024*1024*4
+
+    def __init__(self, root_path):
+        webserver.BaseResource.__init__(self)
+        if not os.path.isdir(root_path):
+            raise ValueError("Invalid resource path: %r" % root_path)
+        self._root_path = root_path
+        self._mime_types = mimetypes.MimeTypes()
+
+    def locate_resource(self, request, location, remaining):
+        request.context["rel_loc"] = remaining
+        return self
+
+    def action_GET(self, request, response, location):
+        rel_path = http.tuple2path(request.context["rel_loc"])
+        full_path = os.path.join(self._root_path, rel_path)
+        res_path = os.path.realpath(full_path)
+        if not res_path.startswith(self._root_path):
+            raise http.ForbiddenError()
+        if os.path.isdir(res_path):
+            raise http.ForbiddenError()
+        if not os.path.isfile(res_path):
+            raise http.NotFoundError()
+
+        length = os.path.getsize(res_path)
+        mime_type, content_encoding = self._mime_types.guess_type(res_path)
+        mime_type = mime_type or "application/octet-stream"
+
+        response.set_length(length)
+        response.set_mime_type(mime_type)
+        response.set_header("connection", "close")
+        if content_encoding is not None:
+            response.set_header("content-encoding", content_encoding)
+
+        try:
+            res = open(res_path, "rb")
+        except IOError:
+            raise http.ForbiddenError()
+
+        response.do_not_cache()
+
+        return threads.deferToThread(self._write_resource, #@UndefinedVariable
+                                     response, res)
+
+    ### private ###
+
+    def _write_resource(self, response, res):
+
+        try:
+            while True:
+                data = res.read(self.BUFFER_SIZE)
+                if not data:
+                    break
+                reactor.callFromThread(response.write, #@UndefinedVariable
+                                       data)
+        finally:
+            res.close()
+
+
+class Root(Resource):
+
+    def __init__(self, hostname, port, source, static_path):
+        Resource.__init__(self, source, (hostname, port))
+        self._static = StaticResource(static_path)
+
+    def locate_resource(self, request, location, remaining):
+        if remaining[0] == u"static":
+            return self._static, remaining[1:]
+        return Resource.locate_resource(self, request, location, remaining)

@@ -19,8 +19,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from OpenSSL import SSL
+
+import os
 import socket
+
+from OpenSSL import SSL
 
 from twisted.internet import error as terror
 
@@ -41,10 +44,15 @@ class Gateway(log.LogProxy, log.Logger):
 
     log_category = "gateway"
 
-    def __init__(self, root, port_range=None, security_policy=None):
+    def __init__(self, agency, port_range=None,
+                 static_path=None, security_policy=None):
         log.Logger.__init__(self, self)
-        log.LogProxy.__init__(self, root)
-        self._root = root
+        log.LogProxy.__init__(self, agency)
+
+        self._agency = agency
+        if not static_path:
+            static_path = os.path.join(os.path.dirname(__file__), "static")
+        self._static_path = static_path
 
         self._host = socket.gethostbyaddr(socket.gethostname())[0]
         self._ports = port_range
@@ -54,14 +62,11 @@ class Gateway(log.LogProxy, log.Logger):
     def initiate_master(self):
         port = self._ports[0]
         self.log("Initializing master gateway on port %d", port)
-        name = (self._host, port)
-        root = resources.Resource(self._root, name)
-        self._server = webserver.Server(port, root,
-                                        security_policy=self._security,
-                                        log_keeper=self)
-        self._server.initiate()
-        self._server.enable_mime_type(texthtml.MIME_TYPE)
-        self._server.enable_mime_type(applicationjson.MIME_TYPE)
+        server = webserver.Server(port, self._build_root(port),
+                                  security_policy=self._security,
+                                  log_keeper=self)
+        self._initiate_server(server)
+        self._server = server
         self.info("Master gateway started on port %d", self.port)
 
     def initiate_slave(self):
@@ -69,15 +74,11 @@ class Gateway(log.LogProxy, log.Logger):
         for port in xrange(min + 1, max):
             try:
                 self.log("Initializing slave gateway on port %d", port)
-                name = (self._host, port)
-                root = resources.Resource(self._root, name)
-                server = webserver.Server(port, root,
+                server = webserver.Server(port, self._build_root(port),
                                           security_policy=self._security,
                                           log_keeper=self)
-                server.initiate()
+                self._initiate_server(server)
                 self._server = server
-                self._server.enable_mime_type(texthtml.MIME_TYPE)
-                self._server.enable_mime_type(applicationjson.MIME_TYPE)
                 self.info("Slave gateway started on port %d", self.port)
                 return
 
@@ -99,3 +100,14 @@ class Gateway(log.LogProxy, log.Logger):
     @property
     def port(self):
         return self._server and self._server.port
+
+    ### private ###
+
+    def _build_root(self, port):
+        return resources.Root(self._host, port,
+                              self._agency, self._static_path)
+
+    def _initiate_server(self, server):
+        server.initiate()
+        server.enable_mime_type(texthtml.MIME_TYPE)
+        server.enable_mime_type(applicationjson.MIME_TYPE)
