@@ -107,6 +107,25 @@ def render_value(value):
         result["label"] = value.label
     if value.desc is not None:
         result["desc"] = value.desc
+    metadata = render_metadata(value)
+    if metadata:
+        result["metadata"] = metadata
+    if IValueCollection.providedBy(value):
+        coll = IValueCollection(value)
+        result["allowed"] = [render_value(v) for v in coll.allowed_types]
+        result["ordered"] = coll.is_ordered
+        result["multiple"] = coll.allow_multiple
+    if IValueRange.providedBy(value):
+        vrange = IValueRange(value)
+        result["minimum"] = vrange.minimum
+        result["maximum"] = vrange.maximum
+        if vrange.increment is not None:
+            result["increment"] = vrange.increment
+    if IValueOptions.providedBy(value):
+        options = IValueOptions(value)
+        result["restricted"] = options.is_restricted
+        result["options"] = [{"label": o.label, "value": o.value}
+                             for o in options.iter_options()]
     return result
 
 
