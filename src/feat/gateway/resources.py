@@ -102,17 +102,6 @@ class Resource(webserver.BaseResource):
 
     ### webserver.IWebResource ###
 
-    @property
-    def authenticator(self):
-        return None
-
-    @property
-    def authorizer(self):
-        return None
-
-    def set_inherited(self, authenticator=None, authorizer=None):
-        pass
-
     def is_method_allowed(self, request, location, methode):
         return methode in self._methods
 
