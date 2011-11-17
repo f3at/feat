@@ -202,8 +202,8 @@ class Action(models_meta.Metadata):
 
     implements(IModelAction)
 
-    _category = None
-    _is_idempotent = None
+    _category = ActionCategory.command
+    _is_idempotent = False
     _result_info = None
     _enabled = True
     _parameters = container.MroDict("_mro_parameters")
@@ -237,7 +237,7 @@ class Action(models_meta.Metadata):
 
     @property
     def reference(self):
-        return reference.Relative()
+        return reference.Action(self)
 
     @property
     def category(self):
@@ -289,6 +289,9 @@ class Action(models_meta.Metadata):
                                 % (self.name, ", ".join(required)))
 
             if not params <= expected:
+                if not expected:
+                    raise TypeError("Action %s expect no parameter"
+                                    % (self.name, ))
                 raise TypeError("Action %s expect only parameters: %s"
                                 % (self.name, ", ".join(expected)))
 

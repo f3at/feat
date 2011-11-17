@@ -30,7 +30,7 @@ from twisted.internet import reactor
 from twisted.python.failure import Failure
 from twisted.web import server, resource, http as twhttp
 
-from feat.common import log, defer, error
+from feat.common import log, defer, error, decorator
 from feat.web import http, compat, document, auth, security
 
 
@@ -257,6 +257,34 @@ class INegotiable(Interface):
     allowed_languages = Attribute("")
 
 
+### decorators ###
+
+
+@decorator.parametrized_function
+def read_object(function, iface, *default):
+
+    def wrapper(self, request, *args, **kwargs):
+
+        def got_object(obj):
+            return function(self, obj, request, *args, **kwargs)
+
+        def error(failure):
+            failure.trap(http.BadRequestError)
+            if default:
+                return function(self, default[0], request, *args, **kwargs)
+            return failure
+
+        if len(default) > 1:
+            raise TypeError("Only on default value allowed: %r"
+                            % (args, ))
+
+        d = request.read_object(iface)
+        d.addCallbacks(got_object, error)
+        return d
+
+    return wrapper
+
+
 ### Classes ###
 
 
@@ -377,7 +405,7 @@ class BasicResource(BaseResource):
     def locate_child(self, request, location, remaining):
         next = remaining[0]
         if next in self._children:
-            return self.__children[next], remaining[1:]
+            return self._children[next], remaining[1:]
 
 
 class Server(log.LogProxy, log.Logger):
@@ -516,7 +544,10 @@ class Server(log.LogProxy, log.Logger):
             # Early error, just log and respond something that make sense
             msg = "Exception during HTTP request creation"
             error.handle_exception(self, e, msg)
-            priv_request.setResponseCode(http.Status.INTERNAL_SERVER_ERROR)
+            status_code = http.Status.INTERNAL_SERVER_ERROR
+            if isinstance(e, http.HTTPError):
+                status_code = e.status_code
+            priv_request.setResponseCode(int(status_code))
             priv_request.setHeader("content-type", "text/plain")
             return "Error: %s" % e
 
@@ -952,8 +983,18 @@ class Request(log.Logger, log.LogProxy):
         accepted_encodings = http.parse_accepted_charsets(accept_charset)
         accept_languages = self.get_header("accept-languages")
         accepted_languages = http.parse_accepted_languages(accept_languages)
-        method = http.Methods[self._ref.method]
-        protocol = _protocol_lookup[self._ref.clientproto]
+
+        try:
+            method = http.Methods[self._ref.method]
+        except KeyError:
+            raise http.BadRequestError("Method %s not supported"
+                                       % (self._ref.method, ))
+
+        try:
+            protocol = _protocol_lookup[self._ref.clientproto]
+        except KeyError:
+            raise http.BadRequestError("Protocol %s not supported"
+                                       % (self._ref.clientproto, ))
 
         self._mime_type = mime_type
         self._encoding = encoding
@@ -1160,7 +1201,7 @@ class Request(log.Logger, log.LogProxy):
     def _read_object(self, ifaces):
         d = self._server.registry.read(self, ifaces[0])
         d.addCallbacks(self._object_read_succeed,
-                       self._resource_read_failed,
+                       self._object_read_failed,
                        errbackArgs=(ifaces, ))
         return d
 

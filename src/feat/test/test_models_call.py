@@ -146,44 +146,49 @@ class TestModelsCall(common.TestCase):
     def check_perform(self, context, call_factory, exp_name):
         call = call_factory("tata")
         res = yield call(None, context)
-        self.assertEqual(res, (exp_name, "tata", (None, ), {}))
+        self.assertEqual(res, (exp_name, "tata", (), {"value": None}))
 
         call = call_factory("tata", "egg")
         res = yield call(None, context)
-        self.assertEqual(res, (exp_name, "tata", (None, "egg"), {}))
+        self.assertEqual(res, (exp_name, "tata", ("egg", ), {"value": None}))
 
         call = call_factory("tata", bacon="spam")
         res = yield call(None, context)
-        self.assertEqual(res, (exp_name, "tata", (None, ), {"bacon": "spam"}))
+        self.assertEqual(res, (exp_name, "tata", (),
+                               {"value": None, "bacon": "spam"}))
 
         call = call_factory("tata", 1, 2, 3, bacon="spam", egg=2)
         res = yield call(None, context)
-        self.assertEqual(res, (exp_name, "tata", (None, 1, 2, 3),
-                               {"bacon": "spam", "egg": 2}))
+        self.assertEqual(res, (exp_name, "tata", (1, 2, 3),
+                               {"value": None, "bacon": "spam", "egg": 2}))
 
         call = call_factory("tata")
         res = yield call("spam", context, foo="bar")
-        self.assertEqual(res, (exp_name, "tata", ("spam", ), {"foo": "bar"}))
+        self.assertEqual(res, (exp_name, "tata", (),
+                               {"value": "spam", "foo": "bar"}))
 
         call = call_factory("tata", "egg")
         res = yield call("spam", context, foo="bar")
-        self.assertEqual(res, (exp_name, "tata", ("spam", "egg", ),
-                               {"foo": "bar"}))
+        self.assertEqual(res, (exp_name, "tata", ("egg", ),
+                               {"value": "spam", "foo": "bar"}))
 
         call = call_factory("tata", bacon="spam")
         res = yield call("spam", context, foo="bar", bar="foo")
-        self.assertEqual(res, (exp_name, "tata", ("spam", ),
-                               {"bacon": "spam", "foo": "bar", "bar": "foo"}))
+        self.assertEqual(res, (exp_name, "tata", (),
+                               {"value": "spam", "bacon": "spam",
+                                "foo": "bar", "bar": "foo"}))
 
         call = call_factory("tata", 1, 2, 3, bacon="spam", egg=2)
         res = yield call("spam", context, foo="bar")
-        self.assertEqual(res, (exp_name, "tata", ("spam", 1, 2, 3),
-                               {"bacon": "spam", "egg": 2, "foo": "bar"}))
+        self.assertEqual(res, (exp_name, "tata", (1, 2, 3),
+                               {"value": "spam", "bacon": "spam",
+                                "egg": 2, "foo": "bar"}))
 
         call = call_factory("tata", 1, 2, 3, bacon="spam", egg=2)
         res = yield call("spam", context, foo="bar", egg=42)
-        self.assertEqual(res, (exp_name, "tata", ("spam", 1, 2, 3),
-                               {"bacon": "spam", "egg": 42, "foo": "bar"}))
+        self.assertEqual(res, (exp_name, "tata", (1, 2, 3),
+                               {"value": "spam", "bacon": "spam",
+                                "egg": 42, "foo": "bar"}))
 
     @defer.inlineCallbacks
     def testSyncCall(self):

@@ -45,7 +45,10 @@ class Context(object):
         self.names = (names[0], ) + tuple([unicode(i) for i in names[1:]])
         self.remaining = tuple([unicode(i) for i in remaining])
 
-    def make_address(self, location):
+    def make_action_address(self, action):
+        return self.make_model_address(self.names + (action.name, ))
+
+    def make_model_address(self, location):
         host, port = location[0]
         path = "/" + http.tuple2path(location[1:])
         return http.compose(host=host, port=port, path=path)

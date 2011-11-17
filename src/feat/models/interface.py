@@ -34,7 +34,7 @@ __all__ = ["ResponseTypes", "ActionCategory", "ValueTypes",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
            "IValueInfo", "IValueCollection", "IValueRange",
-           "IValueOptions", "IValueOption"]
+           "IValueOptions", "IValueOption", "IActionPayload"]
 
 
 class ResponseTypes(enum.Enum):
@@ -271,7 +271,14 @@ class  IContext(Interface):
     remaining = Attribute("Remaining names to get to the targeted model. "
                           "@type: list of unicode")
 
-    def make_address(location):
+    def make_action_address(action):
+        """Make and address for an action relative to the current context.
+        @param action: the action to generate the address from.
+        @type action: IModelAction
+        @return: unicode or str
+        """
+
+    def make_model_address(location):
         """Make and address from a tuple resolved but a reference.
         @param location: an absolute location built
                          from the reference and the context.
@@ -726,6 +733,15 @@ class IActionParam(Interface):
                            "@type: IValueInfo")
     is_required = Attribute("If the parameter is required or optional. "
                             "@type: bool")
+
+
+class IActionPayload(Interface):
+    """
+    Interface identifying an object received containing action parameters.
+    to be used when registering document readers.
+    instance implementing this interface should provide
+    the dictionary protocol.
+    """
 
 
 ### private interfaces ###

@@ -290,13 +290,26 @@ def _filter(method, value, args, kwargs):
 
 
 def _perform(method, value, params, args, kwargs):
-    argspec = inspect.getargspec(method)
     keywords = dict(kwargs)
-    if argspec.keywords:
-        keywords.update(params)
-    else:
+    keywords.update(params)
+    keywords["value"] = value
+    arguments = []
+
+    argspec = inspect.getargspec(method)
+
+    for name in argspec.args:
+        if name in ("self"):
+            continue
+        if name not in keywords:
+            break
+        arguments.append(keywords.pop(name))
+
+    arguments.extend(args)
+
+    if not argspec.keywords:
         expected = set(argspec.args)
-        for param_name, param_value in params.iteritems():
-            if param_name in expected:
-                keywords[param_name] = param_value
-    return defer.maybeDeferred(method, value, *args, **keywords)
+        for name in keywords.keys():
+            if name not in expected:
+                del keywords[name]
+
+    return defer.maybeDeferred(method, *arguments, **keywords)

@@ -24,9 +24,11 @@ class TestContext(object):
         self.models = models
         self.remaining = ()
 
-    def make_address(self, path):
+    def make_action_address(self, action):
+        return self.make_model_address(self.names + (action.name, ))
+
+    def make_model_address(self, path):
         path = filter(None, path)
-        return '/'.join(path)
 
     def descend(self, model):
         return TestContext(self.names + (model.name, ),

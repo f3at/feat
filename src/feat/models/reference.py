@@ -78,7 +78,7 @@ class Relative(Reference):
                                    % (self._base, ))
 
         resolved = tuple(location) + self._location + context.remaining
-        return context.make_address(resolved)
+        return context.make_model_address(resolved)
 
     ### IRelativeReference ###
 
@@ -89,6 +89,17 @@ class Relative(Reference):
     @property
     def location(self):
         return self._location
+
+
+class Action(Reference):
+
+    def __init__(self, action):
+        self._action = IModelAction(action)
+
+    ### IReference ###
+
+    def resolve(self, context):
+        return context.make_action_address(self._action)
 
 
 class Local(Reference):
@@ -105,7 +116,7 @@ class Local(Reference):
     def resolve(self, context):
         context = IContext(context)
         resolved = context.names[:1] + self._location + context.remaining
-        return context.make_address(resolved)
+        return context.make_model_address(resolved)
 
     ### ILocalReference ###
 
@@ -130,7 +141,7 @@ class Absolute(Reference):
     def resolve(self, context):
         context = IContext(context)
         resolved = (self._root, ) + self._location + context.remaining
-        return context.make_address(resolved)
+        return context.make_model_address(resolved)
 
     ### IReference ###
 

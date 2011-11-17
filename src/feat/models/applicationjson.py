@@ -22,6 +22,8 @@
 
 import json
 
+from zope.interface import implements
+
 from feat.common import defer, serialization
 from feat.common.serialization import json as feat_json
 from feat.models import reference
@@ -30,6 +32,10 @@ from feat.web import document
 from feat.models.interface import *
 
 MIME_TYPE = "application/json"
+
+
+class ActionPayload(dict):
+    implements(IActionPayload)
 
 
 def render_metadata(obj):
@@ -73,9 +79,7 @@ def render_item(item, context):
     metadata = yield render_metadata(item)
     if metadata:
         result["metadata"] = metadata
-    print "W"*80, item
     result["url"] = item.reference.resolve(context)
-    print "W"*85, item
     defer.returnValue(result)
 
 
@@ -89,6 +93,8 @@ def render_action(action, context):
     metadata = yield render_metadata(action)
     if metadata:
         result["metadata"] = metadata
+    result["idempotent"] = bool(action.is_idempotent)
+    result["category"] = action.category.name
     if action.result_info is not None:
         result["result"] = render_value(action.result_info)
     params = render_params(action.parameters)
@@ -145,7 +151,7 @@ def render_param(param):
 
 
 @defer.inlineCallbacks
-def render_model(doc, obj, *args, **kwargs):
+def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = {}
     name = obj.name
@@ -157,6 +163,12 @@ def render_model(doc, obj, *args, **kwargs):
     desc = obj.desc
     if desc:
         result["desc"] = desc
+
+    get_action = yield obj.fetch_action(u"get")
+    if get_action is not None:
+        value = yield get_action.perform()
+        result["value"] = value
+
     metadata = render_metadata(obj)
     items = yield render_items(obj, context)
     actions = yield render_actions(obj, context)
@@ -169,17 +181,29 @@ def render_model(doc, obj, *args, **kwargs):
     doc.write(json.dumps(result, indent=2))
 
 
-def render_serializable(doc, obj, *args, **kwargs):
+def write_serializable(doc, obj, *args, **kwargs):
     serializer = feat_json.Serializer()
     data = serializer.convert(obj)
     doc.write(data)
 
 
-def render_anything(doc, obj, *args, **kwargs):
-    doc.write(unicode(obj))
+def write_anything(doc, obj, *args, **kwargs):
+    doc.write(json.dumps(obj))
 
 
-document.register_writer(render_model, MIME_TYPE, IModel)
-document.register_writer(render_serializable, MIME_TYPE,
+def read_action(doc, *args, **kwargs):
+    data = doc.read()
+    if not data:
+        return ActionPayload()
+    params = json.loads(data)
+    if not isinstance(params, dict):
+        raise ValueError("Invalid action parameters")
+    return ActionPayload(params)
+
+
+document.register_writer(write_model, MIME_TYPE, IModel)
+document.register_writer(write_serializable, MIME_TYPE,
                          serialization.ISerializable)
-document.register_writer(render_anything, MIME_TYPE, None)
+document.register_writer(write_anything, MIME_TYPE, None)
+
+document.register_reader(read_action, MIME_TYPE, IActionPayload)

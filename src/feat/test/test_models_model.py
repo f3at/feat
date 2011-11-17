@@ -48,14 +48,17 @@ class DummyContext(object):
         self.names = tuple(names)
         self.remaining = tuple(remaining)
 
-    def make_address(self, location):
+    def make_action_address(self, action):
+        return self.make_model_address(self.names + (action.name, ))
+
+    def make_model_address(self, location):
         host, port = location[0]
         path = "/" + http.tuple2path(location[1:])
         return http.compose(host=host, port=port, path=path)
 
     def descend(self, model):
         return DummyContext(self.models + (model, ),
-                            self.names + (model.name, ),)
+                            self.names + (model.name, ))
 
 
 class DummySource(object):
@@ -231,7 +234,7 @@ class TestModelsModel(common.TestCase):
                          "http://dummy.net/child")
         a1 = yield m1.fetch_action("action")
         self.assertEqual(a1.reference.resolve(ctx1),
-                         "http://dummy.net/")
+                         "http://dummy.net/action")
         m2 = yield i1.fetch()
         ctx2 = ctx1.descend(m2)
         i2 = yield m1.fetch_item("child")
@@ -239,7 +242,7 @@ class TestModelsModel(common.TestCase):
                          "http://dummy.net/child/child")
         a2 = yield m1.fetch_action("action")
         self.assertEqual(a2.reference.resolve(ctx2),
-                         "http://dummy.net/child")
+                         "http://dummy.net/child/action")
 
     @defer.inlineCallbacks
     def testModelMeta(self):
@@ -248,7 +251,8 @@ class TestModelsModel(common.TestCase):
             self.assertTrue(all(IMetadataItem.providedBy(i) for i in meta))
             self.assertTrue(all(isinstance(i.name, unicode) for i in meta))
             self.assertTrue(all(isinstance(i.value, unicode) for i in meta))
-            self.assertTrue(all(i.scheme is None or isinstance(i.scheme, unicode)
+            self.assertTrue(all(i.scheme is None
+                                or isinstance(i.scheme, unicode)
                                 for i in meta))
             self.assertEqual(set((i.name, i.value, i.scheme) for i in meta),
                              set(expected))
