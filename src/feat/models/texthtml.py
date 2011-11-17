@@ -22,9 +22,20 @@ class Layout(html.Document):
         self.div(_class='content')
 
     def _link_static_files(self, context):
-        url = reference.Local('static', 'feat.css').resolve(context)
+        url = self._local_url(context, 'static', 'feat.css')
         self.head.content.append(
-            html.tags.link(_type='text/css', rel='stylesheet', href=url))
+            html.tags.link(type='text/css', rel='stylesheet', href=url)())
+
+        scripts = [('http://ajax.googleapis.com/ajax/libs/'
+                   'jquery/1.6/jquery.min.js'),
+                   self._local_url(context, 'static', 'script', 'feat.js'),
+                   self._local_url(context, 'static', 'script', 'form.js')]
+        for url in scripts:
+            self.head.content.append(
+                html.tags.script(src=url, type='text/javascript')(" "))
+
+    def _local_url(self, context, *parts):
+        return reference.Local(*parts).resolve(context)
 
     def _render_header(self, context):
         res = list("History: ")
@@ -112,7 +123,7 @@ class HTMLWriter(log.Logger):
             method = "PUT"
         else:
             method = "POST"
-        url = reference.Relative().resolve(context)
+        url = "%s#%s" % (reference.Relative().resolve(context), action.name)
         form = markup.form(method=method, action=url, _class='action_form')
         div = markup.div()
         for param in action.parameters:

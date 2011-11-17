@@ -62,14 +62,15 @@ class BasePolicy(base.BasePolicy):
                    "accept_charset": "accept-charset"}
 
     leaf_tags = set(["area", "base", "br", "col", "frame", "hr", "img",
-                     "input", "link", "meta", "param"])
+                     "input", "meta", "param"])
 
     node_tags = set(["a", "abbr", "acronym", "address", "b", "bdo", "big",
                      "blockquote", "body", "button", "caption", "cite",
                      "code", "colgroup", "dd", "del", "dfn", "div", "dl",
                      "dt", "em", "fieldset", "form", "frameset", "h1", "h2",
                      "h3", "h4", "h5", "h6", "head", "html", "i", "iframe",
-                     "ins", "kbd", "label", "legend", "li", "map", "noframes",
+                     "ins", "kbd", "label", "legend", "li", "link", "map",
+                     "noframes",
                      "noscript", "object", "ol", "optgroup", "option", "p",
                      "pre", "q", "samp", "script", "select", "small", "span",
                      "strong", "style", "sub", "sup", "table", "tbody", "td",
