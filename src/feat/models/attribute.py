@@ -38,11 +38,12 @@ def value(value_info):
 class MetaAttribute(type(model.AbstractModel)):
 
     @staticmethod
-    def new(identity, value_info, getter=None, setter=None):
+    def new(identity, value_info, getter=None, setter=None, meta=None):
         cls_name = utils.mk_class_name(identity, "Attribute")
         cls = MetaAttribute(cls_name, (Attribute, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_value(value_info)
+        cls.apply_class_meta(meta)
 
         if getter is not None:
 

@@ -47,7 +47,6 @@ class Metadata(annotate.Annotable):
     implements(IMetadata)
 
     _class_meta = container.MroDictOfList("_mro_meta")
-    _instance_meta = None
 
     __slots__ = ("_instance_meta", )
 
@@ -57,7 +56,7 @@ class Metadata(annotate.Annotable):
         class_meta = self._class_meta
         items = class_meta.get(name, [])
 
-        if self._instance_meta is not None:
+        if hasattr(self, "_instance_meta"):
             items.extend(self._instance_meta.get(name, []))
 
         return items
@@ -67,14 +66,14 @@ class Metadata(annotate.Annotable):
         class_meta = self._class_meta
         names = set(class_meta)
 
-        if self._instance_meta is not None:
+        if hasattr(self, "_instance_meta"):
             names.update(self._instance_meta)
 
         return iter(names)
 
     def iter_meta(self, *names):
         class_meta = self._class_meta
-        instance_meta = self._instance_meta
+        instance_meta = getattr(self, "_instance_meta", {})
 
         if not names:
             names = self.iter_meta_names()
@@ -84,24 +83,49 @@ class Metadata(annotate.Annotable):
                 for m in class_meta[k]:
                     yield m
 
-            if instance_meta is not None and k in instance_meta:
+            if k in instance_meta:
                 for m in instance_meta[k]:
                     yield m
 
-    ### protected ###
+    ### public ###
 
-    def _put_meta(self, name, value, scheme=None):
-        if self._instance_meta is None:
+    def put_meta(self, name, value, scheme=None):
+        item = MetadataItem(name, value, scheme)
+        self._put_meta(item.name, item)
+
+    def apply_instance_meta(self, meta):
+        self._apply_meta(meta, self._put_meta)
+
+    ### private ###
+
+    def _put_meta(self, name, item):
+        if not hasattr(self, "_instance_meta"):
             self._instance_meta = {}
-        items = self._instance_meta.setdefault(name, [])
-        items.append(MetadataItem(name, value, scheme))
+        self._instance_meta.setdefault(name, []).append(item)
 
     ### annotations ###
 
     @classmethod
     def annotate_meta(cls, name, value, scheme=None):
         """@see: feat.models.meta.meta"""
-        cls._class_meta.put(name, MetadataItem(name, value, scheme))
+        item = MetadataItem(name, value, scheme)
+        cls._class_meta.put(item.name, item)
+
+    ### class methods ###
+
+    @classmethod
+    def apply_class_meta(cls, meta):
+        cls._apply_meta(meta, cls._class_meta.put)
+
+    @classmethod
+    def _apply_meta(cls, meta, fun):
+        if meta is None:
+            return
+        if not isinstance(meta, list):
+            meta = [meta]
+        for args in meta:
+            item = MetadataItem(*args)
+            fun(item.name, item)
 
 
 class MetadataItem(object):

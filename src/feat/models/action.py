@@ -25,7 +25,7 @@ import types
 from zope.interface import implements
 
 from feat.common import defer, annotate, container
-from feat.models import utils, meta as models_meta
+from feat.models import utils, reference, meta as models_meta
 
 from feat.models.interface import *
 from feat.models.interface import IValidator, IAspect, IActionFactory
@@ -234,6 +234,10 @@ class Action(models_meta.Metadata):
         if self.aspect is not None and self.aspect.desc is not None:
             return self.aspect.desc
         return self._desc
+
+    @property
+    def reference(self):
+        return reference.Relative(self.name)
 
     @property
     def category(self):

@@ -133,10 +133,10 @@ class Node(_Base):
 class NodeModel(model.Model):
 
     model.identity('node-model')
-    model.children('locations', getter.source_get('get_child'),
-                   call.source_call('iter_child_names'),
-                   meta=[('render_array', 3)],
-                   desc="Locations or whatever")
+    model.collection('locations', getter.source_get('get_child'),
+                     call.source_call('iter_child_names'),
+                     meta=[('render_array', 3)],
+                     desc="Locations or whatever")
 
 
 @adapter.register(Location, IModel)
@@ -144,8 +144,8 @@ class LocationModel(model.Model):
 
     model.identity('location-model')
     model.attribute('name', value.String(), getter.source_attr('name'))
-    model.children('agents', getter.source_get('get_child'),
-                   call.source_call('iter_child_names'))
+    model.collection('agents', getter.source_get('get_child'),
+                     call.source_call('iter_child_names'))
 
 
 class ShutdownAction(action.Action):

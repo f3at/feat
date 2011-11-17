@@ -92,7 +92,7 @@ def render_action(action, context):
     params = render_params(action.parameters)
     if params:
         result["params"] = params
-    result["url"] = reference.Relative().resolve(context)
+    result["url"] = action.reference.resolve(context)
     defer.returnValue(result)
 
 

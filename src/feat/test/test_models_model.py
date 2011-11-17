@@ -29,6 +29,7 @@ from feat.models import interface, model, action, value
 from feat.models import call, getter, setter
 
 from . import common
+from feat.models.interface import IMetadataItem
 
 
 class DummyView(object):
@@ -139,11 +140,12 @@ class TestModel(model.Model):
     model.view("view2", "test-view", getter.source_get("get_view"),
                label="View 2", desc="Second view")
     model.view("view3", "test-view")
-    model.children("values",
-                   child_names=call.source_call("iter_names"),
-                   child_source=getter.source_get("get_value"),
-                   child_label="Some Value", child_desc="Some dynamic value",
-                   label="Some Values", desc="Some dynamic values")
+    model.collection("values",
+                     child_names=call.source_call("iter_names"),
+                     child_source=getter.source_get("get_value"),
+                     child_label="Some Value",
+                     child_desc="Some dynamic value",
+                     label="Some Values", desc="Some dynamic values")
 
 
 class TestView(model.Model):
@@ -163,6 +165,39 @@ class TestCollection(model.Collection):
     model.action("action", DummyAction)
 
 
+class TestModelMeta(model.Model):
+    model.identity("test-model-meta")
+    model.meta("foo", "foo1")
+    model.meta("foo", "foo2", "FOO")
+    model.meta("bar", "bar")
+
+    model.child("child1", meta=("spam", "beans"))
+    model.child("child2", meta=[("spam", "egg")])
+    model.child("child3", meta=[("spam", "tomatoes", "SPAM"),
+                                ("spam", "egg")])
+
+    model.view("view", "test-model-meta", meta=[("spam", "foo1", "FOO")])
+    model.attribute("attr", value.String(),
+                    meta=[("spam", "foo2", "FOO")])
+    model.collection("collection",
+                     child_source=getter.model_attr("source"),
+                     child_model="test-model-meta",
+                     child_meta=[("bacon", "dynitem1"),
+                                 ("bacon", "dynitem2", "BAR")],
+                     model_meta=("bacon", "model"),
+                     meta=("spam", "item", "FOO"))
+
+    model.item_meta("child1", "foo", "foo1")
+    model.item_meta("child1", "spam", "foo", "FOO")
+    model.item_meta("child2", "foo", "foo1")
+    model.item_meta("child2", "spam", "foo", "FOO")
+    model.item_meta("child3", "foo", "foo1")
+    model.item_meta("child3", "spam", "foo", "FOO")
+    model.item_meta("view", "foo", "foo2")
+    model.item_meta("attr", "foo", "foo3")
+    model.item_meta("collection", "foo", "foo4")
+
+
 class TestModelsModel(common.TestCase):
 
     def setUp(self):
@@ -172,6 +207,72 @@ class TestModelsModel(common.TestCase):
     def tearDown(self):
         model.restore_factories(self._factories_snapshot)
         return common.TestCase.tearDown(self)
+
+    @defer.inlineCallbacks
+    def testModelMeta(self):
+
+        def check(meta, expected):
+            self.assertTrue(all(IMetadataItem.providedBy(i) for i in meta))
+            self.assertTrue(all(isinstance(i.name, unicode) for i in meta))
+            self.assertTrue(all(isinstance(i.value, unicode) for i in meta))
+            self.assertTrue(all(i.scheme is None or isinstance(i.scheme, unicode)
+                                for i in meta))
+            self.assertEqual(set((i.name, i.value, i.scheme) for i in meta),
+                             set(expected))
+
+        m = TestModelMeta(object())
+        self.assertEqual(set(m.iter_meta_names()),
+                         set([u"bar", u"foo"]))
+        self.assertEqual(set(type(n) for n in m.iter_meta_names()),
+                         set([unicode]))
+        self.assertEqual(len(m.get_meta("foo")), 2)
+        self.assertEqual(len(m.get_meta("bar")), 1)
+        check(m.get_meta("foo"), [(u'foo', u'foo1', None),
+                                  (u'foo', u'foo2', u'FOO')])
+        check(m.get_meta("bar"), [(u'bar', u'bar', None)])
+        check(m.get_meta("spam"), [])
+
+        i = yield m.fetch_item("child1")
+        check(i.get_meta("spam"), [(u'spam', u'beans', None),
+                                   (u'spam', u'foo', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("child2")
+        check(i.get_meta("spam"), [(u'spam', u'egg', None),
+                                   (u'spam', u'foo', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("child3")
+        check(i.get_meta("spam"), [(u'spam', u'egg', None),
+                                   (u'spam', u'foo', u'FOO'),
+                                   (u'spam', u'tomatoes', u'SPAM')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("view")
+        check(i.get_meta("spam"), [(u'spam', u'foo1', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo2', None)])
+
+        i = yield m.fetch_item("attr")
+        check(i.get_meta("spam"), [(u'spam', u'foo2', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo3', None)])
+
+        i = yield m.fetch_item("collection")
+        check(i.get_meta("spam"), [(u'spam', u'item', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo4', None)])
+
+        m = yield i.fetch()
+        check(m.get_meta("spam"), [])
+        check(m.get_meta("foo"), [])
+        check(m.get_meta("bacon"), [(u"bacon", u"model", None)])
+
+        i = yield m.fetch_item("dummy")
+        check(i.get_meta("spam"), [])
+        check(m.get_meta("foo"), [])
+        check(i.get_meta("bacon"), [(u"bacon", u"dynitem1", None),
+                                    (u"bacon", u"dynitem2", u"BAR")])
 
     def testFactoryRegistry(self):
         self.assertTrue(model.get_factory("test-model") is TestModel)

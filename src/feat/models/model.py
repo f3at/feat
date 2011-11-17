@@ -40,6 +40,22 @@ from feat.models.interface import IAspect, IReference
 meta = models_meta.meta
 
 
+def item_meta(item_name, name, value, scheme=None):
+    """
+    Adds meta information to an already defined item
+    of the model being defined.
+    @param item_name: name of the model item the meta data should be added to.
+    @type item_name: str or unicode
+    @param name: name of the meta data class
+    @type name: str or unicode
+    @param value: metadata value
+    @type value: str or unicode
+    @param scheme: format information about the value
+    @type scheme: str or unicode or None
+    """
+    _annotate("item_meta", item_name, name, value, scheme=scheme)
+
+
 def identity(identity):
     """
     Annotates the identity of the model being defined.
@@ -70,12 +86,14 @@ def attribute(name, value, getter=None, setter=None,
     @type label: str or unicode or None
     @parama desc: the description of the attribute or None if not documented.
     @type desc: str or unicode or None
+    @param meta: model item metadata atoms.
+    @type meta: list of tuple
     """
     _annotate("attribute", name, value, getter=getter, setter=setter,
               label=label, desc=desc, meta=meta)
 
 
-def child(name, getter=None, model=None, label=None, desc=None):
+def child(name, getter=None, model=None, label=None, desc=None, meta=None):
     """
     Annotate a sub-model to the one being defined.
     @param name: item name unique for the model being defined.
@@ -91,9 +109,11 @@ def child(name, getter=None, model=None, label=None, desc=None):
     @type label: str or unicode or None
     @parama desc: the description of the sub-model or None if not documented.
     @type desc: str or unicode or None
+    @param meta: model item metadata atoms.
+    @type meta: list of tuple
     """
     _annotate("child", name, getter=getter, model=model,
-              label=label, desc=desc)
+              label=label, desc=desc, meta=meta)
 
 
 def view(name, model, value=None, label=None, desc=None, meta=None):
@@ -112,6 +132,8 @@ def view(name, model, value=None, label=None, desc=None, meta=None):
     @type label: str or unicode or None
     @parama desc: the description of the sub-model or None if not documented.
     @type desc: str or unicode or None
+    @param meta: model item metadata atoms.
+    @type meta: list of tuple
     """
     _annotate("view", name, model=model, value=value,
               label=label, desc=desc, meta=meta)
@@ -157,9 +179,9 @@ def action(name, factory, label=None, desc=None):
               label=label, desc=desc)
 
 
-def children(name, child_source, child_names=None,
-             child_model=None, child_label=None, child_desc=None,
-             label=None, desc=None, meta=None):
+def collection(name, child_source=None, child_names=None, child_model=None,
+               child_label=None, child_desc=None, child_meta=None,
+               label=None, desc=None, meta=None, model_meta=None):
     """
     Annotate a dynamic collection of sub-models.
     @param name: the name of the collection model containing the sub-models.
@@ -177,15 +199,22 @@ def children(name, child_source, child_names=None,
     @type child_label: str or unicode or None
     @param child_desc: the model items description or None.
     @type child_desc: str or unicode or None
+    @param child_meta: collection model's items metadata.
+    @type child_meta: list of tuple
     @param label: the collection label or None.
     @type label: str or unicode or None
     @param desc: the collection description or None.
     @type desc: str or unicode or None
+    @param meta: item metadata.
+    @type meta: list of tuple
+    @param model_meta: collection model metadata.
+    @type model_meta: list of tuple
     """
-    _annotate("children", name, child_source=child_source,
+    _annotate("collection", name, child_source=child_source,
               child_names=child_names, child_model=child_model,
               child_label=child_label, child_desc=child_desc,
-              label=label, desc=desc, meta=meta)
+              child_meta=child_meta, label=label, desc=desc,
+              meta=meta, model_meta=model_meta)
 
 
 def child_names(effect):
@@ -197,7 +226,7 @@ def child_names(effect):
     _annotate("child_names", effect)
 
 
-def child_source(effect, model=None, label=None, desc=None):
+def child_source(effect, model=None, label=None, desc=None, meta=None):
     """
     Annotate the effect used to retrieve a sub-model's source by name.
     @param effect: an effect to retrieve a source from name.
@@ -209,8 +238,11 @@ def child_source(effect, model=None, label=None, desc=None):
     @type label: str or unicode or None
     @param desc: the model items description or None.
     @type desc: str or unicode or None
+    @param meta: model item metadata atoms.
+    @type meta: list of tuple
     """
-    _annotate("child_source", effect, model=model, label=label, desc=desc)
+    _annotate("child_source", effect, model=model,
+              label=label, desc=desc, meta=meta)
 
 
 def _annotate(name, *args, **kwargs):
@@ -459,15 +491,18 @@ class StaticChildrenMixin(object):
     ### annotations ###
 
     @classmethod
-    def annotate_child(cls, name, getter, model=None, label=None, desc=None,
-                       meta=None):
+    def annotate_item_meta(cls, item_name, name, value, scheme=None):
+        """@see: feat.models.model.item_meta"""
+        cls._model_items[item_name].annotate_meta(name, value, scheme=scheme)
+
+    @classmethod
+    def annotate_child(cls, name, getter, model=None,
+                       label=None, desc=None, meta=None):
         """@see: feat.models.model.child"""
         name = _validate_str(name)
         item = MetaModelItem.new(name, fetcher=getter, browser=getter,
-                                 factory=model, label=label, desc=desc)
-        if meta:
-            for decl in meta:
-                item.annotate_meta(*decl)
+                                 factory=model, label=label,
+                                 desc=desc, meta=meta)
         cls._model_items[name] = item
 
     @classmethod
@@ -476,24 +511,21 @@ class StaticChildrenMixin(object):
         """@see: feat.models.model.view"""
         name = _validate_str(name)
         item = MetaModelItem.new(name, factory=model, view=value,
-                                 label=label, desc=desc)
-        if meta:
-            for decl in meta:
-                item.annotate_meta(*decl)
+                                 label=label, desc=desc, meta=meta)
         cls._model_items[name] = item
 
     @classmethod
-    def annotate_attribute(cls, name, value_info,
-                           getter=None, setter=None,
-                           label=None, desc=None, meta=None):
+    def annotate_attribute(cls, name, value_info, getter=None, setter=None,
+                           label=None, desc=None, meta=None, model_meta=None):
         """@see: feat.models.model.attribute"""
         from feat.models import attribute
         name = _validate_str(name)
         attr_ident = cls._identity + "." + name
         attr_cls = attribute.MetaAttribute.new(attr_ident, value_info,
-                                               getter=getter, setter=setter)
+                                               getter=getter, setter=setter,
+                                               meta=model_meta)
         item = MetaModelItem.new(name, factory=attr_cls,
-                                 label=label, desc=desc)
+                                 label=label, desc=desc, meta=meta)
         item.annotate_meta('inline', True)
         if meta:
             for decl in meta:
@@ -501,23 +533,23 @@ class StaticChildrenMixin(object):
         cls._model_items[name] = item
 
     @classmethod
-    def annotate_children(cls, name, child_source, child_names=None,
-                        child_model=None, child_label=None, child_desc=None,
-                        label=None, desc=None, meta=None):
-        """@see: feat.models.model.children"""
+    def annotate_collection(cls, name, child_source, child_names=None,
+                            child_model=None, child_label=None,
+                            child_desc=None, child_meta=None,
+                            label=None, desc=None, meta=None,
+                            model_meta=None):
+        """@see: feat.models.model.collection"""
         name = _validate_str(name)
         coll_cls = MetaCollection.new(cls._identity + "." + name,
                                       child_source=child_source,
                                       child_names=child_names,
                                       child_model=child_model,
                                       child_label=child_label,
-                                      child_desc=child_desc)
+                                      child_desc=child_desc,
+                                      child_meta=child_meta,
+                                      meta=model_meta)
         item = MetaModelItem.new(name, factory=coll_cls,
-                                 label=label, desc=desc)
-        if meta:
-            for decl in meta:
-                item.annotate_meta(*decl)
-
+                                 label=label, desc=desc, meta=meta)
         cls._model_items[name] = item
 
 
@@ -715,12 +747,12 @@ class MetaModelItem(type(BaseModelItem)):
     @staticmethod
     def new(name, fetcher=None, browser=None,
             factory=None, view=None,
-            label=None, desc=None):
+            label=None, desc=None, meta=None):
 
         cls_name = utils.mk_class_name(name, "ModelItem")
         name = _validate_str(name)
         ref = models_reference.Relative(name)
-        return MetaModelItem(cls_name, (ModelItem, ),
+        cls = MetaModelItem(cls_name, (ModelItem, ),
                              {"__slots__": (),
                               "_name": name,
                               "_reference": ref,
@@ -730,6 +762,8 @@ class MetaModelItem(type(BaseModelItem)):
                               "_view": _validate_effect(view),
                               "_label": _validate_optstr(label),
                               "_desc": _validate_optstr(desc)})
+        cls.apply_class_meta(meta)
+        return cls
 
     ### IAspect ###
 
@@ -864,6 +898,7 @@ class DynamicItemsMixin(object):
     _fetch_source = None
     _item_label = None
     _item_desc = None
+    _item_meta = None
 
     ### IModel ###
 
@@ -971,25 +1006,30 @@ class DynamicItemsMixin(object):
         cls._fetch_names = _validate_effect(effect)
 
     @classmethod
-    def annotate_child_source(cls, effect, model=None, label=None, desc=None):
+    def annotate_child_source(cls, effect, model=None, label=None,
+                              desc=None, meta=None):
         """@see: feat.models.collection.child_source"""
         cls._fetch_source = _validate_effect(effect)
         cls._item_factory = _validate_model_factory(model)
         cls._item_label = _validate_optstr(label)
         cls._item_desc = _validate_optstr(desc)
+        cls._item_meta = meta
 
 
 class MetaCollection(type(AbstractModel)):
 
     @staticmethod
     def new(identity, child_source, child_names=None,
-            child_model=None, child_label=None, child_desc=None):
+            child_model=None, child_label=None,
+            child_desc=None, child_meta=None, meta=None):
         cls_name = utils.mk_class_name(identity)
         cls = MetaCollection(cls_name, (Collection, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_child_names(child_names)
         cls.annotate_child_source(child_source, model=child_model,
-                                  label=child_label, desc=child_desc)
+                                  label=child_label, desc=child_desc,
+                                  meta=child_meta)
+        cls.apply_class_meta(meta)
         return cls
 
 
@@ -1013,6 +1053,7 @@ class DynamicModelItem(BaseModelItem):
         self._name = name
         self._reference = models_reference.Relative(name)
         self._child = None
+        self.apply_instance_meta(model._item_meta)
 
     ### overridden ###
 
