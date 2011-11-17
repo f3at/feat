@@ -96,10 +96,9 @@ class HTMLWriter(log.Logger):
             if IMetadata.providedBy(item):
                 if item.get_meta('render_array'):
                     submodel = yield item.fetch()
-                    subcontext = context.descend(submodel)
                     limit = int(item.get_meta('render_array')[0].value)
                     markup.div(_class='array')(
-                        self._render_array(item, limit, subcontext)).close()
+                        self._render_array(item, limit, context)).close()
             li.close()
 
         ul.close()
@@ -221,6 +220,7 @@ class HTMLWriter(log.Logger):
     def _build_tree(self, tree, item, limit, context):
         model = yield item.fetch()
         items = yield model.fetch_items()
+        subcontext = context.descend(model)
         # [dict of attributes added by this level, list of child rows]
         tree.append([dict(), list()])
         for item in items:
@@ -228,12 +228,11 @@ class HTMLWriter(log.Logger):
                        not item.get_meta('inline')
             if is_array:
                 if limit > 0:
-                    subcontext = context.descend(model)
                     yield self._build_tree(tree[-1][1], item, limit - 1,
                                            subcontext)
             else:
                 column_name = "%s.%s" % (model.identity, item.name, )
-                tree[-1][0][column_name] = (item, context)
+                tree[-1][0][column_name] = (item, subcontext)
 
     def _flatten_tree(self, result, columns, current, tree, limit):
         current = dict(current)
