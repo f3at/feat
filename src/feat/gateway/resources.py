@@ -26,10 +26,10 @@ import os
 from twisted.internet import reactor, threads
 from zope.interface import implements
 
-from feat.common import defer, log
+from feat.common import defer
 from feat.web import http, webserver
 
-from feat.models.interface import *
+from feat.models.interface import IContext, IModel, ActionCategory, IReference
 
 
 class Context(object):
@@ -47,6 +47,12 @@ class Context(object):
         path = "/" + http.tuple2path(location[1:])
         return http.compose(host=host, port=port,
                             path=path, scheme=self.scheme)
+
+    def descend(self, name, model):
+        return Context(self.scheme,
+                       self.names + (name, ),
+                       self.models + (model, ),
+                       self.remaining)
 
 
 class Resource(webserver.BaseResource):

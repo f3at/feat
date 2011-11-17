@@ -1,5 +1,4 @@
 import os
-import glob
 import shutil
 import uuid
 
@@ -13,20 +12,23 @@ from feat.models import texthtml, model, action, value, call, getter, setter
 from feat import gateway
 from feat.web import document
 
-from feat.models.interface import IModel, IAspect, IContext
+from feat.models.interface import IModel, IContext
 
 
 class TestContext(object):
 
     implements(IContext)
 
-    def __init__(self):
+    def __init__(self, names=(), models=()):
         self.names = ()
         self.models = ()
         self.remaining = ()
 
     def make_address(self, path):
         return '/'.join(path)
+
+    def descend(self, name, model):
+        return TestContext(self.names + (name, ), self.models + (model, ))
 
 
 class HTMLWriterTest(common.TestCase):
@@ -162,7 +164,8 @@ class ShutdownAction(action.Action):
 class AgentModel(model.Model):
 
     model.identity('agent-model')
-    model.attribute('name', value.String(), getter.source_attr('name'))
+    model.attribute('name', value.String(), getter.source_attr('name'),
+                    meta=[('link_owner', True)])
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'))
     model.action('shutdown', ShutdownAction)

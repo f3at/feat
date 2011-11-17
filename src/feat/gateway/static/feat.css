@@ -56,6 +56,10 @@ items .name {
 
 /* Arrays */
 
+.array {
+    margin: 9px;
+}
+
 .array th{
     background: #803030;
     padding: 6px;

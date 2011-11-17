@@ -271,8 +271,11 @@ class  IContext(Interface):
     remaining = Attribute("Remaining names to get to the targeted model. "
                           "@type: list of unicode")
 
-    def make_address(self, location):
+    def make_address(location):
         """Make and address from a tuple resolved but a reference."""
+
+    def descend(name, model):
+        """Generate new context appending the (name, model) to the path"""
 
 
 class IReference(Interface):

@@ -64,14 +64,14 @@ class HTMLWriter(log.Logger):
         ul = markup.ul(_class="items")
         for item in items:
             li = markup.li()
-            # submodel = yield item.fetch()
+
             url = item.reference.resolve(context)
             markup.span(_class='name')(
                 html.tags.a(href=url)(item.name)).close()
 
             if IMetadata.providedBy(item):
                 if item.get_meta('inline'):
-                    li.append(self._format_attribute(item))
+                    li.append(self._format_attribute(item, context))
 
             if item.label:
                 markup.span(_class='label')(item.label).close()
@@ -80,9 +80,11 @@ class HTMLWriter(log.Logger):
 
             if IMetadata.providedBy(item):
                 if item.get_meta('render_array'):
+                    submodel = yield item.fetch()
+                    subcontext = context.descend(item.name, submodel)
                     limit = int(item.get_meta('render_array')[0].value)
                     markup.div(_class='array')(
-                        self._render_array(item, limit)).close()
+                        self._render_array(item, limit, subcontext)).close()
             li.close()
 
         ul.close()
@@ -132,21 +134,26 @@ class HTMLWriter(log.Logger):
         markup.br()
 
     @defer.inlineCallbacks
-    def _format_attribute(self, item):
+    def _format_attribute(self, item, context):
         if not item.get_meta('inline'):
             raise ValueError("_format_attribute() called for something which"
                              "doesn't render inline: %r", item)
         model = yield item.fetch()
+        value = yield model.perform_action('get')
+        if item.get_meta('link_owner'):
+            url = reference.Relative().resolve(context)
+            value = html.tags.a(href=url)(value)
+
         defer.returnValue(
-            html.tags.span(_class='value')(model.perform_action('get')))
+            html.tags.span(_class='value')(value))
 
     @defer.inlineCallbacks
-    def _render_array(self, item, limit):
+    def _render_array(self, item, limit, context):
         tree = list()
         flattened = list()
         columns = list()
 
-        yield self._build_tree(tree, item, limit)
+        yield self._build_tree(tree, item, limit, context)
         self._flatten_tree(flattened, columns, dict(), tree[0], limit)
 
         headers = [html.tags.th()(x) for x in columns]
@@ -159,9 +166,10 @@ class HTMLWriter(log.Logger):
             tr = html.tags.tr()
             for column in columns:
                 td = html.tags.td()
-                item = row.get(column)
-                if item:
-                    td.append(self._format_attribute(item))
+                value = row.get(column)
+                if value:
+                    item, cur_context = value
+                    td.append(self._format_attribute(item, cur_context))
                 tr.append(td)
 
             tbody.append(tr)
@@ -169,7 +177,7 @@ class HTMLWriter(log.Logger):
         defer.returnValue(table)
 
     @defer.inlineCallbacks
-    def _build_tree(self, tree, item, limit):
+    def _build_tree(self, tree, item, limit, context):
         model = yield item.fetch()
         items = yield model.fetch_items()
         # [dict of attributes added by this level, list of child rows]
@@ -179,10 +187,12 @@ class HTMLWriter(log.Logger):
                        not item.get_meta('inline')
             if is_array:
                 if limit > 0:
-                    yield self._build_tree(tree[-1][1], item, limit - 1)
+                    subcontext = context.descend(item.name, model)
+                    yield self._build_tree(tree[-1][1], item, limit - 1,
+                                           subcontext)
             else:
                 column_name = "%s.%s" % (model.identity, item.name, )
-                tree[-1][0][column_name] = item
+                tree[-1][0][column_name] = (item, context)
 
     def _flatten_tree(self, result, columns, current, tree, limit):
         current = dict(current)

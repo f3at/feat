@@ -192,7 +192,8 @@ class Agent(model.Model):
    #                 getter=call.model_call("get_agent_type"),
    #                 label="Type", desc="Agent's type")
    model.attribute("id", value.String(), call.source_call("get_agent_id"),
-                   label="Identifier", desc="Agent's unique identifier")
+                   label="Identifier", desc="Agent's unique identifier",
+                   meta=[('link_owner', True)])
    # model.attribute("instance", value.Integer(),
    #                 call.model_call("get_instance_id"),
    #                 label="Instance", desc="Agent's instance number")

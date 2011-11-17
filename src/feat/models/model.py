@@ -50,7 +50,7 @@ def identity(identity):
 
 
 def attribute(name, value, getter=None, setter=None,
-              label=None, desc=None):
+              label=None, desc=None, meta=None):
     """
     Annotates a model attribute.
     @param name: attribute name, unique for a model.
@@ -72,7 +72,7 @@ def attribute(name, value, getter=None, setter=None,
     @type desc: str or unicode or None
     """
     _annotate("attribute", name, value, getter=getter, setter=setter,
-              label=label, desc=desc)
+              label=label, desc=desc, meta=meta)
 
 
 def child(name, getter=None, model=None, label=None, desc=None):
@@ -485,7 +485,7 @@ class StaticChildrenMixin(object):
     @classmethod
     def annotate_attribute(cls, name, value_info,
                            getter=None, setter=None,
-                           label=None, desc=None):
+                           label=None, desc=None, meta=None):
         """@see: feat.models.model.attribute"""
         from feat.models import attribute
         name = _validate_str(name)
@@ -495,6 +495,9 @@ class StaticChildrenMixin(object):
         item = MetaModelItem.new(name, factory=attr_cls,
                                  label=label, desc=desc)
         item.annotate_meta('inline', True)
+        if meta:
+            for decl in meta:
+                item.annotate_meta(*decl)
         cls._model_items[name] = item
 
     @classmethod
