@@ -159,6 +159,8 @@ class ShutdownAction(action.Action):
                  is_required=False)
     action.param(u"tata", value.String(default="foo"), False)
     action.param("titi", value.Integer(), is_required=False)
+    action.param("checkbox1", value.Boolean(default=True))
+    action.param("checkbox2", value.Boolean())
 
 
 @adapter.register(Agent, IModel)

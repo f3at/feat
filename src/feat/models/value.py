@@ -360,6 +360,27 @@ class Integer(Value):
         return value
 
 
+class Boolean(Value):
+    """Definition of an basic integer value."""
+
+    value_type(ValueTypes.boolean)
+
+    def __init__(self, **kwargs):
+        Value.__init__(self)
+        if "default" in kwargs:
+            self._set_default(kwargs["default"])
+
+    ### overridden ###
+
+    def validate(self, value):
+        if isinstance(value, bool):
+            value = bool(value)
+        value = super(Boolean, self).validate(value)
+        if not isinstance(value, bool):
+            raise ValueError(value)
+        return value
+
+
 class Enum(Integer):
     """Definition of integer value with a fixed
     set of possible values taken from an enumeration."""

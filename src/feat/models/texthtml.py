@@ -5,7 +5,7 @@ from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
-from feat.models.interface import IModel, IMetadata, ActionCategory
+from feat.models.interface import IModel, IMetadata, ActionCategory, ValueTypes
 
 
 MIME_TYPE = "text/html"
@@ -137,7 +137,21 @@ class HTMLWriter(log.Logger):
                   action_param.value_info.default
 
         markup.label()(action_param.name).close()
-        markup.input(type='text', default=default, name=action_param.name)
+        text_types = [ValueTypes.integer, ValueTypes.number,
+                      ValueTypes.string]
+        v_t = action_param.value_info.value_type
+        if v_t in text_types:
+            markup.input(type='text', default=default, name=action_param.name)
+        elif v_t == ValueTypes.boolean:
+            extra = {}
+            if default is True:
+                extra['checked'] = '1'
+            markup.input(type='checkbox', value='true',
+                         name=action_param.name, **extra)
+        else:
+            msg = ("ValueType %s is not supported by HTML writer" %
+                   (v_t.__name__))
+            markup.span(_class='type_not_supported')(msg)
         if action_param.desc:
             markup.span(_class='desc')(action_param.desc).close()
         if not action_param.is_required:

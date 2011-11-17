@@ -1,13 +1,12 @@
 (function($){
 
 $.fn.featform = function(options) {
-    var defaults = {};
-    options = $.extend(defaults, options);
-
     var $this = $(this);
-
-    options.url = $this.attr('action');
-    options.method = $this.attr('method');
+    var defaults = {
+	url: $this.attr('action'),
+	method: $this.attr('method')
+    };
+    options = $.extend(defaults, options);
 
     $this.data('featform.options', options);
 
