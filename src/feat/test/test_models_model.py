@@ -27,6 +27,7 @@ from zope.interface import implements
 from feat.common import defer, adapter
 from feat.models import interface, model, action, value
 from feat.models import call, getter, setter
+from feat.web import http
 
 from . import common
 from feat.models.interface import IMetadataItem
@@ -48,7 +49,13 @@ class DummyContext(object):
         self.remaining = tuple(remaining)
 
     def make_address(self, location):
-        return location
+        host, port = location[0]
+        path = "/" + http.tuple2path(location[1:])
+        return http.compose(host=host, port=port, path=path)
+
+    def descend(self, name, model):
+        return DummyContext(self.models + (model, ),
+                            self.names + (name, ),)
 
 
 class DummySource(object):
@@ -198,6 +205,12 @@ class TestModelMeta(model.Model):
     model.item_meta("collection", "foo", "foo4")
 
 
+class TestReference(model.Model):
+    model.identity("test-reference")
+    model.child("child", getter.model_attr("source"), model="test-reference")
+    model.action("action", DummyAction)
+
+
 class TestModelsModel(common.TestCase):
 
     def setUp(self):
@@ -207,6 +220,26 @@ class TestModelsModel(common.TestCase):
     def tearDown(self):
         model.restore_factories(self._factories_snapshot)
         return common.TestCase.tearDown(self)
+
+    @defer.inlineCallbacks
+    def testReferences(self):
+        m1 = TestReference(object())
+        ctx1 = DummyContext([m1], [("dummy.net", None)])
+
+        i1 = yield m1.fetch_item("child")
+        self.assertEqual(i1.reference.resolve(ctx1),
+                         "http://dummy.net/child")
+        a1 = yield m1.fetch_action("action")
+        self.assertEqual(a1.reference.resolve(ctx1),
+                         "http://dummy.net/")
+        m2 = yield i1.fetch()
+        ctx2 = ctx1.descend(i1.name, m2)
+        i2 = yield m1.fetch_item("child")
+        self.assertEqual(i2.reference.resolve(ctx2),
+                         "http://dummy.net/child/child")
+        a2 = yield m1.fetch_action("action")
+        self.assertEqual(a2.reference.resolve(ctx2),
+                         "http://dummy.net/child")
 
     @defer.inlineCallbacks
     def testModelMeta(self):
@@ -364,6 +397,7 @@ class TestModelsModel(common.TestCase):
         items = yield m.fetch_items()
         self.assertTrue(isinstance(items, list))
         self.assertEqual(len(items), len(ITEMS))
+        ctx = DummyContext([m], [("dummy.net", None)])
         for item in items:
             self.assertTrue(interface.IModelItem.providedBy(item))
             self.assertFalse(hasattr(item, "__dict__"))
@@ -371,8 +405,8 @@ class TestModelsModel(common.TestCase):
             self.assertTrue(isinstance(item.label, (unicode, types.NoneType)))
             self.assertTrue(isinstance(item.desc, (unicode, types.NoneType)))
             self.assertTrue(interface.IReference.providedBy(item.reference))
-            ctx = DummyContext()
-            self.assertEqual(item.reference.resolve(ctx), tuple([item.name]))
+            self.assertEqual(item.reference.resolve(ctx),
+                             str("http://dummy.net/" + item.name))
             model = yield item.fetch()
             self.assertTrue(interface.IModel.providedBy(model))
             model = yield item.browse()

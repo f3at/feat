@@ -304,7 +304,11 @@ class AbstractModel(models_meta.Metadata):
         self.aspect = IAspect(aspect) if aspect is not None else None
         self.view = view
 
-    ### public ###
+    ### IModel ###
+
+    @property
+    def identity(self):
+        return self._identity
 
     @property
     def name(self):
@@ -317,12 +321,6 @@ class AbstractModel(models_meta.Metadata):
     @property
     def desc(self):
         return self.aspect.desc if self.aspect is not None else None
-
-    ### IModel ###
-
-    @property
-    def identity(self):
-        return self._identity
 
     def perform_action(self, name, **kwargs):
         d = self.fetch_action(name)

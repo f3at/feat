@@ -383,6 +383,9 @@ class IModel(Interface):
     """
 
     identity = Attribute("Model unique identifier. @type: unicode")
+    name = Attribute("Model name. @type: unicode")
+    label = Attribute("Short label. @type: unicode or None")
+    desc = Attribute("Long description. @type: unicode or None")
 
     def provides_item(name):
         """

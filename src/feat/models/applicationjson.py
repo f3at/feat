@@ -146,6 +146,15 @@ def render_param(param):
 def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = {}
+    name = obj.name
+    if name:
+        result["name"] = name
+    label = obj.label
+    if label:
+        result["label"] = label
+    desc = obj.desc
+    if desc:
+        result["desc"] = desc
     metadata = render_metadata(obj)
     items = yield render_items(obj, context)
     actions = yield render_actions(obj, context)

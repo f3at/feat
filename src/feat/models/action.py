@@ -237,7 +237,7 @@ class Action(models_meta.Metadata):
 
     @property
     def reference(self):
-        return reference.Relative(self.name)
+        return reference.Relative()
 
     @property
     def category(self):
