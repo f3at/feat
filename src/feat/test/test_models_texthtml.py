@@ -12,7 +12,7 @@ from feat.models import texthtml, model, action, value, call, getter, setter
 from feat import gateway
 from feat.web import document
 
-from feat.models.interface import IModel, IContext
+from feat.models.interface import IModel, IContext, ActionCategory
 
 
 class TestContext(object):
@@ -20,11 +20,12 @@ class TestContext(object):
     implements(IContext)
 
     def __init__(self, names=(), models=()):
-        self.names = ()
-        self.models = ()
+        self.names = names
+        self.models = models
         self.remaining = ()
 
     def make_address(self, path):
+        path = filter(None, path)
         return '/'.join(path)
 
     def descend(self, model):
@@ -45,8 +46,7 @@ class HTMLWriterTest(common.TestCase):
         self.model = None
         self.args = list()
 
-        context = TestContext()
-        self.kwargs = dict(context=context)
+        self.kwargs = dict(context=TestContext())
 
     def testRenderingArray(self):
         r = Node()
@@ -57,6 +57,8 @@ class HTMLWriterTest(common.TestCase):
         n.append(Agent())
         n.append(Agent())
 
+        # context = TestContext(('name', ), (n, ))
+        # self.kwargs = dict(context=context)
         self.model = NodeModel(r)
 
     def testRenderingActionForms(self):
@@ -137,7 +139,8 @@ class NodeModel(model.Model):
     model.collection('locations', getter.source_get('get_child'),
                      call.source_call('iter_child_names'),
                      meta=[('render_array', 3)],
-                     desc="Locations or whatever")
+                     desc="Locations or whatever",
+                     label='locations')
 
 
 @adapter.register(Location, IModel)
@@ -163,6 +166,13 @@ class ShutdownAction(action.Action):
     action.param("checkbox2", value.Boolean())
 
 
+class DeleteAction(action.Action):
+
+    action.label("Delete Action")
+    action.category(ActionCategory.delete)
+    action.desc("Delete the agent")
+
+
 @adapter.register(Agent, IModel)
 class AgentModel(model.Model):
 
@@ -170,5 +180,7 @@ class AgentModel(model.Model):
     model.attribute('name', value.String(), getter.source_attr('name'),
                     meta=[('link_owner', True)])
     model.attribute('status', value.String(), getter.source_attr('status'))
-    model.attribute('count', value.Integer(), getter.source_attr('count'))
+    model.attribute('count', value.Integer(), getter.source_attr('count'),
+                    setter.source_attr('count'))
     model.action('shutdown', ShutdownAction)
+    model.action('delete', DeleteAction)
