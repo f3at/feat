@@ -28,8 +28,12 @@ class Layout(html.Document):
 
         scripts = [('http://ajax.googleapis.com/ajax/libs/'
                    'jquery/1.6/jquery.min.js'),
+                   # ('http://ajax.googleapis.com/ajax/libs/'
+                   #  'jqueryui/1.7.1/jquery-ui.min.js'),
                    self._local_url(context, 'static', 'script', 'feat.js'),
-                   self._local_url(context, 'static', 'script', 'form.js')]
+                   self._local_url(context, 'static', 'script', 'form.js'),
+                   self._local_url(context, 'static', 'script',
+                                   'jquery.cseditable.js')]
         for url in scripts:
             self.head.content.append(
                 html.tags.script(src=url, type='text/javascript')(" "))
@@ -116,6 +120,10 @@ class HTMLWriter(log.Logger):
         ul.close()
         markup.hr()
 
+    def _action_url(self, context, name):
+        url = "%s.%s" % (reference.Relative().resolve(context), name)
+        return url
+
     def _render_action_form(self, action, markup, context):
         if action.category == ActionCategory.delete:
             method = "DELETE"
@@ -123,7 +131,7 @@ class HTMLWriter(log.Logger):
             method = "PUT"
         else:
             method = "POST"
-        url = "%s#%s" % (reference.Relative().resolve(context), action.name)
+        url = self._action_url(context, action.name)
         form = markup.form(method=method, action=url, _class='action_form')
         div = markup.div()
         for param in action.parameters:
@@ -164,13 +172,21 @@ class HTMLWriter(log.Logger):
             raise ValueError("_format_attribute() called for something which"
                              "doesn't render inline: %r", item)
         model = yield item.fetch()
+        set_action = yield model.fetch_action('set')
+        classes = ['value']
+        extra = dict()
+        if set_action:
+            classes.append('inplace')
+            subcontext = context.descend(model)
+            extra['rel'] = self._action_url(subcontext, 'set')
+
         value = yield model.perform_action('get')
         if item.get_meta('link_owner'):
             url = reference.Relative().resolve(context)
             value = html.tags.a(href=url)(value)
 
         defer.returnValue(
-            html.tags.span(_class='value')(value))
+            html.tags.span(_class=" ".join(classes), **extra)(value))
 
     @defer.inlineCallbacks
     def _render_array(self, item, limit, context):

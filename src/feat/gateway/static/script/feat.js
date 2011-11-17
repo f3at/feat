@@ -1,5 +1,7 @@
 feat = {};
 
+// Ajax requestes
+
 feat.ajax = {};
 
 feat.ajax.send = function(method, url, params) {
@@ -22,7 +24,7 @@ feat.ajax._onError = function(resp) {
 	var envelope = $.parseJSON(resp);
 	console.log('Error: ', envelope);
     } catch (e) {
-	console.error('Failed unpacking the envelope', e)
+	console.error('Failed unpacking the envelope', e);
 	console.error('Response: ', resp);
     }
 };
@@ -30,9 +32,30 @@ feat.ajax._onError = function(resp) {
 if (typeof console == 'undefined') {
     // define this functions in case we are running without the debugger
     console = {log: function() {},
-	       error: function() {}}
+	       error: function() {}};
 }
+
+// Inplace handlers
+
+feat.inplace = {};
+
+feat.inplace._onSubmit = function(value) {
+  var $this = $(this);
+  var url = $this.attr('rel');
+  var params = {value: value};
+  feat.ajax.send('PUT', url, params);
+};
+
+// Application init
+
 $(document).ready(function() {
     $('form.action_form').featform();
+    $('.inplace').cseditable({
+       type: 'text',
+       submit: 'OK',
+       cancelLink: "Cancel",
+       editClass: "editor_field",
+       onSubmit: feat.inplace._onSubmit
+    });		    
 });
 

@@ -91,3 +91,15 @@ items .name {
     margin-left: 20px;
     font-size: 0.8em;
 }
+
+
+/* Inplaces */
+
+span.inplace {
+    cursor: pointer;
+    color: green !important;
+}
+
+.submit-cancel-container {
+    float: right;
+}
