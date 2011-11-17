@@ -81,7 +81,7 @@ class HTMLWriter(log.Logger):
             if IMetadata.providedBy(item):
                 if item.get_meta('render_array'):
                     submodel = yield item.fetch()
-                    subcontext = context.descend(item.name, submodel)
+                    subcontext = context.descend(submodel)
                     limit = int(item.get_meta('render_array')[0].value)
                     markup.div(_class='array')(
                         self._render_array(item, limit, subcontext)).close()
@@ -187,7 +187,7 @@ class HTMLWriter(log.Logger):
                        not item.get_meta('inline')
             if is_array:
                 if limit > 0:
-                    subcontext = context.descend(item.name, model)
+                    subcontext = context.descend(model)
                     yield self._build_tree(tree[-1][1], item, limit - 1,
                                            subcontext)
             else:

@@ -27,8 +27,9 @@ class TestContext(object):
     def make_address(self, path):
         return '/'.join(path)
 
-    def descend(self, name, model):
-        return TestContext(self.names + (name, ), self.models + (model, ))
+    def descend(self, model):
+        return TestContext(self.names + (model.name, ),
+                           self.models + (model, ))
 
 
 class HTMLWriterTest(common.TestCase):

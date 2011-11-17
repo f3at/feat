@@ -262,6 +262,8 @@ class INegotiable(Interface):
 
 class ResourceMixin(object):
 
+    __slots__ = ()
+
     implements(IWebResource)
 
     _action_lookup = {http.Methods.GET: "action_GET",
@@ -342,6 +344,8 @@ class LeafResourceMixin(ResourceMixin):
 
 
 class BaseResource(ResourceMixin):
+
+    __slots__ = ("_authenticator", "_authorizer")
 
     def __init__(self, authenticator=None, authorizer=None):
         self._authenticator = authenticator

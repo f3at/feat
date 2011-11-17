@@ -73,7 +73,9 @@ def render_item(item, context):
     metadata = yield render_metadata(item)
     if metadata:
         result["metadata"] = metadata
+    print "W"*80, item
     result["url"] = item.reference.resolve(context)
+    print "W"*85, item
     defer.returnValue(result)
 
 
@@ -143,7 +145,7 @@ def render_param(param):
 
 
 @defer.inlineCallbacks
-def write_model(doc, obj, *args, **kwargs):
+def render_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = {}
     name = obj.name
@@ -167,17 +169,17 @@ def write_model(doc, obj, *args, **kwargs):
     doc.write(json.dumps(result, indent=2))
 
 
-def write_serializable(doc, obj, *args, **kwargs):
+def render_serializable(doc, obj, *args, **kwargs):
     serializer = feat_json.Serializer()
     data = serializer.convert(obj)
     doc.write(data)
 
 
-def write_anything(doc, obj, *args, **kwargs):
+def render_anything(doc, obj, *args, **kwargs):
     doc.write(unicode(obj))
 
 
-document.register_writer(write_model, MIME_TYPE, IModel)
-document.register_writer(write_serializable, MIME_TYPE,
+document.register_writer(render_model, MIME_TYPE, IModel)
+document.register_writer(render_serializable, MIME_TYPE,
                          serialization.ISerializable)
-document.register_writer(write_anything, MIME_TYPE, None)
+document.register_writer(render_anything, MIME_TYPE, None)

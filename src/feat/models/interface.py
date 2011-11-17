@@ -272,10 +272,20 @@ class  IContext(Interface):
                           "@type: list of unicode")
 
     def make_address(location):
-        """Make and address from a tuple resolved but a reference."""
+        """Make and address from a tuple resolved but a reference.
+        @param location: an absolute location built
+                         from the reference and the context.
+        @type location: tuple of unicode
+        @return: unicode or str
+        """
 
-    def descend(name, model):
-        """Generate new context appending the (name, model) to the path"""
+    def descend(model):
+        """Generate new context appending the (name, model) to the path
+        @param model: a sub model of the context.
+        @type model: IModel
+        @return: the new context based on specified model.
+        @rtype: IContext
+        """
 
 
 class IReference(Interface):

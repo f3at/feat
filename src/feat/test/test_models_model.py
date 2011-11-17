@@ -53,9 +53,9 @@ class DummyContext(object):
         path = "/" + http.tuple2path(location[1:])
         return http.compose(host=host, port=port, path=path)
 
-    def descend(self, name, model):
+    def descend(self, model):
         return DummyContext(self.models + (model, ),
-                            self.names + (name, ),)
+                            self.names + (model.name, ),)
 
 
 class DummySource(object):
@@ -233,7 +233,7 @@ class TestModelsModel(common.TestCase):
         self.assertEqual(a1.reference.resolve(ctx1),
                          "http://dummy.net/")
         m2 = yield i1.fetch()
-        ctx2 = ctx1.descend(i1.name, m2)
+        ctx2 = ctx1.descend(m2)
         i2 = yield m1.fetch_item("child")
         self.assertEqual(i2.reference.resolve(ctx2),
                          "http://dummy.net/child/child")

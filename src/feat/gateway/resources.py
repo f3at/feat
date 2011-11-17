@@ -34,6 +34,8 @@ from feat.models.interface import IContext, IModel, ActionCategory, IReference
 
 class Context(object):
 
+    __slots__ = ("scheme", "models", "names", "remaining")
+
     implements(IContext)
 
     def __init__(self, scheme, names, models, remaining=[]):
@@ -42,22 +44,28 @@ class Context(object):
         self.models = tuple(models)
         self.remaining = tuple(remaining)
 
+    ### IContext ###
+
     def make_address(self, location):
         host, port = location[0]
         path = "/" + http.tuple2path(location[1:])
         return http.compose(host=host, port=port,
                             path=path, scheme=self.scheme)
 
-    def descend(self, name, model):
+    def descend(self, model):
+        remaining = self.remaining
+        if self.remaining:
+            if self.remaining[0] == model.name:
+                remaining = self.remaining[1:]
         return Context(self.scheme,
-                       self.names + (name, ),
+                       self.names + (model.name, ),
                        self.models + (model, ),
-                       self.remaining)
+                       remaining)
 
 
 class Resource(webserver.BaseResource):
 
-    __slots__ = ("model", "history", "_methods")
+    __slots__ = ("model", "_methods", "_model_history", "_name_history")
 
     implements(webserver.IWebResource, IContext)
 
