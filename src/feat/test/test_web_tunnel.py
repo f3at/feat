@@ -67,12 +67,12 @@ class TestHTTPTunnel(common.TestCase):
         r1.register(Av1)
         self.d1 = DummyDispatcher()
         self.t1 = tunnel.Tunnel(self, port_range, self.d1, "localhost",
-                                version=1, registry=r1)
+                                version=1, registry=r1, max_delay=10)
         r2 = serialization.get_registry().clone()
         r2.register(Av2)
         self.d2 = DummyDispatcher()
         self.t2 = tunnel.Tunnel(self, port_range, self.d2, "localhost",
-                                version=2, registry=r2)
+                                version=2, registry=r2, max_delay=10)
         return common.TestCase.setUp(self)
 
     @defer.inlineCallbacks
