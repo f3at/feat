@@ -1300,7 +1300,7 @@ class Response(log.Logger):
         self._request._ref.setResponseCode(int(code))
 
     def set_length(self, length):
-        self.set_header("length", length)
+        self.set_header("content-length", length)
 
     def set_header(self, key, value):
         self._check_header_not_sent()

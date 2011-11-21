@@ -22,6 +22,7 @@
 
 import mimetypes
 import os
+import time
 
 from twisted.internet import reactor, threads
 from zope.interface import implements
@@ -326,7 +327,21 @@ class StaticResource(webserver.BaseResource):
         if not os.path.isfile(res_path):
             raise http.NotFoundError()
 
-        length = os.path.getsize(res_path)
+        rst = os.stat(res_path)
+
+        # FIXME: Caching Policy, should be extracted to a ICachingPolicy
+        cache_control_header = request.get_header("cache-control") or ""
+        pragma_header = request.get_header("pragma") or ""
+        cache_control = http.parse_header_values(cache_control_header)
+        pragma = http.parse_header_values(pragma_header)
+        if not (u"no-cache" in cache_control or u"no-cache" in pragma):
+            if u"max-age" in cache_control:
+                max_age = int(cache_control[u"max-age"])
+                if max_age == 0 or (time.time() - rst.st_mtime) < max_age:
+                    response.set_status(http.Status.NOT_MODIFIED)
+                    return
+
+        length = rst.st_size
         mime_type, content_encoding = self._mime_types.guess_type(res_path)
         mime_type = mime_type or "application/octet-stream"
 
