@@ -5,6 +5,9 @@ feat = {};
 feat.ajax = {};
 
 feat.ajax.send = function(method, url, params) {
+    if (typeof params != 'string') {
+      params = JSON.stringify(params);
+    };
     $.ajax({type: method,
 	    url: url,
 	    data: params,
