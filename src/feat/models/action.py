@@ -24,11 +24,12 @@ import types
 
 from zope.interface import implements
 
-from feat.common import defer, annotate, container
+from feat.common import defer, mro, annotate, container
 from feat.models import utils, reference, meta as models_meta
 
 from feat.models.interface import *
-from feat.models.interface import IValidator, IAspect, IActionFactory
+from feat.models.interface import IValidator, IAspect
+from feat.models.interface import IActionFactory, IContextMaker
 
 
 meta = models_meta.meta
@@ -194,7 +195,7 @@ class MetaAction(type(models_meta.Metadata)):
         return cls
 
 
-class Action(models_meta.Metadata):
+class Action(models_meta.Metadata, mro.DeferredMroMixin):
     """Action definition instantiated for a specific model and aspect."""
 
     __metaclass__ = MetaAction
@@ -209,6 +210,15 @@ class Action(models_meta.Metadata):
     _parameters = container.MroDict("_mro_parameters")
     _effects = container.MroList("_mro_effects")
 
+    ### class methods ###
+
+    @classmethod
+    def create(cls, model, aspect=None):
+        a = cls(model, aspect=aspect)
+        return a.initiate()
+
+    ### public ###
+
     def __init__(self, model, aspect=None):
         """Initialize amodel's action.
         @param model: the model the action belong to.
@@ -216,6 +226,13 @@ class Action(models_meta.Metadata):
         """
         self.model = IModel(model)
         self.aspect = IAspect(aspect) if aspect is not None else None
+
+    ### virtual ###
+
+    def init(self):
+        """Override in sub-classes to initiate the action.
+        All sub-classes init() methods are called in MRO order.
+        Can return a deferred."""
 
     ### IModelAction ###
 
@@ -255,12 +272,19 @@ class Action(models_meta.Metadata):
     def result_info(self):
         return self._result_info
 
+    def initiate(self):
+        d = self.call_mro("init")
+        d.addCallback(defer.override_result, self)
+        return d
+
     def fetch_enabled(self):
         enabled = self._enabled
         if not callable(enabled):
             return defer.succeed(bool(enabled))
         # By default the key is the action name
-        return enabled(None, self._mk_ctx())
+        maker = IContextMaker(self.model)
+        context = maker.make_context(key=self.name, action=self)
+        return enabled(None, context)
 
     def perform(self, *args, **kwargs):
         parameters = self._parameters # Only once cause it is costly
@@ -309,7 +333,8 @@ class Action(models_meta.Metadata):
             value = validated.pop("value", None)
 
             # We use the model name instead of the action name as key
-            context = self._mk_ctx(self.model.name)
+            maker = IContextMaker(self.model)
+            context = maker.make_context(action=self)
 
             for effect in self._effects:
                 d.addCallback(effect, context, **validated)
@@ -329,14 +354,6 @@ class Action(models_meta.Metadata):
 
             d.callback(value)
             return d
-
-    ### private ###
-
-    def _mk_ctx(self, key=None):
-        return {"model": self.model,
-                "view": self.model.view,
-                "action": self,
-                "key": key or self.name}
 
     ### annotations ###
 

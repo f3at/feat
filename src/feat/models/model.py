@@ -24,14 +24,14 @@ import types
 
 from zope.interface import implements
 
-from feat.common import error, annotate, container, defer, error
+from feat.common import error, annotate, container, mro, defer, error
 from feat.models import utils
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
 
 from feat.models.interface import IModel, IModelItem, NotSupported
 from feat.models.interface import IActionFactory, IModelFactory
-from feat.models.interface import IAspect, IReference
+from feat.models.interface import IAspect, IReference, IContextMaker
 
 
 ### Annotations ###
@@ -284,7 +284,7 @@ class MetaModel(type(models_meta.Metadata)):
     implements(IModelFactory)
 
 
-class AbstractModel(models_meta.Metadata):
+class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     """
     Base class for models, it DOES NOT IMPLEMENTE IModel.
     All what define models are defined at class level,
@@ -295,14 +295,40 @@ class AbstractModel(models_meta.Metadata):
     __metaclass__ = MetaModel
     __slots__ = ("source", "aspect", "view")
 
-    implements(IModel)
+    implements(IModel, IContextMaker)
 
     _identity = None
 
-    def __init__(self, source, aspect=None, view=None):
+    ### class methods ###
+
+    @classmethod
+    def create(cls, source, aspect=None, view=None, parent=None):
+        m = cls(source, aspect=aspect, view=view, parent=parent)
+        return m.initiate()
+
+    ### public ###
+
+    def __init__(self, source, aspect=None, view=None, parent=None):
+        """Do not keep any reference to its parent, this way it can
+        be garbage-collected."""
         self.source = source
         self.aspect = IAspect(aspect) if aspect is not None else None
         self.view = view
+
+    ### virtual ###
+
+    def init(self):
+        """Override in sub-classes to initiate the model.
+        All sub-classes init() methods are called in MRO order.
+        Can return a deferred."""
+
+    ### IContextMaker ###
+
+    def make_context(self, key=None, view=None, action=None):
+        return {"model": self,
+               "view": view if view is not None else self.view,
+               "key": unicode(key) if key is not None else self.name,
+               "action": action}
 
     ### IModel ###
 
@@ -321,6 +347,11 @@ class AbstractModel(models_meta.Metadata):
     @property
     def desc(self):
         return self.aspect.desc if self.aspect is not None else None
+
+    def initiate(self):
+        d = self.call_mro("init")
+        d.addCallback(defer.override_result, self)
+        return d
 
     def perform_action(self, name, **kwargs):
         d = self.fetch_action(name)
@@ -696,9 +727,7 @@ class BaseModelItem(models_meta.Metadata):
 
     def _retrieve_view(self, _param=None, view_getter=None):
         if callable(view_getter):
-            context = {"model": self.model,
-                       "view": self.model.view,
-                       "key": self.name}
+            context = self.model.make_context(key=self.name)
             return view_getter(None, context)
 
         if view_getter is None:
@@ -717,25 +746,25 @@ class BaseModelItem(models_meta.Metadata):
         if source_getter is None:
             return self.model.source
 
-        context = {"model": self.model,
-                   "view": view,
-                   "key": self.name}
+        context = self.model.make_context(key=self.name, view=view)
         return source_getter(None, context)
 
     def _wrap_source(self, source, view=None, model_factory=None):
         if source is None:
             return source
         if IModel.providedBy(source):
-            return source
+            return source.initiate()
         if IReference.providedBy(source):
             return source
+        factory = None
         if IModelFactory.providedBy(model_factory):
-            return model_factory(source, self.aspect, view)
-        if isinstance(model_factory, str):
+            factory = IModelFactory(model_factory)
+        elif isinstance(model_factory, str):
             factory = get_factory(model_factory)
-            if factory is not None:
-                return factory(source, self.aspect, view)
-        return IModel(source) # No aspect, no view
+        if factory is not None:
+            return factory(source, aspect=self.aspect,
+                           view=view, parent=self.model).initiate()
+        return IModel(source).initiate() # No aspect, no view
 
 
 class MetaModelItem(type(BaseModelItem)):
@@ -885,7 +914,7 @@ class ActionItem(object):
     ### public ###
 
     def fetch(self):
-        return defer.succeed(self._factory(self.model, type(self)))
+        return self._factory(self.model, type(self)).initiate()
 
 
 class DynamicItemsMixin(object):
@@ -938,9 +967,7 @@ class DynamicItemsMixin(object):
             # returns a non None value
             return len(filter(None, items))
 
-        context = {"model": self,
-                   "view": self.view,
-                   "key": self.name}
+        context = self.make_context(key=self.name)
         d = self._fetch_names(None, context)
         d.addCallback(create_items)
         d.addCallback(cleanup)
@@ -978,9 +1005,7 @@ class DynamicItemsMixin(object):
             # returns a non None value
             return filter(None, items)
 
-        context = {"model": self,
-                   "view": self.view,
-                   "key": self.name}
+        context = self.make_context()
         d = self._fetch_names(None, context)
         d.addCallback(create_items)
         d.addCallback(cleanup)
@@ -1021,7 +1046,7 @@ class MetaCollection(type(AbstractModel)):
             child_model=None, child_label=None,
             child_desc=None, child_meta=None, meta=None):
         cls_name = utils.mk_class_name(identity)
-        cls = MetaCollection(cls_name, (Collection, ), {"__slots__": ()})
+        cls = MetaCollection(cls_name, (_DynCollection, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_child_names(child_names)
         cls.annotate_child_source(child_source, model=child_model,
@@ -1038,6 +1063,25 @@ class Collection(AbstractModel, StaticActionsMixin, DynamicItemsMixin):
 
     __metaclass__ = MetaCollection
     __slots__ = ()
+
+
+class _DynCollection(Collection):
+
+    __slots__ = ("parent", )
+
+    def __init__(self, source, aspect=None, view=None, parent=None):
+        Collection.__init__(self, source, aspect=aspect,
+                            view=view, parent=parent)
+        self.parent = parent
+
+    ### IContextMaker ###
+
+    def make_context(self, key=None, view=None, action=None):
+        model = self.parent or self
+        return {"model": model,
+                "view": view if view is not None else model.view,
+                "key": unicode(key) if key is not None else self.name,
+                "action": action}
 
 
 class DynamicModelItem(BaseModelItem):

@@ -40,22 +40,16 @@ class MetaAttribute(type(model.AbstractModel)):
     @staticmethod
     def new(identity, value_info, getter=None, setter=None, meta=None):
         cls_name = utils.mk_class_name(identity, "Attribute")
-        cls = MetaAttribute(cls_name, (Attribute, ), {"__slots__": ()})
+        cls = MetaAttribute(cls_name, (_DynAttribute, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_value(value_info)
         cls.apply_class_meta(meta)
 
         if getter is not None:
 
-            def _get_attribute(value, context):
-                # Override context key to use the property name
-                context = dict(context)
-                context["key"] = context["model"].name
-                return getter(value, context)
-
             Action = action.MetaAction.new("get." + identity,
                                            ActionCategory.retrieve,
-                                           effects=[_get_attribute],
+                                           effects=[getter],
                                            result_info=value_info,
                                            is_idempotent=True)
 
@@ -65,9 +59,6 @@ class MetaAttribute(type(model.AbstractModel)):
         if setter is not None:
 
             def _set_attribute(value, context):
-                # Override context key to use the property name
-                context = dict(context)
-                context["key"] = context["model"].name
                 d = setter(value, context)
                 # attribute setter return the validate value
                 d.addCallback(defer.override_result, value)
@@ -152,3 +143,22 @@ class Attribute(model.AbstractModel,
     def annotate_value(cls, value_info):
         """@see: feat.models.attribute.value"""
         cls._value_info = IValueInfo(value_info)
+
+
+class _DynAttribute(Attribute):
+
+    __slots__ = ("parent", )
+
+    def __init__(self, source, aspect=None, view=None, parent=None):
+        Attribute.__init__(self, source, aspect=aspect,
+                           view=view, parent=parent)
+        self.parent = parent
+
+    ### IContextMaker ###
+
+    def make_context(self, key=None, view=None, action=None):
+        model = self.parent or self
+        return {"model": model,
+                "view": model.view,
+                "key": unicode(key) if key is not None else self.name,
+                "action": action}

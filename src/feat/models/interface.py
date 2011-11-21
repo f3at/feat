@@ -404,6 +404,13 @@ class IModel(Interface):
     label = Attribute("Short label. @type: unicode or None")
     desc = Attribute("Long description. @type: unicode or None")
 
+    def initiate():
+        """Initialize the model internals.
+        @return: a deferred fired with the model itself.
+        @rtype: defer.Deferred
+        @callback: IModel
+        """
+
     def provides_item(name):
         """
         @param name: the name of an item.
@@ -694,6 +701,13 @@ class IModelAction(Interface):
                             "if the action do not return any result. "
                             "@type: IValueInfo or None")
 
+    def initiate():
+        """Initiate action internals.
+        @return a deferred fired with the action itself.
+        @rtype: defer.Deferred
+        @callback: IModelAction
+        """
+
     def perform(**kwargs):
         """
         Performs the action with specified keyword arguments.
@@ -772,9 +786,11 @@ class IAspect(Interface):
 
 class IModelFactory(Interface):
 
-    def __call__(source, aspect=None, view=None):
+    def __call__(source, aspect=None, view=None, parent=None):
         """
         Creates a model instance for the specified source reference.
+        @param parent: the parent model if known.
+        @type parent: IModel or None
         @param source: the source the model should reference.
         @type source: object
         @param aspect: the model aspect.
@@ -797,4 +813,19 @@ class IActionFactory(Interface):
         @type aspect: IAspect
         @return: an action for the given model and aspect.
         @rtype: IModelAction
+        """
+
+class IContextMaker(Interface):
+
+    def make_context(key=None, view=None, action=None):
+        """
+        Create a context dictionary, some value can be overridden.
+        @param key: overridden value for key.
+        @type key: str or unicode or None
+        @param view: overridden value for view.
+        @type view: object() or None
+        @param action: overridden value for action.
+        @type action: IModelAction or None
+        @return: a context dictionary
+        @rtype: dict
         """

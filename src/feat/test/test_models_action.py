@@ -26,7 +26,7 @@ from feat.common import defer
 from feat.models import call, getter, action, value
 
 from feat.models.interface import *
-from feat.models.interface import IAspect
+from feat.models.interface import IAspect, IContextMaker
 
 from . import common
 
@@ -47,13 +47,15 @@ class DummyAspect(object):
 
 class DummyModel(object):
 
-    implements(IModel)
+    implements(IModel, IContextMaker)
 
     def __init__(self, source):
         self.name = None
         self.source = source
         self.view = None
         self.value = None
+
+    ### public ###
 
     def do_add(self, value, toto):
         return value + toto
@@ -77,6 +79,14 @@ class DummyModel(object):
 
     def is_enabled(self, action_name):
         return getattr(self, action_name, False)
+
+    ### IContextMaker ###
+
+    def make_context(self, key=None, view=None, action=None):
+        return {"model": self,
+               "view": view if view is not None else self.view,
+               "key": key or self.name,
+               "action": action}
 
 
 class TestAction(action.Action):

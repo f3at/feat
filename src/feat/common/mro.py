@@ -26,6 +26,8 @@ from feat.common import fiber, defer
 
 class Common(object):
 
+    __slots__ = ()
+
     def _get_mro_call_list(self, method_name, keywords, raise_on_unconsumed):
         cls = type(self)
         klasses = list(cls.mro())
@@ -74,6 +76,8 @@ class Common(object):
 
 class FiberMroMixin(Common):
 
+    __slots__ = ()
+
     def call_mro(self, method_name, **keywords):
         return self.call_mro_ex(method_name, keywords)
 
@@ -87,6 +91,8 @@ class FiberMroMixin(Common):
 
 
 class DeferredMroMixin(Common):
+
+    __slots__ = ()
 
     def call_mro(self, method_name, **keywords):
         return self.call_mro_ex(method_name, keywords)

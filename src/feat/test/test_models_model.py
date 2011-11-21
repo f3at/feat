@@ -214,6 +214,54 @@ class TestReference(model.Model):
     model.action("action", DummyAction)
 
 
+class TestModelEffects(model.Model):
+    model.identity("test-model-calls")
+    model.attribute("attr1", value.String(),
+                    getter.model_attr("attr1"),
+                    setter.model_attr("attr1"))
+    model.attribute("attr2", value.String(),
+                    getter.model_get("get_attr"),
+                    setter.model_set("set_attr"))
+    model.attribute("attr3", value.String(),
+                    call.model_call("get_attr3"),
+                    call.model_filter("set_attr3"))
+    model.collection("coll1",
+                     getter.model_get("get_child"),
+                     call.model_call("get_child_names"),
+                     "test-model-calls")
+
+
+    def init(self):
+        self.attr1 = "foo"
+        self.attr2 = "bar"
+        self.attr3 = "buz"
+        self.childs = {u"toto": object(),
+                       u"tata": object()}
+
+    def get_attr(self, name):
+        if name == "attr2":
+            return self.attr2
+        raise KeyError(name)
+
+    def set_attr(self, name, value):
+        if name == "attr2":
+            self.attr2 = value
+            return
+        raise KeyError(name)
+
+    def get_attr3(self):
+        return self.attr3
+
+    def set_attr3(self, value):
+        self.attr3 = value
+
+    def get_child_names(self):
+        return self.childs.keys()
+
+    def get_child(self, name):
+        return self.childs[name]
+
+
 class TestModelsModel(common.TestCase):
 
     def setUp(self):
@@ -223,6 +271,55 @@ class TestModelsModel(common.TestCase):
     def tearDown(self):
         model.restore_factories(self._factories_snapshot)
         return common.TestCase.tearDown(self)
+
+    @defer.inlineCallbacks
+    def testModelEffects(self):
+        mdl = yield TestModelEffects.create(object())
+
+        self.assertEqual(mdl.attr1, "foo")
+        i1 = yield mdl.fetch_item("attr1")
+        m1 = yield i1.fetch()
+        v1 = yield m1.fetch_value()
+        self.assertEqual(v1, "foo")
+        r1 = yield m1.update_value("spam")
+        self.assertEqual(r1, "spam")
+        self.assertEqual(mdl.attr1, "spam")
+        v1 = yield m1.fetch_value()
+        self.assertEqual(v1, "spam")
+
+        self.assertEqual(mdl.attr2, "bar")
+        i2 = yield mdl.fetch_item("attr2")
+        m2 = yield i2.fetch()
+        v2 = yield m2.fetch_value()
+        self.assertEqual(v2, "bar")
+        r2 = yield m2.update_value("bacon")
+        self.assertEqual(r2, "bacon")
+        self.assertEqual(mdl.attr2, "bacon")
+        v2 = yield m2.fetch_value()
+        self.assertEqual(v2, "bacon")
+
+        self.assertEqual(mdl.attr3, "buz")
+        i3 = yield mdl.fetch_item("attr3")
+        m3 = yield i3.fetch()
+        v3 = yield m3.fetch_value()
+        self.assertEqual(v3, "buz")
+        r3 = yield m3.update_value("sausage")
+        self.assertEqual(r3, "sausage")
+        self.assertEqual(mdl.attr3, "sausage")
+        v3 = yield m3.fetch_value()
+        self.assertEqual(v3, "sausage")
+
+        i4 = yield mdl.fetch_item("coll1")
+        m4 = yield i4.fetch()
+        childs = yield m4.fetch_items()
+        self.assertEqual(set([c.name for c in childs]),
+                         set(["toto", "tata"]))
+        ci1 = yield m4.fetch_item("toto")
+        cm1 = yield ci1.fetch()
+        self.assertTrue(cm1.source is mdl.childs[u"toto"])
+        ci2 = yield m4.fetch_item("tata")
+        cm2 = yield ci2.fetch()
+        self.assertTrue(cm2.source is mdl.childs[u"tata"])
 
     @defer.inlineCallbacks
     def testReferences(self):
