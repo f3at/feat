@@ -301,6 +301,11 @@ class Agency(agency.Agency):
         backend = unix.Slave(self._broker)
         return self._messaging.add_backend(backend)
 
+    def is_idle(self):
+        if agency.Agency.is_idle(self):
+            return self._broker.is_idle()
+        return False
+
     def _redirect_text_log(self):
         if self.config['agency']['daemonize']:
             log_id = str(self.agency_id)

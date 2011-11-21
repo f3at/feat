@@ -92,6 +92,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         yield self.agency.initiate()
         yield self.wait_for_slave()
 
+        self.info('terminating master')
         pid = run.get_pid(os.path.curdir)
         run.term_pid(pid)
         yield self.wait_for_master_gone()
@@ -114,6 +115,11 @@ class FullIntegrationTestCase(FullIntegrationTest):
         yield common.delay(None, 10)
         pid = run.get_pid(os.path.curdir)
         self.assertTrue(pid is None)
+
+        # remove the lock so that the broker in our
+        # agency can connect and stop retrying, overwise the test
+        # will finish in undefined way (this is part of the teardown)
+        fcntl.unlock(self.lock_fd)
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()

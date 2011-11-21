@@ -157,6 +157,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         self.on_master_missing_cb = on_master_missing_cb
 
         self.shared_state = SharedState(self)
+        self._set_idle(True)
 
     def is_master(self):
         return self._cmp_state(BrokerRole.master)
@@ -164,7 +165,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def is_slave(self):
         return self._cmp_state(BrokerRole.slave)
 
+    def is_idle(self):
+        return self._idle
+
     def initiate_broker(self):
+        self._set_idle(False)
         if not self._is_standalone:
             try:
                 self.factory = MasterFactory(self)
@@ -174,6 +179,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                 d = defer.succeed(None)
                 d.addCallback(defer.drop_param, self.become_master)
                 d.addErrback(self._handle_critical_error)
+                d.addBoth(defer.bridge_param, self._set_idle, True)
                 return d
             except CannotListenError as e:
                 self.info('Cannot listen on socket: %r. '\
@@ -193,6 +199,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         self.factory = SlaveFactory(self, cb)
         self.connector = reactor.connectUNIX(
             self.socket_path, self.factory, timeout=1)
+        cb.addBoth(defer.bridge_param, self._set_idle, True)
         return cb
 
     def disconnect(self):
@@ -465,6 +472,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return self._master.callRemote('update_state_broadcast',
                                            _method, agency_id=origin_id,
                                            *args, **kwargs)
+
+    ### private ###
+
+    def _set_idle(self, value):
+        self._idle = value
 
 
 class MasterFactory(pb.PBServerFactory, log.Logger):

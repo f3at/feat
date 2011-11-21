@@ -345,7 +345,7 @@ class Messaging(log.Logger, log.LogProxy, common.ConnectionManager):
         error.handle_failure(self, fail, "Failed adding backend %r. "
                              "I will remove it and carry on working.",
                              channel_type)
-        del(self._backends[channel_type])
+        self._backends.pop(channel_type, None)
 
 
 class Binding(object):
