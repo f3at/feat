@@ -34,6 +34,7 @@ from feat.test import common
 from feat.test.integration.common import FullIntegrationTest, ModelTestMixin
 from feat.process import standalone
 from feat.agencies import agency as base_agency
+from feat.agencies.messaging import rabbitmq
 from feat.agencies.net import agency, broker
 from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, partners, replay
@@ -83,6 +84,33 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('1999', self.agency.config['msg']['port'])
         self.assertEqual('file2', self.agency.config['manhole']['public_key'])
         self.assertFalse('name' in self.agency.config['agent'])
+
+    def testConfigWithStringBoolean(self):
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'True'}
+        self.agency._init_config()
+        self.agency._load_config(env)
+        self.assertTrue(self.agency.config['agency']['force_host_restart'])
+
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'False'}
+        self.agency._load_config(env)
+        self.assertEqual(False, self.agency.config['agency']['force_host_restart'])
+
+    def testConfigWithStringNone(self):
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'None'}
+        self.agency._load_config(env)
+        self.assertIs(None, self.agency.config['agency']['force_host_restart'])
+
+    def testInitiateMessaging(self):
+        self.agency._init_config()
+        self.agency._load_config({})
+        self.failUnlessRaises(TypeError,
+                              self.agency._initiate_messaging,
+                              self.agency.config['msg'])
+
+        env = {'FEAT_MSG_PORT': '2000'}
+        self.agency._load_config(env)
+        client = self.agency._initiate_messaging(self.agency.config['msg'])
+        self.assertIsInstance(client, rabbitmq.Client)
 
     def testStoreConfig(self):
         self.agency.config = dict()
