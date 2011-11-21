@@ -93,7 +93,8 @@ class UnitTestCase(common.TestCase):
 
         env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'False'}
         self.agency._load_config(env)
-        self.assertEqual(False, self.agency.config['agency']['force_host_restart'])
+        self.assertEqual(False,
+            self.agency.config['agency']['force_host_restart'])
 
     def testConfigWithStringNone(self):
         env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'None'}
