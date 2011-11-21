@@ -43,10 +43,12 @@ if (typeof console == 'undefined') {
 feat.inplace = {};
 
 feat.inplace._onSubmit = function(value) {
-  var $this = $(this);
-  var url = $this.attr('rel');
-  var params = {value: value};
-  feat.ajax.send('PUT', url, params);
+  if (value.current != value.previous) {
+    var $this = $(this);
+    var url = $this.attr('rel');
+    var params = {value: value.current};
+    feat.ajax.send('PUT', url, params);
+  };
 };
 
 // Application init
