@@ -114,12 +114,12 @@ def reset():
 
 
 @defer.inlineCallbacks
-def wait_for(logger, check, timeout, freq=0.5):
+def wait_for(logger, check, timeout, freq=0.5, kwargs=dict()):
     assert callable(check)
     waiting = 0
 
     while True:
-        value = yield check()
+        value = yield check(**kwargs)
         if value:
             logger.info('Check %r positive, continuing with the test.',
                       check.__name__)

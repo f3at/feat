@@ -166,6 +166,12 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def on_agent_reconnect(self, state):
         return self.call_mro('on_reconnect')
 
+    @replay.journaled
+    def on_agent_configuration_change(self, state, config):
+        return self.call_mro_ex('on_configuration_change',
+                                dict(config=config),
+                                raise_on_unconsumed=True)
+
     ### Methods called as a result of agency calls ###
 
     @replay.immutable

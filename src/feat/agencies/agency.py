@@ -36,8 +36,6 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency, retrying, periodic, messaging
-from feat.agencies.messaging.interface import IBackend
-from feat.agencies.interface import IDbConnectionFactory
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.agents.common import host
@@ -688,6 +686,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'suacide :(. Or you have a bug ;).')
         return self.terminate_hard()
 
+    def _configuration_changed(self, doc_id, rev, deleted, own_change):
+        self.debug('Received notification about agents configuration changing.'
+                   ' Reloading.')
+        setter = lambda value, name: setattr(self, name, value)
+
+        d = self._database.get_document(doc_id)
+        d.addCallback(defer.keep_param, setter, '_configuration')
+        d.addCallback(defer.inject_param, 1,
+                      self._call, self.agent.on_agent_configuration_change)
+        return d
+
     def _reload_descriptor(self):
 
         def setter(value):
@@ -721,6 +730,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         d_id = self.agent.configuration_doc_id
         d = self.get_document(d_id)
+        d.addCallback(defer.bridge_param, self._database.changes_listener,
+                      (d_id, ), self._configuration_changed)
         d.addErrback(not_found, d_id)
         return d
 

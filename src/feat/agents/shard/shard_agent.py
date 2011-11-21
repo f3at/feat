@@ -218,6 +218,12 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
             self.on_neighbour_gone(partner.recipient)
 
     @replay.mutable
+    def on_configuration_change(self, state, config):
+        self.info("Changing hosts per shard to: %d", config.hosts_per_shard)
+        state.resources.define('hosts',
+                               resource.Scalar, config.hosts_per_shard)
+
+    @replay.mutable
     def fix_shard_structure(self, state):
         if self.is_migrating():
             # don't restart partners if they got terminated as part of the
