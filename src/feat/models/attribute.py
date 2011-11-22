@@ -149,10 +149,12 @@ class _DynAttribute(Attribute):
 
     __slots__ = ("parent", )
 
-    def __init__(self, source, aspect=None, view=None, parent=None):
-        Attribute.__init__(self, source, aspect=aspect,
-                           view=view, parent=parent)
+    ### IModel ###
+
+    def initiate(self, aspect=None, view=None, parent=None):
         self.parent = parent
+        return Attribute.initiate(self, aspect=aspect,
+                                  view=view, parent=parent)
 
     ### IContextMaker ###
 

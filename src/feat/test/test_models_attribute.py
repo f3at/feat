@@ -111,7 +111,7 @@ class TestModelsProperty(common.TestCase):
                                 self.mk_setter("set_sync", src, u"sync"))
 
         aspect = DummyAspect("sync", desc=u"Synchronous value")
-        attr = Attr(src, aspect)
+        attr = yield Attr.create(src, aspect)
 
         self.assertTrue(interface.IModel.providedBy(attr))
         self.assertTrue(interface.IAttribute.providedBy(attr))
@@ -203,7 +203,7 @@ class TestModelsProperty(common.TestCase):
                             self.mk_getter("get_async", src, u"async"),
                             self.mk_setter("set_async", src, u"async"))
         aspect = DummyAspect("async", label="Async", desc="Asynchronous value")
-        attr = Attr(src, aspect)
+        attr = yield Attr.create(src, aspect)
 
         self.assertTrue(interface.IModelFactory.providedBy(Attr))
         self.assertTrue(interface.IModel.providedBy(attr))
@@ -256,7 +256,7 @@ class TestModelsProperty(common.TestCase):
         factory = attribute.MetaAttribute.new("dummy.readonly", info,
                     self.mk_getter("get_readonly", src, u"readonly"))
         aspect = DummyAspect("readonly")
-        attr = factory(src, aspect)
+        attr = yield factory.create(src, aspect)
 
         self.assertTrue(interface.IModel.providedBy(attr))
         self.assertTrue(interface.IAttribute.providedBy(attr))
@@ -302,8 +302,7 @@ class TestModelsProperty(common.TestCase):
         factory = attribute.MetaAttribute.new("dummy.writeonly", info,
                 setter=self.mk_setter("set_writeonly", src, u"writeonly"))
         aspect = DummyAspect("writeonly")
-        attr = factory(src, aspect)
-
+        attr = yield factory.create(src, aspect)
 
         self.assertFalse(attr.is_readable)
         self.assertTrue(attr.is_writable)

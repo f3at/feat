@@ -158,18 +158,18 @@ class TestModelsAction(common.TestCase):
         source = DummySource()
         model = DummyModel(source)
 
-        action = StaticEnabledAction(model)
+        action = yield StaticEnabledAction.create(model)
         is_enabled = yield action.fetch_enabled()
         self.assertTrue(is_enabled)
 
-        action = StaticDisabledAction(model)
+        action = yield StaticDisabledAction.create(model)
         is_enabled = yield action.fetch_enabled()
         self.assertFalse(is_enabled)
 
         spam_action_aspect = DummyAspect("spam_action")
-        spam_action = DynamicAction(model, spam_action_aspect)
+        spam_action = yield DynamicAction.create(model, spam_action_aspect)
         bacon_action_aspect = DummyAspect("bacon_action")
-        bacon_action = DynamicAction(model, bacon_action_aspect)
+        bacon_action = yield DynamicAction.create(model, bacon_action_aspect)
 
         is_enabled = yield spam_action.fetch_enabled()
         self.assertFalse(is_enabled)
@@ -202,16 +202,16 @@ class TestModelsAction(common.TestCase):
         source = DummySource()
         model = DummyModel(source)
 
-        empty = EmptyAction(model)
+        empty = yield EmptyAction.create(model)
         self.assertFalse(hasattr(empty, "__dict__"))
         res = yield empty.perform()
         self.assertEqual(res, None)
 
-        without_result = NoResultAction(model)
+        without_result = yield NoResultAction.create(model)
         res = yield without_result.perform()
         self.assertEqual(res, None)
 
-        with_result = StringResultAction(model)
+        with_result = yield StringResultAction.create(model)
         res = yield with_result.perform()
         self.assertEqual(res, u"action result")
         self.assertTrue(isinstance(res, unicode))
@@ -229,7 +229,7 @@ class TestModelsAction(common.TestCase):
         source = DummySource()
         model = DummyModel(source)
         aspect = DummyAspect(u"test", u"label", u"desc")
-        action = TestAction(model, aspect)
+        action = yield TestAction.create(model, aspect)
 
         self.assertTrue(IModelAction.providedBy(action))
         self.assertEqual(action.name, u"test")
@@ -307,7 +307,7 @@ class TestModelsAction(common.TestCase):
     def testSubAction(self):
         source = DummySource()
         model = DummyModel(source)
-        action = TestSubAction(model)
+        action = yield TestSubAction.create(model)
 
         self.assertTrue(IModelAction.providedBy(action))
         self.assertEqual(action.name, None)
@@ -375,7 +375,7 @@ class TestModelsAction(common.TestCase):
     def testPerformError(self):
         source = DummySource()
         model = DummyModel(source)
-        action = TestAction(model)
+        action = yield TestAction.create(model)
 
         # No value specified
         yield self.asyncRaises(TypeError, action.perform)
@@ -388,7 +388,7 @@ class TestModelsAction(common.TestCase):
         # Invalid values
         yield self.asyncRaises(ValueError, action.perform, "X", toto=0)
         yield self.asyncRaises(ValueError, action.perform, 0, toto="X")
-        empty = EmptyAction(model)
+        empty = yield EmptyAction.create(model)
 
         # Value not allowed
         yield self.asyncRaises(TypeError, empty.perform, 0)

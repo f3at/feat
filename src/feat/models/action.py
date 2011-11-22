@@ -214,18 +214,18 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
     @classmethod
     def create(cls, model, aspect=None):
-        a = cls(model, aspect=aspect)
-        return a.initiate()
+        a = cls(model)
+        return a.initiate(aspect=aspect)
 
     ### public ###
 
-    def __init__(self, model, aspect=None):
-        """Initialize amodel's action.
+    def __init__(self, model):
+        """
         @param model: the model the action belong to.
         @type model: IModel
         """
         self.model = IModel(model)
-        self.aspect = IAspect(aspect) if aspect is not None else None
+        self.aspect = None
 
     ### virtual ###
 
@@ -272,7 +272,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
     def result_info(self):
         return self._result_info
 
-    def initiate(self):
+    def initiate(self, aspect=None):
+        self.aspect = IAspect(aspect) if aspect is not None else None
         d = self.call_mro("init")
         d.addCallback(defer.override_result, self)
         return d

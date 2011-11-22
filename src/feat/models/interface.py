@@ -404,8 +404,15 @@ class IModel(Interface):
     label = Attribute("Short label. @type: unicode or None")
     desc = Attribute("Long description. @type: unicode or None")
 
-    def initiate():
-        """Initialize the model internals.
+    def initiate(aspect=None, view=None, parent=None):
+        """
+        Initiates a model with specified aspect, view and parent.
+        @param aspect: the model aspect.
+        @type aspect: IAspect
+        @param view: if the mode is a view, contains view value.
+        @type view: object()
+        @param parent: the parent model if known.
+        @type parent: IModel or None
         @return: a deferred fired with the model itself.
         @rtype: defer.Deferred
         @callback: IModel
@@ -701,8 +708,11 @@ class IModelAction(Interface):
                             "if the action do not return any result. "
                             "@type: IValueInfo or None")
 
-    def initiate():
-        """Initiate action internals.
+    def initiate(aspect=None):
+        """
+        Initiates the action with specified aspect.
+        @param aspect: the action aspect.
+        @type aspect: IAspect or None
         @return a deferred fired with the action itself.
         @rtype: defer.Deferred
         @callback: IModelAction
@@ -820,13 +830,11 @@ class IModelFactory(Interface):
 
 class IActionFactory(Interface):
 
-    def __call__(model, aspect=None):
+    def __call__(model):
         """
         Creates an action instance for the specified model.
         @param model: the model the action should be created for.
         @type model: IModel
-        @param aspect: the action aspect.
-        @type aspect: IAspect
         @return: an action for the given model and aspect.
         @rtype: IModelAction
         """

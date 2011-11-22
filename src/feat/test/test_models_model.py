@@ -425,7 +425,7 @@ class TestModelsModel(common.TestCase):
         self.assertEqual(m.desc, None)
 
         a = DummyAspect("name", "label", "desc")
-        m = TestModel(s, a)
+        m = yield TestModel.create(s, a)
 
         self.assertEqual(m.identity, u"test-model")
         self.assertTrue(isinstance(m.identity, unicode))
@@ -621,10 +621,10 @@ class TestModelsModel(common.TestCase):
         self.assertTrue(child1.source is src)
         self.assertTrue(isinstance(child1, DummyModel1))
 
-        # The model is gotten from IModel adaptation
-        # so it do not have any aspect
-        self.assertEqual(child1.name, None)
-        self.assertEqual(child1.label, None)
+        self.assertEqual(child1.name, u"child1")
+        self.assertTrue(isinstance(child1.name, unicode))
+        self.assertEqual(child1.label, u"Child 1")
+        self.assertTrue(isinstance(child1.label, unicode))
         self.assertEqual(child1.desc, None)
 
         # child2
@@ -742,7 +742,7 @@ class TestModelsModel(common.TestCase):
     def testDeclaredCollection(self):
         asp = DummyAspect("collec")
         src = DummySource()
-        mdl = TestCollection(src, asp)
+        mdl = yield TestCollection.create(src, asp)
 
         self.assertTrue(interface.IModel.providedBy(mdl))
         self.assertFalse(hasattr(mdl, "__dict__"))

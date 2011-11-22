@@ -303,17 +303,15 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
 
     @classmethod
     def create(cls, source, aspect=None, view=None, parent=None):
-        m = cls(source, aspect=aspect, view=view, parent=parent)
-        return m.initiate()
+        m = cls(source)
+        return m.initiate(aspect=aspect, view=view, parent=parent)
 
     ### public ###
 
-    def __init__(self, source, aspect=None, view=None, parent=None):
-        """Do not keep any reference to its parent, this way it can
-        be garbage-collected."""
+    def __init__(self, source):
         self.source = source
-        self.aspect = IAspect(aspect) if aspect is not None else None
-        self.view = view
+        self.aspect = None
+        self.view = None
 
     ### virtual ###
 
@@ -348,7 +346,11 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     def desc(self):
         return self.aspect.desc if self.aspect is not None else None
 
-    def initiate(self):
+    def initiate(self, aspect=None, view=None, parent=None):
+        """Do not keep any reference to its parent,
+        this way it can be garbage-collected."""
+        self.aspect = IAspect(aspect) if aspect is not None else None
+        self.view = view
         d = self.call_mro("init")
         d.addCallback(defer.override_result, self)
         return d
@@ -752,19 +754,19 @@ class BaseModelItem(models_meta.Metadata):
     def _wrap_source(self, source, view=None, model_factory=None):
         if source is None:
             return source
-        if IModel.providedBy(source):
-            return source.initiate()
         if IReference.providedBy(source):
             return source
-        factory = None
-        if IModelFactory.providedBy(model_factory):
-            factory = IModelFactory(model_factory)
-        elif isinstance(model_factory, str):
-            factory = get_factory(model_factory)
-        if factory is not None:
-            return factory(source, aspect=self.aspect,
-                           view=view, parent=self.model).initiate()
-        return IModel(source).initiate() # No aspect, no view
+        model = source
+        if not IModel.providedBy(source):
+            factory = None
+            if IModelFactory.providedBy(model_factory):
+                factory = IModelFactory(model_factory)
+            elif isinstance(model_factory, str):
+                factory = get_factory(model_factory)
+            if factory is not None:
+                model = factory(source)
+        return IModel(model).initiate(aspect=self.aspect,
+                                      view=view, parent=self.model)
 
 
 class MetaModelItem(type(BaseModelItem)):
@@ -914,7 +916,7 @@ class ActionItem(object):
     ### public ###
 
     def fetch(self):
-        return self._factory(self.model, type(self)).initiate()
+        return self._factory(self.model).initiate(aspect=type(self))
 
 
 class DynamicItemsMixin(object):
@@ -1069,10 +1071,12 @@ class _DynCollection(Collection):
 
     __slots__ = ("parent", )
 
-    def __init__(self, source, aspect=None, view=None, parent=None):
-        Collection.__init__(self, source, aspect=aspect,
-                            view=view, parent=parent)
+    ### IModel ###
+
+    def initiate(self, aspect=None, view=None, parent=None):
         self.parent = parent
+        return Collection.initiate(self, aspect=aspect,
+                                   view=view, parent=parent)
 
     ### IContextMaker ###
 
