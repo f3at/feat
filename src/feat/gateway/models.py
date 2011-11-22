@@ -169,14 +169,13 @@ class Agents(model.Collection):
 
     model.child_names(call.model_call("iter_agents"))
     model.child_source(getter.source_get("find_agent"),
-                       desc="Agent running on this host",
-                       model='feat.agent')
+                       desc="Agent running on this host")
     model.meta('render_array', 3)
 
     def iter_agents(self):
         res = [x.get_agent_id() for x in self.source.iter_agents()]
-        # for slave in self.source._broker.iter_slave_references():
-        #     res.extend(slave.agents.keys())
+        for slave in self.source._broker.iter_slave_references():
+            res.extend(slave.agents.keys())
         return res
 
     # model.create("spawn", effect.source_call("spawn_agent"),
@@ -191,18 +190,15 @@ class Agents(model.Collection):
 class RemoteAgent(model.Model):
 
     model.identity("feat.remote_agent")
-    model.attribute("id", value.String(), getter.source_get('agent_id'),
+    model.attribute("id", value.String(), getter.source_attr('agent_id'),
                     label="Agent id", desc="Agent's unique identifier",
                     meta=[('link_owner', True)])
     model.attribute("status", value.Enum(AgencyAgentState),
-                    getter=call.model_call("get_status"),
+                    getter=call.source_call("get_status"),
                     label="Status", desc="Agent current status")
     model.attribute("type", value.String(),
                     getter=call.model_call("get_agent_type"),
                     label="Agent type", desc="Agent type")
-
-    def get_status(self):
-        return self.source.callRemote('get_status')
 
     def get_agent_type(self):
         return self.source.callRemote('get_agent_type')
@@ -225,7 +221,6 @@ class Agent(model.Model):
     model.attribute("type", value.String(),
                     getter=call.source_call("get_agent_type"),
                     label="Agent type", desc="Agent type")
-
 
     def get_agent_type(self):
         d = self.source.get_descriptor()

@@ -30,6 +30,7 @@ from twisted.spread import pb, jelly
 from feat.common import log, enum, defer, first, error, manhole, time
 from feat.agencies import common
 
+from feat.interface.agent import AgencyAgentState
 
 DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
 
@@ -46,6 +47,11 @@ class TypedReference(object):
 
     def callRemote(self, _method, *args, **kwargs):
         return self.reference.callRemote(_method, *args, **kwargs)
+
+    def get_status(self):
+        d = self.callRemote('get_status')
+        d.addCallback(AgencyAgentState.get)
+        return d
 
 
 class SlaveReference(TypedReference):

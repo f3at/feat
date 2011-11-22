@@ -171,9 +171,13 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_shard_id(self):
         return self._descriptor.shard
 
-    @manhole.expose()
     def get_status(self):
         return self._get_machine_state()
+
+    def remote_get_status(self):
+        # jelly doesn't support serialization of Enums,
+        # for this reason we need to send int
+        return int(self.get_status())
 
     @manhole.expose()
     def get_agent_type(self):
