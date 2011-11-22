@@ -23,12 +23,12 @@
 import os
 import signal
 
-from feat.agencies.net import agency as net_agency
+from feat.agencies.net import agency as net_agency, broker
 from feat.common import time, adapter
 from feat.models import model, action, value, reference
 from feat.models import call, getter, setter
 
-from feat.models.interface import *
+from feat.models.interface import IModel
 
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
@@ -51,8 +51,7 @@ class Root(model.Model):
 
     model.view("agents", "feat.agents",
                # fetch_filter=getter.model_get("_redirect_to_master"),
-               label="Agents", desc="Agents running on this host.",
-               meta=[('render_array', 3)])
+               label="Agents", desc="Agents running on this host.")
 
     def _redirect_to_master(self, name):
         result = self.source.locate_master()
@@ -168,12 +167,15 @@ class Agents(model.Collection):
     model.identity("feat.agents")
 
     model.child_names(call.model_call("iter_agents"))
-    model.child_source(getter.source_get("get_agent"),
-                       label="Agent", desc="Agent running on this host",
+    model.child_source(getter.source_get("find_agent"),
+                       desc="Agent running on this host",
                        model='feat.agent')
+    model.meta('render_array', 3)
 
     def iter_agents(self):
         res = [x.get_agent_id() for x in self.source.iter_agents()]
+        # for slave in self.source._broker.iter_slave_references():
+        #     res.extend(slave.agents.keys())
         return res
 
     # model.create("spawn", effect.source_call("spawn_agent"),
@@ -184,22 +186,45 @@ class Agents(model.Collection):
     #              label="Spawn Agent", desc="Spawn a new agent on this host")
 
 
+@adapter.register(broker.AgentReference, IModel)
+class RemoteAgent(model.Model):
+
+    model.identity("feat.remote_agent")
+    model.attribute("id", value.String(), getter.source_get('agent_id'),
+                    label="Agent id", desc="Agent's unique identifier",
+                    meta=[('link_owner', True)])
+    model.attribute("status", value.Enum(AgencyAgentState),
+                    getter=call.model_call("get_status"),
+                    label="Status", desc="Agent current status")
+    model.attribute("type", value.String(),
+                    getter=call.model_call("get_agent_type"),
+                    label="Agent type", desc="Agent type")
+
+    def get_status(self):
+        return self.source.callRemote('get_status')
+
+    def get_agent_type(self):
+        return self.source.callRemote('get_agent_type')
+
+
+@adapter.register(net_agency.AgencyAgent, IModel)
 class Agent(model.Model):
 
     model.identity("feat.agent")
 
-    # model.attribute("type", value.String(),
-    #                 getter=call.model_call("get_agent_type"),
-    #                 label="Type", desc="Agent's type")
     model.attribute("id", value.String(), call.source_call("get_agent_id"),
-                    label="Identifier", desc="Agent's unique identifier",
+                    label="Agent id", desc="Agent's unique identifier",
                     meta=[('link_owner', True)])
     # model.attribute("instance", value.Integer(),
     #                 call.model_call("get_instance_id"),
     #                 label="Instance", desc="Agent's instance number")
     model.attribute("status", value.Enum(AgencyAgentState),
-                    getter=call.source_call("_get_machine_state"),
+                    getter=call.source_call("get_status"),
                     label="Status", desc="Agent current status")
+    model.attribute("type", value.String(),
+                    getter=call.source_call("get_agent_type"),
+                    label="Agent type", desc="Agent type")
+
 
     def get_agent_type(self):
         d = self.source.get_descriptor()

@@ -29,6 +29,7 @@ class TestContext(object):
 
     def make_model_address(self, path):
         path = filter(None, path)
+        return '/'.join(path)
 
     def descend(self, model):
         return TestContext(self.names + (model.name, ),
@@ -62,6 +63,20 @@ class HTMLWriterTest(common.TestCase):
         # context = TestContext(('name', ), (n, ))
         # self.kwargs = dict(context=context)
         self.model = NodeModel(r)
+
+    @defer.inlineCallbacks
+    def testRenderingColletionModel(self):
+        r = Node()
+        r.append(Location())
+        r.append(Location())
+        n = Location()
+        r.append(n)
+        n.append(Agent())
+        n.append(Agent())
+
+        model = NodeModel(r)
+        item = yield model.fetch_item('locations')
+        self.model = yield item.fetch()
 
     def testRenderingActionForms(self):
         self.model = AgentModel(Agent())
@@ -141,6 +156,7 @@ class NodeModel(model.Model):
     model.collection('locations', getter.source_get('get_child'),
                      call.source_call('iter_child_names'),
                      meta=[('render_array', 3)],
+                     model_meta=[('render_array', 3)],
                      desc="Locations or whatever",
                      label='locations')
 

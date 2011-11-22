@@ -75,32 +75,38 @@ class HTMLWriter(log.Logger):
         if not items:
             return
         markup.h3()('List of model items.').close()
-        ul = markup.ul(_class="items")
-        for item in items:
-            li = markup.li()
 
-            url = item.reference.resolve(context)
-            markup.span(_class='name')(
-                html.tags.a(href=url)(item.name)).close()
+        if IMetadata.providedBy(model) and model.get_meta('render_array'):
+            limit = int(model.get_meta('render_array')[0].value)
+            markup.div(_class='array')(
+                self._render_array(model, limit, context)).close()
+        else:
+            ul = markup.ul(_class="items")
+            for item in items:
+                li = markup.li()
 
-            if IMetadata.providedBy(item):
-                if item.get_meta('inline'):
-                    li.append(self._format_attribute(item, context))
+                url = item.reference.resolve(context)
+                markup.span(_class='name')(
+                    html.tags.a(href=url)(item.name)).close()
 
-            if item.label:
-                markup.span(_class='label')(item.label).close()
-            if item.desc:
-                markup.span(_class='desc')(item.desc).close()
+                if IMetadata.providedBy(item):
+                    if item.get_meta('inline'):
+                        li.append(self._format_attribute(item, context))
 
-            if IMetadata.providedBy(item):
-                if item.get_meta('render_array'):
-                    submodel = yield item.fetch()
-                    limit = int(item.get_meta('render_array')[0].value)
-                    markup.div(_class='array')(
-                        self._render_array(item, limit, context)).close()
-            li.close()
+                if item.label:
+                    markup.span(_class='label')(item.label).close()
+                if item.desc:
+                    markup.span(_class='desc')(item.desc).close()
 
-        ul.close()
+                if IMetadata.providedBy(item):
+                    if item.get_meta('render_array'):
+                        submodel = yield item.fetch()
+                        limit = int(item.get_meta('render_array')[0].value)
+                        markup.div(_class='array')(
+                            self._render_array(
+                                submodel, limit, context)).close()
+                li.close()
+            ul.close()
         markup.hr()
 
     @defer.inlineCallbacks
@@ -187,12 +193,12 @@ class HTMLWriter(log.Logger):
             html.tags.span(_class=" ".join(classes), **extra)(value))
 
     @defer.inlineCallbacks
-    def _render_array(self, item, limit, context):
+    def _render_array(self, model, limit, context):
         tree = list()
         flattened = list()
         columns = list()
 
-        yield self._build_tree(tree, item, limit, context)
+        yield self._build_tree(tree, model, limit, context)
         self._flatten_tree(flattened, columns, dict(), tree[0], limit)
 
         headers = [html.tags.th()(x) for x, _ in columns]
@@ -216,8 +222,7 @@ class HTMLWriter(log.Logger):
         defer.returnValue(table)
 
     @defer.inlineCallbacks
-    def _build_tree(self, tree, item, limit, context):
-        model = yield item.fetch()
+    def _build_tree(self, tree, model, limit, context):
         items = yield model.fetch_items()
         subcontext = context.descend(model)
         # [dict of attributes added by this level, list of child rows]
@@ -227,7 +232,8 @@ class HTMLWriter(log.Logger):
                        not item.get_meta('inline')
             if is_array:
                 if limit > 0:
-                    yield self._build_tree(tree[-1][1], item, limit - 1,
+                    submodel = yield item.fetch()
+                    yield self._build_tree(tree[-1][1], submodel, limit - 1,
                                            subcontext)
             else:
                 column_name = item.label

@@ -171,6 +171,14 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def get_shard_id(self):
         return self._descriptor.shard
 
+    @manhole.expose()
+    def get_status(self):
+        return self._get_machine_state()
+
+    @manhole.expose()
+    def get_agent_type(self):
+        return self._descriptor.document_type
+
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
         protocols = [i.get_agent_side() for i in self._protocols.values()]
