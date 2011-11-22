@@ -149,7 +149,8 @@ class NodeModel(model.Model):
 class LocationModel(model.Model):
 
     model.identity('location-model')
-    model.attribute('name', value.String(), getter.source_attr('name'))
+    model.attribute('name', value.String(), getter.source_attr('name'),
+                    label='hostname')
     model.collection('agents', getter.source_get('get_child'),
                      call.source_call('iter_child_names'))
 
@@ -180,7 +181,7 @@ class AgentModel(model.Model):
 
     model.identity('agent-model')
     model.attribute('name', value.String(), getter.source_attr('name'),
-                    meta=[('link_owner', True)])
+                    meta=[('link_owner', True)], label='name')
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'),
                     setter.source_attr('count'))

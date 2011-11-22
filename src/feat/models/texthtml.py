@@ -195,7 +195,7 @@ class HTMLWriter(log.Logger):
         yield self._build_tree(tree, item, limit, context)
         self._flatten_tree(flattened, columns, dict(), tree[0], limit)
 
-        headers = [html.tags.th()(x) for x in columns]
+        headers = [html.tags.th()(x) for x, _ in columns]
         table = html.tags.table()(
             html.tags.thead()(*headers))
         tbody = html.tags.tbody()
@@ -230,8 +230,10 @@ class HTMLWriter(log.Logger):
                     yield self._build_tree(tree[-1][1], item, limit - 1,
                                            subcontext)
             else:
-                column_name = "%s.%s" % (model.identity, item.name, )
-                tree[-1][0][column_name] = (item, subcontext)
+                column_name = item.label
+                if not column_name:
+                    column_name = "%s.%s" % (model.identity, item.name, )
+                tree[-1][0][(column_name, limit)] = (item, subcontext)
 
     def _flatten_tree(self, result, columns, current, tree, limit):
         current = dict(current)
