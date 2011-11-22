@@ -38,7 +38,6 @@ h1 {
 
 .items .name,
 .items .value,
-.items .label,
 .items .desc {
     min-width: 200px;
     display: inline-block;

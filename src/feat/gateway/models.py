@@ -72,6 +72,7 @@ class Agencies(model.Collection):
     model.child_names(call.source_call("iter_agency_ids"))
     model.child_source(getter.model_get("_fetch_agency"), "feat.agency",
                        label="Agency", desc="Agency running in this host")
+    model.meta('render_array', 2)
 
 #    model.delete("full_shutdown",
 #                 effect.delay(effect.source_call("full_shutdown",

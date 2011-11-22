@@ -5,7 +5,8 @@ from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
-from feat.models.interface import IModel, IMetadata, ActionCategory, ValueTypes
+from feat.models.interface import (IModel, IMetadata, ActionCategory,
+                                   ValueTypes, IReference)
 
 
 MIME_TYPE = "text/html"
@@ -62,7 +63,7 @@ class HTMLWriter(log.Logger):
         self.log("Rendering html doc for a model: %r", model.identity)
         context = kwargs['context']
 
-        title = "Displaying model %r." % (model.identity, )
+        title = model.label or model.name
         markup = Layout(title, context)
 
         yield self._render_items(model, markup, context)
@@ -87,14 +88,12 @@ class HTMLWriter(log.Logger):
 
                 url = item.reference.resolve(context)
                 markup.span(_class='name')(
-                    html.tags.a(href=url)(item.name)).close()
+                    html.tags.a(href=url)(item.label or item.name)).close()
 
                 if IMetadata.providedBy(item):
                     if item.get_meta('inline'):
                         li.append(self._format_attribute(item, context))
 
-                if item.label:
-                    markup.span(_class='label')(item.label).close()
                 if item.desc:
                     markup.span(_class='desc')(item.desc).close()
 
@@ -198,6 +197,10 @@ class HTMLWriter(log.Logger):
         flattened = list()
         columns = list()
 
+        if not context.models or model != context.models[-1]:
+            # this fixes issue with the fact that write() method is passed
+            # the context of the current model instead of the parrent
+            context = context.descend(model)
         yield self._build_tree(tree, model, limit, context)
         self._flatten_tree(flattened, columns, dict(), tree[0], limit)
 
@@ -223,8 +226,9 @@ class HTMLWriter(log.Logger):
 
     @defer.inlineCallbacks
     def _build_tree(self, tree, model, limit, context):
+        if IReference.providedBy(model):
+            return
         items = yield model.fetch_items()
-        subcontext = context.descend(model)
         # [dict of attributes added by this level, list of child rows]
         tree.append([dict(), list()])
         for item in items:
@@ -233,13 +237,14 @@ class HTMLWriter(log.Logger):
             if is_array:
                 if limit > 0:
                     submodel = yield item.fetch()
+                    subcontext = context.descend(submodel)
                     yield self._build_tree(tree[-1][1], submodel, limit - 1,
                                            subcontext)
             else:
                 column_name = item.label
                 if not column_name:
                     column_name = "%s.%s" % (model.identity, item.name, )
-                tree[-1][0][(column_name, limit)] = (item, subcontext)
+                tree[-1][0][(column_name, limit)] = (item, context)
 
     def _flatten_tree(self, result, columns, current, tree, limit):
         current = dict(current)
