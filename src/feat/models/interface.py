@@ -775,6 +775,22 @@ class IValidator(Interface):
         @raise ValueError: if the value fail the validation.
         """
 
+    def publish(value):
+        """
+        Publish the specified value.
+        This will eventually convert the value to a public format
+        the validate method will be able to  understand
+        and convert back to the internal format.
+        @param value: value to be published and converted.
+        @type value: object
+        @return: a published value.
+        @rtype: object
+        @raise ValueError: if the value is not correct.
+        """
+
+    def as_string(value):
+        """Returns the value as a unicode string validate() understands."""
+
 
 class IAspect(Interface):
     """Aspect of a model or an action defined by its owner."""
@@ -814,6 +830,7 @@ class IActionFactory(Interface):
         @return: an action for the given model and aspect.
         @rtype: IModelAction
         """
+
 
 class IContextMaker(Interface):
 

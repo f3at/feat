@@ -75,7 +75,7 @@ class DummyModel(object):
         return value.split(delim)
 
     def do_select(self, value, key):
-        return value[key]
+        return int(value[key])
 
     def is_enabled(self, action_name):
         return getattr(self, action_name, False)

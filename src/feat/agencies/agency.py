@@ -44,7 +44,7 @@ from feat.common import (log, defer, fiber, serialization, journal, time,
                          first, error, enum)
 
 # Import interfaces
-from interface import (IAgencyAgentInternal,
+from interface import (AgencyRoles, IAgencyAgentInternal,
                        IFirstMessage, IAgencyInterestInternalFactory,
                        IAgencyProtocolInternal,
                        IAgencyInitiatorFactory, NotFoundError, ConflictError,
@@ -1093,6 +1093,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     @property
     def agency_id(self):
         return self._agency_id
+
+    @property
+    def role(self):
+        return AgencyRoles.unknown
 
     def iter_agents(self):
         return iter(self._agents)

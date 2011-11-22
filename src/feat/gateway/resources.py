@@ -222,7 +222,7 @@ class ModelResource(webserver.BaseResource):
 
     def render_error(self, request, response, error):
         response.force_mime_type("text/plain")
-        return "ERROR: " + str(error)
+        return "ERROR " + type(error).__name__ + ": " + str(error)
 
 
 class ActionResource(webserver.BaseResource):
@@ -269,7 +269,6 @@ class ActionResource(webserver.BaseResource):
             response.set_header("connection", "close")
             return response.write_object(data, context=self._context)
 
-        print "!"*80, params
         is_idempotent, categories = self.action_validation[request.method]
         if (self._action.is_idempotent not in is_idempotent
             or self._action.category not in categories):

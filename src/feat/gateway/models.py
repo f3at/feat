@@ -30,7 +30,7 @@ from feat.models import call, getter, setter
 
 from feat.models.interface import *
 
-#from feat.agencies.interface import AgencyRoles
+from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
 
 
@@ -104,9 +104,9 @@ class Agency(model.Model):
     model.attribute("id", value.String(),
                     getter.source_attr("agency_id"),
                     label="Identifier", desc="Agency unique identifier")
-#    model.attribute("role", value.Enum(AgencyRoles),
-#                    getter.source_attr("role"),
-#                    label="Agency Role", desc="Current role of the agency")
+    model.attribute("role", value.Enum(AgencyRoles),
+                    getter.source_attr("role"),
+                    label="Agency Role", desc="Current role of the agency")
     model.attribute("log_filter", value.String(),
                     getter=call.source_call("get_logging_filter"),
                     setter=call.source_filter("set_logging_filter"),

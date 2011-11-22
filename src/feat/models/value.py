@@ -110,7 +110,7 @@ class Value(models_meta.Metadata):
     _class_options = None
     _class_options_only = False
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         label = self._class_label
         desc = self._class_desc
         self._label = unicode(label) if label is not None else None
@@ -122,9 +122,25 @@ class Value(models_meta.Metadata):
             for v, l in self._class_options:
                 self._add_option(v, l)
         self._options_only = self._class_options_only
-        if self._class_use_default:
-            self._default = self.validate(self._class_default)
+
         self._use_default = self._class_use_default
+        if self._use_default:
+            self._default = self._validate_default(self._class_default)
+
+        if "default" in kwargs:
+            if len(args) > 0:
+                raise ValueError("If the default value is specified "
+                                 "as a keyword, no argument are allowed")
+            self._set_default(kwargs.pop("default"))
+        else:
+            if len(args) > 1:
+                raise ValueError("Only default value is "
+                                 "supported as argument")
+            if len(args) > 0:
+                self._set_default(args[0])
+
+        if kwargs:
+            raise ValueError("Unsupported keyword arguments")
 
 
     ### IValueInfo ###
@@ -187,9 +203,19 @@ class Value(models_meta.Metadata):
     def validate(self, value):
         if value is None and self._use_default:
             value = self._default
+        if self._options_only and not self._has_option(value):
+            raise ValueError(value)
+        return value
+
+    def publish(self, value):
+        if value is None and self._use_default:
+            value = self._default
         if self._options_only and not self.has_option(value):
             raise ValueError(value)
         return value
+
+    def as_string(self, value):
+        return unicode(self.publish(value))
 
     ### IValueOptions ###
 
@@ -205,12 +231,12 @@ class Value(models_meta.Metadata):
 
     def has_option(self, value):
         try:
-            next((o for o in self._options if o.value == value))
-            return True
-        except StopIteration:
+            return self._has_option(self._validate_option(value))
+        except ValueError:
             return False
 
     def get_option(self, value):
+        value = unicode(value)
         try:
             return next((o for o in self._options if o.value == value))
         except StopIteration:
@@ -218,8 +244,21 @@ class Value(models_meta.Metadata):
 
     ### protected ###
 
+    def _validate_default(self, value):
+        return self.validate(value)
+
+    def _validate_option(self, value):
+        return self.validate(value)
+
+    def _has_option(self, value):
+        try:
+            next((o for o in self._options if o.value == value))
+            return True
+        except StopIteration:
+            return False
+
     def _set_default(self, default):
-        self._default = self.validate(default)
+        self._default = self._validate_default(default)
         self._use_default = True
 
     def _add_option(self, value, label=None):
@@ -227,7 +266,8 @@ class Value(models_meta.Metadata):
         options_only = self._options_only
         self._options_only = False
         try:
-            self._options.append(ValueOption(self.validate(value), label))
+            option = ValueOption(self._validate_option(value), label)
+            self._options.append(option)
         finally:
             self._options_only = options_only
 
@@ -281,7 +321,7 @@ class ValueOption(object):
 
     def __init__(self, value, label=None):
         self._value = value
-        self._label = unicode(value) if label is None else unicode(label)
+        self._label = unicode(label) if label is not None else unicode(value)
 
     ### IValueOption ###
 
@@ -311,32 +351,35 @@ class String(Value):
 
     value_type(ValueTypes.string)
 
-    def __init__(self, *args, **kwargs):
-        Value.__init__(self)
-        if "default" in kwargs:
-            if len(args) > 0:
-                raise ValueError("If the default value is specified "
-                                 "as a keyword, no argument are allowed")
-            self._set_default(kwargs.pop("default"))
-        else:
-            if len(args) > 1:
-                raise ValueError("Only default value is "
-                                 "supported as argument")
-            if len(args) > 0:
-                self._set_default(args[0])
-
-        if kwargs:
-            raise ValueError("Unsupported keyword arguments")
-
     ### overridden ###
 
     def validate(self, value):
-        if isinstance(value, str):
-            value = unicode(value)
-        value = super(String, self).validate(value)
-        if not isinstance(value, (str, unicode)):
+        """
+        Accepts: str, unicode
+        Returns: unicode
+        """
+        val = value
+        if isinstance(val, str):
+            #FIXME: unsafe decoding
+            val = unicode(value)
+        val = super(String, self).validate(val)
+        if not isinstance(val, unicode):
             raise ValueError(value)
-        return value
+        return val
+
+    def publish(self, value):
+        """
+        Accepts: unicode, str
+        Returns: unicode
+        """
+        val = value
+        if isinstance(val, str):
+            #FIXME: unsafe decoding
+            val = unicode(value)
+        val = super(String, self).publish(val)
+        if not isinstance(val, unicode):
+            raise ValueError(value)
+        return val
 
 
 class Integer(Value):
@@ -344,17 +387,26 @@ class Integer(Value):
 
     value_type(ValueTypes.integer)
 
-    def __init__(self, **kwargs):
-        Value.__init__(self)
-        if "default" in kwargs:
-            self._set_default(kwargs["default"])
-
     ### overridden ###
 
     def validate(self, value):
+        """
+        Accepts: int, long, str, unicode
+        Returns: int, long
+        """
         if isinstance(value, (str, unicode)):
             value = int(value)
         value = super(Integer, self).validate(value)
+        if not isinstance(value, (int, long)):
+            raise ValueError(value)
+        return value
+
+    def publish(self, value):
+        """
+        Accepts: int, long
+        Returns: int, long
+        """
+        value = super(Integer, self).publish(value)
         if not isinstance(value, (int, long)):
             raise ValueError(value)
         return value
@@ -364,49 +416,89 @@ class Boolean(Value):
     """Definition of an basic integer value."""
 
     value_type(ValueTypes.boolean)
-
-    def __init__(self, **kwargs):
-        Value.__init__(self)
-        if "default" in kwargs:
-            self._set_default(kwargs["default"])
+    option(True, label="True")
+    option(False, label="False")
+    options_only()
 
     ### overridden ###
 
     def validate(self, value):
+        """
+        Accepts: str, unicode, bool
+        Returns: bool
+        """
         if isinstance(value, bool):
-            value = bool(value)
+            return value
+        if isinstance(value, (str, unicode)):
+            if value.lower() == "true":
+                value = True
+            elif value.lower() == "false":
+                value = False
+            else:
+                raise ValueError(value)
         value = super(Boolean, self).validate(value)
         if not isinstance(value, bool):
             raise ValueError(value)
         return value
 
+    def publish(self, value):
+        value = super(Boolean, self).publish(value)
+        if not isinstance(value, bool):
+            raise ValueError(value)
+        return value
 
-class Enum(Integer):
+
+class Enum(Value):
     """Definition of integer value with a fixed
     set of possible values taken from an enumeration."""
 
-    value_type(ValueTypes.integer)
+    value_type(ValueTypes.string)
     options_only()
 
     implements(IValueOptions)
 
-    def __init__(self, enum, default=None):
-        Value.__init__(self)
+    def __init__(self, enum, *args, **kwargs):
         self._enum = enum
+        Value.__init__(self, *args, **kwargs)
         for i in enum:
-            self._add_option(i, i.name)
-        if default is not None:
-            if default not in enum:
-                raise ValueError(default)
-            self._set_default(default)
+            self._add_option(i)
+
+    ### IValidator ###
+
+    def validate(self, value):
+        if value is None and self._use_default:
+            value = self._default
+        if isinstance(value, (str, unicode, int)):
+            if value in self._enum:
+                return self._enum[value]
+        if isinstance(value, int):
+            if value in self._enum:
+                return unicode(self._enum[value].name)
+        raise ValueError(value)
+
+    def publish(self, value):
+        if value is None and self._use_default:
+            value = self._default
+        if isinstance(value, (str, unicode)):
+            if value in self._enum:
+                return unicode(value)
+        if isinstance(value, int):
+            if value in self._enum:
+                return unicode(self._enum[value].name)
+        raise ValueError(value)
 
     ### overridden ###
 
-    def validate(self, value):
-        if value not in self._enum:
-            raise ValueError(value)
-        value = self._enum[value]
-        return super(Enum, self).validate(value)
+    def _validate_option(self, value):
+        return unicode(self.validate(value).name)
+
+    def _validate_default(self, value):
+        return unicode(self.validate(value).name)
+
+    def _add_option(self, value, label=None):
+        if isinstance(value, self._enum):
+            value = unicode(value.name)
+        return Value._add_option(self, value, label)
 
 
 class Response(Value):

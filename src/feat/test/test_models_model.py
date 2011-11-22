@@ -230,7 +230,6 @@ class TestModelEffects(model.Model):
                      call.model_call("get_child_names"),
                      "test-model-calls")
 
-
     def init(self):
         self.attr1 = "foo"
         self.attr2 = "bar"

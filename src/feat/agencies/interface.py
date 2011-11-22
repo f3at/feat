@@ -24,7 +24,10 @@
 
 from zope.interface import Interface, Attribute
 
-__all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
+from feat.common import enum
+
+__all__ = ("AgencyRoles",
+           "IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IAgencyAgentInternal",
            "IAgencyInitiatorFactory", "IAgencyInterestFactory",
            "IAgencyInterestInternalFactory", "ILongRunningProtocol",
@@ -35,6 +38,10 @@ __all__ = ("IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IFirstMessage", "IDialogMessage", "IDbConnectionFactory",
            "IDatabaseDriver", "IJournaler", "IRecord", "IJournalerConnection",
            "IJournalWriter")
+
+
+class AgencyRoles(enum.Enum):
+    unknown, master, slave, standalone = range(4)
 
 
 class DatabaseError(RuntimeError):

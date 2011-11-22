@@ -43,6 +43,7 @@ from feat.web import security
 
 from feat.interface.agent import IAgentFactory
 from feat.interface.agency import ExecMode
+from feat.agencies.interface import AgencyRoles
 
 
 GATEWAY_PORT_COUNT = 100
@@ -222,7 +223,13 @@ class Agency(agency.Agency):
 
     @property
     def role(self):
-        return self._broker.state
+        if self._broker.is_standalone():
+            return AgencyRoles.standalone
+        if self._broker.is_master():
+            return AgencyRoles.master
+        if self._broker.is_slave():
+            return AgencyRoles.slave
+        return AgencyRoles.unknown
 
     def locate_master(self):
         return (self.get_hostname(), self.config["gateway"]["port"],
@@ -709,7 +716,7 @@ class Agency(agency.Agency):
         return None
 
     def _can_start_host_agent(self, startup=False):
-        if self.role != BrokerRole.master:
+        if not self._broker.is_master():
             self.log('Not starting host agent, because we are not the '
                      'master agency')
             return False
@@ -834,6 +841,6 @@ class Agency(agency.Agency):
             return self._spawn_agency("backup")
 
     def get_broker_backend(self):
-        if self.role != broker.BrokerRole.master:
+        if not self._broker.is_master():
             raise RuntimeError("We are not a master, wtf?!")
         return self._messaging.get_backend('unix')

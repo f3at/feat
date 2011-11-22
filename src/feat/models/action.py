@@ -340,7 +340,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                 d.addCallback(effect, context, **validated)
 
             if self._result_info is not None:
-                d.addCallback(IValidator(self._result_info).validate)
+                d.addCallback(IValidator(self._result_info).publish)
             else:
                 d.addCallback(defer.override_result, None)
 
