@@ -276,7 +276,7 @@ class IntegrationTestCase(FullIntegrationTest):
         host = yield self.agency.find_agent(agent_ids[0])
         self.assertIsInstance(host, base_agency.AgencyAgent)
         stand = yield self.agency.find_agent(agent_ids[1])
-        self.assertIsInstance(stand, pb.RemoteReference)
+        self.assertIsInstance(stand, broker.AgentReference)
 
         slave = first(x for x in self.agency._broker.slaves.itervalues()
                       if x.is_standalone)
@@ -285,7 +285,7 @@ class IntegrationTestCase(FullIntegrationTest):
         host = yield slave.callRemote('find_agent', agent_ids[0])
         self.assertIsInstance(host, base_agency.AgencyAgent)
         stand = yield slave.callRemote('find_agent', agent_ids[1])
-        self.assertIsInstance(stand, pb.RemoteReference)
+        self.assertIsInstance(stand, broker.AgentReference)
 
         not_found = yield slave.callRemote('find_agent', 'unknown id')
         self.assertIs(None, not_found)
@@ -294,7 +294,6 @@ class IntegrationTestCase(FullIntegrationTest):
         self.assertEqual(2, len(self.agency._broker.slaves))
         self.assertEqual(1, len(slave.agents))
         self.assertEqual(agent_ids[1], slave.agents.keys()[0])
-        self.assertEqual(stand, slave.agents.values()[0])
 
         # asserts on logs and journal entries in journal database
         jour = self.agency._journaler._writer

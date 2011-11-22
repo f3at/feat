@@ -34,28 +34,46 @@ from feat.agencies import common
 DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
 
 
-class SlaveReference(object):
+class TypedReference(object):
+    '''
+    I wrap arround the pb.RemoteReference and delegate the method calls to it.
+    The point of my existance is to store remote references with the
+    information about the type of object they point to.
+    '''
+
+    def __init__(self, reference):
+        self.reference = reference
+
+    def callRemote(self, _method, *args, **kwargs):
+        return self.reference.callRemote(_method, *args, **kwargs)
+
+
+class SlaveReference(TypedReference):
 
     def __init__(self, broker, slave_id, reference, is_standalone):
+        TypedReference.__init__(self, reference)
+
         # pb.RemoteReference to the Broker instance
         self.broker = broker
         # agency id
         self.slave_id = slave_id
-        # pb.RemoteReference to the Agency instance
-        self.reference = reference
         # bool flag saying if it is a standalone agency
         self.is_standalone = is_standalone
         # agent_id -> pb.Reference to AgencyAgent instance
         self.agents = dict()
 
-    def callRemote(self, _method, *args, **kwargs):
-        return self.reference.callRemote(_method, *args, **kwargs)
-
     def register_agent(self, agent_id, reference):
-        self.agents[agent_id] = reference
+        self.agents[agent_id] = AgentReference(reference, agent_id)
 
     def unregister_agent(self, agent_id):
         del(self.agents[agent_id])
+
+
+class AgentReference(TypedReference):
+
+    def __init__(self, reference, agent_id):
+        TypedReference.__init__(self, reference)
+        self.agent_id = agent_id
 
 
 class SharedState(dict):
@@ -389,12 +407,23 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                 'start_agent', desc, *args, **kwargs)
 
     @manhole.expose()
+    @defer.inlineCallbacks
     def find_agent(self, agent_id):
         self._ensure_connected()
         if self.is_master():
-            return self.agency._find_agent(agent_id)
+            # look locally
+            local = yield self.agency.find_agent_locally(agent_id)
+            if local:
+                defer.returnValue(local)
+            # check for slaves
+            for slave in self.iter_slave_references():
+                if agent_id in slave.agents:
+                    defer.returnValue(slave.agents[agent_id])
+            # give up
+            return
         elif self.is_slave():
-            return self._master.callRemote('find_agent', agent_id)
+            res = yield self._master.callRemote('find_agent', agent_id)
+            defer.returnValue(res)
 
     @manhole.expose()
     def broadcast_force_snapshot(self):

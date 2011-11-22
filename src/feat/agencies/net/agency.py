@@ -518,8 +518,8 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def find_agent(self, agent_id):
-        '''Gives medium class or its pb refrence of the agent if this agency
-        hosts it.'''
+        '''Gives medium class or its pb reference (wrapped in AgentReference
+        object) of the agent if this agency hosts it.'''
         return self._broker.find_agent(agent_id)
 
     def iter_agency_ids(self):
@@ -727,22 +727,6 @@ class Agency(agency.Agency):
 
     def _on_host_started(self):
         self._broker.shared_state['enable_host_restart'] = True
-
-    @defer.inlineCallbacks
-    def _find_agent(self, agent_id):
-        '''
-        Specific to master agency, called by the broker.
-        Will return AgencyAgent if agent is hosted by master agency,
-        PB.Reference if it runs in stanadlone or None if it was not found.
-        '''
-        local = yield self.find_agent_locally(agent_id)
-        if local:
-            defer.returnValue(local)
-        for slave in self._broker.iter_slaves():
-            found = yield slave.callRemote('find_agent_locally', agent_id)
-            if found:
-                defer.returnValue(found)
-        defer.returnValue(None)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
