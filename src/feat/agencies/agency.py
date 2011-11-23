@@ -163,6 +163,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._descriptor.doc_id
 
     @manhole.expose()
+    def get_instance_id(self):
+        return self._instance_id
+
+    @manhole.expose()
     def get_full_id(self):
         desc = self._descriptor
         return desc.doc_id + u"/" + unicode(desc.instance_id)

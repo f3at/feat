@@ -43,11 +43,14 @@ class Layout(html.Document):
 
     def _render_header(self, context):
         res = list("History: ")
-        for index in range(len(context.names[:-1])):
+        host, port = context.names[0]
+        root_url = reference.Local().resolve(context)
+        res.append(html.tags.a(href=root_url)("%s:%d" % (host, port)))
+        for index in range(1, len(context.names)):
             name = context.names[index]
-            path = context.names[1:index + 1]
+            path = context.names[1:index+1]
             url = reference.Local(*path).resolve(context)
-            res.append("|")
+            res.append("/")
             res.append(html.tags.a(href=url)(name))
         return res
 
@@ -75,7 +78,6 @@ class HTMLWriter(log.Logger):
         items = yield model.fetch_items()
         if not items:
             return
-        markup.h3()('List of model items.').close()
 
         if IMetadata.providedBy(model) and model.get_meta('render_array'):
             limit = int(model.get_meta('render_array')[0].value)
@@ -100,10 +102,11 @@ class HTMLWriter(log.Logger):
                 if IMetadata.providedBy(item):
                     if item.get_meta('render_array'):
                         submodel = yield item.fetch()
-                        limit = int(item.get_meta('render_array')[0].value)
-                        markup.div(_class='array')(
-                            self._render_array(
-                                submodel, limit, context)).close()
+                        if IModel.providedBy(submodel):
+                            limit = int(item.get_meta('render_array')[0].value)
+                            markup.div(_class='array')(
+                                self._render_array(
+                                    submodel, limit, context)).close()
                 li.close()
             ul.close()
         markup.hr()
@@ -123,18 +126,9 @@ class HTMLWriter(log.Logger):
         ul.close()
         markup.hr()
 
-    def _action_url(self, context, name):
-        url = "%s.%s" % (reference.Relative().resolve(context), name)
-        return url
-
     def _render_action_form(self, action, markup, context):
-        if action.category == ActionCategory.delete:
-            method = "DELETE"
-        elif action.is_idempotent:
-            method = "PUT"
-        else:
-            method = "POST"
-        url = self._action_url(context, action.name)
+        method = context.get_action_method(action)
+        url = action.reference.resolve(context)
         form = markup.form(method=method, action=url, _class='action_form')
         div = markup.div()
         for param in action.parameters:
@@ -175,18 +169,24 @@ class HTMLWriter(log.Logger):
             raise ValueError("_format_attribute() called for something which"
                              "doesn't render inline: %r", item)
         model = yield item.fetch()
+        if not IModel.providedBy(model):
+            defer.returnValue("")
+
         set_action = yield model.fetch_action('set')
         classes = ['value']
         extra = dict()
         if set_action:
             classes.append('inplace')
             subcontext = context.descend(model)
-            extra['rel'] = self._action_url(subcontext, 'set')
+            extra['rel'] = set_action.reference.resolve(subcontext)
 
-        value = yield model.perform_action('get')
-        if item.get_meta('link_owner'):
-            url = reference.Relative().resolve(context)
-            value = html.tags.a(href=url)(value)
+        value = ""
+        get_action = yield model.fetch_action('get')
+        if get_action is not None:
+            value = yield get_action.perform()
+            if item.get_meta('link_owner'):
+                url = reference.Relative().resolve(context)
+                value = html.tags.a(href=url)(value)
 
         defer.returnValue(
             html.tags.span(_class=" ".join(classes), **extra)(value))
@@ -237,9 +237,10 @@ class HTMLWriter(log.Logger):
             if is_array:
                 if limit > 0:
                     submodel = yield item.fetch()
-                    subcontext = context.descend(submodel)
-                    yield self._build_tree(tree[-1][1], submodel, limit - 1,
-                                           subcontext)
+                    if IModel.providedBy(submodel):
+                        subcontext = context.descend(submodel)
+                        yield self._build_tree(tree[-1][1], submodel,
+                                               limit - 1, subcontext)
             else:
                 column_name = item.label
                 if not column_name:

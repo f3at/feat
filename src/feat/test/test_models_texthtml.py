@@ -10,7 +10,7 @@ from feat.common import defer, adapter
 from feat.test import common
 from feat.models import texthtml, model, action, value, call, getter, setter
 from feat import gateway
-from feat.web import document
+from feat.web import document, http
 
 from feat.models.interface import IModel, IContext, ActionCategory
 
@@ -19,17 +19,20 @@ class TestContext(object):
 
     implements(IContext)
 
-    def __init__(self, names=(), models=()):
-        self.names = names
-        self.models = models
+    def __init__(self, names=None, models=None):
+        self.names = names or (("host", 80), )
+        self.models = models or (None, )
         self.remaining = ()
+
+    def get_action_method(self, action):
+        return http.Methods.GET
 
     def make_action_address(self, action):
         return self.make_model_address(self.names + (action.name, ))
 
     def make_model_address(self, path):
         path = filter(None, path)
-        return '/'.join(path)
+        return '/'.join(str(p) for p in path)
 
     def descend(self, model):
         return TestContext(self.names + (model.name, ),

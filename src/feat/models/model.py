@@ -65,6 +65,15 @@ def identity(identity):
     _annotate("identity", identity)
 
 
+def view(effect_or_value):
+    """
+    Annotates the model view.
+    @param effect_or_value: effect to retrieve the view or the view itself.
+    @type effect_or_value: callable or object
+    """
+    _annotate("view", effect_or_value)
+
+
 def attribute(name, value, getter=None, setter=None,
               label=None, desc=None, meta=None):
     """
@@ -116,9 +125,9 @@ def child(name, getter=None, model=None, label=None, desc=None, meta=None):
               label=label, desc=desc, meta=meta)
 
 
-def view(name, model, value=None, label=None, desc=None, meta=None):
+def delegate(name, model, value=None, label=None, desc=None, meta=None):
     """
-    Annotate a sub-view to the one being defined.
+    Annotate a view to be delegated.
     A view is another model with the same source
     and a view value retrieved from the specifed getter.
     @param name: item name unique for the model being defined.
@@ -135,7 +144,7 @@ def view(name, model, value=None, label=None, desc=None, meta=None):
     @param meta: model item metadata atoms.
     @type meta: list of tuple
     """
-    _annotate("view", name, model=model, value=value,
+    _annotate("delegate", name, model=model, value=value,
               label=label, desc=desc, meta=meta)
 
 
@@ -245,6 +254,15 @@ def child_source(effect, model=None, label=None, desc=None, meta=None):
               label=label, desc=desc, meta=meta)
 
 
+def child_view(effect):
+    """
+    Annotate the effect used to retrieve a sub-model's view.
+    @param effect: an effect to retrieve a source from name.
+    @type effect: callable
+    """
+    _annotate("child_view", effect)
+
+
 def _annotate(name, *args, **kwargs):
     method_name = "annotate_" + name
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
@@ -298,6 +316,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     implements(IModel, IContextMaker)
 
     _identity = None
+    _view = None
 
     ### class methods ###
 
@@ -356,11 +375,21 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     def initiate(self, aspect=None, view=None, parent=None):
         """Do not keep any reference to its parent,
         this way it can be garbage-collected."""
+
+        def got_view(view):
+            self.view = view
+            d = self.call_mro("init")
+            d.addCallback(defer.override_result, self)
+            return d
+
         self.aspect = IAspect(aspect) if aspect is not None else None
-        self.view = view
-        d = self.call_mro("init")
-        d.addCallback(defer.override_result, self)
-        return d
+        if self._view is not None:
+            if callable(self._view):
+                context = self.make_context(view=view)
+                d = self._view(None, context)
+                return d.addCallback(got_view)
+            return got_view(self._view)
+        return got_view(view)
 
     def perform_action(self, name, **kwargs):
         d = self.fetch_action(name)
@@ -392,6 +421,11 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         """@see: feat.models.model.identity"""
         cls._identity = _validate_str(identity)
         register_factory(cls._identity, cls)
+
+    @classmethod
+    def annotate_view(cls, effect_or_value):
+        """@see: feat.models.model.view"""
+        cls._view = _validate_effect(effect_or_value)
 
 
 class NoChildrenMixin(object):
@@ -544,9 +578,9 @@ class StaticChildrenMixin(object):
         cls._model_items[name] = item
 
     @classmethod
-    def annotate_view(cls, name, model=None, value=None,
+    def annotate_delegate(cls, name, model=None, value=None,
                       label=None, desc=None, meta=None):
-        """@see: feat.models.model.view"""
+        """@see: feat.models.model.delegate"""
         name = _validate_str(name)
         item = MetaModelItem.new(name, factory=model, view=value,
                                  label=label, desc=desc, meta=meta)
@@ -932,6 +966,7 @@ class DynamicItemsMixin(object):
 
     _fetch_names = None
     _fetch_source = None
+    _fetch_view = None
     _item_label = None
     _item_desc = None
     _item_meta = None
@@ -1047,6 +1082,11 @@ class DynamicItemsMixin(object):
         cls._item_desc = _validate_optstr(desc)
         cls._item_meta = meta
 
+    @classmethod
+    def annotate_child_view(cls, effect):
+        """@see: feat.models.collection.child_view"""
+        cls._fetch_view = _validate_effect(effect)
+
 
 class MetaCollection(type(AbstractModel)):
 
@@ -1116,7 +1156,8 @@ class DynamicModelItem(BaseModelItem):
 
     def initiate(self):
         # We need to do it right away to be sure the source exists
-        d = self._create_model(source_getter=self.model._fetch_source,
+        d = self._create_model(view_getter=self.model._fetch_view,
+                               source_getter=self.model._fetch_source,
                                model_factory=self.model._item_factory)
         d.addCallback(self._got_model)
         return d

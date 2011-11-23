@@ -30,7 +30,7 @@ from zope.interface import implements
 from feat.common import defer
 from feat.web import http, webserver
 
-from feat.models.interface import ActionCategory, IActionPayload
+from feat.models.interface import ActionCategory, IActionPayload, IAspect
 from feat.models.interface import IContext, IModel, IModelAction, IReference
 
 
@@ -421,6 +421,12 @@ class StaticResource(webserver.BaseResource):
 
 class Root(ModelResource):
 
+    implements(IAspect)
+
+    name = "root"
+    label = "FEAT Gateway"
+    desc = None
+
     def __init__(self, hostname, port, source, static_path):
         ModelResource.__init__(self, source, (hostname, port))
         self._static = StaticResource(static_path)
@@ -432,3 +438,6 @@ class Root(ModelResource):
             return self._static, remaining[1:]
         return ModelResource.locate_resource(self, request,
                                              location, remaining)
+
+    def initiate(self):
+        return self.model.initiate(aspect=self)
