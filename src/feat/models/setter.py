@@ -62,6 +62,19 @@ def source_attr(attr_name):
     return setter
 
 
+def source_setattr():
+    """
+    Creates a setter that will set the source attribute with context's key
+    for name to the current value.
+    """
+
+    def setter(value, context, **_params):
+        setattr(context["model"].source, context["key"], value)
+        return _attr()
+
+    return setter
+
+
 def model_set(method_name):
     """
     Creates a setter that will call the model method with the context's
@@ -87,6 +100,19 @@ def model_attr(attr_name):
 
     def setter(value, context, **_params):
         setattr(context["model"], attr_name, value)
+        return _attr()
+
+    return setter
+
+
+def model_setattr():
+    """
+    Creates a setter that will set the model attribute with context's key
+    for name to the current value.
+    """
+
+    def setter(value, context, **_params):
+        setattr(context["model"], context["key"], value)
         return _attr()
 
     return setter
@@ -122,6 +148,19 @@ def action_attr(attr_name):
     return setter
 
 
+def action_setattr():
+    """
+    Creates a setter that will set the action attribute with context's key
+    for name to the current value.
+    """
+
+    def setter(value, context, **_params):
+        setattr(context["action"], context["key"], value)
+        return _attr()
+
+    return setter
+
+
 def view_set(method_name):
     """
     Creates a setter that will call the view method with the context's
@@ -147,6 +186,19 @@ def view_attr(attr_name):
 
     def setter(value, context, **_params):
         setattr(context["view"], attr_name, value)
+        return _attr()
+
+    return setter
+
+
+def view_setattr():
+    """
+    Creates a setter that will set the view attribute with context's key
+    for name to the current value.
+    """
+
+    def setter(value, context, **_params):
+        setattr(context["view"], context["key"], value)
         return _attr()
 
     return setter

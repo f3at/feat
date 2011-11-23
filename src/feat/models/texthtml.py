@@ -95,6 +95,8 @@ class HTMLWriter(log.Logger):
                 if IMetadata.providedBy(item):
                     if item.get_meta('inline'):
                         li.append(self._format_attribute(item, context))
+                    else:
+                        markup.span(_class="value")(" ").close()
 
                 if item.desc:
                     markup.span(_class='desc')(item.desc).close()
@@ -117,12 +119,16 @@ class HTMLWriter(log.Logger):
         if not actions:
             return
         markup.h3()('List of model actions.').close()
-        ul = markup.ul(_class="items")
+        actions = []
         for action in actions:
+            if action.category == ActionCategory.retrieve:
+                continue
             li = markup.li()
             markup.span(_class='name')(action.name).close()
             self._render_action_form(action, markup, context)
             li.close()
+            actions
+        ul = markup.ul(_class="items")
         ul.close()
         markup.hr()
 

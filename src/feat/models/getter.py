@@ -76,6 +76,19 @@ def source_attr(attr_name):
     return getter
 
 
+def source_getattr():
+    """
+    Creates a getter that will drop the current value
+    and retrieve the source's attribute with the context key as name.
+    """
+
+    def getter(_value, context, **_params):
+        value = getattr(context["model"].source, context["key"])
+        return _attr(value)
+
+    return getter
+
+
 def model_get(method_name):
     """
     Creates a getter that will drop the current value,
@@ -102,6 +115,19 @@ def model_attr(attr_name):
 
     def getter(_value, context, **_params):
         value = getattr(context["model"], attr_name)
+        return _attr(value)
+
+    return getter
+
+
+def model_getattr():
+    """
+    Creates a getter that will drop the current value
+    and retrieve the model's attribute with the context key as name.
+    """
+
+    def getter(_value, context, **_params):
+        value = getattr(context["model"], context["key"])
         return _attr(value)
 
     return getter
@@ -138,6 +164,19 @@ def action_attr(attr_name):
     return getter
 
 
+def action_getattr():
+    """
+    Creates a getter that will drop the current value
+    and retrieve the action's attribute with the context key as name.
+    """
+
+    def getter(_value, context, **_params):
+        value = getattr(context["action"], context["key"])
+        return _attr(value)
+
+    return getter
+
+
 def view_get(method_name):
     """
     Creates a getter that will drop the current value,
@@ -164,6 +203,19 @@ def view_attr(attr_name):
 
     def getter(_value, context, **_params):
         value = getattr(context["view"], attr_name)
+        return _attr(value)
+
+    return getter
+
+
+def view_getattr():
+    """
+    Creates a getter that will drop the current value
+    and retrieve the source's attribute with the context key as name.
+    """
+
+    def getter(_value, context, **_params):
+        value = getattr(context["view"], context["key"])
         return _attr(value)
 
     return getter

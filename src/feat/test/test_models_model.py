@@ -169,9 +169,11 @@ class TestView(model.Model):
 class TestCollection(model.Collection):
     __slots__ = ()
     model.identity("test-collection")
+    model.child_label("Some Child")
+    model.child_desc("Some dynamic child")
+    model.child_model(DummyModel2)
     model.child_names(call.source_call("iter_names"))
-    model.child_source(getter.source_get("get_value"), DummyModel2,
-                       label="Some Child", desc="Some dynamic child")
+    model.child_source(getter.source_get("get_value"))
     model.action("action", DummyAction)
 
 

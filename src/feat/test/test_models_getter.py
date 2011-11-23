@@ -81,6 +81,20 @@ class TestModelsGetter(common.TestCase):
         self.assertEqual(res, (exp_name, "titi", (exp_index, ), {}))
 
     @defer.inlineCallbacks
+    def check_getattr(self, context, getter_factory, exp_index, exp_name):
+        getter = getter_factory()
+        res = yield getter(None, context)
+        self.assertEqual(res, (exp_name, exp_index))
+
+        getter = getter_factory()
+        res = yield getter("spam", context)
+        self.assertEqual(res, (exp_name, exp_index))
+
+        getter = getter_factory()
+        res = yield getter("spam", context, param="foo")
+        self.assertEqual(res, (exp_name, exp_index))
+
+    @defer.inlineCallbacks
     def testAttr(self):
         source = DummyAttr("source")
         action = DummyAttr("action")
@@ -92,6 +106,24 @@ class TestModelsGetter(common.TestCase):
         yield self.check_attr(context, getter.source_attr, "source")
         yield self.check_attr(context, getter.action_attr, "action")
         yield self.check_attr(context, getter.view_attr, "view")
+
+    @defer.inlineCallbacks
+    def testGetAttr(self):
+        source = DummyAttr("source")
+        action = DummyAttr("action")
+        model = DummyAttr("model", source)
+        view = DummyAttr("view")
+        context = {"model": model, "view": view,
+                   "key": "XXX", "action": action}
+
+        yield self.check_getattr(context, getter.model_getattr,
+                                 "XXX", "model")
+        yield self.check_getattr(context, getter.source_getattr,
+                                 "XXX", "source")
+        yield self.check_getattr(context, getter.action_getattr,
+                                 "XXX", "action")
+        yield self.check_getattr(context, getter.view_getattr,
+                                 "XXX", "view")
 
     @defer.inlineCallbacks
     def testGet(self):

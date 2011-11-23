@@ -26,7 +26,7 @@ import signal
 from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import agent as base_agent
 from feat.common import time, adapter
-from feat.models import model, action, value, reference
+from feat.models import model, action, value, reference, attribute
 from feat.models import call, getter, setter
 
 from feat.models.interface import IModel
@@ -70,8 +70,9 @@ class Agencies(model.Collection):
     """
     model.identity("feat.agencies")
 
+    model.child_model("feat.agency")
     model.child_names(call.source_call("iter_agency_ids"))
-    model.child_source(getter.model_get("_fetch_agency"), "feat.agency")
+    model.child_source(getter.model_get("_fetch_agency"))
     model.meta('render_array', 2)
 
 #    model.delete("full_shutdown",
@@ -118,7 +119,6 @@ class Agency(model.Model):
                    label="Agency's Agents",
                    desc="Agents running on this agency.")
 
-    #model.item_meta("agents", "render_array", 3)
 
 #    model.delete("shutdown", effect.model_call("_shutdown"),
 #                 label="Shutdown", desc="Shutdown the agency and its agents")
@@ -126,26 +126,26 @@ class Agency(model.Model):
 #                 label="Terminate", desc="Shutdown the agency only")
 #    model.delete("kill", effect.model_call("_kill"),
 #                 label="Kill", desc="Violently kill the agency process")
-
-    def _shutdown(self):
-        time.call_later(self.source.shutdown, stop_process=True)
-        return self._deleted("Shutdown Succeed")
-
-    def _terminate(self):
-        time.call_later(os.kill, os.getpid(), signal.SIGTERM)
-        return self._deleted("Terminate Succeed")
-
-    def _kill(self):
-        time.call_later(os.kill, os.getpid(), signal.SIGKILL)
-        return self._deleted("Kill Succeed")
-
-    def _deleted(self, message):
-        result = self.source.locate_master()
-        if result is not None:
-            host, port, _is_remote = result
-            # FIXME: no location would mean the actual one
-            ref = reference.Absolute((host, port))
-            return response.Deleted(message, redirection=ref)
+#
+#    def _shutdown(self):
+#        time.call_later(self.source.shutdown, stop_process=True)
+#        return self._deleted("Shutdown Succeed")
+#
+#    def _terminate(self):
+#        time.call_later(os.kill, os.getpid(), signal.SIGTERM)
+#        return self._deleted("Terminate Succeed")
+#
+#    def _kill(self):
+#        time.call_later(os.kill, os.getpid(), signal.SIGKILL)
+#        return self._deleted("Kill Succeed")
+#
+#    def _deleted(self, message):
+#        result = self.source.locate_master()
+#        if result is not None:
+#            host, port, _is_remote = result
+#            # FIXME: no location would mean the actual one
+#            ref = reference.Absolute((host, port))
+#            return response.Deleted(message, redirection=ref)
 
 
 class AgencyAgents(model.Collection):
@@ -176,7 +176,7 @@ class Agents(model.Collection):
 
     model.child_names(call.model_call("iter_agents"))
     model.child_source(getter.source_get("find_agent"))
-    model.meta('render_array', 3)
+    model.meta('render_array', 2)
 
     def iter_agents(self):
         res = [x.get_agent_id() for x in self.source.iter_agents()]
@@ -302,8 +302,12 @@ class Partners(model.Collection):
 
     model.view(call.source_call("query_partners", "all"))
 
+    model.child_label("Partner")
+    model.child_model("feat.partner")
     model.child_names(call.model_call("iter_partner_names"))
-    model.child_source(getter.model_get("get_partner"), "feat.partner")
+    model.child_view(getter.model_get("get_partner"))
+
+    model.meta("render_array", 2)
 
     def iter_partner_names(self):
         return [p.recipient.key for p in self.view]
@@ -316,7 +320,49 @@ class Partners(model.Collection):
 
 
 class Partner(model.Model):
+    #FIXME: should be more dynamic and dynamically add attribute
     model.identity("feat.partner")
+
+    model.attribute("type", value.String(),
+                    getter.view_attr("type_name"), label="Type")
+    model.attribute("role", value.String("unknown"),
+                    getter.view_getattr(), label="Role")
+
+    model.child("recipient", getter.view_getattr(), "feat.recipient",
+                label="Recipient")
+
+
+class Recipient(model.Model):
+    model.identity("feat.recipient")
+
+    model.attribute("key", value.String(),
+                    getter.source_attr("key"),
+                    label="Key")
+    model.attribute("route", value.String(),
+                    getter.source_attr("route"),
+                    label="Route")
+
+    model.item_meta("key", "link_owner", True)
+
+
+#class Partner(model.Model):
+#    #FIXME: should be more dynamic and dynamically add attribute
+#    model.identity("feat.partner")
+#
+#    model.attribute("agent_id", value.String(),
+#                    call.model_call("get_agent_id"),
+#                    label="Agent Id", desc="Partner agent identifier")
+#    model.attribute("route", value.String(),
+#                    call.model_call("get_route"),
+#                    label="Route", desc="Partner agent route")
+#
+#    model.item_meta("agent_id", "link_owner", True)
+#
+#    def get_agent_id(self):
+#        return self.view.recipient.key
+#
+#    def get_route(self):
+#        return self.view.recipient.route
 
 
 #class Monitor(Agent):

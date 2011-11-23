@@ -29,7 +29,7 @@ from feat.models import utils
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
 
-from feat.models.interface import IModel, IModelItem, NotSupported
+from feat.models.interface import IModel, IModelItem, NotSupported, ModelError
 from feat.models.interface import IActionFactory, IModelFactory
 from feat.models.interface import IAspect, IReference, IContextMaker
 
@@ -226,6 +226,47 @@ def collection(name, child_source=None, child_names=None, child_model=None,
               meta=meta, model_meta=model_meta)
 
 
+def child_model(model_factory):
+    """
+    Annotate the effect used to retrieve the model's children names.
+    @param model: the model identity or model factory to use.
+                  If not set IModel adption will be used.
+    @type model: str or unicode or IModelFactory
+    """
+    _annotate("child_model", model_factory)
+
+
+def child_label(label):
+    """
+    Annotate child items label.
+    @param label: the model items label or None.
+    @type label: str or unicode or None
+    """
+    _annotate("child_label", label)
+
+
+def child_desc(desc):
+    """
+    Annotate child items description.
+    @param desc: the model items description or None.
+    @type desc: str or unicode or None
+    """
+    _annotate("child_desc", desc)
+
+
+def child_meta(name, value, scheme=None):
+    """
+    Annotate child items metadata.
+    @param name: name of the meta data class
+    @type name: str or unicode
+    @param value: metadata value
+    @type value: str or unicode
+    @param scheme: format information about the value
+    @type scheme: str or unicode or None
+    """
+    _annotate("child_meta", name, value, scheme=scheme)
+
+
 def child_names(effect):
     """
     Annotate the effect used to retrieve the model's children names.
@@ -235,23 +276,13 @@ def child_names(effect):
     _annotate("child_names", effect)
 
 
-def child_source(effect, model=None, label=None, desc=None, meta=None):
+def child_source(effect):
     """
     Annotate the effect used to retrieve a sub-model's source by name.
     @param effect: an effect to retrieve a source from name.
     @type effect: callable
-    @param model: the model identity or model factory to use,
-                  or None to use IModel adapter.
-    @type model: str or unicode or IModelFactory or None
-    @param label: the model items label or None.
-    @type label: str or unicode or None
-    @param desc: the model items description or None.
-    @type desc: str or unicode or None
-    @param meta: model item metadata atoms.
-    @type meta: list of tuple
     """
-    _annotate("child_source", effect, model=model,
-              label=label, desc=desc, meta=meta)
+    _annotate("child_source", effect)
 
 
 def child_view(effect):
@@ -377,6 +408,11 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         this way it can be garbage-collected."""
 
         def got_view(view):
+            if view is None:
+                return None
+            return init(view)
+
+        def init(view):
             self.view = view
             d = self.call_mro("init")
             d.addCallback(defer.override_result, self)
@@ -388,8 +424,8 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
                 context = self.make_context(view=view)
                 d = self._view(None, context)
                 return d.addCallback(got_view)
-            return got_view(self._view)
-        return got_view(view)
+            return init(self._view)
+        return init(view)
 
     def perform_action(self, name, **kwargs):
         d = self.fetch_action(name)
@@ -761,42 +797,58 @@ class BaseModelItem(models_meta.Metadata):
 
     ### protected ###
 
+    def _filter_errors(self, failure):
+        error.handle_failure(None, failure,
+                             "Failure creating model for '%s'", self.name)
+        return None
+
     def _create_model(self, view_getter=None, source_getter=None,
                       model_factory=None):
-        d = defer.succeed(None)
-        d.addCallback(self._retrieve_view, view_getter)
-        d.addCallback(self._got_view, source_getter, model_factory)
+        if view_getter is not None:
+            d = defer.succeed(view_getter)
+            d.addCallback(self._retrieve_view)
+            d.addCallback(self._check_view)
+        else:
+            # views are inherited
+            d = defer.succeed(self.model.view)
+
+        d.addCallback(self._retrieve_model, source_getter, model_factory)
+
+        d.addErrback(self._filter_errors)
         return d
 
-    def _retrieve_view(self, _param=None, view_getter=None):
+    def _retrieve_view(self, view_getter=None):
         if callable(view_getter):
             context = self.model.make_context(key=self.name)
             return view_getter(None, context)
 
-        if view_getter is None:
-            # views are inherited
-            return self.model.view
-
         return view_getter
 
-    def _got_view(self, view, source_getter, model_factory):
-        d = defer.succeed(view)
-        d.addCallback(self._retrieve_source, source_getter)
+    def _check_view(self, view):
+        if view is None:
+            raise ModelError("'%s' view not found" % (self.name, ))
+        return view
+
+    def _retrieve_model(self, view, source_getter, model_factory):
+        d = defer.succeed(source_getter)
+        d.addCallback(self._retrieve_source, view)
         d.addCallback(self._wrap_source, view, model_factory)
         return d
 
-    def _retrieve_source(self, view, source_getter=None):
+    def _retrieve_source(self, source_getter, view):
         if source_getter is None:
             return self.model.source
 
         context = self.model.make_context(key=self.name, view=view)
         return source_getter(None, context)
 
-    def _wrap_source(self, source, view=None, model_factory=None):
+    def _wrap_source(self, source, view, model_factory):
         if source is None:
             return source
+
         if IReference.providedBy(source):
             return source
+
         model = source
         if not IModel.providedBy(source):
             factory = None
@@ -969,7 +1021,8 @@ class DynamicItemsMixin(object):
     _fetch_view = None
     _item_label = None
     _item_desc = None
-    _item_meta = None
+    _item_model = None
+    _item_meta = container.MroList("_mro_item_meta")
 
     ### IModel ###
 
@@ -1018,7 +1071,8 @@ class DynamicItemsMixin(object):
         return d
 
     def fetch_item(self, name):
-        if self._fetch_source is None:
+        if (self._fetch_source is None
+            and self._fetch_view is None):
             return self._notsup("fetching item")
 
         def log_error(failure):
@@ -1068,19 +1122,34 @@ class DynamicItemsMixin(object):
     ### annotations ###
 
     @classmethod
+    def annotate_child_label(cls, label):
+        """@see: feat.models.collection.child_label"""
+        cls._item_label = _validate_optstr(label)
+
+    @classmethod
+    def annotate_child_desc(cls, desc):
+        """@see: feat.models.collection.child_desc"""
+        cls._item_desc = _validate_optstr(desc)
+
+    @classmethod
+    def annotate_child_meta(cls, name, value, scheme=None):
+        """@see: feat.models.collection.child_meta"""
+        cls._item_meta.append((name, value, scheme))
+
+    @classmethod
+    def annotate_child_model(cls, model_factory):
+        """@see: feat.models.collection.child_model"""
+        cls._item_model = _validate_model_factory(model_factory)
+
+    @classmethod
     def annotate_child_names(cls, effect):
         """@see: feat.models.collection.child_names"""
         cls._fetch_names = _validate_effect(effect)
 
     @classmethod
-    def annotate_child_source(cls, effect, model=None, label=None,
-                              desc=None, meta=None):
+    def annotate_child_source(cls, effect):
         """@see: feat.models.collection.child_source"""
         cls._fetch_source = _validate_effect(effect)
-        cls._item_factory = _validate_model_factory(model)
-        cls._item_label = _validate_optstr(label)
-        cls._item_desc = _validate_optstr(desc)
-        cls._item_meta = meta
 
     @classmethod
     def annotate_child_view(cls, effect):
@@ -1097,10 +1166,14 @@ class MetaCollection(type(AbstractModel)):
         cls_name = utils.mk_class_name(identity)
         cls = MetaCollection(cls_name, (_DynCollection, ), {"__slots__": ()})
         cls.annotate_identity(identity)
+        cls.annotate_child_label(child_label)
+        cls.annotate_child_desc(child_desc)
+        cls.annotate_child_model(child_model)
+        if child_meta:
+            for meta_item in child_meta:
+                cls.annotate_child_meta(*meta_item)
         cls.annotate_child_names(child_names)
-        cls.annotate_child_source(child_source, model=child_model,
-                                  label=child_label, desc=child_desc,
-                                  meta=child_meta)
+        cls.annotate_child_source(child_source)
         cls.apply_class_meta(meta)
         return cls
 
@@ -1146,7 +1219,10 @@ class DynamicModelItem(BaseModelItem):
         self._name = name
         self._reference = models_reference.Relative(name)
         self._child = None
-        self.apply_instance_meta(model._item_meta)
+        metadata = list(model._item_meta)
+        if metadata:
+            for meta in metadata:
+                self.put_meta(*meta)
 
     ### overridden ###
 
@@ -1158,7 +1234,7 @@ class DynamicModelItem(BaseModelItem):
         # We need to do it right away to be sure the source exists
         d = self._create_model(view_getter=self.model._fetch_view,
                                source_getter=self.model._fetch_source,
-                               model_factory=self.model._item_factory)
+                               model_factory=self.model._item_model)
         d.addCallback(self._got_model)
         return d
 
