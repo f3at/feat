@@ -31,7 +31,7 @@ from twisted.internet import defer
 from twisted.spread import pb
 
 from feat.test import common
-from feat.test.integration.common import FullIntegrationTest
+from feat.test.integration.common import FullIntegrationTest, ModelTestMixin
 from feat.process import standalone
 from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, broker
@@ -236,7 +236,7 @@ class MasterDescriptor(descriptor.Descriptor):
 
 
 @common.attr('slow', timeout=40)
-class IntegrationTestCase(FullIntegrationTest):
+class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
 
     skip_coverage = True
     configurable_attributes = ['run_rabbit', 'run_couch', 'shutdown']
@@ -307,6 +307,9 @@ class IntegrationTestCase(FullIntegrationTest):
         self.assertEqual([agent_ids[1]], log_names)
         yield self.assert_has_logs('host_agent', agent_ids[0])
         yield self.assert_has_logs('standalone', agent_ids[1])
+
+        self.info("Just before validating models.")
+        yield self.validate_model_tree(self.agency)
 
     @defer.inlineCallbacks
     def testStartStandaloneArguments(self):
@@ -477,6 +480,7 @@ class IntegrationTestCase(FullIntegrationTest):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.wait_for(self.agency.is_idle, 20)
+
         if self.shutdown:
             yield self.agency.full_shutdown()
         yield FullIntegrationTest.tearDown(self)

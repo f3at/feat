@@ -27,7 +27,7 @@ import os
 from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
-from feat.common import text_helper, defer, reflect
+from feat.common import text_helper, defer, reflect, error
 from feat.process import couchdb, rabbitmq
 from feat.process.base import DependencyError
 from feat.simulation import driver
@@ -35,8 +35,11 @@ from feat.agencies import replay
 from feat.agencies.messaging import tunneling
 from feat.agencies.net import database
 from feat.agents.base import dbtools, registry
+from feat.gateway.resources import Context
+from feat.web import document, http
 
 from feat.agencies.interface import NotFoundError
+from feat.models.interface import IModel, ActionCategory
 
 attr = common.attr
 delay = common.delay
@@ -445,3 +448,80 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
         d = self.cb_after(None, driver._parser, 'on_finish')
         driver.process(script)
         return d
+
+
+class ModelTestMixin(object):
+    '''
+    Mix me in to be able to valide the visualisation part of the models.
+    The base class should provide ILogger and ITestCase.
+    '''
+
+    validated_mime_types = ['text/html', 'application/json']
+
+    def validate_model_tree(self, model):
+        visited = list()
+        model = IModel(model)
+        context = Context(http.Schemes.HTTPS,
+                          [model], [(model.name, 5500)], [])
+
+        self.info("Starting validating model tree. The root object: %r",
+                  model)
+        return self._model_tree_iteration(model, visited, context)
+
+    @defer.inlineCallbacks
+    def _model_tree_iteration(self, model, visited, context):
+        model = IModel(model)
+        if model in visited:
+            self.log('Skiping already validated model: %r', model)
+            return
+        visited.append(model)
+        yield self._validate_model(model, context)
+
+        items = yield model.fetch_items()
+        for item in items:
+            submodel = yield item.fetch()
+            if IModel.providedBy(submodel):
+                subcontext = context.descend(submodel)
+                yield self._model_tree_iteration(submodel, visited, subcontext)
+
+    @defer.inlineCallbacks
+    def _validate_model(self, model, context):
+        self.info("Validating model %r", model)
+
+        # check writing it to supported mime types
+        for mime_type in self.validated_mime_types:
+            doc = document.WritableDocument(mime_type)
+            d = document.write(doc, model, context=context)
+            d.addErrback(self._writing_errback, mime_type, model)
+            yield d
+            self.info('Result of rendering for mimetype: %s\n%s',
+                      mime_type, doc.get_data())
+
+        # call querying actions
+        actions = yield model.fetch_actions()
+        for action in actions:
+            if action.category != ActionCategory.retrieve:
+                self.info("Not validating action name: %s, label: %s, "
+                          "as it's category is: %s", action.name,
+                          action.label, action.category)
+                continue
+            d = action.perform()
+            d.addErrback(self._action_errback, action, model)
+
+            result = yield d
+            self.info("Successfully performed action %s with result %r",
+                      action.name, result)
+
+    def _writing_errback(self, fail, mime_type, model):
+        error.handle_failure(
+            self, fail,
+            "Failed writing the model for the mime type: %r, \n"
+            "model: %r\nsource: %r", mime_type, model, model.source)
+        self.fail("Failed writing model, look at logs.")
+
+    def _action_errback(self, fail, action, model):
+        error.handle_failure(
+            "Failed running action name: %s on model: %r",
+            action.name, model)
+        self.fail("Calling action %s on model %s failed, look at logs." %
+                  (action.name, model.identity, ))
