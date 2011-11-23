@@ -53,8 +53,7 @@ class MetaAttribute(type(model.AbstractModel)):
                                            result_info=value_info,
                                            is_idempotent=True)
 
-            cls.annotate_action(u"get", Action, label=u"Get",
-                                desc=u"Retrieve the attribute value")
+            cls.annotate_action(u"get", Action)
 
         if setter is not None:
 
@@ -71,8 +70,7 @@ class MetaAttribute(type(model.AbstractModel)):
                                            result_info=value_info,
                                            is_idempotent=True)
 
-            cls.annotate_action(u"set", Action, label=u"Set",
-                                desc=u"Update the attribute value")
+            cls.annotate_action(u"set", Action)
 
         return cls
 

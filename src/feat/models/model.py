@@ -313,6 +313,13 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         self.aspect = None
         self.view = None
 
+    def __repr__(self):
+        return "<%s %s '%s'>" % (type(self).__name__,
+                                 self.identity, self.name)
+
+    def __str__(self):
+        return repr(self)
+
     ### virtual ###
 
     def init(self):

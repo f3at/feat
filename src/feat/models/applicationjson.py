@@ -93,6 +93,7 @@ def render_action(action, context):
     metadata = yield render_metadata(action)
     if metadata:
         result["metadata"] = metadata
+    result["method"] = context.get_action_method(action).name
     result["idempotent"] = bool(action.is_idempotent)
     result["category"] = action.category.name
     if action.result_info is not None:
@@ -154,6 +155,7 @@ def render_param(param):
 def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = {}
+    result["identity"] = obj.identity
     name = obj.name
     if name:
         result["name"] = name

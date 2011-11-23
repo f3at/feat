@@ -203,6 +203,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
     implements(IModelAction)
 
+    _label = None
+    _desc = None
     _category = ActionCategory.command
     _is_idempotent = False
     _result_info = None

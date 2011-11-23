@@ -231,10 +231,6 @@ class Agency(agency.Agency):
             return AgencyRoles.slave
         return AgencyRoles.unknown
 
-    def locate_master(self):
-        return (self.get_hostname(), self.config["gateway"]["port"],
-                self._broker.state != BrokerRole.master)
-
     def locate_agency(self, agency_id):
 
         def pack_result(port, remote):

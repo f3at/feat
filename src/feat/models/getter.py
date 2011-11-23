@@ -29,14 +29,20 @@ This module defines a set of "effects" defining ways of retrieving values:
 """
 
 from feat.common import defer
+from feat.models import reference
 
 
 def local_ref(*parts):
     """
     Create a reference builder with specified base location.
-    using getter.local_ref("some", "base") to get a value named
-    "toto" with gives model.Localreverence("some", "base", "toto")
+    using getter.local_ref("some", "base") to get a value with key
+    "toto" will gives reference.Local("some", "base", "toto")
     """
+
+    def getter(_value, context, **_params):
+        return reference.Local(*(parts + (context["key"], )))
+
+    return getter
 
 
 def source_get(method_name):

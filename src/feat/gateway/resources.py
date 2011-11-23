@@ -48,6 +48,20 @@ class Context(object):
         self.models = tuple(models)
         self.remaining = tuple(remaining)
 
+    ### public ###
+
+    def get_action_method(self, action):
+        if not action.is_idempotent:
+            return http.Methods.POST
+        if action.category is ActionCategory.retrieve:
+            return http.Methods.GET
+        if action.category is ActionCategory.delete:
+            return http.Methods.DELETE
+        if action.category in (ActionCategory.create,
+                                 ActionCategory.update):
+            return http.Methods.PUT
+        return http.Methods.POST
+
     ### IContext ###
 
     def make_action_address(self, action):
@@ -57,9 +71,8 @@ class Context(object):
         if action.name in self.default_actions:
             return self.make_model_address(self.names)
 
-        new_name = self.names[-1] + u"." + action.name
-        location = self.names[:-1] + (new_name, )
-        return self.make_model_address(location)
+        action_ident = "_" + action.name
+        return self.make_model_address(self.names + (action_ident, ))
 
     def make_model_address(self, location):
         host, port = location[0]
@@ -97,6 +110,14 @@ class ModelResource(webserver.BaseResource):
         self._name_history = list(names) + [name]
         self._methods = set([]) # set([http.Methods])
 
+    def __repr__(self):
+        return "<%s %s '%s'>" % (type(self).__name__,
+                                 self.model.identity,
+                                 self.model.name)
+
+    def __str__(self):
+        return repr(self)
+
     def initiate(self):
         """
         Initiate the resource retrieving all the asynchronous
@@ -125,40 +146,74 @@ class ModelResource(webserver.BaseResource):
 
     def locate_resource(self, request, location, remaining):
 
-        def retrieve_model(item):
+        def locate_model(model_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_model, model_name)
+            d.addCallback(check_model)
+            d.addCallback(wrap_model)
+            return d
+
+        def locate_action(action_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_action, action_name)
+            d.addCallback(wrap_action)
+            return d
+
+        def locate_default_action(model_name, action_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_model, model_name)
+            d.addCallback(check_model)
+            d.addCallback(retrieve_action, action_name)
+            d.addCallback(wrap_action, fallback=True)
+            return d
+
+        def retrieve_model(model, model_name):
+            d = model.fetch_item(model_name)
+            d.addCallback(got_model_item)
+            return d
+
+        def got_model_item(item):
             if item is None:
-                return None
+                raise http.NotFoundError()
+
             if remaining:
                 return item.browse()
+
             return item.fetch()
 
-        def got_model(model, action_name, is_default):
+        def check_model(model):
             if model is None:
-                # Document not found
-                return None
+                raise http.NotFoundError()
 
             if IReference.providedBy(model):
-                context = Context(request.scheme, self._model_history,
-                                  self._name_history, remaining[1:])
+                context = Context(request.scheme,
+                                  self._model_history,
+                                  self._name_history,
+                                  remaining[1:])
                 address = model.resolve(context)
                 raise http.MovedPermanently(location=address)
 
-            if not action_name:
-                res = ModelResource(model, model.name,
-                                    self._model_history, self._name_history)
-                return res.initiate(), remaining[1:]
+            return model
 
+        def wrap_model(model):
+            if model is None:
+                raise http.NotFoundError()
+
+            res = ModelResource(model, model.name,
+                                self._model_history, self._name_history)
+            return res.initiate(), remaining[1:]
+
+        def retrieve_action(model, action_name):
             d = model.fetch_action(action_name)
-            d.addCallback(got_action, model, is_default)
+            d.addCallback(lambda a: (model, a))
             return d
 
-        def got_action(action, model, is_default):
+        def wrap_action(model_action, fallback=False):
+            model, action = model_action
             if action is None:
-                if not is_default:
-                    return None
-                res = ModelResource(model, model.name,
-                                    self._model_history, self._name_history)
-                return res.initiate(), remaining[1:]
+                if fallback:
+                    return wrap_model(model)
+                raise http.NotFoundError()
 
             context = Context(request.scheme,
                               self._model_history,
@@ -168,26 +223,15 @@ class ModelResource(webserver.BaseResource):
         if not remaining or (remaining == (u'', )):
             return self
 
-        action_name = None
-        is_default = False
-        model_name = remaining[0]
+        resource_name = remaining[0]
 
         if len(remaining) == 1:
-            parts = model_name.rsplit('.', 1)
-            if len(parts) > 1:
-                model_name, action_name = parts
-            else:
-                action_name = self.method_actions.get(request.method)
-                is_default = True
-        else:
-            if "." in model_name:
-                # "." only allowed in leafs
-                return None
+            if resource_name.startswith('_'):
+                return locate_action(resource_name[1:])
+            action_name = self.method_actions.get(request.method)
+            return locate_default_action(resource_name, action_name)
 
-        d = self.model.fetch_item(model_name)
-        d.addCallback(retrieve_model)
-        d.addCallback(got_model, action_name, is_default)
-        return d
+        return locate_model(resource_name)
 
     def action_GET(self, request, response, location):
         response.set_header("Cache-Control", "no-store")
