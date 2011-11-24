@@ -56,7 +56,7 @@ class TestHTMLMarkup(common.TestCase):
                          '\'http://www.w3.org/TR/html4/strict.dtd\'>\n'
                          '<html><head><title>Some Title</title></head>'
                          '<body><ul class="test">'
-                         '<li><br><div /></li></ul></body></html>')
+                         '<li><br><div></div></li></ul></body></html>')
 
         # ensure there is only one html, herad and body tag
         self.assertTrue(d.html is d.html)
@@ -76,7 +76,8 @@ class TestHTMLMarkup(common.TestCase):
                          '\'http://www.w3.org/TR/html4/strict.dtd\'>\n'
                          '<html><head><title>Some Title</title></head>'
                          '<body><ul class="test">'
-                         '<li><br><div /></li></ul><div /></body></html>')
+                         '<li><br><div></div></li></ul>'
+                         '<div></div></body></html>')
 
         self.assertRaises(html.DeprecatedElement, t.__getattr__, "font")
         self.assertRaises(html.DeprecatedElement, t.__getattr__, "FONT")
@@ -106,7 +107,7 @@ class TestHTMLMarkup(common.TestCase):
                          '\'http://www.w3.org/TR/html4/loose.dtd\'>\n'
                          '<html><head><title>Some Title</title></head>'
                          '<body><ul class="test">'
-                         '<li><BR><font /></li></ul></body></html>')
+                         '<li><BR><font></font></li></ul></body></html>')
 
         # ensure there is only one html, herad and body tag
         self.assertTrue(d.html is d.html)
@@ -126,7 +127,8 @@ class TestHTMLMarkup(common.TestCase):
                          '\'http://www.w3.org/TR/html4/loose.dtd\'>\n'
                          '<html><head><title>Some Title</title></head>'
                          '<body><ul class="test">'
-                         '<li><BR><font /></li></ul><div /></body></html>')
+                         '<li><BR><font></font></li></ul>'
+                         '<div></div></body></html>')
 
         self.assertRaises(html.InvalidElement, t.__getattr__, "spam")
         self.assertRaises(html.InvalidElement, t.__getattr__, "SPAM")

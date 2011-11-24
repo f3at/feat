@@ -48,8 +48,11 @@ class BasePolicy(object):
     def is_leaf(self, tag):
         return False
 
-    def is_self_closing(self, tag):
+    def needs_no_closing(self, tag):
         return False
+
+    def is_self_closing(self, tag):
+        return True
 
     def adapt_attr(self, attr):
         return attr.lower()
@@ -218,6 +221,10 @@ class Element(object):
         return self._policy.is_leaf(self._tag)
 
     @property
+    def needs_no_closing(self):
+        return self._policy.needs_no_closing(self._tag)
+
+    @property
     def is_self_closing(self):
         return self._policy.is_self_closing(self._tag)
 
@@ -279,14 +286,18 @@ class Element(object):
 
             return doc
 
-        def close_tag(doc):
+        def close_tag(doc, name):
             if self.is_leaf:
-                if self.is_self_closing:
+                if self.needs_no_closing:
                     doc.write(">")
+                elif not self.is_self_closing:
+                    doc.writelines(["></", name, ">"])
                 else:
                     doc.write(" />")
             elif self.content:
                 doc.write(">")
+            elif not self.is_self_closing:
+                doc.writelines(["></", name, ">"])
             else:
                 doc.write(" />")
             return doc
@@ -302,7 +313,7 @@ class Element(object):
         keys.sort()
         for name in keys:
             d.addCallback(start_attr, name, self._attrs[name])
-        d.addCallback(close_tag)
+        d.addCallback(close_tag, self._tag)
         if self._content:
             d.addCallback(self.content.render)
             d.addCallback(close_element, self._tag)

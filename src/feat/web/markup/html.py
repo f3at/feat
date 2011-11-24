@@ -97,6 +97,9 @@ class BasePolicy(base.BasePolicy):
         return tag.lower() in self.leaf_tags
 
     def is_self_closing(self, tag):
+        return False
+
+    def needs_no_closing(self, tag):
         return tag.lower() in self.leaf_tags
 
     def adapt_attr(self, attr):

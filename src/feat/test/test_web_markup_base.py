@@ -34,10 +34,13 @@ from feat.web.markup.interface import *
 class TestPolicy(base.BasePolicy):
 
     def is_leaf(self, tag):
-        return tag == "leaf" or tag == "self_closing"
+        return tag in ("leaf", "no_closing", "require_closing_leaf")
+
+    def needs_no_closing(self, tag):
+        return tag == "no_closing"
 
     def is_self_closing(self, tag):
-        return tag == "self_closing"
+        return tag not in ("require_closing_node", "require_closing_leaf")
 
     def resolve_attr_error(self, failure):
         return "%s: %s" % (failure.type.__name__, failure.getErrorMessage())
@@ -162,7 +165,8 @@ class TestBaseMarkup(common.TestCase):
         self.assertTrue(IElement.providedBy(e))
         self.assertTrue(IElementContent.providedBy(e.content))
         self.assertFalse(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
+        self.assertFalse(e.needs_no_closing)
+        self.assertTrue(e.is_self_closing)
         self.assertEqual(e.tag, "a")
         self.assertEqual(len(e), 2)
         self.assertTrue("a" in e)
@@ -191,12 +195,14 @@ class TestBaseMarkup(common.TestCase):
         self.assertTrue(IElementContent.providedBy(c))
         e = c.element
         self.assertFalse(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
+        self.assertFalse(e.needs_no_closing)
+        self.assertTrue(e.is_self_closing)
         self.assertTrue(IElement.providedBy(e))
 
         e = tag.leaf(attr=1)
         self.assertTrue(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
+        self.assertFalse(e.needs_no_closing)
+        self.assertTrue(e.is_self_closing)
         self.assertTrue(IElement.providedBy(e))
         self.assertRaises(MarkupError, getattr, e, "content")
 
@@ -219,29 +225,57 @@ class TestBaseMarkup(common.TestCase):
                               e.as_string())
 
     @defer.inlineCallbacks
+    def testNoClosing(self):
+        policy = TestPolicy()
+        tag = base.ElementBuilder(policy)
+
+        e = tag.no_closing()
+        self.assertTrue(e.is_leaf)
+        self.assertTrue(e.needs_no_closing)
+        self.assertTrue(IElement.providedBy(e))
+        self.assertRaises(MarkupError, getattr, e, "content")
+        yield self.asyncEqual('<no_closing>', e.as_string())
+
+        doc = base.Document(policy)
+        doc.root()
+        doc.no_closing()
+        doc.no_closing()
+        yield self.asyncEqual('<root><no_closing><no_closing></root>',
+                              doc.as_string())
+
+        d = lambda v: common.delay(v, 0.01)
+        e = tag.A()(tag.no_closing(),
+                    d(tag.no_closing(a=1)),
+                    d(tag.no_closing()))
+        yield self.asyncEqual('<a><no_closing><no_closing a="1">'
+                              '<no_closing></a>', e.as_string())
+
+    @defer.inlineCallbacks
     def testSelfClosing(self):
         policy = TestPolicy()
         tag = base.ElementBuilder(policy)
 
-        e = tag.self_closing()
-        self.assertTrue(e.is_leaf)
-        self.assertTrue(e.is_self_closing)
+        e = tag.require_closing_leaf()
         self.assertTrue(IElement.providedBy(e))
+        self.assertTrue(e.is_leaf)
+        self.assertFalse(e.is_self_closing)
         self.assertRaises(MarkupError, getattr, e, "content")
+        yield self.asyncEqual("<require_closing_leaf></require_closing_leaf>",
+                              e.as_string())
 
-        doc = base.Document(policy)
-        doc.root()
-        doc.self_closing()
-        doc.self_closing()
-        yield self.asyncEqual('<root><self_closing><self_closing></root>',
-                              doc.as_string())
-
-        d = lambda v: common.delay(v, 0.01)
-        e = tag.A()(tag.self_closing(),
-                    d(tag.self_closing(a=1)),
-                    d(tag.self_closing()))
-        yield self.asyncEqual('<a><self_closing><self_closing a="1">'
-                              '<self_closing></a>', e.as_string())
+        e = tag.require_closing_node()
+        self.assertTrue(IElementContent.providedBy(e))
+        e = e.element
+        self.assertTrue(IElement.providedBy(e))
+        self.assertFalse(e.is_leaf)
+        self.assertFalse(e.is_self_closing)
+        self.assertTrue(IElementContent.providedBy(e.content))
+        yield self.asyncEqual("<require_closing_node></require_closing_node>",
+                              e.as_string())
+        e.content.append("XXX")
+        yield self.asyncEqual("<require_closing_node>XXX"
+                              "</require_closing_node>",
+                              e.as_string())
 
     @defer.inlineCallbacks
     def testElementContent(self):
