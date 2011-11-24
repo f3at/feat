@@ -31,6 +31,7 @@ from feat.common import log, enum, defer, first, error, manhole, time
 from feat.agencies import common
 
 from feat.interface.agent import AgencyAgentState
+from feat.agencies.agency import AgencyAgent
 
 DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
 
@@ -305,8 +306,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return d
 
     def append_slave(self, broker, slave_id, slave, standalone):
-        self.slaves[slave_id] = SlaveReference(broker, slave_id, slave,
-                                               standalone)
+        self.slaves[slave_id] = SlaveReference(broker, slave_id,
+                                               slave, standalone)
 
     def remove_slave(self, slave_id):
 
@@ -415,6 +416,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     @manhole.expose()
     @defer.inlineCallbacks
     def find_agent(self, agent_id):
+        #FIXME: find_agent() is broken when a slave
+        #       lookup an agent from another slave.
         self._ensure_connected()
         if self.is_master():
             # look locally
@@ -426,9 +429,15 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                 if agent_id in slave.agents:
                     defer.returnValue(slave.agents[agent_id])
             # give up
-            return
+            defer.returnValue(None)
         elif self.is_slave():
+            #FIXME: something's broken or incosistent in the whole find_agent
+            #       breaking f.t.i.test_agencies_net_agency
             res = yield self._master.callRemote('find_agent', agent_id)
+            if isinstance(res, pb.RemoteReference):
+                defer.returnValue(AgentReference(res, agent_id))
+            if isinstance(res.reference, AgencyAgent):
+                defer.returnValue(res.reference)
             defer.returnValue(res)
 
     @manhole.expose()
@@ -451,11 +460,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def iter_agency_ids(self):
         self._ensure_connected()
         if self.is_master():
-            res = [self.agency.agency_id] + self.slaves.keys()
-            return res.__iter__()
+            return iter([self.agency.agency_id] + self.slaves.keys())
         elif self.is_slave():
-            res = [self.agency.agency_id]
-            return res.__iter__()
+            return iter([self.agency.agency_id])
 
     def register_agent(self, medium):
         if self.is_slave():

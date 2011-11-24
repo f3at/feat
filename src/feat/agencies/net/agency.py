@@ -466,9 +466,9 @@ class Agency(agency.Agency):
             host = self.get_hostname()
             port = self.gateway_port
             defer.returnValue((host, port, False, ))
-        elif isinstance(found, pb.RemoteReference):
+        elif isinstance(found, broker.AgentReference):
             host = self.get_hostname()
-            port = yield found.callRemote('get_gateway_port')
+            port = yield found.reference.callRemote('get_gateway_port')
             defer.returnValue((host, port, True, ))
         else: # None
             db = self._database.get_connection()
