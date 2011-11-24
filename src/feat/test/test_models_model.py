@@ -146,10 +146,11 @@ class TestModel(model.Model):
                 model="dummy-model2", label="Child 2")
     model.child("child3", getter.source_attr("child"),
                 model=DummyModel3, desc="Third child")
-    model.delegate("view1", "test-view", getter.source_get("get_view"))
-    model.delegate("view2", "test-view", getter.source_get("get_view"),
-                   label="View 2", desc="Second view")
-    model.delegate("view3", "test-view")
+    model.child("view1", view=getter.source_get("get_view"),
+                model="test-view")
+    model.child("view2", view=getter.source_get("get_view"),
+                model="test-view", label="View 2", desc="Second view")
+    model.child("view3", model="test-view")
     model.collection("values",
                      child_names=call.source_call("iter_names"),
                      child_source=getter.source_get("get_value"),
@@ -188,7 +189,8 @@ class TestModelMeta(model.Model):
     model.child("child3", meta=[("spam", "tomatoes", "SPAM"),
                                 ("spam", "egg")])
 
-    model.delegate("view", "test-model-meta", meta=[("spam", "foo1", "FOO")])
+    model.child("view", model="test-model-meta",
+                meta=[("spam", "foo1", "FOO")])
     model.attribute("attr", value.String(),
                     meta=[("spam", "foo2", "FOO")])
     model.collection("collection",

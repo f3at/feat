@@ -259,10 +259,13 @@ class ModelResource(webserver.BaseResource):
 
         d = self.model.fetch_action(action_name)
         d.addCallback(got_action)
+        d.addErrback(defer.trace, "E"*10+" Model's action rendering error")
         return d
 
     def render_model(self, request, response, context):
-        return response.write_object(self.model, context=context)
+        d = response.write_object(self.model, context=context)
+        d.addErrback(defer.trace, "E"*10+"Model rendering error")
+        return d
 
     def render_error(self, request, response, error):
         response.force_mime_type("text/plain")
@@ -323,6 +326,7 @@ class ActionResource(webserver.BaseResource):
                     self._context.models[-1].name, params)
         d = self._action.perform(**params)
         d.addCallback(got_data)
+        d.addErrback(defer.trace, "E"*10+" Action rendering error")
         return d
 
     def render_error(self, request, response, error):

@@ -102,18 +102,24 @@ def attribute(name, value, getter=None, setter=None,
               label=label, desc=desc, meta=meta)
 
 
-def child(name, getter=None, model=None, label=None, desc=None, meta=None):
+def child(name, source=None, view=None, model=None,
+          enabled=None, label=None, desc=None, meta=None):
     """
     Annotate a sub-model to the one being defined.
     @param name: item name unique for the model being defined.
     @type name: str or unicode
-    @param getter: an effect to retrieve the sub-model source
+    @param source: an effect to retrieve the sub-model source
                    or None to use the same source;
                    see feat.models.call for effect information.
-    @type getter: callable or None
-    @param model: the model identity or model factory to use,
+    @type source: callable or None
+    @param view: view value or an effect to retrieve it;
+                 see feat.models.call for effect information.
+    @type view: callable or object()
+    @param model: the model identity, model factory or effect to get it,
                   or None to use IModel adapter.
-    @type model: str or unicode or IModelFactory or None
+    @type model: str or unicode or callable or IModelFactory or None
+    @param enabled: an effect defining if the model is enabled
+    @type enabled: bool or callable
     @param label: the sub-model label or None.
     @type label: str or unicode or None
     @parama desc: the description of the sub-model or None if not documented.
@@ -121,31 +127,8 @@ def child(name, getter=None, model=None, label=None, desc=None, meta=None):
     @param meta: model item metadata atoms.
     @type meta: list of tuple
     """
-    _annotate("child", name, getter=getter, model=model,
-              label=label, desc=desc, meta=meta)
-
-
-def delegate(name, model, value=None, label=None, desc=None, meta=None):
-    """
-    Annotate a view to be delegated.
-    A view is another model with the same source
-    and a view value retrieved from the specifed getter.
-    @param name: item name unique for the model being defined.
-    @type name: str or unicode
-    @param model: the model identity or model factory to use.
-    @type model: str or unicode or IModelFactory or None
-    @param value: view value or an effect to retrieve it;
-                  see feat.models.call for effect information.
-    @type value: callable or object()
-    @param label: the sub-model label or None.
-    @type label: str or unicode or None
-    @parama desc: the description of the sub-model or None if not documented.
-    @type desc: str or unicode or None
-    @param meta: model item metadata atoms.
-    @type meta: list of tuple
-    """
-    _annotate("delegate", name, model=model, value=value,
-              label=label, desc=desc, meta=meta)
+    _annotate("child", name, source=source, view=view, model=model,
+              enabled=enabled, label=label, desc=desc, meta=meta)
 
 
 def reference(*args, **kwargs):
@@ -201,9 +184,9 @@ def collection(name, child_source=None, child_names=None, child_model=None,
     @param child_names: an effect that retrieve all sub-models names or
                         None if sub-models are not iterable.
     @type child_source: callable
-    @param child_model: the model identity or model factory to use for
-                        sub-models, or None to use IModel adapter.
-    @type child_model: str or unicode or IModelFactory or None
+    @param child_model: the model identity, model factory or effect to get it,
+                        or None to use IModel adapter.
+    @type child_model: str or unicode or callable or IModelFactory or None
     @param child_label: the model items label or None.
     @type child_label: str or unicode or None
     @param child_desc: the model items description or None.
@@ -229,9 +212,9 @@ def collection(name, child_source=None, child_names=None, child_model=None,
 def child_model(model_factory):
     """
     Annotate the effect used to retrieve the model's children names.
-    @param model: the model identity or model factory to use.
-                  If not set IModel adption will be used.
-    @type model: str or unicode or IModelFactory
+    @param model: the child's model identity, model factory or effect
+                  to get it, or None to use IModel adapter.
+    @type model: str or unicode or callable or IModelFactory or None
     """
     _annotate("child_model", model_factory)
 
@@ -604,21 +587,12 @@ class StaticChildrenMixin(object):
         cls._model_items[item_name].annotate_meta(name, value, scheme=scheme)
 
     @classmethod
-    def annotate_child(cls, name, getter, model=None,
-                       label=None, desc=None, meta=None):
+    def annotate_child(cls, name, source=None, view=None, model=None,
+                       enabled=None, label=None, desc=None, meta=None):
         """@see: feat.models.model.child"""
         name = _validate_str(name)
-        item = MetaModelItem.new(name, fetcher=getter, browser=getter,
-                                 factory=model, label=label,
-                                 desc=desc, meta=meta)
-        cls._model_items[name] = item
-
-    @classmethod
-    def annotate_delegate(cls, name, model=None, value=None,
-                      label=None, desc=None, meta=None):
-        """@see: feat.models.model.delegate"""
-        name = _validate_str(name)
-        item = MetaModelItem.new(name, factory=model, view=value,
+        item = MetaModelItem.new(name, fetcher=source, browser=source,
+                                 view=view, model=model, enabled=enabled,
                                  label=label, desc=desc, meta=meta)
         cls._model_items[name] = item
 
@@ -632,9 +606,8 @@ class StaticChildrenMixin(object):
         attr_cls = attribute.MetaAttribute.new(attr_ident, value_info,
                                                getter=getter, setter=setter,
                                                meta=model_meta)
-        item = MetaModelItem.new(name, factory=attr_cls,
+        item = MetaModelItem.new(name, model=attr_cls,
                                  label=label, desc=desc, meta=meta)
-        item.annotate_meta('inline', True)
         if meta:
             for decl in meta:
                 item.annotate_meta(*decl)
@@ -656,7 +629,7 @@ class StaticChildrenMixin(object):
                                       child_desc=child_desc,
                                       child_meta=child_meta,
                                       meta=model_meta)
-        item = MetaModelItem.new(name, factory=coll_cls,
+        item = MetaModelItem.new(name, model=coll_cls,
                                  label=label, desc=desc, meta=meta)
         cls._model_items[name] = item
 
@@ -849,15 +822,30 @@ class BaseModelItem(models_meta.Metadata):
         if IReference.providedBy(source):
             return source
 
+        if IModel.providedBy(source):
+            return self._init_model(source, view)
+
+        if not IModelFactory.providedBy(model_factory):
+            if callable(model_factory):
+                ctx = self.model.make_context(key=self.name, view=view)
+                d = model_factory(source, ctx)
+                d.addCallback(self._got_model_factory, source, view)
+                return d
+
+        return self._got_model_factory(model_factory, source, view)
+
+    def _got_model_factory(self, model_factory, source, view):
         model = source
-        if not IModel.providedBy(source):
-            factory = None
-            if IModelFactory.providedBy(model_factory):
-                factory = IModelFactory(model_factory)
-            elif isinstance(model_factory, str):
-                factory = get_factory(model_factory)
-            if factory is not None:
-                model = factory(source)
+        factory = None
+        if IModelFactory.providedBy(model_factory):
+            factory = IModelFactory(model_factory)
+        elif isinstance(model_factory, str):
+            factory = get_factory(model_factory)
+        if factory is not None:
+            model = factory(source)
+        return self._init_model(model, view)
+
+    def _init_model(self, model, view):
         return IModel(model).initiate(aspect=self.aspect,
                                       view=view, parent=self.model)
 
@@ -868,20 +856,21 @@ class MetaModelItem(type(BaseModelItem)):
 
     @staticmethod
     def new(name, fetcher=None, browser=None,
-            factory=None, view=None,
+            view=None, model=None, enabled=None,
             label=None, desc=None, meta=None):
-
         cls_name = utils.mk_class_name(name, "ModelItem")
         name = _validate_str(name)
         ref = models_reference.Relative(name)
+        enabled = True if enabled is None else enabled
         cls = MetaModelItem(cls_name, (ModelItem, ),
                              {"__slots__": (),
                               "_name": name,
                               "_reference": ref,
                               "_fetcher": _validate_effect(fetcher),
                               "_browser": _validate_effect(browser),
-                              "_factory": _validate_model_factory(factory),
+                              "_factory": _validate_model_factory(model),
                               "_view": _validate_effect(view),
+                              "_enabled": _validate_effect(enabled),
                               "_label": _validate_optstr(label),
                               "_desc": _validate_optstr(desc)})
         cls.apply_class_meta(meta)
@@ -914,6 +903,7 @@ class ModelItem(BaseModelItem):
     _fetcher = None
     _browser = None
     _view = None
+    _enabled = True
     _factory = None
     _label = None
     _desc = None
@@ -926,7 +916,12 @@ class ModelItem(BaseModelItem):
     def initiate(self):
         """If the returned deferred is fired with None,
         the item will be disabled as if did not exists."""
-        return defer.succeed(self)
+        if not callable(self._enabled):
+            d = defer.succeed(self._enabled)
+        else:
+            context = self.model.make_context(key=self.name)
+            d = self._enabled(None, context)
+        return d.addCallback(lambda f: self if f else None)
 
     ### overridden ###
 
@@ -1288,10 +1283,13 @@ def _validate_optstr(value):
 
 
 def _validate_model_factory(factory):
-    if factory is not None:
-        if not isinstance(factory, str):
-            return IModelFactory(factory)
-    return factory
+    if (factory is None
+        or isinstance(factory, str)
+        or IModelFactory.providedBy(factory)):
+        return factory
+    if callable(factory):
+        return staticmethod(factory)
+    return IModelFactory(factory)
 
 
 def _validate_action_factory(factory):

@@ -5,8 +5,8 @@ from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
-from feat.models.interface import (IModel, IMetadata, ActionCategory,
-                                   ValueTypes, IReference)
+from feat.models.interface import (ActionCategory, IModel, IAttribute,
+                                   IMetadata, ValueTypes, IReference)
 
 
 MIME_TYPE = "text/html"
@@ -55,6 +55,20 @@ class Layout(html.Document):
         return res
 
 
+def parse_meta(meta_items):
+    return [i.strip() for i in meta_items.value.split(",")]
+
+
+def is_array(meta):
+    if not IMetadata.providedBy(meta):
+        return False
+    meta = (parse_meta(i) for i in meta.get_meta('html-render'))
+    for fields in meta:
+        if fields[0] == "array":
+            return int(fields[1])
+    return None
+
+
 class HTMLWriter(log.Logger):
     implements(document.IWriter)
 
@@ -79,10 +93,10 @@ class HTMLWriter(log.Logger):
         if not items:
             return
 
-        if IMetadata.providedBy(model) and model.get_meta('render_array'):
-            limit = int(model.get_meta('render_array')[0].value)
+        array_deepness = is_array(model)
+        if array_deepness:
             markup.div(_class='array')(
-                self._render_array(model, limit, context)).close()
+                self._render_array(model, array_deepness, context)).close()
         else:
             ul = markup.ul(_class="items")
             for item in items:
@@ -92,23 +106,24 @@ class HTMLWriter(log.Logger):
                 markup.span(_class='name')(
                     html.tags.a(href=url)(item.label or item.name)).close()
 
-                if IMetadata.providedBy(item):
-                    if item.get_meta('inline'):
-                        li.append(self._format_attribute(item, context))
-                    else:
-                        markup.span(_class="value")(" ").close()
+                #FIXME: shouldn't need to fetch the model for that
+                m = yield item.fetch()
+                if IAttribute.providedBy(m):
+                    li.append(self._format_attribute(item, context))
+                else:
+                    markup.span(_class="value")(" ").close()
 
                 if item.desc:
                     markup.span(_class='desc')(item.desc).close()
 
-                if IMetadata.providedBy(item):
-                    if item.get_meta('render_array'):
+                array_deepness = is_array(item)
+                if array_deepness:
                         submodel = yield item.fetch()
                         if IModel.providedBy(submodel):
-                            limit = int(item.get_meta('render_array')[0].value)
-                            markup.div(_class='array')(
-                                self._render_array(
-                                    submodel, limit, context)).close()
+                            array = self._render_array(submodel,
+                                                       array_deepness,
+                                                       context)
+                            markup.div(_class='array')(array).close()
                 li.close()
             ul.close()
         markup.hr()
@@ -116,13 +131,13 @@ class HTMLWriter(log.Logger):
     @defer.inlineCallbacks
     def _render_actions(self, model, markup, context):
         actions = yield model.fetch_actions()
+        actions = [x for x in actions
+                   if x.category != ActionCategory.retrieve]
         if not actions:
             return
         markup.h3()('List of model actions.').close()
         actions = []
         for action in actions:
-            if action.category == ActionCategory.retrieve:
-                continue
             li = markup.li()
             markup.span(_class='name')(action.name).close()
             self._render_action_form(action, markup, context)
@@ -171,9 +186,6 @@ class HTMLWriter(log.Logger):
 
     @defer.inlineCallbacks
     def _format_attribute(self, item, context):
-        if not item.get_meta('inline'):
-            raise ValueError("_format_attribute() called for something which"
-                             "doesn't render inline: %r", item)
         model = yield item.fetch()
         if not IModel.providedBy(model):
             defer.returnValue("")
@@ -238,8 +250,9 @@ class HTMLWriter(log.Logger):
         # [dict of attributes added by this level, list of child rows]
         tree.append([dict(), list()])
         for item in items:
-            is_array = IMetadata.providedBy(item) and \
-                       not item.get_meta('inline')
+            #FIXME: should not need to fetch model for this
+            m = yield item.fetch()
+            is_array = not IAttribute.providedBy(m)
             if is_array:
                 if limit > 0:
                     submodel = yield item.fetch()

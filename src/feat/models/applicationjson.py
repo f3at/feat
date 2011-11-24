@@ -79,7 +79,7 @@ def render_item(item, context):
     metadata = yield render_metadata(item)
     if metadata:
         result["metadata"] = metadata
-    result["url"] = item.reference.resolve(context)
+    result["href"] = item.reference.resolve(context)
     defer.returnValue(result)
 
 
@@ -101,7 +101,7 @@ def render_action(action, context):
     params = render_params(action.parameters)
     if params:
         result["params"] = params
-    result["url"] = action.reference.resolve(context)
+    result["href"] = action.reference.resolve(context)
     defer.returnValue(result)
 
 
@@ -121,7 +121,10 @@ def render_value(value):
         coll = IValueCollection(value)
         result["allowed"] = [render_value(v) for v in coll.allowed_types]
         result["ordered"] = coll.is_ordered
-        result["multiple"] = coll.allow_multiple
+        if coll.min_size is not None:
+            result["min_size"] = coll.min_size
+        if coll.max_size is not None:
+            result["max_size"] = coll.max_size
     if IValueRange.providedBy(value):
         vrange = IValueRange(value)
         result["minimum"] = vrange.minimum

@@ -740,7 +740,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         for x in state.definitions.itervalues():
             alloc = self._get_allocated(x.name)
             modif = self._get_modified(x.name)
-            resp[x.name] = (x.get_total(), x.reduce(alloc), x.reduce(modif))
+            resp[x.name] = (x.type_name, x.get_total(),
+                            x.reduce(alloc), x.reduce(modif))
         return resp
 
     ### methods used by tests ###

@@ -158,8 +158,8 @@ class NodeModel(model.Model):
     model.identity('node-model')
     model.collection('locations', getter.source_get('get_child'),
                      call.source_call('iter_child_names'),
-                     meta=[('render_array', 3)],
-                     model_meta=[('render_array', 3)],
+                     meta=[('html-render', 'array, 3')],
+                     model_meta=[('html-render', 'array, 3')],
                      desc="Locations or whatever",
                      label='locations')
 

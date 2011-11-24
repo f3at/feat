@@ -174,8 +174,8 @@ class IValueCollection(IValueInfo):
 
     allowed_types = Attribute("Allowed sub types. @type: list of IValueInfo")
     is_ordered = Attribute("If the list order is important. @type: bool")
-    allow_multiple = Attribute("If the same value is allowed multiple times. "
-                               "@type: bool")
+    min_size = Attribute("Minimum size of the collection. @type: int")
+    max_size = Attribute("Maximum size of the collection. @type: int")
 
 
 class IValueRange(IValueInfo):
