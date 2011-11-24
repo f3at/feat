@@ -25,7 +25,7 @@ import signal
 
 from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import resource, agent as base_agent
-from feat.common import time, adapter
+from feat.common import time, adapter, defer
 from feat.models import model, action, value, reference, attribute
 from feat.models import call, getter, setter
 
@@ -54,6 +54,8 @@ class Root(model.Model):
                 # fetch_filter=getter.model_get("_redirect_to_master"),
                 label="Agents", desc="Agents running on this host.")
 
+    model.meta("html-order", "agencies, agents")
+
     ### custom ###
 
     def _redirect_to_master(self, name):
@@ -75,7 +77,6 @@ class Agencies(model.Collection):
     model.child_model("feat.agency")
     model.child_names(call.source_call("iter_agency_ids"))
     model.child_source(getter.model_get("_fetch_agency"))
-    model.meta("html-render", "array, 2")
 
 #    model.delete("full_shutdown",
 #                 effect.delay(effect.source_call("full_shutdown",
@@ -84,6 +85,9 @@ class Agencies(model.Collection):
 #                 default=True,
 #                 label="Full Shutdown",
 #                 desc="Shutdown cleanly all agency processes.")
+
+#FIXME: this is not working as expected, some entries are lost
+#    model.meta("html-render", "array, 1")
 
     ### custom ###
 
@@ -98,8 +102,7 @@ class Agencies(model.Collection):
                 return self.source
             return reference.Absolute((host, port), "agencies", name)
 
-        d = self.source.locate_agency(name)
-        return d.addCallback(agency_located)
+        return self.source.locate_agency(name)
 
 
 class Agency(model.Model):
@@ -107,7 +110,6 @@ class Agency(model.Model):
 
     model.attribute("id", value.String(),
                     getter.source_attr("agency_id"),
-                    meta=[('link_owner', True)],
                     label="Identifier", desc="Agency unique identifier")
     model.attribute("role", value.Enum(AgencyRoles),
                     getter.source_attr("role"),
@@ -123,8 +125,6 @@ class Agency(model.Model):
                 label="Agency's Agents",
                 desc="Agents running on this agency.")
 
-    model.item_meta("agents", "html-render", "array, 2")
-
 #    model.delete("shutdown", effect.model_call("_shutdown"),
 #                 label="Shutdown", desc="Shutdown the agency and its agents")
 #    model.delete("terminate", effect.model_call("_terminate"), default=True,
@@ -132,6 +132,9 @@ class Agency(model.Model):
 #    model.delete("kill", effect.model_call("_kill"),
 #                 label="Kill", desc="Violently kill the agency process")
 #
+
+    model.meta("html-order", "id, role, log_filter, agents")
+    model.item_meta("id", "html-link", "owner")
 
     ### custom ###
 
@@ -210,14 +213,16 @@ class RemoteAgent(model.Model):
 
     model.identity("feat.remote_agent")
     model.attribute("id", value.String(), getter.source_attr('agent_id'),
-                    label="Agent id", desc="Agent's unique identifier",
-                    meta=[('link_owner', True)])
+                    label="Agent id", desc="Agent's unique identifier")
     model.attribute("status", value.Enum(AgencyAgentState),
                     getter=call.source_call("get_status"),
                     label="Status", desc="Agent current status")
     model.attribute("type", value.String(),
                     getter=call.model_call("_get_agent_type"),
                     label="Agent type", desc="Agent type")
+
+    model.meta("html-order", "type, id, status")
+    model.item_meta("id", "html-link", "owner")
 
     ### custom ###
 
@@ -231,8 +236,7 @@ class Agent(model.Model):
     model.identity("feat.agent")
 
     model.attribute("id", value.String(), call.source_call("get_agent_id"),
-                    label="Agent id", desc="Agent's unique identifier",
-                    meta=[('link_owner', True)])
+                    label="Agent id", desc="Agent's unique identifier")
     model.attribute("instance", value.Integer(),
                     call.source_call("get_instance_id"),
                     label="Instance", desc="Agent's instance number")
@@ -254,6 +258,11 @@ class Agent(model.Model):
                 enabled=call.model_call("_has_resources"),
                 label="Resources", desc="Agent's resources.")
 
+    model.meta("html-order", "type, id, instance, status, partners, resources")
+    model.item_meta("id", "html-link", "owner")
+    model.item_meta("partners", "html-render", "array, 2")
+    model.item_meta("resources", "html-render", "array, 2")
+
     ### custom ###
 
     def _has_resources(self):
@@ -268,7 +277,8 @@ class Resources(model.Model):
                 model="feat.resource_classes",
                 label="Classes", desc="Resource classes")
 
-    model.item_meta("classes", "html-render", "array, 2")
+    model.meta("html-order", "classes")
+    model.item_meta("classes", "html-render", "array, 3")
 
 
 class ResourceClasses(model.Collection):
@@ -292,12 +302,15 @@ class ResourceClasses(model.Collection):
 class ScalarResourceClass(model.Model):
     model.identity("feat.scalar_resource")
 
+    model.attribute("name", value.String(), getter.model_attr("name"))
     model.attribute("total", value.Integer(),
                     call.view_call("__getitem__", 1))
     model.attribute("allocated", value.Integer(),
                     call.view_call("__getitem__", 2))
     model.attribute("reserved", value.Integer(),
                     call.view_call("__getitem__", 3))
+
+    model.meta("html-order", "name, total, allocated, reserved")
 
 
 class RangeTotal(value.Collection):
@@ -313,12 +326,15 @@ class RangeItems(value.Collection):
 class RangeResourceClass(model.Model):
     model.identity("feat.range_resource")
 
+    model.attribute("name", value.String(), getter.model_attr("name"))
     model.attribute("total", RangeTotal(),
                     call.view_call("__getitem__", 1))
     model.attribute("allocated", RangeItems(),
                     call.view_call("__getitem__", 2))
     model.attribute("reserved", RangeItems(),
                     call.view_call("__getitem__", 3))
+
+    model.meta("html-order", "name, total, allocated, reserved")
 
 
 class Partners(model.Collection):
@@ -359,6 +375,8 @@ class Partner(model.Model):
                 model="feat.recipient",
                 label="Recipient")
 
+    model.meta("html-order", "type, role, recipient")
+
 
 class Recipient(model.Model):
     model.identity("feat.recipient")
@@ -370,4 +388,5 @@ class Recipient(model.Model):
                     getter.source_attr("route"),
                     label="Route")
 
-    model.item_meta("key", "link_owner", True)
+    model.meta("html-order", "key, route")
+    model.item_meta("key", "html-link", "owner")

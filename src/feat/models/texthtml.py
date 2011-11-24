@@ -20,7 +20,7 @@ class Layout(html.Document):
         self.div(_class='header')(*self._render_header(context)).close()
         self.h1()(title).close()
 
-        self.div(_class='content')
+        self.content = self.div(_class='content')()
 
     def _link_static_files(self, context):
         url = self._local_url(context, 'static', 'feat.css')
@@ -36,7 +36,7 @@ class Layout(html.Document):
                                    'jquery.cseditable.js')]
         for url in scripts:
             self.head.content.append(
-                html.tags.script(src=url, type='text/javascript')(" "))
+                html.tags.script(src=url, type='text/javascript'))
 
     def _local_url(self, context, *parts):
         return reference.Local(*parts).resolve(context)
@@ -59,7 +59,14 @@ def parse_meta(meta_items):
     return [i.strip() for i in meta_items.value.split(",")]
 
 
-def is_array(meta):
+def html_order(meta):
+    if not IMetadata.providedBy(meta):
+        return []
+    meta = (parse_meta(i) for i in meta.get_meta('html-order'))
+    return [v for m in meta for v in m]
+
+
+def render_array(meta):
     if not IMetadata.providedBy(meta):
         return False
     meta = (parse_meta(i) for i in meta.get_meta('html-render'))
@@ -67,6 +74,12 @@ def is_array(meta):
         if fields[0] == "array":
             return int(fields[1])
     return None
+
+
+def html_links(meta):
+    if not IMetadata.providedBy(meta):
+        return set()
+    return set(str(m.value) for m in meta.get_meta('html-link'))
 
 
 class HTMLWriter(log.Logger):
@@ -83,9 +96,25 @@ class HTMLWriter(log.Logger):
         title = model.label or model.name
         markup = Layout(title, context)
 
-        yield self._render_items(model, markup, context)
-        yield self._render_actions(model, markup, context)
+        if IAttribute.providedBy(model):
+            attr = self._format_attribute(model, context)
+            markup.content.content.append(attr)
+        else:
+            yield self._render_items(model, markup, context)
+            yield self._render_actions(model, markup, context)
+
         yield markup.render(doc)
+
+    def _order_items(self, model, items):
+        ordered = []
+        lookup = dict((i.name, i) for i in items)
+        order = html_order(model)
+        for name in order:
+            item = lookup.pop(name, None)
+            if item is not None:
+                ordered.append(item)
+        ordered.extend(lookup.values())
+        return ordered
 
     @defer.inlineCallbacks
     def _render_items(self, model, markup, context):
@@ -93,13 +122,14 @@ class HTMLWriter(log.Logger):
         if not items:
             return
 
-        array_deepness = is_array(model)
+        array_deepness = render_array(model)
         if array_deepness:
             markup.div(_class='array')(
                 self._render_array(model, array_deepness, context)).close()
         else:
+            ordered = self._order_items(model, items)
             ul = markup.ul(_class="items")
-            for item in items:
+            for item in ordered:
                 li = markup.li()
 
                 url = item.reference.resolve(context)
@@ -109,14 +139,14 @@ class HTMLWriter(log.Logger):
                 #FIXME: shouldn't need to fetch the model for that
                 m = yield item.fetch()
                 if IAttribute.providedBy(m):
-                    li.append(self._format_attribute(item, context))
+                    li.append(self._format_attribute_item(item, context))
                 else:
-                    markup.span(_class="value")(" ").close()
+                    markup.span(_class="value").close()
 
                 if item.desc:
                     markup.span(_class='desc')(item.desc).close()
 
-                array_deepness = is_array(item)
+                array_deepness = render_array(item)
                 if array_deepness:
                         submodel = yield item.fetch()
                         if IModel.providedBy(submodel):
@@ -185,25 +215,30 @@ class HTMLWriter(log.Logger):
         markup.br()
 
     @defer.inlineCallbacks
-    def _format_attribute(self, item, context):
+    def _format_attribute_item(self, item, context):
         model = yield item.fetch()
         if not IModel.providedBy(model):
             defer.returnValue("")
+        result = yield self._format_attribute(model, context.descend(model),
+                                              context, html_links(item))
+        defer.returnValue(result)
 
+    @defer.inlineCallbacks
+    def _format_attribute(self, model, context,
+                          supercontext=None, links=set()):
         set_action = yield model.fetch_action('set')
         classes = ['value']
         extra = dict()
         if set_action:
             classes.append('inplace')
-            subcontext = context.descend(model)
-            extra['rel'] = set_action.reference.resolve(subcontext)
+            extra['rel'] = set_action.reference.resolve(context)
 
         value = ""
         get_action = yield model.fetch_action('get')
         if get_action is not None:
             value = yield get_action.perform()
-            if item.get_meta('link_owner'):
-                url = reference.Relative().resolve(context)
+            if supercontext and "owner" in links:
+                url = reference.Relative().resolve(supercontext)
                 value = html.tags.a(href=url)(value)
 
         defer.returnValue(
@@ -235,7 +270,7 @@ class HTMLWriter(log.Logger):
                 value = row.get(column)
                 if value:
                     item, cur_context = value
-                    td.append(self._format_attribute(item, cur_context))
+                    td.append(self._format_attribute_item(item, cur_context))
                 tr.append(td)
 
             tbody.append(tr)
@@ -247,13 +282,14 @@ class HTMLWriter(log.Logger):
         if IReference.providedBy(model):
             return
         items = yield model.fetch_items()
+        #FIXME: column ordering do not work
+        ordered = self._order_items(model, items)
         # [dict of attributes added by this level, list of child rows]
         tree.append([dict(), list()])
-        for item in items:
+        for item in ordered:
             #FIXME: should not need to fetch model for this
             m = yield item.fetch()
-            is_array = not IAttribute.providedBy(m)
-            if is_array:
+            if not IAttribute.providedBy(m):
                 if limit > 0:
                     submodel = yield item.fetch()
                     if IModel.providedBy(submodel):
@@ -261,9 +297,7 @@ class HTMLWriter(log.Logger):
                         yield self._build_tree(tree[-1][1], submodel,
                                                limit - 1, subcontext)
             else:
-                column_name = item.label
-                if not column_name:
-                    column_name = "%s.%s" % (model.identity, item.name, )
+                column_name = item.label or item.name
                 tree[-1][0][(column_name, limit)] = (item, context)
 
     def _flatten_tree(self, result, columns, current, tree, limit):
