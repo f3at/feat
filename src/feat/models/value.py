@@ -91,6 +91,39 @@ def options_only():
     _annotate("options_only")
 
 
+def allows(value_info):
+    """
+    Annotate an allowed value info for a collection.
+    @param value_info: an allowed value for the collection.
+    @type value_info: IValueInfo
+    """
+    _annotate("allows", value_info)
+
+
+def is_ordered(flag):
+    """Annotate a collection to be ordered.
+    @param flag: if the collection order is important.
+    @type flag: bool
+    """
+    _annotate("is_ordered", flag)
+
+
+def min_size(size):
+    """Annotate a collection minimum size.
+    @param size: the collection minimum size.
+    @type flag: int
+    """
+    _annotate("min_size", size)
+
+
+def max_size(size):
+    """Annotate a collection maximum size.
+    @param size: the collection maximum size.
+    @type flag: int
+    """
+    _annotate("max_size", size)
+
+
 def _annotate(name, *args, **kwargs):
     method_name = "annotate_" + name
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
@@ -501,7 +534,111 @@ class Enum(Value):
         return Value._add_option(self, value, label)
 
 
+class Collection(Value):
+
+    implements(IValueCollection)
+
+    _class_allowed_types = container.MroList("_mro_allowed_types")
+    _class_is_ordered = True
+    _class_min_size = None
+    _class_max_size = None
+
+    value_type(ValueTypes.collection)
+
+    ### IValueCollection ###
+
+    @property
+    def allowed_types(self):
+        return list(self._class_allowed_types)
+
+    @property
+    def is_ordered(self):
+        return self._class_is_ordered
+
+    @property
+    def min_size(self):
+        return self._class_min_size
+
+    @property
+    def max_size(self):
+        return self._class_max_size
+
+    ### overridden ###
+
+    def validate(self, value):
+        return self._convert(value, "validate")
+
+    def publish(self, value):
+        return self._convert(value, "publish")
+
+    ### annotations ###
+
+    @classmethod
+    def annotate_allows(cls, value_info):
+        """@see: feat.models.value.allows"""
+        value_info = _validate_value_info(value_info)
+        cls._class_allowed_types.append(value_info)
+
+    @classmethod
+    def annotate_is_ordered(cls, flag):
+        """@see: feat.models.value.is_ordered"""
+        cls._class_is_ordered = _validate_flag(flag)
+
+    @classmethod
+    def annotate_min_size(cls, size):
+        """@see: feat.models.value.min_size"""
+        cls._class_min_size = _validate_size(size)
+
+    @classmethod
+    def annotate_max_size(cls, size):
+        """@see: feat.models.value.max_size"""
+        cls._class_max_size = _validate_size(size)
+
+    ### private ###
+
+    def _convert(self, value, method_name):
+        if isinstance(value, (str, unicode)):
+            raise ValueError(value)
+        try:
+            all_values = list(value)
+        except TypeError:
+            raise ValueError(value)
+        result = []
+        if self._class_min_size is not None:
+            if len(all_values) < self._class_min_size:
+                raise ValueError(value)
+        if self._class_max_size is not None:
+            if len(all_values) > self._class_max_size:
+                raise ValueError(value)
+        allowed_types = list(self._class_allowed_types)
+        for v in all_values:
+            for allowed in allowed_types:
+                try:
+                    result.append(getattr(allowed, method_name)(v))
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise ValueError(value)
+        return result
+
+
 class Response(Value):
     """Definition of a model value."""
 
     value_type(ValueTypes.model)
+
+
+### private ###
+
+
+def _validate_value_info(value_info):
+    return IValueInfo(value_info)
+
+
+def _validate_size(size):
+    return int(size)
+
+
+def _validate_flag(flag):
+    return bool(flag)

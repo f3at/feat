@@ -57,7 +57,95 @@ class DummyEnum(enum.Enum):
     popo = enum.value(42, "Other Value")
 
 
+class TestCollection1(value.Collection):
+    value.allows(value.Integer())
+
+
+class TestCollection2(value.Collection):
+    value.allows(value.String())
+    value.allows(value.Boolean())
+    value.min_size(2)
+    value.max_size(4)
+
+
 class TestModelsValue(common.TestCase):
+
+    def testCollection(self):
+        v = TestCollection1()
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueCollection.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.collection)
+        self.assertFalse(v.use_default)
+
+        self.assertEqual(v.publish([]), [])
+        self.assertEqual(v.publish([1]), [1])
+        self.assertEqual(v.publish([1, 2, 3]), [1, 2, 3])
+        self.assertRaises(ValueError, v.publish, 45)
+        self.assertRaises(ValueError, v.publish, "spam")
+        self.assertRaises(ValueError, v.publish, ["spam"])
+        self.assertRaises(ValueError, v.publish, [25, "42"])
+        self.assertRaises(ValueError, v.publish, [[1, 2]])
+
+        self.assertEqual(v.validate([]), [])
+        self.assertEqual(v.validate([1]), [1])
+        self.assertEqual(v.validate([1, 2, 3]), [1, 2, 3])
+        self.assertEqual(v.validate([25, "42"]), [25, 42])
+        self.assertRaises(ValueError, v.validate, 45)
+        self.assertRaises(ValueError, v.validate, "spam")
+        self.assertRaises(ValueError, v.validate, ["spam"])
+        self.assertRaises(ValueError, v.validate, [[1, 2]])
+
+        v = TestCollection2()
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueCollection.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.collection)
+        self.assertFalse(v.use_default)
+
+        self.assertRaises(ValueError, v.publish, [])
+        self.assertRaises(ValueError, v.publish, ["spam"])
+        self.assertRaises(ValueError, v.publish, [True])
+        self.assertEqual(v.publish(["spam", "bacon"]), ["spam", "bacon"])
+        self.assertEqual(v.publish(["spam", "bacon", "sausage"]),
+                         ["spam", "bacon", "sausage"])
+        self.assertEqual(v.publish([True, False]), [True, False])
+        self.assertEqual(v.publish([True, False, True]), [True, False, True])
+        self.assertEqual(v.publish(["spam", True]), ["spam", True])
+        self.assertEqual(v.publish([True, "bacon", False, "sausage"]),
+                         [True, "bacon", False, "sausage"])
+        self.assertRaises(ValueError, v.publish, [1])
+        self.assertRaises(ValueError, v.publish, [1, 2])
+        self.assertRaises(ValueError, v.publish, [1, 2, 3])
+        self.assertRaises(ValueError, v.publish, [25, "42"])
+        self.assertRaises(ValueError, v.publish, [[True, False]])
+        self.assertRaises(ValueError, v.publish,
+                          [True, True, True, True, True])
+        self.assertRaises(ValueError, v.publish,
+                          ["a", "b", "c", "d", "e"])
+        self.assertRaises(ValueError, v.publish,
+                          ["a", True, "c", False, "e"])
+
+        self.assertRaises(ValueError, v.validate, [])
+        self.assertRaises(ValueError, v.validate, ["spam"])
+        self.assertRaises(ValueError, v.validate, [True])
+        self.assertEqual(v.validate(["spam", "bacon"]), ["spam", "bacon"])
+        self.assertEqual(v.validate(["spam", "bacon", "sausage"]),
+                         ["spam", "bacon", "sausage"])
+        self.assertEqual(v.validate([True, False]), [True, False])
+        self.assertEqual(v.validate([True, False, True]), [True, False, True])
+        self.assertEqual(v.validate(["spam", True]), ["spam", True])
+        self.assertEqual(v.validate([True, "bacon", False, "sausage"]),
+                         [True, "bacon", False, "sausage"])
+        self.assertRaises(ValueError, v.validate, [1])
+        self.assertRaises(ValueError, v.validate, [1, 2])
+        self.assertRaises(ValueError, v.validate, [1, 2, 3])
+        self.assertRaises(ValueError, v.validate, [25, "42"])
+        self.assertRaises(ValueError, v.validate, [[True, False]])
+        self.assertRaises(ValueError, v.validate,
+                          [True, True, True, True, True])
+        self.assertRaises(ValueError, v.validate,
+                          ["a", "b", "c", "d", "e"])
+        self.assertRaises(ValueError, v.validate,
+                          ["a", True, "c", False, "e"])
 
     def testBaseValue(self):
         s = value.Value()
