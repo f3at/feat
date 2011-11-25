@@ -47,6 +47,7 @@ class Root(model.Model):
     the slave agency owned models.
     """
     model.identity("feet.root")
+    model.reference(call.model_call("_get_reference"))
 
     model.child("agencies", model="feat.agencies",
                 fetch=getter.model_get("_locate_master"),
@@ -57,20 +58,26 @@ class Root(model.Model):
                 label="Agents", desc="Agents running on this host.")
 
     model.meta("html-order", "agencies, agents")
+    model.item_meta("agencies", "html-render", "array, 1")
+    model.item_meta("agents", "html-render", "array, 1")
 
     ### custom ###
 
+    def _get_reference(self):
+        d = self.source.locate_master()
+        return d.addCallback(self._master_located, None)
+
     def _locate_master(self, name):
+        d = self.source.locate_master()
+        return d.addCallback(self._master_located, self.source, name)
 
-        def master_located(result):
-            if result is None:
-                return None
-            host, port, is_remote = result
-            if not is_remote:
-                return self.source
-            return reference.Absolute((host, port), name)
-
-        return self.source.locate_master().addCallback(master_located)
+    def _master_located(self, result, default, *location):
+        if result is None:
+            return None
+        host, port, is_remote = result
+        if not is_remote:
+            return default
+        return reference.Absolute((host, port), *location)
 
 
 class Agencies(model.Collection):
@@ -292,7 +299,6 @@ class Agents(model.Collection):
 
 @adapter.register(broker.AgentReference, IModel)
 class RemoteAgent(model.Model):
-
     model.identity("feat.remote_agent")
     model.reference(getter.model_attr("_reference"))
 
@@ -324,7 +330,6 @@ class RemoteAgent(model.Model):
 
 @adapter.register(net_agency.AgencyAgent, IModel)
 class Agent(model.Model):
-
     model.identity("feat.agent")
 
     model.attribute("id", value.String(), call.source_call("get_agent_id"),
@@ -472,6 +477,7 @@ class Partner(model.Model):
 
 class Recipient(model.Model):
     model.identity("feat.recipient")
+    model.reference(call.model_call("_get_reference"))
 
     model.attribute("key", value.String(),
                     getter.source_attr("key"),
@@ -482,3 +488,8 @@ class Recipient(model.Model):
 
     model.meta("html-order", "key, route")
     model.item_meta("key", "html-link", "owner")
+
+    ### custom ###
+
+    def _get_reference(self):
+        return reference.Local("agents", self.source.key)

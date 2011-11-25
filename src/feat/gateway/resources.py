@@ -203,7 +203,6 @@ class ModelResource(webserver.BaseResource):
             address = reference.resolve(context)
             raise http.MovedPermanently(location=address)
 
-
         def wrap_model(model):
             if model is None:
                 raise http.NotFoundError()
@@ -230,6 +229,8 @@ class ModelResource(webserver.BaseResource):
             return ActionResource(action, context)
 
         if not remaining or (remaining == (u'', )):
+            if self.model.reference is not None:
+                return process_reference(self.model.reference)
             return self
 
         resource_name = remaining[0]
@@ -433,6 +434,9 @@ class StaticResource(webserver.BaseResource):
 
 
 class Root(ModelResource):
+    """
+    FIXME: The resource initiate itself the first time it is rendered
+    or when locating children in a rather ugly way."""
 
     implements(IAspect)
 
@@ -441,16 +445,51 @@ class Root(ModelResource):
     desc = None
 
     def __init__(self, hostname, port, source, static_path):
-        ModelResource.__init__(self, source, (hostname, port))
+        self.source = source
+        self.hostname = hostname
+        self.port = port
+        self._initiating = True
         self._static = StaticResource(static_path)
-        #FIXME: Root resource do not support actions
-        self._methods.add(http.Methods.GET)
+        self._methods = set([http.Methods.GET])
 
     def locate_resource(self, request, location, remaining):
-        if remaining[0] == u"static":
-            return self._static, remaining[1:]
-        return ModelResource.locate_resource(self, request,
-                                             location, remaining)
+
+        def locate(_param):
+            if remaining[0] == u"static":
+                return self._static, remaining[1:]
+            return ModelResource.locate_resource(self, request,
+                                                 location, remaining)
+
+        d = self.initiate()
+        return d.addCallback(locate)
+
+    def render_resource(self, request, response, location):
+        d = self.initiate()
+        d.addCallback(ModelResource.render_resource,
+                      request, response, location)
+        return d
 
     def initiate(self):
-        return self.model.initiate(aspect=self)
+        if isinstance(self._initiating, defer.Deferred):
+            d = defer.Deferred()
+            self._initiating.addCallback(d.callback)
+            self._initiating.addCallback(defer.override_result, self)
+            return d
+
+        if self._initiating is None:
+            return defer.succeed(self)
+
+        self._methods.clear()
+        root = (self.hostname, self.port)
+        ModelResource.__init__(self, self.source, root)
+        d = self.model.initiate(aspect=self)
+        d.addCallback(defer.drop_param, ModelResource.initiate, self)
+        self._initiating = d
+        d.addCallback(self._initiated)
+        return d
+
+    def _initiated(self, _param):
+        self._initiating.addErrback(defer.handle_failure, "Failure during "
+                                    "root resource initialization")
+        self._initiating = None
+        return self

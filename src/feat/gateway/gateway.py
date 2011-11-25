@@ -104,11 +104,8 @@ class Gateway(log.LogProxy, log.Logger):
     ### private ###
 
     def _build_root(self, port):
-        root = resources.Root(self._host, port,
+        return resources.Root(self._host, port,
                               self._agency, self._static_path)
-        _d = root.initiate()
-        #FIXME: should wait for the root to be initiated
-        return root
 
     def _initiate_server(self, server):
         server.initiate()
