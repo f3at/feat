@@ -26,7 +26,7 @@ import signal
 from zope.interface import implements
 
 from feat.agencies.net import agency as net_agency, broker
-from feat.agents.base import resource
+from feat.agents.base import resource, agent as base_agent
 
 from feat.common import adapter, defer
 from feat.models import model, action, value, reference
@@ -289,12 +289,16 @@ class Agents(model.Collection):
             return reference.Absolute((host, port), "agents", name)
 
         agency = self.source
-        agent = agency.get_agent(name)
-        if agent is None:
-            agent = agency._broker.get_agent_reference(name)
-            if agent is None:
-                return agency.locate_agent(name).addCallback(agent_located)
-        return agent
+
+        medium = agency.get_agent(name)
+        if medium is not None:
+            return medium.get_agent()
+
+        agent_ref = agency._broker.get_agent_reference(name)
+        if agent_ref is not None:
+            return agent_ref
+
+        return agency.locate_agent(name).addCallback(agent_located)
 
 
 @adapter.register(broker.AgentReference, IModel)
@@ -303,7 +307,7 @@ class RemoteAgent(model.Model):
     model.reference(getter.model_attr("_reference"))
 
     model.attribute("id", value.String(), getter.source_attr('agent_id'),
-                    label="Agent id", desc="Agent's unique identifier")
+                    label="Agent Id", desc="Agent's unique identifier")
     model.attribute("status", value.Enum(AgencyAgentState),
                     getter=call.source_call("get_status"),
                     label="Status", desc="Agent current status")
@@ -328,34 +332,34 @@ class RemoteAgent(model.Model):
         return self.source.callRemote('get_agent_type')
 
 
-@adapter.register(net_agency.AgencyAgent, IModel)
+@adapter.register(base_agent.BaseAgent, IModel)
 class Agent(model.Model):
     model.identity("feat.agent")
 
     model.attribute("id", value.String(), call.source_call("get_agent_id"),
-                    label="Agent id", desc="Agent's unique identifier")
+                    label="Agent Id", desc="Agent's unique identifier")
+    model.attribute("shard", value.String(), call.source_call("get_shard_id"),
+                    label="Shard Id", desc="Agent's shard identifier")
     model.attribute("instance", value.Integer(),
                     call.source_call("get_instance_id"),
                     label="Instance", desc="Agent's instance number")
     model.attribute("status", value.Enum(AgencyAgentState),
-                    getter=call.source_call("get_status"),
+                    getter=call.source_call("get_agent_status"),
                     label="Status", desc="Agent current status")
     model.attribute("type", value.String(),
                     getter=call.source_call("get_agent_type"),
                     label="Agent type", desc="Agent type")
 
     model.child("partners",
-                source=call.source_call("get_agent"),
                 model="feat.partners",
                 label="Partners", desc="Agent's partners")
 
     model.child("resources",
-                source=call.source_call("get_agent"),
                 model="feat.resources",
                 enabled=call.model_call("_has_resources"),
                 label="Resources", desc="Agent's resources.")
 
-    model.meta("html-order", "type, id, instance, status, partners, resources")
+    model.meta("html-order", "type, shard, id, instance, status, partners, resources")
     model.item_meta("id", "html-link", "owner")
     model.item_meta("partners", "html-render", "array, 2")
     model.item_meta("resources", "html-render", "array, 2")
@@ -363,7 +367,7 @@ class Agent(model.Model):
     ### custom ###
 
     def _has_resources(self):
-        return isinstance(self.source.get_agent(), resource.AgentMixin)
+        return isinstance(self.source, resource.AgentMixin)
 
 
 class Resources(model.Model):
@@ -493,3 +497,20 @@ class Recipient(model.Model):
 
     def _get_reference(self):
         return reference.Local("agents", self.source.key)
+
+
+from feat.agents.monitor import monitor_agent
+from feat.agents.monitor.interface import MonitorState
+
+
+@adapter.register(monitor_agent.MonitorAgent, IModel)
+class MonitorAgent(Agent):
+    model.identity("feat.agent.monitor")
+    model.view(call.source_call("get_monitoring_status"))
+
+    model.attribute("state", value.Enum(MonitorState),
+                    getter.view_get("__getitem__"))
+    model.attribute("location", value.String(),
+                    getter.view_get("__getitem__"))
+
+    model.meta("html-order", "state, location")
