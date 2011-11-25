@@ -27,7 +27,7 @@ import time
 from twisted.internet import reactor, threads
 from zope.interface import implements
 
-from feat.common import defer
+from feat.common import defer, log
 from feat.web import http, webserver
 
 from feat.models.interface import ActionCategory, IActionPayload, IAspect
@@ -176,7 +176,8 @@ class ModelResource(webserver.BaseResource):
             if item is None:
                 raise http.NotFoundError()
 
-            if remaining:
+            rem = remaining[1:]
+            if rem and rem != (u"", ):
                 return item.browse()
 
             return item.fetch()

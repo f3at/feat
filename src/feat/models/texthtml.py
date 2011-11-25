@@ -6,7 +6,7 @@ from feat.web import document
 from feat.web.markup import html
 
 from feat.models.interface import (ActionCategory, IModel, IAttribute,
-                                   IMetadata, ValueTypes, IReference)
+                                   IMetadata, ValueTypes)
 
 
 MIME_TYPE = "text/html"
@@ -279,7 +279,7 @@ class HTMLWriter(log.Logger):
 
     @defer.inlineCallbacks
     def _build_tree(self, tree, model, limit, context):
-        if IReference.providedBy(model):
+        if not IModel.providedBy(model):
             return
         items = yield model.fetch_items()
         #FIXME: column ordering do not work

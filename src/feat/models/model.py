@@ -24,7 +24,7 @@ import types
 
 from zope.interface import implements
 
-from feat.common import error, annotate, container, mro, defer, error
+from feat.common import error, annotate, container, mro, defer, error, log
 from feat.models import utils
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
@@ -103,7 +103,8 @@ def attribute(name, value, getter=None, setter=None,
 
 
 def child(name, source=None, view=None, model=None,
-          enabled=None, label=None, desc=None, meta=None):
+          enabled=None, fetch=None, browse=None,
+          label=None, desc=None, meta=None):
     """
     Annotate a sub-model to the one being defined.
     @param name: item name unique for the model being defined.
@@ -120,6 +121,10 @@ def child(name, source=None, view=None, model=None,
     @type model: str or unicode or callable or IModelFactory or None
     @param enabled: an effect defining if the model is enabled
     @type enabled: bool or callable
+    @param browse: an effect filtering the source when browsing to child.
+    @type browse: callable
+    @param fetch: an effect filtering the source when fetching child.
+    @type fetch: callable
     @param label: the sub-model label or None.
     @type label: str or unicode or None
     @parama desc: the description of the sub-model or None if not documented.
@@ -128,7 +133,8 @@ def child(name, source=None, view=None, model=None,
     @type meta: list of tuple
     """
     _annotate("child", name, source=source, view=view, model=model,
-              enabled=enabled, label=label, desc=desc, meta=meta)
+              enabled=enabled, fetch=fetch, browse=browse,
+              label=label, desc=desc, meta=meta)
 
 
 def reference(*args, **kwargs):
@@ -588,11 +594,12 @@ class StaticChildrenMixin(object):
 
     @classmethod
     def annotate_child(cls, name, source=None, view=None, model=None,
-                       enabled=None, label=None, desc=None, meta=None):
+                       enabled=None, browse=None, fetch=None,
+                       label=None, desc=None, meta=None):
         """@see: feat.models.model.child"""
         name = _validate_str(name)
-        item = MetaModelItem.new(name, fetcher=source, browser=source,
-                                 view=view, model=model, enabled=enabled,
+        item = MetaModelItem.new(name, source=source, view=view, model=model,
+                                 enabled=enabled, browse=browse, fetch=fetch,
                                  label=label, desc=desc, meta=meta)
         cls._model_items[name] = item
 
@@ -775,8 +782,9 @@ class BaseModelItem(models_meta.Metadata):
                              "Failure creating model for '%s'", self.name)
         return None
 
-    def _create_model(self, view_getter=None, source_getter=None,
+    def _create_model(self, view_getter=None, source_getters=None,
                       model_factory=None):
+
         if view_getter is not None:
             d = defer.succeed(view_getter)
             d.addCallback(self._retrieve_view)
@@ -785,7 +793,7 @@ class BaseModelItem(models_meta.Metadata):
             # views are inherited
             d = defer.succeed(self.model.view)
 
-        d.addCallback(self._retrieve_model, source_getter, model_factory)
+        d.addCallback(self._retrieve_model, source_getters, model_factory)
 
         d.addErrback(self._filter_errors)
         return d
@@ -802,18 +810,18 @@ class BaseModelItem(models_meta.Metadata):
             raise ModelError("'%s' view not found" % (self.name, ))
         return view
 
-    def _retrieve_model(self, view, source_getter, model_factory):
-        d = defer.succeed(source_getter)
-        d.addCallback(self._retrieve_source, view)
+    def _retrieve_model(self, view, source_getters, model_factory):
+        d = defer.succeed(self.model.source)
+        context = self.model.make_context(key=self.name, view=view)
+        for getter in source_getters:
+            d.addCallback(self._retrieve_source, getter, context)
         d.addCallback(self._wrap_source, view, model_factory)
         return d
 
-    def _retrieve_source(self, source_getter, view):
-        if source_getter is None:
-            return self.model.source
-
-        context = self.model.make_context(key=self.name, view=view)
-        return source_getter(None, context)
+    def _retrieve_source(self, source, source_getter, context):
+        if source_getter is not None:
+            return source_getter(source, context)
+        return source
 
     def _wrap_source(self, source, view, model_factory):
         if source is None:
@@ -855,9 +863,8 @@ class MetaModelItem(type(BaseModelItem)):
     implements(IAspect)
 
     @staticmethod
-    def new(name, fetcher=None, browser=None,
-            view=None, model=None, enabled=None,
-            label=None, desc=None, meta=None):
+    def new(name, source=None, view=None, model=None, enabled=None,
+            browse=None, fetch=None, label=None, desc=None, meta=None):
         cls_name = utils.mk_class_name(name, "ModelItem")
         name = _validate_str(name)
         ref = models_reference.Relative(name)
@@ -866,8 +873,9 @@ class MetaModelItem(type(BaseModelItem)):
                              {"__slots__": (),
                               "_name": name,
                               "_reference": ref,
-                              "_fetcher": _validate_effect(fetcher),
-                              "_browser": _validate_effect(browser),
+                              "_source": _validate_effect(source),
+                              "_fetch": _validate_effect(fetch),
+                              "_browse": _validate_effect(browse),
                               "_factory": _validate_model_factory(model),
                               "_view": _validate_effect(view),
                               "_enabled": _validate_effect(enabled),
@@ -900,8 +908,9 @@ class ModelItem(BaseModelItem):
 
     _name = None
     _reference = None
-    _fetcher = None
-    _browser = None
+    _source = None
+    _fetch = None
+    _browse = None
     _view = None
     _enabled = True
     _factory = None
@@ -948,10 +957,14 @@ class ModelItem(BaseModelItem):
         return self._reference
 
     def browse(self):
-        return self._create_model(self._view, self._browser, self._factory)
+        return self._create_model(view_getter=self._view,
+                                  source_getters=[self._source, self._browse],
+                                  model_factory=self._factory)
 
     def fetch(self):
-        return self._create_model(self._view, self._fetcher, self._factory)
+        return self._create_model(view_getter=self._view,
+                                  source_getters=[self._source, self._fetch],
+                                  model_factory=self._factory)
 
 
 class MetaActionItem(type):
@@ -1228,7 +1241,7 @@ class DynamicModelItem(BaseModelItem):
     def initiate(self):
         # We need to do it right away to be sure the source exists
         d = self._create_model(view_getter=self.model._fetch_view,
-                               source_getter=self.model._fetch_source,
+                               source_getters=[self.model._fetch_source],
                                model_factory=self.model._item_model)
         d.addCallback(self._got_model)
         return d

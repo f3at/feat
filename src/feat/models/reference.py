@@ -41,9 +41,6 @@ class Reference(models_meta.Metadata):
     def resolve(self, context):
         """Overridden in child classes."""
 
-    def fetch(self):
-        raise NotSupported()
-
 
 class Relative(Reference):
 

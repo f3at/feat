@@ -316,23 +316,6 @@ class IReference(Interface):
                              to the specified context.
         """
 
-    def fetch():
-        """
-        Tries to fetch the referenced model.
-        Could fail if the model backend do not support it,
-        for example it may only work for local reference.
-        @return: a deferred fired with the reference model.
-        @rtype: defer.Deferred
-        @callback: IModel
-        @errback TransientError: if the model couldn't be fetched
-                                 but the operation could be retried later.
-        @errback Unauthorized: if the the caller is not authorized
-                               to retrieve the referenced model.
-        @errback NotAvailable: if the referenced model is not available.
-        @errback NotSupported: if the model backend do not support
-                               fetching this reference.
-        """
-
 
 class IRelativeReference(IReference):
     """

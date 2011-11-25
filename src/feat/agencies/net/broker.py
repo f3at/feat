@@ -279,6 +279,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                       if not x.is_standalone)
         return slave is not None
 
+    def get_agent_reference(self, agent_id):
+        for slave in self.slaves.itervalues():
+            if agent_id in slave.agents:
+                return slave.agents[agent_id]
+        return None
+
     @manhole.expose()
     def shutdown_slaves(self, gentle=False):
 
@@ -412,6 +418,10 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         elif self.is_slave():
             return self._master.callRemote(
                 'start_agent', desc, *args, **kwargs)
+
+    @manhole.expose()
+    def get_agency(self):
+        return self.agency
 
     @manhole.expose()
     @defer.inlineCallbacks

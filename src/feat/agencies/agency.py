@@ -183,9 +183,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # for this reason we need to send int
         return int(self.get_status())
 
-    def remote_find_agent(self, agent_id):
-        return self.find_agent(agent_id)
-
     @manhole.expose()
     def get_agent_type(self):
         return self._descriptor.document_type
@@ -559,6 +556,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return msg
 
     ### Introspection Methods ###
+
+    @manhole.expose()
+    def get_agency(self):
+        '''Returns the medium agency.'''
+        return self.agency
 
     @manhole.expose()
     def get_agent(self):

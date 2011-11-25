@@ -23,16 +23,18 @@
 import os
 import signal
 
-from feat.agencies.net import agency as net_agency, broker
-from feat.agents.base import resource, agent as base_agent
-from feat.common import time, adapter, defer
-from feat.models import model, action, value, reference, attribute
-from feat.models import call, getter, setter
+from zope.interface import implements
 
-from feat.models.interface import IModel
+from feat.agencies.net import agency as net_agency, broker
+from feat.agents.base import resource
+
+from feat.common import adapter, defer
+from feat.models import model, action, value, reference
+from feat.models import call, getter, setter
 
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
+from feat.models.interface import IModel, IReference
 
 
 @adapter.register(net_agency.Agency, IModel)
@@ -47,24 +49,28 @@ class Root(model.Model):
     model.identity("feet.root")
 
     model.child("agencies", model="feat.agencies",
-                #   fetch_filter=getter.model_get("_redirect_to_master"),
+                fetch=getter.model_get("_locate_master"),
                 label="Agencies", desc="Agencies running on this host.")
 
     model.child("agents", model="feat.agents",
-                # fetch_filter=getter.model_get("_redirect_to_master"),
+                fetch=getter.model_get("_locate_master"),
                 label="Agents", desc="Agents running on this host.")
 
     model.meta("html-order", "agencies, agents")
 
     ### custom ###
 
-    def _redirect_to_master(self, name):
-        result = self.source.locate_master()
-        if result is not None:
+    def _locate_master(self, name):
+
+        def master_located(result):
+            if result is None:
+                return None
             host, port, is_remote = result
-            if is_remote:
-                return reference.Absolute((host, port), name)
-        return self.source
+            if not is_remote:
+                return self.source
+            return reference.Absolute((host, port), name)
+
+        return self.source.locate_master().addCallback(master_located)
 
 
 class Agencies(model.Collection):
@@ -74,9 +80,9 @@ class Agencies(model.Collection):
     """
     model.identity("feat.agencies")
 
-    model.child_model("feat.agency")
+    model.child_model(call.model_filter("_get_agency_model"))
     model.child_names(call.source_call("iter_agency_ids"))
-    model.child_source(getter.model_get("_fetch_agency"))
+    model.child_source(getter.model_get("_locate_agency"))
 
 #    model.delete("full_shutdown",
 #                 effect.delay(effect.source_call("full_shutdown",
@@ -86,23 +92,55 @@ class Agencies(model.Collection):
 #                 label="Full Shutdown",
 #                 desc="Shutdown cleanly all agency processes.")
 
-#FIXME: this is not working as expected, some entries are lost
-#    model.meta("html-render", "array, 1")
+    model.meta("html-render", "array, 2")
 
     ### custom ###
 
-    def _fetch_agency(self, name):
+    def _locate_agency(self, name):
+        if self.source.agency_id == name:
+            return self.source
+        return self.source._broker.slaves.get(name)
 
-        def agency_located(result):
-            if result is None:
-                return None
-            host, port, is_remote = result
-            if not is_remote:
-                # It's the current agency we are talking about
-                return self.source
-            return reference.Absolute((host, port), "agencies", name)
+    def _get_agency_model(self, agency):
+        if isinstance(agency, net_agency.Agency):
+            return "feat.agency"
+        return "feat.remote_agency"
 
-        return self.source.locate_agency(name)
+
+class RemoteAgency(model.Model):
+
+    implements(IReference)
+
+    model.identity("feat.remote_agency")
+
+    model.attribute("id", value.String(),
+                    getter.source_attr("slave_id"),
+                    label="Identifier", desc="Agency unique identifier")
+    model.attribute("role", value.Enum(AgencyRoles),
+                    getter.model_attr("_role"),
+                    label="Agency Role", desc="Current role of the agency")
+
+    model.meta("html-order", "id, role")
+    model.item_meta("id", "html-link", "owner")
+
+    ### IReference ###
+
+    def resolve(self, context):
+        ref = reference.Absolute(self._root, "agencies", self.name)
+        return ref.resolve(context)
+
+    ### custom ###
+
+    @defer.inlineCallbacks
+    def init(self):
+        if self.source.is_standalone:
+            self._role = AgencyRoles.standalone
+        else:
+            self._role = AgencyRoles.slave
+        agency_ref = yield self.source.broker.callRemote("get_agency")
+        gateway_host = yield agency_ref.callRemote("get_hostname")
+        gateway_port = yield agency_ref.callRemote("get_gateway_port")
+        self._root = (gateway_host, gateway_port)
 
 
 class Agency(model.Model):
@@ -135,6 +173,7 @@ class Agency(model.Model):
 
     model.meta("html-order", "id, role, log_filter, agents")
     model.item_meta("id", "html-link", "owner")
+    model.item_meta("agents", "html-render", "array, 2")
 
     ### custom ###
 
@@ -162,14 +201,45 @@ class Agency(model.Model):
 class AgencyAgents(model.Collection):
     model.identity("feat.agency.agents")
 
+    model.child_model("feat.agency_agent")
     model.child_names(call.model_call("_iter_agents"))
-    model.child_source(getter.local_ref("agents"))
+    model.child_source(getter.source_get("get_agent"))
+
+    model.meta("html-render", "array, 1")
 
     ### custom ###
 
     def _iter_agents(self):
         res = [x.get_agent_id() for x in self.source.iter_agents()]
         return res
+
+
+class AgencyAgent(model.Model):
+
+    implements(IReference)
+
+    model.identity("feat.agency_agent")
+
+    model.attribute("id", value.String(), call.source_call("get_agent_id"),
+                    label="Agent id", desc="Agent's unique identifier")
+    model.attribute("instance", value.Integer(),
+                    call.source_call("get_instance_id"),
+                    label="Instance", desc="Agent's instance number")
+    model.attribute("status", value.Enum(AgencyAgentState),
+                    getter=call.source_call("get_status"),
+                    label="Status", desc="Agent current status")
+    model.attribute("type", value.String(),
+                    getter=call.source_call("get_agent_type"),
+                    label="Agent type", desc="Agent type")
+
+    model.meta("html-order", "type, id, instance, status")
+    model.item_meta("id", "html-link", "owner")
+
+    ### IReference ###
+
+    def resolve(self, context):
+        ref = reference.Local("agents", self.name)
+        return ref.resolve(context)
 
 
 #class AgentTypeValue(value.String):
@@ -188,7 +258,14 @@ class Agents(model.Collection):
     model.identity("feat.agents")
 
     model.child_names(call.model_call("_iter_agents"))
-    model.child_source(getter.source_get("find_agent"))
+    model.child_source(getter.model_get("_locate_agent"))
+
+    # model.create("spawn", effect.source_call("spawn_agent"),
+    #              value=AgentTypeValue(),
+    #              result=value.Response(),
+    #              response=response.Created("Agent Created",
+    #                                        reference.Relative()),
+    #              label="Spawn Agent", desc="Spawn a new agent on this host")
 
     model.meta("html-render", "array, 1")
 
@@ -200,16 +277,28 @@ class Agents(model.Collection):
             res.extend(slave.agents.keys())
         return res
 
-    # model.create("spawn", effect.source_call("spawn_agent"),
-    #              value=AgentTypeValue(),
-    #              result=value.Response(),
-    #              response=response.Created("Agent Created",
-    #                                        reference.Relative()),
-    #              label="Spawn Agent", desc="Spawn a new agent on this host")
+    def _locate_agent(self, name):
+
+        def agent_located(result):
+            if result is None:
+                return None
+            host, port, is_remote = result
+            assert is_remote, "Should not be a local agent"
+            return reference.Absolute((host, port), "agents", name)
+
+        agency = self.source
+        agent = agency.get_agent(name)
+        if agent is None:
+            agent = agency._broker.get_agent_reference(name)
+            if agent is None:
+                return agency.locate_agent(name).addCallback(agent_located)
+        return agent
 
 
 @adapter.register(broker.AgentReference, IModel)
 class RemoteAgent(model.Model):
+
+    implements(IReference)
 
     model.identity("feat.remote_agent")
     model.attribute("id", value.String(), getter.source_attr('agent_id'),
@@ -224,7 +313,20 @@ class RemoteAgent(model.Model):
     model.meta("html-order", "type, id, status")
     model.item_meta("id", "html-link", "owner")
 
+    ### IReference ###
+
+    def resolve(self, context):
+        ref = reference.Absolute(self._root, "agents", self.name)
+        return ref.resolve(context)
+
     ### custom ###
+
+    @defer.inlineCallbacks
+    def init(self):
+        agency_ref = yield self.source.reference.callRemote("get_agency")
+        gateway_host = yield agency_ref.callRemote("get_hostname")
+        gateway_port = yield agency_ref.callRemote("get_gateway_port")
+        self._root = (gateway_host, gateway_port)
 
     def _get_agent_type(self):
         return self.source.callRemote('get_agent_type')
