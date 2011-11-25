@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 import re
 import StringIO
+import types
 
 from twisted.python.failure import Failure
 
@@ -114,7 +115,7 @@ def get_exception_message(exception):
         msg = xlog.getExceptionMessage(exception)
     except IndexError:
         # log.getExceptionMessage do not like exceptions without messages ?
-        msg = ""
+        msg = type(exception).__name__
     if isinstance(exception, FeatError):
         details = exception.cause_details
         if details:
@@ -126,8 +127,11 @@ def get_failure_message(failure):
     try:
         msg = xlog.getFailureMessage(failure)
     except KeyError:
-        # Sometime happen for strange error, just when we relly need a message
-        msg = failure.getErrorMessage()
+        # Sometime happen for strange error, just when we realy need a message
+        error_type = failure.type
+        if isinstance(error_type, types.TypeType):
+            error_type = error_type.__name__
+        msg = "%s %s" % (error_type, failure.getErrorMessage())
     exception = failure.value
     if isinstance(exception, FeatError):
         details = exception.cause_details
