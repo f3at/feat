@@ -65,6 +65,15 @@ def identity(identity):
     _annotate("identity", identity)
 
 
+def reference(effect):
+    """
+    Annotate the reference for the model being defined.
+    @param effect: a reference or an effect to retrieve it.
+    @type effect: IReference or callable
+    """
+    _annotate("reference", effect)
+
+
 def view(effect_or_value):
     """
     Annotates the model view.
@@ -135,10 +144,6 @@ def child(name, source=None, view=None, model=None,
     _annotate("child", name, source=source, view=view, model=model,
               enabled=enabled, fetch=fetch, browse=browse,
               label=label, desc=desc, meta=meta)
-
-
-def reference(*args, **kwargs):
-    raise NotImplementedError("model.reference() is not implemented yet")
 
 
 def command():
@@ -331,12 +336,13 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     """
 
     __metaclass__ = MetaModel
-    __slots__ = ("source", "aspect", "view")
+    __slots__ = ("source", "aspect", "view", "reference")
 
     implements(IModel, IContextMaker)
 
-    _identity = None
-    _view = None
+    _model_identity = None
+    _model_view = None
+    _model_reference = None
 
     ### class methods ###
 
@@ -351,6 +357,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         self.source = source
         self.aspect = None
         self.view = None
+        self.reference = None
 
     def __repr__(self):
         return "<%s %s '%s'>" % (type(self).__name__,
@@ -378,7 +385,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
 
     @property
     def identity(self):
-        return self._identity
+        return self._model_identity
 
     @property
     def name(self):
@@ -404,16 +411,27 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         def init(view):
             self.view = view
             d = self.call_mro("init")
-            d.addCallback(defer.override_result, self)
+            d.addCallback(retrieve_reference)
+            d.addCallback(update_reference)
             return d
 
+        def retrieve_reference(_param):
+            if callable(self._model_reference):
+                context = self.make_context()
+                return self._model_reference(self.source, context)
+            return self._model_reference
+
+        def update_reference(reference):
+            self.reference = reference
+            return self
+
         self.aspect = IAspect(aspect) if aspect is not None else None
-        if self._view is not None:
-            if callable(self._view):
+        if self._model_view is not None:
+            if callable(self._model_view):
                 context = self.make_context(view=view)
-                d = self._view(None, context)
+                d = self._model_view(None, context)
                 return d.addCallback(got_view)
-            return init(self._view)
+            return init(self._model_view)
         return init(view)
 
     def perform_action(self, name, **kwargs):
@@ -444,13 +462,18 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     @classmethod
     def annotate_identity(cls, identity):
         """@see: feat.models.model.identity"""
-        cls._identity = _validate_str(identity)
-        register_factory(cls._identity, cls)
+        cls._model_identity = _validate_str(identity)
+        register_factory(cls._model_identity, cls)
+
+    @classmethod
+    def annotate_reference(cls, effect):
+        """@see: feat.models.model.reference"""
+        cls._model_reference = _validate_effect(effect)
 
     @classmethod
     def annotate_view(cls, effect_or_value):
         """@see: feat.models.model.view"""
-        cls._view = _validate_effect(effect_or_value)
+        cls._model_view = _validate_effect(effect_or_value)
 
 
 class NoChildrenMixin(object):
@@ -609,7 +632,7 @@ class StaticChildrenMixin(object):
         """@see: feat.models.model.attribute"""
         from feat.models import attribute
         name = _validate_str(name)
-        attr_ident = cls._identity + "." + name
+        attr_ident = cls._model_identity + "." + name
         attr_cls = attribute.MetaAttribute.new(attr_ident, value_info,
                                                getter=getter, setter=setter,
                                                meta=model_meta)
@@ -628,7 +651,7 @@ class StaticChildrenMixin(object):
                             model_meta=None):
         """@see: feat.models.model.collection"""
         name = _validate_str(name)
-        coll_cls = MetaCollection.new(cls._identity + "." + name,
+        coll_cls = MetaCollection.new(cls._model_identity + "." + name,
                                       child_source=child_source,
                                       child_names=child_names,
                                       child_model=child_model,

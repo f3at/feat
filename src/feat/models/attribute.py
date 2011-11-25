@@ -82,13 +82,13 @@ class Attribute(model.AbstractModel,
 
     implements(IAttribute)
 
-    _value_info = None
+    _model_value_info = None
 
     ### IAttribute ###
 
     @property
     def value_info(self):
-        return self._value_info
+        return self._model_value_info
 
     @property
     def is_readable(self):
@@ -140,7 +140,7 @@ class Attribute(model.AbstractModel,
     @classmethod
     def annotate_value(cls, value_info):
         """@see: feat.models.attribute.value"""
-        cls._value_info = IValueInfo(value_info)
+        cls._model_value_info = IValueInfo(value_info)
 
 
 class _DynAttribute(Attribute):

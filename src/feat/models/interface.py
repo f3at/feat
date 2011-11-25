@@ -386,6 +386,8 @@ class IModel(Interface):
     name = Attribute("Model name. @type: unicode")
     label = Attribute("Short label. @type: unicode or None")
     desc = Attribute("Long description. @type: unicode or None")
+    reference = Attribute("Reference to the real model or None. "
+                          "@type: IReference or None")
 
     def initiate(aspect=None, view=None, parent=None):
         """

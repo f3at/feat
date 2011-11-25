@@ -109,9 +109,9 @@ class Agencies(model.Collection):
 
 class RemoteAgency(model.Model):
 
-    implements(IReference)
-
     model.identity("feat.remote_agency")
+
+    model.reference(getter.model_attr("_reference"))
 
     model.attribute("id", value.String(),
                     getter.source_attr("slave_id"),
@@ -122,12 +122,6 @@ class RemoteAgency(model.Model):
 
     model.meta("html-order", "id, role")
     model.item_meta("id", "html-link", "owner")
-
-    ### IReference ###
-
-    def resolve(self, context):
-        ref = reference.Absolute(self._root, "agencies", self.name)
-        return ref.resolve(context)
 
     ### custom ###
 
@@ -140,7 +134,8 @@ class RemoteAgency(model.Model):
         agency_ref = yield self.source.broker.callRemote("get_agency")
         gateway_host = yield agency_ref.callRemote("get_hostname")
         gateway_port = yield agency_ref.callRemote("get_gateway_port")
-        self._root = (gateway_host, gateway_port)
+        root = (gateway_host, gateway_port)
+        self._reference = reference.Absolute(root, "agencies", self.name)
 
 
 class Agency(model.Model):
@@ -298,9 +293,9 @@ class Agents(model.Collection):
 @adapter.register(broker.AgentReference, IModel)
 class RemoteAgent(model.Model):
 
-    implements(IReference)
-
     model.identity("feat.remote_agent")
+    model.reference(getter.model_attr("_reference"))
+
     model.attribute("id", value.String(), getter.source_attr('agent_id'),
                     label="Agent id", desc="Agent's unique identifier")
     model.attribute("status", value.Enum(AgencyAgentState),
@@ -313,12 +308,6 @@ class RemoteAgent(model.Model):
     model.meta("html-order", "type, id, status")
     model.item_meta("id", "html-link", "owner")
 
-    ### IReference ###
-
-    def resolve(self, context):
-        ref = reference.Absolute(self._root, "agents", self.name)
-        return ref.resolve(context)
-
     ### custom ###
 
     @defer.inlineCallbacks
@@ -326,7 +315,8 @@ class RemoteAgent(model.Model):
         agency_ref = yield self.source.reference.callRemote("get_agency")
         gateway_host = yield agency_ref.callRemote("get_hostname")
         gateway_port = yield agency_ref.callRemote("get_gateway_port")
-        self._root = (gateway_host, gateway_port)
+        root = (gateway_host, gateway_port)
+        self._reference = reference.Absolute(root, "agents", self.name)
 
     def _get_agent_type(self):
         return self.source.callRemote('get_agent_type')

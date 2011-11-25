@@ -187,14 +187,22 @@ class ModelResource(webserver.BaseResource):
                 raise http.NotFoundError()
 
             if IReference.providedBy(model):
-                context = Context(request.scheme,
-                                  self._model_history,
-                                  self._name_history,
-                                  remaining[1:])
-                address = model.resolve(context)
-                raise http.MovedPermanently(location=address)
+                return process_reference(model)
+
+            if model.reference is not None:
+                return process_reference(model.reference)
 
             return model
+
+        def process_reference(reference):
+            reference = IReference(reference)
+            context = Context(request.scheme,
+                              self._model_history,
+                              self._name_history,
+                              remaining[1:])
+            address = reference.resolve(context)
+            raise http.MovedPermanently(location=address)
+
 
         def wrap_model(model):
             if model is None:
