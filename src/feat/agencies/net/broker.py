@@ -278,6 +278,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         slave = self.slaves[slave_id]
         slave.unregister_agent(agent_id)
 
+    def remote_get_agency_id(self):
+        return self.agency.agency_id
+
     def iter_slaves(self):
         return (slave.reference for slave in self.slaves.itervalues())
 
@@ -369,6 +372,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             d.addCallback(defer.drop_param, self.register_agent, medium)
 
         return d
+
+    def fetch_master_id(self):
+        if not self._master:
+            return defer.succeed(None)
+        return self._master.callRemote('get_agency_id')
 
     # ............
 

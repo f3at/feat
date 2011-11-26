@@ -232,10 +232,21 @@ class Agency(agency.Agency):
         return AgencyRoles.unknown
 
     def locate_master(self):
-        res = (self.get_hostname(),
-               self.config["gateway"]["port"],
-               self._broker.state != BrokerRole.master)
-        return defer.succeed(res)
+
+        def pack_result(agency_id, is_remote):
+            if not agency_id:
+                return None
+            return (self.get_hostname(),
+                    self.config["gateway"]["port"],
+                    self.agency_id, is_remote)
+
+        if self._broker.is_master():
+            d = defer.succeed(self.agency_id)
+            d.addCallback(pack_result, False)
+        else:
+            d = self._broker.fetch_master_id()
+            d.addCallback(pack_result, True)
+        return d
 
     def locate_agency(self, agency_id):
 
@@ -514,6 +525,10 @@ class Agency(agency.Agency):
     @manhole.expose()
     def get_gateway_port(self):
         return self._gateway and self._gateway.port
+
+    @manhole.expose()
+    def get_agency_id(self):
+        return self.agency_id
 
     gateway_port = property(get_gateway_port)
 

@@ -74,7 +74,7 @@ class Root(model.Model):
     def _master_located(self, result, default, *location):
         if result is None:
             return None
-        host, port, is_remote = result
+        host, port, _agency_id, is_remote = result
         if not is_remote:
             return default
         return reference.Absolute((host, port), *location)
@@ -104,14 +104,23 @@ class Agencies(model.Collection):
     ### custom ###
 
     def _locate_agency(self, name):
-        if self.source.agency_id == name:
+        if name == self.source.agency_id:
             return self.source
+        if name == u"master":
+            d = self.source.locate_master()
+            return d.addCallback(self._master_located)
         return self.source._broker.slaves.get(name)
 
     def _get_agency_model(self, agency):
         if isinstance(agency, net_agency.Agency):
             return "feat.agency"
         return "feat.remote_agency"
+
+    def _master_located(self, result):
+        if result is None:
+            return None
+        host, port, agency_id, _is_remote = result
+        return reference.Absolute((host, port), "agencies", agency_id)
 
 
 class RemoteAgency(model.Model):
