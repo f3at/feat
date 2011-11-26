@@ -19,28 +19,35 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import implements
+"""Unix-like implementation of feat.common.fcntl module."""
 
-from feat.common import defer
-from feat.models import utils
+# Helper functions arround fcntl for file locking
+from feat import hacks
 
-from feat.test import common
+_fcntl = hacks.import_fcntl()
+lockf = _fcntl.lockf
+flock = _fcntl.flock
+
+# lockf can be used instead, but the lock is shared in the same process,
+# as it's taken in the file's inode for the process pid and not in the file
+# desctiptor, like flock
+LOCK_FN = flock
 
 
-class TestModelsUtils(common.TestCase):
+def lock(fd):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        return True
+    except IOError:
+        return False
 
-    def testMkClassName(self):
-        mk = utils.mk_class_name
-        self.assertEqual(mk(), "")
-        self.assertEqual(mk("dummy"), "Dummy")
-        self.assertEqual(mk(u"dummy"), "Dummy")
-        self.assertEqual(mk("dummy", "name"), "DummyName")
-        self.assertEqual(mk("dummy", "", "name"), "DummyName")
-        self.assertEqual(mk("dummy", u"name"), "DummyName")
-        self.assertEqual(mk("some_name", "with-postfix"),
-                         "SomeNameWithPostfix")
-        self.assertEqual(mk("aaa", "bbb", "ccc", "ddd"), "AaaBbbCccDdd")
-        self.assertEqual(mk("aaa.bbb_ccc ddd-eee", "fff ggg.hhh-iii_jjj"),
-                         "AaaBbbCccDddEeeFffGggHhhIiiJjj")
-        self.assertEqual(mk("SomeName", "SomeName"), "SomeNameSomeName")
+
+def unlock(fd):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_UN)
+        return True
+    except IOError:
+        return False

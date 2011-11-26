@@ -29,7 +29,8 @@ from feat.models import interface, model, action, value
 from feat.models import call, getter, setter
 from feat.web import http
 
-from . import common
+from feat.test import common
+
 from feat.models.interface import IMetadataItem
 
 
@@ -230,9 +231,9 @@ class TestModelEffects(model.Model):
                     call.model_call("get_attr3"),
                     call.model_filter("set_attr3"))
     model.collection("coll1",
-                     getter.model_get("get_child"),
-                     call.model_call("get_child_names"),
-                     "test-model-calls")
+                     child_source=getter.model_get("get_child"),
+                     child_names=call.model_call("get_child_names"),
+                     child_model="test-model-calls")
 
     def init(self):
         self.attr1 = "foo"

@@ -19,8 +19,10 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import os
+
 import functools
+import os
+import sys
 
 from twisted.internet import reactor
 from twisted.internet.error import (CannotListenError, ConnectionRefusedError,
@@ -51,7 +53,7 @@ class TypedReference(object):
 
     def get_status(self):
         d = self.callRemote('get_status')
-        d.addCallback(AgencyAgentState.get)
+        d.addCallback(AgencyAgentState.get) #@UndefinedVariable
         return d
 
 
@@ -115,9 +117,9 @@ class SharedState(dict):
         self._broker.update_state_broadcast('del_locally', key)
         return key, value
 
-    def update(self, dict):
-        self.update_locally(dict.items())
-        self._broker.update_state_broadcast('update_locally', dict.items())
+    def update(self, dict_):
+        self.update_locally(dict_.items())
+        self._broker.update_state_broadcast('update_locally', dict_.items())
 
     ### local modifications ###
 
@@ -194,11 +196,19 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         return self._idle
 
     def initiate_broker(self):
+        if sys.platform == "win32":
+            d = defer.succeed(None)
+            d.addCallback(defer.drop_param, self.become_master)
+            d.addErrback(self._handle_critical_error)
+            return d
+
         self._set_idle(False)
+
         if not self._is_standalone:
             try:
                 self.factory = MasterFactory(self)
-                self.listener = reactor.listenUNIX(self.socket_path,
+                self.listener = reactor.listenUNIX( #@UndefinedVariable
+                                                   self.socket_path,
                                                    self.factory,
                                                    mode=self.socket_mode)
                 d = defer.succeed(None)
@@ -222,7 +232,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def _connect_as_slave(self):
         cb = defer.Deferred()
         self.factory = SlaveFactory(self, cb)
-        self.connector = reactor.connectUNIX(
+        self.connector = reactor.connectUNIX( #@UndefinedVariable
             self.socket_path, self.factory, timeout=1)
         cb.addBoth(defer.bridge_param, self._set_idle, True)
         return cb
@@ -232,9 +242,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         This is called as part of the agency shutdown.
         '''
         self.log("Disconnecting broker %r.", self)
+        d = defer.succeed(None)
         if self.is_master():
-            d = self.listener.stopListening()
-            d.addCallback(defer.drop_param, self.factory.disconnect)
+            if self.listener is not None:
+                d.addCallback(defer.drop_param, self.listener.stopListening)
+                d.addCallback(defer.drop_param, self.factory.disconnect)
         elif self.is_slave():
             d = defer.maybeDeferred(self.factory.disconnect)
         elif self._cmp_state(BrokerRole.disconnected):

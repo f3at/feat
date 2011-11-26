@@ -23,7 +23,7 @@
 from feat.common import enum
 from feat.models import interface, value
 
-from . import common
+from feat.test import common
 
 
 class DummyString(value.String):

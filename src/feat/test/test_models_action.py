@@ -28,7 +28,7 @@ from feat.models import call, getter, action, value
 from feat.models.interface import *
 from feat.models.interface import IAspect, IContextMaker
 
-from . import common
+from feat.test import common
 
 
 class DummySource(object):

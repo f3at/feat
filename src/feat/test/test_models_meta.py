@@ -22,7 +22,7 @@
 
 from feat.models import interface, meta
 
-from . import common
+from feat.test import common
 
 
 class A(meta.Metadata):

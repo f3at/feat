@@ -20,27 +20,24 @@
 
 # Headers in this file shall remain intact.
 
-from zope.interface import implements
 
-from feat.common import defer
-from feat.models import utils
-
-from feat.test import common
+def signal(sig, action):
+    return SIG_DFL #@UndefinedVariable
 
 
-class TestModelsUtils(common.TestCase):
+def unregister(sig, action):
+    pass
 
-    def testMkClassName(self):
-        mk = utils.mk_class_name
-        self.assertEqual(mk(), "")
-        self.assertEqual(mk("dummy"), "Dummy")
-        self.assertEqual(mk(u"dummy"), "Dummy")
-        self.assertEqual(mk("dummy", "name"), "DummyName")
-        self.assertEqual(mk("dummy", "", "name"), "DummyName")
-        self.assertEqual(mk("dummy", u"name"), "DummyName")
-        self.assertEqual(mk("some_name", "with-postfix"),
-                         "SomeNameWithPostfix")
-        self.assertEqual(mk("aaa", "bbb", "ccc", "ddd"), "AaaBbbCccDdd")
-        self.assertEqual(mk("aaa.bbb_ccc ddd-eee", "fff ggg.hhh-iii_jjj"),
-                         "AaaBbbCccDddEeeFffGggHhhIiiJjj")
-        self.assertEqual(mk("SomeName", "SomeName"), "SomeNameSomeName")
+
+def reset():
+    pass
+
+
+for const in ["SIGABRT", "SIGALRM", "SIGBUS", "SIGCHLD", 	"SIGCLD", "SIGCONT",
+              "SIGFPE", "SIGHUP", "SIGILL", "SIGINT", 	"SIGIO", "SIGIOT",
+              "SIGKILL", "SIGPIPE", "SIGPOLL", "SIGPROF", 	"SIGPWR",
+              "SIGQUIT", "SIGRTMAX", "SIGRTMIN", 	"SIGSEGV", "SIGSTOP",
+              "SIGSYS", "SIGTERM", "SIGTRAP", "SIGTSTP", 	"SIGTTIN",
+              "SIGTTOU", "SIGURG", "SIGUSR1", "SIGUSR2", "SIGVTALRM",
+              "SIGWINCH", "SIGXCPU", "SIGXFSZ", "SIG_DFL", "SIG_IGN"]:
+    globals()[const] = None

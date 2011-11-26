@@ -55,7 +55,7 @@ def time():
 
 
 def time_no_sfx():
-    real_time = reactor.seconds()
+    real_time = reactor.seconds() #@UndefinedVariable
     return real_time / _get_scale()
 
 
@@ -98,10 +98,12 @@ def call_later(_seconds, _f, *args, **kwargs):
     '''
     cur_scale = _get_scale()
     if cur_scale == 1:
-        return reactor.callLater(_seconds, _f, *args, **kwargs)
+        return reactor.callLater(_seconds, _f, #@UndefinedVariable
+                                 *args, **kwargs)
     else:
         _seconds = _seconds * cur_scale
-        call = reactor.callLater(_seconds, _f, *args, **kwargs)
+        call = reactor.callLater(_seconds, _f, #@UndefinedVariable
+                                 *args, **kwargs)
         return ScaledDelayedCall(cur_scale, call)
 
 
@@ -140,6 +142,7 @@ def wait_for(logger, check, timeout, freq=0.5, kwargs=dict()):
 _time_scale = None
 _python_time = hacks.import_time()
 clock = _python_time.clock
+sleep = _python_time.sleep
 
 
 def _get_scale():

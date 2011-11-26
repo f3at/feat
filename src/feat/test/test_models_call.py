@@ -23,7 +23,7 @@
 from feat.common import defer
 from feat.models import call
 
-from . import common
+from feat.test import common
 
 
 class Dummy(object):

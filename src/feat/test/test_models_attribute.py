@@ -27,7 +27,7 @@ from zope.interface import implements
 from feat.common import defer
 from feat.models import interface, attribute, value
 
-from . import common
+from feat.test import common
 
 
 class DummyAspect(object):

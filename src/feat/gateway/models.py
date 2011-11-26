@@ -359,7 +359,8 @@ class Agent(model.Model):
                 enabled=call.model_call("_has_resources"),
                 label="Resources", desc="Agent's resources.")
 
-    model.meta("html-order", "type, shard, id, instance, status, partners, resources")
+    model.meta("html-order", "type, shard, id, instance, "
+               "status, partners, resources")
     model.item_meta("id", "html-link", "owner")
     model.item_meta("partners", "html-render", "array, 2")
     model.item_meta("resources", "html-render", "array, 2")

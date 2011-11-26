@@ -1,4 +1,4 @@
-#!/usr/bin/python2.6
+#!/usr/bin/env python
 # F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
 # Copyright (C) 2010,2011 Flumotion Services, S.A.
 # All rights reserved.

@@ -25,7 +25,7 @@ from zope.interface import implements
 from feat.models import interface, reference
 from feat.web import http
 
-from . import common
+from feat.test import common
 
 
 class DummyModel(object):

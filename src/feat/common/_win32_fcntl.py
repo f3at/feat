@@ -19,28 +19,15 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
 
-from zope.interface import implements
-
-from feat.common import defer
-from feat.models import utils
-
-from feat.test import common
+"""Win32 implementation of feat.common.fcntl module."""
 
 
-class TestModelsUtils(common.TestCase):
+def lock(fd, use_flock=False):
+    return True
 
-    def testMkClassName(self):
-        mk = utils.mk_class_name
-        self.assertEqual(mk(), "")
-        self.assertEqual(mk("dummy"), "Dummy")
-        self.assertEqual(mk(u"dummy"), "Dummy")
-        self.assertEqual(mk("dummy", "name"), "DummyName")
-        self.assertEqual(mk("dummy", "", "name"), "DummyName")
-        self.assertEqual(mk("dummy", u"name"), "DummyName")
-        self.assertEqual(mk("some_name", "with-postfix"),
-                         "SomeNameWithPostfix")
-        self.assertEqual(mk("aaa", "bbb", "ccc", "ddd"), "AaaBbbCccDdd")
-        self.assertEqual(mk("aaa.bbb_ccc ddd-eee", "fff ggg.hhh-iii_jjj"),
-                         "AaaBbbCccDddEeeFffGggHhhIiiJjj")
-        self.assertEqual(mk("SomeName", "SomeName"), "SomeNameSomeName")
+
+def unlock(fd, use_flock=False):
+    return True

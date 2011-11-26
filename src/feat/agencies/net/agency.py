@@ -286,7 +286,8 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param,
                           self._messaging.add_backend, backend)
 
-        if self.config['agency']['enable_spawning_slave']:
+        if (self.config['agency']['enable_spawning_slave']
+            and sys.platform != "win32"):
             d.addCallback(defer.drop_param, self._spawn_backup_agency)
 
         d.addCallback(defer.drop_param, self._start_host_agent)
@@ -446,6 +447,9 @@ class Agency(agency.Agency):
         return agency.Agency.start_agent(self, descriptor, **kwargs)
 
     def start_standalone_agent(self, descriptor, factory, **kwargs):
+        if sys.platform == "win32":
+            raise NotImplementedError("Standalone agent are not supported "
+                                      "on win32 platform")
         cmd, cmd_args, env = factory.get_cmd_line(descriptor, **kwargs)
         self._store_config(env)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
