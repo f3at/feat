@@ -987,7 +987,7 @@ class Request(log.Logger, log.LogProxy):
         try:
             method = http.Methods[self._ref.method]
         except KeyError:
-            raise http.BadRequestError("Method %s not supported"
+            raise http.NotAllowedError("Method %s not supported"
                                        % (self._ref.method, ))
 
         try:
