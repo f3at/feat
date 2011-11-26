@@ -202,7 +202,7 @@ def read_action(doc, *args, **kwargs):
         return ActionPayload()
     params = json.loads(data)
     if not isinstance(params, dict):
-        raise ValueError("Invalid action parameters")
+        return ActionPayload(value=params)
     return ActionPayload(params)
 
 
