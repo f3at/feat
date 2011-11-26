@@ -182,19 +182,21 @@ def action(name, factory, label=None, desc=None):
               label=label, desc=desc)
 
 
-def collection(name, child_source=None, child_names=None, child_model=None,
-               child_label=None, child_desc=None, child_meta=None,
+def collection(name, child_names=None, child_source=None,
+               child_view=None, child_model=None, child_label=None,
+               child_desc=None, child_meta=None,
                label=None, desc=None, meta=None, model_meta=None):
     """
     Annotate a dynamic collection of sub-models.
     @param name: the name of the collection model containing the sub-models.
     @type name: str or unicode
-    @param child_source: an effect that retrieve a sub-model source from
-                         a sub-model name.
-    @type child_source: callable
     @param child_names: an effect that retrieve all sub-models names or
                         None if sub-models are not iterable.
     @type child_source: callable
+    @param child_source: an effect that retrieve a sub-model source.
+    @type child_source: callable
+    @param child_view: an effect that retrieve a sub-model view.
+    @type child_view: callable
     @param child_model: the model identity, model factory or effect to get it,
                         or None to use IModel adapter.
     @type child_model: str or unicode or callable or IModelFactory or None
@@ -213,11 +215,11 @@ def collection(name, child_source=None, child_names=None, child_model=None,
     @param model_meta: collection model metadata.
     @type model_meta: list of tuple
     """
-    _annotate("collection", name, child_source=child_source,
-              child_names=child_names, child_model=child_model,
-              child_label=child_label, child_desc=child_desc,
-              child_meta=child_meta, label=label, desc=desc,
-              meta=meta, model_meta=model_meta)
+    _annotate("collection", name, child_names=child_names,
+              child_source=child_source, child_view=child_view,
+              child_model=child_model, child_label=child_label,
+              child_desc=child_desc, child_meta=child_meta,
+              label=label, desc=desc, meta=meta, model_meta=model_meta)
 
 
 def child_model(model_factory):
@@ -644,7 +646,8 @@ class StaticChildrenMixin(object):
         cls._model_items[name] = item
 
     @classmethod
-    def annotate_collection(cls, name, child_source, child_names=None,
+    def annotate_collection(cls, name, child_names=None,
+                            child_source=None, child_view=None,
                             child_model=None, child_label=None,
                             child_desc=None, child_meta=None,
                             label=None, desc=None, meta=None,
@@ -652,8 +655,9 @@ class StaticChildrenMixin(object):
         """@see: feat.models.model.collection"""
         name = _validate_str(name)
         coll_cls = MetaCollection.new(cls._model_identity + "." + name,
-                                      child_source=child_source,
                                       child_names=child_names,
+                                      child_source=child_source,
+                                      child_view=child_view,
                                       child_model=child_model,
                                       child_label=child_label,
                                       child_desc=child_desc,
@@ -1124,6 +1128,8 @@ class DynamicItemsMixin(object):
             return None
 
         def create_items(names):
+            if not names:
+                return []
             Item = DynamicModelItem
             items = [Item(self, n).initiate().addErrback(log_error)
                      for n in names]
@@ -1191,7 +1197,8 @@ class DynamicItemsMixin(object):
 class MetaCollection(type(AbstractModel)):
 
     @staticmethod
-    def new(identity, child_source, child_names=None,
+    def new(identity, child_names=None,
+            child_source=None, child_view=None,
             child_model=None, child_label=None,
             child_desc=None, child_meta=None, meta=None):
         cls_name = utils.mk_class_name(identity)
@@ -1205,6 +1212,7 @@ class MetaCollection(type(AbstractModel)):
                 cls.annotate_child_meta(*meta_item)
         cls.annotate_child_names(child_names)
         cls.annotate_child_source(child_source)
+        cls.annotate_child_view(child_view)
         cls.apply_class_meta(meta)
         return cls
 

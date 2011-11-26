@@ -478,6 +478,7 @@ class Partner(model.Model):
                 label="Recipient")
 
     model.meta("html-order", "type, role, recipient")
+    model.item_meta("recipient", "html-render", "array, 1")
 
 
 class Recipient(model.Model):
@@ -502,6 +503,8 @@ class Recipient(model.Model):
 
 from feat.agents.monitor import monitor_agent
 from feat.agents.monitor.interface import MonitorState
+from feat.agents.monitor.interface import LocationState
+from feat.agents.monitor.interface import PatientState
 
 
 @adapter.register(monitor_agent.MonitorAgent, IModel)
@@ -510,8 +513,78 @@ class MonitorAgent(Agent):
     model.view(call.source_call("get_monitoring_status"))
 
     model.attribute("state", value.Enum(MonitorState),
-                    getter.view_get("__getitem__"))
+                    getter.view_get("__getitem__"),
+                    label="State", desc="Current monitor state")
     model.attribute("location", value.String(),
-                    getter.view_get("__getitem__"))
+                    getter.view_get("__getitem__"),
+                    label="Monitor's Location")
+
+    model.collection("locations",
+                     child_names=call.model_call("_get_location_names"),
+                     child_view=getter.model_get("_get_location"),
+                     child_model="feat.monitored_location",
+                     model_meta=[("html-render", "array, 4")],
+                     label="Monitored Locations")
 
     model.meta("html-order", "state, location")
+    model.item_meta("locations", "html-render", "array, 4")
+
+    ### custom ###
+
+    def _get_location_names(self):
+        return self.view["locations"].keys()
+
+    def _get_location(self, name):
+        return self.view["locations"][name]
+
+
+class MonitoredLocation(model.Model):
+    model.identity("feat.monitored_location")
+
+    model.attribute("hostname", value.String(),
+                    getter.model_attr("name"),
+                    label="Host Name", desc="Monitored host")
+    model.attribute("state", value.Enum(LocationState),
+                    getter.view_get("__getitem__"),
+                    label="Location State",
+                    desc="Monitored location's state")
+
+    model.collection("agents",
+                     child_names=call.model_call("_get_agent_names"),
+                     child_view=getter.model_get("_get_agent"),
+                     child_model="feat.monitored_agent",
+                     model_meta=[("html-render", "array, 2")],
+                     label="Monitored Agents")
+
+    model.meta("html-render", "array, 3")
+    model.meta("html-order", "state, agents")
+
+    ### custom ###
+
+    def _get_agent_names(self):
+        return self.view["patients"].keys()
+
+    def _get_agent(self, name):
+        return self.view["patients"][name]
+
+
+class MonitoredAgent(model.Model):
+    model.identity("feat.monitored_agent")
+
+    model.attribute("type", value.String(),
+                    call.view_call("__getitem__", "patient_type"),
+                    label="Type", desc="Monitored agent's type")
+    model.attribute("state", value.Enum(PatientState),
+                    getter.view_get("__getitem__"),
+                    label="Agent State",
+                    desc="Monitored agent's state")
+    model.attribute("heartbeats", value.Integer(),
+                    call.view_call("__getitem__", "counter"),
+                    label="Heartbeats", desc="Received heartbeats")
+
+    model.child("recipient",
+                source=call.view_call("__getitem__", "recipient"),
+                model="feat.recipient", label="Recipient")
+
+    model.meta("html-order", "type, state, recipient, heartbeats")
+    model.item_meta("recipient", "html-render", "array, 1")
