@@ -81,6 +81,11 @@ def error(category, format, *args):
     _default_keeper.do_log(LogLevel.error, None, category, format, args)
 
 
+def trace(format, *args):
+    global _default_keeper
+    _default_keeper.do_log(LogLevel.debug, None, "trace", format, args)
+
+
 class Logger(object):
 
     implements(ILogger)
