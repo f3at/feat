@@ -81,7 +81,9 @@ def render_item(item, context):
     metadata = yield render_metadata(item)
     if metadata:
         result["metadata"] = metadata
-    result["href"] = item.reference.resolve(context)
+    ref = item.reference
+    if ref is not None:
+        result["href"] = ref.resolve(context)
     defer.returnValue(result)
 
 
@@ -116,7 +118,9 @@ def render_action(action, context):
     params = render_params(action.parameters)
     if params:
         result["params"] = params
-    result["href"] = action.reference.resolve(context)
+    ref = action.reference
+    if ref is not None:
+        result["href"] = ref.resolve(context)
     defer.returnValue(result)
 
 
@@ -208,13 +212,15 @@ def render_compact(model, context):
     result = {}
     items = yield model.fetch_items()
     for item in items:
-        model = yield item.fetch()
-        if IAttribute.providedBy(model):
-            attr = IAttribute(model)
+        submodel = yield item.fetch()
+        if IAttribute.providedBy(submodel):
+            attr = IAttribute(submodel)
             value = yield attr.fetch_value()
             result[attr.name] = value
         else:
-            result[item.name] = item.reference.resolve(context)
+            ref = item.reference
+            if ref is not None:
+                result[item.name] = ref.resolve(context)
     defer.returnValue(result)
 
 
