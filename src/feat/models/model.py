@@ -336,6 +336,15 @@ def child_view(effect):
     _annotate("child_view", effect)
 
 
+def is_detached(flag=True):
+    """
+    Annotate the model being defined as being detached.
+    @param flag: if the model is detached.
+    @type flag: bool
+    """
+    _annotate("is_detached", flag)
+
+
 def _annotate(name, *args, **kwargs):
     method_name = "annotate_" + name
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
@@ -391,6 +400,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     _model_identity = None
     _model_view = None
     _model_reference = None
+    _model_is_detached = False
 
     ### class methods ###
 
@@ -512,6 +522,11 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         """@see: feat.models.model.identity"""
         cls._model_identity = _validate_str(identity)
         register_factory(cls._model_identity, cls)
+
+    @classmethod
+    def annotate_is_detached(cls, flag):
+        """@see: feat.models.model.is_detached"""
+        cls._model_is_detached= _validate_flag(flag)
 
     @classmethod
     def annotate_reference(cls, effect):
@@ -1056,6 +1071,8 @@ class ModelItem(BaseModelItem):
 
     @property
     def reference(self):
+        if self.model._model_is_detached:
+            return None
         return self._reference
 
     def browse(self):
@@ -1368,6 +1385,8 @@ class DynamicModelItem(BaseModelItem):
 
     @property
     def reference(self):
+        if self.model._model_is_detached:
+            return None
         return self._reference
 
     ### IModelItem ###
@@ -1391,6 +1410,10 @@ class DynamicModelItem(BaseModelItem):
 
 
 _model_factories = {}
+
+
+def _validate_flag(value):
+    return bool(value)
 
 
 def _validate_str(value):

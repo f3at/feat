@@ -645,7 +645,9 @@ class IModelItem(Interface):
                      "@type: unicode")
     label = Attribute("Item short label. @type: unicode or None")
     desc = Attribute("Item long description. @type: unicode or None")
-    reference = Attribute("Reference to the model. @type: IReference")
+    reference = Attribute("Reference to the model or None "
+                          "if the model is detached. "
+                          "@type: IReference or None")
 
     def browse():
         """
@@ -680,7 +682,8 @@ class IModelAction(Interface):
 
     name = Attribute("Action name unique for all model's actions. "
                      "@type: unicode")
-    reference = Attribute("Action reference. @type: IReference")
+    reference = Attribute("Action reference or None if the model "
+                          "is detached. @type: IReference or None")
     label = Attribute("Action short label. @type: unicode or None")
     desc = Attribute("Action long description. @type: unicode or None")
     category = Attribute("Action category. @type: ActionCategories")
