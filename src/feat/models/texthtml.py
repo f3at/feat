@@ -5,8 +5,9 @@ from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
 
-from feat.models.interface import (ActionCategory, IModel, IAttribute,
-                                   IMetadata, ValueTypes)
+from feat.models.interface import ActionCategories, ValueTypes
+from feat.models.interface import IModel, IAttribute, IMetadata
+from feat.models.interface import IValueOptions
 
 
 MIME_TYPE = "text/html"
@@ -162,23 +163,23 @@ class HTMLWriter(log.Logger):
     def _render_actions(self, model, markup, context):
         actions = yield model.fetch_actions()
         actions = [x for x in actions
-                   if x.category != ActionCategory.retrieve]
+                   if x.category != ActionCategories.retrieve]
         if not actions:
             return
-        markup.h3()('List of model actions.').close()
-        actions = []
+        ul = markup.ul(_class="actions")
         for action in actions:
             li = markup.li()
-            markup.span(_class='name')(action.name).close()
+            markup.span(_class='name')(action.label or action.name).close()
+            if action.desc:
+                markup.span(_class='desc')(action.desc).close()
             self._render_action_form(action, markup, context)
             li.close()
             actions
-        ul = markup.ul(_class="items")
         ul.close()
         markup.hr()
 
     def _render_action_form(self, action, markup, context):
-        method = context.get_action_method(action)
+        method = context.get_action_method(action).name
         url = action.reference.resolve(context)
         form = markup.form(method=method, action=url, _class='action_form')
         div = markup.div()
@@ -188,29 +189,40 @@ class HTMLWriter(log.Logger):
         div.close()
         form.close()
 
-    def _render_param_field(self, markup, context, action_param):
-        default = action_param.value_info.use_default and \
-                  action_param.value_info.default
+    def _render_param_field(self, markup, context, param):
+        default = param.value_info.use_default and \
+                  param.value_info.default
 
-        markup.label()(action_param.name).close()
+        label = param.label or param.value_info.label or param.name
+        markup.label()(label).close()
         text_types = [ValueTypes.integer, ValueTypes.number,
                       ValueTypes.string]
-        v_t = action_param.value_info.value_type
+        v_t = param.value_info.value_type
         if v_t in text_types:
-            markup.input(type='text', default=default, name=action_param.name)
+            if IValueOptions.providedBy(param.value_info):
+                options = IValueOptions(param.value_info)
+                select = markup.select(name=param.name)
+                for o in options.iter_options():
+                    option = markup.option(value=o.value)(o.label).close()
+                    if o.value == default:
+                        option["selected"] = None
+                select.close()
+            else:
+                markup.input(type='text', default=default,
+                             name=param.name)
         elif v_t == ValueTypes.boolean:
             extra = {}
             if default is True:
                 extra['checked'] = '1'
             markup.input(type='checkbox', value='true',
-                         name=action_param.name, **extra)
+                         name=param.name, **extra)
         else:
             msg = ("ValueType %s is not supported by HTML writer" %
                    (v_t.__name__))
             markup.span(_class='type_not_supported')(msg)
-        if action_param.desc:
-            markup.span(_class='desc')(action_param.desc).close()
-        if not action_param.is_required:
+        if param.desc:
+            markup.span(_class='desc')(param.desc).close()
+        if not param.is_required:
             markup.span(_class='optional')("Optional").close()
         markup.br()
 

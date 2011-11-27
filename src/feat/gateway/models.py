@@ -29,8 +29,8 @@ from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import resource, agent as base_agent
 
 from feat.common import adapter, defer
-from feat.models import model, action, value, reference
-from feat.models import call, getter, setter
+from feat.models import model, action, value, reference, response
+from feat.models import effect, call, getter, setter
 
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
@@ -91,13 +91,22 @@ class Agencies(model.Collection):
     model.child_names(call.source_call("iter_agency_ids"))
     model.child_source(getter.model_get("_locate_agency"))
 
-#    model.delete("full_shutdown",
-#                 effect.delay(call.source_call("full_shutdown",
-#                                               stop_process=True)),
-#                 result=response.Deleted("Full Shutdown Succeed"),
-#                 default=True,
-#                 label="Full Shutdown",
-#                 desc="Shutdown cleanly all agency processes.")
+    #FIXME: use another mean to specify the default action than name
+    model.delete("del",
+                 effect.delay(call.source_call("full_kill",
+                                               stop_process=True)),
+                 response.deleted("Full Terminate Succeed"),
+                 label="Terminate",
+                 desc=("Terminate all agencies on this host, "
+                       "without stopping any agents"))
+
+    model.delete("shutdown",
+                 effect.delay(call.source_call("full_shutdown",
+                                               stop_process=True)),
+                 response.deleted("Full Shutdown Succeed"),
+                 label="Shutdown",
+                 desc=("Shutdown all agencies on this host, "
+                       "stopping all agents properly"))
 
     model.meta("html-render", "array, 2")
 
@@ -174,39 +183,24 @@ class Agency(model.Model):
                 label="Agency's Agents",
                 desc="Agents running on this agency.")
 
-#    model.delete("shutdown", call.model_call("_shutdown"),
-#                 label="Shutdown", desc="Shutdown the agency and its agents")
-#    model.delete("terminate", effect.model_call("_terminate"), default=True,
-#                 label="Terminate", desc="Shutdown the agency only")
-#    model.delete("kill", call.model_call("_kill"),
-#                 label="Kill", desc="Violently kill the agency process")
-#
+    #FIXME: use another mean to specify the default action than name
+    model.delete("del",
+                 effect.delay(call.source_call("kill",
+                                               stop_process=True)),
+                 response.deleted("Agency Terminated"),
+                 label="Terminate", desc=("Terminate the agency, "
+                                          "without stopping any agents"))
+
+    model.delete("shutdown",
+                 effect.delay(call.source_call("shutdown",
+                                               stop_process=True)),
+                 response.deleted("Agency Shutdown"),
+                 label="Shutdown", desc=("Shutdown the agency, "
+                                         "stopping all agents properly"))
 
     model.meta("html-order", "id, role, log_filter, agents")
     model.item_meta("id", "html-link", "owner")
     model.item_meta("agents", "html-render", "array, 2")
-
-    ### custom ###
-
-#    def _shutdown(self):
-#        time.call_later(self.source.shutdown, stop_process=True)
-#        return self._deleted("Shutdown Succeed")
-#
-#    def _terminate(self):
-#        time.call_later(os.kill, os.getpid(), signal.SIGTERM)
-#        return self._deleted("Terminate Succeed")
-#
-#    def _kill(self):
-#        time.call_later(os.kill, os.getpid(), signal.SIGKILL)
-#        return self._deleted("Kill Succeed")
-#
-#    def _deleted(self, message):
-#        result = self.source.locate_master()
-#        if result is not None:
-#            host, port, _is_remote = result
-#            # FIXME: no location would mean the actual one
-#            ref = reference.Absolute((host, port))
-#            return response.Deleted(message, redirection=ref)
 
 
 class AgencyAgents(model.Collection):
@@ -253,16 +247,16 @@ class AgencyAgent(model.Model):
         return ref.resolve(context)
 
 
-#class AgentTypeValue(value.String):
-#    value.label("Agent type")
-#    value.desc("Agents type allowed to be started")
-#    value.option("dummy_buryme_agent", "Dummy Bury-Me Agent")
-#    value.option("dummy_local_agent", "Dummy Local Agent")
-#    value.option("dummy_wherever_agent", "Dummy Wherever Agent")
-#    value.option("dummy_buryme_standalone", "Dummy Bury-Me Standalone")
-#    value.option("dummy_local_standalone", "Dummy Local Standalone")
-#    value.option("dummy_wherever_standalone", "Dummy Wherever Standalone")
-#    value.options_only()
+class AgentTypeValue(value.String):
+    value.label("Agent Type")
+    value.desc("Agents type allowed to be started")
+    value.option("dummy_buryme_agent", "Dummy Bury-Me Agent")
+    value.option("dummy_local_agent", "Dummy Local Agent")
+    value.option("dummy_wherever_agent", "Dummy Wherever Agent")
+    value.option("dummy_buryme_standalone", "Dummy Bury-Me Standalone")
+    value.option("dummy_local_standalone", "Dummy Local Standalone")
+    value.option("dummy_wherever_standalone", "Dummy Wherever Standalone")
+    value.options_only()
 
 
 class Agents(model.Collection):
@@ -271,12 +265,12 @@ class Agents(model.Collection):
     model.child_names(call.model_call("_iter_agents"))
     model.child_source(getter.model_get("_locate_agent"))
 
-    # model.create("spawn", effect.source_call("spawn_agent"),
-    #              value=AgentTypeValue(),
-    #              result=value.Response(),
-    #              response=response.Created("Agent Created",
-    #                                        reference.Relative()),
-    #              label="Spawn Agent", desc="Spawn a new agent on this host")
+    #FIXME: use another mean to specify the default action than name
+    model.create("post",
+                 call.source_filter("spawn_agent"),
+                 response.created("Agent Created"),
+                 value=AgentTypeValue(),
+                 label="Spawn Agent", desc="Spawn a new agent on this host")
 
     model.meta("html-render", "array, 1")
 

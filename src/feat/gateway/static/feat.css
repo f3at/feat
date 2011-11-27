@@ -53,6 +53,21 @@ items .name {
     color: blue;
 }
 
+
+/* List of actions */
+
+.actions .name,
+.actions .desc {
+    min-width: 200px;
+    display: inline-block;
+    margin-right: 20px;
+}
+
+actions .name {
+    color: green;
+}
+
+
 /* Arrays */
 
 .array {

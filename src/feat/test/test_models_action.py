@@ -248,7 +248,7 @@ class TestModelsAction(common.TestCase):
         param = params["value"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "value")
-        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(isinstance(param.name, unicode))
         self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, u"Value")
         self.assertTrue(isinstance(param.label, unicode))
@@ -259,7 +259,7 @@ class TestModelsAction(common.TestCase):
         param = params["toto"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "toto")
-        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(isinstance(param.name, unicode))
         self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, u"Int")
         self.assertTrue(isinstance(param.label, unicode))
@@ -270,7 +270,7 @@ class TestModelsAction(common.TestCase):
         param = params["titi"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "titi")
-        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(isinstance(param.name, unicode))
         self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, None)
         self.assertEqual(param.desc, None)
@@ -279,7 +279,7 @@ class TestModelsAction(common.TestCase):
         param = params["tata"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "tata")
-        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(isinstance(param.name, unicode))
         self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, None)
         self.assertEqual(param.desc, None)
@@ -337,7 +337,7 @@ class TestModelsAction(common.TestCase):
         param = params["delim"]
         self.assertTrue(IActionParam.providedBy(param))
         self.assertEqual(param.name, "delim")
-        self.assertTrue(isinstance(param.name, str))
+        self.assertTrue(isinstance(param.name, unicode))
         self.assertTrue(IValueInfo.providedBy(param.value_info))
         self.assertEqual(param.label, u"Delimiter")
         self.assertTrue(isinstance(param.label, unicode))

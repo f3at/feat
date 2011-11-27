@@ -12,7 +12,7 @@ from feat.models import texthtml, model, action, value, call, getter, setter
 from feat import gateway
 from feat.web import document, http
 
-from feat.models.interface import IModel, IContext, ActionCategory
+from feat.models.interface import IModel, IContext, ActionCategories
 
 
 class TestContext(object):
@@ -191,7 +191,7 @@ class ShutdownAction(action.Action):
 class DeleteAction(action.Action):
 
     action.label("Delete Action")
-    action.category(ActionCategory.delete)
+    action.category(ActionCategories.delete)
     action.desc("Delete the agent")
 
 

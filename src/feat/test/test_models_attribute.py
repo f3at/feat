@@ -141,7 +141,7 @@ class TestModelsProperty(common.TestCase):
         self.assertTrue(interface.IModelAction.providedBy(action))
         self.assertEqual(action.name, u"get")
         self.assertTrue(isinstance(action.name, unicode))
-        self.assertEqual(action.category, interface.ActionCategory.retrieve)
+        self.assertEqual(action.category, interface.ActionCategories.retrieve)
         self.assertTrue(action.is_idempotent)
         self.assertEqual(action.result_info, info)
         self.assertEqual(action.parameters, [])
@@ -149,7 +149,7 @@ class TestModelsProperty(common.TestCase):
         action_set = action
         self.assertTrue(interface.IModelAction.providedBy(action))
         self.assertEqual(action.name, u"set")
-        self.assertEqual(action.category, interface.ActionCategory.update)
+        self.assertEqual(action.category, interface.ActionCategories.update)
         self.assertEqual(action.result_info, info)
         action = yield attr.fetch_action("delete")
         self.assertEqual(action, None)

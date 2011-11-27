@@ -30,7 +30,7 @@ from zope.interface import implements
 from feat.common import defer, log
 from feat.web import http, webserver
 
-from feat.models.interface import ActionCategory, IActionPayload, IAspect
+from feat.models.interface import ActionCategories, IActionPayload, IAspect
 from feat.models.interface import IContext, IModel, IModelAction, IReference
 
 
@@ -53,12 +53,12 @@ class Context(object):
     def get_action_method(self, action):
         if not action.is_idempotent:
             return http.Methods.POST
-        if action.category is ActionCategory.retrieve:
+        if action.category is ActionCategories.retrieve:
             return http.Methods.GET
-        if action.category is ActionCategory.delete:
+        if action.category is ActionCategories.delete:
             return http.Methods.DELETE
-        if action.category in (ActionCategory.create,
-                                 ActionCategory.update):
+        if action.category in (ActionCategories.create,
+                               ActionCategories.update):
             return http.Methods.PUT
         return http.Methods.POST
 
@@ -269,13 +269,10 @@ class ModelResource(webserver.BaseResource):
 
         d = self.model.fetch_action(action_name)
         d.addCallback(got_action)
-        d.addErrback(defer.trace, "E"*10+" Model's action rendering error")
         return d
 
     def render_model(self, request, response, context):
-        d = response.write_object(self.model, context=context)
-        d.addErrback(defer.trace, "E"*10+"Model rendering error")
-        return d
+        return response.write_object(self.model, context=context)
 
     def render_error(self, request, response, error):
         response.force_mime_type("text/plain")
@@ -290,16 +287,16 @@ class ActionResource(webserver.BaseResource):
     # the first tuple contains the valid values for is_idempotent
     # and the second the valid values for category.
     action_validation = {http.Methods.GET:
-                         ((True, ), (ActionCategory.retrieve, )),
+                         ((True, ), (ActionCategories.retrieve, )),
                          http.Methods.DELETE:
-                         ((True, ), (ActionCategory.delete, )),
+                         ((True, ), (ActionCategories.delete, )),
                          http.Methods.PUT:
-                         ((True, ), (ActionCategory.create,
-                                     ActionCategory.update)),
+                         ((True, ), (ActionCategories.create,
+                                     ActionCategories.update)),
                          http.Methods.POST:
-                         ((True, False), (ActionCategory.create,
-                                          ActionCategory.update,
-                                          ActionCategory.command))}
+                         ((True, False), (ActionCategories.create,
+                                          ActionCategories.update,
+                                          ActionCategories.command))}
 
     def __init__(self, action, context):
         self._action = IModelAction(action)
@@ -336,7 +333,6 @@ class ActionResource(webserver.BaseResource):
                     self._context.models[-1].name, params)
         d = self._action.perform(**params)
         d.addCallback(got_data)
-        d.addErrback(defer.trace, "E"*10+" Action rendering error")
         return d
 
     def render_error(self, request, response, error):
@@ -348,13 +344,13 @@ class ActionResource(webserver.BaseResource):
     def _update_methods(self, action, methods):
         if not action.is_idempotent:
             methods.add(http.Methods.POST)
-        elif action.category is ActionCategory.delete:
+        elif action.category is ActionCategories.delete:
             methods.add(http.Methods.DELETE)
-        elif action.category in (ActionCategory.create,
-                                 ActionCategory.update):
+        elif action.category in (ActionCategories.create,
+                                 ActionCategories.update):
             methods.add(http.Methods.PUT)
             methods.add(http.Methods.POST)
-        elif action.category is ActionCategory.command:
+        elif action.category is ActionCategories.command:
             methods.add(http.Methods.POST)
 
 

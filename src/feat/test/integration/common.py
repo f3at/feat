@@ -39,7 +39,7 @@ from feat.gateway.resources import Context
 from feat.web import document, http
 
 from feat.agencies.interface import NotFoundError
-from feat.models.interface import IModel, ActionCategory
+from feat.models.interface import IModel, ActionCategories
 
 attr = common.attr
 delay = common.delay
@@ -500,7 +500,7 @@ class ModelTestMixin(object):
         # call querying actions
         actions = yield model.fetch_actions()
         for action in actions:
-            if action.category != ActionCategory.retrieve:
+            if action.category != ActionCategories.retrieve:
                 self.info("Not validating action name: %s, label: %s, "
                           "as it's category is: %s", action.name,
                           action.label, action.category)

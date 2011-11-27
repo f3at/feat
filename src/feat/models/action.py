@@ -24,7 +24,7 @@ import types
 
 from zope.interface import implements
 
-from feat.common import defer, mro, annotate, container
+from feat.common import log, error, defer, mro, annotate, container
 from feat.models import utils, reference, meta as models_meta
 
 from feat.models.interface import *
@@ -89,8 +89,8 @@ def value(value_info, label=None, desc=None):
 def param(name, value_info, is_required=True, label=None, desc=None):
     """
     Annotate a parameter of the action being defined.
-    @param name: name of the parameter defined (ASCII encoded).
-    @type name: str
+    @param name: name of the parameter defined.
+    @type name: unicode or str
     @param value_info: the parameter value information.
     @type value_info: value.IValueInfo
     @param is_required: if the parameter is required or optional.
@@ -137,14 +137,14 @@ def _annotate(name, *args, **kwargs):
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
 
 
-class ActionParam(object):
+class Param(object):
     """Defines an action parameter."""
 
     implements(IActionParam)
 
     def __init__(self, name, value_info,
                  is_required=True, label=None, desc=None):
-        self._name = str(name)
+        self._name = unicode(name)
         self._label = _validate_optstr(label)
         self._desc = _validate_optstr(desc)
         self._value_info = IValueInfo(value_info)
@@ -178,7 +178,7 @@ class MetaAction(type(models_meta.Metadata)):
     implements(IActionFactory)
 
     @staticmethod
-    def new(name, category, effects=[],
+    def new(name, category, effects=None, params=None,
             value_info=None, result_info=None,
             is_idempotent=True, enabled=True):
         cls_name = utils.mk_class_name(name, "Action")
@@ -190,8 +190,16 @@ class MetaAction(type(models_meta.Metadata)):
             cls.annotate_result(result_info)
         cls.annotate_is_idempotent(is_idempotent)
         cls.annotate_enabled(enabled)
-        for e in effects:
-            cls.annotate_effect(e)
+
+        if params:
+            if isinstance(params, Param):
+                params = [params]
+            for p in params:
+                cls.annotate_param_instance(p)
+
+        if effects:
+            for e in effects:
+                cls.annotate_effect(e)
         return cls
 
 
@@ -205,7 +213,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
     _label = None
     _desc = None
-    _category = ActionCategory.command
+    _category = ActionCategories.command
     _is_idempotent = False
     _result_info = None
     _enabled = True
@@ -298,13 +306,13 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
             if len(args) > 0:
                 values = list(args)
-                values += [kwargs["value"]] if "value" in kwargs else []
+                values += [kwargs[u"value"]] if u"value" in kwargs else []
                 if len(values) > 1:
                     raise TypeError("Action %s can only have one value: %s"
                                     % (self.name,
                                        ", ".join([repr(v) for v in values])))
                 if args:
-                    kwargs["value"] = args[0]
+                    kwargs[u"value"] = args[0]
 
             params = set(kwargs.keys())
             expected = set(parameters.keys())
@@ -333,14 +341,25 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                     if param.name not in validated and info.use_default:
                         validated[param.name] = info.default
 
-            value = validated.pop("value", None)
+            value = validated.pop(u"value", None)
 
             # We use the model name instead of the action name as key
             maker = IContextMaker(self.model)
             context = maker.make_context(action=self)
 
+            def log_effect_Error(failure, effect):
+                error.handle_failure(None, failure,
+                                     "Failure during effect %s execution",
+                                     effect.func_name)
+                return failure
+
             for effect in self._effects:
-                d.addCallback(effect, context, **validated)
+                try:
+                    d.addCallback(effect, context, **validated)
+                    d.addErrback(log_effect_Error, effect)
+                except AssertionError:
+                    err = ValueError("Invalid action effect: %r" % (effect, ))
+                    return defer.fail(err)
 
             if self._result_info is not None:
                 d.addCallback(IValidator(self._result_info).publish)
@@ -354,7 +373,6 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
             return defer.fail()
 
         else:
-
             d.callback(value)
             return d
 
@@ -373,7 +391,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
     @classmethod
     def annotate_category(cls, category):
         """@see: feat.models.action.category"""
-        cls._category = ActionCategory(category)
+        cls._category = ActionCategories(category)
 
     @classmethod
     def annotate_is_idempotent(cls, is_idempotent=True):
@@ -394,8 +412,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
     @classmethod
     def annotate_value(cls, value_info, label=None, desc=None):
         """@see: feat.models.action.value"""
-        param = ActionParam(u"value", value_info, is_required=True,
-                            label=label, desc=desc)
+        param = Param(u"value", value_info, is_required=True,
+                      label=label, desc=desc)
         cls._parameters[u"value"] = param
 
     @classmethod
@@ -403,9 +421,13 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                        label=None, desc=None):
         """@see: feat.models.action.parameter"""
         name = _validate_str(name)
-        param = ActionParam(name, value_info, is_required=is_required,
-                            label=label, desc=desc)
+        param = Param(name, value_info, is_required=is_required,
+                      label=label, desc=desc)
         cls._parameters[name] = param
+
+    @classmethod
+    def annotate_param_instance(cls, param):
+        cls._parameters[param.name] = param
 
     @classmethod
     def annotate_effect(cls, effect):

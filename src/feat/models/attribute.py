@@ -48,7 +48,7 @@ class MetaAttribute(type(model.AbstractModel)):
         if getter is not None:
 
             Action = action.MetaAction.new("get." + identity,
-                                           ActionCategory.retrieve,
+                                           ActionCategories.retrieve,
                                            effects=[getter],
                                            result_info=value_info,
                                            is_idempotent=True)
@@ -64,7 +64,7 @@ class MetaAttribute(type(model.AbstractModel)):
                 return d
 
             Action = action.MetaAction.new("set." + identity,
-                                           ActionCategory.update,
+                                           ActionCategories.update,
                                            effects=[_set_attribute],
                                            value_info=value_info,
                                            result_info=value_info,

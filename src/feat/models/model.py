@@ -25,11 +25,13 @@ import types
 from zope.interface import implements
 
 from feat.common import error, annotate, container, mro, defer, error, log
-from feat.models import utils
+from feat.models import utils, value
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
+from feat.models import action as models_action
 
-from feat.models.interface import IModel, IModelItem, NotSupported, ModelError
+from feat.models.interface import ActionCategories, ModelError, NotSupported
+from feat.models.interface import IModel, IModelItem
 from feat.models.interface import IActionFactory, IModelFactory
 from feat.models.interface import IAspect, IReference, IContextMaker
 
@@ -150,8 +152,34 @@ def command():
     raise NotImplementedError("model.command() is not implemented yet")
 
 
-def create():
-    raise NotImplementedError("model.create() is not implemented yet")
+def create(name, *effects, **kwargs):
+    """
+    Annotate a non-idempotent create action to the model being defined.
+    Should really be:
+      create(name, *effects, value=None, params=None, label=None, desc=None)
+    but it is not supported by python < 3.
+    @param name: item name unique for the model being defined.
+    @type name: str or unicode
+    @param effects:
+    @type effects: str or unicode
+    @param value: input value information or None if not required.
+    @type value: IValuInfo or None
+    @param params: action paremeter or list of action parameters.
+    @type params: IActionPram or list of IActionParam
+    @param label: the action label or None.
+    @type label: str or unicode or None
+    @parama desc: the action  description or None if not documented.
+    @type desc: str or unicode or None
+    """
+    value_info = kwargs.pop("value", None)
+    params = kwargs.pop("params", None)
+    label = kwargs.pop("label", None)
+    desc = kwargs.pop("desc", None)
+    if kwargs:
+        raise TypeError("create() got an unexpected keyword '%s'"
+                        % kwargs.keys()[0])
+    _annotate("create", name, value_info=value_info, params=params,
+              effects=effects, label=label, desc=desc)
 
 
 def put():
@@ -162,8 +190,26 @@ def update():
     raise NotImplementedError("model.update() is not implemented yet")
 
 
-def delete():
-    raise NotImplementedError("model.delete() is not implemented yet")
+def delete(name, *effects, **kwargs):
+    """
+    Annotate a delete action to the model being defined.
+    Should be delete(name, *effects, label=None, desc=None)
+    but it is not supported by python < 3.
+    @param name: item name unique for the model being defined.
+    @type name: str or unicode
+    @param effects:
+    @type effects: str or unicode
+    @param label: the action label or None.
+    @type label: str or unicode or None
+    @parama desc: the action  description or None if not documented.
+    @type desc: str or unicode or None
+    """
+    label = kwargs.pop("label", None)
+    desc = kwargs.pop("desc", None)
+    if kwargs:
+        raise TypeError("delete() got an unexpected keyword '%s'"
+                        % kwargs.keys()[0])
+    _annotate("delete", name, effects=effects, label=label, desc=desc)
 
 
 def action(name, factory, label=None, desc=None):
@@ -771,6 +817,35 @@ class StaticActionsMixin(object):
         item = MetaActionItem.new(name, factory, label=label, desc=desc)
         cls._action_items[name] = item
 
+    @classmethod
+    def annotate_create(cls, name, effects, value_info=None,
+                        params=None, label=None, desc=None):
+        """@see: feat.models.model.create"""
+        name = _validate_str(name)
+        category=ActionCategories.create
+        factory = models_action.MetaAction.new(name,
+                                               category=category,
+                                               value_info=value_info,
+                                               result_info=value.Response(),
+                                               is_idempotent=False,
+                                               params=params,
+                                               effects=effects)
+        item = MetaActionItem.new(name, factory, label=label, desc=desc)
+        cls._action_items[name] = item
+
+    @classmethod
+    def annotate_delete(cls, name, effects, label=None, desc=None):
+        """@see: feat.models.model.delete"""
+        name = _validate_str(name)
+        category=ActionCategories.delete
+        factory = models_action.MetaAction.new(name,
+                                               category=category,
+                                               result_info=value.Response(),
+                                               is_idempotent=True,
+                                               effects=effects)
+        item = MetaActionItem.new(name, factory, label=label, desc=desc)
+        cls._action_items[name] = item
+
 
 class Model(AbstractModel, StaticChildrenMixin, StaticActionsMixin):
     """Static model with a known set of sub-models and actions."""
@@ -914,15 +989,15 @@ class MetaModelItem(type(BaseModelItem)):
     ### IAspect ###
 
     @property
-    def name(cls):
+    def name(cls): #@NoSelf
         return cls._name
 
     @property
-    def label(cls):
+    def label(cls): #@NoSelf
         return cls._label
 
     @property
-    def desc(cls):
+    def desc(cls): #@NoSelf
         return cls._desc
 
 
@@ -1011,15 +1086,15 @@ class MetaActionItem(type):
     ### IAspect ###
 
     @property
-    def name(cls):
+    def name(cls): #@NoSelf
         return cls._name
 
     @property
-    def label(cls):
+    def label(cls): #@NoSelf
         return cls._label
 
     @property
-    def desc(cls):
+    def desc(cls): #@NoSelf
         return cls._desc
 
 

@@ -24,7 +24,7 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum, error
 
-__all__ = ["ResponseTypes", "ActionCategory", "ValueTypes",
+__all__ = ["ResponseTypes", "ActionCategories", "ValueTypes",
            "ModelError", "TransientError", "BadReference",
            "NotSupported", "Unauthorized", "NotAvailable",
            "ActionFailed", "ActionConflict",
@@ -40,15 +40,15 @@ __all__ = ["ResponseTypes", "ActionCategory", "ValueTypes",
 class ResponseTypes(enum.Enum):
     """
     Types of success response model that an action could return:
-     - done: The action has been done successfully.
      - created: The action resulted in a new model being created successfully.
-     - accepted: The action has been accepted
-                 but it is not started yet or not finished yet.
+     - updates: The action resulted in the model being updated successfully.
+     - deleted: The action resulted in the model being deleted successfully.
+     - done: The action has been done successfully.
      """
-    done, created, accepted = range(3)
+    created, updated, deleted, accepted, done = range(5)
 
 
-class ActionCategory(enum.Enum):
+class ActionCategories(enum.Enum):
     """
     Types of action models can provide:
      - retrieve: a state less action that retrieve data.
@@ -735,7 +735,7 @@ class IActionParam(Interface):
     """Action parameter descriptor."""
 
     name = Attribute("Parameter name unique for all action's parameters. "
-                     "@type: ascii encoded string")
+                     "@type: unicode")
     label = Attribute("Parameter label or None. @type: unicode or None")
     desc = Attribute("Parameter description or None. @type: unicode or None")
     value_info = Attribute("Information about the parameter value. "
