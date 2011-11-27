@@ -40,11 +40,11 @@ def source_set(method_name):
     @type method_name: str
     """
 
-    def setter(value, context, **_params):
+    def source_set(value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _set(method, context["key"], value, (), {})
 
-    return setter
+    return source_set
 
 
 def source_attr(attr_name):
@@ -55,11 +55,11 @@ def source_attr(attr_name):
     @type attr_name: str
     """
 
-    def setter(value, context, **_params):
+    def source_attr(value, context, **_params):
         setattr(context["model"].source, attr_name, value)
         return _attr()
 
-    return setter
+    return source_attr
 
 
 def source_setattr():
@@ -68,11 +68,11 @@ def source_setattr():
     for name to the current value.
     """
 
-    def setter(value, context, **_params):
+    def source_setattr(value, context, **_params):
         setattr(context["model"].source, context["key"], value)
         return _attr()
 
-    return setter
+    return source_setattr
 
 
 def model_set(method_name):
@@ -83,11 +83,11 @@ def model_set(method_name):
     @type method_name: str
     """
 
-    def setter(value, context, **_params):
+    def model_set(value, context, **_params):
         method = getattr(context["model"], method_name)
         return _set(method, context["key"], value, (), {})
 
-    return setter
+    return model_set
 
 
 def model_attr(attr_name):
@@ -98,11 +98,11 @@ def model_attr(attr_name):
     @type attr_name: str
     """
 
-    def setter(value, context, **_params):
+    def model_attr(value, context, **_params):
         setattr(context["model"], attr_name, value)
         return _attr()
 
-    return setter
+    return model_attr
 
 
 def model_setattr():
@@ -111,11 +111,11 @@ def model_setattr():
     for name to the current value.
     """
 
-    def setter(value, context, **_params):
+    def model_setattr(value, context, **_params):
         setattr(context["model"], context["key"], value)
         return _attr()
 
-    return setter
+    return model_setattr
 
 
 def action_set(method_name):
@@ -126,11 +126,11 @@ def action_set(method_name):
     @type method_name: str
     """
 
-    def setter(value, context, **_params):
+    def action_set(value, context, **_params):
         method = getattr(context["action"], method_name)
         return _set(method, context["key"], value, (), {})
 
-    return setter
+    return action_set
 
 
 def action_attr(attr_name):
@@ -141,11 +141,11 @@ def action_attr(attr_name):
     @type attr_name: str
     """
 
-    def setter(value, context, **_params):
+    def action_attr(value, context, **_params):
         setattr(context["action"], attr_name, value)
         return _attr()
 
-    return setter
+    return action_attr
 
 
 def action_setattr():
@@ -154,11 +154,11 @@ def action_setattr():
     for name to the current value.
     """
 
-    def setter(value, context, **_params):
+    def action_setattr(value, context, **_params):
         setattr(context["action"], context["key"], value)
         return _attr()
 
-    return setter
+    return action_setattr
 
 
 def view_set(method_name):
@@ -169,11 +169,11 @@ def view_set(method_name):
     @type method_name: str
     """
 
-    def setter(value, context, **_params):
+    def view_set(value, context, **_params):
         method = getattr(context["view"], method_name)
         return _set(method, context["key"], value, (), {})
 
-    return setter
+    return view_set
 
 
 def view_attr(attr_name):
@@ -184,11 +184,11 @@ def view_attr(attr_name):
     @type attr_name: str
     """
 
-    def setter(value, context, **_params):
+    def view_attr(value, context, **_params):
         setattr(context["view"], attr_name, value)
         return _attr()
 
-    return setter
+    return view_attr
 
 
 def view_setattr():
@@ -197,11 +197,11 @@ def view_setattr():
     for name to the current value.
     """
 
-    def setter(value, context, **_params):
+    def view_setattr(value, context, **_params):
         setattr(context["view"], context["key"], value)
         return _attr()
 
-    return setter
+    return view_setattr
 
 
 ### private ###

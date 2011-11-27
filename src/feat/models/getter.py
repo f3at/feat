@@ -26,23 +26,13 @@ This module defines a set of "effects" defining ways of retrieving values:
  - XXX_attr: retrieve the value of the attribute with specified name.
 
  - XXX_get: call the method with specified name passing a key.
+
+ - XXX_getattr: get the attribute with name given by the context's key.
+
 """
 
 from feat.common import defer
 from feat.models import reference
-
-
-def local_ref(*parts):
-    """
-    Create a reference builder with specified base location.
-    using getter.local_ref("some", "base") to get a value with key
-    "toto" will gives reference.Local("some", "base", "toto")
-    """
-
-    def getter(_value, context, **_params):
-        return reference.Local(*(parts + (context["key"], )))
-
-    return getter
 
 
 def source_get(method_name):
@@ -54,11 +44,11 @@ def source_get(method_name):
     @type method_name: str
     """
 
-    def getter(_value, context, **_params):
+    def source_get(_value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _get(method, context["key"], (), {})
 
-    return getter
+    return source_get
 
 
 def source_attr(attr_name):
@@ -69,11 +59,11 @@ def source_attr(attr_name):
     @type attr_name: str
     """
 
-    def getter(_value, context, **_params):
+    def source_attr(_value, context, **_params):
         value = getattr(context["model"].source, attr_name)
         return _attr(value)
 
-    return getter
+    return source_attr
 
 
 def source_getattr():
@@ -82,11 +72,11 @@ def source_getattr():
     and retrieve the source's attribute with the context key as name.
     """
 
-    def getter(_value, context, **_params):
+    def source_getattr(_value, context, **_params):
         value = getattr(context["model"].source, context["key"])
         return _attr(value)
 
-    return getter
+    return source_getattr
 
 
 def model_get(method_name):
@@ -98,11 +88,11 @@ def model_get(method_name):
     @type method_name: str
     """
 
-    def getter(_value, context, **_params):
+    def model_get(_value, context, **_params):
         method = getattr(context["model"], method_name)
         return _get(method, context["key"], (), {})
 
-    return getter
+    return model_get
 
 
 def model_attr(attr_name):
@@ -113,11 +103,11 @@ def model_attr(attr_name):
     @type attr_name: str
     """
 
-    def getter(_value, context, **_params):
+    def model_attr(_value, context, **_params):
         value = getattr(context["model"], attr_name)
         return _attr(value)
 
-    return getter
+    return model_attr
 
 
 def model_getattr():
@@ -126,11 +116,11 @@ def model_getattr():
     and retrieve the model's attribute with the context key as name.
     """
 
-    def getter(_value, context, **_params):
+    def model_getattr(_value, context, **_params):
         value = getattr(context["model"], context["key"])
         return _attr(value)
 
-    return getter
+    return model_getattr
 
 
 def action_get(method_name):
@@ -142,11 +132,11 @@ def action_get(method_name):
     @type method_name: str
     """
 
-    def getter(_value, context, **_params):
+    def action_get(_value, context, **_params):
         method = getattr(context["action"], method_name)
         return _get(method, context["key"], (), {})
 
-    return getter
+    return action_get
 
 
 def action_attr(attr_name):
@@ -157,11 +147,11 @@ def action_attr(attr_name):
     @type attr_name: str
     """
 
-    def getter(_value, context, **_params):
+    def action_attr(_value, context, **_params):
         value = getattr(context["action"], attr_name)
         return _attr(value)
 
-    return getter
+    return action_attr
 
 
 def action_getattr():
@@ -170,11 +160,11 @@ def action_getattr():
     and retrieve the action's attribute with the context key as name.
     """
 
-    def getter(_value, context, **_params):
+    def action_getattr(_value, context, **_params):
         value = getattr(context["action"], context["key"])
         return _attr(value)
 
-    return getter
+    return action_getattr
 
 
 def view_get(method_name):
@@ -186,11 +176,11 @@ def view_get(method_name):
     @type method_name: str
     """
 
-    def getter(_value, context, **_params):
+    def view_get(_value, context, **_params):
         method = getattr(context["view"], method_name)
         return _get(method, context["key"], (), {})
 
-    return getter
+    return view_get
 
 
 def view_attr(attr_name):
@@ -201,11 +191,11 @@ def view_attr(attr_name):
     @type attr_name: str
     """
 
-    def getter(_value, context, **_params):
+    def view_attr(_value, context, **_params):
         value = getattr(context["view"], attr_name)
         return _attr(value)
 
-    return getter
+    return view_attr
 
 
 def view_getattr():
@@ -214,11 +204,11 @@ def view_getattr():
     and retrieve the source's attribute with the context key as name.
     """
 
-    def getter(_value, context, **_params):
+    def view_getattr(_value, context, **_params):
         value = getattr(context["view"], context["key"])
         return _attr(value)
 
-    return getter
+    return view_getattr
 
 
 ### private ###

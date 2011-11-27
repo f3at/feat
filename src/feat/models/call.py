@@ -50,11 +50,11 @@ def source_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def source_call(_value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return source_call
 
 
 def source_filter(method_name, *args, **kwargs):
@@ -65,11 +65,11 @@ def source_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def source_filter(value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return source_filter
 
 
 def source_perform(method_name, *args, **kwargs):
@@ -81,11 +81,11 @@ def source_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def source_perform(value, context, **params):
         method = getattr(context["model"].source, method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return source_perform
 
 
 def model_call(method_name, *args, **kwargs):
@@ -97,11 +97,11 @@ def model_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def model_call(_value, context, **_params):
         method = getattr(context["model"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return model_call
 
 
 def model_filter(method_name, *args, **kwargs):
@@ -112,11 +112,11 @@ def model_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def model_filter(value, context, **_params):
         method = getattr(context["model"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return model_filter
 
 
 def model_perform(method_name, *args, **kwargs):
@@ -128,11 +128,11 @@ def model_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def model_perform(value, context, **params):
         method = getattr(context["model"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return model_perform
 
 
 def action_call(method_name, *args, **kwargs):
@@ -144,11 +144,11 @@ def action_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def action_call(_value, context, **_params):
         method = getattr(context["action"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return action_call
 
 
 def action_filter(method_name, *args, **kwargs):
@@ -159,11 +159,11 @@ def action_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def action_filter(value, context, **_params):
         method = getattr(context["action"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return action_filter
 
 
 def action_perform(method_name, *args, **kwargs):
@@ -175,11 +175,11 @@ def action_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def action_perform(value, context, **params):
         method = getattr(context["action"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return action_perform
 
 
 def view_call(method_name, *args, **kwargs):
@@ -191,11 +191,11 @@ def view_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def view_call(_value, context, **_params):
         method = getattr(context["view"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return view_call
 
 
 def view_filter(method_name, *args, **kwargs):
@@ -206,11 +206,11 @@ def view_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def view_filter(value, context, **_params):
         method = getattr(context["view"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return view_filter
 
 
 def view_perform(method_name, *args, **kwargs):
@@ -222,11 +222,11 @@ def view_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def view_perform(value, context, **params):
         method = getattr(context["view"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return view_perform
 
 
 ### private ###
