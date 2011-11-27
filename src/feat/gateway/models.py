@@ -92,8 +92,8 @@ class Agencies(model.Collection):
     model.child_source(getter.model_get("_locate_agency"))
 
 #    model.delete("full_shutdown",
-#                 effect.delay(effect.source_call("full_shutdown",
-#                                                 stop_process=True)),
+#                 effect.delay(call.source_call("full_shutdown",
+#                                               stop_process=True)),
 #                 result=response.Deleted("Full Shutdown Succeed"),
 #                 default=True,
 #                 label="Full Shutdown",
@@ -174,11 +174,11 @@ class Agency(model.Model):
                 label="Agency's Agents",
                 desc="Agents running on this agency.")
 
-#    model.delete("shutdown", effect.model_call("_shutdown"),
+#    model.delete("shutdown", call.model_call("_shutdown"),
 #                 label="Shutdown", desc="Shutdown the agency and its agents")
 #    model.delete("terminate", effect.model_call("_terminate"), default=True,
 #                 label="Terminate", desc="Shutdown the agency only")
-#    model.delete("kill", effect.model_call("_kill"),
+#    model.delete("kill", call.model_call("_kill"),
 #                 label="Kill", desc="Violently kill the agency process")
 #
 

@@ -34,60 +34,11 @@ of calling methods in a processing chain:
                 most probably from an action are added to the specified
                 keywords.
 
-In addition the module provides utility effects:
-
- - delay: perform the specified effect outside the execution chain after
-          the specified time returning specified result right away.
-
-EFFECT DEFINITION:
-
-Effects are standardized callable with known parameters that can perform
-different actions.
-
-Effects' first argument is the current value in a processing chain.
-
-Effect's second argument is the current context, a dictionary
-containing the following keys when meaningful:
-
-  - model: the current model.
-  - view: the current view.
-  - action: the current action.
-  - key: the current key.
-
-Effect's keywords arguments are extra dynamic parameters
-that could be used by the effect, usually action parameters.
-
-Effect's result is ALWAYSa defer.Deffered() instance fired
-with the new value of the processing chain.
 """
 
 import inspect
 
-from feat.common import defer, time
-
-
-def delay(effect, result=None, delay=0.001):
-    """
-    Creates and effect that will delays the execution
-    of the specified effect and return the specified result right away.
-    @param effect: the effect to delay.
-    @type effect: callable
-    @param result: the value to return right away.
-    @type result: Any
-    @param delay: the time to wait before performing
-                  the specified effect in seconds.
-    @type delay: float
-    @return: a new effect that will delay the specified effect.
-    @rtype: callable
-    """
-
-    def new_effect(value, context, **params):
-        d = defer.Deferred()
-        d.addCallback(effect, context, **params)
-        time.call_next(d.callback, value)
-        return result
-
-    return new_effect
+from feat.common import defer
 
 
 def source_call(method_name, *args, **kwargs):

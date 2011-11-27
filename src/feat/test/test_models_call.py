@@ -269,22 +269,6 @@ class TestModelsCall(common.TestCase):
         yield self.check_perform(context, call.view_perform, "view")
 
     @defer.inlineCallbacks
-    def testDelayCall(self):
-        model = Dummy()
-        context = {"model": model}
-
-        eff = call.delay(call.model_perform("perform"), "nop", 0.1)
-
-        self.assertEqual(model.value, None)
-        d = eff("spam", context)
-        self.assertEqual(model.value, None)
-        res = yield d
-        self.assertEqual(res, "nop")
-        self.assertEqual(model.value, None)
-        yield common.delay(None, 0.1)
-        self.assertEqual(model.value, "spam")
-
-    @defer.inlineCallbacks
     def testParameterfiltering(self):
         model = Dummy()
         context = {"model": model}
