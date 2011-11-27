@@ -520,6 +520,18 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 ### Utility Functions ###
 
 
+compose_datetime = http.datetimeToString
+
+
+parse_qs = http.parse_qs
+
+
+def compose_qs(args):
+    if not args:
+        return ""
+    return urllib.urlencode([(n, v) for n, l in args.iteritems() for v in l])
+
+
 def is_header_multifield(name):
     return name in MULTIFIELD_HEADERS
 

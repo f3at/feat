@@ -72,6 +72,8 @@ def render_actions(obj, context):
 @defer.inlineCallbacks
 def render_item(item, context):
     result = {}
+    model = yield item.fetch()
+    yield append_attribute(model, result)
     if item.label is not None:
         result["label"] = item.label
     if item.desc is not None:
@@ -81,6 +83,19 @@ def render_item(item, context):
         result["metadata"] = metadata
     result["href"] = item.reference.resolve(context)
     defer.returnValue(result)
+
+
+@defer.inlineCallbacks
+def append_attribute(model, result):
+    if IAttribute.providedBy(model):
+        attr = IAttribute(model)
+        value = yield attr.fetch_value()
+        result["value"] = value
+        result["type"] = render_value(attr.value_info)
+        if attr.is_writable:
+            result["writable"] = True
+        if attr.is_deletable:
+            result["deletable"] = True
 
 
 @defer.inlineCallbacks
@@ -155,34 +170,65 @@ def render_param(param):
 
 
 @defer.inlineCallbacks
-def write_model(doc, obj, *args, **kwargs):
-    context = kwargs["context"]
+def render_verbose(model, context):
     result = {}
-    result["identity"] = obj.identity
-    name = obj.name
+    result["identity"] = model.identity
+    name = model.name
     if name:
         result["name"] = name
-    label = obj.label
+    label = model.label
     if label:
         result["label"] = label
-    desc = obj.desc
+    desc = model.desc
     if desc:
         result["desc"] = desc
 
-    get_action = yield obj.fetch_action(u"get")
-    if get_action is not None:
-        value = yield get_action.perform()
-        result["value"] = value
+    yield append_attribute(model, result)
 
-    metadata = render_metadata(obj)
-    items = yield render_items(obj, context)
-    actions = yield render_actions(obj, context)
+    metadata = render_metadata(model)
+    items = yield render_items(model, context)
+    actions = yield render_actions(model, context)
     if metadata:
         result["metadata"] = metadata
     if items:
         result["items"] = items
     if actions:
         result["actions"] = actions
+
+    defer.returnValue(result)
+
+
+@defer.inlineCallbacks
+def render_compact(model, context):
+    if IAttribute.providedBy(model):
+        attr = IAttribute(model)
+        value = yield attr.fetch_value()
+        defer.returnValue(value)
+
+    result = {}
+    items = yield model.fetch_items()
+    for item in items:
+        model = yield item.fetch()
+        if IAttribute.providedBy(model):
+            attr = IAttribute(model)
+            value = yield attr.fetch_value()
+            result[attr.name] = value
+        else:
+            result[item.name] = item.reference.resolve(context)
+    defer.returnValue(result)
+
+
+@defer.inlineCallbacks
+def write_model(doc, obj, *args, **kwargs):
+    context = kwargs["context"]
+
+    verbose = "format" in kwargs and "verbose" in kwargs["format"]
+
+    if verbose:
+        result = yield render_verbose(obj, context)
+    else:
+        result = yield render_compact(obj, context)
+
     doc.write(json.dumps(result, indent=2))
 
 

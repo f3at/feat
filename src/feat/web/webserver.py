@@ -28,7 +28,7 @@ from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor
 from twisted.python.failure import Failure
-from twisted.web import server, resource, http as twhttp
+from twisted.web import server, resource
 
 from feat.common import log, defer, error, decorator
 from feat.web import http, compat, document, auth, security
@@ -1016,7 +1016,7 @@ class Request(log.Logger, log.LogProxy):
         # Look for URI arguments only, the POST is content, not arguments
         uri_parts = self._ref.uri.split('?', 1)
         if len(uri_parts) > 1:
-            arguments = twhttp.parse_qs(uri_parts[1], 1)
+            arguments = http.parse_qs(uri_parts[1], True)
         else:
             arguments = {}
 
@@ -1344,7 +1344,7 @@ class Response(log.Logger):
         self._check_header_not_sent()
         if expires:
             utctimestamp = time.mktime(expires.utctimetuple())
-            expires = twhttp.datetimeToString(utctimestamp)
+            expires = http.compose_datetime(utctimestamp)
         if max_age:
             max_age = max_age.days * 24 * 60 * 60 + max_age.seconds
         self._request._ref.addCookie(name, payload,

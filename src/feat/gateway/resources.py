@@ -36,17 +36,18 @@ from feat.models.interface import IContext, IModel, IModelAction, IReference
 
 class Context(object):
 
-    __slots__ = ("scheme", "models", "names", "remaining")
+    __slots__ = ("scheme", "models", "names", "remaining", "arguments")
 
     implements(IContext)
 
     default_actions = set([u"set", u"del", u"post"])
 
-    def __init__(self, scheme, models, names, remaining=[]):
+    def __init__(self, scheme, models, names, remaining=[], arguments={}):
         self.scheme = scheme
         self.names = tuple(names)
         self.models = tuple(models)
         self.remaining = tuple(remaining)
+        self.arguments = dict(arguments)
 
     ### public ###
 
@@ -77,18 +78,20 @@ class Context(object):
     def make_model_address(self, location):
         host, port = location[0]
         path = "/" + http.tuple2path(location[1:])
-        return http.compose(host=host, port=port,
-                            path=path, scheme=self.scheme)
+        return http.compose(host=host, port=port, path=path,
+                            query=http.compose_qs(self.arguments),
+                            scheme=self.scheme)
 
     def descend(self, model):
         remaining = self.remaining
         if self.remaining:
             if self.remaining[0] == model.name:
                 remaining = self.remaining[1:]
-        return Context(self.scheme,
-                       self.models + (model, ),
-                       self.names + (model.name, ),
-                       remaining)
+        return Context(scheme=self.scheme,
+                       models=self.models + (model, ),
+                       names=self.names + (model.name, ),
+                       remaining=remaining,
+                       arguments=self.arguments)
 
 
 class ModelResource(webserver.BaseResource):
@@ -196,10 +199,11 @@ class ModelResource(webserver.BaseResource):
 
         def process_reference(reference):
             reference = IReference(reference)
-            context = Context(request.scheme,
-                              self._model_history,
-                              self._name_history,
-                              remaining[1:])
+            context = Context(scheme=request.scheme,
+                              models=self._model_history,
+                              names=self._name_history,
+                              remaining=remaining[1:],
+                              arguments=request.arguments)
             address = reference.resolve(context)
             raise http.MovedPermanently(location=address)
 
@@ -223,9 +227,10 @@ class ModelResource(webserver.BaseResource):
                     return wrap_model(model)
                 raise http.NotFoundError()
 
-            context = Context(request.scheme,
-                              self._model_history,
-                              self._name_history)
+            context = Context(scheme=request.scheme,
+                              models=self._model_history,
+                              names=self._name_history,
+                              arguments=request.arguments)
             return ActionResource(action, context)
 
         if not remaining or (remaining == (u'', )):
@@ -246,8 +251,10 @@ class ModelResource(webserver.BaseResource):
     def action_GET(self, request, response, location):
         response.set_header("Cache-Control", "no-store")
         response.set_header("connection", "close")
-        context = Context(request.scheme,
-                          self._model_history, self._name_history)
+        context = Context(scheme=request.scheme,
+                          models=self._model_history,
+                          names=self._name_history,
+                          arguments=request.arguments)
         if location[-1] == u"":
             return self.render_action("get", request, response, context)
         return self.render_model(request, response, context)
@@ -255,7 +262,9 @@ class ModelResource(webserver.BaseResource):
     def render_action(self, action_name, request, response, context):
 
         def got_data(data):
-            return response.write_object(data, context=context)
+            #FIXME: passing query arguments without validation is not safe
+            return response.write_object(data, context=context,
+                                         **request.arguments)
 
         def got_action(action):
             if action is None:
@@ -272,7 +281,9 @@ class ModelResource(webserver.BaseResource):
         return d
 
     def render_model(self, request, response, context):
-        return response.write_object(self.model, context=context)
+        #FIXME: passing query arguments without validation is not safe
+        return response.write_object(self.model, context=context,
+                                     **request.arguments)
 
     def render_error(self, request, response, error):
         response.force_mime_type("text/plain")
@@ -321,7 +332,9 @@ class ActionResource(webserver.BaseResource):
         def got_data(data):
             response.set_header("Cache-Control", "no-store")
             response.set_header("connection", "close")
-            return response.write_object(data, context=self._context)
+            #FIXME: passing query arguments without validation is not safe
+            return response.write_object(data, context=self._context,
+                                         **request.arguments)
 
         is_idempotent, categories = self.action_validation[request.method]
         if (self._action.is_idempotent not in is_idempotent
