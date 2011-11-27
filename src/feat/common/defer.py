@@ -111,7 +111,7 @@ def print_trace(_param, _template="", *args):
 
 
 def debug(_param, _template="", *args):
-    log.logex("defer", LogLevel.debug, _template, args, log_name="debug")
+    log.logex("trace", LogLevel.debug, _template, args)
     return _param
 
 
@@ -122,7 +122,7 @@ def trace(_param, _template="", *args):
     prefix = _template % args
     prefix = prefix + ": " if prefix else prefix
     message = "%s%s" % (prefix, postfix)
-    log.logex("defer", LogLevel.debug, message, log_name="trace")
+    log.logex("trace", LogLevel.debug, message)
     return _param
 
 
