@@ -126,11 +126,15 @@ class Agency(agency.Agency):
 
     def _flush_agents_body(self):
         if self._to_spawn:
-            aid, kwargs = self._to_spawn.pop(0)
+            aid, kwargs, sd = self._to_spawn.pop(0)
             d = self.wait_running()
             d.addCallback(lambda _: self._database.get_connection())
             d.addCallback(defer.call_param, 'get_document', aid)
             d.addCallback(self.start_agent_locally, **kwargs)
+            if sd is not None:
+                d.addCallbacks(defer.keep_param, defer.keep_param,
+                               callbackArgs=(sd.callback, ),
+                               errbackArgs=(sd.errback, ))
             d.addCallbacks(self.notify_running, self.notify_failed,
                            errbackArgs=(aid, ))
             return d

@@ -430,6 +430,7 @@ class StartAgent(task.BaseTask):
         f = state.agent.establish_partnership(
             recp, state.allocation_id, our_role=u'host',
             allow_double=True)
+        f.add_callback(fiber.override_result, recp)
         return f
 
     @replay.mutable

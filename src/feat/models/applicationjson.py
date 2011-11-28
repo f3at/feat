@@ -73,7 +73,7 @@ def render_actions(obj, context):
 def render_item(item, context):
     result = {}
     model = yield item.fetch()
-    yield append_attribute(model, result)
+    yield update_attribute(result, model, context)
     if item.label is not None:
         result["label"] = item.label
     if item.desc is not None:
@@ -88,12 +88,13 @@ def render_item(item, context):
 
 
 @defer.inlineCallbacks
-def append_attribute(model, result):
+def update_attribute(result, model, context):
     if IAttribute.providedBy(model):
+        subcontext = context.descend(model)
         attr = IAttribute(model)
         value = yield attr.fetch_value()
-        result["value"] = value
-        result["type"] = render_value(attr.value_info)
+        result["value"] = render_value(value, subcontext)
+        result["type"] = render_value_info(attr.value_info)
         if attr.is_writable:
             result["writable"] = True
         if attr.is_deletable:
@@ -114,7 +115,7 @@ def render_action(action, context):
     result["idempotent"] = bool(action.is_idempotent)
     result["category"] = action.category.name
     if action.result_info is not None:
-        result["result"] = render_value(action.result_info)
+        result["result"] = render_value_info(action.result_info)
     params = render_params(action.parameters)
     if params:
         result["params"] = params
@@ -124,7 +125,7 @@ def render_action(action, context):
     defer.returnValue(result)
 
 
-def render_value(value):
+def render_value_info(value):
     result = {}
     result["type"] = value.value_type.name
     if value.use_default:
@@ -138,7 +139,7 @@ def render_value(value):
         result["metadata"] = metadata
     if IValueCollection.providedBy(value):
         coll = IValueCollection(value)
-        result["allowed"] = [render_value(v) for v in coll.allowed_types]
+        result["allowed"] = [render_value_info(v) for v in coll.allowed_types]
         result["ordered"] = coll.is_ordered
         if coll.min_size is not None:
             result["min_size"] = coll.min_size
@@ -165,7 +166,7 @@ def render_params(params):
 def render_param(param):
     result = {}
     result["required"] = param.is_required
-    result["value"] = render_value(param.value_info)
+    result["value"] = render_value_info(param.value_info)
     if param.label is not None:
         result["label"] = param.label
     if param.desc is not None:
@@ -173,21 +174,30 @@ def render_param(param):
     return result
 
 
+def render_value(value, context):
+    #FIXME: should add a handler for json
+    if IReference.providedBy(value):
+        return value.resolve(context)
+    return value
+
+
 @defer.inlineCallbacks
 def render_verbose(model, context):
     result = {}
     result["identity"] = model.identity
     name = model.name
-    if name:
+    if name is not None:
         result["name"] = name
     label = model.label
-    if label:
+    if label is not None:
         result["label"] = label
     desc = model.desc
-    if desc:
+    if desc is not None:
         result["desc"] = desc
+    if model.reference is not None:
+        result["href"] = model.reference.resolve(context)
 
-    yield append_attribute(model, result)
+    yield update_attribute(result, model, context)
 
     metadata = render_metadata(model)
     items = yield render_items(model, context)
@@ -210,13 +220,16 @@ def render_compact(model, context):
         defer.returnValue(value)
 
     result = {}
+    if model.reference is not None:
+        result["href"] = model.reference.resolve(context)
     items = yield model.fetch_items()
     for item in items:
         submodel = yield item.fetch()
         if IAttribute.providedBy(submodel):
             attr = IAttribute(submodel)
             value = yield attr.fetch_value()
-            result[attr.name] = value
+            subcontext = context.descend(submodel)
+            result[attr.name] = render_value(value, subcontext)
         else:
             ref = item.reference
             if ref is not None:

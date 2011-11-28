@@ -64,6 +64,7 @@ class ValueTypes(enum.Enum):
     """
     Types of values action value, parameters and result could be:
      - model: a response model.
+     - reference: a reference to a model.
      - integer: an integer value.
      - number: an integer or a float
      - boolean: True or False
@@ -71,7 +72,10 @@ class ValueTypes(enum.Enum):
      - collection: a collection of other value.
      - binary: a binary blob.
     """
-    model, integer, number, boolean, string, collection, binary = range(7)
+    (model, reference,
+     integer, number,
+     boolean, string,
+     collection, binary) = range(8)
 
 
 class ModelError(error.FeatError):

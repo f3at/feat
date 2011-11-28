@@ -33,8 +33,8 @@ from feat.models.interface import *
 def created(message):
     """Create a Deleted response builder with specified message."""
 
-    def create(_value, _context, **_params):
-        return Created(message)
+    def create(value, _context, **_params):
+        return Created(value, message)
 
     return create
 
@@ -58,17 +58,13 @@ class Response(model.Model):
     model.identity("feat.response")
     model.is_detached()
     model.attribute("message", value.String(),
-                    getter.model_attr("message"))
+                    getter.model_attr("source"))
     model.attribute("type", value.Enum(ResponseTypes),
-                    getter.model_attr("response_type"))
+                    getter.model_attr("_response_type"))
 
     def __init__(self, response_type, message):
         model.Model.__init__(self, message)
         self._response_type = response_type
-
-    @property
-    def message(self):
-        return self.source
 
     ### IResponse ###
 
@@ -81,8 +77,9 @@ class Created(Response):
 
     model.identity("feat.response.created")
 
-    def __init__(self, message):
+    def __init__(self, reference, message):
         Response.__init__(self, ResponseTypes.created, message)
+        self.reference = reference if reference is not None else None
 
 
 class Updated(Response):

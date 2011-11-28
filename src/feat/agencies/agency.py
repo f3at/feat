@@ -1092,7 +1092,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # it's used not to do this more than once
         self._starting_host = False
         # list of agent types or descriptors to spawn when the host agent
-        # is ready. Format (agent_type_or_desc, args, kwargs)
+        # is ready. Format (agent_type_or_desc, kwargs, d)
         self._to_spawn = list()
         # semaphore preventing multiple entries into logic spawning agents
         # by host agent
@@ -1353,8 +1353,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def spawn_agent(self, desc, **kwargs):
         '''tells the host agent running in this agency to spawn a new agent
         of the given type.'''
-        self._to_spawn.append((desc, kwargs, ))
-        return self._flush_agents_to_spawn()
+        d = defer.Deferred()
+        self._to_spawn.append((desc, kwargs, d))
+        self._flush_agents_to_spawn()
+        return d
 
 
     ### protected ###
@@ -1481,16 +1483,24 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                 to_spawn = self._to_spawn.pop(0)
             except IndexError:
                 break
-            desc, kwargs = to_spawn
-            if not isinstance(desc, descriptor.Descriptor):
-                factory = descriptor.lookup(desc)
-                if factory is None:
-                    raise ValueError(
-                        'No descriptor factory found for agent %r' % desc)
-                desc = factory()
-            desc = yield medium.save_document(desc)
-            # FIXME: make sure to remove the descriptor if start fails
-            yield agent.start_agent(desc, **kwargs)
+            desc, kwargs, d = to_spawn
+            try:
+                if not isinstance(desc, descriptor.Descriptor):
+                    factory = descriptor.lookup(desc)
+                    if factory is None:
+                        raise ValueError(
+                            'No descriptor factory found for agent %r' % desc)
+                    desc = factory()
+                desc = yield medium.save_document(desc)
+                # FIXME: make sure to remove the descriptor if start fails
+                result = yield agent.start_agent(desc, **kwargs)
+            except:
+                if d is not None:
+                    d.errback()
+                raise
+            else:
+                if d is not None:
+                    d.callback(result)
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")

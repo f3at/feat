@@ -268,6 +268,7 @@ class Agents(model.Collection):
     #FIXME: use another mean to specify the default action than name
     model.create("post",
                  call.source_filter("spawn_agent"),
+                 call.model_filter("_extract_reference"),
                  response.created("Agent Created"),
                  value=AgentTypeValue(),
                  label="Spawn Agent", desc="Spawn a new agent on this host")
@@ -302,6 +303,9 @@ class Agents(model.Collection):
             return agent_ref
 
         return agency.locate_agent(name).addCallback(agent_located)
+
+    def _extract_reference(self, recipient):
+        return reference.Local("agents", recipient.key)
 
 
 @adapter.register(broker.AgentReference, IModel)

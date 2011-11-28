@@ -629,6 +629,12 @@ class Response(Value):
     value_type(ValueTypes.model)
 
 
+class Reference(Value):
+    """Definition of a model value."""
+
+    value_type(ValueTypes.reference)
+
+
 ### private ###
 
 
