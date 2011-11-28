@@ -97,8 +97,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         if self.task.timeout:
             timeout = time.future(self.task.timeout)
-            error = ProtocolExpired("Timeout exceeded waiting "
-                                     "for task.initate()")
+            error = self._create_expired_error("Timeout exceeded waiting "
+                                               "for task.initate()")
             self._expire_at(timeout, TaskState.expired,
                             self._expired, failure.Failure(error))
 
