@@ -15,6 +15,13 @@ h1 {
 
 }
 
+/* Error */
+
+.error {
+	color: red;
+	font-size: 20px;
+}
+
 /* Header */
 
 .header {

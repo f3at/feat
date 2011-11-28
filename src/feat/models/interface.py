@@ -34,7 +34,8 @@ __all__ = ["ResponseTypes", "ActionCategories", "ValueTypes",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
            "IValueInfo", "IValueCollection", "IValueRange",
-           "IValueOptions", "IValueOption", "IActionPayload"]
+           "IValueOptions", "IValueOption",
+           "IActionPayload", "IErrorPayload"]
 
 
 class ResponseTypes(enum.Enum):
@@ -758,6 +759,15 @@ class IActionPayload(Interface):
     instance implementing this interface should provide
     the dictionary protocol.
     """
+
+
+class IErrorPayload(Interface):
+    """Interface identifying an error object."""
+
+    code = Attribute("Error number. @type: int or None")
+    message = Attribute("Short error message. @type: unicode or None")
+    debug = Attribute("Debugging information. @type: unicode or None")
+    trace = Attribute("Debugging trace. @type: unicode or None")
 
 
 ### private interfaces ###

@@ -39,7 +39,7 @@ class TestContext(object):
                            self.models + (model, ))
 
 
-class HTMLWriterTest(common.TestCase):
+class ModelWriterTest(common.TestCase):
 
     output = True
 
@@ -47,7 +47,7 @@ class HTMLWriterTest(common.TestCase):
     def setUp(self):
         yield common.TestCase.setUp(self)
         self.document = document.WritableDocument(texthtml.MIME_TYPE)
-        self.writer = texthtml.HTMLWriter(self)
+        self.writer = texthtml.ModelWriter(self)
 
         self.model = None
         self.args = list()

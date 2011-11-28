@@ -7,21 +7,17 @@ from feat.web.markup import html
 
 from feat.models.interface import ActionCategories, ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
-from feat.models.interface import IValueOptions
+from feat.models.interface import IValueOptions, IErrorPayload
 
 
 MIME_TYPE = "text/html"
 
 
-class Layout(html.Document):
+class BaseLayout(html.Document):
 
     def __init__(self, title, context):
         html.Document.__init__(self, html.StrictPolicy(), title)
         self._link_static_files(context)
-        self.div(_class='header')(*self._render_header(context)).close()
-        self.h1()(title).close()
-
-        self.content = self.div(_class='content')()
 
     def _link_static_files(self, context):
         url = self._local_url(context, 'static', 'feat.css')
@@ -42,6 +38,15 @@ class Layout(html.Document):
     def _local_url(self, context, *parts):
         return reference.Local(*parts).resolve(context)
 
+
+class ModelLayout(BaseLayout):
+
+    def __init__(self, title, context):
+        BaseLayout.__init__(self, title, context)
+        self.div(_class='header')(*self._render_header(context)).close()
+        self.h1()(title).close()
+        self.content = self.div(_class='content')()
+
     def _render_header(self, context):
         res = list("History: ")
         host, port = context.names[0]
@@ -54,6 +59,10 @@ class Layout(html.Document):
             res.append("/")
             res.append(html.tags.a(href=url)(name))
         return res
+
+
+class ErrorLayout(BaseLayout):
+    pass
 
 
 def parse_meta(meta_items):
@@ -83,7 +92,7 @@ def html_links(meta):
     return set(str(m.value) for m in meta.get_meta('html-link'))
 
 
-class HTMLWriter(log.Logger):
+class ModelWriter(log.Logger):
     implements(document.IWriter)
 
     def __init__(self, logger=None):
@@ -95,7 +104,7 @@ class HTMLWriter(log.Logger):
         context = kwargs['context']
 
         title = model.label or model.name
-        markup = Layout(title, context)
+        markup = ModelLayout(title, context)
 
         if IAttribute.providedBy(model):
             attr = self._format_attribute(model, context)
@@ -332,5 +341,39 @@ class HTMLWriter(log.Logger):
                 result.append(current)
 
 
-writer = HTMLWriter()
-document.register_writer(writer, MIME_TYPE, IModel)
+class ErrorWriter(log.Logger):
+    implements(document.IWriter)
+
+    def __init__(self, logger=None):
+        log.Logger.__init__(self, logger)
+
+    def write(self, doc, obj, *args, **kwargs):
+        self.log("Rendering html error: %s", obj.message)
+        context = kwargs['context']
+        markup = ErrorLayout("Error", context)
+
+        s = markup.span(_class="error")("ERROR")
+        if obj.code is not None:
+            s.content.append(" ")
+            s.content.append(str(obj.code))
+        if obj.message is not None:
+            s.content.append(": ")
+            s.content.append(obj.message)
+        s.close()
+
+        if obj.debug is not None:
+            markup.br()
+            markup.span(_class="debug")(obj.debug).close()
+
+        if obj.trace is not None:
+            markup.br()
+            markup.pre(_class="trace")(obj.trace).close()
+
+        return markup.render(doc)
+
+
+model_writer = ModelWriter()
+error_writer = ErrorWriter()
+
+document.register_writer(model_writer, MIME_TYPE, IModel)
+document.register_writer(error_writer, MIME_TYPE, IErrorPayload)

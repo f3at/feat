@@ -27,11 +27,80 @@ import time
 from twisted.internet import reactor, threads
 from zope.interface import implements
 
-from feat.common import defer, log
+from feat.common import defer, error
 from feat.web import http, webserver
 
 from feat.models.interface import ActionCategories, IActionPayload, IAspect
 from feat.models.interface import IContext, IModel, IModelAction, IReference
+from feat.models.interface import IErrorPayload
+
+
+class ErrorPayload(object):
+
+    implements(IErrorPayload)
+
+    @classmethod
+    def from_failure(cls, failure):
+        ex = failure.value
+        if isinstance(ex, http.HTTPError):
+            code = ex.status_code
+        elif isinstance(ex, error.FeatError):
+            code = ex.eror_code
+        else:
+            code = None
+
+        if isinstance(ex, error.FeatError):
+            message = ex.error_name
+        else:
+            message = failure.getErrorMessage()
+
+        if not message:
+            message = type(ex).__name__
+
+        debug = error.get_failure_message(failure)
+        trace = error.get_failure_traceback(failure)
+
+        return cls(code=code, message=message, debug=debug, trace=trace)
+
+    @classmethod
+    def from_exception(cls, ex):
+        if isinstance(ex, http.HTTPError):
+            code = ex.status_code
+        elif isinstance(ex, error.FeatError):
+            code = ex.eror_code
+        else:
+            code = None
+
+        if isinstance(ex, error.FeatError):
+            message = ex.error_name
+        else:
+            message = str(ex)
+
+        if not message:
+            message = type(ex).__name__
+
+        debug = error.get_exception_message(ex)
+        trace = error.get_exception_traceback(ex)
+
+        return cls(code=code, message=message, debug=debug, trace=trace)
+
+    def __init__(self, code=None, message=None, debug=None, trace=None):
+        self.code = int(code) if code is not None else None
+        self.message = unicode(message) if message is not None else None
+        self.debug = unicode(debug) if debug is not None else None
+        self.trace = unicode(trace) if trace is not None else None
+
+    def __str__(self):
+        msg = "ERROR"
+        if self.code is not None:
+            msg += " %d" % (self.code, )
+        if self.message is not None:
+            msg += ": %s" % (self.message, )
+        if self.debug is not None:
+            msg += "\n\n%s" % (self.debug, )
+        if self.trace is not None:
+            msg += "\n%s" % (self.trace, )
+        return msg
 
 
 class Context(object):
@@ -42,12 +111,12 @@ class Context(object):
 
     default_actions = set([u"set", u"del", u"post"])
 
-    def __init__(self, scheme, models, names, remaining=[], arguments={}):
+    def __init__(self, scheme, models, names, remaining=None, arguments=None):
         self.scheme = scheme
         self.names = tuple(names)
         self.models = tuple(models)
-        self.remaining = tuple(remaining)
-        self.arguments = dict(arguments)
+        self.remaining = tuple(remaining) if remaining else ()
+        self.arguments = dict(arguments) if arguments else {}
 
     ### public ###
 
@@ -94,7 +163,40 @@ class Context(object):
                        arguments=self.arguments)
 
 
-class ModelResource(webserver.BaseResource):
+class BaseResource(webserver.BaseResource):
+
+    def make_context(self, request):
+        """Overridden in sub-classes."""
+
+    def render_error(self, request, response, ex):
+
+        def nice_error_failed(failure):
+            error.handle_failure(None, failure,
+                                 "Failure during error rendering")
+            # Do what we can...
+            data = str(payload)
+            if response.can_update_headers:
+                response.force_mime_type("text/plain")
+                response.set_length(len(data))
+            return data
+
+        payload = ErrorPayload.from_exception(ex)
+
+        if not response.can_update_headers:
+            return str(payload)
+
+        response.set_header("Cache-Control", "no-cache")
+        response.set_header("connection", "close")
+
+        context = self.make_context(request)
+        #FIXME: passing query arguments without validation is not safe
+        d = response.write_object(payload, context=context,
+                                  **request.arguments)
+        d.addErrback(nice_error_failed)
+        return d
+
+
+class ModelResource(BaseResource):
 
     __slots__ = ("model", "_methods", "_model_history", "_name_history")
 
@@ -138,6 +240,13 @@ class ModelResource(webserver.BaseResource):
         d.addCallback(deduce_methods)
         d.addCallback(defer.override_result, self)
         return d
+
+    def make_context(self, request, remaining=None):
+        return Context(scheme=request.scheme,
+                       models=self._model_history,
+                       names=self._name_history,
+                       remaining=remaining,
+                       arguments=request.arguments)
 
     ### webserver.IWebResource ###
 
@@ -199,11 +308,7 @@ class ModelResource(webserver.BaseResource):
 
         def process_reference(reference):
             reference = IReference(reference)
-            context = Context(scheme=request.scheme,
-                              models=self._model_history,
-                              names=self._name_history,
-                              remaining=remaining[1:],
-                              arguments=request.arguments)
+            context = self.make_context(request, remaining[1:])
             address = reference.resolve(context)
             raise http.MovedPermanently(location=address)
 
@@ -227,10 +332,7 @@ class ModelResource(webserver.BaseResource):
                     return wrap_model(model)
                 raise http.NotFoundError()
 
-            context = Context(scheme=request.scheme,
-                              models=self._model_history,
-                              names=self._name_history,
-                              arguments=request.arguments)
+            context = self.make_context(request)
             return ActionResource(action, context)
 
         if not remaining or (remaining == (u'', )):
@@ -249,12 +351,9 @@ class ModelResource(webserver.BaseResource):
         return locate_model(resource_name)
 
     def action_GET(self, request, response, location):
-        response.set_header("Cache-Control", "no-store")
+        response.set_header("Cache-Control", "no-cache")
         response.set_header("connection", "close")
-        context = Context(scheme=request.scheme,
-                          models=self._model_history,
-                          names=self._name_history,
-                          arguments=request.arguments)
+        context = self.make_context(request)
         if location[-1] == u"":
             return self.render_action("get", request, response, context)
         return self.render_model(request, response, context)
@@ -285,12 +384,8 @@ class ModelResource(webserver.BaseResource):
         return response.write_object(self.model, context=context,
                                      **request.arguments)
 
-    def render_error(self, request, response, error):
-        response.force_mime_type("text/plain")
-        return "ERROR " + type(error).__name__ + ": " + str(error)
 
-
-class ActionResource(webserver.BaseResource):
+class ActionResource(BaseResource):
 
     implements(webserver.IWebResource)
 
@@ -315,6 +410,9 @@ class ActionResource(webserver.BaseResource):
         self._methods = set()
         self._update_methods(action, self._methods)
 
+    def make_context(self, request):
+        return self._context
+
     ### webserver.IWebResource ###
 
     def is_method_allowed(self, request, location, methode):
@@ -330,7 +428,7 @@ class ActionResource(webserver.BaseResource):
     def render_resource(self, params, request, response, location):
 
         def got_data(data):
-            response.set_header("Cache-Control", "no-store")
+            response.set_header("Cache-Control", "no-cache")
             response.set_header("connection", "close")
             #FIXME: passing query arguments without validation is not safe
             return response.write_object(data, context=self._context,
@@ -348,10 +446,6 @@ class ActionResource(webserver.BaseResource):
         d.addCallback(got_data)
         return d
 
-    def render_error(self, request, response, error):
-        response.force_mime_type("text/plain")
-        return "ERROR: " + str(error)
-
     ### private ###
 
     def _update_methods(self, action, methods):
@@ -367,23 +461,38 @@ class ActionResource(webserver.BaseResource):
             methods.add(http.Methods.POST)
 
 
-class StaticResource(webserver.BaseResource):
+class StaticResource(BaseResource):
 
     BUFFER_SIZE = 1024*1024*4
 
-    def __init__(self, root_path):
+    def __init__(self, hostname, port, root_path):
         webserver.BaseResource.__init__(self)
         if not os.path.isdir(root_path):
             raise ValueError("Invalid resource path: %r" % root_path)
+        self._hostname = hostname
+        self._port = port
         self._root_path = root_path
         self._mime_types = mimetypes.MimeTypes()
 
+    def make_context(self, request):
+        #FIXME: this is wrong, root should be separated from models and names
+        return Context(scheme=request.scheme,
+                       models=(None, ),
+                       names=((self._hostname, self._port), ),
+                       arguments=request.arguments)
+
     def locate_resource(self, request, location, remaining):
+        if not remaining or remaining == (u"", ):
+            return None
         request.context["rel_loc"] = remaining
         return self
 
     def action_GET(self, request, response, location):
-        rel_path = http.tuple2path(request.context["rel_loc"])
+        rel_loc = request.context.get("rel_loc")
+        if rel_loc is None:
+            raise http.NotFoundError()
+
+        rel_path = http.tuple2path(rel_loc)
         full_path = os.path.join(self._root_path, rel_path)
         res_path = os.path.realpath(full_path)
         if not res_path.startswith(self._root_path):
@@ -458,7 +567,7 @@ class Root(ModelResource):
         self.hostname = hostname
         self.port = port
         self._initiating = True
-        self._static = StaticResource(static_path)
+        self._static = StaticResource(hostname, port, static_path)
         self._methods = set([http.Methods.GET])
 
     def locate_resource(self, request, location, remaining):

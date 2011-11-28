@@ -251,6 +251,19 @@ def write_model(doc, obj, *args, **kwargs):
     doc.write(json.dumps(result, indent=2))
 
 
+def write_error(doc, obj, *args, **kwargs):
+    result = {}
+    if obj.code is not None:
+        result["code"] = obj.code
+    if obj.message is not None:
+        result["message"] = obj.message
+    if obj.debug is not None:
+        result["debug"] = obj.debug
+    if obj.trace is not None:
+        result["trace"] = obj.trace
+    doc.write(json.dumps(result, indent=2))
+
+
 def write_serializable(doc, obj, *args, **kwargs):
     serializer = feat_json.Serializer()
     data = serializer.convert(obj)
@@ -272,6 +285,7 @@ def read_action(doc, *args, **kwargs):
 
 
 document.register_writer(write_model, MIME_TYPE, IModel)
+document.register_writer(write_error, MIME_TYPE, IErrorPayload)
 document.register_writer(write_serializable, MIME_TYPE,
                          serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)

@@ -917,6 +917,9 @@ class Server(log.LogProxy, log.Logger):
         return self._error_rendered(d, request, response, error)
 
     def _error_rendered(self, data, request, response, error):
+        if data is response:
+            return self._terminate(request, response)
+
         if data is error:
             # Trying to keep the backtrace
             exc_info = sys.exc_info()
