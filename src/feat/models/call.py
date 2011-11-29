@@ -37,6 +37,7 @@ of calling methods in a processing chain:
 """
 
 import inspect
+import types
 
 from feat.common import defer
 
@@ -246,7 +247,15 @@ def _perform(method, value, params, args, kwargs):
     keywords["value"] = value
     arguments = []
 
-    argspec = inspect.getargspec(method)
+    func = method
+
+    if isinstance(method, types.MethodType):
+        func = method.im_func
+
+    if hasattr(func, 'original_func'):
+        func = func.original_func
+
+    argspec = inspect.getargspec(func)
 
     for name in argspec.args:
         if name in ("self"):
