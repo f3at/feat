@@ -90,6 +90,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
     @defer.inlineCallbacks
     def testMasterKilledWithOneStandalone(self):
         yield self.agency.initiate()
+        yield self.wait_for(self.agency.is_idle, 20)
         yield self.wait_for_slave()
 
         self.info('terminating master')
