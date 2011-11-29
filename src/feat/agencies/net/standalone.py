@@ -24,7 +24,7 @@ import os
 from twisted.internet import reactor
 
 from feat.agencies.net import agency, broker
-from feat.common import manhole, defer, time, fcntl
+from feat.common import manhole, defer, time, fcntl, error
 
 from feat.interface.recipient import IRecipient
 
@@ -85,6 +85,10 @@ class Agency(agency.Agency):
             self.info("Not spwaning master because we are about to terminate "
                       "ourselves")
             return
+        if self._startup_task is not None:
+            raise error.FeatError("Standalone started without a previous "
+                                  "master agency already running, terminating "
+                                  "it")
 
         # Try the get an exclusive lock on the master agency startup
         if self._acquire_lock():
