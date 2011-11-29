@@ -283,6 +283,9 @@ class ExpirationCallsMixin(object):
     timeout.
     '''
 
+    agent = None
+    factory = None
+
     def __init__(self):
         self._expiration_call = None
 
@@ -318,9 +321,13 @@ class ExpirationCallsMixin(object):
         return result
 
     def _expire_at(self, expire_time, state, method, *args, **kwargs):
+
+        def expired(param):
+            return self._terminate(self._create_expired_error(param))
+
         d = self._setup_expiration_call(expire_time, state,
                                         method, *args, **kwargs)
-        d.addCallback(lambda _: self._terminate(ProtocolExpired(_)))
+        d.addCallback(expired)
         return d
 
     @replay.side_effect
@@ -338,9 +345,35 @@ class ExpirationCallsMixin(object):
             self._expiration_call.reset(0)
             d = self.notify_finish()
             return d
+
         self.error('Expiration call %r is None or was already called '
                    'or cancelled', self._expiration_call)
-        return defer.fail(ProtocolExpired())
+
+        return defer.fail(self._create_expired_error("Forced expiration"))
+
+    def _create_expired_error(self, msg):
+
+        def get_type_name(obj):
+            return obj.type_name if obj is not None else "unknown"
+
+        cause = None
+
+        if isinstance(msg, failure.Failure):
+            cause = msg
+            msg = error.get_failure_message(msg)
+        elif msg is not None:
+            msg = str(msg)
+
+        factory = self.factory
+        pname = factory.type_name if factory is not None else "unknown"
+        agent = self.agent.get_agent() if self.agent is not None else None
+        aname = agent.descriptor_type if agent is not None else "unknown"
+
+        error_msg = "%s's %s protocol expired" % (aname, pname)
+        if msg is not None:
+            error_msg += ": %s" % (msg, )
+
+        return ProtocolExpired(error_msg, cause=cause)
 
 
 class InitiatorMediumBase(object):

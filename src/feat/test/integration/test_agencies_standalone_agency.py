@@ -27,17 +27,14 @@ import signal
 
 from twisted.python import failure
 from twisted.internet import defer
-from twisted.trial.unittest import SkipTest
 
-from feat.agencies.net import database
 from feat.agencies.net import standalone as standalone_agency
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.interface import NotFoundError
-from feat.agents.base import agent, descriptor, partners, dbtools
-from feat.common import serialization, log, run, fcntl
-from feat.process import standalone, rabbitmq, couchdb
-from feat.process.base import DependencyError
+from feat.common import log, run, fcntl
+from feat.process import standalone
 from feat.test import common
+from feat.test.integration.common import FullIntegrationTest
 
 
 class OptParseMock(object):
@@ -46,37 +43,17 @@ class OptParseMock(object):
 
 
 @common.attr('slow', timeout=40)
-class IntegrationTestCase(common.TestCase):
+class FullIntegrationTestCase(FullIntegrationTest):
 
     skip_coverage = True
-
-    @defer.inlineCallbacks
-    def _run_and_configure_db(self):
-        yield self.db_process.restart()
-        c = self.db_process.get_config()
-        db_host, db_port, db_name = c['host'], c['port'], 'test'
-        db = database.Database(db_host, db_port, db_name)
-        self.db = db.get_connection()
-        yield dbtools.create_db(self.db)
-        yield dbtools.push_initial_data(self.db)
-        defer.returnValue((db_host, db_port, db_name, ))
-
-    @defer.inlineCallbacks
-    def _run_and_configure_msg(self):
-        yield self.msg_process.restart()
-        c = self.msg_process.get_config()
-        msg_host, msg_port = '127.0.0.1', c['port']
-        defer.returnValue((msg_host, msg_port, ))
+    start_couch = True
+    start_rabbit = True
+    run_rabbit = True
+    run_couch = True
 
     @defer.inlineCallbacks
     def setUp(self):
-        common.TestCase.setUp(self)
-        self.tempdir = os.path.curdir
-        self.socket_path = os.path.join(os.path.curdir, 'feat-test.socket')
-
-        bin_dir = os.path.abspath(os.path.join(
-            os.path.curdir, '..', '..', 'bin'))
-        os.environ["PATH"] = ":".join([bin_dir, os.environ["PATH"]])
+        yield FullIntegrationTest.setUp(self)
 
         _, self.lock_path= tempfile.mkstemp()
 
@@ -84,23 +61,6 @@ class IntegrationTestCase(common.TestCase):
         options.agency_lock_path = self.lock_path
         options.agency_socket_path = self.socket_path
         self.agency = standalone_agency.Agency(options)
-
-        try:
-            self.db_process = couchdb.Process(self)
-        except DependencyError:
-            raise SkipTest("No CouchDB server found.")
-
-        try:
-            self.msg_process = rabbitmq.Process(self)
-        except DependencyError:
-            raise SkipTest("No RabbitMQ server found.")
-
-        self.msg_host, self.msg_port = yield self._run_and_configure_msg()
-        self.db_host, self.db_port, self.db_name =\
-                          yield self._run_and_configure_db()
-
-        self.pid_path = os.path.join(os.path.curdir, 'feat.pid')
-        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
 
         yield self.spawn_agency()
         yield self.wait_for_pid(self.pid_path)
@@ -115,15 +75,14 @@ class IntegrationTestCase(common.TestCase):
                            errbackArgs=(NotFoundError, ))
             return d
 
+        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
         yield self.wait_for(host_descriptor, 5)
 
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.wait_for(self.agency.is_idle, 20)
         yield self.agency.shutdown(stop_process=False)
-        yield self.db_process.terminate()
-        yield self.msg_process.terminate()
-        yield common.TestCase.tearDown(self)
+        yield FullIntegrationTest.tearDown(self)
         pid = run.get_pid(os.path.curdir)
         if pid is not None:
             run.signal_pid(pid, signal.SIGUSR2)
@@ -131,8 +90,10 @@ class IntegrationTestCase(common.TestCase):
     @defer.inlineCallbacks
     def testMasterKilledWithOneStandalone(self):
         yield self.agency.initiate()
+        yield self.wait_for(self.agency.is_idle, 20)
         yield self.wait_for_slave()
 
+        self.info('terminating master')
         pid = run.get_pid(os.path.curdir)
         run.term_pid(pid)
         yield self.wait_for_master_gone()
@@ -155,6 +116,11 @@ class IntegrationTestCase(common.TestCase):
         yield common.delay(None, 10)
         pid = run.get_pid(os.path.curdir)
         self.assertTrue(pid is None)
+
+        # remove the lock so that the broker in our
+        # agency can connect and stop retrying, overwise the test
+        # will finish in undefined way (this is part of the teardown)
+        fcntl.unlock(self.lock_fd)
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()
@@ -183,20 +149,6 @@ class IntegrationTestCase(common.TestCase):
                    PATH=os.environ.get("PATH"))
 
         return command, args, env
-
-    def wait_for_slave(self, timeout=20):
-
-        def is_slave():
-            return self.agency._broker.is_slave()
-
-        return  self.wait_for(is_slave, timeout)
-
-    def wait_for_pid(self, pid_path):
-
-        def pid_created():
-            return os.path.exists(pid_path)
-
-        return self.wait_for(pid_created, timeout=20)
 
     def wait_for_master_gone(self, timeout=20):
 

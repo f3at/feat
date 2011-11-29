@@ -36,8 +36,6 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency, retrying, periodic, messaging
-from feat.agencies.messaging.interface import IBackend
-from feat.agencies.interface import IDbConnectionFactory
 from feat.agents.base import recipient, replay, descriptor
 from feat.agents.base.agent import registry_lookup
 from feat.agents.common import host
@@ -46,7 +44,7 @@ from feat.common import (log, defer, fiber, serialization, journal, time,
                          first, error, enum)
 
 # Import interfaces
-from interface import (IAgencyAgentInternal,
+from interface import (AgencyRoles, IAgencyAgentInternal,
                        IFirstMessage, IAgencyInterestInternalFactory,
                        IAgencyProtocolInternal,
                        IAgencyInitiatorFactory, NotFoundError, ConflictError,
@@ -165,6 +163,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._descriptor.doc_id
 
     @manhole.expose()
+    def get_instance_id(self):
+        return self._instance_id
+
+    @manhole.expose()
     def get_full_id(self):
         desc = self._descriptor
         return desc.doc_id + u"/" + unicode(desc.instance_id)
@@ -172,6 +174,18 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @manhole.expose()
     def get_shard_id(self):
         return self._descriptor.shard
+
+    def get_status(self):
+        return self._get_machine_state()
+
+    def remote_get_status(self):
+        # jelly doesn't support serialization of Enums,
+        # for this reason we need to send int
+        return int(self.get_status())
+
+    @manhole.expose()
+    def get_agent_type(self):
+        return self._descriptor.document_type
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -544,6 +558,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     ### Introspection Methods ###
 
     @manhole.expose()
+    def get_agency(self):
+        '''Returns the medium agency.'''
+        return self.agency
+
+    @manhole.expose()
     def get_agent(self):
         '''Returns the agent side instance.'''
         return self.agent
@@ -688,6 +707,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'suacide :(. Or you have a bug ;).')
         return self.terminate_hard()
 
+    def _configuration_changed(self, doc_id, rev, deleted, own_change):
+        self.debug('Received notification about agents configuration changing.'
+                   ' Reloading.')
+        setter = lambda value, name: setattr(self, name, value)
+
+        d = self._database.get_document(doc_id)
+        d.addCallback(defer.keep_param, setter, '_configuration')
+        d.addCallback(defer.inject_param, 1,
+                      self._call, self.agent.on_agent_configuration_change)
+        return d
+
     def _reload_descriptor(self):
 
         def setter(value):
@@ -721,6 +751,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         d_id = self.agent.configuration_doc_id
         d = self.get_document(d_id)
+        d.addCallback(defer.bridge_param, self._database.changes_listener,
+                      (d_id, ), self._configuration_changed)
         d.addErrback(not_found, d_id)
         return d
 
@@ -1060,7 +1092,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # it's used not to do this more than once
         self._starting_host = False
         # list of agent types or descriptors to spawn when the host agent
-        # is ready. Format (agent_type_or_desc, args, kwargs)
+        # is ready. Format (agent_type_or_desc, kwargs, d)
         self._to_spawn = list()
         # semaphore preventing multiple entries into logic spawning agents
         # by host agent
@@ -1082,6 +1114,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     @property
     def agency_id(self):
         return self._agency_id
+
+    @property
+    def role(self):
+        return AgencyRoles.unknown
 
     def iter_agents(self):
         return iter(self._agents)
@@ -1317,8 +1353,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def spawn_agent(self, desc, **kwargs):
         '''tells the host agent running in this agency to spawn a new agent
         of the given type.'''
-        self._to_spawn.append((desc, kwargs, ))
-        return self._flush_agents_to_spawn()
+        d = defer.Deferred()
+        self._to_spawn.append((desc, kwargs, d))
+        self._flush_agents_to_spawn()
+        return d
 
 
     ### protected ###
@@ -1340,22 +1378,22 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # allow host start in the startup procedure, only if the 'startup'
         # flag is passed
         if self._startup_task and not startup:
-            self.error('Not starting host agent, because the agency '
+            self.debug('Not starting host agent, because the agency '
                        'spawns it on startup')
             return False
 
         if self._shutdown_task is not None:
-            self.error('Not starting host agent, because the agency '
+            self.debug('Not starting host agent, because the agency '
                      'is about to terminate itself')
             return False
 
         if self.get_host_agent():
-            self.error('Not starting host agent, because we already '
+            self.debug('Not starting host agent, because we already '
                      ' have one')
             return False
 
         if self._starting_host:
-            self.error('Not starting host agent, because we are already '
+            self.debug('Not starting host agent, because we are already '
                      'starting one.')
             return False
         return True
@@ -1445,16 +1483,24 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                 to_spawn = self._to_spawn.pop(0)
             except IndexError:
                 break
-            desc, kwargs = to_spawn
-            if not isinstance(desc, descriptor.Descriptor):
-                factory = descriptor.lookup(desc)
-                if factory is None:
-                    raise ValueError(
-                        'No descriptor factory found for agent %r' % desc)
-                desc = factory()
-            desc = yield medium.save_document(desc)
-            # FIXME: make sure to remove the descriptor if start fails
-            yield agent.start_agent(desc, **kwargs)
+            desc, kwargs, d = to_spawn
+            try:
+                if not isinstance(desc, descriptor.Descriptor):
+                    factory = descriptor.lookup(desc)
+                    if factory is None:
+                        raise ValueError(
+                            'No descriptor factory found for agent %r' % desc)
+                    desc = factory()
+                desc = yield medium.save_document(desc)
+                # FIXME: make sure to remove the descriptor if start fails
+                result = yield agent.start_agent(desc, **kwargs)
+            except:
+                if d is not None:
+                    d.errback()
+                raise
+            else:
+                if d is not None:
+                    d.callback(result)
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")

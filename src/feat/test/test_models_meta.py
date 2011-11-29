@@ -22,7 +22,7 @@
 
 from feat.models import interface, meta
 
-from . import common
+from feat.test import common
 
 
 class A(meta.Metadata):
@@ -46,27 +46,6 @@ class D(C):
     meta.meta("fez", "9")
 
 
-class DummyAspect(meta.Metadata):
-    meta.meta("foo", "asp1-cls")
-    meta.meta("fez", "asp1-cls")
-
-
-class DummyAspectWithAspect(meta.Metadata):
-    meta.meta("fez", "asp2-cls")
-    meta.meta("booz", "asp2-cls")
-
-    def __init__(self, aspect=None):
-        self.aspect = aspect
-
-
-class DummyMetaWithAspect(meta.Metadata):
-    meta.meta("foo", "meta-cls")
-    meta.meta("bar", "meta-cls")
-
-    def __init__(self, aspect=None):
-        self.aspect = aspect
-
-
 class TestModelsMeta(common.TestCase):
 
     def check_meta(self, meta, expected_values=None):
@@ -80,70 +59,6 @@ class TestModelsMeta(common.TestCase):
             self.assertEqual(len(meta), len(expected_values))
             for m, e in zip(meta, expected_values):
                 self.assertEqual(m, e)
-
-    def testAspectWithoutMeta(self):
-        M = meta.MetadataItem
-        m = DummyMetaWithAspect(object())
-
-        self.assertEqual(set(m.iter_meta_names()),
-                         set(["foo", "bar"]))
-        self.assertEqual(set(m.iter_meta()),
-                         set([M("foo", "meta-cls"),
-                              M("bar", "meta-cls")]))
-        self.assertEqual(set(m.iter_meta(u"foo", "fez")),
-                         set([M("foo", "meta-cls")]))
-        self.assertEqual(set(m.get_meta("bar")),
-                         set([M("bar", "meta-cls")]))
-        self.assertEqual(set(m.get_meta("fez")),
-                         set([]))
-
-    def testAspectMeta(self):
-        M = meta.MetadataItem
-        a1 = DummyAspect()
-        a2 = DummyAspectWithAspect(a1)
-        m = DummyMetaWithAspect(a2)
-
-        a1._put_meta("bar", "asp1-ins")
-        a1._put_meta("toto", "asp1-ins")
-
-        a2._put_meta("foo", "asp2-ins")
-        a2._put_meta("tata", "asp2-ins")
-
-        m._put_meta("booz", "meta-ins")
-        m._put_meta("titi", "meta-ins")
-
-
-        self.assertEqual(set(m.iter_meta_names()),
-                         set(["foo", "bar", "fez", "booz",
-                              "toto", "tata", "titi"]))
-        self.assertEqual(set(m.iter_meta()),
-                         set([M("foo", "meta-cls"),
-                              M("bar", "meta-cls"),
-                              M("fez", "asp2-cls"),
-                              M("booz", "asp2-cls"),
-                              M("foo", "asp1-cls"),
-                              M("fez", "asp1-cls"),
-                              M("booz", "meta-ins"),
-                              M("titi", "meta-ins"),
-                              M("foo", "asp2-ins"),
-                              M("tata", "asp2-ins"),
-                              M("bar", "asp1-ins"),
-                              M("toto", "asp1-ins")]))
-        self.assertEqual(set(m.iter_meta(u"tata", "fez", u"spam", "booz")),
-                         set([M("fez", "asp2-cls"),
-                              M("booz", "asp2-cls"),
-                              M("fez", "asp1-cls"),
-                              M("booz", "meta-ins"),
-                              M("tata", "asp2-ins")]))
-        self.assertEqual(set(m.get_meta("foo")),
-                         set([M("foo", "meta-cls"),
-                              M("foo", "asp1-cls"),
-                              M("foo", "asp2-ins")]))
-        self.assertEqual(set(m.iter_meta(u"booz")),
-                         set([M("booz", "asp2-cls"),
-                              M("booz", "meta-ins")]))
-        self.assertEqual(set(m.get_meta("spam")),
-                         set([]))
 
     def testClassMeta(self):
         M = meta.MetadataItem
@@ -262,14 +177,14 @@ class TestModelsMeta(common.TestCase):
         c = C()
         d = D()
 
-        a._put_meta("toto", "A")
-        a._put_meta("foo", "B")
-        b._put_meta("tata", "C")
-        b._put_meta("bar", "D")
-        c._put_meta("biz", "C")
-        c._put_meta("booz", "D")
-        d._put_meta("toto", "E")
-        d._put_meta("fez", "F")
+        a.put_meta("toto", "A")
+        a.put_meta("foo", "B")
+        b.put_meta("tata", "C")
+        b.put_meta("bar", "D")
+        c.put_meta("biz", "C")
+        c.put_meta("booz", "D")
+        d.put_meta("toto", "E")
+        d.put_meta("fez", "F")
 
         self.check_meta(a.get_meta("foo"), [M("foo", "1"), M("foo", "B")])
         self.check_meta(a.get_meta("bar"), [M("bar", "2", "int")])

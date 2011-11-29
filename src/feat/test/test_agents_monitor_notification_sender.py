@@ -23,105 +23,27 @@ from zope.interface import implements
 
 from feat.agents.monitor import monitor_agent
 from feat.test import common
-from feat.common import defer, time, log, journal, fiber
-from feat.agents.base import recipient, descriptor, sender
-
-from feat.agencies.interface import *
+from feat.test.dummies import DummyMedium, DummyAgent
+from feat.common import defer, fiber
+from feat.agents.base import sender, recipient, descriptor
+from feat.agencies.interface import NotFoundError
 from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
 
 
-class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
+class DummyMonitorAgent(DummyAgent):
 
-    def __init__(self, logger, now=None):
-        journal.DummyRecorderNode.__init__(self)
-        log.LogProxy.__init__(self, logger)
-        log.Logger.__init__(self, logger)
-
-        self.calls = {}
-        self.now = now or time.time()
-        self.call = None
-
-    def do_calls(self):
-        calls = self.calls.values()
-        self.calls.clear()
-        for _time, fun, args, kwargs in calls:
-            fun(*args, **kwargs)
-
-    def reset(self):
-        self.calls.clear()
-
-    def get_time(self):
-        return self.now
-
-    def call_later(self, time, fun, *args, **kwargs):
-        payload = (time, fun, args, kwargs)
-        callid = id(payload)
-        self.calls[callid] = payload
-        return callid
-
-    def call_later_ex(self, time, fun, args=(), kwargs={}, busy=True):
-        payload = (time, fun, args, kwargs)
-        callid = id(payload)
-        self.calls[callid] = payload
-        return callid
-
-    def cancel_delayed_call(self, callid):
-        if callid in self.calls:
-            del self.calls[callid]
-
-
-class DummyMedium(DummyBase):
-    pass
-
-
-class DummyAgent(DummyBase):
+    descriptor_class = monitor_agent.Descriptor
 
     def __init__(self, logger):
-        DummyBase.__init__(self, logger)
+        DummyAgent.__init__(self, logger)
         self.docs = dict()
-        self.descriptor = monitor_agent.Descriptor()
-        self.protocols = list()
-
-    def reset(self):
-        self.protocols = list()
-        DummyBase.reset(self)
-
-    def get_descriptor(self):
-        return self.descriptor
-
-    def update_descriptor(self, method, *args, **kwargs):
-        return fiber.wrap_defer(self._update_descriptor, method,
-                                *args, **kwargs)
-
-    def _update_descriptor(self, method, *args, **kwargs):
-        return defer.succeed(method(self.descriptor, *args, **kwargs))
 
     def get_document(self, doc_id):
         if doc_id in self.docs:
             return fiber.succeed(self.docs[doc_id])
         else:
             return fiber.fail(NotFoundError())
-
-    def initiate_protocol(self, factory, *args, **kwargs):
-        instance = DummyProtocol(factory, args, kwargs)
-        self.protocols.append(instance)
-        return instance
-
-
-class DummyProtocol(object):
-
-    def __init__(self, factory, args, kwargs):
-        self.factory = factory
-        self.args = args
-        self.kwargs = kwargs
-        self.deferred = defer.Deferred()
-
-    def notify_finish(self):
-        return fiber.wrap_defer(self.get_def)
-
-    def get_def(self):
-        return self.deferred
 
 
 class DummyClerk(dict):
@@ -149,7 +71,7 @@ class NotificationSenderTest(common.TestCase):
     def setUp(self):
         yield common.TestCase.setUp(self)
         self.medium = DummyMedium(self)
-        self.agent = DummyAgent(self)
+        self.agent = DummyMonitorAgent(self)
         self.clerk = DummyClerk()
         self.task = sender.NotificationSender(self.agent, self.medium)
         yield self.task.initiate(self.clerk)

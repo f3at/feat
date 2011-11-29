@@ -88,6 +88,7 @@ class Status(enum.Enum):
     NO_CONTENT = http.NO_CONTENT
     MOVED_PERMANENTLY = http.MOVED_PERMANENTLY
     FOUND = http.FOUND
+    NOT_MODIFIED = http.NOT_MODIFIED
     BAD_REQUEST = http.BAD_REQUEST
     UNAUTHORIZED = http.UNAUTHORIZED
     FORBIDDEN = http.FORBIDDEN
@@ -519,6 +520,18 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 ### Utility Functions ###
 
 
+compose_datetime = http.datetimeToString
+
+
+parse_qs = http.parse_qs
+
+
+def compose_qs(args):
+    if not args:
+        return ""
+    return urllib.urlencode([(n, v) for n, l in args.iteritems() for v in l])
+
+
 def is_header_multifield(name):
     return name in MULTIFIELD_HEADERS
 
@@ -710,6 +723,18 @@ def parse_host(host_header, scheme=Schemes.HTTP):
     if scheme is Schemes.HTTPS:
         return parts[0], DEFAULT_URL_HTTP_PORT
     return parts[0]
+
+
+def parse_header_values(header):
+    parts = header.split(",")
+    return dict([parse_header_value(p) for p in parts])
+
+
+def parse_header_value(value):
+    parts = value.split("=", 1)
+    if len(parts) > 1:
+        return parts[0].lower(), parts[1]
+    return parts[0].lower(), None
 
 
 def parse_content_type(value):

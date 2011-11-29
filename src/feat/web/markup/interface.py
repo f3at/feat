@@ -50,6 +50,11 @@ class IPolicy(Interface):
         """Returns if the tag is a leaf."""
 
     def is_self_closing(tag):
+        """returns if the specified tag require to have
+        both opening and closing tags or can use '<XXX />'
+        when there is not content."""
+
+    def needs_no_closing(tag):
         """Returns if in addition to be a leaf the element is self closing,
         meaning instead of <TAG/> it is valide to have <TAG>."""
 

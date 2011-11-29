@@ -25,7 +25,7 @@ from zope.interface import implements
 from feat.common import defer
 from feat.models import utils
 
-from . import common
+from feat.test import common
 
 
 class TestModelsUtils(common.TestCase):

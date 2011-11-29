@@ -38,49 +38,39 @@ def value(value_info):
 class MetaAttribute(type(model.AbstractModel)):
 
     @staticmethod
-    def new(identity, value_info, getter=None, setter=None):
+    def new(identity, value_info, getter=None, setter=None, meta=None):
         cls_name = utils.mk_class_name(identity, "Attribute")
-        cls = MetaAttribute(cls_name, (Attribute, ), {"__slots__": ()})
+        cls = MetaAttribute(cls_name, (_DynAttribute, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_value(value_info)
+        cls.apply_class_meta(meta)
 
         if getter is not None:
 
-            def _get_attribute(value, context):
-                # Override context key to use the property name
-                context = dict(context)
-                context["key"] = context["model"].name
-                return getter(value, context)
-
             Action = action.MetaAction.new("get." + identity,
-                                           ActionCategory.retrieve,
-                                           effects=[_get_attribute],
+                                           ActionCategories.retrieve,
+                                           effects=[getter],
                                            result_info=value_info,
                                            is_idempotent=True)
 
-            cls.annotate_action(u"get", Action, label=u"Get",
-                                desc=u"Retrieve the attribute value")
+            cls.annotate_action(u"get", Action)
 
         if setter is not None:
 
             def _set_attribute(value, context):
-                # Override context key to use the property name
-                context = dict(context)
-                context["key"] = context["model"].name
                 d = setter(value, context)
                 # attribute setter return the validate value
                 d.addCallback(defer.override_result, value)
                 return d
 
             Action = action.MetaAction.new("set." + identity,
-                                           ActionCategory.update,
+                                           ActionCategories.update,
                                            effects=[_set_attribute],
                                            value_info=value_info,
                                            result_info=value_info,
                                            is_idempotent=True)
 
-            cls.annotate_action(u"set", Action, label=u"Set",
-                                desc=u"Update the attribute value")
+            cls.annotate_action(u"set", Action)
 
         return cls
 
@@ -92,13 +82,13 @@ class Attribute(model.AbstractModel,
 
     implements(IAttribute)
 
-    _value_info = None
+    _model_value_info = None
 
     ### IAttribute ###
 
     @property
     def value_info(self):
-        return self._value_info
+        return self._model_value_info
 
     @property
     def is_readable(self):
@@ -150,4 +140,25 @@ class Attribute(model.AbstractModel,
     @classmethod
     def annotate_value(cls, value_info):
         """@see: feat.models.attribute.value"""
-        cls._value_info = IValueInfo(value_info)
+        cls._model_value_info = IValueInfo(value_info)
+
+
+class _DynAttribute(Attribute):
+
+    __slots__ = ("parent", )
+
+    ### IModel ###
+
+    def initiate(self, aspect=None, view=None, parent=None):
+        self.parent = parent
+        return Attribute.initiate(self, aspect=aspect,
+                                  view=view, parent=parent)
+
+    ### IContextMaker ###
+
+    def make_context(self, key=None, view=None, action=None):
+        model = self.parent or self
+        return {"model": model,
+                "view": model.view,
+                "key": unicode(key) if key is not None else self.name,
+                "action": action}

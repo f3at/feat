@@ -1,0 +1,126 @@
+/* General content */
+
+body {
+    margin: 0px;
+    font-family: helvetica;
+}
+
+.content {
+    margin: 30px;
+}
+
+
+h1 {
+    margin: 10px;
+
+}
+
+/* Error */
+
+.error {
+	color: red;
+	font-size: 20px;
+}
+
+/* Header */
+
+.header {
+    background: navy;
+    color: red;
+    padding: 10px;
+}
+
+.header a,
+.header a:visited {
+    color: yellow;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+.header a:hover {
+    color: red;
+}
+
+/* List of items */
+
+.items .name,
+.items .value,
+.items .desc {
+    min-width: 200px;
+    display: inline-block;
+    margin-right: 20px;
+}
+
+items .name {
+    color: green;
+}
+
+.items .value {
+    min-width: 300px;
+    color: blue;
+}
+
+
+/* List of actions */
+
+.actions .name,
+.actions .desc {
+    min-width: 200px;
+    display: inline-block;
+    margin-right: 20px;
+}
+
+actions .name {
+    color: green;
+}
+
+
+/* Arrays */
+
+.array {
+    margin: 9px;
+}
+
+.array th{
+    background: #803030;
+    padding: 6px;
+}
+
+.array table {
+    border: 1px solid gray;
+    border-collapse: collapse;
+}
+
+.array td {
+    border: 1px solid gray;
+    padding: 4px;
+}
+
+/* Forms */
+
+.action_form label {
+    min-width: 200px;
+    display: inline-block;
+}
+
+.action_form .desc {
+    color: orange;
+    margin-left: 20px;
+}
+.action_form .optional {
+    color: grey;
+    margin-left: 20px;
+    font-size: 0.8em;
+}
+
+
+/* Inplaces */
+
+span.inplace {
+    cursor: pointer;
+    color: green !important;
+}
+
+.submit-cancel-container {
+    float: right;
+}

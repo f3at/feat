@@ -22,27 +22,12 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-# Helper functions arround fcntl
-from feat import hacks
-
-_fcntl = hacks.import_fcntl()
-
-# lockf can be used instead, but the lock is shared in the same process. That
-# means we will always succeed takeing the lock from the same process
-LOCK_FN = _fcntl.flock
+"""Dummy implementation of feat.common.fcntl module."""
 
 
 def lock(fd, use_flock=False):
-    try:
-        LOCK_FN(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
-        return True
-    except IOError:
-        return False
+    """Overridden in platform specific implementation."""
 
 
 def unlock(fd, use_flock=False):
-    try:
-        LOCK_FN(fd, _fcntl.LOCK_UN)
-        return True
-    except IOError:
-        return False
+    """Overridden in platform specific implementation."""

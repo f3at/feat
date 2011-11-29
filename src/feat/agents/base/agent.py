@@ -166,6 +166,12 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def on_agent_reconnect(self, state):
         return self.call_mro('on_reconnect')
 
+    @replay.journaled
+    def on_agent_configuration_change(self, state, config):
+        return self.call_mro_ex('on_configuration_change',
+                                dict(config=config),
+                                raise_on_unconsumed=True)
+
     ### Methods called as a result of agency calls ###
 
     @replay.immutable
@@ -233,6 +239,10 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def get_shard_id(self, state):
         '''Returns current shard identifier.'''
         return state.medium.get_descriptor().shard
+
+    @replay.immutable
+    def get_agent_type(self, state):
+        return state.medium.get_descriptor().document_type
 
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
@@ -364,6 +374,11 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     @replay.immutable
     def query_partner_handler(self, state, partner_type, role=None):
         return state.partners.query_handler(partner_type, role)
+
+    @manhole.expose()
+    @replay.immutable
+    def get_medium(self, state):
+        return state.medium
 
     @manhole.expose()
     @replay.immutable

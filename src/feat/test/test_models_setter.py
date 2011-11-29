@@ -23,7 +23,7 @@
 from feat.common import defer
 from feat.models import setter
 
-from . import common
+from feat.test import common
 
 
 class DummyCall(object):
@@ -86,6 +86,20 @@ class TestModelsSetter(common.TestCase):
                                        (exp_key, "spam"), {}))
 
     @defer.inlineCallbacks
+    def check_setattr(self, ref, context, setter_factory, exp_key, exp_name):
+        setter = setter_factory()
+        yield setter(None, context)
+        self.assertEqual(ref.payload, (exp_name, exp_key, None))
+
+        setter = setter_factory()
+        yield setter("spam", context)
+        self.assertEqual(ref.payload, (exp_name, exp_key, "spam"))
+
+        setter = setter_factory()
+        yield setter("spam", context, param="foo")
+        self.assertEqual(ref.payload, (exp_name, exp_key, "spam"))
+
+    @defer.inlineCallbacks
     def testAttr(self):
         source = DummyAttr("source")
         action = DummyAttr("action")
@@ -97,6 +111,24 @@ class TestModelsSetter(common.TestCase):
         yield self.check_attr(source, context, setter.source_attr, "source")
         yield self.check_attr(action, context, setter.action_attr, "action")
         yield self.check_attr(view, context, setter.view_attr, "view")
+
+    @defer.inlineCallbacks
+    def testSetAttr(self):
+        source = DummyAttr("source")
+        action = DummyAttr("action")
+        model = DummyAttr("model", source)
+        view = DummyAttr("view")
+        context = {"model": model, "view": view,
+                   "key": "XXX", "action": action}
+
+        yield self.check_setattr(model, context, setter.model_setattr,
+                                 "XXX", "model")
+        yield self.check_setattr(source, context, setter.source_setattr,
+                                 "XXX", "source")
+        yield self.check_setattr(action, context, setter.action_setattr,
+                                 "XXX", "action")
+        yield self.check_setattr(view, context, setter.view_setattr,
+                                 "XXX", "view")
 
     @defer.inlineCallbacks
     def testSet(self):

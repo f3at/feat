@@ -27,14 +27,39 @@ from zope.interface import implements
 from feat.common import defer, adapter
 from feat.models import interface, model, action, value
 from feat.models import call, getter, setter
+from feat.web import http
 
-from . import common
+from feat.test import common
+
+from feat.models.interface import IMetadataItem
 
 
 class DummyView(object):
 
     def __init__(self, num=None):
         self.num = num
+
+
+class DummyContext(object):
+
+    implements(interface.IContext)
+
+    def __init__(self, models=[], names=[], remaining=[]):
+        self.models = tuple(models)
+        self.names = tuple(names)
+        self.remaining = tuple(remaining)
+
+    def make_action_address(self, action):
+        return self.make_model_address(self.names + (action.name, ))
+
+    def make_model_address(self, location):
+        host, port = location[0]
+        path = "/" + http.tuple2path(location[1:])
+        return http.compose(host=host, port=port, path=path)
+
+    def descend(self, model):
+        return DummyContext(self.models + (model, ),
+                            self.names + (model.name, ))
 
 
 class DummySource(object):
@@ -122,15 +147,17 @@ class TestModel(model.Model):
                 model="dummy-model2", label="Child 2")
     model.child("child3", getter.source_attr("child"),
                 model=DummyModel3, desc="Third child")
-    model.view("view1", "test-view", getter.source_get("get_view"))
-    model.view("view2", "test-view", getter.source_get("get_view"),
-               label="View 2", desc="Second view")
-    model.view("view3", "test-view")
-    model.childs("values",
-                 child_names=call.source_call("iter_names"),
-                 child_source=getter.source_get("get_value"),
-                 child_label="Some Value", child_desc="Some dynamic value",
-                 label="Some Values", desc="Some dynamic values")
+    model.child("view1", view=getter.source_get("get_view"),
+                model="test-view")
+    model.child("view2", view=getter.source_get("get_view"),
+                model="test-view", label="View 2", desc="Second view")
+    model.child("view3", model="test-view")
+    model.collection("values",
+                     child_names=call.source_call("iter_names"),
+                     child_source=getter.source_get("get_value"),
+                     child_label="Some Value",
+                     child_desc="Some dynamic value",
+                     label="Some Values", desc="Some dynamic values")
 
 
 class TestView(model.Model):
@@ -144,10 +171,99 @@ class TestView(model.Model):
 class TestCollection(model.Collection):
     __slots__ = ()
     model.identity("test-collection")
+    model.child_label("Some Child")
+    model.child_desc("Some dynamic child")
+    model.child_model(DummyModel2)
     model.child_names(call.source_call("iter_names"))
-    model.child_source(getter.source_get("get_value"), DummyModel2,
-                       label="Some Child", desc="Some dynamic child")
+    model.child_source(getter.source_get("get_value"))
     model.action("action", DummyAction)
+
+
+class TestModelMeta(model.Model):
+    model.identity("test-model-meta")
+    model.meta("foo", "foo1")
+    model.meta("foo", "foo2", "FOO")
+    model.meta("bar", "bar")
+
+    model.child("child1", meta=("spam", "beans"))
+    model.child("child2", meta=[("spam", "egg")])
+    model.child("child3", meta=[("spam", "tomatoes", "SPAM"),
+                                ("spam", "egg")])
+
+    model.child("view", model="test-model-meta",
+                meta=[("spam", "foo1", "FOO")])
+    model.attribute("attr", value.String(),
+                    meta=[("spam", "foo2", "FOO")])
+    model.collection("collection",
+                     child_source=getter.model_attr("source"),
+                     child_model="test-model-meta",
+                     child_meta=[("bacon", "dynitem1"),
+                                 ("bacon", "dynitem2", "BAR")],
+                     model_meta=("bacon", "model"),
+                     meta=("spam", "item", "FOO"))
+
+    model.item_meta("child1", "foo", "foo1")
+    model.item_meta("child1", "spam", "foo", "FOO")
+    model.item_meta("child2", "foo", "foo1")
+    model.item_meta("child2", "spam", "foo", "FOO")
+    model.item_meta("child3", "foo", "foo1")
+    model.item_meta("child3", "spam", "foo", "FOO")
+    model.item_meta("view", "foo", "foo2")
+    model.item_meta("attr", "foo", "foo3")
+    model.item_meta("collection", "foo", "foo4")
+
+
+class TestReference(model.Model):
+    model.identity("test-reference")
+    model.child("child", getter.model_attr("source"), model="test-reference")
+    model.action("action", DummyAction)
+
+
+class TestModelEffects(model.Model):
+    model.identity("test-model-calls")
+    model.attribute("attr1", value.String(),
+                    getter.model_attr("attr1"),
+                    setter.model_attr("attr1"))
+    model.attribute("attr2", value.String(),
+                    getter.model_get("get_attr"),
+                    setter.model_set("set_attr"))
+    model.attribute("attr3", value.String(),
+                    call.model_call("get_attr3"),
+                    call.model_filter("set_attr3"))
+    model.collection("coll1",
+                     child_source=getter.model_get("get_child"),
+                     child_names=call.model_call("get_child_names"),
+                     child_model="test-model-calls")
+
+    def init(self):
+        self.attr1 = "foo"
+        self.attr2 = "bar"
+        self.attr3 = "buz"
+        self.childs = {u"toto": object(),
+                       u"tata": object()}
+
+    def get_attr(self, name):
+        if name == "attr2":
+            return self.attr2
+        raise KeyError(name)
+
+    def set_attr(self, name, value):
+        if name == "attr2":
+            self.attr2 = value
+            return
+        raise KeyError(name)
+
+    def get_attr3(self):
+        return self.attr3
+
+    def set_attr3(self, value):
+        self.attr3 = value
+
+    def get_child_names(self):
+        return self.childs.keys()
+
+    def get_child(self, name):
+        return self.childs[name]
 
 
 class TestModelsModel(common.TestCase):
@@ -159,6 +275,142 @@ class TestModelsModel(common.TestCase):
     def tearDown(self):
         model.restore_factories(self._factories_snapshot)
         return common.TestCase.tearDown(self)
+
+    @defer.inlineCallbacks
+    def testModelEffects(self):
+        mdl = yield TestModelEffects.create(object())
+
+        self.assertEqual(mdl.attr1, "foo")
+        i1 = yield mdl.fetch_item("attr1")
+        m1 = yield i1.fetch()
+        v1 = yield m1.fetch_value()
+        self.assertEqual(v1, "foo")
+        r1 = yield m1.update_value("spam")
+        self.assertEqual(r1, "spam")
+        self.assertEqual(mdl.attr1, "spam")
+        v1 = yield m1.fetch_value()
+        self.assertEqual(v1, "spam")
+
+        self.assertEqual(mdl.attr2, "bar")
+        i2 = yield mdl.fetch_item("attr2")
+        m2 = yield i2.fetch()
+        v2 = yield m2.fetch_value()
+        self.assertEqual(v2, "bar")
+        r2 = yield m2.update_value("bacon")
+        self.assertEqual(r2, "bacon")
+        self.assertEqual(mdl.attr2, "bacon")
+        v2 = yield m2.fetch_value()
+        self.assertEqual(v2, "bacon")
+
+        self.assertEqual(mdl.attr3, "buz")
+        i3 = yield mdl.fetch_item("attr3")
+        m3 = yield i3.fetch()
+        v3 = yield m3.fetch_value()
+        self.assertEqual(v3, "buz")
+        r3 = yield m3.update_value("sausage")
+        self.assertEqual(r3, "sausage")
+        self.assertEqual(mdl.attr3, "sausage")
+        v3 = yield m3.fetch_value()
+        self.assertEqual(v3, "sausage")
+
+        i4 = yield mdl.fetch_item("coll1")
+        m4 = yield i4.fetch()
+        childs = yield m4.fetch_items()
+        self.assertEqual(set([c.name for c in childs]),
+                         set(["toto", "tata"]))
+        ci1 = yield m4.fetch_item("toto")
+        cm1 = yield ci1.fetch()
+        self.assertTrue(cm1.source is mdl.childs[u"toto"])
+        ci2 = yield m4.fetch_item("tata")
+        cm2 = yield ci2.fetch()
+        self.assertTrue(cm2.source is mdl.childs[u"tata"])
+
+    @defer.inlineCallbacks
+    def testReferences(self):
+        m1 = TestReference(object())
+        ctx1 = DummyContext([m1], [("dummy.net", None)])
+
+        i1 = yield m1.fetch_item("child")
+        self.assertEqual(i1.reference.resolve(ctx1),
+                         "http://dummy.net/child")
+        a1 = yield m1.fetch_action("action")
+        self.assertEqual(a1.reference.resolve(ctx1),
+                         "http://dummy.net/action")
+        m2 = yield i1.fetch()
+        ctx2 = ctx1.descend(m2)
+        i2 = yield m1.fetch_item("child")
+        self.assertEqual(i2.reference.resolve(ctx2),
+                         "http://dummy.net/child/child")
+        a2 = yield m1.fetch_action("action")
+        self.assertEqual(a2.reference.resolve(ctx2),
+                         "http://dummy.net/child/action")
+
+    @defer.inlineCallbacks
+    def testModelMeta(self):
+
+        def check(meta, expected):
+            self.assertTrue(all(IMetadataItem.providedBy(i) for i in meta))
+            self.assertTrue(all(isinstance(i.name, unicode) for i in meta))
+            self.assertTrue(all(isinstance(i.value, unicode) for i in meta))
+            self.assertTrue(all(i.scheme is None
+                                or isinstance(i.scheme, unicode)
+                                for i in meta))
+            self.assertEqual(set((i.name, i.value, i.scheme) for i in meta),
+                             set(expected))
+
+        m = TestModelMeta(object())
+        self.assertEqual(set(m.iter_meta_names()),
+                         set([u"bar", u"foo"]))
+        self.assertEqual(set(type(n) for n in m.iter_meta_names()),
+                         set([unicode]))
+        self.assertEqual(len(m.get_meta("foo")), 2)
+        self.assertEqual(len(m.get_meta("bar")), 1)
+        check(m.get_meta("foo"), [(u'foo', u'foo1', None),
+                                  (u'foo', u'foo2', u'FOO')])
+        check(m.get_meta("bar"), [(u'bar', u'bar', None)])
+        check(m.get_meta("spam"), [])
+
+        i = yield m.fetch_item("child1")
+        check(i.get_meta("spam"), [(u'spam', u'beans', None),
+                                   (u'spam', u'foo', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("child2")
+        check(i.get_meta("spam"), [(u'spam', u'egg', None),
+                                   (u'spam', u'foo', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("child3")
+        check(i.get_meta("spam"), [(u'spam', u'egg', None),
+                                   (u'spam', u'foo', u'FOO'),
+                                   (u'spam', u'tomatoes', u'SPAM')])
+        check(i.get_meta("foo"), [(u'foo', u'foo1', None)])
+        check(i.get_meta("bar"), [])
+
+        i = yield m.fetch_item("view")
+        check(i.get_meta("spam"), [(u'spam', u'foo1', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo2', None)])
+
+        i = yield m.fetch_item("attr")
+        check(i.get_meta("spam"), [(u'spam', u'foo2', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo3', None)])
+
+        i = yield m.fetch_item("collection")
+        check(i.get_meta("spam"), [(u'spam', u'item', u'FOO')])
+        check(i.get_meta("foo"), [(u'foo', u'foo4', None)])
+
+        m = yield i.fetch()
+        check(m.get_meta("spam"), [])
+        check(m.get_meta("foo"), [])
+        check(m.get_meta("bacon"), [(u"bacon", u"model", None)])
+
+        i = yield m.fetch_item("dummy")
+        check(i.get_meta("spam"), [])
+        check(m.get_meta("foo"), [])
+        check(i.get_meta("bacon"), [(u"bacon", u"dynitem1", None),
+                                    (u"bacon", u"dynitem2", u"BAR")])
 
     def testFactoryRegistry(self):
         self.assertTrue(model.get_factory("test-model") is TestModel)
@@ -178,7 +430,7 @@ class TestModelsModel(common.TestCase):
         self.assertEqual(m.desc, None)
 
         a = DummyAspect("name", "label", "desc")
-        m = TestModel(s, a)
+        m = yield TestModel.create(s, a)
 
         self.assertEqual(m.identity, u"test-model")
         self.assertTrue(isinstance(m.identity, unicode))
@@ -228,6 +480,7 @@ class TestModelsModel(common.TestCase):
     @defer.inlineCallbacks
     def testModelItems(self):
         s = DummySource()
+        s.child = DummySource()
         m = TestModel(s)
 
         ITEMS = ("attr1", "attr2", "attr3",
@@ -249,12 +502,16 @@ class TestModelsModel(common.TestCase):
         items = yield m.fetch_items()
         self.assertTrue(isinstance(items, list))
         self.assertEqual(len(items), len(ITEMS))
+        ctx = DummyContext([m], [("dummy.net", None)])
         for item in items:
             self.assertTrue(interface.IModelItem.providedBy(item))
             self.assertFalse(hasattr(item, "__dict__"))
             self.assertTrue(isinstance(item.name, (unicode, types.NoneType)))
             self.assertTrue(isinstance(item.label, (unicode, types.NoneType)))
             self.assertTrue(isinstance(item.desc, (unicode, types.NoneType)))
+            self.assertTrue(interface.IReference.providedBy(item.reference))
+            self.assertEqual(item.reference.resolve(ctx),
+                             str("http://dummy.net/" + item.name))
             model = yield item.fetch()
             self.assertTrue(interface.IModel.providedBy(model))
             model = yield item.browse()
@@ -353,7 +610,6 @@ class TestModelsModel(common.TestCase):
     @defer.inlineCallbacks
     def testModelChild(self):
         src = DummySource()
-        src.child = object()
         mdl = TestModel(src)
 
         # child1
@@ -370,10 +626,10 @@ class TestModelsModel(common.TestCase):
         self.assertTrue(child1.source is src)
         self.assertTrue(isinstance(child1, DummyModel1))
 
-        # The model is gotten from IModel adaptation
-        # so it do not have any aspect
-        self.assertEqual(child1.name, None)
-        self.assertEqual(child1.label, None)
+        self.assertEqual(child1.name, u"child1")
+        self.assertTrue(isinstance(child1.name, unicode))
+        self.assertEqual(child1.label, u"Child 1")
+        self.assertTrue(isinstance(child1.label, unicode))
         self.assertEqual(child1.desc, None)
 
         # child2
@@ -382,6 +638,13 @@ class TestModelsModel(common.TestCase):
         self.assertEqual(child2_item.name, u"child2")
         self.assertEqual(child2_item.label, u"Child 2")
         self.assertEqual(child2_item.desc, None)
+
+        child2 = yield child2_item.browse()
+        self.assertEqual(child2, None)
+        child2 = yield child2_item.fetch()
+        self.assertEqual(child2, None)
+
+        src.child = object()
 
         child2 = yield child2_item.browse()
         yield self.asyncIterEqual([], child2.fetch_actions())
@@ -484,7 +747,7 @@ class TestModelsModel(common.TestCase):
     def testDeclaredCollection(self):
         asp = DummyAspect("collec")
         src = DummySource()
-        mdl = TestCollection(src, asp)
+        mdl = yield TestCollection.create(src, asp)
 
         self.assertTrue(interface.IModel.providedBy(mdl))
         self.assertFalse(hasattr(mdl, "__dict__"))

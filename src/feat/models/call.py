@@ -34,60 +34,12 @@ of calling methods in a processing chain:
                 most probably from an action are added to the specified
                 keywords.
 
-In addition the module provides utility effects:
-
- - delay: perform the specified effect outside the execution chain after
-          the specified time returning specified result right away.
-
-EFFECT DEFINITION:
-
-Effects are standardized callable with known parameters that can perform
-different actions.
-
-Effects' first argument is the current value in a processing chain.
-
-Effect's second argument is the current context, a dictionary
-containing the following keys when meaningful:
-
-  - model: the current model.
-  - view: the current view.
-  - action: the current action.
-  - key: the current key.
-
-Effect's keywords arguments are extra dynamic parameters
-that could be used by the effect, usually action parameters.
-
-Effect's result is ALWAYSa defer.Deffered() instance fired
-with the new value of the processing chain.
 """
 
 import inspect
+import types
 
-from feat.common import defer, time
-
-
-def delay(effect, result=None, delay=0.001):
-    """
-    Creates and effect that will delays the execution
-    of the specified effect and return the specified result right away.
-    @param effect: the effect to delay.
-    @type effect: callable
-    @param result: the value to return right away.
-    @type result: Any
-    @param delay: the time to wait before performing
-                  the specified effect in seconds.
-    @type delay: float
-    @return: a new effect that will delay the specified effect.
-    @rtype: callable
-    """
-
-    def new_effect(value, context, **params):
-        d = defer.Deferred()
-        d.addCallback(effect, context, **params)
-        time.call_next(d.callback, value)
-        return result
-
-    return new_effect
+from feat.common import defer
 
 
 def source_call(method_name, *args, **kwargs):
@@ -99,11 +51,11 @@ def source_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def source_call(_value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return source_call
 
 
 def source_filter(method_name, *args, **kwargs):
@@ -114,11 +66,11 @@ def source_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def source_filter(value, context, **_params):
         method = getattr(context["model"].source, method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return source_filter
 
 
 def source_perform(method_name, *args, **kwargs):
@@ -130,11 +82,11 @@ def source_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def source_perform(value, context, **params):
         method = getattr(context["model"].source, method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return source_perform
 
 
 def model_call(method_name, *args, **kwargs):
@@ -146,11 +98,11 @@ def model_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def model_call(_value, context, **_params):
         method = getattr(context["model"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return model_call
 
 
 def model_filter(method_name, *args, **kwargs):
@@ -161,11 +113,11 @@ def model_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def model_filter(value, context, **_params):
         method = getattr(context["model"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return model_filter
 
 
 def model_perform(method_name, *args, **kwargs):
@@ -177,11 +129,11 @@ def model_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def model_perform(value, context, **params):
         method = getattr(context["model"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return model_perform
 
 
 def action_call(method_name, *args, **kwargs):
@@ -193,11 +145,11 @@ def action_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def action_call(_value, context, **_params):
         method = getattr(context["action"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return action_call
 
 
 def action_filter(method_name, *args, **kwargs):
@@ -208,11 +160,11 @@ def action_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def action_filter(value, context, **_params):
         method = getattr(context["action"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return action_filter
 
 
 def action_perform(method_name, *args, **kwargs):
@@ -224,11 +176,11 @@ def action_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def action_perform(value, context, **params):
         method = getattr(context["action"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return action_perform
 
 
 def view_call(method_name, *args, **kwargs):
@@ -240,11 +192,11 @@ def view_call(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(_value, context, **_params):
+    def view_call(_value, context, **_params):
         method = getattr(context["view"], method_name)
         return _call(method, args, kwargs)
 
-    return effect
+    return view_call
 
 
 def view_filter(method_name, *args, **kwargs):
@@ -255,11 +207,11 @@ def view_filter(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **_params):
+    def view_filter(value, context, **_params):
         method = getattr(context["view"], method_name)
         return _filter(method, value, args, kwargs)
 
-    return effect
+    return view_filter
 
 
 def view_perform(method_name, *args, **kwargs):
@@ -271,11 +223,11 @@ def view_perform(method_name, *args, **kwargs):
     @type method_name: str
     """
 
-    def effect(value, context, **params):
+    def view_perform(value, context, **params):
         method = getattr(context["view"], method_name)
         return _perform(method, value, params, args, kwargs)
 
-    return effect
+    return view_perform
 
 
 ### private ###
@@ -290,13 +242,34 @@ def _filter(method, value, args, kwargs):
 
 
 def _perform(method, value, params, args, kwargs):
-    argspec = inspect.getargspec(method)
     keywords = dict(kwargs)
-    if argspec.keywords:
-        keywords.update(params)
-    else:
+    keywords.update(params)
+    keywords["value"] = value
+    arguments = []
+
+    func = method
+
+    if isinstance(method, types.MethodType):
+        func = method.im_func
+
+    if hasattr(func, 'original_func'):
+        func = func.original_func
+
+    argspec = inspect.getargspec(func)
+
+    for name in argspec.args:
+        if name in ("self"):
+            continue
+        if name not in keywords:
+            break
+        arguments.append(keywords.pop(name))
+
+    arguments.extend(args)
+
+    if not argspec.keywords:
         expected = set(argspec.args)
-        for param_name, param_value in params.iteritems():
-            if param_name in expected:
-                keywords[param_name] = param_value
-    return defer.maybeDeferred(method, value, *args, **keywords)
+        for name in keywords.keys():
+            if name not in expected:
+                del keywords[name]
+
+    return defer.maybeDeferred(method, *arguments, **keywords)

@@ -488,18 +488,11 @@ class TestWebServer(common.TestCase):
 
         result = self.server._process_request(request)
 
-        if is_async is True:
-            self.assertEqual(result, NOT_DONE_YET)
+        self.assertEqual(result, NOT_DONE_YET)
 
-        if is_async is False:
-            self.assertTrue(result == "" or result is None)
-
-        if result == NOT_DONE_YET:
-            d = request.notifyFinish()
-            d.addCallbacks(check_expected, not_expected)
-            return d
-
-        check_expected(request)
+        d = request.notifyFinish()
+        d.addCallbacks(check_expected, not_expected)
+        return d
 
     def check_sync(self, uri, status, content, **kwargs):
         return self.check(uri, is_async=False, status=status,

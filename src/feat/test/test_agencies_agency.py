@@ -21,10 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
-from twisted.trial.unittest import FailTest
-
-from feat.common import fiber, defer
+from feat.common import defer
 from feat.interface.agent import AgencyAgentState
 from feat.agents.base import descriptor, agent, document
 from feat.test import common
@@ -33,6 +30,13 @@ from feat.test import common
 @descriptor.register('startup-test')
 class Descriptor(descriptor.Descriptor):
     pass
+
+
+@document.register
+class Config(document.Document):
+
+    document_type = 'startup-test_conf'
+    document.field('field', None)
 
 
 class DummyException(Exception):
@@ -62,7 +66,7 @@ class DummyAgent(agent.BaseAgent, common.Mock):
         return self._started_defer
 
     @common.Mock.stub
-    def unregister(self):
+    def on_configuration_change(self, config):
         pass
 
     @common.Mock.stub
@@ -87,6 +91,35 @@ class TestAgentCallbacks(common.TestCase, common.AgencyTestHelper):
         yield common.TestCase.setUp(self)
         yield common.AgencyTestHelper.setUp(self)
         self.desc = yield self.doc_factory(Descriptor)
+
+    @defer.inlineCallbacks
+    def testChangingConfiguration(self):
+        db = self._db.get_connection()
+        conf = Config(field=1, doc_id=u'startup-test_conf')
+        conf = yield db.save_document(conf)
+        medium = yield self.agency.start_agent(self.desc)
+        agent = medium.get_agent()
+
+        # test getting config
+        conf_ = medium.get_configuration()
+        self.assertEquals(conf, conf_)
+
+        # modify it
+        self.assertCalled(agent, 'on_configuration_change', times=0)
+        conf.field = 3
+        conf = yield db.save_document(conf)
+        kwargs = dict(name='on_configuration_change')
+        yield self.wait_for(agent.find_calls, 10, kwargs=kwargs)
+
+        # assert that callback is called
+        call = agent.find_calls('on_configuration_change')[0]
+        conf_ = call.kwargs['config']
+        self.assertIsInstance(conf_, Config)
+        self.assertEqual(3, conf_.field)
+
+        # check that synchrounous getter gives the new value
+        conf_ = medium.get_configuration()
+        self.assertEqual(conf, conf_)
 
     @defer.inlineCallbacks
     def testAgentStartup(self):

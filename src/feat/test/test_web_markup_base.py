@@ -34,10 +34,13 @@ from feat.web.markup.interface import *
 class TestPolicy(base.BasePolicy):
 
     def is_leaf(self, tag):
-        return tag == "leaf" or tag == "self_closing"
+        return tag in ("leaf", "no_closing", "require_closing_leaf")
+
+    def needs_no_closing(self, tag):
+        return tag == "no_closing"
 
     def is_self_closing(self, tag):
-        return tag == "self_closing"
+        return tag not in ("require_closing_node", "require_closing_leaf")
 
     def resolve_attr_error(self, failure):
         return "%s: %s" % (failure.type.__name__, failure.getErrorMessage())
@@ -49,6 +52,16 @@ class TestPolicy(base.BasePolicy):
 
 
 class TestBaseMarkup(common.TestCase):
+
+    @defer.inlineCallbacks
+    def testEscaping(self):
+        policy = base.BasePolicy()
+        tag = base.ElementBuilder(policy)
+
+        e = tag.A(test="<>&'\"")("<>&'\"")
+        yield self.asyncEqual('<a test="&lt;&gt;&amp;\'&quot;">'
+                              '&lt;&gt;&amp;\'"</a>',
+                              e.as_string())
 
     @common.attr(skip=("trial do not like deferred without handled errbacks\n"
                        "even when it is the expected behaviour."))
@@ -152,12 +165,13 @@ class TestBaseMarkup(common.TestCase):
         self.assertTrue(IElement.providedBy(e))
         self.assertTrue(IElementContent.providedBy(e.content))
         self.assertFalse(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
+        self.assertFalse(e.needs_no_closing)
+        self.assertTrue(e.is_self_closing)
         self.assertEqual(e.tag, "a")
         self.assertEqual(len(e), 2)
         self.assertTrue("a" in e)
         self.assertFalse("c" in e)
-        self.assertTrue(isinstance(e["a"], str))
+        self.assertTrue(isinstance(e["a"], unicode))
         self.assertTrue(isinstance(e["b"], defer.Deferred))
         values = yield defer.join(*(list(e)))
         self.assertEqual(set(values), set(["a", "b"]))
@@ -165,7 +179,7 @@ class TestBaseMarkup(common.TestCase):
         self.assertEqual(len(e), 3)
         self.assertTrue("a" in e)
         self.assertTrue("c" in e)
-        self.assertTrue(isinstance(e["c"], str))
+        self.assertTrue(isinstance(e["c"], unicode))
         self.assertEqual("1", e["a"])
         yield self.asyncEqual("2", e["b"])
         self.assertEqual("3", e["c"])
@@ -181,57 +195,87 @@ class TestBaseMarkup(common.TestCase):
         self.assertTrue(IElementContent.providedBy(c))
         e = c.element
         self.assertFalse(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
+        self.assertFalse(e.needs_no_closing)
+        self.assertTrue(e.is_self_closing)
         self.assertTrue(IElement.providedBy(e))
 
         e = tag.leaf(attr=1)
         self.assertTrue(e.is_leaf)
-        self.assertFalse(e.is_self_closing)
-        self.assertTrue(IElement.providedBy(e))
-        self.assertRaises(MarkupError, getattr, e, "content")
-
-        doc = base.Document(policy)
-        doc.root()
-        doc.node()
-        doc.node()
-        yield self.asyncEqual('<root><node><node/></node></root>',
-                              doc.as_string())
-
-        doc = base.Document(policy)
-        doc.root()
-        doc.leaf()
-        doc.leaf()
-        yield self.asyncEqual('<root><leaf/><leaf/></root>', doc.as_string())
-
-        d = lambda v: common.delay(v, 0.01)
-        e = tag.A()(tag.leaf(), d(tag.leaf(a=1)), d(tag.leaf()))
-        yield self.asyncEqual('<a><leaf/><leaf a="1"/><leaf/></a>',
-                              e.as_string())
-
-    @defer.inlineCallbacks
-    def testSelfClosing(self):
-        policy = TestPolicy()
-        tag = base.ElementBuilder(policy)
-
-        e = tag.self_closing()
-        self.assertTrue(e.is_leaf)
+        self.assertFalse(e.needs_no_closing)
         self.assertTrue(e.is_self_closing)
         self.assertTrue(IElement.providedBy(e))
         self.assertRaises(MarkupError, getattr, e, "content")
 
         doc = base.Document(policy)
         doc.root()
-        doc.self_closing()
-        doc.self_closing()
-        yield self.asyncEqual('<root><self_closing><self_closing></root>',
+        doc.node()
+        doc.node()
+        yield self.asyncEqual('<root><node><node /></node></root>',
+                              doc.as_string())
+
+        doc = base.Document(policy)
+        doc.root()
+        doc.leaf()
+        doc.leaf()
+        yield self.asyncEqual('<root><leaf /><leaf /></root>', doc.as_string())
+
+        d = lambda v: common.delay(v, 0.01)
+        e = tag.A()(tag.leaf(), d(tag.leaf(a=1)), d(tag.leaf()))
+        yield self.asyncEqual('<a><leaf /><leaf a="1" /><leaf /></a>',
+                              e.as_string())
+
+    @defer.inlineCallbacks
+    def testNoClosing(self):
+        policy = TestPolicy()
+        tag = base.ElementBuilder(policy)
+
+        e = tag.no_closing()
+        self.assertTrue(e.is_leaf)
+        self.assertTrue(e.needs_no_closing)
+        self.assertTrue(IElement.providedBy(e))
+        self.assertRaises(MarkupError, getattr, e, "content")
+        yield self.asyncEqual('<no_closing>', e.as_string())
+
+        doc = base.Document(policy)
+        doc.root()
+        doc.no_closing()
+        doc.no_closing()
+        yield self.asyncEqual('<root><no_closing><no_closing></root>',
                               doc.as_string())
 
         d = lambda v: common.delay(v, 0.01)
-        e = tag.A()(tag.self_closing(),
-                    d(tag.self_closing(a=1)),
-                    d(tag.self_closing()))
-        yield self.asyncEqual('<a><self_closing><self_closing a="1">'
-                              '<self_closing></a>', e.as_string())
+        e = tag.A()(tag.no_closing(),
+                    d(tag.no_closing(a=1)),
+                    d(tag.no_closing()))
+        yield self.asyncEqual('<a><no_closing><no_closing a="1">'
+                              '<no_closing></a>', e.as_string())
+
+    @defer.inlineCallbacks
+    def testSelfClosing(self):
+        policy = TestPolicy()
+        tag = base.ElementBuilder(policy)
+
+        e = tag.require_closing_leaf()
+        self.assertTrue(IElement.providedBy(e))
+        self.assertTrue(e.is_leaf)
+        self.assertFalse(e.is_self_closing)
+        self.assertRaises(MarkupError, getattr, e, "content")
+        yield self.asyncEqual("<require_closing_leaf></require_closing_leaf>",
+                              e.as_string())
+
+        e = tag.require_closing_node()
+        self.assertTrue(IElementContent.providedBy(e))
+        e = e.element
+        self.assertTrue(IElement.providedBy(e))
+        self.assertFalse(e.is_leaf)
+        self.assertFalse(e.is_self_closing)
+        self.assertTrue(IElementContent.providedBy(e.content))
+        yield self.asyncEqual("<require_closing_node></require_closing_node>",
+                              e.as_string())
+        e.content.append("XXX")
+        yield self.asyncEqual("<require_closing_node>XXX"
+                              "</require_closing_node>",
+                              e.as_string())
 
     @defer.inlineCallbacks
     def testElementContent(self):
@@ -270,8 +314,8 @@ class TestBaseMarkup(common.TestCase):
 
         yield self.asyncEqual('<root attr1="45" attr2="XX">'
                               '<sub>VVV</sub>'
-                              '<sub><a/>XXX<b>ZZZ</b><c name="toto"/></sub>'
-                              '<sub>AAA<d/><e/></sub>'
+                              '<sub><a />XXX<b>ZZZ</b><c name="toto" /></sub>'
+                              '<sub>AAA<d /><e /></sub>'
                               '</root>',
                               doc.as_string())
 
@@ -288,8 +332,8 @@ class TestBaseMarkup(common.TestCase):
 
         yield self.asyncEqual('<root attr1="45" attr2="XX">'
                               '<sub>VVV</sub>'
-                              '<sub><a/>XXX<b>ZZZ</b><c name="toto"/></sub>'
-                              '<sub>AAA<d/><e/></sub>'
+                              '<sub><a />XXX<b>ZZZ</b><c name="toto" /></sub>'
+                              '<sub>AAA<d /><e /></sub>'
                               '</root>',
                               doc.as_string())
 
@@ -304,41 +348,41 @@ class TestBaseMarkup(common.TestCase):
         tag = base.ElementBuilder(policy)
         d = lambda v: common.delay(v, 0.01)
 
-        yield check(tag.TOTO()(), "<toto/>")
+        yield check(tag.TOTO()(), "<toto />")
 
-        yield check(tag.TOTO(test=None)(), "<toto test/>")
+        yield check(tag.TOTO(test=None)(), "<toto test />")
 
-        yield check(tag.TOTO(test=d(None))(), "<toto test/>")
+        yield check(tag.TOTO(test=d(None))(), "<toto test />")
 
         yield check(tag.PIM()("aaa", "bbb"),
                     "<pim>aaabbb</pim>")
 
         yield check(tag.PIM()(tag.PAM(), tag.POUM()),
-                    "<pim><pam/><poum/></pim>")
+                    "<pim><pam /><poum /></pim>")
 
         yield check(tag.SPAM(aaa=1, bbb=2, ccc=3)(),
-                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\"/>")
+                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\" />")
 
         yield check(tag.SPAM(BACON=42)("toto", tag.EGG(), "tata"),
-                    "<spam bacon=\"42\">toto<egg/>tata</spam>")
+                    "<spam bacon=\"42\">toto<egg />tata</spam>")
 
         yield check(tag.TOTO()(common.delay(tag.PIM(), 0.02),
                                11,
                                common.delay(tag.PAM(), 0.01),
                                tag.POUM(),
                                common.delay(22, 0.02)),
-                    "<toto><pim/>11<pam/><poum/>22</toto>")
+                    "<toto><pim />11<pam /><poum />22</toto>")
 
         yield check(tag.SPAM(aaa=common.delay(1, 0.02),
                              bbb=2,
                              ccc=common.delay(3, 0.01))(),
-                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\"/>")
+                    "<spam aaa=\"1\" bbb=\"2\" ccc=\"3\" />")
 
         yield check(tag.A(a=1, b=2)(tag.B(c=3),
                                     tag.D(d=4)(tag.E()(tag.F(e=5)),
                                                tag.G(h=6))),
-                    '<a a="1" b="2"><b c="3"/><d d="4">'
-                    '<e><f e="5"/></e><g h="6"/></d></a>')
+                    '<a a="1" b="2"><b c="3" /><d d="4">'
+                    '<e><f e="5" /></e><g h="6" /></d></a>')
 
         # Now everything asynchronous
         yield check(tag.A(a=d(1), b=d(2))
@@ -347,8 +391,8 @@ class TestBaseMarkup(common.TestCase):
                        (d(tag.E()
                           (d(tag.F(e=d(5))))),
                         d(tag.G(h=d(6)))))),
-                    '<a a="1" b="2"><b c="3"/><d d="4">'
-                    '<e><f e="5"/></e><g h="6"/></d></a>')
+                    '<a a="1" b="2"><b c="3" /><d d="4">'
+                    '<e><f e="5" /></e><g h="6" /></d></a>')
 
     @defer.inlineCallbacks
     def testPolicySpeparator(self):

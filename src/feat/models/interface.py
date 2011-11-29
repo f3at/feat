@@ -24,7 +24,7 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum, error
 
-__all__ = ["ResponseTypes", "ActionCategory", "ValueTypes",
+__all__ = ["ResponseTypes", "ActionCategories", "ValueTypes",
            "ModelError", "TransientError", "BadReference",
            "NotSupported", "Unauthorized", "NotAvailable",
            "ActionFailed", "ActionConflict",
@@ -34,21 +34,22 @@ __all__ = ["ResponseTypes", "ActionCategory", "ValueTypes",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
            "IValueInfo", "IValueCollection", "IValueRange",
-           "IValueOptions", "IValueOption"]
+           "IValueOptions", "IValueOption",
+           "IActionPayload", "IErrorPayload"]
 
 
 class ResponseTypes(enum.Enum):
     """
     Types of success response model that an action could return:
-     - done: The action has been done successfully.
      - created: The action resulted in a new model being created successfully.
-     - accepted: The action has been accepted
-                 but it is not started yet or not finished yet.
+     - updates: The action resulted in the model being updated successfully.
+     - deleted: The action resulted in the model being deleted successfully.
+     - done: The action has been done successfully.
      """
-    done, created, accepted = range(3)
+    created, updated, deleted, accepted, done = range(5)
 
 
-class ActionCategory(enum.Enum):
+class ActionCategories(enum.Enum):
     """
     Types of action models can provide:
      - retrieve: a state less action that retrieve data.
@@ -64,6 +65,7 @@ class ValueTypes(enum.Enum):
     """
     Types of values action value, parameters and result could be:
      - model: a response model.
+     - reference: a reference to a model.
      - integer: an integer value.
      - number: an integer or a float
      - boolean: True or False
@@ -71,7 +73,10 @@ class ValueTypes(enum.Enum):
      - collection: a collection of other value.
      - binary: a binary blob.
     """
-    model, integer, number, boolean, string, collection, binary = range(7)
+    (model, reference,
+     integer, number,
+     boolean, string,
+     collection, binary) = range(8)
 
 
 class ModelError(error.FeatError):
@@ -174,8 +179,8 @@ class IValueCollection(IValueInfo):
 
     allowed_types = Attribute("Allowed sub types. @type: list of IValueInfo")
     is_ordered = Attribute("If the list order is important. @type: bool")
-    allow_multiple = Attribute("If the same value is allowed multiple times. "
-                               "@type: bool")
+    min_size = Attribute("Minimum size of the collection. @type: int")
+    max_size = Attribute("Maximum size of the collection. @type: int")
 
 
 class IValueRange(IValueInfo):
@@ -249,7 +254,7 @@ class IMetadataItem(Interface):
     """A metadata atom, containing a name, a format and a list of values."""
 
     name = Attribute("Name of the metadata atom. @type: unicode")
-    values = Attribute("List of metadata values. @type list of unicode")
+    value = Attribute("Value of metadata atom. @type unicode")
     scheme = Attribute("Metadata format. @type unicode or None")
 
 
@@ -271,6 +276,29 @@ class  IContext(Interface):
     remaining = Attribute("Remaining names to get to the targeted model. "
                           "@type: list of unicode")
 
+    def make_action_address(action):
+        """Make and address for an action relative to the current context.
+        @param action: the action to generate the address from.
+        @type action: IModelAction
+        @return: unicode or str
+        """
+
+    def make_model_address(location):
+        """Make and address from a tuple resolved but a reference.
+        @param location: an absolute location built
+                         from the reference and the context.
+        @type location: tuple of unicode
+        @return: unicode or str
+        """
+
+    def descend(model):
+        """Generate new context appending the (name, model) to the path
+        @param model: a sub model of the context.
+        @type model: IModel
+        @return: the new context based on specified model.
+        @rtype: IContext
+        """
+
 
 class IReference(Interface):
     """
@@ -286,33 +314,11 @@ class IReference(Interface):
         Applies the reference to the current context
         and returns a global reference.
         The result will depend on the reference type.
-        @param root: current root identifier.
-        @type root: object
-        @param models: current chain of model.
-        @type models: list of IModel
-        @param location: current location to be resolved.
-        @type location: list of unicode
-        @return: the referenced model root and absolute location
-        @rtype: tuple of object and list of unicode
+        @return: the address build by the context form the result
+                 of resolving the reference.
+        @rtype: object()
         @raise BadReference: if the reference cannot be applied
                              to the specified context.
-        """
-
-    def fetch():
-        """
-        Tries to fetch the referenced model.
-        Could fail if the model backend do not support it,
-        for example it may only work for local reference.
-        @return: a deferred fired with the reference model.
-        @rtype: defer.Deferred
-        @callback: IModel
-        @errback TransientError: if the model couldn't be fetched
-                                 but the operation could be retried later.
-        @errback Unauthorized: if the the caller is not authorized
-                               to retrieve the referenced model.
-        @errback NotAvailable: if the referenced model is not available.
-        @errback NotSupported: if the model backend do not support
-                               fetching this reference.
         """
 
 
@@ -382,6 +388,25 @@ class IModel(Interface):
     """
 
     identity = Attribute("Model unique identifier. @type: unicode")
+    name = Attribute("Model name. @type: unicode")
+    label = Attribute("Short label. @type: unicode or None")
+    desc = Attribute("Long description. @type: unicode or None")
+    reference = Attribute("Reference to the real model or None. "
+                          "@type: IReference or None")
+
+    def initiate(aspect=None, view=None, parent=None):
+        """
+        Initiates a model with specified aspect, view and parent.
+        @param aspect: the model aspect.
+        @type aspect: IAspect
+        @param view: if the mode is a view, contains view value.
+        @type view: object()
+        @param parent: the parent model if known.
+        @type parent: IModel or None
+        @return: a deferred fired with the model itself.
+        @rtype: defer.Deferred
+        @callback: IModel
+        """
 
     def provides_item(name):
         """
@@ -519,6 +544,25 @@ class IModel(Interface):
         @errback NotAvailable: if the model source is not available.
         """
 
+    def perform_action(name, **kwargs):
+        '''
+        Fetch action and perform it passing arguments and keywords.
+        @param name: name of the action to be performed.
+        @type name: str or unicode
+        @param kwargs: action parameters.
+        @type kwargs: dict
+        @return: a deferred fired with the action result.
+        @rtype: defer.Deferred
+        @callback: return value of the action
+        @errback AttributeError: if the action does not exist
+        @errback TransientError: if the action couldn't be fetched
+                                 for unexpected reasons, but the operation
+                                 could be retried later.
+        @errback Unauthorized: if the the caller is not authorized
+                               to retrieve the model's action.
+        @errback NotAvailable: if the model source is not available.
+        '''
+
 
 class IAttribute(IModel, IValueInfo):
     """
@@ -606,6 +650,9 @@ class IModelItem(Interface):
                      "@type: unicode")
     label = Attribute("Item short label. @type: unicode or None")
     desc = Attribute("Item long description. @type: unicode or None")
+    reference = Attribute("Reference to the model or None "
+                          "if the model is detached. "
+                          "@type: IReference or None")
 
     def browse():
         """
@@ -640,37 +687,44 @@ class IModelAction(Interface):
 
     name = Attribute("Action name unique for all model's actions. "
                      "@type: unicode")
+    reference = Attribute("Action reference or None if the model "
+                          "is detached. @type: IReference or None")
     label = Attribute("Action short label. @type: unicode or None")
     desc = Attribute("Action long description. @type: unicode or None")
     category = Attribute("Action category. @type: ActionCategories")
     is_idempotent = Attribute("If performing the action multiple times gives "
                               "the same result as performing it only once. "
                               "@type: bool")
-    value_info = Attribute("Information about the action value or None "
-                           "if the action do not require any value. "
-                           "@type IValueInfo or None")
     parameters = Attribute("List of action parameters. "
                            "@type: list of IActionParam")
     result_info = Attribute("Information about action's result or None "
                             "if the action do not return any result. "
                             "@type: IValueInfo or None")
 
-    def perform(*args, **kwargs):
+    def initiate(aspect=None):
         """
-        Performs the action with specified value and parameters.
-        If value is needed it MUST be the first argument,
-        and all parameters MUST be keywords.
+        Initiates the action with specified aspect.
+        @param aspect: the action aspect.
+        @type aspect: IAspect or None
+        @return a deferred fired with the action itself.
+        @rtype: defer.Deferred
+        @callback: IModelAction
+        """
+
+    def perform(**kwargs):
+        """
+        Performs the action with specified keyword arguments.
         If the action was done successfully, the deferred is fired
         with a value of any type or None. The value could be a model
         itself and most probably a IResponseModel providing more
         information about the outcome of the action alongside the data.
         If the model will perform the action later or it is not finished
         yet it could return a IResponse with response type "accepted".
-        @param value: the action value if required nothing if not.
-        @type value: object
+        @param kwargs: the action arguments.
+        @type kwargs: dict()
         @return: a deferred fired with the action result or None.
         @rtype: defer.Deferred
-        @callback: object
+        @callback: object or None
         @errback TransientError: if the action couldn't be performed for
                                  unexpected reasons but the operation could
                                  be retried later.
@@ -678,8 +732,8 @@ class IModelAction(Interface):
                                to perform the action.
         @errback NotAvailable: if the model source is not available
                                or the action is not enabled.
-        @errback ValueError: if the action value or parameters are wrong.
-        @errback TypeError: if the value or a parameter is missing
+        @errback ValueError: if an action parameter is wrong.
+        @errback TypeError: if a parameter is missing
                             or an unknown parameter was specified.
         @errback ActionFailed: if the action failed in any ways.
         """
@@ -689,19 +743,37 @@ class IActionParam(Interface):
     """Action parameter descriptor."""
 
     name = Attribute("Parameter name unique for all action's parameters. "
-                     "@type: ascii encoded string")
+                     "@type: unicode")
     label = Attribute("Parameter label or None. @type: unicode or None")
     desc = Attribute("Parameter description or None. @type: unicode or None")
-    info = Attribute("Information about the parameter value. "
-                     "@type: IValueInfo")
+    value_info = Attribute("Information about the parameter value. "
+                           "@type: IValueInfo")
     is_required = Attribute("If the parameter is required or optional. "
                             "@type: bool")
+
+
+class IActionPayload(Interface):
+    """
+    Interface identifying an object received containing action parameters.
+    to be used when registering document readers.
+    instance implementing this interface should provide
+    the dictionary protocol.
+    """
+
+
+class IErrorPayload(Interface):
+    """Interface identifying an error object."""
+
+    code = Attribute("Error number. @type: int or None")
+    message = Attribute("Short error message. @type: unicode or None")
+    debug = Attribute("Debugging information. @type: unicode or None")
+    trace = Attribute("Debugging trace. @type: unicode or None")
 
 
 ### private interfaces ###
 
 
-class  IValidator(Interface):
+class IValidator(Interface):
 
     def validate(value):
         """
@@ -715,8 +787,24 @@ class  IValidator(Interface):
         @raise ValueError: if the value fail the validation.
         """
 
+    def publish(value):
+        """
+        Publish the specified value.
+        This will eventually convert the value to a public format
+        the validate method will be able to  understand
+        and convert back to the internal format.
+        @param value: value to be published and converted.
+        @type value: object
+        @return: a published value.
+        @rtype: object
+        @raise ValueError: if the value is not correct.
+        """
 
-class  IAspect(Interface):
+    def as_string(value):
+        """Returns the value as a unicode string validate() understands."""
+
+
+class IAspect(Interface):
     """Aspect of a model or an action defined by its owner."""
 
     name = Attribute("Aspect name. @type: unicode")
@@ -726,9 +814,11 @@ class  IAspect(Interface):
 
 class IModelFactory(Interface):
 
-    def __call__(source, aspect=None, view=None):
+    def __call__(source, aspect=None, view=None, parent=None):
         """
         Creates a model instance for the specified source reference.
+        @param parent: the parent model if known.
+        @type parent: IModel or None
         @param source: the source the model should reference.
         @type source: object
         @param aspect: the model aspect.
@@ -742,13 +832,27 @@ class IModelFactory(Interface):
 
 class IActionFactory(Interface):
 
-    def __call__(model, aspect=None):
+    def __call__(model):
         """
         Creates an action instance for the specified model.
         @param model: the model the action should be created for.
         @type model: IModel
-        @param aspect: the action aspect.
-        @type aspect: IAspect
         @return: an action for the given model and aspect.
         @rtype: IModelAction
+        """
+
+
+class IContextMaker(Interface):
+
+    def make_context(key=None, view=None, action=None):
+        """
+        Create a context dictionary, some value can be overridden.
+        @param key: overridden value for key.
+        @type key: str or unicode or None
+        @param view: overridden value for view.
+        @type view: object() or None
+        @param action: overridden value for action.
+        @type action: IModelAction or None
+        @return: a context dictionary
+        @rtype: dict
         """

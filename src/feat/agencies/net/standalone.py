@@ -24,7 +24,7 @@ import os
 from twisted.internet import reactor
 
 from feat.agencies.net import agency, broker
-from feat.common import manhole, defer, time, fcntl
+from feat.common import manhole, defer, time, fcntl, error
 
 from feat.interface.recipient import IRecipient
 
@@ -85,13 +85,17 @@ class Agency(agency.Agency):
             self.info("Not spwaning master because we are about to terminate "
                       "ourselves")
             return
+        if self._startup_task is not None:
+            raise error.FeatError("Standalone started without a previous "
+                                  "master agency already running, terminating "
+                                  "it")
 
         # Try the get an exclusive lock on the master agency startup
         if self._acquire_lock():
             self._starting_master = True
             # Allow restarting a master if we didn't succeed after 10 seconds
             self._release_lock_cl = time.callLater(10, self._release_lock)
-            return self._spawn_agency("master")
+            return self._spawn_agency('master', ['--force-host-restart'])
 
     def on_become_slave(self):
         if self._release_lock_cl is not None:
@@ -126,11 +130,15 @@ class Agency(agency.Agency):
 
     def _flush_agents_body(self):
         if self._to_spawn:
-            aid, kwargs = self._to_spawn.pop(0)
+            aid, kwargs, sd = self._to_spawn.pop(0)
             d = self.wait_running()
             d.addCallback(lambda _: self._database.get_connection())
             d.addCallback(defer.call_param, 'get_document', aid)
             d.addCallback(self.start_agent_locally, **kwargs)
+            if sd is not None:
+                d.addCallbacks(defer.keep_param, defer.keep_param,
+                               callbackArgs=(sd.callback, ),
+                               errbackArgs=(sd.errback, ))
             d.addCallbacks(self.notify_running, self.notify_failed,
                            errbackArgs=(aid, ))
             return d

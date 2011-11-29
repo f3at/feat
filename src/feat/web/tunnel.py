@@ -64,7 +64,7 @@ class Tunnel(base.RangeServer):
     def __init__(self, log_keeper, port_range, dispatcher,
                  public_host=None, version=None, registry=None,
                  server_security_policy=None,
-                 client_security_policy=None):
+                 client_security_policy=None, max_delay=None):
         base.RangeServer.__init__(self, port_range,
                                   hostname=public_host,
                                   security_policy=server_security_policy,
@@ -86,6 +86,8 @@ class Tunnel(base.RangeServer):
         self._quarantined = set([]) # set([PEER_KEY])
         self._pendings = {} # {PEER_KEY: [(DEFERRED, PATH, DATA, EXPIRATION)]}
         self._peers = {} # {KEY: Peer}
+
+        self._max_delay = max_delay or type(self).max_delay
 
     @property
     def version(self):
@@ -274,7 +276,7 @@ class Tunnel(base.RangeServer):
             self._reset_retry(key)
 
     def _cancel_retries(self):
-        for _, callid in self._retries.itervalues():
+        for callid in self._retries.itervalues():
             if callid and callid.active():
                 callid.cancel()
         self._retries.clear()
@@ -282,7 +284,7 @@ class Tunnel(base.RangeServer):
     def _next_retry_delay(self, key):
         delay = self._delays.get(key, self.initial_delay)
 
-        delay = min(delay * self.factor, self.max_delay)
+        delay = min(delay * self.factor, self._max_delay)
         if self.jitter:
             delay = random.normalvariate(delay, delay * self.jitter)
 

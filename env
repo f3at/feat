@@ -1,16 +1,27 @@
 #!/bin/bash
 
 env_path=$0
-type=`stat -c%f $0`
 
-# If we're a link figure out where are we installed really
-if test $type == 'a1ff'
-then
-   env_path=`readlink $0`
+if [ "x$TERM" == "xcygwin" ]; then
+
+  # Should use cygpath if available
+  # for now, assuming PYTHONPATH is good for start_feat.sh to work
+  export PATH=$ROOT/bin:$PATH
+
+else
+
+  type=`stat -c%f $0`
+
+  # If we're a link figure out where are we installed really
+  if test $type == 'a1ff'
+  then
+     env_path=`readlink $0`
+  fi
+
+  ROOT=$(cd $(dirname $env_path); pwd)
+  export PYTHONPATH=$PYTHONPATH${PYTHONPATH:+:}$ROOT/src
+  export PATH=$ROOT/bin:$PATH
+
 fi
-
-ROOT=$(cd $(dirname $env_path); pwd)
-export PYTHONPATH=$PYTHONPATH${PYTHONPATH:+:}$ROOT/src
-export PATH=$ROOT/bin:$PATH
 
 exec "$@"

@@ -19,14 +19,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-import itertools
-
 from zope.interface import implements
 
 from feat.common import annotate, container
 
-from feat.models.interface import *
+from feat.models.interface import IMetadata, NotSupported, IMetadataItem
 
 
 def meta(name, value, scheme=None):
@@ -50,8 +47,6 @@ class Metadata(annotate.Annotable):
     implements(IMetadata)
 
     _class_meta = container.MroDictOfList("_mro_meta")
-    _instance_meta = None
-    aspect = None
 
     __slots__ = ("_instance_meta", )
 
@@ -61,14 +56,8 @@ class Metadata(annotate.Annotable):
         class_meta = self._class_meta
         items = class_meta.get(name, [])
 
-        if self._instance_meta is not None:
+        if hasattr(self, "_instance_meta"):
             items.extend(self._instance_meta.get(name, []))
-
-        try:
-            aspect_meta = IMetadata(self.aspect)
-            items.extend(aspect_meta.get_meta(name))
-        except TypeError:
-            pass
 
         return items
 
@@ -77,25 +66,14 @@ class Metadata(annotate.Annotable):
         class_meta = self._class_meta
         names = set(class_meta)
 
-        if self._instance_meta is not None:
+        if hasattr(self, "_instance_meta"):
             names.update(self._instance_meta)
-
-        try:
-            aspect_meta = IMetadata(self.aspect)
-            names.update(aspect_meta.iter_meta_names())
-        except TypeError:
-            pass
 
         return iter(names)
 
     def iter_meta(self, *names):
         class_meta = self._class_meta
-        instance_meta = self._instance_meta
-
-        try:
-            aspect_meta = IMetadata(self.aspect)
-        except TypeError:
-            aspect_meta = None
+        instance_meta = getattr(self, "_instance_meta", {})
 
         if not names:
             names = self.iter_meta_names()
@@ -105,28 +83,49 @@ class Metadata(annotate.Annotable):
                 for m in class_meta[k]:
                     yield m
 
-            if instance_meta is not None and k in instance_meta:
+            if k in instance_meta:
                 for m in instance_meta[k]:
                     yield m
 
-            if aspect_meta is not None:
-                for m in aspect_meta.get_meta(k):
-                    yield m
+    ### public ###
 
-    ### protected ###
+    def put_meta(self, name, value, scheme=None):
+        item = MetadataItem(name, value, scheme)
+        self._put_meta(item.name, item)
 
-    def _put_meta(self, name, value, scheme=None):
-        if self._instance_meta is None:
+    def apply_instance_meta(self, meta):
+        self._apply_meta(meta, self._put_meta)
+
+    ### private ###
+
+    def _put_meta(self, name, item):
+        if not hasattr(self, "_instance_meta"):
             self._instance_meta = {}
-        items = self._instance_meta.setdefault(name, [])
-        items.append(MetadataItem(name, value, scheme))
+        self._instance_meta.setdefault(name, []).append(item)
 
     ### annotations ###
 
     @classmethod
     def annotate_meta(cls, name, value, scheme=None):
         """@see: feat.models.meta.meta"""
-        cls._class_meta.put(name, MetadataItem(name, value, scheme))
+        item = MetadataItem(name, value, scheme)
+        cls._class_meta.put(item.name, item)
+
+    ### class methods ###
+
+    @classmethod
+    def apply_class_meta(cls, meta):
+        cls._apply_meta(meta, cls._class_meta.put)
+
+    @classmethod
+    def _apply_meta(cls, meta, fun):
+        if meta is None:
+            return
+        if not isinstance(meta, list):
+            meta = [meta]
+        for args in meta:
+            item = MetadataItem(*args)
+            fun(item.name, item)
 
 
 class MetadataItem(object):

@@ -20,6 +20,8 @@
 
 # Headers in this file shall remain intact.
 
+from xml.sax import saxutils
+
 from twisted.python import failure
 from zope.interface import implements
 
@@ -46,17 +48,20 @@ class BasePolicy(object):
     def is_leaf(self, tag):
         return False
 
-    def is_self_closing(self, tag):
+    def needs_no_closing(self, tag):
         return False
+
+    def is_self_closing(self, tag):
+        return True
 
     def adapt_attr(self, attr):
         return attr.lower()
 
     def convert_attr(self, obj):
-        return str(obj)
+        return unicode(obj)
 
     def write_attr(self, doc, value):
-        doc.write(value)
+        doc.write(saxutils.quoteattr(value))
         return defer.succeed(doc)
 
     def convert_content(self, obj):
@@ -68,7 +73,7 @@ class BasePolicy(object):
         return defer.succeed(doc)
 
     def write_content(self, doc, value):
-        doc.write(value)
+        doc.write(saxutils.escape(value))
         return defer.succeed(doc)
 
     def resolve_attr_error(self, failure):
@@ -216,6 +221,10 @@ class Element(object):
         return self._policy.is_leaf(self._tag)
 
     @property
+    def needs_no_closing(self):
+        return self._policy.needs_no_closing(self._tag)
+
+    @property
     def is_self_closing(self):
         return self._policy.is_self_closing(self._tag)
 
@@ -272,27 +281,25 @@ class Element(object):
                 return d
 
             if value is not None:
-                doc.write("=\"")
-                d = self._policy.write_attr(doc, value)
-                d.addCallback(close_attr)
-                return d
+                doc.write("=")
+                return self._policy.write_attr(doc, value)
 
             return doc
 
-        def close_attr(doc):
-            doc.write("\"")
-            return doc
-
-        def close_tag(doc):
+        def close_tag(doc, name):
             if self.is_leaf:
-                if self.is_self_closing:
+                if self.needs_no_closing:
                     doc.write(">")
+                elif not self.is_self_closing:
+                    doc.writelines(["></", name, ">"])
                 else:
-                    doc.write("/>")
+                    doc.write(" />")
             elif self.content:
                 doc.write(">")
+            elif not self.is_self_closing:
+                doc.writelines(["></", name, ">"])
             else:
-                doc.write("/>")
+                doc.write(" />")
             return doc
 
         def close_element(doc, name):
@@ -306,7 +313,7 @@ class Element(object):
         keys.sort()
         for name in keys:
             d.addCallback(start_attr, name, self._attrs[name])
-        d.addCallback(close_tag)
+        d.addCallback(close_tag, self._tag)
         if self._content:
             d.addCallback(self.content.render)
             d.addCallback(close_element, self._tag)
@@ -322,15 +329,10 @@ class Element(object):
 
     def _got_value(self, value, doc, trigger=None):
 
-        def close_attr(doc):
-            doc.write("\"")
-            return doc
-
         if value is not None:
-            doc.write("=\"")
+            doc.write("=")
             d = defer.succeed(doc)
             d.addCallback(self._policy.write_attr, value)
-            d.addCallback(close_attr)
             if trigger is not None:
                 d.addCallback(trigger.callback)
             d.addCallback(defer.override_result, value)

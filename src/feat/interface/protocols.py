@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import Interface, Attribute
 
-from feat.common import enum
+from feat.common import enum, error
 
 __all__ = ["ProtocolFailed", "ProtocolNotCriticalError",
            "ProtocolExpired", "ProtocolCancelled",
@@ -40,7 +40,7 @@ class InterestType(enum.Enum):
     (private, public) = range(2)
 
 
-class ProtocolFailed(Exception):
+class ProtocolFailed(error.FeatError):
     '''The protocol failed.'''
 
 

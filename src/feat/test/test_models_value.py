@@ -23,7 +23,7 @@
 from feat.common import enum
 from feat.models import interface, value
 
-from . import common
+from feat.test import common
 
 
 class DummyString(value.String):
@@ -57,7 +57,95 @@ class DummyEnum(enum.Enum):
     popo = enum.value(42, "Other Value")
 
 
+class TestCollection1(value.Collection):
+    value.allows(value.Integer())
+
+
+class TestCollection2(value.Collection):
+    value.allows(value.String())
+    value.allows(value.Boolean())
+    value.min_size(2)
+    value.max_size(4)
+
+
 class TestModelsValue(common.TestCase):
+
+    def testCollection(self):
+        v = TestCollection1()
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueCollection.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.collection)
+        self.assertFalse(v.use_default)
+
+        self.assertEqual(v.publish([]), [])
+        self.assertEqual(v.publish([1]), [1])
+        self.assertEqual(v.publish([1, 2, 3]), [1, 2, 3])
+        self.assertRaises(ValueError, v.publish, 45)
+        self.assertRaises(ValueError, v.publish, "spam")
+        self.assertRaises(ValueError, v.publish, ["spam"])
+        self.assertRaises(ValueError, v.publish, [25, "42"])
+        self.assertRaises(ValueError, v.publish, [[1, 2]])
+
+        self.assertEqual(v.validate([]), [])
+        self.assertEqual(v.validate([1]), [1])
+        self.assertEqual(v.validate([1, 2, 3]), [1, 2, 3])
+        self.assertEqual(v.validate([25, "42"]), [25, 42])
+        self.assertRaises(ValueError, v.validate, 45)
+        self.assertRaises(ValueError, v.validate, "spam")
+        self.assertRaises(ValueError, v.validate, ["spam"])
+        self.assertRaises(ValueError, v.validate, [[1, 2]])
+
+        v = TestCollection2()
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueCollection.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.collection)
+        self.assertFalse(v.use_default)
+
+        self.assertRaises(ValueError, v.publish, [])
+        self.assertRaises(ValueError, v.publish, ["spam"])
+        self.assertRaises(ValueError, v.publish, [True])
+        self.assertEqual(v.publish(["spam", "bacon"]), ["spam", "bacon"])
+        self.assertEqual(v.publish(["spam", "bacon", "sausage"]),
+                         ["spam", "bacon", "sausage"])
+        self.assertEqual(v.publish([True, False]), [True, False])
+        self.assertEqual(v.publish([True, False, True]), [True, False, True])
+        self.assertEqual(v.publish(["spam", True]), ["spam", True])
+        self.assertEqual(v.publish([True, "bacon", False, "sausage"]),
+                         [True, "bacon", False, "sausage"])
+        self.assertRaises(ValueError, v.publish, [1])
+        self.assertRaises(ValueError, v.publish, [1, 2])
+        self.assertRaises(ValueError, v.publish, [1, 2, 3])
+        self.assertRaises(ValueError, v.publish, [25, "42"])
+        self.assertRaises(ValueError, v.publish, [[True, False]])
+        self.assertRaises(ValueError, v.publish,
+                          [True, True, True, True, True])
+        self.assertRaises(ValueError, v.publish,
+                          ["a", "b", "c", "d", "e"])
+        self.assertRaises(ValueError, v.publish,
+                          ["a", True, "c", False, "e"])
+
+        self.assertRaises(ValueError, v.validate, [])
+        self.assertRaises(ValueError, v.validate, ["spam"])
+        self.assertRaises(ValueError, v.validate, [True])
+        self.assertEqual(v.validate(["spam", "bacon"]), ["spam", "bacon"])
+        self.assertEqual(v.validate(["spam", "bacon", "sausage"]),
+                         ["spam", "bacon", "sausage"])
+        self.assertEqual(v.validate([True, False]), [True, False])
+        self.assertEqual(v.validate([True, False, True]), [True, False, True])
+        self.assertEqual(v.validate(["spam", True]), ["spam", True])
+        self.assertEqual(v.validate([True, "bacon", False, "sausage"]),
+                         [True, "bacon", False, "sausage"])
+        self.assertRaises(ValueError, v.validate, [1])
+        self.assertRaises(ValueError, v.validate, [1, 2])
+        self.assertRaises(ValueError, v.validate, [1, 2, 3])
+        self.assertRaises(ValueError, v.validate, [25, "42"])
+        self.assertRaises(ValueError, v.validate, [[True, False]])
+        self.assertRaises(ValueError, v.validate,
+                          [True, True, True, True, True])
+        self.assertRaises(ValueError, v.validate,
+                          ["a", "b", "c", "d", "e"])
+        self.assertRaises(ValueError, v.validate,
+                          ["a", True, "c", False, "e"])
 
     def testBaseValue(self):
         s = value.Value()
@@ -69,6 +157,9 @@ class TestModelsValue(common.TestCase):
         self.assertEqual(s.validate(""), "")
         self.assertEqual(s.validate(8), 8)
         self.assertEqual(s.validate(None), None)
+        self.assertEqual(s.publish(None), None)
+        self.assertEqual(s.publish("test"), "test")
+        self.assertEqual(s.publish(42), 42)
         self.assertFalse(s.has_option("spam"))
         self.assertEqual(s.get_option("spam"), None)
         self.assertEqual(s.count_options(), 0)
@@ -78,27 +169,46 @@ class TestModelsValue(common.TestCase):
         v = value.String()
         self.assertTrue(interface.IValueInfo.providedBy(v))
         self.assertFalse(interface.IValueOptions.providedBy(v))
-        self.assertEqual(v.label, u"String")
-        self.assertTrue(isinstance(v.label, unicode))
         self.assertEqual(v.value_type, interface.ValueTypes.string)
         self.assertFalse(v.use_default)
+
         self.assertEqual(v.validate(""), u"")
         self.assertEqual(v.validate("spam"), u"spam")
         self.assertEqual(v.validate(u"bacon"), u"bacon")
         self.assertTrue(isinstance(v.validate("egg"), unicode))
+        self.assertTrue(isinstance(v.validate(u"egg"), unicode))
         self.assertRaises(ValueError, v.validate, None)
+        self.assertRaises(ValueError, v.validate, 42)
+
+        self.assertEqual(v.publish(u"test"), u"test")
+        self.assertEqual(v.publish("not unicode"), u"not unicode")
+        self.assertTrue(isinstance(v.publish("egg"), unicode))
+        self.assertRaises(ValueError, v.publish, 42)
+        self.assertRaises(ValueError, v.publish, None)
+
+        self.assertEqual(v.as_string(u"test"), u"test")
+        self.assertEqual(v.as_string("not unicode"), u"not unicode")
+        self.assertTrue(isinstance(v.as_string("egg"), unicode))
+        self.assertRaises(ValueError, v.as_string, 42)
+        self.assertRaises(ValueError, v.as_string, None)
 
         v = value.String(default="FOO")
         self.assertTrue(v.use_default)
         self.assertEqual(v.default, u"FOO")
         self.assertTrue(isinstance(v.default, unicode))
+
         self.assertEqual(v.validate(None), u"FOO")
+        self.assertTrue(isinstance(v.validate(None), unicode))
+        self.assertEqual(v.publish(None), u"FOO")
+        self.assertTrue(isinstance(v.publish(None), unicode))
 
         v = value.String("FOO")
         self.assertTrue(v.use_default)
         self.assertEqual(v.default, u"FOO")
         self.assertTrue(isinstance(v.default, unicode))
+
         self.assertEqual(v.validate(None), u"FOO")
+        self.assertEqual(v.publish(None), u"FOO")
 
         self.assertRaises(ValueError, value.String, "foo", "bar")
         self.assertRaises(ValueError, value.String, "foo", default="bar")
@@ -115,9 +225,13 @@ class TestModelsValue(common.TestCase):
         self.assertTrue(v.use_default)
         self.assertEqual(v.default, u"spam")
         self.assertTrue(isinstance(v.default, unicode))
-        self.assertEqual(v.validate(""), u"")
+
         self.assertEqual(v.validate(None), u"spam")
         self.assertTrue(isinstance(v.validate(None), unicode))
+
+        self.assertEqual(v.publish(None), u"spam")
+        self.assertTrue(isinstance(v.publish(None), unicode))
+        self.assertRaises(ValueError, v.publish, 42)
 
         v = DummyString(default=u"bacon")
         self.assertTrue(v.use_default)
@@ -137,10 +251,20 @@ class TestModelsValue(common.TestCase):
         self.assertTrue(v.use_default)
         self.assertEqual(v.default, u"bacon")
         self.assertTrue(isinstance(v.default, unicode))
+
         self.assertEqual(v.validate(""), u"")
         self.assertEqual(v.validate("toto"), u"toto")
+        self.assertTrue(isinstance(v.validate("toto"), unicode))
         self.assertEqual(v.validate(None), u"bacon")
         self.assertTrue(isinstance(v.validate(None), unicode))
+
+        self.assertEqual(v.publish(u"egg"), u"egg")
+        self.assertTrue(isinstance(v.validate(u"egg"), unicode))
+        self.assertEqual(v.publish("spam"), u"spam")
+        self.assertTrue(isinstance(v.validate("spam"), unicode))
+        self.assertEqual(v.publish(u"spam"), u"spam")
+        self.assertEqual(v.publish(u"toto"), u"toto")
+
         self.assertEqual(v.count_options(), 4)
         self.assertTrue(v.has_option("egg"))
         self.assertTrue(v.has_option("spam"))
@@ -168,8 +292,14 @@ class TestModelsValue(common.TestCase):
         self.assertEqual(v.desc, "String with more options")
         self.assertTrue(v.use_default)
         self.assertEqual(v.default, u"foo")
+
         self.assertEqual(v.validate(None), u"foo")
         self.assertRaises(ValueError, v.validate, "toto")
+
+        self.assertEqual(v.publish(u"foo"), u"foo")
+        self.assertEqual(v.publish(u"spam"), u"spam")
+        self.assertRaises(ValueError, v.publish, u"toto")
+
         self.assertEqual(v.count_options(), 5)
         self.assertTrue(v.has_option("egg"))
         self.assertTrue(v.has_option("spam"))
@@ -188,9 +318,9 @@ class TestModelsValue(common.TestCase):
         v = value.Integer()
         self.assertTrue(interface.IValueInfo.providedBy(v))
         self.assertFalse(interface.IValueOptions.providedBy(v))
-        self.assertEqual(v.label, "Integer")
         self.assertEqual(v.value_type, interface.ValueTypes.integer)
         self.assertFalse(v.use_default)
+
         self.assertEqual(v.validate(0), 0)
         self.assertEqual(v.validate(-456), -456)
         self.assertEqual(v.validate(12345678901234567890),
@@ -213,42 +343,238 @@ class TestModelsValue(common.TestCase):
         self.assertRaises(ValueError, v.validate, 1.5)
         self.assertRaises(ValueError, v.validate, "spam")
 
-        v = value.String(default="FOO")
+        self.assertEqual(v.publish(0), 0)
+        self.assertEqual(v.publish(42), 42)
+        self.assertEqual(v.publish(-33), -33)
+        self.assertEqual(v.publish(12345678901234567890),
+                         12345678901234567890)
+        self.assertEqual(v.publish(-12345678901234567890),
+                         -12345678901234567890)
+        self.assertRaises(ValueError, v.publish, "42")
+        self.assertRaises(ValueError, v.publish, 3.14)
+
+        self.assertEqual(v.as_string(0), u"0")
+        self.assertTrue(isinstance(v.as_string(0), unicode))
+        self.assertEqual(v.as_string(42), "42")
+        self.assertEqual(v.as_string(-33), "-33")
+        self.assertEqual(v.as_string(12345678901234567890),
+                         "12345678901234567890")
+        self.assertEqual(v.as_string(-12345678901234567890),
+                         "-12345678901234567890")
+        self.assertRaises(ValueError, v.as_string, "42")
+        self.assertRaises(ValueError, v.as_string, 3.14)
+
+        v = value.Integer(default=88)
         self.assertTrue(v.use_default)
-        self.assertEqual(v.default, u"FOO")
-        self.assertTrue(isinstance(v.default, unicode))
-        self.assertEqual(v.validate(None), u"FOO")
+        self.assertEqual(v.default, 88)
+        self.assertTrue(isinstance(v.default, int))
+        self.assertEqual(v.validate(None), 88)
+
+        self.assertEqual(v.validate(None), 88)
+        self.assertEqual(v.publish(None), 88)
+        self.assertEqual(v.as_string(None), "88")
+
+        v = value.Integer(44)
+        self.assertTrue(v.use_default)
+        self.assertEqual(v.default, 44)
+        self.assertTrue(isinstance(v.default, int))
+        self.assertEqual(v.validate(None), 44)
+
+        self.assertEqual(v.validate(None), 44)
+        self.assertEqual(v.publish(None), 44)
+        self.assertEqual(v.as_string(None), "44")
 
     def testEnumValue(self):
         v = value.Enum(DummyEnum)
         self.assertTrue(interface.IValueInfo.providedBy(v))
         self.assertTrue(interface.IValueOptions.providedBy(v))
-        self.assertEqual(v.label, "Enumeration")
-        self.assertEqual(v.value_type, interface.ValueTypes.integer)
+        self.assertEqual(v.value_type, interface.ValueTypes.string)
         self.assertFalse(v.use_default)
 
         self.assertEqual([o.value for o in v.iter_options()],
-                         [0, 1, 2, 42])
+                         [u"toto", u"tata", u"titi", u"Other Value"])
+        self.assertTrue(all(isinstance(o.value, unicode)
+                            for o in v.iter_options()))
         self.assertEqual([o.label for o in v.iter_options()],
                          [u"toto", u"tata", u"titi", u"Other Value"])
+        self.assertTrue(all(isinstance(o.label, unicode)
+                            for o in v.iter_options()))
 
-        self.assertEqual(v.validate(0), 0)
-        self.assertEqual(v.validate(42), 42)
-        self.assertEqual(v.validate("tata"), 1)
-        self.assertEqual(v.validate("titi"), DummyEnum.titi)
-        self.assertEqual(v.validate(u"Other Value"), 42)
+        self.assertEqual(v.validate(0), DummyEnum.toto)
+        self.assertTrue(isinstance(v.validate(0), DummyEnum))
+        self.assertEqual(v.validate(42), DummyEnum.popo)
+        self.assertTrue(isinstance(v.validate(42), DummyEnum))
+        self.assertEqual(v.validate("tata"), DummyEnum.tata)
+        self.assertTrue(isinstance(v.validate("tata"), DummyEnum))
+        self.assertEqual(v.validate(u"titi"), DummyEnum.titi)
+        self.assertTrue(isinstance(v.validate(u"titi"), DummyEnum))
+        self.assertEqual(v.validate(u"Other Value"), DummyEnum.popo)
+        self.assertTrue(isinstance(v.validate(u"Other Value"), DummyEnum))
+        self.assertRaises(ValueError, v.validate, 66)
+        self.assertRaises(ValueError, v.validate, None)
+        self.assertRaises(ValueError, v.validate, "dummy")
+        self.assertRaises(ValueError, v.validate, u"dummy")
+
+        self.assertEqual(v.publish(DummyEnum.toto), u"toto")
+        self.assertTrue(isinstance(v.publish(DummyEnum.toto), unicode))
+        self.assertEqual(v.publish(DummyEnum.tata), u"tata")
+        self.assertEqual(v.publish(DummyEnum.popo), u"Other Value")
+        self.assertRaises(ValueError, v.publish, "dummy")
+        self.assertRaises(ValueError, v.publish, u"dummy")
+        self.assertRaises(ValueError, v.publish, 44)
+        self.assertRaises(ValueError, v.publish, None)
+
+        self.assertEqual(v.as_string(DummyEnum.toto), u"toto")
+        self.assertTrue(isinstance(v.as_string(DummyEnum.toto), unicode))
+        self.assertEqual(v.as_string(DummyEnum.tata), u"tata")
+        self.assertEqual(v.as_string(DummyEnum.popo), u"Other Value")
+        self.assertRaises(ValueError, v.as_string, "dummy")
+        self.assertRaises(ValueError, v.as_string, u"dummy")
+        self.assertRaises(ValueError, v.as_string, 44)
+        self.assertRaises(ValueError, v.as_string, None)
+
+        v = value.Enum(DummyEnum, DummyEnum.toto)
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueOptions.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.string)
+        self.assertTrue(v.use_default)
+        self.assertEqual(v.default, DummyEnum.toto.name)
+        self.assertTrue(isinstance(v.default, unicode))
+
+        self.assertEqual(v.validate(None), DummyEnum.toto)
+        self.assertEqual(v.publish(None), u"toto")
+        self.assertTrue(isinstance(v.publish(None), unicode))
+        self.assertEqual(v.as_string(None), u"toto")
+        self.assertTrue(isinstance(v.as_string(None), unicode))
+
+        v = value.Enum(DummyEnum, default=DummyEnum.tata)
+        self.assertTrue(v.use_default)
+        self.assertEqual(v.default, DummyEnum.tata.name)
+        self.assertTrue(isinstance(v.default, unicode))
+
+        self.assertEqual(v.validate(None), DummyEnum.tata)
+        self.assertEqual(v.publish(None), u"tata")
+        self.assertTrue(isinstance(v.publish(None), unicode))
+        self.assertEqual(v.as_string(None), u"tata")
+        self.assertTrue(isinstance(v.as_string(None), unicode))
+
+    def testBooleanValue(self):
+        v = value.Boolean()
+        self.assertTrue(interface.IValueInfo.providedBy(v))
+        self.assertTrue(interface.IValueOptions.providedBy(v))
+        self.assertEqual(v.value_type, interface.ValueTypes.boolean)
+        self.assertFalse(v.use_default)
+        self.assertTrue(v.is_restricted)
+
+        self.assertEqual(set([o.value for o in v.iter_options()]),
+                         set([True, False]))
+        self.assertTrue(all(isinstance(o.value, bool)
+                            for o in v.iter_options()))
+        self.assertEqual(set([o.label for o in v.iter_options()]),
+                         set([u"True", u"False"]))
+        self.assertTrue(all(isinstance(o.label, unicode)
+                            for o in v.iter_options()))
+
+        self.assertEqual(v.validate(True), True)
+        self.assertTrue(isinstance(v.validate(True), bool))
+        self.assertEqual(v.validate(False), False)
+        self.assertEqual(v.validate("True"), True)
+        self.assertEqual(v.validate("true"), True)
+        self.assertEqual(v.validate("False"), False)
+        self.assertEqual(v.validate("false"), False)
+        self.assertEqual(v.validate(u"True"), True)
+        self.assertEqual(v.validate(u"true"), True)
+        self.assertEqual(v.validate(u"False"), False)
+        self.assertEqual(v.validate(u"false"), False)
+        self.assertRaises(ValueError, v.validate, 1)
+        self.assertRaises(ValueError, v.validate, "dummy")
+        self.assertRaises(ValueError, v.validate, u"dummy")
+
+        self.assertEqual(v.publish(True), True)
+        self.assertTrue(isinstance(v.publish(True), bool))
+        self.assertEqual(v.publish(False), False)
+        self.assertRaises(ValueError, v.publish, "True")
+        self.assertRaises(ValueError, v.publish, u"True")
+        self.assertRaises(ValueError, v.publish, 0)
+
+        self.assertEqual(v.as_string(True), u"True")
+        self.assertTrue(isinstance(v.as_string(True), unicode))
+        self.assertEqual(v.as_string(False), u"False")
+        self.assertRaises(ValueError, v.as_string, "True")
+        self.assertRaises(ValueError, v.as_string, u"True")
+        self.assertRaises(ValueError, v.as_string, 0)
+
+        v = value.Boolean(True)
+        self.assertTrue(v.use_default)
+        self.assertEqual(v.default, True)
+        self.assertTrue(isinstance(v.default, bool))
+
+        self.assertEqual(v.validate(None), True)
+        self.assertTrue(isinstance(v.validate(None), bool))
+        self.assertEqual(v.publish(None), True)
+        self.assertTrue(isinstance(v.publish(None), bool))
+        self.assertEqual(v.as_string(None), u"True")
+        self.assertTrue(isinstance(v.as_string(None), unicode))
+
+        v = value.Boolean(default=False)
+        self.assertTrue(v.use_default)
+        self.assertEqual(v.default, False)
+        self.assertTrue(isinstance(v.default, bool))
+
+        self.assertEqual(v.validate(None), False)
+        self.assertTrue(isinstance(v.validate(None), bool))
+        self.assertEqual(v.publish(None), False)
+        self.assertTrue(isinstance(v.publish(None), bool))
+        self.assertEqual(v.as_string(None), u"False")
+        self.assertTrue(isinstance(v.as_string(None), unicode))
 
     def testEquality(self):
         self.assertTrue(value.Integer() == value.Integer())
+        self.assertTrue(value.Integer(14) == value.Integer(14))
+        self.assertTrue(value.Integer(12345678901234567890)
+                        == value.Integer(12345678901234567890))
         self.assertTrue(value.String() == value.String())
-        self.assertTrue(value.Enum(DummyEnum) == value.Enum(DummyEnum))
-        self.assertFalse(value.String() == value.String("foo"))
         self.assertTrue(value.String("foo") == value.String("foo"))
+        self.assertTrue(value.String("foo") == value.String(u"foo"))
         self.assertTrue(DummyStringOptions() == DummyStringOptions())
+        self.assertTrue(value.Enum(DummyEnum) == value.Enum(DummyEnum))
+        self.assertTrue(value.Enum(DummyEnum, DummyEnum.toto)
+                        == value.Enum(DummyEnum, DummyEnum.toto))
+        self.assertTrue(value.Boolean() == value.Boolean())
+        self.assertTrue(value.Boolean(False) == value.Boolean(False))
+
+        self.assertFalse(value.Integer() == value.Integer(12))
+        self.assertFalse(value.Integer(33) == value.Integer(66))
+        self.assertFalse(value.String() == value.String("foo"))
+        self.assertFalse(value.String("foo") == value.String("bar"))
+        self.assertFalse(value.Enum(DummyEnum)
+                         == value.Enum(DummyEnum, DummyEnum.tata))
+        self.assertFalse(value.Enum(DummyEnum, DummyEnum.toto)
+                         == value.Enum(DummyEnum, DummyEnum.tata))
+        self.assertFalse(value.Boolean() == value.Boolean(True))
+        self.assertFalse(value.Boolean(True) == value.Boolean(False))
 
         self.assertFalse(value.Integer() != value.Integer())
+        self.assertFalse(value.Integer(14) != value.Integer(14))
+        self.assertFalse(value.Integer(12345678901234567890)
+                         != value.Integer(12345678901234567890))
         self.assertFalse(value.String() != value.String())
-        self.assertFalse(value.Enum(DummyEnum) != value.Enum(DummyEnum))
-        self.assertTrue(value.String() != value.String("foo"))
         self.assertFalse(value.String("foo") != value.String("foo"))
+        self.assertFalse(value.String("foo") != value.String(u"foo"))
         self.assertFalse(DummyStringOptions() != DummyStringOptions())
+        self.assertFalse(value.Enum(DummyEnum) != value.Enum(DummyEnum))
+        self.assertFalse(value.Enum(DummyEnum, DummyEnum.toto)
+                         != value.Enum(DummyEnum, DummyEnum.toto))
+        self.assertFalse(value.Boolean() != value.Boolean())
+        self.assertFalse(value.Boolean(False) != value.Boolean(False))
+
+        self.assertTrue(value.Integer() != value.Integer(12))
+        self.assertTrue(value.Integer(33) != value.Integer(66))
+        self.assertTrue(value.String() != value.String("foo"))
+        self.assertTrue(value.String("foo") != value.String("bar"))
+        self.assertTrue(value.Enum(DummyEnum)
+                        != value.Enum(DummyEnum, DummyEnum.tata))
+        self.assertTrue(value.Enum(DummyEnum, DummyEnum.toto)
+                        != value.Enum(DummyEnum, DummyEnum.tata))
+        self.assertTrue(value.Boolean() != value.Boolean(True))
+        self.assertTrue(value.Boolean(True) != value.Boolean(False))

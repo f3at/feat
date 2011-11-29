@@ -23,20 +23,17 @@ import os
 import re
 import socket
 import sys
-import types
-
 
 from twisted.internet import reactor
 from twisted.spread import pb
 
 from feat.agents.base.agent import registry_lookup
-from feat.agents.base import recipient, descriptor
-from feat.agents.common import host
+from feat.agents.base import recipient
 from feat.agencies import agency, journaler
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
-from feat.common import log, defer, time, first, error, run, signal
+from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
 from feat.process import standalone
 from feat.process.base import ProcessState
@@ -44,9 +41,9 @@ from feat.gateway import gateway
 from feat.utils import locate
 from feat.web import security
 
-from feat.interface.agent import IAgentFactory, AgencyAgentState
+from feat.interface.agent import IAgentFactory
 from feat.interface.agency import ExecMode
-from feat.agencies.interface import NotFoundError
+from feat.agencies.interface import AgencyRoles
 
 
 GATEWAY_PORT_COUNT = 100
@@ -226,11 +223,30 @@ class Agency(agency.Agency):
 
     @property
     def role(self):
-        return self._broker.state
+        if self._broker.is_standalone():
+            return AgencyRoles.standalone
+        if self._broker.is_master():
+            return AgencyRoles.master
+        if self._broker.is_slave():
+            return AgencyRoles.slave
+        return AgencyRoles.unknown
 
     def locate_master(self):
-        return (self.get_hostname(), self.config["gateway"]["port"],
-                self._broker.state != BrokerRole.master)
+
+        def pack_result(agency_id, is_remote):
+            if not agency_id:
+                return None
+            return (self.get_hostname(),
+                    self.config["gateway"]["port"],
+                    self.agency_id, is_remote)
+
+        if self._broker.is_master():
+            d = defer.succeed(self.agency_id)
+            d.addCallback(pack_result, False)
+        else:
+            d = self._broker.fetch_master_id()
+            d.addCallback(pack_result, True)
+        return d
 
     def locate_agency(self, agency_id):
 
@@ -281,7 +297,8 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param,
                           self._messaging.add_backend, backend)
 
-        if self.config['agency']['enable_spawning_slave']:
+        if (self.config['agency']['enable_spawning_slave']
+            and sys.platform != "win32"):
             d.addCallback(defer.drop_param, self._spawn_backup_agency)
 
         d.addCallback(defer.drop_param, self._start_host_agent)
@@ -304,6 +321,11 @@ class Agency(agency.Agency):
 
         backend = unix.Slave(self._broker)
         return self._messaging.add_backend(backend)
+
+    def is_idle(self):
+        if agency.Agency.is_idle(self):
+            return self._broker.is_idle()
+        return False
 
     def _redirect_text_log(self):
         if self.config['agency']['daemonize']:
@@ -352,7 +374,7 @@ class Agency(agency.Agency):
 
         if pre_state == BrokerRole.master:
             d.addCallback(defer.drop_param, run.delete_pidfile,
-                          self.config['agency']['rundir'])
+                          self.config['agency']['rundir'], force=True)
         return d
 
     def get_journal_writer(self):
@@ -436,6 +458,9 @@ class Agency(agency.Agency):
         return agency.Agency.start_agent(self, descriptor, **kwargs)
 
     def start_standalone_agent(self, descriptor, factory, **kwargs):
+        if sys.platform == "win32":
+            raise NotImplementedError("Standalone agent are not supported "
+                                      "on win32 platform")
         cmd, cmd_args, env = factory.get_cmd_line(descriptor, **kwargs)
         self._store_config(env)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
@@ -462,9 +487,9 @@ class Agency(agency.Agency):
             host = self.get_hostname()
             port = self.gateway_port
             defer.returnValue((host, port, False, ))
-        elif isinstance(found, pb.RemoteReference):
+        elif isinstance(found, broker.AgentReference):
             host = self.get_hostname()
-            port = yield found.callRemote('get_gateway_port')
+            port = yield found.reference.callRemote('get_gateway_port')
             defer.returnValue((host, port, True, ))
         else: # None
             db = self._database.get_connection()
@@ -501,6 +526,10 @@ class Agency(agency.Agency):
     def get_gateway_port(self):
         return self._gateway and self._gateway.port
 
+    @manhole.expose()
+    def get_agency_id(self):
+        return self.agency_id
+
     gateway_port = property(get_gateway_port)
 
     @manhole.expose()
@@ -510,8 +539,8 @@ class Agency(agency.Agency):
 
     @manhole.expose()
     def find_agent(self, agent_id):
-        '''Gives medium class or its pb refrence of the agent if this agency
-        hosts it.'''
+        '''Gives medium class or its pb reference (wrapped in AgentReference
+        object) of the agent if this agency hosts it.'''
         return self._broker.find_agent(agent_id)
 
     def iter_agency_ids(self):
@@ -633,6 +662,10 @@ class Agency(agency.Agency):
                 value = str(env[key])
                 if value == 'None':
                     value = None
+                if value == 'False':
+                    value = False
+                if value == 'True':
+                    value = True
                 if c_key in self.config:
                     self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value
@@ -704,7 +737,7 @@ class Agency(agency.Agency):
         return None
 
     def _can_start_host_agent(self, startup=False):
-        if self.role != BrokerRole.master:
+        if not self._broker.is_master():
             self.log('Not starting host agent, because we are not the '
                      'master agency')
             return False
@@ -715,22 +748,6 @@ class Agency(agency.Agency):
 
     def _on_host_started(self):
         self._broker.shared_state['enable_host_restart'] = True
-
-    @defer.inlineCallbacks
-    def _find_agent(self, agent_id):
-        '''
-        Specific to master agency, called by the broker.
-        Will return AgencyAgent if agent is hosted by master agency,
-        PB.Reference if it runs in stanadlone or None if it was not found.
-        '''
-        local = yield self.find_agent_locally(agent_id)
-        if local:
-            defer.returnValue(local)
-        for slave in self._broker.iter_slaves():
-            found = yield slave.callRemote('find_agent_locally', agent_id)
-            if found:
-                defer.returnValue(found)
-        defer.returnValue(None)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
@@ -800,7 +817,7 @@ class Agency(agency.Agency):
         path = run.write_pidfile(rundir, file=pid_file)
         self.log("Written pid file %s" % path)
 
-    def _spawn_agency(self, desc=""):
+    def _spawn_agency(self, desc="", args=[]):
 
         def get_cmd_line():
             python_path = ":".join(sys.path)
@@ -808,7 +825,7 @@ class Agency(agency.Agency):
             feat_debug = self.get_logging_filter()
 
             command = 'feat'
-            args = ['-D']
+            args.append('-D')
             env = dict(PYTHONPATH=python_path,
                        FEAT_DEBUG=feat_debug,
                        PATH=path)
@@ -829,6 +846,6 @@ class Agency(agency.Agency):
             return self._spawn_agency("backup")
 
     def get_broker_backend(self):
-        if self.role != broker.BrokerRole.master:
+        if not self._broker.is_master():
             raise RuntimeError("We are not a master, wtf?!")
         return self._messaging.get_backend('unix')

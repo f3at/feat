@@ -19,8 +19,10 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import os
+
 import functools
+import os
+import sys
 
 from twisted.internet import reactor
 from twisted.internet.error import (CannotListenError, ConnectionRefusedError,
@@ -30,32 +32,57 @@ from twisted.spread import pb, jelly
 from feat.common import log, enum, defer, first, error, manhole, time
 from feat.agencies import common
 
+from feat.interface.agent import AgencyAgentState
+from feat.agencies.agency import AgencyAgent
 
 DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
 
 
-class SlaveReference(object):
+class TypedReference(object):
+    '''
+    I wrap arround the pb.RemoteReference and delegate the method calls to it.
+    The point of my existance is to store remote references with the
+    information about the type of object they point to.
+    '''
+
+    def __init__(self, reference):
+        self.reference = reference
+
+    def callRemote(self, _method, *args, **kwargs):
+        return self.reference.callRemote(_method, *args, **kwargs)
+
+    def get_status(self):
+        d = self.callRemote('get_status')
+        d.addCallback(AgencyAgentState.get) #@UndefinedVariable
+        return d
+
+
+class SlaveReference(TypedReference):
 
     def __init__(self, broker, slave_id, reference, is_standalone):
+        TypedReference.__init__(self, reference)
+
         # pb.RemoteReference to the Broker instance
         self.broker = broker
         # agency id
         self.slave_id = slave_id
-        # pb.RemoteReference to the Agency instance
-        self.reference = reference
         # bool flag saying if it is a standalone agency
         self.is_standalone = is_standalone
         # agent_id -> pb.Reference to AgencyAgent instance
         self.agents = dict()
 
-    def callRemote(self, _method, *args, **kwargs):
-        return self.reference.callRemote(_method, *args, **kwargs)
-
     def register_agent(self, agent_id, reference):
-        self.agents[agent_id] = reference
+        self.agents[agent_id] = AgentReference(reference, agent_id)
 
     def unregister_agent(self, agent_id):
         del(self.agents[agent_id])
+
+
+class AgentReference(TypedReference):
+
+    def __init__(self, reference, agent_id):
+        TypedReference.__init__(self, reference)
+        self.agent_id = agent_id
 
 
 class SharedState(dict):
@@ -90,9 +117,9 @@ class SharedState(dict):
         self._broker.update_state_broadcast('del_locally', key)
         return key, value
 
-    def update(self, dict):
-        self.update_locally(dict.items())
-        self._broker.update_state_broadcast('update_locally', dict.items())
+    def update(self, dict_):
+        self.update_locally(dict_.items())
+        self._broker.update_state_broadcast('update_locally', dict_.items())
 
     ### local modifications ###
 
@@ -157,6 +184,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         self.on_master_missing_cb = on_master_missing_cb
 
         self.shared_state = SharedState(self)
+        self._set_idle(True)
 
     def is_master(self):
         return self._cmp_state(BrokerRole.master)
@@ -164,16 +192,29 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def is_slave(self):
         return self._cmp_state(BrokerRole.slave)
 
+    def is_idle(self):
+        return self._idle
+
     def initiate_broker(self):
+        if sys.platform == "win32":
+            d = defer.succeed(None)
+            d.addCallback(defer.drop_param, self.become_master)
+            d.addErrback(self._handle_critical_error)
+            return d
+
+        self._set_idle(False)
+
         if not self._is_standalone:
             try:
                 self.factory = MasterFactory(self)
-                self.listener = reactor.listenUNIX(self.socket_path,
+                self.listener = reactor.listenUNIX( #@UndefinedVariable
+                                                   self.socket_path,
                                                    self.factory,
                                                    mode=self.socket_mode)
                 d = defer.succeed(None)
                 d.addCallback(defer.drop_param, self.become_master)
                 d.addErrback(self._handle_critical_error)
+                d.addBoth(defer.bridge_param, self._set_idle, True)
                 return d
             except CannotListenError as e:
                 self.info('Cannot listen on socket: %r. '\
@@ -191,8 +232,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def _connect_as_slave(self):
         cb = defer.Deferred()
         self.factory = SlaveFactory(self, cb)
-        self.connector = reactor.connectUNIX(
+        self.connector = reactor.connectUNIX( #@UndefinedVariable
             self.socket_path, self.factory, timeout=1)
+        cb.addBoth(defer.bridge_param, self._set_idle, True)
         return cb
 
     def disconnect(self):
@@ -200,9 +242,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         This is called as part of the agency shutdown.
         '''
         self.log("Disconnecting broker %r.", self)
+        d = defer.succeed(None)
         if self.is_master():
-            d = self.listener.stopListening()
-            d.addCallback(defer.drop_param, self.factory.disconnect)
+            if self.listener is not None:
+                d.addCallback(defer.drop_param, self.listener.stopListening)
+                d.addCallback(defer.drop_param, self.factory.disconnect)
         elif self.is_slave():
             d = defer.maybeDeferred(self.factory.disconnect)
         elif self._cmp_state(BrokerRole.disconnected):
@@ -234,6 +278,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         slave = self.slaves[slave_id]
         slave.unregister_agent(agent_id)
 
+    def remote_get_agency_id(self):
+        return self.agency.agency_id
+
     def iter_slaves(self):
         return (slave.reference for slave in self.slaves.itervalues())
 
@@ -246,6 +293,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         slave = first(x for x in self.slaves.itervalues()
                       if not x.is_standalone)
         return slave is not None
+
+    def get_agent_reference(self, agent_id):
+        for slave in self.slaves.itervalues():
+            if agent_id in slave.agents:
+                return slave.agents[agent_id]
+        return None
 
     @manhole.expose()
     def shutdown_slaves(self, gentle=False):
@@ -274,8 +327,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return d
 
     def append_slave(self, broker, slave_id, slave, standalone):
-        self.slaves[slave_id] = SlaveReference(broker, slave_id, slave,
-                                               standalone)
+        self.slaves[slave_id] = SlaveReference(broker, slave_id,
+                                               slave, standalone)
 
     def remove_slave(self, slave_id):
 
@@ -319,6 +372,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             d.addCallback(defer.drop_param, self.register_agent, medium)
 
         return d
+
+    def fetch_master_id(self):
+        if not self._master:
+            return defer.succeed(None)
+        return self._master.callRemote('get_agency_id')
 
     # ............
 
@@ -382,12 +440,35 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                 'start_agent', desc, *args, **kwargs)
 
     @manhole.expose()
+    def get_agency(self):
+        return self.agency
+
+    @manhole.expose()
+    @defer.inlineCallbacks
     def find_agent(self, agent_id):
+        #FIXME: find_agent() is broken when a slave
+        #       lookup an agent from another slave.
         self._ensure_connected()
         if self.is_master():
-            return self.agency._find_agent(agent_id)
+            # look locally
+            local = yield self.agency.find_agent_locally(agent_id)
+            if local:
+                defer.returnValue(local)
+            # check for slaves
+            for slave in self.iter_slave_references():
+                if agent_id in slave.agents:
+                    defer.returnValue(slave.agents[agent_id])
+            # give up
+            defer.returnValue(None)
         elif self.is_slave():
-            return self._master.callRemote('find_agent', agent_id)
+            #FIXME: something's broken or incosistent in the whole find_agent
+            #       breaking f.t.i.test_agencies_net_agency
+            res = yield self._master.callRemote('find_agent', agent_id)
+            if isinstance(res, pb.RemoteReference):
+                defer.returnValue(AgentReference(res, agent_id))
+            if isinstance(res.reference, AgencyAgent):
+                defer.returnValue(res.reference)
+            defer.returnValue(res)
 
     @manhole.expose()
     def broadcast_force_snapshot(self):
@@ -409,11 +490,9 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def iter_agency_ids(self):
         self._ensure_connected()
         if self.is_master():
-            res = [self.agency.agency_id] + self.slaves.keys()
-            return res.__iter__()
+            return iter([self.agency.agency_id] + self.slaves.keys())
         elif self.is_slave():
-            res = [self.agency.agency_id]
-            return res.__iter__()
+            return iter([self.agency.agency_id])
 
     def register_agent(self, medium):
         if self.is_slave():
@@ -465,6 +544,11 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return self._master.callRemote('update_state_broadcast',
                                            _method, agency_id=origin_id,
                                            *args, **kwargs)
+
+    ### private ###
+
+    def _set_idle(self, value):
+        self._idle = value
 
 
 class MasterFactory(pb.PBServerFactory, log.Logger):

@@ -19,665 +19,595 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import cgi
-import operator
-import socket
 
-from feat.common import defer, time
-from feat.gateway import models
+import mimetypes
+import os
+import time
+
+from twisted.internet import reactor, threads
+from zope.interface import implements
+
+from feat.common import defer, error
 from feat.web import http, webserver
 
-
-class BaseResource(webserver.BasicResource):
-
-    def create_url(self, request, child):
-        base = request.path
-        if base[-1] == "/":
-            return base + child
-        return base + "/" + child
-
-    def render_header(self, doc):
-        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
-        doc.extend(["<HTML><HEAD>"
-                    "<TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                    "<I>"
-                    "<A href='/'>top<A>"
-                    " on ", hostname,
-                    "<I>"])
-
-    def render_footer(self, doc):
-        doc.extend(["</BODY></HTML>"])
-
-    def redirect(self, path, host=None, port=None, scheme=None):
-        url = http.compose(path, host=host, port=port, scheme=scheme)
-        raise http.MovedPermanently(location=url)
+from feat.models.interface import ActionCategories, IActionPayload, IAspect
+from feat.models.interface import IContext, IModel, IModelAction, IReference
+from feat.models.interface import IErrorPayload
 
 
-class Root(BaseResource):
+class ErrorPayload(object):
 
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IRoot(model)
-        self["agencies"] = Agencies(model)
-        self["agents"] = Agents(model)
+    implements(IErrorPayload)
 
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
-
-        agencies_url = self.create_url(request, "agencies")
-        agents_url = self.create_url(request, "agents")
-
-        doc = ["<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                "<H2>F3EAT Gateway</H2>"
-                "<I>", hostname, "</I>"
-                "<UL>"
-                "<LI><H2><A href='", agencies_url, "'>Agencies</A></H2></LI>"
-                "<LI><H2><A href='", agents_url, "'>Agents</A></H2></LI>"
-                "</UL></BODY></HTML>"]
-
-        response.writelines(doc)
-
-    def render_error(self, request, response, e):
-        response.set_mime_type("text/html")
-        response.write("<HTML><HEAD><TITLE>F3AT Gateway</TITLE></HEAD><BODY>")
-        if isinstance(e, http.HTTPError):
-            response.write("<H2>ERROR %d: %s</H2>"
-                           % (e.status_code, e.error_name))
+    @classmethod
+    def from_failure(cls, failure):
+        ex = failure.value
+        if isinstance(ex, http.HTTPError):
+            code = ex.status_code
+        elif isinstance(ex, error.FeatError):
+            code = ex.eror_code
         else:
-            response.write("<H2>ERROR: %s</H2>" % e)
-        response.write("</BODY></HTML>")
+            code = None
+
+        if isinstance(ex, error.FeatError):
+            message = ex.error_name
+        else:
+            message = failure.getErrorMessage()
+
+        if not message:
+            message = type(ex).__name__
+
+        debug = error.get_failure_message(failure)
+        trace = error.get_failure_traceback(failure)
+
+        return cls(code=code, message=message, debug=debug, trace=trace)
+
+    @classmethod
+    def from_exception(cls, ex):
+        if isinstance(ex, http.HTTPError):
+            code = ex.status_code
+        elif isinstance(ex, error.FeatError):
+            code = ex.eror_code
+        else:
+            code = None
+
+        if isinstance(ex, error.FeatError):
+            message = ex.error_name
+        else:
+            message = str(ex)
+
+        if not message:
+            message = type(ex).__name__
+
+        debug = error.get_exception_message(ex)
+        trace = error.get_exception_traceback(ex)
+
+        return cls(code=code, message=message, debug=debug, trace=trace)
+
+    def __init__(self, code=None, message=None, debug=None, trace=None):
+        self.code = int(code) if code is not None else None
+        self.message = unicode(message) if message is not None else None
+        self.debug = unicode(debug) if debug is not None else None
+        self.trace = unicode(trace) if trace is not None else None
+
+    def __str__(self):
+        msg = "ERROR"
+        if self.code is not None:
+            msg += " %d" % (self.code, )
+        if self.message is not None:
+            msg += ": %s" % (self.message, )
+        if self.debug is not None:
+            msg += "\n\n%s" % (self.debug, )
+        if self.trace is not None:
+            msg += "\n%s" % (self.trace, )
+        return msg
 
 
-class Agencies(BaseResource):
+class Context(object):
 
-    enable_actions = True
-    startable_agents = {"dummy_buryme_standalone":
-                         "Dummy Bury-Me Standalone",
-                        "dummy_local_standalone":
-                         "Dummy Local Standalone",
-                        "dummy_wherever_standalone":
-                         "Dummy Wherever Standalone"}
+    __slots__ = ("scheme", "models", "names", "remaining", "arguments")
 
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IRoot(model)
+    implements(IContext)
 
-    def locate_child(self, request, location, remaining):
-        agency_id = remaining[0]
-        agency = self.model.get_agency(agency_id)
-        if agency is not None:
-            return Agency(agency), remaining[1:]
+    default_actions = set([u"set", u"del", u"post"])
 
-        # Only the master agency knows the other ones
-        self._ensure_master(request)
+    def __init__(self, scheme, models, names, remaining=None, arguments=None):
+        self.scheme = scheme
+        self.names = tuple(names)
+        self.models = tuple(models)
+        self.remaining = tuple(remaining) if remaining else ()
+        self.arguments = dict(arguments) if arguments else {}
 
-        d = self.model.locate_agency(agency_id)
-        d.addCallback(self._agency_located, request, location, remaining)
+    ### public ###
+
+    def get_action_method(self, action):
+        if not action.is_idempotent:
+            return http.Methods.POST
+        if action.category is ActionCategories.retrieve:
+            return http.Methods.GET
+        if action.category is ActionCategories.delete:
+            return http.Methods.DELETE
+        if action.category in (ActionCategories.create,
+                               ActionCategories.update):
+            return http.Methods.PUT
+        return http.Methods.POST
+
+    ### IContext ###
+
+    def make_action_address(self, action):
+        if action.name == u"get":
+            return self.make_model_address(self.names + (u"", ))
+
+        if action.name in self.default_actions:
+            return self.make_model_address(self.names)
+
+        action_ident = "_" + action.name
+        return self.make_model_address(self.names + (action_ident, ))
+
+    def make_model_address(self, location):
+        host, port = location[0]
+        path = "/" + http.tuple2path(location[1:])
+        return http.compose(host=host, port=port, path=path,
+                            query=http.compose_qs(self.arguments),
+                            scheme=self.scheme)
+
+    def descend(self, model):
+        remaining = self.remaining
+        if self.remaining:
+            if self.remaining[0] == model.name:
+                remaining = self.remaining[1:]
+        return Context(scheme=self.scheme,
+                       models=self.models + (model, ),
+                       names=self.names + (model.name, ),
+                       remaining=remaining,
+                       arguments=self.arguments)
+
+
+class BaseResource(webserver.BaseResource):
+
+    def make_context(self, request):
+        """Overridden in sub-classes."""
+
+    def render_error(self, request, response, ex):
+
+        def nice_error_failed(failure):
+            error.handle_failure(None, failure,
+                                 "Failure during error rendering")
+            # Do what we can...
+            data = str(payload)
+            if response.can_update_headers:
+                response.force_mime_type("text/plain")
+                response.set_length(len(data))
+            return data
+
+        payload = ErrorPayload.from_exception(ex)
+
+        if not response.can_update_headers:
+            return str(payload)
+
+        response.set_header("Cache-Control", "no-cache")
+        response.set_header("connection", "close")
+
+        context = self.make_context(request)
+        #FIXME: passing query arguments without validation is not safe
+        d = response.write_object(payload, context=context,
+                                  **request.arguments)
+        d.addErrback(nice_error_failed)
         return d
 
-    def render_resource(self, request, response, location):
-        # Only the master agency knows the other ones
-        self._ensure_master(request)
 
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
+class ModelResource(BaseResource):
+
+    __slots__ = ("model", "_methods", "_model_history", "_name_history")
+
+    implements(webserver.IWebResource)
+
+    action_methods = {u"set": http.Methods.PUT,
+                      u"del": http.Methods.DELETE,
+                      u"post": http.Methods.POST}
+    method_actions = {http.Methods.DELETE: u"del",
+                      http.Methods.PUT: u"set",
+                      http.Methods.POST: u"post"}
+
+    def __init__(self, model, name=None, models=[], names=[]):
+        self.model = IModel(model)
+        self._model_history = list(models) + [self.model]
+        self._name_history = list(names) + [name]
+        self._methods = set([]) # set([http.Methods])
+
+    def __repr__(self):
+        return "<%s %s '%s'>" % (type(self).__name__,
+                                 self.model.identity,
+                                 self.model.name)
+
+    def __str__(self):
+        return repr(self)
+
+    def initiate(self):
+        """
+        Initiate the resource retrieving all the asynchronous
+        information needed to support the IWebResource interface.
+        """
+
+        def deduce_methods(actions):
+            self._methods.add(http.Methods.GET)
+            for action in actions:
+                method = self.action_methods.get(action.name)
+                if method is not None:
+                    self._methods.add(method)
+
+        d = self.model.fetch_actions()
+        d.addCallback(deduce_methods)
+        d.addCallback(defer.override_result, self)
+        return d
+
+    def make_context(self, request, remaining=None):
+        return Context(scheme=request.scheme,
+                       models=self._model_history,
+                       names=self._name_history,
+                       remaining=remaining,
+                       arguments=request.arguments)
+
+    ### webserver.IWebResource ###
+
+    def is_method_allowed(self, request, location, method):
+        return method in self._methods
+
+    def get_allowed_methods(self, request, location):
+        return list(self._methods)
+
+    def locate_resource(self, request, location, remaining):
+
+        def locate_model(model_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_model, model_name)
+            d.addCallback(check_model)
+            d.addCallback(wrap_model)
+            return d
+
+        def locate_action(action_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_action, action_name)
+            d.addCallback(wrap_action)
+            return d
+
+        def locate_default_action(model_name, action_name):
+            d = defer.succeed(self.model)
+            d.addCallback(retrieve_model, model_name)
+            d.addCallback(check_model)
+            d.addCallback(retrieve_action, action_name)
+            d.addCallback(wrap_action, fallback=True)
+            return d
+
+        def retrieve_model(model, model_name):
+            d = model.fetch_item(model_name)
+            d.addCallback(got_model_item)
+            return d
+
+        def got_model_item(item):
+            if item is None:
+                raise http.NotFoundError()
+
+            rem = remaining[1:]
+            if rem and rem != (u"", ):
+                return item.browse()
+
+            return item.fetch()
+
+        def check_model(model):
+            if model is None:
+                raise http.NotFoundError()
+
+            if IReference.providedBy(model):
+                return process_reference(model)
+
+            if model.reference is not None:
+                return process_reference(model.reference)
+
+            return model
+
+        def process_reference(reference):
+            reference = IReference(reference)
+            context = self.make_context(request, remaining[1:])
+            address = reference.resolve(context)
+            raise http.MovedPermanently(location=address)
+
+        def wrap_model(model):
+            if model is None:
+                raise http.NotFoundError()
+
+            res = ModelResource(model, model.name,
+                                self._model_history, self._name_history)
+            return res.initiate(), remaining[1:]
+
+        def retrieve_action(model, action_name):
+            d = model.fetch_action(action_name)
+            d.addCallback(lambda a: (model, a))
+            return d
+
+        def wrap_action(model_action, fallback=False):
+            model, action = model_action
+            if action is None:
+                if fallback:
+                    return wrap_model(model)
+                raise http.NotFoundError()
+
+            context = self.make_context(request)
+            return ActionResource(action, context)
+
+        if not remaining or (remaining == (u'', )):
+            if self.model.reference is not None:
+                return process_reference(self.model.reference)
+            return self
+
+        resource_name = remaining[0]
+
+        if len(remaining) == 1:
+            if resource_name.startswith('_'):
+                return locate_action(resource_name[1:])
+            action_name = self.method_actions.get(request.method)
+            return locate_default_action(resource_name, action_name)
+
+        return locate_model(resource_name)
+
+    def action_GET(self, request, response, location):
+        response.set_header("Cache-Control", "no-cache")
         response.set_header("connection", "close")
+        context = self.make_context(request)
+        if location[-1] == u"":
+            return self.render_action("get", request, response, context)
+        return self.render_model(request, response, context)
 
-        if request.method == http.Methods.POST:
-            if self.enable_actions and self.model.is_master():
-                data = "\n".join(request.readlines())
-                params = http.urldecode(data, request.encoding)
+    def render_action(self, action_name, request, response, context):
 
-                if 'full_shutdown' in params:
-                    time.callLater(0, self.model.full_shutdown)
-                    doc = ["<HTML><HEAD>"
-                           "<TITLE>F3AT Gateway</TITLE></HEAD><BODY>"
-                           "<H2>Offline</H2>"
-                           "</BODY></HTML>"]
-                    response.writelines(doc)
+        def got_data(data):
+            #FIXME: passing query arguments without validation is not safe
+            return response.write_object(data, context=context,
+                                         **request.arguments)
+
+        def got_action(action):
+            if action is None:
+                return self.render_model(request, response, context)
+
+            request.log("Performing action %r on %s model %r",
+                        action_name, self.model.identity, self.model.name)
+            d = action.perform()
+            d.addCallback(got_data)
+            return d
+
+        d = self.model.fetch_action(action_name)
+        d.addCallback(got_action)
+        return d
+
+    def render_model(self, request, response, context):
+        #FIXME: passing query arguments without validation is not safe
+        return response.write_object(self.model, context=context,
+                                     **request.arguments)
+
+
+class ActionResource(BaseResource):
+
+    implements(webserver.IWebResource)
+
+    # Use to validate action in function of the http method
+    # the first tuple contains the valid values for is_idempotent
+    # and the second the valid values for category.
+    action_validation = {http.Methods.GET:
+                         ((True, ), (ActionCategories.retrieve, )),
+                         http.Methods.DELETE:
+                         ((True, ), (ActionCategories.delete, )),
+                         http.Methods.PUT:
+                         ((True, ), (ActionCategories.create,
+                                     ActionCategories.update)),
+                         http.Methods.POST:
+                         ((True, False), (ActionCategories.create,
+                                          ActionCategories.update,
+                                          ActionCategories.command))}
+
+    def __init__(self, action, context):
+        self._action = IModelAction(action)
+        self._context = context
+        self._methods = set()
+        self._update_methods(action, self._methods)
+
+    def make_context(self, request):
+        return self._context
+
+    ### webserver.IWebResource ###
+
+    def is_method_allowed(self, request, location, methode):
+        return methode in self._methods
+
+    def get_allowed_methods(self, request, location):
+        return list(self._methods)
+
+    def locate_resource(self, request, location, remaining):
+        raise NotImplementedError()
+
+    @webserver.read_object(IActionPayload, {})
+    def render_resource(self, params, request, response, location):
+
+        def got_data(data):
+            response.set_header("Cache-Control", "no-cache")
+            response.set_header("connection", "close")
+            #FIXME: passing query arguments without validation is not safe
+            return response.write_object(data, context=self._context,
+                                         **request.arguments)
+
+        is_idempotent, categories = self.action_validation[request.method]
+        if (self._action.is_idempotent not in is_idempotent
+            or self._action.category not in categories):
+            raise http.NotAllowedError(allowed_methods=list(self._methods))
+
+        request.log("Performing action %r on %s model %r with parameters %r",
+                    self._action.name, self._context.models[-1].identity,
+                    self._context.models[-1].name, params)
+        d = self._action.perform(**params)
+        d.addCallback(got_data)
+        return d
+
+    ### private ###
+
+    def _update_methods(self, action, methods):
+        if not action.is_idempotent:
+            methods.add(http.Methods.POST)
+        elif action.category is ActionCategories.delete:
+            methods.add(http.Methods.DELETE)
+        elif action.category in (ActionCategories.create,
+                                 ActionCategories.update):
+            methods.add(http.Methods.PUT)
+            methods.add(http.Methods.POST)
+        elif action.category is ActionCategories.command:
+            methods.add(http.Methods.POST)
+
+
+class StaticResource(BaseResource):
+
+    BUFFER_SIZE = 1024*1024*4
+
+    def __init__(self, hostname, port, root_path):
+        webserver.BaseResource.__init__(self)
+        if not os.path.isdir(root_path):
+            raise ValueError("Invalid resource path: %r" % root_path)
+        self._hostname = hostname
+        self._port = port
+        self._root_path = root_path
+        self._mime_types = mimetypes.MimeTypes()
+
+    def make_context(self, request):
+        #FIXME: this is wrong, root should be separated from models and names
+        return Context(scheme=request.scheme,
+                       models=(None, ),
+                       names=((self._hostname, self._port), ),
+                       arguments=request.arguments)
+
+    def locate_resource(self, request, location, remaining):
+        if not remaining or remaining == (u"", ):
+            return None
+        request.context["rel_loc"] = remaining
+        return self
+
+    def action_GET(self, request, response, location):
+        rel_loc = request.context.get("rel_loc")
+        if rel_loc is None:
+            raise http.NotFoundError()
+
+        rel_path = http.tuple2path(rel_loc)
+        full_path = os.path.join(self._root_path, rel_path)
+        res_path = os.path.realpath(full_path)
+        if not res_path.startswith(self._root_path):
+            raise http.ForbiddenError()
+        if os.path.isdir(res_path):
+            raise http.ForbiddenError()
+        if not os.path.isfile(res_path):
+            raise http.NotFoundError()
+
+        rst = os.stat(res_path)
+
+        # FIXME: Caching Policy, should be extracted to a ICachingPolicy
+        cache_control_header = request.get_header("cache-control") or ""
+        pragma_header = request.get_header("pragma") or ""
+        cache_control = http.parse_header_values(cache_control_header)
+        pragma = http.parse_header_values(pragma_header)
+        if not (u"no-cache" in cache_control or u"no-cache" in pragma):
+            if u"max-age" in cache_control:
+                max_age = int(cache_control[u"max-age"])
+                if max_age == 0 or (time.time() - rst.st_mtime) < max_age:
+                    response.set_status(http.Status.NOT_MODIFIED)
                     return
 
-                if 'start_agent' in params:
-                    agent_type = params['agent_type'][0]
-                    if agent_type in self.startable_agents:
-                        d = self.model.spawn_agent(agent_type)
-                        d.addCallback(defer.drop_param,
-                                      self.redirect, request.path)
-                        return d
+        length = rst.st_size
+        mime_type, content_encoding = self._mime_types.guess_type(res_path)
+        mime_type = mime_type or "application/octet-stream"
 
-            self.redirect(request.path)
+        response.set_length(length)
+        response.set_mime_type(mime_type)
+        response.set_header("connection", "close")
+        if content_encoding is not None:
+            response.set_header("content-encoding", content_encoding)
 
-        doc = []
-        self.render_header(doc)
+        try:
+            res = open(res_path, "rb")
+        except IOError:
+            raise http.ForbiddenError()
 
-        doc.extend(["<H2>Agencies</H2>"
-                    "<TABLE border='0'>"])
+        response.do_not_cache()
 
-        for agency_id in self.model.iter_agency_ids():
-            agency_url = self.create_url(request, agency_id)
-            doc.extend(["<TR><TD><A href='", agency_url, "'>",
-                        agency_id, "</A>"
-                        "</TD></TR>"])
-
-        doc.extend(["</TABLE>"])
-
-        if self.enable_actions:
-            if self.startable_agents and self.model.is_master():
-                doc.extend(["</TABLE>"
-                            "<H2>Actions</H2>"
-                            "<TABLE>"
-                            "<TR>"
-                            "<TD valign='top'><B>Start Agent:</B></TD>"
-                            "<TD>"
-                            "<FORM method='post'>"
-                            "<DIV>"
-                            "<SELECT name='agent_type'>"
-                            "<option value='' selected>"
-                            "(select type)</option>"])
-
-                startable = self.startable_agents.items()
-                startable.sort(key=operator.itemgetter(0))
-                for k, v in startable:
-                    doc.extend(["<option value='", k, "'>", v, "</option>"])
-
-                doc.extend(["</SELECT>"
-                            "<INPUT type='submit' name='start_agent'"
-                            " value='Start'>"
-                            "</DIV>"
-                            "</FORM>"
-                            "</TD>"
-                            "</TR>"
-                            "<TR>"
-                            "<TD>"
-                            "<FORM method='post'>"
-                            "<INPUT type='submit' name='full_shutdown'"
-                            " value='Full Shutdown'>"
-                            "</FORM>"
-                            "</TD>"
-                            "</TR>"
-                            "</TABLE>"])
-
-        self.render_footer(doc)
-        response.writelines(doc)
+        return threads.deferToThread(self._write_resource, #@UndefinedVariable
+                                     response, res)
 
     ### private ###
 
-    def _ensure_master(self, request):
-        result = self.model.locate_master()
-        if result is not None:
-            host, port, is_remote = result
-            if is_remote:
-                self.redirect(request.path, host, port, request.scheme)
+    def _write_resource(self, response, res):
 
-    def _agency_located(self, result, request, location, remaining):
-        if result is None:
-            return None
-        host, port, _is_remote = result
-        self.redirect(request.path, host, port, request.scheme)
+        try:
+            while True:
+                data = res.read(self.BUFFER_SIZE)
+                if not data:
+                    break
+                reactor.callFromThread(response.write, #@UndefinedVariable
+                                       data)
+        finally:
+            res.close()
 
 
-class Agents(BaseResource):
+class Root(ModelResource):
+    """
+    FIXME: The resource initiate itself the first time it is rendered
+    or when locating children in a rather ugly way."""
 
-    enable_actions = True
+    implements(IAspect)
 
-    startable_agents = {"dummy_buryme_agent":
-                         "Dummy Bury-Me Agent",
-                        "dummy_local_agent":
-                         "Dummy Local Agent",
-                        "dummy_wherever_agent":
-                         "Dummy Wherever Agent"}
+    name = "root"
+    label = "FEAT Gateway"
+    desc = None
 
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IRoot(model)
+    def __init__(self, hostname, port, source, static_path):
+        self.source = source
+        self.hostname = hostname
+        self.port = port
+        self._initiating = True
+        self._static = StaticResource(hostname, port, static_path)
+        self._methods = set([http.Methods.GET])
 
-    def locate_child(self, request, location, remaining):
-        agent_id = remaining[0]
-        aagent = self.model.get_agent(agent_id)
-        if aagent is not None:
-            agent_type = aagent.get_agent().descriptor_type
-            if agent_type == "monitor_agent":
-                return Monitor(aagent), remaining[1:]
-            return Agent(aagent), remaining[1:]
-        d = self.model.locate_agent(agent_id)
-        d.addCallback(self._agent_located, request, location, remaining)
+    def locate_resource(self, request, location, remaining):
+
+        def locate(_param):
+            if remaining[0] == u"static":
+                return self._static, remaining[1:]
+            return ModelResource.locate_resource(self, request,
+                                                 location, remaining)
+
+        d = self.initiate()
+        return d.addCallback(locate)
+
+    def render_resource(self, request, response, location):
+        d = self.initiate()
+        d.addCallback(ModelResource.render_resource,
+                      request, response, location)
         return d
 
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-
-        if request.method == http.Methods.POST:
-            if self.enable_actions:
-                data = "\n".join(request.readlines())
-                params = http.urldecode(data, request.encoding)
-
-                if 'start_agent' in params:
-                    agent_type = params['agent_type'][0]
-                    if agent_type in self.startable_agents:
-                        d = self.model.spawn_agent(agent_type)
-                        d.addCallback(defer.drop_param,
-                                      self.redirect, request.path)
-                        return d
-
-            self.redirect(request.path)
-
-        return self.render_response(request, response)
-
-    def render_response(self, request, response):
-        doc = []
-        self.render_header(doc)
-        doc.extend(["<H2>Agents</H2>"
-                    "<TABLE border='1'>"
-                    "<TR>"
-                    "<TH>Identifier</TH>"
-                    "<TH>Instance</TH>"
-                    "<TH>Type</TH>"
-                    "</TR>"])
-
-        for agent in self.model.iter_agents():
-            agent_model = models.IAgent(agent)
-            agent_url = self.create_url(request, agent_model.agent_id)
-            doc.extend(["<TR><TD><A href='", agent_url, "'>",
-                        agent_model.agent_id, "</A>",
-                        "</TD><TD>",
-                        str(agent_model.instance_id),
-                        "</TD><TD>",
-                        agent_model.agent_type,
-                        "</TD></TR>"])
-
-        if self.enable_actions:
-            if self.startable_agents and self.model.is_master():
-                doc.extend(["</TABLE>"
-                            "<H2>Actions</H2>"
-                            "<TABLE>"
-                            "<TR>"
-                            "<TD valign='top'><B>Start Agent:</B></TD>"
-                            "<TD>"
-                            "<FORM method='post'>"
-                            "<DIV>"
-                            "<SELECT name='agent_type'>"
-                            "<option value='' selected>"
-                            "(select type)</option>"])
-
-                startable = self.startable_agents.items()
-                startable.sort(key=operator.itemgetter(0))
-                for k, v in startable:
-                    doc.extend(["<option value='", k, "'>", v, "</option>"])
-
-                doc.extend(["</SELECT>"
-                            "<INPUT type='submit' name='start_agent'"
-                            " value='Start'>"
-                            "</DIV>"
-                            "</FORM>"
-                            "</TD>"
-                            "</TR>"
-                            "</TABLE>"])
-
-        self.render_footer(doc)
-        response.writelines(doc)
-
-
-    ### private ###
-
-    def _agent_located(self, result, request, location, remaining):
-        if result is None:
-            return None
-        host, port, _is_remote = result
-        url = http.compose(request.path, host=host, port=port,
-                           scheme=request.scheme)
-        raise http.MovedPermanently(location=url)
-
-
-class Agency(BaseResource):
-
-    enable_actions = True
-
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IAgency(model)
-
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-
-        if self.enable_actions and request.method == http.Methods.POST:
-            data = "\n".join(request.readlines())
-            params = http.urldecode(data, request.encoding)
-
-            if 'set_logging_filter' in params:
-                filter = params["filter"][0]
-                self.model.set_logging_filter(filter)
-
-            if 'shutdown_agency' in params:
-                time.callLater(1, self.model.shutdown_agency)
-                return self._redirect_to_top(request)
-
-            if 'terminate_agency' in params:
-                time.callLater(1, self.model.terminate_agency)
-                return self._redirect_to_top(request)
-
-            if 'kill_agency' in params:
-                time.callLater(1, self.model.kill_agency)
-                return self._redirect_to_top(request)
-
-        agents_url = "/agents"
-
-        doc = []
-        self.render_header(doc)
-        doc.extend(["<H2>Agency</H2>"
-                    "<TABLE>"
-                    "<TR>"
-                    "<TD><B>Identifier:</B></TD>"
-                    "<TD>", self.model.agency_id, "</TD>"
-                    "</TR>",
-                    "<TR>"
-                    "<TD><B>Role:</B></TD>"
-                    "<TD>", self.model.role.name, "</TD>"
-                    "</TR>"
-                    "</TABLE>"
-                    "<UL>"
-                    "<LI><H4><A href='", agents_url, "'>Agents</A></H4></LI>"
-                    "</UL>"])
-
-        if self.enable_actions:
-            dbg = self.model.get_logging_filter()
-            doc.extend(["</TABLE>"
-                        "<H2>Actions</H2>"
-                        "<TABLE>"
-                        "<TR>"
-                        "<TD valign='top'><B>Global Logging Filter:</TD>"
-                        "<TD colspan='2'>"
-                        "<DIV>"
-                        "<FORM method='post'>"
-                        "<INPUT type='text' name='filter' value='", dbg, "'>"
-                        "<INPUT type='submit' name='set_logging_filter'"
-                        " value='Update'>"
-                        "</FORM>"
-                        "</DIV>"
-                        "</TD>"
-                        "</TR>"
-                        "<TR>"
-                        "<TD>"
-                        "<FORM method='post'>"
-                        "<INPUT type='submit' name='shutdown_agency'"
-                        " value='Shutdown'>"
-                        "</FORM>"
-                        "</TD>"
-                        "<TD>"
-                        "<FORM method='post'>"
-                        "<INPUT type='submit' name='terminate_agency'"
-                        " value='Terminate'>"
-                        "</FORM>"
-                        "</TD>"
-                        "<TD>"
-                        "<FORM method='post'>"
-                        "<INPUT type='submit' name='kill_agency'"
-                        " value='Kill'>"
-                        "</FORM>"
-                        "</TD>"
-                        "</TR>"
-                        "</TABLE>"])
-
-        self.render_footer(doc)
-        response.writelines(doc)
-
-    def _redirect_to_top(self, request):
-        self.redirect("/", self.model.get_hostname(),
-                      self.model.default_gateway_port,
-                      request.scheme)
-
-
-class Agent(BaseResource):
-
-    enable_actions = True
-
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IAgent(model)
-        self["partners"] = Partners(model)
-        self["resources"] = Resources(model)
-
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-
-        if self.enable_actions and request.method == http.Methods.POST:
-            data = "\n".join(request.readlines())
-            params = http.urldecode(data, request.encoding)
-
-            if 'terminate_agent' in params:
-                d = self.model.terminate_agent()
-                d.addCallback(self._move_up)
-                return d
-
-            if 'kill_agent' in params:
-                d = self.model.kill_agent()
-                d.addCallback(self._move_up)
-                return d
-
-        doc = []
-        self.render_header(doc)
-
-        self._update_document(request, response, doc)
-
-        if self.enable_actions:
-            self._update_actions(request, response, doc)
-
-        self.render_footer(doc)
-        response.writelines(doc)
-
-    def _move_up(self, _):
-        raise http.MovedPermanently(location="/agents")
-
-    def _update_document(self, request, response, doc):
-
-        partners_url = self.create_url(request, "partners")
-        resources_url = self.create_url(request, "resources")
-        agency_url = "/agencies/" + self.model.agency_id
-
-        doc.extend(["<H2>Agent</H2>"
-                    "<TABLE>"
-                    "<TR>"
-                    "<TD><B>Agent Type:</B></TD>"
-                    "<TD>", self.model.agent_type, "</TD>"
-                    "</TR>"
-                    "<TR>"
-                    "<TD><B>Agent Id:</B></TD>"
-                    "<TD>", self.model.agent_id, "</TD>"
-                    "</TR>"
-                    "<TR>"
-                    "<TD><B>Instance Id:</B></TD>"
-                    "<TD>", str(self.model.instance_id), "</TD>"
-                    "</TR>"
-                    "<TR>"
-                    "<TD><B>Status:</B></TD>"
-                    "<TD>", self.model.agent_status.name, "</TD>"
-                    "</TR>"
-                    "<TR>"
-                    "<TD><B>Agency:</B></TD>"
-                    "<TD>",
-                    "<A href='", agency_url, "'>", self.model.agency_id, "</A>"
-                    "</TD>"
-                    "</TR>"
-                    "</TABLE>"
-                    "<UL>"
-                    "<LI>"
-                    "<H4><A href='", partners_url, "'>Partners</A></H4>"
-                    "</LI>"])
-
-        if self.model.have_resources():
-            doc.extend(["<LI><H4><A href='", resources_url,
-                        "'>Resources</A></H4></LI>"])
-
-        doc.extend(["</UL>"])
-
-    def _update_actions(self, request, response, doc):
-        doc.extend(["</TABLE>"
-                    "<H2>Actions</H2>"
-                    "<TABLE>"
-                    "<TR>"
-                    "<TD>"
-                    "<FORM method='post'>"
-                    "<INPUT type='submit' name='terminate_agent'"
-                    " value='Terminate'>"
-                    "</FORM>"
-                    "</TD>"
-                    "<TD>"
-                    "<FORM method='post'>"
-                    "<INPUT type='submit' name='kill_agent'"
-                    " value='Kill'>"
-                    "</FORM>"
-                    "</TD>"
-                    "</TR>"
-                    "</TABLE>"])
-
-
-class Monitor(Agent):
-
-    def __init__(self, model):
-        Agent.__init__(self, model)
-        self.monitor_model = models.IMonitor(model)
-
-    def _update_document(self, request, response, doc):
-        Agent._update_document(self, request, response, doc)
-
-        status = self.monitor_model.get_monitoring_status()
-
-        doc.extend(["<H2>Monitoring Status</H2>"
-                    "<TABLE>"
-                    "<TR>"
-                    "<TD><B>Monitor Location</B></TD>"
-                    "<TD>", str(status["location"]), "</TD>"
-                    "</TR>"
-                    "<TR>"
-                    "<TD><B>Monitor State:</B></TD>"
-                    "<TD>", status["state"].name, "</TD>"
-                    "</TR>"
-                    "</TABLE>"
-                    "<H2>Monitoring Locations</H2>"
-                    "<TABLE border='1'>"
-                    "<TR>"
-                    "<TH align='left'>Location</TH>"
-                    "<TH align='left'>State</TH>"
-                    "<TH align='left'>Patients</TH>"
-                    "</TR>"])
-
-        for name, loc in status["locations"].iteritems():
-            doc.extend(["<TR>"
-                        "<TD valign='top'>", str(name), "</TD>"
-                        "<TD valign='top'>", loc["state"].name, "</TD>"
-                        "<TD>"
-                        "<TABLE border='1'>"
-                        "<TR>"
-                        "<TH align='left'>Agent Type</TH>"
-                        "<TH align='left'>Agent ID</TH>"
-                        "<TH align='left'>Shard ID</TH>"
-                        "<TH align='left'>State</TH>"
-                        "<TH align='left'>Heart Beats</TH>"
-                        "</TR>"])
-            for recip, pat in loc["patients"].iteritems():
-                agent_url = "/agents/" + recip.key
-                type_name = pat["patient_type"] or "unknown"
-                if type_name == "unknown":
-                    type_name = "<I>" + type_name + "</I>"
-                else:
-                    type_name = "<B>" + type_name + "</B>"
-                doc.extend(["<TR>"
-                            "<TD>", type_name, "</TD>"
-                            "<TD><A href='", agent_url, "'>",
-                            recip.key, "</A></TD>",
-                            "<TD>", recip.route, "</TD>"
-                            "<TD>", pat["state"].name, "</TD>"
-                            "<TD align='right'>", str(pat["counter"]), "</TD>"
-                            "</TR>"])
-            doc.extend(["</TABLE></TD></TR>"])
-
-
-class Partners(BaseResource):
-
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IAgent(model)
-
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-
-        doc = []
-        self.render_header(doc)
-        doc.extend(["<H2>Partners</H2>",
-                    "<TABLE>",
-                    "<TR>"
-                    "<TH>Relation</TH>"
-                    "<TH>Role</TH>"
-                    "<TH>Agent Id</TH>"
-                    "<TH>Shard Id</TH>"
-                    "</TR>"])
-
-        for partner in self.model.iter_partners():
-            partner_model = models.IPartner(partner)
-            agent_id = partner_model.agent_id
-            agent_url = "/agents/" + agent_id
-            partner_type = cgi.escape(partner_model.partner_type)
-            doc.extend(["<TR>"
-                        "<TD>", partner_type, "</TD>"
-                        "<TD>", str(partner_model.role), "</TD>"
-                        "<TD>"
-                        "<A href='", agent_url, "'>", agent_id, "</A>"
-                        "</TD>"
-                        "<TD>", partner_model.shard_id, "</TD>"
-                        "</TR>"])
-
-        doc.extend(["</TABLE>"])
-        self.render_footer(doc)
-        response.writelines(doc)
-
-
-class Resources(BaseResource):
-
-    def __init__(self, model):
-        BaseResource.__init__(self)
-        self.model = models.IAgent(model)
-
-    def render_resource(self, request, response, location):
-        # Force mime-type to html
-        response.set_mime_type("text/html")
-        response.set_header("Cache-Control", "no-store")
-        response.set_header("connection", "close")
-
-        doc = []
-        self.render_header(doc)
-        doc.extend(["<H2>Resources</H2>"
-                    "<TABLE border='1'>"
-                    "<TR>"
-                    "<TH align='left'>Name</TH>"
-                    "<TH align='right'>Total</TH>"
-                    "<TH align='right'>Allocated</TH>"
-                    "<TH align='right'>Pre-allocated</TH>"
-                    "</TR>"])
-
-        for name, (total, allocated, pending) in self.model.iter_resources():
-            doc.extend(["<TR>",
-                        "<TD>", name, "</TD>",
-                        "<TD align='right'>", str(total), "</TD>",
-                        "<TD align='right'>", str(allocated), "</TD>",
-                        "<TD align='right'>", str(pending), "</TD>",
-                        "</TR>"])
-
-        doc.extend(["</TABLE>"])
-        self.render_footer(doc)
-        response.writelines(doc)
+    def initiate(self):
+        if isinstance(self._initiating, defer.Deferred):
+            d = defer.Deferred()
+            self._initiating.addCallback(d.callback)
+            self._initiating.addCallback(defer.override_result, self)
+            return d
+
+        if self._initiating is None:
+            return defer.succeed(self)
+
+        self._methods.clear()
+        root = (self.hostname, self.port)
+        ModelResource.__init__(self, self.source, root)
+        d = self.model.initiate(aspect=self)
+        d.addCallback(defer.drop_param, ModelResource.initiate, self)
+        self._initiating = d
+        d.addCallback(self._initiated)
+        return d
+
+    def _initiated(self, _param):
+        self._initiating.addErrback(defer.handle_failure, "Failure during "
+                                    "root resource initialization")
+        self._initiating = None
+        return self

@@ -179,9 +179,9 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
         return util.acquireAttribute(self._parents, 'slow', False)
 
     @defer.inlineCallbacks
-    def wait_for(self, check, timeout, freq=0.5):
+    def wait_for(self, check, timeout, freq=0.5, kwargs=dict()):
         try:
-            yield time.wait_for(self, check, timeout, freq)
+            yield time.wait_for(self, check, timeout, freq, kwargs)
         except RuntimeError as e:
             raise unittest.FailTest(str(e))
 
@@ -468,14 +468,14 @@ class AgencyTestHelper(object):
         self.guid = None
         self._messaging = emu.RabbitMQ()
         mesg = rabbitmq.Client(self._messaging, 'agency_queue')
-        db = database.Database()
+        self._db = database.Database()
         writer = journaler.SqliteWriter(self)
         journal = journaler.Journaler(self)
         journal.configure_with(writer)
 
         d = writer.initiate()
         d.addCallback(defer.drop_param, self.agency.initiate,
-                      db, journal, mesg)
+                      self._db, journal, mesg)
         return d
 
     def setup_endpoint(self):

@@ -254,7 +254,6 @@ class Registry(object):
             # To support adapted function
             assert (reader.registry is None) or (reader.registry is self)
             reader.registry = self
-
         self._registry.register([IReadableDocument], iface,
                                 mime_type, reader)
         return reader

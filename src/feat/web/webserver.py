@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 from cStringIO import StringIO
 import sys
 import time
@@ -27,9 +28,9 @@ from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor
 from twisted.python.failure import Failure
-from twisted.web import server, resource, http as twhttp
+from twisted.web import server, resource
 
-from feat.common import log, defer, error
+from feat.common import log, defer, error, decorator
 from feat.web import http, compat, document, auth, security
 
 
@@ -187,6 +188,10 @@ class IWebResponse(Interface):
         """Sets the response status code,
         fail if the headers were already sent."""
 
+    def set_length(length):
+        """Sets the response length if known,
+        fail if the headers were already sent."""
+
     def set_header(key, value):
         """Sets a response header,
         fail if the headers were already sent."""
@@ -235,8 +240,14 @@ class IWebResponse(Interface):
         If not set, the default values will be used.
         """
 
-    def write_object(obj):
-        """Write an object using mime-type negotiation."""
+    def write_object(obj, *args, **kwargs):
+        """
+        Writes an object using mime-type negotiation.
+        The extra arguments and keyworkd arguments are passed
+        through to the writer.
+        @param obj: object to write.
+        @type obj: object
+        """
 
 
 class INegotiable(Interface):
@@ -246,10 +257,40 @@ class INegotiable(Interface):
     allowed_languages = Attribute("")
 
 
+### decorators ###
+
+
+@decorator.parametrized_function
+def read_object(function, iface, *default):
+
+    def wrapper(self, request, *args, **kwargs):
+
+        def got_object(obj):
+            return function(self, obj, request, *args, **kwargs)
+
+        def error(failure):
+            failure.trap(http.BadRequestError)
+            if default:
+                return function(self, default[0], request, *args, **kwargs)
+            return failure
+
+        if len(default) > 1:
+            raise TypeError("Only on default value allowed: %r"
+                            % (args, ))
+
+        d = request.read_object(iface)
+        d.addCallbacks(got_object, error)
+        return d
+
+    return wrapper
+
+
 ### Classes ###
 
 
 class ResourceMixin(object):
+
+    __slots__ = ()
 
     implements(IWebResource)
 
@@ -332,6 +373,8 @@ class LeafResourceMixin(ResourceMixin):
 
 class BaseResource(ResourceMixin):
 
+    __slots__ = ("_authenticator", "_authorizer")
+
     def __init__(self, authenticator=None, authorizer=None):
         self._authenticator = authenticator
         self._authorizer = authorizer
@@ -341,18 +384,18 @@ class BasicResource(BaseResource):
 
     def __init__(self, authenticator=None, authorizer=None):
         BaseResource.__init__(self, authenticator, authorizer)
-        self._childs = {}
+        self._children = {}
 
     def __setitem__(self, name, child):
         child.set_inherited(authenticator=self._authenticator,
                             authorizer=self._authorizer)
-        self._childs[name] = child
+        self._children[name] = child
 
     def __getitem__(self, name):
-        return self._childs[name]
+        return self._children[name]
 
     def __delitem__(self, name):
-        del self._childs[name]
+        del self._children[name]
 
     def locate_resource(self, request, location, remaining):
         if not remaining or remaining == (u'', ):
@@ -361,8 +404,8 @@ class BasicResource(BaseResource):
 
     def locate_child(self, request, location, remaining):
         next = remaining[0]
-        if next in self._childs:
-            return self._childs[next], remaining[1:]
+        if next in self._children:
+            return self._children[next], remaining[1:]
 
 
 class Server(log.LogProxy, log.Logger):
@@ -501,7 +544,10 @@ class Server(log.LogProxy, log.Logger):
             # Early error, just log and respond something that make sense
             msg = "Exception during HTTP request creation"
             error.handle_exception(self, e, msg)
-            priv_request.setResponseCode(http.Status.INTERNAL_SERVER_ERROR)
+            status_code = http.Status.INTERNAL_SERVER_ERROR
+            if isinstance(e, http.HTTPError):
+                status_code = e.status_code
+            priv_request.setResponseCode(int(status_code))
             priv_request.setHeader("content-type", "text/plain")
             return "Error: %s" % e
 
@@ -528,17 +574,16 @@ class Server(log.LogProxy, log.Logger):
                 # Asynchronous rendering
                 d.addErrback(self._emergency_termination, request, response)
                 d.addBoth(defer.bridge_param, response._finish)
+            else:
+                response._finish()
 
-                return server.NOT_DONE_YET
-
-            response._finish()
-            return ""
+            return server.NOT_DONE_YET
 
         except:
 
             self._emergency_termination(Failure(), request, response)
             response._finish()
-            return ""
+            return server.NOT_DONE_YET
 
 
     ### private ###
@@ -664,7 +709,7 @@ class Server(log.LogProxy, log.Logger):
                 raise http.InternalServerError("Invalid Resource Result")
 
             resource = result[0]
-            if isinstance(server, defer.Deferred):
+            if isinstance(resource, defer.Deferred):
                 resource.addCallback(lambda r: (r, ) + result[1:])
                 resource.addCallback(self._resource_located, request, response,
                                     old_res, credentials, old_loc, old_rem)
@@ -768,11 +813,12 @@ class Server(log.LogProxy, log.Logger):
         return self._resource_rendered(d, request, response)
 
     def _resource_rendered(self, data, request, response):
-        d = self._write_data(data, response)
-        if isinstance(d, defer.Deferred):
-            d.addCallback(defer.drop_param,
-                          self._terminate, request, response)
-            return d
+        if data is not response:
+            d = self._write_data(data, response)
+            if isinstance(d, defer.Deferred):
+                d.addCallback(defer.drop_param,
+                              self._terminate, request, response)
+                return d
 
         return self._terminate(request, response)
 
@@ -871,6 +917,9 @@ class Server(log.LogProxy, log.Logger):
         return self._error_rendered(d, request, response, error)
 
     def _error_rendered(self, data, request, response, error):
+        if data is response:
+            return self._terminate(request, response)
+
         if data is error:
             # Trying to keep the backtrace
             exc_info = sys.exc_info()
@@ -937,8 +986,18 @@ class Request(log.Logger, log.LogProxy):
         accepted_encodings = http.parse_accepted_charsets(accept_charset)
         accept_languages = self.get_header("accept-languages")
         accepted_languages = http.parse_accepted_languages(accept_languages)
-        method = http.Methods[self._ref.method]
-        protocol = _protocol_lookup[self._ref.clientproto]
+
+        try:
+            method = http.Methods[self._ref.method]
+        except KeyError:
+            raise http.NotAllowedError("Method %s not supported"
+                                       % (self._ref.method, ))
+
+        try:
+            protocol = _protocol_lookup[self._ref.clientproto]
+        except KeyError:
+            raise http.BadRequestError("Protocol %s not supported"
+                                       % (self._ref.clientproto, ))
 
         self._mime_type = mime_type
         self._encoding = encoding
@@ -960,7 +1019,7 @@ class Request(log.Logger, log.LogProxy):
         # Look for URI arguments only, the POST is content, not arguments
         uri_parts = self._ref.uri.split('?', 1)
         if len(uri_parts) > 1:
-            arguments = twhttp.parse_qs(uri_parts[1], 1)
+            arguments = http.parse_qs(uri_parts[1], True)
         else:
             arguments = {}
 
@@ -1145,7 +1204,7 @@ class Request(log.Logger, log.LogProxy):
     def _read_object(self, ifaces):
         d = self._server.registry.read(self, ifaces[0])
         d.addCallbacks(self._object_read_succeed,
-                       self._resource_read_failed,
+                       self._object_read_failed,
                        errbackArgs=(ifaces, ))
         return d
 
@@ -1243,6 +1302,9 @@ class Response(log.Logger):
         self._check_header_not_sent()
         self._request._ref.setResponseCode(int(code))
 
+    def set_length(self, length):
+        self.set_header("content-length", length)
+
     def set_header(self, key, value):
         self._check_header_not_sent()
         self._set_header(key, value)
@@ -1285,7 +1347,7 @@ class Response(log.Logger):
         self._check_header_not_sent()
         if expires:
             utctimestamp = time.mktime(expires.utctimetuple())
-            expires = twhttp.datetimeToString(utctimestamp)
+            expires = http.compose_datetime(utctimestamp)
         if max_age:
             max_age = max_age.days * 24 * 60 * 60 + max_age.seconds
         self._request._ref.addCookie(name, payload,
@@ -1306,7 +1368,7 @@ class Response(log.Logger):
         self._update_headers()
 
     @defer.ensure_async
-    def write_object(self, obj):
+    def write_object(self, obj, *args, **kwargs):
         if not self._writing and self._objects:
             raise document.WriteError("Object already written")
 
@@ -1368,7 +1430,7 @@ class Response(log.Logger):
 
             self.prepare()
 
-            d = server.registry.write(self, obj)
+            d = server.registry.write(self, obj, *args, **kwargs)
             d.addCallbacks(self._write_object_succeed,
                            self._write_object_failed,
                            callbackArgs=(obj, ))
