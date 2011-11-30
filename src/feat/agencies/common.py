@@ -368,8 +368,9 @@ class ExpirationCallsMixin(object):
         pname = factory.type_name if factory is not None else "unknown"
         agent = self.agent.get_agent() if self.agent is not None else None
         aname = agent.descriptor_type if agent is not None else "unknown"
+        aid = self.agent.get_agent_id() if self.agent is not None else None
 
-        error_msg = "%s's %s protocol expired" % (aname, pname)
+        error_msg = "%s agent %s's protocol %s expired" % (aname, aid, pname)
         if msg is not None:
             error_msg += ": %s" % (msg, )
 
