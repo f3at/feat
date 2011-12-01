@@ -390,28 +390,6 @@ class IJournaler(Interface):
         @rtype: L{IRecord}
         '''
 
-    def get_histories():
-        '''
-        Returns the Deferred triggered with list history objects stored in
-        journal.
-        @rtype: Deferred([L{feat.agencies.journal.History}])
-        '''
-
-    def get_entries(history):
-        '''
-        Fetches the journal entries for given history. History object contains
-        the information about the agent_id and instance_id.
-
-        The trigger value of returned Deferred is the list of journal entries.
-        Single entry has a format of:
-        [agent_id, instance_id, journal_id, function_id, fiber_id,
-        fiber_depth, args, kwargs, side_effects, result, timestamp]
-
-        @param history: History object interesting us.
-        @type history: L{feat.agencies.journal.History}
-        @rtype: Deferred(list)
-        '''
-
     def is_idle():
         """
         Returns bool saying if there are pending entries to get flushed.
@@ -465,14 +443,6 @@ class IJournalWriter(Interface):
     Layer responsible for persisitng the jounal entries.
     '''
 
-    def get_histories():
-        pass
-
-    def get_entries(history):
-        '''
-        Returns a list of journal entries  for the given history_id.
-        '''
-
     def insert_entries(entries):
         '''
         Write the entries to the transport.
@@ -482,6 +452,78 @@ class IJournalWriter(Interface):
         """
         Returns bool saying if there are pending entries to get flushed.
         """
+
+
+class IJournalReader(Interface):
+
+    def get_histories():
+        '''
+        Returns the Deferred triggered with list history objects stored in
+        journal.
+        @rtype: Deferred([L{feat.agencies.journal.History}])
+        '''
+
+    def get_entries(history):
+        '''
+        Fetches the journal entries for given history. History object contains
+        the information about the agent_id and instance_id.
+
+        The trigger value of returned Deferred is the list of journal entries.
+        Single entry has a format of:
+        [agent_id, instance_id, journal_id, function_id, fiber_id,
+        fiber_depth, args, kwargs, side_effects, result, timestamp]
+
+        @param history: History object interesting us.
+        @type history: L{feat.agencies.journal.History}
+        @rtype: Deferred(list)
+        '''
+
+    def get_log_entries(start_date, end_data, filters):
+        '''
+        Fetches the log entries for the given period of time and filters.
+        All parameters are optional, by default this query will return
+        all the entries.
+
+        The return format is a list of tuples of the form:
+        (message, level, log_category, log_name,
+         file_path, line_num, timestamp)
+
+        @type start_data, end_data: C{int} epoch time.
+        @param filters: List of dictionaries containg following keys:
+                  - level (log level)
+                  - category (log category)
+                  - name (log name)
+                  If the key is not present its simply not taken into account
+                  for the filter. If multiple filters are specified they are
+                  combined with the OR operator in the query.
+        @rtype: Deferred
+        '''
+
+    def get_log_categories(start_date, end_date):
+        '''
+        Fetch the log categories for the entries of the given period of time.
+        Parameters are optional and passed in epoch time format. (int)
+
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        @callback: list of unicode.
+        '''
+
+    def get_log_names(category, start_date, end_date):
+        '''
+        Fetch the list of log_name for the given category in the period of
+        time.
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        @rtype: Deferred
+        @callback: list of strings
+        '''
+
+    def get_log_time_boundaries():
+        '''
+        @rtype: Deferred
+        @callback: a tuple of log entry timestaps (first, last) or None
+        '''
 
 
 class IRevisionStore(Interface):

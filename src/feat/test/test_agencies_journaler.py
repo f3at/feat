@@ -88,11 +88,11 @@ class DBTests(common.TestCase):
         yield jour.configure_with(writer)
 
         yield jour.insert_entry(**self._generate_data())
-        histories = yield jour.get_histories()
+        histories = yield writer.get_histories()
         self.assertIsInstance(histories, list)
         self.assertIsInstance(histories[0], journaler.History)
 
-        entries = yield jour.get_entries(histories[0])
+        entries = yield writer.get_entries(histories[0])
         self.assertIsInstance(entries, list)
         self.assertEqual(1, len(entries))
         unpacked = self._unpack(entries[0])
@@ -106,7 +106,7 @@ class DBTests(common.TestCase):
                          self.unserializer.convert(unpacked['sfx']))
 
         yield jour.insert_entry(**self._generate_data(function_id='other'))
-        entries = yield jour.get_entries(histories[0])
+        entries = yield writer.get_entries(histories[0])
         self.assertEqual(2, len(entries))
         first = self._unpack(entries[0])
         second = self._unpack(entries[1])
@@ -216,10 +216,10 @@ class DBTests(common.TestCase):
 
     @defer.inlineCallbacks
     def _assert_entries(self, jour, num):
-        histories = yield jour.get_histories()
+        histories = yield jour._writer.get_histories()
         self.assertIsInstance(histories, list)
         if num > 0:
             self.assertIsInstance(histories[0], journaler.History)
-            entries = yield jour.get_entries(histories[0])
+            entries = yield jour._writer.get_entries(histories[0])
             self.assertIsInstance(entries, list)
             self.assertEqual(num, len(entries))
