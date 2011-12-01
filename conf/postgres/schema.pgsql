@@ -1,5 +1,8 @@
 DROP SCHEMA feat CASCADE;
 
+CREATE LANGUAGE plpythonu;
+CREATE LANGUAGE plpgsql;
+
 CREATE SCHEMA feat;
 
 CREATE TABLE feat.logs (
