@@ -412,11 +412,6 @@ class IJournaler(Interface):
         @rtype: Deferred(list)
         '''
 
-    def get_filename():
-        """
-        Return the filename to which this journaler stores entries.
-        """
-
     def is_idle():
         """
         Returns bool saying if there are pending entries to get flushed.
@@ -459,11 +454,6 @@ class IJournalerConnection(Interface):
         @rtype: IAgencyJournalEntry
         """
 
-    def get_filename():
-        """
-        Return the filename to which this connection stores.
-        """
-
     def snapshot(agent_id, instance_id, snapshot):
         """
         Create special IAgencyJournalEntry representing agent snapshot.
@@ -487,11 +477,6 @@ class IJournalWriter(Interface):
         '''
         Write the entries to the transport.
         '''
-
-    def get_filename():
-        """
-        Return the filename to which this connection stores.
-        """
 
     def is_idle():
         """

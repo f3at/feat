@@ -56,8 +56,6 @@ class DBTests(common.TestCase):
         self.assertEqual(journaler.State.connected,
                          jour._get_machine_state())
 
-        filename = yield jour.get_filename()
-        self.assertEqual(':memory:', filename)
         self.assertEqual(journaler.State.disconnected,
                          writer._get_machine_state())
 
