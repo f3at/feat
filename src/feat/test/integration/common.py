@@ -340,9 +340,9 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
             self.info("Test finished, now validating replayability.")
             yield self.wait_for(self.driver._journaler.is_idle, 10, 0.01)
 
-            histories = yield self.driver._journaler.get_histories()
+            histories = yield self.driver._jourwriter.get_histories()
             for history in histories:
-                entries = yield self.driver._journaler.get_entries(history)
+                entries = yield self.driver._jourwriter.get_entries(history)
                 self._validate_replay_on_agent(history, entries)
         else:
             msg = ("\n\033[91mFIXME: \033[0mReplayability test "

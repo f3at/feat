@@ -42,7 +42,7 @@ from feat.interface.journal import IJournalSideEffect, IJournalEntry
 from feat.interface.serialization import IExternalizer
 from feat.interface.log import ILogKeeper
 from feat.agencies.interface import (IJournaler, IJournalWriter, IRecord,
-                                     IJournalerConnection)
+                                     IJournalerConnection, IJournalReader)
 
 
 class State(enum.Enum):
@@ -167,14 +167,6 @@ class Journaler(log.Logger, common.StateMachineMixin):
 
     def prepare_record(self):
         return Record(self)
-
-    @in_state(State.connected)
-    def get_histories(self):
-        return self._writer.get_histories()
-
-    @in_state(State.connected)
-    def get_entries(self, history):
-        return self._writer.get_entries(history)
 
     def insert_entry(self, **data):
         self._cache.append(data)
@@ -307,14 +299,6 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         d.addCallback(defer.drop_param, self._set_writer, None)
         return d
 
-    @in_state(State.connected)
-    def get_histories(self):
-        return self._writer.callRemote('get_histories')
-
-    @in_state(State.connected)
-    def get_entries(self, history):
-        return self._writer.callRemote('get_entries', history)
-
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
@@ -362,7 +346,8 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
 
 class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                    manhole.Manhole):
-    implements(IJournalWriter)
+
+    implements(IJournalWriter, IJournalReader)
 
     _error_handler = error_handler
 
@@ -399,8 +384,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._install_sighup()
         return self._check_schema()
 
-    ### IJournalWriter ###
-
     def close(self, flush=True):
         d = defer.succeed(None)
         if self._cmp_state(State.disconnected):
@@ -413,6 +396,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                       State.disconnected)
         return d
 
+    ### IJournalReader ###
+
     @manhole.expose()
     @in_state(State.connected)
     def get_histories(self):
@@ -421,9 +406,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     @manhole.expose()
     @in_state(State.connected)
     def get_entries(self, history, start_date=0, limit=None):
-        '''
-        Returns a list of journal entries  for the given history_id.
-        '''
         if not isinstance(history, History):
             raise AttributeError(
                 'First paremeter is expected to be History instance, got %r'
@@ -502,10 +484,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     @in_state(State.connected)
     def get_log_categories(self, start_date=None, end_date=None):
-        '''
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        '''
         query = text_helper.format_block('''
         SELECT DISTINCT logs.category
         FROM logs
@@ -521,11 +499,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         return d
 
     def get_log_names(self, category, start_date=None, end_date=None):
-        '''
-        Fetches log names for the given category.
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        '''
         query = text_helper.format_block('''
         SELECT DISTINCT logs.log_name
         FROM logs
@@ -556,6 +529,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d = self._db.runQuery(query)
         d.addCallback(unpack)
         return d
+
+    ### IJournalWriter ###
 
     @manhole.expose()
     def insert_entries(self, entries):
