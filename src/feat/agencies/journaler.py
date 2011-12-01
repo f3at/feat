@@ -181,10 +181,6 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._schedule_flush()
         return self._notifier.wait('flush')
 
-    @in_state(State.connected)
-    def get_filename(self):
-        return self._writer.get_filename()
-
     def is_idle(self):
         if len(self._cache) > 0:
             return False
@@ -323,10 +319,6 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         for data in entries:
             self._cache.append(data)
         return self._flush_next()
-
-    @in_state(State.connected)
-    def get_filename(self):
-        return self._writer.callRemote('get_filename')
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -570,10 +562,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         for data in entries:
             self._cache.append(data)
         return self._flush_next()
-
-    @manhole.expose()
-    def get_filename(self):
-        return self._filename
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -876,9 +864,6 @@ class JournalerConnection(log.Logger, log.LogProxy):
             self.serializer, record, agent_id, instance_id,
             journal_id, function_id, *args, **kwargs)
         return entry
-
-    def get_filename(self):
-        return self.journaler.get_filename()
 
     def snapshot(self, agent_id, instance_id, snapshot):
         record = self.journaler.prepare_record()
