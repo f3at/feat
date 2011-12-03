@@ -179,7 +179,7 @@ class Unserializer(base.Unserializer):
     ### Overridden Methods ###
 
     def pre_convertion(self, data):
-        return json.loads(data)
+        return json.loads(unicode(data))
 
     def analyse_data(self, data):
         if isinstance(data, dict):
