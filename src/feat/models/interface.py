@@ -64,6 +64,7 @@ class ActionCategories(enum.Enum):
 class ValueTypes(enum.Enum):
     """
     Types of values action value, parameters and result could be:
+     - struct: any complex structure.
      - model: a response model.
      - reference: a reference to a model.
      - integer: an integer value.
@@ -73,10 +74,10 @@ class ValueTypes(enum.Enum):
      - collection: a collection of other value.
      - binary: a binary blob.
     """
-    (model, reference,
+    (struct, model, reference,
      integer, number,
      boolean, string,
-     collection, binary) = range(8)
+     collection, binary) = range(9)
 
 
 class ModelError(error.FeatError):

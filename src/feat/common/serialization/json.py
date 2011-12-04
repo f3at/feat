@@ -72,26 +72,20 @@ JSON_FREEZER_CAPS = JSON_CONVERTER_CAPS \
                            Capabilities.method_values])
 
 
-class Serializer(base.Serializer):
+class PreSerializer(base.Serializer):
 
     pack_dict = dict
 
-    def __init__(self, indent=None, separators=None, force_unicode=False,
-                 externalizer=None, source_ver=None, target_ver=None):
+    def __init__(self, force_unicode=False, externalizer=None,
+                 source_ver=None, target_ver=None):
         base.Serializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                  freezer_caps=JSON_FREEZER_CAPS,
                                  externalizer=externalizer,
                                  source_ver=source_ver,
                                  target_ver=target_ver)
-        self._indent = indent
-        self._separators = separators
         self._force_unicode = force_unicode
 
     ### Overridden Methods ###
-
-    def post_convertion(self, data):
-        return json.dumps(data, indent=self._indent,
-                          separators=self._separators)
 
     def flatten_key(self, key, caps, freezing):
         if not isinstance(key, str):
@@ -163,23 +157,52 @@ class Serializer(base.Serializer):
     pack_frozen_method = pack_frozen_function
 
 
+class Serializer(PreSerializer):
+
+    def __init__(self, indent=None, separators=None,
+                 force_unicode=False, encoding=None,
+                 externalizer=None, source_ver=None, target_ver=None):
+        PreSerializer.__init__(self, force_unicode=force_unicode,
+                                 externalizer=externalizer,
+                                 source_ver=source_ver,
+                                 target_ver=target_ver)
+        self._indent = indent
+        self._separators = separators
+        self._encoding = encoding
+
+    ### Overridden Methods ###
+
+    def post_convertion(self, data):
+        if self._encoding is not None:
+            return json.dumps(data, indent=self._indent,
+                              separators=self._separators,
+                              encoding=self._encoding)
+        return json.dumps(data, indent=self._indent,
+                          separators=self._separators)
+
+
 class Unserializer(base.Unserializer):
 
     pass_through_types = set([str, unicode, int, long,
                               float, bool, type(None)])
 
-    def __init__(self, registry=None, externalizer=None,
+    def __init__(self, encoding=None, registry=None, externalizer=None,
                  source_ver=None, target_ver=None):
         base.Unserializer.__init__(self, converter_caps=JSON_CONVERTER_CAPS,
                                    registry=registry,
                                    externalizer=externalizer,
                                    source_ver=source_ver,
                                    target_ver=target_ver)
+        self._encoding = encoding
 
     ### Overridden Methods ###
 
     def pre_convertion(self, data):
-        return json.loads(unicode(data))
+        if isinstance(data, str):
+            if self._encoding is None:
+                return json.loads(unicode(data))
+            return json.loads(data, encoding=self._encoding)
+        return json.loads(data)
 
     def analyse_data(self, data):
         if isinstance(data, dict):

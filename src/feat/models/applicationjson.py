@@ -21,13 +21,14 @@
 # Headers in this file shall remain intact.
 
 import json
+import types
 
 from zope.interface import implements
 
 from feat.common import defer, serialization
 from feat.common.serialization import json as feat_json
 from feat.models import reference
-from feat.web import document
+from feat.web import http, document
 
 from feat.models.interface import *
 
@@ -92,8 +93,9 @@ def update_attribute(result, model, context):
     if IAttribute.providedBy(model):
         subcontext = context.descend(model)
         attr = IAttribute(model)
-        value = yield attr.fetch_value()
-        result["value"] = render_value(value, subcontext)
+        if attr.is_readable:
+            value = yield attr.fetch_value()
+            result["value"] = render_value(value, subcontext)
         result["type"] = render_value_info(attr.value_info)
         if attr.is_writable:
             result["writable"] = True
@@ -175,7 +177,6 @@ def render_param(param):
 
 
 def render_value(value, context):
-    #FIXME: should add a handler for json
     if IReference.providedBy(value):
         return value.resolve(context)
     return value
@@ -216,8 +217,11 @@ def render_verbose(model, context):
 def render_compact(model, context):
     if IAttribute.providedBy(model):
         attr = IAttribute(model)
-        value = yield attr.fetch_value()
-        defer.returnValue(value)
+        if attr.is_readable:
+            value = yield attr.fetch_value()
+            result = render_value(value, context)
+            defer.returnValue(result)
+        defer.returnValue(None)
 
     result = {}
     if model.reference is not None:
@@ -227,9 +231,10 @@ def render_compact(model, context):
         submodel = yield item.fetch()
         if IAttribute.providedBy(submodel):
             attr = IAttribute(submodel)
-            value = yield attr.fetch_value()
-            subcontext = context.descend(submodel)
-            result[attr.name] = render_value(value, subcontext)
+            if attr.is_readable:
+                value = yield attr.fetch_value()
+                subcontext = context.descend(submodel)
+                result[attr.name] = render_value(value, subcontext)
         else:
             ref = item.reference
             if ref is not None:
@@ -248,7 +253,13 @@ def write_model(doc, obj, *args, **kwargs):
     else:
         result = yield render_compact(obj, context)
 
-    doc.write(json.dumps(result, indent=2))
+    enc = CustomJSONEncoder(encoding=doc.encoding)
+    doc.write(enc.encode(result))
+
+
+def write_reference(doc, obj, *args, **kwargs):
+    context = kwargs["context"]
+    return obj.resolve(context)
 
 
 def write_error(doc, obj, *args, **kwargs):
@@ -261,17 +272,13 @@ def write_error(doc, obj, *args, **kwargs):
         result["debug"] = obj.debug
     if obj.trace is not None:
         result["trace"] = obj.trace
-    doc.write(json.dumps(result, indent=2))
-
-
-def write_serializable(doc, obj, *args, **kwargs):
-    serializer = feat_json.Serializer()
-    data = serializer.convert(obj)
-    doc.write(data)
+    enc = CustomJSONEncoder(encoding=doc.encoding)
+    doc.write(enc.encode(result))
 
 
 def write_anything(doc, obj, *args, **kwargs):
-    doc.write(json.dumps(obj))
+    enc = CustomJSONEncoder(encoding=doc.encoding)
+    doc.write(enc .encode(obj))
 
 
 def read_action(doc, *args, **kwargs):
@@ -285,9 +292,28 @@ def read_action(doc, *args, **kwargs):
 
 
 document.register_writer(write_model, MIME_TYPE, IModel)
+document.register_writer(write_reference, MIME_TYPE, IReference)
 document.register_writer(write_error, MIME_TYPE, IErrorPayload)
-document.register_writer(write_serializable, MIME_TYPE,
-                         serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)
 
 document.register_reader(read_action, MIME_TYPE, IActionPayload)
+
+
+### private ###
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+
+    def __init__(self, context=None, encoding=None):
+        kwargs = {"indent": 2}
+        if encoding is not None:
+            kwargs["encoding"] = encoding
+        json.JSONEncoder.__init__(self, **kwargs)
+        self._serializer = feat_json.PreSerializer()
+
+    def default(self, obj):
+        if serialization.ISerializable.providedBy(obj):
+            return self._serializer.convert(obj)
+        if serialization.ISnapshotable.providedBy(obj):
+            return self._serializer.freeze(obj)
+        return json.JSONEncoder.default(self, obj)

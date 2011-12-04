@@ -27,6 +27,7 @@ from feat.models import meta as models_meta
 
 from feat.models.interface import *
 from feat.models.interface import IValidator
+from feat.interface.serialization import ISnapshotable
 
 
 meta = models_meta.meta
@@ -129,9 +130,7 @@ def _annotate(name, *args, **kwargs):
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
 
 
-class Value(models_meta.Metadata):
-    """Base class for value definition.
-    @see: feat.models.interface.IValueInfo"""
+class BaseValue(models_meta.Metadata):
 
     implements(IValueInfo, IValidator)
 
@@ -140,6 +139,147 @@ class Value(models_meta.Metadata):
     _class_value_type = None
     _class_use_default = False
     _class_default = None
+
+    ### IValueInfo ###
+
+    @property
+    def label(self):
+        return self._class_label
+
+    @property
+    def desc(self):
+        return self._class_desc
+
+    @property
+    def value_type(self):
+        return self._class_value_type
+
+    @property
+    def use_default(self):
+        return self._class_use_default
+
+    @property
+    def default(self):
+        return self._class_default
+
+    def __eq__(self, other):
+        if not IValueInfo.providedBy(other):
+            return NotSupported
+        other = IValueInfo(other)
+        if self.value_type != other.value_type:
+            return False
+        if self.use_default != other.use_default:
+            return False
+        if self.use_default and (self._default != other.default):
+            return False
+        if IValueOptions.providedBy(self) != IValueOptions.providedBy(other):
+            return False
+        if IValueOptions.providedBy(self):
+            other = IValueOptions(other)
+            other_options = set(other.iter_options())
+            self_options = set(self.iter_options())
+            if other_options != self_options:
+                return False
+            if self.is_restricted != other.is_restricted:
+                return False
+        if IValueRange.providedBy(self) != IValueRange.providedBy(other):
+            return False
+        if IValueRange.providedBy(self):
+            other = IValueRange(other)
+            if (self.minimum != other.minimum
+                or self.maximum != other.maximum
+                or self.increment != other.increment):
+                return False
+        return True
+
+    def __ne__(self, other):
+        eq = self.__eq__(other)
+        return eq if eq is NotSupported else not eq
+
+    ### IValidator ###
+
+    def validate(self, value):
+        if value is None and self.use_default:
+            value = self.default
+        return value
+
+    def publish(self, value):
+        if value is None and self.use_default:
+            value = self.default
+        return value
+
+    def as_string(self, value):
+        return unicode(self.publish(value))
+
+    ### annotations ###
+
+    @classmethod
+    def annotate_label(cls, label):
+        """@see: feat.models.value.label"""
+        cls._class_label = label
+
+    @classmethod
+    def annotate_desc(cls, desc):
+        """@see: feat.models.value.desc"""
+        cls._class_desc = desc
+
+    @classmethod
+    def annotate_value_type(cls, value_type):
+        """@see: feat.models.value.value_type"""
+        if value_type not in ValueTypes:
+            raise ValueError(value_type)
+        cls._class_value_type = value_type
+
+    @classmethod
+    def annotate_default(cls, default):
+        """@see: feat.models.value.default"""
+        cls._class_use_default = True
+        cls._class_default = default
+
+
+class _InterfaceValue(BaseValue):
+
+    _value_interface = None
+
+    def validate(self, value):
+        new_value = BaseValue.validate(self, value)
+        if not self._value_interface.providedBy(value):
+            raise ValueError(value)
+        return new_value
+
+    def publish(self, value):
+        new_value = BaseValue.publish(self, value)
+        if not self._value_interface.providedBy(value):
+            raise ValueError(value)
+        return new_value
+
+
+class Response(_InterfaceValue):
+    """Definition of a model value."""
+
+    _value_interface = IResponse
+
+    value_type(ValueTypes.model)
+
+
+class Reference(_InterfaceValue):
+    """Definition of a model value."""
+
+    _value_interface = IReference
+
+    value_type(ValueTypes.reference)
+
+
+class Struct(BaseValue):
+    """Definition of a model value."""
+
+    _value_interface = ISnapshotable
+
+    value_type(ValueTypes.struct)
+
+
+class Value(BaseValue):
+
     _class_options = None
     _class_options_only = False
 
@@ -198,57 +338,19 @@ class Value(models_meta.Metadata):
     def default(self):
         return self._default
 
-    def __eq__(self, other):
-        if not IValueInfo.providedBy(other):
-            return False
-        other = IValueInfo(other)
-        if self._value_type != other.value_type:
-            return False
-        if self._use_default != other.use_default:
-            return False
-        if self._use_default and (self._default != other.default):
-            return False
-        if IValueOptions.providedBy(self) != IValueOptions.providedBy(other):
-            return False
-        if IValueOptions.providedBy(self):
-            other = IValueOptions(other)
-            other_options = set(other.iter_options())
-            self_options = set(self.iter_options())
-            if other_options != self_options:
-                return False
-            if self._options_only != other.is_restricted:
-                return False
-        if IValueRange.providedBy(self) != IValueRange.providedBy(other):
-            return False
-        if IValueRange.providedBy(self):
-            other = IValueRange(other)
-            if (self.minimum != other.minimum
-                or self.maximum != other.maximum
-                or self.increment != other.increment):
-                return False
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
     ### IValidator ###
 
     def validate(self, value):
-        if value is None and self._use_default:
-            value = self._default
+        value = BaseValue.validate(self, value)
         if self._options_only and not self._has_option(value):
             raise ValueError(value)
         return value
 
     def publish(self, value):
-        if value is None and self._use_default:
-            value = self._default
+        value = BaseValue.validate(self, value)
         if self._options_only and not self.has_option(value):
             raise ValueError(value)
         return value
-
-    def as_string(self, value):
-        return unicode(self.publish(value))
 
     ### IValueOptions ###
 
@@ -305,29 +407,6 @@ class Value(models_meta.Metadata):
             self._options_only = options_only
 
     ### annotations ###
-
-    @classmethod
-    def annotate_label(cls, label):
-        """@see: feat.models.value.label"""
-        cls._class_label = label
-
-    @classmethod
-    def annotate_desc(cls, desc):
-        """@see: feat.models.value.desc"""
-        cls._class_desc = desc
-
-    @classmethod
-    def annotate_value_type(cls, value_type):
-        """@see: feat.models.value.value_type"""
-        if value_type not in ValueTypes:
-            raise ValueError(value_type)
-        cls._class_value_type = value_type
-
-    @classmethod
-    def annotate_default(cls, default):
-        """@see: feat.models.value.default"""
-        cls._class_use_default = True
-        cls._class_default = default
 
     @classmethod
     def annotate_option(cls, value, is_default=False, label=None):
@@ -621,18 +700,6 @@ class Collection(Value):
             else:
                 raise ValueError(value)
         return result
-
-
-class Response(Value):
-    """Definition of a model value."""
-
-    value_type(ValueTypes.model)
-
-
-class Reference(Value):
-    """Definition of a model value."""
-
-    value_type(ValueTypes.reference)
 
 
 ### private ###
