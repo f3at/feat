@@ -49,7 +49,7 @@ class DBTests(common.TestCase):
 
     @defer.inlineCallbacks
     def testInitiateInMemory(self):
-        jour = journaler.Journaler(self)
+        jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self)
         jour.configure_with(writer)
 
@@ -69,7 +69,7 @@ class DBTests(common.TestCase):
 
     @defer.inlineCallbacks
     def testStoringEntriesWhileDisconnected(self):
-        jour = journaler.Journaler(self)
+        jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self, encoding='zip')
         num = 10
         defers = map(lambda _: jour.insert_entry(**self._generate_data()),
@@ -82,7 +82,7 @@ class DBTests(common.TestCase):
 
     @defer.inlineCallbacks
     def testStoringAndReadingEntries(self):
-        jour = journaler.Journaler(self)
+        jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self, encoding='zip')
         yield writer.initiate()
         yield jour.configure_with(writer)
@@ -121,7 +121,7 @@ class DBTests(common.TestCase):
     @defer.inlineCallbacks
     def testInitiateOnDisk(self):
         filename = self._get_tmp_file()
-        jour = journaler.Journaler(self)
+        jour = journaler.Journaler()
         writer = SqliteWriter(self, filename=filename)
         yield writer.initiate()
         yield jour.configure_with(writer)
@@ -164,9 +164,9 @@ class DBTests(common.TestCase):
             self._rotate_called += 1
 
         filename = self._get_tmp_file()
-        jour = journaler.Journaler(self)
+        jour = journaler.Journaler(on_rotate_cb=on_rotate)
         writer = journaler.SqliteWriter(
-            self, filename=filename, encoding='zip', on_rotate=on_rotate)
+            self, filename=filename, encoding='zip')
         yield writer.initiate()
         d = jour.insert_entry(**self._generate_data())
         yield jour.configure_with(writer)
@@ -223,3 +223,21 @@ class DBTests(common.TestCase):
             entries = yield jour._writer.get_entries(histories[0])
             self.assertIsInstance(entries, list)
             self.assertEqual(num, len(entries))
+
+
+class TestParsingConnection(common.TestCase):
+
+    def testItWorks(self):
+        klass, params = journaler.parse_connstr(
+            'sqlite:///var/log/journal.sqlite3')
+        self.assertEqual(journaler.SqliteWriter, klass)
+        self.assertEqual('/var/log/journal.sqlite3', params['filename'])
+        self.assertEqual('zip', params['encoding'])
+
+        klass, params = journaler.parse_connstr(
+            'postgres://feat:feat@flt1.somecluster.lt.net/feat')
+        self.assertEqual(journaler.PostgresWriter, klass)
+        self.assertEqual('feat', params['user'])
+        self.assertEqual('feat', params['password'])
+        self.assertEqual('flt1.somecluster.lt.net', params['host'])
+        self.assertEqual('feat', params['database'])
