@@ -34,7 +34,7 @@ DEFAULT_MSG_PORT = 5672
 DEFAULT_MSG_USER = "guest"
 DEFAULT_MSG_PASSWORD = "guest"
 
-DEFAULT_JOURFILE = 'journal.sqlite3'
+DEFAULT_JOURFILE = 'sqlite:///var/log/feat/journal.sqlite3'
 
 DEFAULT_GW_PORT = 5500
 DEFAULT_GW_P12_FILE = "/etc/feat/gateway.p12"
@@ -88,10 +88,12 @@ def add_general_options(parser):
 
 def add_agency_options(parser):
     group = optparse.OptionGroup(parser, "Agency options")
-    group.add_option('-j', '--jourfile',
-                     action="store", dest="agency_journal",
-                     help=("journal filename (default: %s)"
-                           % DEFAULT_JOURFILE))
+    group.add_option('-j', '--journal',
+                     action="append", dest="agency_journal",
+                     help=("journal connection string (default: %s). "
+                           "You can specify more than one to be used as "
+                           "failover. "
+                           % DEFAULT_JOURFILE), default=None)
     group.add_option('-S', '--socket-path', dest="agency_socket_path",
                      help=("path to the unix socket used by the agency"
                            "(default: %s)" % DEFAULT_SOCKET_PATH),

@@ -58,11 +58,13 @@ class UnitTestCase(common.TestCase):
 
     def testLoadConfig(self):
         env = {
-            'FEAT_AGENT_ID': 'agent_id',
-            'FEAT_AGENT_ARGS': 'agent_args',
-            'FEAT_AGENT_KWARGS': 'agent_kwargs',
+            'FEAT_AGENT_ID': '"agent_id"',
+            'FEAT_AGENT_ARGS': '"agent_args"',
+            'FEAT_AGENT_KWARGS': '"agent_kwargs"',
             'FEAT_MSG_PORT': '2000',
-            'FEAT_MANHOLE_PUBLIC_KEY': 'file'}
+            'FEAT_MANHOLE_PUBLIC_KEY': '"file"',
+            'FEAT_AGENCY_JOURNAL':
+            '["postgres://localhost/feat", "sqlite://journaler.sqlite3"]'}
         self.agency._init_config()
         # Test extra configuration values
         self.agency.config["agent"] = {"id": None,
@@ -74,10 +76,16 @@ class UnitTestCase(common.TestCase):
         self.assertEqual('agent_args', self.agency.config['agent']['args'])
         self.assertEqual('agent_kwargs', self.agency.config['agent']['kwargs'])
         self.assertTrue('msg' in self.agency.config)
-        self.assertEqual('2000', self.agency.config['msg']['port'])
+        self.assertEqual(2000, self.agency.config['msg']['port'])
         self.assertTrue('manhole' in self.agency.config)
         self.assertEqual('file', self.agency.config['manhole']['public_key'])
         self.assertFalse('name' in self.agency.config['agent'])
+        self.assertTrue('agency' in self.agency.config)
+        self.assertTrue('journal' in self.agency.config['agency'])
+        j = self.agency.config['agency']['journal']
+        self.assertIsInstance(j, list)
+        self.assertEqual('postgres://localhost/feat', j[0])
+        self.assertEqual('sqlite://journaler.sqlite3', j[1])
 
         #Overwrite some configuration values
         self.agency._load_config(env, OptParseMock())
@@ -86,18 +94,18 @@ class UnitTestCase(common.TestCase):
         self.assertFalse('name' in self.agency.config['agent'])
 
     def testConfigWithStringBoolean(self):
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'True'}
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'true'}
         self.agency._init_config()
         self.agency._load_config(env)
         self.assertTrue(self.agency.config['agency']['force_host_restart'])
 
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'False'}
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'false'}
         self.agency._load_config(env)
         self.assertEqual(False,
             self.agency.config['agency']['force_host_restart'])
 
     def testConfigWithStringNone(self):
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'None'}
+        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'null'}
         self.agency._load_config(env)
         self.assertIs(None, self.agency.config['agency']['force_host_restart'])
 
@@ -117,11 +125,16 @@ class UnitTestCase(common.TestCase):
         self.agency.config = dict()
         self.agency.config['msg'] = dict(port=3000, host='localhost')
         self.agency.config['manhole'] = dict(public_key='file')
+        self.agency.config['agency'] = dict(
+            journal=['postgres://localhost/feat',
+                     'sqlite://journaler.sqlite3'])
         env = dict()
         self.agency._store_config(env)
-        self.assertEqual('localhost', env['FEAT_MSG_HOST'])
+        self.assertEqual('"localhost"', env['FEAT_MSG_HOST'])
         self.assertEqual('3000', env['FEAT_MSG_PORT'])
-        self.assertEqual('file', env['FEAT_MANHOLE_PUBLIC_KEY'])
+        self.assertEqual('"file"', env['FEAT_MANHOLE_PUBLIC_KEY'])
+        exp = '["postgres://localhost/feat", "sqlite://journaler.sqlite3"]'
+        self.assertEqual(exp, env['FEAT_AGENCY_JOURNAL'])
 
     def testDefaultConfig(self):
         parser = optparse.OptionParser()
@@ -495,7 +508,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
                 '--dbhost', self.db_host,
                 '--dbport', str(self.db_port),
                 '--dbname', self.db_name,
-                '--jourfile', self.jourfile,
+                '--journal', "sqlite://%s" % (self.jourfile, ),
                 '--rundir', os.path.abspath(os.path.curdir),
                 '--logdir', os.path.abspath(os.path.curdir),
                 '--socket-path', self.socket_path,

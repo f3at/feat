@@ -99,15 +99,13 @@ class TestPostgressWriter(common.TestCase):
                                           max_retries=1)
         stub = StubJournaler()
         writer.configure_with(stub)
-        writer.insert_entries([self._generate_entry(),
-                               self._generate_log()])
+        d = writer.insert_entries([self._generate_entry(),
+                                   self._generate_log()])
+        self.assertFailure(d, defer.FirstError)
 
         yield writer.initiate()
         yield self.wait_for(stub.find_calls, 10,
                             kwargs=dict(name='on_give_up'))
-        call = stub.find_calls(name='on_give_up')[0]
-        cache = call.args[0]
-        self.assertEqual(2, len(cache.fetch()))
         # txpostgres hits reactor with errors
         self.flushLoggedErrors(psycopg2.OperationalError)
 
@@ -121,17 +119,36 @@ class TestPostgressWriter(common.TestCase):
                                           max_retries=1)
         stub = StubJournaler()
         writer.configure_with(stub)
-        writer.insert_entries([self._generate_entry(),
-                               self._generate_log()])
+        d = writer.insert_entries([self._generate_entry(),
+                                   self._generate_log()])
+        self.assertFailure(d, defer.FirstError)
 
         yield writer.initiate()
         yield self.wait_for(stub.find_calls, 10,
                             kwargs=dict(name='on_give_up'))
-        call = stub.find_calls(name='on_give_up')[0]
-        cache = call.args[0]
-        self.assertEqual(2, len(cache.fetch()))
         # txpostgres hits reactor with errors
         self.flushLoggedErrors(psycopg2.OperationalError)
+
+    @defer.inlineCallbacks
+    def testJournalerWith2ConnectionStrings(self):
+
+        def connstr(user, password, host, name):
+            return 'postgres://%s:%s@%s/%s' % (user, password, host, name)
+
+        connstrs = [connstr(DB_USER, 'wrongpassword', DB_HOST, DB_NAME),
+                    connstr(DB_USER, DB_PASSWORD, DB_HOST, DB_NAME)]
+        jour = journaler.Journaler()
+        jour.set_connection_strings(connstrs)
+        jour.insert_entry(**self._generate_entry())
+
+        def entries_stored():
+            self.cursor.execute("SELECT COUNT(*) FROM feat.entries")
+            return self.cursor.fetchone() == (1, )
+
+        yield self.wait_for(entries_stored, 20)
+        # txpostgres hits reactor with errors
+        self.flushLoggedErrors(psycopg2.OperationalError)
+        yield jour.close()
 
     def _generate_log(self, **opts):
         defaults = {
@@ -169,5 +186,5 @@ class TestPostgressWriter(common.TestCase):
 class StubJournaler(common.Mock):
 
     @common.Mock.stub
-    def on_give_up(self, cache):
+    def on_give_up(self):
         pass
