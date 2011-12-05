@@ -67,7 +67,8 @@ class Startup(agency.Startup):
         dbc = self.c['db']
         self._db = database.Database(dbc['host'],
                                      int(dbc['port']), dbc['name'])
-        self._journaler = journaler.Journaler(self)
+        self._journaler = journaler.Journaler(
+            on_rotate_cb=self.friend._force_snapshot_agents)
 
     def stage_private(self):
         reactor.addSystemEventTrigger('before', 'shutdown',
@@ -269,8 +270,7 @@ class Agency(agency.Agency):
         filename = os.path.join(self.config['agency']['logdir'],
                                 self.config['agency']['journal'])
         self._journal_writer = journaler.SqliteWriter(
-            self, filename=filename, encoding='zip',
-            on_rotate=self._force_snapshot_agents)
+            self, filename=filename, encoding='zip')
         self._journaler.configure_with(self._journal_writer)
         self._journal_writer.initiate()
         self._start_master_gateway()

@@ -528,7 +528,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
     def assert_journal_contains(self, agent_ids):
         jour = self.agency._journaler
         yield self.wait_for(jour.is_idle, 10)
-        resp = yield jour.get_histories()
+        resp = yield jour._writer.get_histories()
         ids_got = map(operator.attrgetter('agent_id'), resp)
         set1 = set(agent_ids)
         set2 = set(ids_got)

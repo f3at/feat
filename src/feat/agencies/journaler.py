@@ -33,7 +33,7 @@ from twisted.python import log as twisted_log
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
-                         fiber, signal, )
+                         fiber, signal, error, connstr)
 from feat.agencies import common
 from feat.common.serialization import banana
 from feat.extern.log import log as flulog
@@ -125,7 +125,7 @@ class Journaler(log.Logger, common.StateMachineMixin):
     # FIXME: at some point switch to False and remove this attribute
     should_keep_on_logging_to_flulog = True
 
-    def __init__(self, logger):
+    def __init__(self, on_rotate_cb=None):
         log.Logger.__init__(self, self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
@@ -134,10 +134,13 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._cache = EntriesCache()
         self._notifier = defer.Notifier()
 
+        self._on_rotate_cb = on_rotate_cb
+
     def configure_with(self, writer):
         self._ensure_state(State.disconnected)
         twisted_log.addObserver(self.on_twisted_log)
         self._writer = IJournalWriter(writer)
+        self._writer.configure_with(self)
         self._set_state(State.connected)
         self._schedule_flush()
 
@@ -179,6 +182,15 @@ class Journaler(log.Logger, common.StateMachineMixin):
         if self._writer:
             return self._writer.is_idle()
         return True
+
+    ### methods called by journaler writers ###
+
+    def on_rotate(self):
+        if callable(self._on_rotate_cb):
+            self._on_rotate_cb()
+
+    def on_giveup(self, cache):
+        pass
 
     ### ILogObserver provider ###
 
@@ -299,6 +311,9 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         d.addCallback(defer.drop_param, self._set_writer, None)
         return d
 
+    def configure_with(self, journaler):
+        pass
+
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
@@ -351,8 +366,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     _error_handler = error_handler
 
-    def __init__(self, logger, filename=":memory:", encoding=None,
-                 on_rotate=None):
+    def __init__(self, logger, filename=":memory:", encoding=None):
         '''
         @param encoding: Optional encoding to be used for blob fields.
         @type encoding: Should be a valid parameter for str.encode() method.
@@ -374,7 +388,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         self._sighup_installed = False
 
-        self._on_rotate_cb = on_rotate
+        self._journaler = None
 
     def initiate(self):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
@@ -532,6 +546,12 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     ### IJournalWriter ###
 
+    def configure_with(self, journaler):
+        self.log("configure_with() called. journaler=%r", journaler)
+        if self._journaler:
+            self.warning("We already have a journaler reference, substituing")
+        self._journaler = journaler
+
     @manhole.expose()
     def insert_entries(self, entries):
         for data in entries:
@@ -558,10 +578,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _sighup_handler(self, signum, frame):
         self.log("Received SIGHUP, reopening the journal.")
+        if self._journaler:
+            time.call_next(self._journaler.on_rotate)
         self.close()
         self.initiate()
-        if callable(self._on_rotate_cb):
-            self._on_rotate_cb()
 
     def _install_sighup(self):
         if self._sighup_installed:
@@ -977,3 +997,192 @@ class AgencyJournalEntry(object):
             self._not_serialized['args'] = None
             self._not_serialized['kwargs'] = None
             self.commit()
+
+
+class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
+                     manhole.Manhole):
+
+    implements(IJournalWriter)
+
+    _error_handler = error_handler
+
+    max_retries = None
+    max_delay = 120
+    initial_delay = 1
+
+    def __init__(self, logger, host, database, user, password,
+                 max_retries=None, initial_delay=None, max_delay=None):
+        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
+        common.StateMachineMixin.__init__(self, State.disconnected)
+
+        # lazy import not to require psycopg2 and txpostgres
+        # packages if the writer is not used
+        from txpostgres import txpostgres
+        import psycopg2
+        self._txpostgres = txpostgres
+        self._psycopg2 = psycopg2
+
+        self._credentials = dict(host=host, user=user,
+                                 password=password, database=database)
+
+        self._cache = EntriesCache()
+        self._db = None
+
+        self._retry = None
+
+        self._max_delay = max_delay or type(self).max_delay
+        self._max_retries = max_retries or type(self).max_retries
+        self._initial_delay = initial_delay or type(self).initial_delay
+
+        self._journaler = None
+
+    def initiate(self):
+        self._db = self._txpostgres.ConnectionPool(
+            "postgres", min=1, **self._credentials)
+
+        if self._retry is not None:
+            self._retry += 1
+        else:
+            self._retry = 1
+            self._delay = self._initial_delay
+
+        d = self._db.start()
+        # run simple query to make sure schema is loaded
+        d.addCallback(defer.drop_param, self._db.runQuery,
+                      'SELECT message FROM feat.logs LIMIT 1')
+        d.addCallback(self._connection_established)
+        d.addErrback(self._connection_failed)
+        return d
+
+    def close(self, flush=True):
+        d = defer.succeed(None)
+        if self._cmp_state(State.disconnected):
+            return d
+        if flush:
+            d.addCallback(defer.drop_param, self._flush_next)
+        d.addCallback(defer.drop_param, self._db.close)
+        d.addCallback(defer.drop_param, self._set_state,
+                      State.disconnected)
+        return d
+
+    ### IJournalWriter ###
+
+    def configure_with(self, journaler):
+        self.log("configure_with() called. journaler=%r", journaler)
+        if self._journaler:
+            self.warning("We already have a journaler reference, substituing")
+        self._journaler = journaler
+
+    @manhole.expose()
+    def insert_entries(self, entries):
+        for data in entries:
+            self._cache.append(data)
+        return self._flush_next()
+
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
+
+    ### private ###
+
+    def _connection_established(self, _ignored):
+        self._retry = None
+        del(self._delay)
+
+        self.log("Connection established to postgres database.")
+        self._set_state(State.connected)
+        self._flush_next()
+
+    def _connection_failed(self, fail):
+        self._delay = min([self._max_delay, self._delay * 2])
+
+        self.warning("Connection to postgres failed with credentials: %r. "
+                     "Failure: %r. Will retry for %d time in %d seconds.",
+                     self._credentials, fail, self._retry, self._delay)
+        self._db.close()
+        self._db = None
+        if self._retry > self._max_retries:
+            error.handle_failure(self, fail,
+                                 "Giving up connecting to postgres. "
+                                 "I will give %d entries back to journaler.",
+                                 len(self._cache))
+            if self._journaler:
+                self._journaler.on_give_up(self._cache)
+            return
+
+        time.call_later(self._delay, self.initiate)
+
+    @in_state(State.connected)
+    def _flush_next(self):
+        if len(self._cache) == 0:
+            return defer.succeed(None)
+        else:
+            d = self._db.runInteraction(self._perform_inserts)
+            d.addCallback(defer.drop_param, self._flush_next)
+            return d
+
+    def _perform_inserts(self, cursor):
+        entries = self._cache.fetch()
+        if not entries:
+            return
+
+        d = defer.succeed(None)
+        for data in entries:
+            if data['entry_type'] == 'journal':
+                d.addCallback(defer.drop_param,
+                              self._do_insert_entry, cursor, data)
+            elif data['entry_type'] == 'log':
+                d.addCallback(defer.drop_param, self._do_insert_log,
+                              cursor, data)
+        d.addCallback(defer.bridge_param, self._cache.commit)
+        d.addErrback(defer.bridge_param, self._cache.rollback)
+        return d
+
+    def _do_insert_entry(self, cursor, data):
+        return cursor.execute(
+            'INSERT INTO feat.entries '
+                    'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            (data['agent_id'],
+             data['instance_id'],
+             self._psycopg2.Binary(data['journal_id']),
+             data['function_id'],
+             self._psycopg2.Binary(data['fiber_id']),
+             data['fiber_depth'],
+             self._psycopg2.Binary(data['args']),
+             self._psycopg2.Binary(data['kwargs']),
+             self._psycopg2.Binary(data['side_effects']),
+             self._psycopg2.Binary(data['result']),
+             self._format_timestamp(data['timestamp'])))
+
+    def _do_insert_log(self, cursor, data):
+        return cursor.execute(
+            'INSERT INTO feat.logs VALUES (%s, %s, %s, %s, %s, %s, %s)',
+            (data['message'], int(data['level']),
+             data['category'], data['log_name'],
+             data['file_path'], data['line_num'],
+             self._format_timestamp(data['timestamp'])))
+
+    def _format_timestamp(self, epoch):
+        return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
+
+
+def parse_connstr(conn):
+    try:
+        resp = connstr.parse(conn)
+        if resp['protocol'] == 'sqlite':
+            klass = SqliteWriter
+            params = dict(filename=resp['host'], encoding='zip')
+        elif resp['protocol'] == 'postgres':
+            klass = PostgresWriter
+            host, dbname = resp['host'].split('/')
+            params = dict(host=host, database=dbname,
+                          password=resp['password'], user=resp['user'],
+                          max_retries=3)
+        else:
+            raise ValueError("Unknown protocol")
+        return klass, params
+    except ValueError as e:
+        raise error.FeatError("%s is not a valid connection string" % (conn, ),
+                              cause=e)

@@ -6,8 +6,25 @@ Feat may be configured to use the postgres server for storing log and journal en
 It wouldn't be clear which agency is responsable for creating the schema, for this reason this task is moved to administration.
 
 
+Language support
+----------------
+
+Before loading the schema make sure postgres is configured with support for following languages:
+
+- plpgsql,
+
+- plpythonu.
+
+They should be enabled on the level of template1 database, hence the schema script does not declare them.
+To enable a language log in to template1 database and type: ::
+
+  CREATE LANGAUGE plpgsql;
+  CREATE LANGAUGE plpythonu;
+
+
 Loading the schema
 ------------------
+
 
 Schema files can be found in conf/postgres directory. To load a file simply run a command : ::
 

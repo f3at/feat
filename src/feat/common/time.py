@@ -143,6 +143,8 @@ _time_scale = None
 _python_time = hacks.import_time()
 clock = _python_time.clock
 sleep = _python_time.sleep
+strftime = _python_time.strftime
+localtime = _python_time.localtime
 
 
 def _get_scale():

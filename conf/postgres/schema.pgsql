@@ -1,9 +1,6 @@
-DROP SCHEMA feat CASCADE;
-
-CREATE LANGUAGE plpythonu;
-CREATE LANGUAGE plpgsql;
-
+DROP SCHEMA IF EXISTS feat CASCADE;
 CREATE SCHEMA feat;
+
 
 CREATE TABLE feat.logs (
        message text not null,
