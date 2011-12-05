@@ -23,6 +23,8 @@ import signal
 import tempfile
 import os
 
+from twisted.trial.unittest import FailTest
+
 from feat.test import common
 from feat.common import defer, time
 from feat.agencies import journaler
@@ -188,8 +190,40 @@ class DBTests(common.TestCase):
             self.assertTrue(os.path.exists(filename))
             self.assertTrue(os.path.exists(newname))
 
-        self.assertEqual(3, self._rotate_called)
+        self.assertEqual(4, self._rotate_called)
         yield jour.close()
+
+    @common.attr(timeout=30)
+    @defer.inlineCallbacks
+    def testMisconfiguredPostgresFallbackToSqlite(self):
+        postgres = ('postgres://%s:%s@%s/%s' %
+                    ('user', 'password', 'localhost', 'name'))
+        sqlite = 'sqlite://journal.sqlite3'
+        connstrs = [postgres, sqlite]
+        jour = journaler.Journaler()
+        jour.set_connection_strings(connstrs)
+        jour.insert_entry(**self._generate_data())
+
+        @defer.inlineCallbacks
+        def check():
+            w = jour._writer
+            if isinstance(w, journaler.SqliteWriter):
+                try:
+                    yield self._assert_entries(jour, 1)
+                except FailTest:
+                    defer.returnValue(False)
+                defer.returnValue(True)
+            defer.returnValue(False)
+
+        yield self.wait_for(check, 20)
+        self.assertTrue(os.path.exists('journal.sqlite3'))
+
+        yield jour.insert_entry(**self._generate_data())
+        yield self._assert_entries(jour, 2)
+
+        yield jour.close()
+        import psycopg2
+        self.flushLoggedErrors(psycopg2.OperationalError)
 
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
@@ -218,6 +252,7 @@ class DBTests(common.TestCase):
     def _assert_entries(self, jour, num):
         histories = yield jour._writer.get_histories()
         self.assertIsInstance(histories, list)
+        self.assertTrue(len(histories) > 0)
         if num > 0:
             self.assertIsInstance(histories[0], journaler.History)
             entries = yield jour._writer.get_entries(histories[0])
@@ -241,3 +276,4 @@ class TestParsingConnection(common.TestCase):
         self.assertEqual('feat', params['password'])
         self.assertEqual('flt1.somecluster.lt.net', params['host'])
         self.assertEqual('feat', params['database'])
+

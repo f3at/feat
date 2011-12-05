@@ -480,12 +480,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return defer.DeferredList(defers, consumeErrors=True)
 
     @manhole.expose()
-    def get_journal_writer(self):
+    def get_journaler(self):
         self._ensure_connected()
         if self.is_master():
-            return self.agency.get_journal_writer()
+            return self.agency._journaler
         elif self.is_slave():
-            return self._master.callRemote('get_journal_writer')
+            return self._master.callRemote('get_journaler')
 
     def iter_agency_ids(self):
         self._ensure_connected()

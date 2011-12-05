@@ -25,7 +25,6 @@ import socket
 import sys
 
 from twisted.internet import reactor
-from twisted.spread import pb
 
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
@@ -35,6 +34,7 @@ from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
 from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
+from feat.common.serialization import json
 from feat.process import standalone
 from feat.process.base import ProcessState
 from feat.gateway import gateway
@@ -161,7 +161,7 @@ class Agency(agency.Agency):
                  private_key=options.DEFAULT_MH_PRIVKEY,
                  authorized_keys=options.DEFAULT_MH_AUTH,
                  manhole_port=options.DEFAULT_MH_PORT,
-                 agency_journal=options.DEFAULT_JOURFILE,
+                 agency_journal=[options.DEFAULT_JOURFILE],
                  socket_path=options.DEFAULT_SOCKET_PATH,
                  lock_path=options.DEFAULT_LOCK_PATH,
                  gateway_port=options.DEFAULT_GW_PORT,
@@ -267,12 +267,8 @@ class Agency(agency.Agency):
 
     def on_become_master(self):
         self._ssh.start_listening()
-        filename = os.path.join(self.config['agency']['logdir'],
-                                self.config['agency']['journal'])
-        self._journal_writer = journaler.SqliteWriter(
-            self, filename=filename, encoding='zip')
-        self._journaler.configure_with(self._journal_writer)
-        self._journal_writer.initiate()
+        self._journaler.set_connection_strings(
+            self.config['agency']['journal'])
         self._start_master_gateway()
 
         self._redirect_text_log()
@@ -313,9 +309,9 @@ class Agency(agency.Agency):
     def on_become_slave(self):
         self.start_host_agent = False
         self._ssh.stop_listening()
-        self._journal_writer = journaler.BrokerProxyWriter(self._broker)
-        self._journaler.configure_with(self._journal_writer)
-        self._journal_writer.initiate()
+        writer = journaler.BrokerProxyWriter(self._broker)
+        writer.initiate()
+        self._journaler.configure_with(writer)
         self._redirect_text_log()
         self._start_slave_gateway()
 
@@ -377,10 +373,10 @@ class Agency(agency.Agency):
                           self.config['agency']['rundir'], force=True)
         return d
 
-    def get_journal_writer(self):
+    def remote_get_journaler(self):
         '''Called by the broker internals to establish the bridge between
         JournalWriters'''
-        return self._journal_writer
+        return self._journaler
 
     def on_killed(self):
         return self._shutdown(stop_process=False, gentle=False)
@@ -642,10 +638,11 @@ class Agency(agency.Agency):
         '''
         Stores agency config into environment to be read by the
         standalone agency.'''
+        serializer = json.Serializer(force_unicode=True)
         for key in self.config:
             for kkey in self.config[key]:
                 var_name = "FEAT_%s_%s" % (key.upper(), kkey.upper(), )
-                env[var_name] = str(self.config[key][kkey])
+                env[var_name] = serializer.convert(self.config[key][kkey])
 
     def _load_config(self, env, options=None):
         '''
@@ -659,13 +656,7 @@ class Agency(agency.Agency):
             if res:
                 c_key = res.group(1).lower()
                 c_kkey = res.group(2).lower()
-                value = str(env[key])
-                if value == 'None':
-                    value = None
-                if value == 'False':
-                    value = False
-                if value == 'True':
-                    value = True
+                value = json.unserialize(env[key])
                 if c_key in self.config:
                     self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value

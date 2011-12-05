@@ -210,6 +210,12 @@ class Notifier(object):
         self._store(notification, d)
         return d
 
+    def cancel(self, notification):
+        notifications = self._pop(notification)
+        if notifications:
+            for d in notifications:
+                d.cancel()
+
     def callback(self, notification, result):
         notifications = self._pop(notification)
         if notifications:

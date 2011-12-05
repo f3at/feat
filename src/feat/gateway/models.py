@@ -19,18 +19,15 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-import os
-import signal
-
 from zope.interface import implements
 
+from feat.agencies import journaler
 from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import resource, agent as base_agent
 
 from feat.common import adapter, defer
-from feat.models import model, action, value, reference, response
-from feat.models import effect, call, getter, setter
+from feat.models import model, value, reference, response
+from feat.models import effect, call, getter
 
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
@@ -133,7 +130,7 @@ class Agencies(model.Collection):
                  desc=("Shutdown all agencies on this host, "
                        "stopping all agents properly"))
 
-    model.meta("html-render", "array, 2")
+    model.meta("html-render", "array, 1")
 
     ### custom ###
 
@@ -208,6 +205,11 @@ class Agency(model.Model):
                 label="Agency's Agents",
                 desc="Agents running on this agency.")
 
+    model.child("journaler",
+                source=getter.source_attr('_journaler'),
+                model='feat.agency.journaler',
+                label='Journaler')
+
     #FIXME: use another mean to specify the default action than name
     model.delete("del",
                  effect.delay(call.source_call("kill",
@@ -226,6 +228,65 @@ class Agency(model.Model):
     model.meta("html-order", "id, role, log_filter, agents")
     model.item_meta("id", "html-link", "owner")
     model.item_meta("agents", "html-render", "array, 2")
+
+
+class Journaler(model.Model):
+    model.identity("feat.agency.journaler")
+    model.attribute('pending_entries', value.Integer(),
+                    getter=call.model_call('get_pending'),
+                    label='Entries in cache')
+    model.attribute('state', value.Enum(journaler.State),
+                    getter=getter.source_attr('state'),
+                    label='Connection state')
+
+    model.child('writer', source=getter.source_attr('_writer'),
+                label='Journal writer')
+
+    def get_pending(self):
+        return len(self.source._cache)
+
+
+class BaseJournalWriter(model.Model):
+    model.identity("feat.agency.journaler.base_writer")
+    model.attribute('type', value.String(), getter=call.model_call('get_type'))
+    model.attribute('pending_entries', value.Integer(),
+                    getter=call.model_call('get_pending'),
+                    label='Entries in cache')
+    model.attribute('state', value.Enum(journaler.State),
+                    getter=getter.source_attr('state'),
+                    label='Connection state')
+
+    def get_type(self):
+        return type(self.source).__name__
+
+    def get_pending(self):
+        return len(self.source._cache)
+
+
+adapter.register(journaler.BrokerProxyWriter, IModel)(BaseJournalWriter)
+
+
+@adapter.register(journaler.PostgresWriter, IModel)
+class PostgresWriter(BaseJournalWriter):
+
+    model.identity('feat.agency.journaler.postgres_writer')
+    model.attribute('host', value.String(), getter=getter.source_attr('host'))
+    model.attribute('database', value.String(),
+                    getter=getter.source_attr('dbname'))
+    model.attribute('user', value.String(),
+                    getter=getter.source_attr('user'))
+    model.attribute('password', value.String(),
+                    getter=getter.source_attr('password'))
+    model.meta("html-order", "type, state, host, database, user, password, "
+               "pending_entries")
+
+
+@adapter.register(journaler.SqliteWriter, IModel)
+class PostgresWriter(BaseJournalWriter):
+
+    model.identity('feat.agency.journaler.sqlite_writer')
+    model.attribute('filename', value.String(),
+                    getter=getter.source_attr('_filename'))
 
 
 class AgencyAgents(model.Collection):

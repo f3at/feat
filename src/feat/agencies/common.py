@@ -72,7 +72,8 @@ class StateMachineMixin(object):
             return defer.succeed(self)
         d = defer.DeferredList(
             map(lambda state: self._notifier.wait(state), states),
-            fireOnOneCallback=True)
+            fireOnOneCallback=True, fireOnOneErrback=True,
+            consumeErrors=True)
         d.addCallback(lambda _: self)
         return d
 

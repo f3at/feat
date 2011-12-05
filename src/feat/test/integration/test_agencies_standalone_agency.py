@@ -60,6 +60,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         options = OptParseMock()
         options.agency_lock_path = self.lock_path
         options.agency_socket_path = self.socket_path
+        options.agency_journal = ["sqlite://%s" % (self.jourfile, )]
         self.agency = standalone_agency.Agency(options)
 
         yield self.spawn_agency()
@@ -141,6 +142,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
                 '--dbname', self.db_name,
                 '--rundir', os.path.abspath(os.path.curdir),
                 '--logdir', os.path.abspath(os.path.curdir),
+                '--journal', "sqlite://%s" % (self.jourfile, ),
                 '--socket-path', self.socket_path,
                 '--lock-path', self.lock_path,
                 '-D']

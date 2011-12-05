@@ -28,8 +28,7 @@ import types
 from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb
-
-from twisted.python import log as twisted_log
+from twisted.python import log as twisted_log, failure
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
@@ -110,12 +109,13 @@ def in_state(func, *states):
         if not self._cmp_state(states):
             d.addCallback(defer.drop_param, self.wait_for_state, *states)
         d.addCallback(defer.drop_param, func, self, *args, **kwargs)
+        d.addErrback(failure.Failure.trap, defer.CancelledError)
         return d
 
     return wrapper
 
 
-class Journaler(log.Logger, common.StateMachineMixin):
+class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     implements(IJournaler, ILogKeeper)
 
     log_category = 'journaler'
@@ -135,6 +135,36 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._notifier = defer.Notifier()
 
         self._on_rotate_cb = on_rotate_cb
+        # [(klass, params)]
+        self._possible_targets = list()
+
+    def set_connection_strings(self, con_strings):
+        self.log("set_connection_strings() called with: %r", con_strings)
+        for con_str in con_strings:
+            try:
+                self._possible_targets.append(parse_connstr(con_str))
+                self.log("Adding journaler target: %r",
+                         self._possible_targets[-1])
+            except error.FeatError:
+                self.error("Connection string %s is wrong. Ignoring!", con_str)
+                continue
+        if self._writer is None:
+            self.use_next_writer()
+
+    def use_next_writer(self):
+        self.log("Will use next journaler target on the list")
+        if not self._possible_targets:
+            raise ValueError("_possible targets are empty")
+        klass, kwargs = self._possible_targets[0]
+        # rotate the list
+        self._possible_targets.append(self._possible_targets.pop(0))
+
+        writer = klass(self, **kwargs)
+        d = self.close(flush_writer=False)
+        d.addCallback(defer.drop_param, writer.initiate)
+        d.addCallback(defer.drop_param, self.configure_with, writer)
+        d.addCallback(defer.drop_param, self._schedule_flush)
+        return d
 
     def configure_with(self, writer):
         self._ensure_state(State.disconnected)
@@ -176,6 +206,13 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._schedule_flush()
         return self._notifier.wait('flush')
 
+    def remote_insert_entries(self, entries):
+        # used by remote ProxyBrokerWriter
+        for entry in entries:
+            self._cache.append(entry)
+        self._schedule_flush()
+        return self._notifier.wait('flush')
+
     def is_idle(self):
         if len(self._cache) > 0:
             return False
@@ -189,8 +226,8 @@ class Journaler(log.Logger, common.StateMachineMixin):
         if callable(self._on_rotate_cb):
             self._on_rotate_cb()
 
-    def on_giveup(self, cache):
-        pass
+    def on_give_up(self):
+        time.call_next(self.use_next_writer)
 
     ### ILogObserver provider ###
 
@@ -243,11 +280,21 @@ class Journaler(log.Logger, common.StateMachineMixin):
     ### private ###
 
     def _schedule_flush(self):
+        if not self._cmp_state(State.connected):
+            return
         if self._flush_task is None:
             self._flush_task = time.call_next(self._flush)
 
-    @in_state(State.connected)
     def _flush(self):
+        d = defer.succeed(None)
+        if not self._cmp_state(State.connected):
+            d.addCallback(defer.drop_param,
+                          self.wait_for_state, State.connected)
+        d.addCallback(defer.drop_param, self._flush_body)
+        d.addErrback(self._flush_error)
+        return d
+
+    def _flush_body(self):
         entries = self._cache.fetch()
         if entries:
             d = self._writer.insert_entries(entries)
@@ -267,7 +314,11 @@ class Journaler(log.Logger, common.StateMachineMixin):
 
     def _flush_error(self, fail):
         self._cache.rollback()
-        fail.raiseException()
+        error.handle_failure(self, fail,
+                           'Flushing entries to the writer failed')
+        self._writer = None
+        self._set_state(State.disconnected)
+        self._flush_task = None
 
     def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
@@ -293,13 +344,13 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         common.StateMachineMixin.__init__(self, State.disconnected)
 
         self._broker = broker
-        self._set_writer(None)
+        self._set_journaler(None)
         self._cache = EntriesCache()
         self._semaphore = defer.DeferredSemaphore(1)
 
     def initiate(self):
-        d = self._broker.get_journal_writer()
-        d.addCallback(self._set_writer)
+        d = self._broker.get_journaler()
+        d.addCallback(self._set_journaler)
         d.addCallback(defer.drop_param, self._set_state, State.connected)
         return d
 
@@ -308,7 +359,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         if flush:
             d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._set_state, State.disconnected)
-        d.addCallback(defer.drop_param, self._set_writer, None)
+        d.addCallback(defer.drop_param, self._set_journaler, None)
         return d
 
     def configure_with(self, journaler):
@@ -339,7 +390,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         entries = self._cache.fetch()
         if entries:
             try:
-                d = self._writer.callRemote('insert_entries', entries)
+                d = self._journaler.callRemote('insert_entries', entries)
                 d.addCallbacks(defer.drop_param, defer.drop_param,
                                callbackArgs=(self._cache.commit, ),
                                errbackArgs=(self._cache.rollback, ))
@@ -349,18 +400,18 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
                 # instead of giving failed Deferred
                 self._cache.rollback()
 
-    def _set_writer(self, writer):
-        self._writer = writer
-        if isinstance(self._writer, pb.RemoteReference):
-            self._writer.notifyOnDisconnect(self._on_disconnect)
+    def _set_journaler(self, journaler):
+        self._journaler = journaler
+        if isinstance(self._journaler, pb.RemoteReference):
+            self._journaler.notifyOnDisconnect(self._on_disconnect)
 
     def _on_disconnect(self, writer):
         self._set_state(State.disconnected)
-        self._set_writer(None)
+        self._set_journaler(None)
 
 
-class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
-                   manhole.Manhole):
+class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
+
 
     implements(IJournalWriter, IJournalReader)
 
@@ -412,12 +463,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     ### IJournalReader ###
 
-    @manhole.expose()
     @in_state(State.connected)
     def get_histories(self):
         return History.fetch(self._db)
 
-    @manhole.expose()
     @in_state(State.connected)
     def get_entries(self, history, start_date=0, limit=None):
         if not isinstance(history, History):
@@ -552,7 +601,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             self.warning("We already have a journaler reference, substituing")
         self._journaler = journaler
 
-    @manhole.expose()
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
@@ -1006,7 +1054,7 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     _error_handler = error_handler
 
-    max_retries = None
+    max_retries = 2
     max_delay = 120
     initial_delay = 1
 
@@ -1066,6 +1114,24 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                       State.disconnected)
         return d
 
+    ### Used by model ###
+
+    @property
+    def host(self):
+        return self._credentials['host']
+
+    @property
+    def dbname(self):
+        return self._credentials['database']
+
+    @property
+    def user(self):
+        return self._credentials['user']
+
+    @property
+    def password(self):
+        return self._credentials['password']
+
     ### IJournalWriter ###
 
     def configure_with(self, journaler):
@@ -1099,19 +1165,20 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._delay = min([self._max_delay, self._delay * 2])
 
         self.warning("Connection to postgres failed with credentials: %r. "
-                     "Failure: %r. Will retry for %d time in %d seconds.",
-                     self._credentials, fail, self._retry, self._delay)
+                     "Failure: %r. ", self._credentials, fail)
         self._db.close()
         self._db = None
-        if self._retry > self._max_retries:
+        if self._retry + 1 > self._max_retries:
             error.handle_failure(self, fail,
-                                 "Giving up connecting to postgres. "
-                                 "I will give %d entries back to journaler.",
-                                 len(self._cache))
+                                 "Giving up connecting to postgres. ")
             if self._journaler:
-                self._journaler.on_give_up(self._cache)
+                # removes calls waiting for us to get connected
+                self._notifier.cancel(State.connected)
+                time.call_next(self._journaler.on_give_up)
             return
 
+        self.info("Will retry for %d time in %d seconds.",
+                  self._retry, self._delay)
         time.call_later(self._delay, self.initiate)
 
     @in_state(State.connected)
