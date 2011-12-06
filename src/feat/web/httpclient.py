@@ -132,7 +132,7 @@ class Protocol(http.BaseProtocol):
         protocol, status = parts
         self._response = Response()
         self._response.protocol = protocol
-        self._response.stats = status
+        self._response.status = status
 
     def process_length(self, length):
         assert self._response is not None, "No response information"
@@ -148,6 +148,10 @@ class Protocol(http.BaseProtocol):
     def process_set_header(self, name, value):
         assert self._response is not None, "No response information"
         self._response.headers[name] = value
+
+    def process_body_data(self, data):
+        assert self._response is not None, "No response information"
+        self._response.body = data
 
     def process_body_finished(self):
         d = self._requests.pop(0)
