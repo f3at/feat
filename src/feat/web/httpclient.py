@@ -151,7 +151,9 @@ class Protocol(http.BaseProtocol):
 
     def process_body_data(self, data):
         assert self._response is not None, "No response information"
-        self._response.body = data
+        if self._response.body is None:
+            self._response.body = ''
+        self._response.body += data
 
     def process_body_finished(self):
         d = self._requests.pop(0)
