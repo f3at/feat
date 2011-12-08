@@ -297,6 +297,7 @@ class Value(BaseValue):
         self._options_only = self._class_options_only
 
         self._use_default = self._class_use_default
+        self._default = None
         if self._use_default:
             self._default = self._validate_default(self._class_default)
 
