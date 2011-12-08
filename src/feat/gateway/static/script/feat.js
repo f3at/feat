@@ -19,7 +19,10 @@ feat.ajax.send = function(method, url, params) {
 };
 
 feat.ajax._onSuccess = function(env) {
-    console.log("Succees: ", env);
+    console.log("Success: ", env);
+    if (typeof env._redirect != 'undefined'){
+	document.location = env._redirect;
+    };
 };
 
 feat.ajax._onError = function(resp) {

@@ -276,7 +276,7 @@ def write_model(doc, obj, *args, **kwargs):
 def write_reference(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = obj.resolve(context)
-    render_json(result, doc)
+    render_json({'_redirect': result}, doc)
 
 
 def write_error(doc, obj, *args, **kwargs):
@@ -307,8 +307,10 @@ def read_action(doc, *args, **kwargs):
 
 
 document.register_writer(write_model, MIME_TYPE, IModel)
-document.register_writer(write_reference, MIME_TYPE, IReference)
 document.register_writer(write_error, MIME_TYPE, IErrorPayload)
+document.register_writer(write_reference, MIME_TYPE, IReference)
+# document.register_writer(write_serializable, MIME_TYPE,
+#                          serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)
 
 document.register_reader(read_action, MIME_TYPE, IActionPayload)
