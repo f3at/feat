@@ -21,22 +21,61 @@
 # Headers in this file shall remain intact.
 
 import json
-import types
 
 from zope.interface import implements
 
 from feat.common import defer, serialization
 from feat.common.serialization import json as feat_json
-from feat.models import reference
-from feat.web import http, document
+from feat.web import document
 
-from feat.models.interface import *
+from feat.models.interface import IModel, IReference, IErrorPayload
+from feat.models.interface import IActionPayload, IMetadata, IAttribute
+from feat.models.interface import IValueCollection, IValueOptions, IValueRange
 
 MIME_TYPE = "application/json"
 
 
 class ActionPayload(dict):
     implements(IActionPayload)
+
+
+class AsyncDict(object):
+
+    def __init__(self):
+        self._values = []
+        self._info = []
+
+    def add_if_true(self, key, value):
+        self.add(key, value, bool)
+
+    def add_if_not_none(self, key, value):
+        self.add(key, value, lambda v: v is not None)
+
+    def add_result(self, key, value, method_name, *args, **kwargs):
+        if not isinstance(value, defer.Deferred):
+            value = defer.succeed(value)
+        value.addCallback(self._call_value, method_name, *args, **kwargs)
+        self.add(key, value)
+
+    def add(self, key, value, condition=None):
+        if not isinstance(value, defer.Deferred):
+            value = defer.succeed(value)
+        self._info.append((key, condition))
+        self._values.append(value)
+
+    def wait(self):
+        d = defer.DeferredList(self._values, consumeErrors=True)
+        d.addCallback(self._process_values)
+        return d
+
+    ### private ###
+
+    def _process_values(self, param):
+        return dict((k, v) for (s, v), (k, c) in zip(param, self._info)
+                    if s and (c is None or c(v)))
+
+    def _call_value(self, value, method_name, *args, **kwargs):
+        return getattr(value, method_name)(*args, **kwargs)
 
 
 def render_metadata(obj):
@@ -52,130 +91,112 @@ def render_metadata(obj):
     return result
 
 
-@defer.inlineCallbacks
-def render_items(obj, context):
-    result = {}
-    items = yield obj.fetch_items()
+def render_model_items(model, context):
+    return model.fetch_items().addCallback(render_items, context)
+
+
+def render_items(items, context):
+    result = AsyncDict()
     for item in items:
-        result[item.name] = yield render_item(item, context)
-    defer.returnValue(result)
+        result.add(item.name, render_item(item, context))
+    return result.wait()
 
 
-@defer.inlineCallbacks
-def render_actions(obj, context):
-    result = {}
-    actions = yield obj.fetch_actions()
+def render_model_actions(model, context):
+    return model.fetch_actions().addCallback(render_actions, context)
+
+
+def render_actions(actions, context):
+    result = AsyncDict()
     for action in actions:
-        result[action.name] = yield render_action(action, context)
-    defer.returnValue(result)
+        result.add(action.name, render_action(action, context))
+    return result.wait()
 
 
-@defer.inlineCallbacks
 def render_item(item, context):
-    result = {}
-    model = yield item.fetch()
-    yield update_attribute(result, model, context)
-    if item.label is not None:
-        result["label"] = item.label
-    if item.desc is not None:
-        result["desc"] = item.desc
-    metadata = yield render_metadata(item)
-    if metadata:
-        result["metadata"] = metadata
-    ref = item.reference
-    if ref is not None:
-        result["href"] = ref.resolve(context)
-    defer.returnValue(result)
+    result = AsyncDict()
+    result.add_if_not_none("label", item.label)
+    result.add_if_not_none("desc", item.desc)
+    result.add_if_true("metadata", render_metadata(item))
+    result.add_result("href", item.reference, "resolve", context)
+    return item.fetch().addCallback(render_attribute, context, result)
 
 
-@defer.inlineCallbacks
-def update_attribute(result, model, context):
-    if IAttribute.providedBy(model):
-        subcontext = context.descend(model)
-        attr = IAttribute(model)
-        if attr.is_readable:
-            value = yield attr.fetch_value()
-            result["readable"] = True
-            result["value"] = render_value(value, subcontext)
-        result["info"] = render_value_info(attr.value_info)
-        if attr.is_writable:
-            result["writable"] = True
-        if attr.is_deletable:
-            result["deletable"] = True
+def render_attribute(model, context, result=None):
+    if not IAttribute.providedBy(model):
+        return result and result.wait()
+    result = result or AsyncDict()
+    subcontext = context.descend(model)
+    attr = IAttribute(model)
+    result.add("info", render_value_info(attr.value_info))
+    result.add_if_true("readable", attr.is_readable)
+    result.add_if_true("writable", attr.is_writable)
+    result.add_if_true("deletable", attr.is_deletable)
+    if attr.is_readable:
+        d = attr.fetch_value()
+        d.addCallback(render_value, subcontext)
+        result.add("value", d)
+    return result.wait()
 
 
-@defer.inlineCallbacks
 def render_action(action, context):
-    result = {}
-    if action.label is not None:
-        result["label"] = action.label
-    if action.desc is not None:
-        result["desc"] = action.desc
-    metadata = yield render_metadata(action)
-    if metadata:
-        result["metadata"] = metadata
-    result["method"] = context.get_action_method(action).name
-    if action.is_idempotent:
-        result["idempotent"] = bool(action.is_idempotent)
-    result["category"] = action.category.name
+    result = AsyncDict()
+    result.add_if_not_none("label", action.label)
+    result.add_if_not_none("desc", action.desc)
+    result.add_if_true("metadata", render_metadata(action))
+    result.add("method", context.get_action_method(action).name)
+    result.add_if_true("idempotent", bool(action.is_idempotent))
+    result.add("category", action.category.name)
+    result.add_result("href", action.reference, "resolve", context)
     if action.result_info is not None:
-        result["result"] = render_value_info(action.result_info)
-    params = render_params(action.parameters)
-    if params:
-        result["params"] = params
-    ref = action.reference
-    if ref is not None:
-        result["href"] = ref.resolve(context)
-    defer.returnValue(result)
+        result.add("result", render_value_info(action.result_info))
+    if action.parameters:
+        result.add("params", render_params(action.parameters))
+    return result.wait()
 
 
 def render_value_info(value):
-    result = {}
-    result["type"] = value.value_type.name
+    result = AsyncDict()
+    result.add("type", value.value_type.name)
     if value.use_default:
-        result["default"] = value.default
-    if value.label is not None:
-        result["label"] = value.label
-    if value.desc is not None:
-        result["desc"] = value.desc
-    metadata = render_metadata(value)
-    if metadata:
-        result["metadata"] = metadata
+        result.add("default", value.default)
+    result.add_if_not_none("label", value.label)
+    result.add_if_not_none("desc", value.desc)
+    result.add_if_true("metadata", render_metadata(value))
     if IValueCollection.providedBy(value):
         coll = IValueCollection(value)
-        result["allowed"] = [render_value_info(v) for v in coll.allowed_types]
-        result["ordered"] = coll.is_ordered
-        if coll.min_size is not None:
-            result["min_size"] = coll.min_size
-        if coll.max_size is not None:
-            result["max_size"] = coll.max_size
+        allowed = [render_value_info(v) for v in coll.allowed_types]
+        result.add("allowed", defer.join(*allowed))
+        result.add("ordered", coll.is_ordered)
+        result.add_if_not_none("min_size", coll.min_size)
+        result.add_if_not_none("max_size", coll.max_size)
     if IValueRange.providedBy(value):
         vrange = IValueRange(value)
-        result["minimum"] = vrange.minimum
-        result["maximum"] = vrange.maximum
-        if vrange.increment is not None:
-            result["increment"] = vrange.increment
+        result.add("minimum", vrange.minimum)
+        result.add("maximum", vrange.maximum)
+        result.add_if_not_none("increment", vrange.increment)
     if IValueOptions.providedBy(value):
         options = IValueOptions(value)
-        result["restricted"] = options.is_restricted
-        result["options"] = [{"label": o.label, "value": o.value}
-                             for o in options.iter_options()]
-    return result
+        result.add("restricted", options.is_restricted)
+        result.add("options", [{"label": o.label, "value": o.value}
+                               for o in options.iter_options()])
+    return result.wait()
 
 
 def render_params(params):
-    return dict([(p.name, render_param(p)) for p in params])
+    result = AsyncDict()
+    for param in params:
+        result.add(param.name, render_param(param))
+    return result.wait()
 
 
 def render_param(param):
-    result = {}
-    result["required"] = param.is_required
-    result["info"] = render_value_info(param.value_info)
-    if param.label is not None:
-        result["label"] = param.label
-    if param.desc is not None:
-        result["desc"] = param.desc
-    return result
+    result = AsyncDict()
+    result.add("required", param.is_required)
+    result.add("info", render_value_info(param.value_info))
+    result.add_if_not_none("label", param.label)
+    result.add_if_not_none("desc", param.desc)
+    return result.wait()
 
 
 def render_value(value, context):
@@ -184,84 +205,78 @@ def render_value(value, context):
     return value
 
 
-@defer.inlineCallbacks
 def render_verbose(model, context):
-    result = {}
-    result["identity"] = model.identity
-    name = model.name
-    if name is not None:
-        result["name"] = name
-    label = model.label
-    if label is not None:
-        result["label"] = label
-    desc = model.desc
-    if desc is not None:
-        result["desc"] = desc
-    if model.reference is not None:
-        result["href"] = model.reference.resolve(context)
-
-    yield update_attribute(result, model, context)
-
-    metadata = render_metadata(model)
-    items = yield render_items(model, context)
-    actions = yield render_actions(model, context)
-    if metadata:
-        result["metadata"] = metadata
-    if items:
-        result["items"] = items
-    if actions:
-        result["actions"] = actions
-
-    defer.returnValue(result)
+    result = AsyncDict()
+    result.add("identity", model.identity)
+    result.add_if_not_none("name", model.name)
+    result.add_if_not_none("label", model.label)
+    result.add_if_not_none("desc", model.desc)
+    result.add_result("href", model.reference, "resolve", context)
+    result.add_if_true("metadata", render_metadata(model))
+    result.add_if_true("items", render_model_items(model, context))
+    result.add_if_true("actions", render_model_actions(model, context))
+    return render_attribute(model, context, result)
 
 
-@defer.inlineCallbacks
-def render_compact(model, context):
+def render_compact_model(model, context):
     if IAttribute.providedBy(model):
         attr = IAttribute(model)
         if attr.is_readable:
-            value = yield attr.fetch_value()
-            result = render_value(value, context)
-            defer.returnValue(result)
-        defer.returnValue(None)
+            d = attr.fetch_value()
+            d.addCallback(render_value, context)
+            return d
+        return defer.succeed(None)
 
-    result = {}
-    if model.reference is not None:
-        result["href"] = model.reference.resolve(context)
-    items = yield model.fetch_items()
+    result = AsyncDict()
+    result.add_result("href", model.reference, "resolve", context)
+    d = model.fetch_items()
+    d.addCallback(render_compact_items, context, result)
+    return d
+
+
+def render_compact_items(items, context, result):
     for item in items:
-        submodel = yield item.fetch()
-        if IAttribute.providedBy(submodel):
-            attr = IAttribute(submodel)
-            if attr.is_readable:
-                value = yield attr.fetch_value()
-                subcontext = context.descend(submodel)
-                result[attr.name] = render_value(value, subcontext)
-        else:
-            ref = item.reference
-            if ref is not None:
-                result[item.name] = ref.resolve(context)
-    defer.returnValue(result)
+        d = item.fetch()
+        d.addCallback(render_compact_submodel, item, context)
+        result.add(item.name, d)
+    return result.wait()
 
 
-@defer.inlineCallbacks
+def render_compact_submodel(submodel, item, context):
+    if not IAttribute.providedBy(submodel):
+        if item.reference is not None:
+            return item.reference.resolve(context)
+    else:
+        attr = IAttribute(submodel)
+        if attr.is_readable:
+            d = attr.fetch_value()
+            d.addCallback(render_value, context)
+            return d
+    raise Exception("No compact value")
+
+
+def render_json(data, doc):
+    enc = CustomJSONEncoder(encoding=doc.encoding)
+    doc.write(enc.encode(data))
+
+
 def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
 
     verbose = "format" in kwargs and "verbose" in kwargs["format"]
 
     if verbose:
-        result = yield render_verbose(obj, context)
+        d = render_verbose(obj, context)
     else:
-        result = yield render_compact(obj, context)
+        d = render_compact_model(obj, context)
 
-    enc = CustomJSONEncoder(encoding=doc.encoding)
-    doc.write(enc.encode(result))
+    return d.addCallback(render_json, doc)
 
 
 def write_reference(doc, obj, *args, **kwargs):
     context = kwargs["context"]
-    return obj.resolve(context)
+    result = obj.resolve(context)
+    render_json(result, doc)
 
 
 def write_error(doc, obj, *args, **kwargs):
@@ -274,13 +289,11 @@ def write_error(doc, obj, *args, **kwargs):
         result["debug"] = obj.debug
     if obj.trace is not None:
         result["trace"] = obj.trace
-    enc = CustomJSONEncoder(encoding=doc.encoding)
-    doc.write(enc.encode(result))
+    render_json(result, doc)
 
 
 def write_anything(doc, obj, *args, **kwargs):
-    enc = CustomJSONEncoder(encoding=doc.encoding)
-    doc.write(enc .encode(obj))
+    render_json(obj, doc)
 
 
 def read_action(doc, *args, **kwargs):
