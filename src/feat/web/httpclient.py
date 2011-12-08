@@ -83,6 +83,10 @@ class Protocol(http.BaseProtocol):
                 protocol=None, headers=None, body=None):
         headers = dict(headers) if headers is not None else {}
         if body:
+            # without typecast to str, in case of unicode input
+            # the server just breaks connection with me
+            # TODO: think if it cannot be fixed better
+            body = str(body)
             headers["content-length"] = len(body)
         lines = []
         http.compose_request(method, location, protocol, buffer=lines)
