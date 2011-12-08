@@ -22,17 +22,20 @@
 # Headers in this file shall remain intact.
 
 import json
+import pprint
 import types
+import StringIO
 
 from zope.interface import implements
 
-from feat.common import defer, enum, serialization
+from feat.common import defer, enum, serialization, deep_compare
 from feat.common.serialization import json as feat_json
 from feat.models import interface, applicationjson, effect, reference
 from feat.models import model, action, value, call, getter, setter, effect
-from feat.web import document
+from feat.web import document, http
 
 from feat.test import common
+from feat.models.interface import ActionCategories
 
 
 class DummyEnum(enum.Enum):
@@ -52,7 +55,7 @@ class DummyContext(object):
     ### public ###
 
     def get_action_method(self, action):
-        return "DUMMY"
+        return http.Methods.POST
 
     ### IContext ###
 
@@ -104,7 +107,7 @@ class DummyParent(serialization.Snapshotable):
 @serialization.register
 class DummySerializable(serialization.Serializable):
 
-    type_name = "dummy"
+    type_name = "json-dummy"
 
     def __init__(self):
         self.toto = 1
@@ -131,12 +134,23 @@ class DummySerializable(serialization.Serializable):
 
 
 class ListOfInt(value.Collection):
+    value.label("List Of Int")
+    value.desc("List of integers")
     value.allows(value.Integer())
     value.min_size(1)
     value.max_size(3)
+    value.meta("type-meta", "METAVALUE")
 
 
-class RootModel(model.Model):
+class ActionTest(action.Action):
+    action.label("Test Action")
+    action.desc("Test action description")
+    action.param("param1", value.Integer(), label="PARAM1 LABEL")
+    action.param("param2", value.Integer(), desc="PARAM2 DESC")
+    action.meta("action-meta", "METAVALUE")
+
+
+class RootModelTest(model.Model):
     model.identity("test.root")
     model.attribute("toto", value.String(),
                     getter=getter.model_getattr(),
@@ -160,13 +174,10 @@ class RootModel(model.Model):
     model.create("post1", value=value.String("FOO"),
                  label="POST1 LABEL")
     model.create("post2", value=ListOfInt(),
-                 params=action.Param("param1", value.Integer()),
+                 params=action.Param("param1", value.Integer(),
+                                     is_required=False),
                  desc="POST2 DESC")
-    model.create("post2",
-                 params=[action.Param("param1", value.Integer(),
-                                      label="PARAM1 LABEL"),
-                         action.Param("param2", value.Integer(),
-                                      desc="PARAM2 DESC")])
+    model.action("post3", ActionTest)
 
     def __init__(self, source):
         model.Model.__init__(self, source)
@@ -176,7 +187,7 @@ class RootModel(model.Model):
         self.tutu = DummyEnum.b
 
 
-class StructModel(model.Model):
+class StructModelTest(model.Model):
     model.identity("test.structs")
     model.attribute("dummy1", value.Struct(),
                     getter=getter.model_getattr())
@@ -184,6 +195,9 @@ class StructModel(model.Model):
                     getter=getter.model_getattr())
     model.attribute("dummy3", value.Struct(),
                     getter=getter.model_getattr())
+
+    model.meta("model-meta", "METAVALUE", "METASCHEME")
+    model.item_meta("dummy1", "item-meta", "METAVALUE")
 
     def __init__(self, source):
         model.Model.__init__(self, source)
@@ -203,18 +217,350 @@ class ReferenceModel(model.Model):
 class TestApplicationJSON(common.TestCase):
 
     @defer.inlineCallbacks
-    def check(self, obj, expected, exp_type=None, encoding="UTF8"):
+    def check(self, obj, expected, exp_type=None,
+              encoding="UTF8", verbose=False):
         doc = document.WritableDocument("application/json",
                                         encoding=encoding)
         ctx = DummyContext(("ROOT", ), ("root", ))
-        yield document.write(doc, obj, context=ctx)
+        fmt = "verbose" if verbose else "compact"
+        yield document.write(doc, obj, context=ctx, format=fmt)
         data = doc.get_data()
         self.assertTrue(isinstance(data, str))
-        struct = json.loads(unicode(data)) # for "" to unserialize to u""
+        struct = json.loads(data, encoding=encoding)
         if exp_type is not None:
             self.assertTrue(isinstance(struct, exp_type))
-        self.assertEqual(expected, struct)
+        if expected != struct:
+            path, msg = deep_compare(expected, struct)
+            expected_str = StringIO.StringIO()
+            result_str = StringIO.StringIO()
+            pprint.pprint(expected, stream=expected_str)
+            pprint.pprint(struct, stream=result_str)
+            self.fail("ERROR in %s: %s\nEXPECTED:\n%s\nRESULT:\n%s"
+                      % (path, msg, expected_str.getvalue(),
+                         result_str.getvalue()))
         defer.returnValue(data)
+
+    def vcheck(self, obj, expected, exp_type=None, encoding="UTF8"):
+        return self.check(obj, expected, exp_type=exp_type,
+                          encoding=encoding, verbose=True)
+
+    @defer.inlineCallbacks
+    def testVerboseactModelWriter(self):
+        rm = RootModelTest(object())
+
+        exp = {u"identity": u"test.root",
+               u"items":
+               {u"toto": {u"label": u"TOTO LABEL",
+                          u"desc": u"TOTO DESC",
+                          u"readable": True,
+                          u"value": u"spam",
+                          u"href": u"root/toto",
+                          u"info": {u"type": u"string"}},
+                u"tata": {u"label": u"TATA LABEL",
+                          u"href": u"root/tata",
+                          u"writable": True,
+                          u"info": {u"type": u"integer"}},
+                u"titi": {u"desc": u"TITI DESC",
+                          u"value": True,
+                          u"readable": True,
+                          u"writable": True,
+                          u"href": u"root/titi",
+                          u"info": {u"type": u"boolean",
+                                    u"options":
+                                    [{u"label": u"True", u"value": True},
+                                     {u"label": u"False", u"value": False}],
+                                    u"restricted": True}},
+                u"tutu": {u"value": u"B!",
+                          u"href": u"root/tutu",
+                          u"readable": True,
+                          u"info": {u"type": u"string",
+                                    u"options":
+                                    [{u"label": u"A", u"value": u"A"},
+                                     {u"label": u"B!", u"value": u"B!"}],
+                                    u"restricted": True}},
+                u"tete": {u"value": u"root/test/tete",
+                          u"href": u"root/tete",
+                          u"readable": True,
+                          u"info": {u"type": u"reference"}},
+                u"structs": {u"href": u"root/structs"},
+                u"refs": {u"href": u"root/refs"}},
+               u"actions":
+               {u"del": {u"label": u"DEL LABEL",
+                         u"desc": u"DEL DESC",
+                         u"href": u"root/_del",
+                         u"category": u"delete",
+                         u"idempotent": True,
+                         u"method": u"POST", # given by the context
+                         u"result": {u"type": u"model"}},
+                u"post1": {u"label": u"POST1 LABEL",
+                           u"href": u"root/_post1",
+                           u"category": u"create",
+                           u"method": u"POST", # given by the context
+                           u"params": {u"value":
+                                       {u"required": True,
+                                        u"info": {u"default": u"FOO",
+                                                  u"type": u"string"}}},
+                           u"result": {u"type": u"model"}},
+                u"post2": {u"desc": u"POST2 DESC",
+                           u"category": u"create",
+                           u"href": u"root/_post2",
+                           u"method": u"POST",
+                           u"params":
+                           {u"value": {u"required": True,
+                                       u"info": {u"label": u"List Of Int",
+                                                 u"desc": u"List of integers",
+                                                 u"type": u"collection",
+                                                 u"max_size": 3,
+                                                 u"min_size": 1,
+                                                 u"ordered": True,
+                                                 u"allowed":
+                                                 [{u"type": u"integer"}],
+                                                 u"metadata":
+                                                 [{u"name": u"type-meta",
+                                                   u"value": u"METAVALUE"}]}},
+                            u"param1": {u"required": False,
+                                        u"info": {u"type": u"integer"}}},
+                           u"result": {u"type": u"model"}},
+                u"post3": {u"label": u"Test Action",
+                           u"desc": u"Test action description",
+                           u"href": u"root/_post3",
+                           u"category": u"command",
+                           u"method": u"POST",
+                           u"params": {u"param1":
+                                       {u"label": u"PARAM1 LABEL",
+                                        u"required": True,
+                                        u"info": {u"type": u"integer"}},
+                                       u"param2":
+                                       {u"desc": u"PARAM2 DESC",
+                                        u"required": True,
+                                        u"info": {u"type": u"integer"}}},
+                           u"metadata": [{u"name": u"action-meta",
+                                          u"value": u"METAVALUE"}]}}}
+        yield self.vcheck(rm, exp)
+
+        item = yield rm.fetch_item("toto")
+        toto = yield item.fetch()
+
+        exp = {u"identity": u"test.root.toto",
+               u"name": u"toto",
+               u"label": u"TOTO LABEL",
+               u"desc": u"TOTO DESC",
+               u"readable": True,
+               u"value": u"spam",
+               u"info": {u"type": u"string"},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"string"}}}}
+        yield self.vcheck(toto, exp)
+
+        item = yield rm.fetch_item("tata")
+        tata = yield item.fetch()
+
+        exp = {u"identity": u"test.root.tata",
+               u"label": u"TATA LABEL",
+               u"name": u"tata",
+               u"writable": True,
+               u"info": {u"type": u"integer"},
+               u"actions":
+               {u"set": {u"category": u"update",
+                         u"href": u"root/_set",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"params":
+                         {u"value":
+                          {u"info": {u"type": u"integer"},
+                           u"required": True}},
+                         u"result":
+                         {u"type": u"integer"}}}}
+        yield self.vcheck(tata, exp)
+
+        item = yield rm.fetch_item("titi")
+        titi = yield item.fetch()
+
+        exp = {u"identity": u"test.root.titi",
+               u"name": u"titi",
+               u"desc": u"TITI DESC",
+               u"readable": True,
+               u"writable": True,
+               u"value": True,
+               u"info":
+               {u"type": u"boolean",
+                u"options":
+                [{u"label": u"True", u"value": True},
+                 {u"label": u"False", u"value": False}],
+                u"restricted": True},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result":
+                         {u"type": u"boolean",
+                          u"options":
+                          [{u"label": u"True", u"value": True},
+                           {u"label": u"False", u"value": False}],
+                          u"restricted": True}},
+                u"set": {u"category": u"update",
+                         u"href": u"root/_set",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"params":
+                         {u"value":
+                          {u"required": True,
+                           u"info":
+                           {u"type": u"boolean",
+                            u"options":
+                            [{u"label": u"True", u"value": True},
+                             {u"label": u"False", u"value": False}],
+                            u"restricted": True}}},
+                         u"result": {u"type": u"boolean",
+                                     u"options":
+                                     [{u"label": u"True", u"value": True},
+                                      {u"label": u"False", u"value": False}],
+                                     u"restricted": True}}}}
+
+        yield self.vcheck(titi, exp)
+
+        item = yield rm.fetch_item("tutu")
+        tutu = yield item.fetch()
+
+        exp = {u"identity": u"test.root.tutu",
+               u"name": u"tutu",
+               u"readable": True,
+               u"value": u"B!",
+               u"info": {u"type": u"string",
+                         u"options":
+                         [{u"label": u"A", u"value": u"A"},
+                          {u"label": u"B!", u"value": u"B!"}],
+                         u"restricted": True},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"string",
+                                     u"options":
+                                     [{u"label": u"A", u"value": u"A"},
+                                      {u"label": u"B!", u"value": u"B!"}],
+                                     u"restricted": True}}}}
+        yield self.vcheck(tutu, exp)
+
+        item = yield rm.fetch_item("tete")
+        tete = yield item.fetch()
+
+        exp = {u"identity": u"test.root.tete",
+               u"name": u"tete",
+               u"readable": True,
+               u"value": u"root/test/tete",
+               u"info": {u"type": u"reference"},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"reference"}}}}
+        yield self.vcheck(tete, exp)
+
+        item = yield rm.fetch_item("structs")
+        structs = yield item.fetch()
+
+        exp = {u"identity": u"test.structs",
+               u"name": u"structs",
+               u"items":
+               {u"dummy1": {u"href": u"root/dummy1",
+                            u"info": {u"type": u"struct"},
+                            u"readable": True,
+                            u"value": {u"toto": 3.14,
+                                       u"tata": u"",
+                                       u"titi": None,
+                                       u"tutu": u"áéíóú"},
+                            u"metadata": [{u"name": u"item-meta",
+                                           u"value": u"METAVALUE"}]},
+                u"dummy2": {u"href": u"root/dummy2",
+                            u"info": {u"type": u"struct"},
+                            u"readable": True,
+                            u"value": {u".type": u"json-dummy",
+                                       u"toto": 1,
+                                       u"tata": u"spam",
+                                       u"titi": True,
+                                       u"tutu": u"áéíóú",
+                                       u"tete": ""}},
+                u"dummy3": {u"href": u"root/dummy3",
+                            u"info": {u"type": u"struct"},
+                            u"readable": True,
+                            u"value": {u"a": {u"value": 1},
+                                       u"b": {u"value": 2}}}},
+               u"metadata": [{u"name": u"model-meta",
+                              u"value": u"METAVALUE",
+                              u"scheme": u"METASCHEME"}]}
+        yield self.vcheck(structs, exp)
+
+        item = yield structs.fetch_item("dummy1")
+        dummy1 = yield item.fetch()
+
+        exp = {u"identity": u"test.structs.dummy1",
+               u"name": u"dummy1",
+               u"info": {u"type": u"struct"},
+               u"readable": True,
+               u"value": {u"toto": 3.14,
+                          u"tata": "",
+                          u"titi": None,
+                          u"tutu": u"áéíóú"},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"struct"}}}}
+        yield self.vcheck(dummy1, exp)
+
+        item = yield structs.fetch_item("dummy2")
+        dummy2 = yield item.fetch()
+
+        exp = {u"identity": u"test.structs.dummy2",
+               u"name": u"dummy2",
+               u"readable": True,
+               u"info": {u"type": u"struct"},
+               u"value": {u".type": u"json-dummy",
+                          u"toto": 1,
+                          u"tata": u"spam",
+                          u"titi": True,
+                          u"tutu": u"áéíóú",
+                          u"tete": u""},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"struct"}}}}
+        yield self.vcheck(dummy2, exp)
+
+        item = yield structs.fetch_item("dummy3")
+        dummy3 = yield item.fetch()
+
+        exp = {u"identity": u"test.structs.dummy3",
+               u"name": u"dummy3",
+               u"readable": True,
+               u"info": {u"type": u"struct"},
+               u"value": {u"a": {u"value": 1}, u"b": {u"value": 2}},
+               u"actions":
+               {u"get": {u"category": u"retrieve",
+                         u"href": u"root/_get",
+                         u"idempotent": True,
+                         u"method": u"POST",
+                         u"result": {u"type": u"struct"}}}}
+        yield self.vcheck(dummy3, exp)
+
+        item = yield rm.fetch_item("refs")
+        structs = yield item.fetch()
+
+        exp = {u"identity": u"test.refs",
+               u"name": u"refs",
+               u"href": u"root/some/place"}
+        yield self.vcheck(structs, exp)
 
     @defer.inlineCallbacks
     def testErrorWriter(self):
@@ -247,7 +593,7 @@ class TestApplicationJSON(common.TestCase):
 
     @defer.inlineCallbacks
     def testCompactModelWriter(self):
-        rm = RootModel(object())
+        rm = RootModelTest(object())
         yield self.check(rm, {u"structs": u"root/structs",
                               u"refs": u"root/refs",
                               u"toto": u"spam",
@@ -276,7 +622,7 @@ class TestApplicationJSON(common.TestCase):
                                                u"titi": None,
                                                u"toto": 3.14,
                                                u"tutu": u"áéíóú"},
-                                   u"dummy2": {u".type": u"dummy",
+                                   u"dummy2": {u".type": u"json-dummy",
                                                u"tata": u"spam",
                                                u"tete": u"",
                                                u"titi": True,
@@ -293,7 +639,7 @@ class TestApplicationJSON(common.TestCase):
                                   u"tutu": u"áéíóú"})
         item = yield structs.fetch_item("dummy2")
         dummy2 = yield item.fetch()
-        yield self.check(dummy2, {u".type": u"dummy",
+        yield self.check(dummy2, {u".type": u"json-dummy",
                                   u"tata": u"spam",
                                   u"tete": u"",
                                   u"titi": True,
@@ -335,8 +681,9 @@ class TestApplicationJSON(common.TestCase):
 
     @defer.inlineCallbacks
     def testDefaultWriter(self):
-        yield self.check("", u"", unicode)
-        yield self.check(u"", u"", unicode)
+        # some json implemention gives non-unicode empty strings
+        yield self.check("", u"", (unicode, str))
+        yield self.check(u"", u"", (unicode, str))
         yield self.check(u"áéíóú", u"áéíóú", unicode)
         yield self.check("\xc3\xa1\xc3\xa9\xc3\xad\xc3\xb3\xc3\xba",
                          u"áéíóú", unicode)
@@ -364,7 +711,7 @@ class TestApplicationJSON(common.TestCase):
 
         obj = DummySerializable()
         data = yield self.check(obj,
-                                {u'.type': u'dummy',
+                                {u".type": u"json-dummy",
                                  u"tata": u"spam",
                                  u"titi": True,
                                  u"toto": 1,
@@ -382,7 +729,7 @@ class TestApplicationJSON(common.TestCase):
                                  u"tutu": u"áéíóú"}])
 
         yield self.check({"toto": DummySerializable()},
-                         {u"toto": {u'.type': u'dummy',
+                         {u"toto": {u".type": u"json-dummy",
                                     u"tata": u"spam",
                                     u"titi": True,
                                     u"toto": 1,

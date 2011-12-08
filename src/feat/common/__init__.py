@@ -105,7 +105,7 @@ def deep_compare(expected, value):
             return path, msg
 
         for k in v1:
-            new_path = path + "[%r]" % (k, )
+            new_path = (path if path else "value") + "[%r]" % (k, )
             a = v1[k]
             if k not in v2:
                 return new_path, "key not found"

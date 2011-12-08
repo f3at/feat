@@ -95,8 +95,9 @@ def update_attribute(result, model, context):
         attr = IAttribute(model)
         if attr.is_readable:
             value = yield attr.fetch_value()
+            result["readable"] = True
             result["value"] = render_value(value, subcontext)
-        result["type"] = render_value_info(attr.value_info)
+        result["info"] = render_value_info(attr.value_info)
         if attr.is_writable:
             result["writable"] = True
         if attr.is_deletable:
@@ -114,7 +115,8 @@ def render_action(action, context):
     if metadata:
         result["metadata"] = metadata
     result["method"] = context.get_action_method(action).name
-    result["idempotent"] = bool(action.is_idempotent)
+    if action.is_idempotent:
+        result["idempotent"] = bool(action.is_idempotent)
     result["category"] = action.category.name
     if action.result_info is not None:
         result["result"] = render_value_info(action.result_info)
@@ -168,7 +170,7 @@ def render_params(params):
 def render_param(param):
     result = {}
     result["required"] = param.is_required
-    result["value"] = render_value_info(param.value_info)
+    result["info"] = render_value_info(param.value_info)
     if param.label is not None:
         result["label"] = param.label
     if param.desc is not None:
