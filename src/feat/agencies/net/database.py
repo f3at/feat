@@ -180,7 +180,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.retry += 1
         wait = min(2**(self.retry - 1), 300)
         self.debug('CouchDB refused connection for %d time. '
-                   'This indicates missconfiguration or temporary '
+                   'This indicates misconfiguration or temporary '
                    'network problem. Will try to reconnect in %d seconds.',
                    self.retry, wait)
         if self.reconnector is None or not self.reconnector.active():
@@ -199,7 +199,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             return
         elif reason.check(ResponseDone):
             self.debug("CouchDB closed the notification listener. This might "
-                       "indicate missconfiguration. Take look at it")
+                       "indicate misconfiguration. Take a look at it.")
             return
         elif reason.check(error.ConnectionRefusedError):
             self.reconnect()
@@ -274,7 +274,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             else:
                 self.info(exception.response)
                 raise NotImplementedError(
-                    'Behaviour for response code %d not define yet, FIXME!' %
+                    'Behaviour for response code %d not defined yet, FIXME!' %
                     status)
         elif failure.check(error.ConnectionRefusedError):
             self._on_disconnected()
