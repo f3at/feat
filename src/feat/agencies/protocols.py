@@ -204,7 +204,7 @@ class BaseInterest(log.Logger):
         self._active += 1
 
     def _message_processed(self, message):
-        self.debug('Message %s for protocol %s processed',
+        self.log('Message %s for protocol %s processed',
                    message.protocol_type, message.protocol_id)
         assert self._active > 0
         self._active -= 1
