@@ -704,7 +704,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.warning('Received the notification about other database session '
                      'changing our descriptor. This means that I got '
                      'restarted on some other machine and need to commit '
-                     'suacide :(. Or you have a bug ;).')
+                     'suicide :(. Or you have a bug ;).')
         return self.terminate_hard()
 
     def _configuration_changed(self, doc_id, rev, deleted, own_change):
@@ -732,7 +732,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         Run at the initialization before calling any code at agent-side.
         Ensures that descriptor holds our value, this effectively creates a
         lock on the descriptor - if other instance is running somewhere out
-        there it would get the notification update and suacide.
+        there it would get the notification update and suicide.
         '''
 
         def do_set(desc):

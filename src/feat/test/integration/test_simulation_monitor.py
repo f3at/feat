@@ -395,7 +395,7 @@ class MonitoringMonitor(common.SimulationTest):
         '''
         This testcase first starts the agent which imitates the agent running
         in the standalone agency who is not affected by the failure.
-        Expected result is that the agent commits suacide after he receives
+        Expected result is that the agent commits suicide after he receives
         on_buried notification of host agent.
         '''
         script = format_block("""
@@ -1375,7 +1375,7 @@ class TestRealMonitoring(common.SimulationTest):
         # wait to detect the death of the monitor agent from shard 1
         yield common.delay(None, 10)
         # Now all structural agents in shard 1 should receive
-        # on_buried notification and suacide
+        # on_buried notification and suicide
         self.assertEqual(1, self.count_agents('monitor_agent'))
         self.assertEqual(1, self.count_agents('raage_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
