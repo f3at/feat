@@ -148,10 +148,12 @@ class JournalReplayEntry(object):
                                   % (self.function_id, se_desc))
 
             frozen_result = self._replay.serializer.freeze(result)
+            unfrozen_result = self._replay.unserializer.convert(frozen_result)
+            expected = self._replay.unserializer.convert(self.frozen_result)
 
-            if frozen_result != self.frozen_result:
-                res = pformat(self._replay.unserializer.convert(frozen_result))
-                exp = pformat(self.result)
+            if unfrozen_result != expected:
+                res = pformat(unfrozen_result)
+                exp = pformat(expected)
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
