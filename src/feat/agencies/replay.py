@@ -155,7 +155,7 @@ class JournalReplayEntry(object):
 
                 diffs = text_helper.format_diff(exp, res, "\n               ")
                 raise ReplayError("Function %r replay result "
-                                  "do not match recorded one.\n"
+                                  "does not match recorded one.\n"
                                   "  RESULT:      %s\n"
                                   "  EXPECTED:    %s\n"
                                   "  DIFFERENCES: %s\n"
