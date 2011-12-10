@@ -1395,7 +1395,7 @@ class DynamicModelItem(BaseModelItem):
         return self._child
 
     def fetch(self):
-        return self._child
+        return defer.succeed(self._child)
 
     ### private ###
 

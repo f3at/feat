@@ -250,7 +250,8 @@ class _InterfaceValue(BaseValue):
     def publish(self, value):
         new_value = BaseValue.publish(self, value)
         if not self._value_interface.providedBy(value):
-            raise ValueError(value)
+            raise ValueError("%r does not provide %r interface" %
+                             (value, self._value_interface))
         return new_value
 
 
@@ -258,6 +259,14 @@ class Response(_InterfaceValue):
     """Definition of a model value."""
 
     _value_interface = IResponse
+
+    value_type(ValueTypes.model)
+
+
+class Model(_InterfaceValue):
+    """Definition of a model value."""
+
+    _value_interface = IModel
 
     value_type(ValueTypes.model)
 
