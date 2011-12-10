@@ -228,7 +228,8 @@ def render_compact_model(model, context):
         return defer.succeed(None)
 
     result = AsyncDict()
-    result.add_result("href", model.reference, "resolve", context)
+    if model.reference:
+        result.add_result("href", model.reference, "resolve", context)
     d = model.fetch_items()
     d.addCallback(render_compact_items, context, result)
     return d
