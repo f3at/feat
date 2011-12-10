@@ -72,7 +72,7 @@ def keep_param(_param, _method, *args, **kwargs):
 def call_param(_param, _attr_name, *args, **kwargs):
     _method = getattr(_param, _attr_name, None)
     assert _method is not None, \
-           "%r do not have attribute %s" % (_param, _attr_name, )
+           "%r does not have attribute %s" % (_param, _attr_name, )
     assert callable(_method), "method %r is not callable" % (_method, )
     return _method(*args, **kwargs)
 
