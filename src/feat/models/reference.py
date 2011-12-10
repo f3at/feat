@@ -122,6 +122,15 @@ class Local(Reference):
         return self._location
 
 
+class ExternalURL(Reference):
+
+    def __init__(self, url):
+        self._url = url
+
+    def resolve(self, context):
+        return self._url
+
+
 class Absolute(Reference):
 
     implements(IAbsoluteReference)

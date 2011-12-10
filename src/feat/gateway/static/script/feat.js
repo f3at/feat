@@ -20,8 +20,8 @@ feat.ajax.send = function(method, url, params) {
 
 feat.ajax._onSuccess = function(env) {
     console.log("Success: ", env);
-    if (typeof env._redirect != 'undefined'){
-	document.location = env._redirect;
+    if (typeof env.href != 'undefined'){
+	document.location = env.href;
     };
 };
 

@@ -277,7 +277,7 @@ def write_model(doc, obj, *args, **kwargs):
 def write_reference(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = obj.resolve(context)
-    render_json({'_redirect': result}, doc)
+    render_json({'href': result}, doc)
 
 
 def write_error(doc, obj, *args, **kwargs):

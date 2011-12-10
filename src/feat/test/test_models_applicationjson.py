@@ -589,7 +589,7 @@ class TestApplicationJSON(common.TestCase):
     @defer.inlineCallbacks
     def testReferenceWriter(self):
         yield self.check(reference.Local("some", "place"),
-                         {'_redirect': "root/some/place"})
+                         {'href': "root/some/place"})
 
     @defer.inlineCallbacks
     def testCompactModelWriter(self):
