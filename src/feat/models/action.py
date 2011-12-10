@@ -298,10 +298,21 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
         return enabled(None, context)
 
     def perform(self, *args, **kwargs):
+
+        def raise_if_disabled(enabled, value):
+            if not enabled:
+                raise TypeError('Action %s is not enabled' % (self.name, ))
+            return value
+
+        def check_enabled(value):
+            d = self.fetch_enabled()
+            d.addCallback(raise_if_disabled, value)
+            return d
+
         parameters = self._parameters # Only once cause it is costly
         value = None
         d = defer.Deferred()
-
+        d.addCallback(check_enabled)
         try:
 
             if len(args) > 0:

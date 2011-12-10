@@ -173,6 +173,10 @@ class ModelWriter(log.Logger):
         actions = yield model.fetch_actions()
         actions = [x for x in actions
                    if x.category != ActionCategories.retrieve]
+        for action in list(actions):
+            enabled = yield action.fetch_enabled()
+            if not enabled:
+                actions.remove(action)
         if not actions:
             return
         ul = markup.ul(_class="actions")
