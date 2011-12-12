@@ -220,10 +220,47 @@ class DBTests(common.TestCase):
         import psycopg2
         self.flushLoggedErrors(psycopg2.OperationalError)
 
+    @common.attr(timeout=15)
+    @defer.inlineCallbacks
+    def testMigratingEntries(self):
+        writer = journaler.SqliteWriter(self)
+        data = [self._generate_data() for x in range(2400)]
+        data += [self._generate_log() for x in range(200)]
+        yield writer.initiate()
+        yield writer.insert_entries(data)
+
+        jour = journaler.Journaler()
+        jour.set_connection_strings(['sqlite://journal.sqlite3'])
+
+        yield jour.migrate_entries(writer)
+        yield self._assert_entries(jour, 2400)
+        yield self._assert_entries(writer, 0)
+
+        logs = yield writer.get_log_entries()
+        self.assertEqual(0, len(logs))
+        logs = yield jour._writer.get_log_entries()
+        # we have some extra logs comming from normal logging
+        self.assertTrue(len(logs) > 200)
+        yield writer.close()
+
     def _get_tmp_file(self):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
         self.addCleanup(os.remove, name)
         return name
+
+    def _generate_log(self, **opts):
+        defaults = {
+            'entry_type': 'log',
+            'message': 'Some log message',
+            'level': 2,
+            'category': 'feat',
+            'log_name': None,
+            'file_path': __file__,
+            'line_num': 100,
+            'timestamp': int(time.time())}
+
+        defaults.update(opts)
+        return defaults
 
     def _generate_data(self, **opts):
         defaults = {
@@ -245,12 +282,16 @@ class DBTests(common.TestCase):
 
     @defer.inlineCallbacks
     def _assert_entries(self, jour, num):
-        histories = yield jour._writer.get_histories()
+        if isinstance(jour, journaler.Journaler):
+            writer = jour._writer
+        else:
+            writer = jour
+        histories = yield writer.get_histories()
         self.assertIsInstance(histories, list)
         self.assertTrue(len(histories) > 0)
         if num > 0:
             self.assertIsInstance(histories[0], journaler.History)
-            entries = yield jour._writer.get_entries(histories[0])
+            entries = yield writer.get_entries(histories[0])
             self.assertIsInstance(entries, list)
             self.assertEqual(num, len(entries))
 
@@ -271,4 +312,3 @@ class TestParsingConnection(common.TestCase):
         self.assertEqual('feat', params['password'])
         self.assertEqual('flt1.somecluster.lt.net', params['host'])
         self.assertEqual('feat', params['database'])
-

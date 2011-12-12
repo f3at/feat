@@ -290,10 +290,11 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
     def setUp(self):
         yield FullIntegrationTest.setUp(self)
 
+        journal_connstr = "sqlite://%s" % (self.jourfile, )
         self.agency = agency.Agency(
             msg_host=self.msg_host, msg_port=self.msg_port,
             db_host=self.db_host, db_port=self.db_port, db_name=self.db_name,
-            agency_journal=self.jourfile, rundir=self.tempdir,
+            agency_journal=[journal_connstr], rundir=self.tempdir,
             logdir=self.tempdir,
             socket_path=self.socket_path)
 

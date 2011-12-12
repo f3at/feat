@@ -137,6 +137,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._on_rotate_cb = on_rotate_cb
         # [(klass, params)]
         self._possible_targets = list()
+        self._current_target_index = None
 
     def set_connection_strings(self, con_strings):
         self.log("set_connection_strings() called with: %r", con_strings)
@@ -151,13 +152,19 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         if self._writer is None:
             self.use_next_writer()
 
-    def use_next_writer(self):
+    def use_next_writer(self, force_index=None):
         self.log("Will use next journaler target on the list")
         if not self._possible_targets:
             raise ValueError("_possible targets are empty")
-        klass, kwargs = self._possible_targets[0]
-        # rotate the list
-        self._possible_targets.append(self._possible_targets.pop(0))
+
+        if force_index:
+            self._current_target_index = force_index
+        elif self._current_target_index is None:
+            self._current_target_index = 0
+        else:
+            self._current_target_index += 1
+
+        klass, kwargs = self._possible_targets[self._current_target_index]
 
         writer = klass(self, **kwargs)
         d = self.close(flush_writer=False)
@@ -166,6 +173,44 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         d.addCallback(defer.drop_param, self._schedule_flush)
         return d
 
+    def reconnect_to_primary_writer(self):
+        if self._current_target_index == 0:
+            raise ValueError("Journaler is already using primary writer.")
+        old_writer = None
+        if self._writer is not None:
+            old_writer = self._writer
+            self._writer = None
+            self._set_state(State.disconnected)
+        d = self.use_next_writer(force_index=0)
+        if old_writer:
+            try:
+                reader = IJournalReader(old_writer)
+            except TypeError:
+                self.error("Could not adapt writer: %r to IJournalReader "
+                           "interface. Migration of entries will be skipped.",
+                           old_writer)
+            else:
+                d.addCallback(defer.drop_param, self.migrate_entries,
+                              reader)
+                d.addBoth(defer.keep_param, old_writer.close)
+        return d
+
+    @defer.inlineCallbacks
+    def migrate_entries(self, reader):
+        while True:
+            entries = yield reader.get_bare_journal_entries()
+            if not entries:
+                break
+            yield self.insert_entries(entries)
+            yield reader.delete_top_journal_entries(len(entries))
+
+        while True:
+            entries = yield reader.get_log_entries(limit=1000)
+            if not entries:
+                break
+            yield self.insert_entries(entries)
+            yield reader.delete_top_log_entries(len(entries))
+
     def configure_with(self, writer):
         self._ensure_state(State.disconnected)
         twisted_log.addObserver(self.on_twisted_log)
@@ -173,6 +218,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._writer.configure_with(self)
         self._set_state(State.connected)
         self._schedule_flush()
+        self.on_rotate()
 
     def close(self, flush_writer=True):
 
@@ -206,12 +252,14 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._schedule_flush()
         return self._notifier.wait('flush')
 
-    def remote_insert_entries(self, entries):
-        # used by remote ProxyBrokerWriter
+    def insert_entries(self, entries):
         for entry in entries:
             self._cache.append(entry)
         self._schedule_flush()
         return self._notifier.wait('flush')
+
+    # used by remote ProxyBrokerWriter
+    remote_insert_entries = insert_entries
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -470,6 +518,39 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         return History.fetch(self._db)
 
     @in_state(State.connected)
+    def get_bare_journal_entries(self, limit=1000):
+        command = text_helper.format_block("""
+        SELECT histories.agent_id,
+               histories.instance_id,
+               entries.journal_id,
+               entries.function_id,
+               entries.fiber_id,
+               entries.fiber_depth,
+               entries.args,
+               entries.kwargs,
+               entries.side_effects,
+               entries.result,
+               entries.timestamp
+          FROM entries
+          LEFT JOIN histories ON histories.id = entries.history_id
+          ORDER BY entries.timestamp ASC
+          LIMIT ?""")
+        d = self._db.runQuery(command, (limit, ))
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    @in_state(State.connected)
+    def delete_top_journal_entries(self, num):
+        command = text_helper.format_block("""
+        DELETE FROM entries
+        WHERE id IN (
+           SELECT id FROM entries
+           ORDER BY timestamp, rowid
+           LIMIT ?)
+        """)
+        return self._db.runQuery(command, (num, ))
+
+    @in_state(State.connected)
     def get_entries(self, history, start_date=0, limit=None):
         if not isinstance(history, History):
             raise AttributeError(
@@ -501,10 +582,12 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         return d
 
     @in_state(State.connected)
-    def get_log_entries(self, start_date=None, end_date=None, filters=list()):
+    def get_log_entries(self, start_date=None, end_date=None, filters=list(),
+                        limit=None):
         '''
         @param start_date: epoch time to start search
         @param end_date: epoch time to end search
+        @param limit: maxium number of log entries to fetch
         @param filters: list of dictionaries with the following keys:
                         level - mandatory, display entries with lvl <= level
                         category - optional, limit to log_category
@@ -523,6 +606,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                logs.timestamp
         FROM logs
         WHERE 1
+        ORDER BY logs.timestamp, rowid
         ''')
         query = self._add_timestamp_condition_sql(query, start_date, end_date)
 
@@ -543,9 +627,22 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         filter_strings = map(transform_filter, filters)
         if filter_strings:
             query += " AND (%s)\n" % (' OR '.join(filter_strings), )
+        if limit:
+            query += " LIMIT %s" % (limit, )
         d = self._db.runQuery(query)
         d.addCallback(self._decode, entry_type='log')
         return d
+
+    @in_state(State.connected)
+    def delete_top_log_entries(self, num):
+        command = text_helper.format_block("""
+        DELETE FROM logs
+        WHERE id IN (
+           SELECT id FROM logs
+           ORDER BY timestamp, rowid
+           LIMIT ?)
+        """)
+        return self._db.runQuery(command, (num, ))
 
     @in_state(State.connected)
     def get_log_categories(self, start_date=None, end_date=None):
@@ -672,7 +769,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         decoded = map(decode_blobs, entries)
         if entry_type == 'log':
-            mapping = ['message', 'level', 'log_category',
+            mapping = ['message', 'level', 'category',
                        'log_name', 'file_path', 'line_num', 'timestamp']
         elif entry_type == 'journal':
             mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
