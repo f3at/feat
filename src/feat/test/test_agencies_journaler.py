@@ -97,28 +97,23 @@ class DBTests(common.TestCase):
         entries = yield writer.get_entries(histories[0])
         self.assertIsInstance(entries, list)
         self.assertEqual(1, len(entries))
-        unpacked = self._unpack(entries[0])
-        self.assertEqual('some id', unpacked['a_id'])
-        self.assertEqual('some.canonical.name', unpacked['fun_id'])
+        unpacked = entries[0]
+        self.assertEqual('some id', unpacked['agent_id'])
+        self.assertEqual('some.canonical.name', unpacked['function_id'])
         self.assertEqual(('some_id', 1, 0, ),
-                         self.unserializer.convert(unpacked['j_id']))
+                         self.unserializer.convert(unpacked['journal_id']))
         self.assertEqual(None,
-                         self.unserializer.convert(unpacked['res']))
+                         self.unserializer.convert(unpacked['result']))
         self.assertEqual(list(),
-                         self.unserializer.convert(unpacked['sfx']))
+                         self.unserializer.convert(unpacked['side_effects']))
 
         yield jour.insert_entry(**self._generate_data(function_id='other'))
         entries = yield writer.get_entries(histories[0])
         self.assertEqual(2, len(entries))
-        first = self._unpack(entries[0])
-        second = self._unpack(entries[1])
-        self.assertEqual('some.canonical.name', first['fun_id'])
-        self.assertEqual('other', second['fun_id'])
-
-    def _unpack(self, row):
-        keys = ('a_id', 'i_id', 'j_id', 'fun_id', 'f_id',
-                'f_dep', 'args', 'kwargs', 'sfx', 'res', 'time', )
-        return dict(zip(keys, row))
+        first = entries[0]
+        second = entries[1]
+        self.assertEqual('some.canonical.name', first['function_id'])
+        self.assertEqual('other', second['function_id'])
 
     @defer.inlineCallbacks
     def testInitiateOnDisk(self):

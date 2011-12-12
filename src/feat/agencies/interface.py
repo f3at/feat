@@ -483,9 +483,19 @@ class IJournalReader(Interface):
         the information about the agent_id and instance_id.
 
         The trigger value of returned Deferred is the list of journal entries.
-        Single entry has a format of:
-        [agent_id, instance_id, journal_id, function_id, fiber_id,
-        fiber_depth, args, kwargs, side_effects, result, timestamp]
+        Single entry is a dictionary with the keys:
+        - agent_id,
+        - instance_id,
+        - journal_id,
+        - function_id,
+        - fiber_id,
+        - fiber_depth,
+        - args,
+        - kwargs,
+        - side_effects,
+        - result,
+        - timestamp,
+        - entry_type = "journal"
 
         @param history: History object interesting us.
         @type history: L{feat.agencies.journal.History}
@@ -498,9 +508,15 @@ class IJournalReader(Interface):
         All parameters are optional, by default this query will return
         all the entries.
 
-        The return format is a list of tuples of the form:
-        (message, level, log_category, log_name,
-         file_path, line_num, timestamp)
+        The return format is a list dictionaries with keys:
+        - message,
+        - level,
+        - log_category,
+        - log_name,
+        - file_path,
+        - line_num,
+        - timestamp
+        - entry_type = "log"
 
         @type start_data, end_data: C{int} epoch time.
         @param filters: List of dictionaries containg following keys:
