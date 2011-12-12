@@ -48,7 +48,7 @@ Types that can be passed as destination includes:
 '''
 
 
-class BaseRecipient(serialization.Serializable, pb.Copyable):
+class BaseRecipient(serialization.ImmutableSerializable, pb.Copyable):
 
     def __init__(self, key, route=None):
         self._array = [self]
@@ -136,7 +136,7 @@ class Broadcast(BaseRecipient):
 
 
 @serialization.register
-class Recipients(serialization.Serializable, pb.Copyable):
+class Recipients(serialization.ImmutableSerializable, pb.Copyable):
 
     implements(IRecipients)
 
