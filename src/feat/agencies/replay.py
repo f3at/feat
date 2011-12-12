@@ -23,7 +23,7 @@ from pprint import pformat
 
 from zope.interface import implements, classProvides
 
-from feat.common import serialization, log, text_helper, deep_compare
+from feat.common import serialization, log, text_helper, deep_compare, error
 from feat.agents.base import replay
 from feat.common.serialization import banana
 
@@ -493,27 +493,33 @@ class Replay(log.FluLogKeeper, log.Logger):
         # if old_agent is None, it means that the snapshot is first entry
         # we are replaynig - hence we have no state to compare to
         if old_agent is not None:
-            if self.agent != old_agent:
-                comp = deep_compare(self.agent._get_state(),
-                                    old_agent._get_state())
-                info = "  INFO:        %s: %s\n" % comp if comp else ""
+            try:
+                if self.agent != old_agent:
+                    comp = deep_compare(self.agent._get_state(),
+                                        old_agent._get_state())
+                    info = "  INFO:        %s: %s\n" % comp if comp else ""
 
-                raise ReplayError("States of current agent mismatch the "
-                                  "old agent\nInfo: %s\nOld: %s\nLoaded: %s."
-                                  % (info,
-                                     pformat(old_agent._get_state()),
-                                     pformat(self.agent._get_state())))
-            if len(self.protocols) != len(old_protocols):
-                raise ReplayError("The number of protocols mismatch. "
-                                  "\nOld: %r\nLoaded: %r"
-                                  % (old_protocols, self.protocols))
-            else:
-                for protocol in self.protocols:
-                    if protocol not in old_protocols:
-                        raise ReplayError("One of the protocols was not found."
-                                          "\nOld: %s\nLoaded: %s"
-                                          % (pformat(old_protocols),
-                                             pformat(self.protocols)))
+                    raise ReplayError("States of current agent mismatch the "
+                                      "old agent\nInfo: %s\nOld: %s\n"
+                                      "Loaded: %s."
+                                      % (info,
+                                         pformat(old_agent._get_state()),
+                                         pformat(self.agent._get_state())))
+                if len(self.protocols) != len(old_protocols):
+                    raise ReplayError("The number of protocols mismatch. "
+                                      "\nOld: %r\nLoaded: %r"
+                                      % (old_protocols, self.protocols))
+                else:
+                    for protocol in self.protocols:
+                        if protocol not in old_protocols:
+                            raise ReplayError("One of the protocols was not "
+                                              "found.\nOld: %s\nLoaded: %s"
+                                              % (pformat(old_protocols),
+                                                 pformat(self.protocols)))
+            except RuntimeError, e:
+                raise ReplayError("Runtime error during replay of %s: %s"
+                                  % (self.agent.type_name,
+                                     error.get_exception_message(e)))
 
 
 @serialization.register
