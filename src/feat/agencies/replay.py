@@ -101,17 +101,63 @@ class JournalReplayEntry(object):
     def __init__(self, replay, record):
         self._replay = replay
 
-        # this needs to be consistent with output of the Journaler._decode()
-        (self.agent_id, self.instance_id, self.journal_id, self.function_id,
-         self.fiber_id, self.fiber_depth, self._args, self._kwargs,
-         self._side_effects, self.frozen_result, self._timestamp) = record
-
-        self.journal_id = self._replay.unserializer.convert(self.journal_id)
-        self._side_effects = self._replay.unserializer.convert(
-            self._side_effects)
+        self._record = record
+        self._next_effect = 0
         self.result = self._replay.unserializer.convert(self.frozen_result)
 
-        self._next_effect = 0
+    ### properties of the entry ###
+
+    @property
+    def agent_id(self):
+        return self._record['agent_id']
+
+    @property
+    def instance_id(self):
+        return self._record['instance_id']
+
+    @property
+    def journal_id(self):
+        if not hasattr(self, '_journal_id'):
+            self._journal_id = self._replay.unserializer.convert(
+                self._record['journal_id'])
+        return self._journal_id
+
+    @property
+    def function_id(self):
+        return self._record['function_id']
+
+    @property
+    def fiber_id(self):
+        return self._record['fiber_id']
+
+    @property
+    def fiber_depth(self):
+        return self._record['fiber_depth']
+
+    @property
+    def _args(self):
+        return self._record['args']
+
+    @property
+    def _kwargs(self):
+        return self._record['kwargs']
+
+    @property
+    def _side_effects(self):
+        if not hasattr(self, '_sfx'):
+            self._sfx = self._replay.unserializer.convert(
+                self._record['side_effects'])
+        return self._sfx
+
+    @property
+    def frozen_result(self):
+        return self._record['result']
+
+    @property
+    def _timestamp(self):
+        return self._record['timestamp']
+
+    ### public methods ###
 
     def apply(self):
         try:

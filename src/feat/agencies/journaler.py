@@ -459,6 +459,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         d.addCallback(defer.drop_param, self._uninstall_sighup)
         d.addCallback(defer.drop_param, self._set_state,
                       State.disconnected)
+        d.addCallback(defer.drop_param,
+                      self._notifier.cancel, State.connected)
         return d
 
     ### IJournalReader ###
@@ -495,7 +497,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         if limit:
             command += " LIMIT %s" % (limit, )
         d = self._db.runQuery(command, (history.history_id, ))
-        d.addCallback(self._decode)
+        d.addCallback(self._decode, entry_type='journal')
         return d
 
     @in_state(State.connected)
@@ -542,7 +544,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         if filter_strings:
             query += " AND (%s)\n" % (' OR '.join(filter_strings), )
         d = self._db.runQuery(query)
-        d.addCallback(self._decode)
+        d.addCallback(self._decode, entry_type='log')
         return d
 
     @in_state(State.connected)
@@ -651,10 +653,11 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
             self.warning("Unregistering of sighup failed. Straaange!")
         self._sighup_installed = False
 
-    def _decode(self, entries):
+    def _decode(self, entries, entry_type):
         '''
         Takes the list of rows returned by sqlite.
-        Returns rows in readable format.
+        Returns rows in readable format. Transforms tuples into dictionaries,
+        and appends information about entry type to the rows.
         '''
 
         def decode_blobs(row):
@@ -667,7 +670,24 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                     row[index] = value
             return row
 
-        return map(decode_blobs, entries)
+        decoded = map(decode_blobs, entries)
+        if entry_type == 'log':
+            mapping = ['message', 'level', 'log_category',
+                       'log_name', 'file_path', 'line_num', 'timestamp']
+        elif entry_type == 'journal':
+            mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
+                       'fiber_id', 'fiber_depth', 'args', 'kwargs',
+                       'side_effects', 'result', 'timestamp']
+        else:
+            raise ValueError('Unknown entry_type %r' % (entry_type, ))
+
+        def parse(row, mapping, entry_type):
+            resp = dict(zip(mapping, row))
+            resp['entry_type'] = entry_type
+            return resp
+
+        parsed = [parse(row, mapping, entry_type) for row in decoded]
+        return parsed
 
     def _encode(self, data):
         result = dict()
@@ -726,6 +746,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         commands = [
             text_helper.format_block("""
             CREATE TABLE entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
               history_id INTEGER NOT NULL,
               journal_id BLOB,
               function_id VARCHAR(200),
@@ -740,6 +761,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
             """),
             text_helper.format_block("""
             CREATE TABLE logs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
               message BLOB,
               level INTEGER,
               category VARCHAR(36),
@@ -796,7 +818,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         def do_insert_entry(connection, history_id, data):
             command = text_helper.format_block("""
-            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO entries VALUES (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (history_id,
@@ -808,7 +830,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         def do_insert_log(connection, data):
             command = text_helper.format_block("""
-            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO logs VALUES (null, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (data['message'], int(data['level']),
@@ -1112,6 +1134,8 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(defer.drop_param, self._db.close)
         d.addCallback(defer.drop_param, self._set_state,
                       State.disconnected)
+        d.addCallback(defer.drop_param,
+                      self._notifier.cancel, State.connected)
         return d
 
     ### Used by model ###
