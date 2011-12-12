@@ -5,8 +5,9 @@ from twisted.trial.unittest import SkipTest
 from feat.agencies import journaler
 from feat.common import defer, time
 from feat.common.serialization import banana
+from feat.gateway import models
 from feat.test import common
-
+from feat.test.integration.common import ModelTestMixin
 
 psycopg2 = None
 try:
@@ -44,7 +45,7 @@ def getSkipForPsycopg2():
 _skip = getSkipForPsycopg2()
 
 
-class TestPostgressWriter(common.TestCase):
+class TestPostgressWriter(common.TestCase, ModelTestMixin):
 
     skip = _skip
 
@@ -92,22 +93,21 @@ class TestPostgressWriter(common.TestCase):
         self.assertEqual((1, ), self.cursor.fetchone())
 
     @defer.inlineCallbacks
-    def testConnectingToNonexistangDb(self):
+    def testConnectingToNonexistantDb(self):
         writer = journaler.PostgresWriter(self, user='baduser', host=DB_HOST,
                                           database=DB_NAME,
                                           password=DB_PASSWORD,
                                           max_retries=1)
-        stub = StubJournaler()
-        writer.configure_with(stub)
         d = writer.insert_entries([self._generate_entry(),
                                    self._generate_log()])
         self.assertFailure(d, defer.FirstError)
 
         yield writer.initiate()
-        yield self.wait_for(stub.find_calls, 10,
-                            kwargs=dict(name='on_give_up'))
-        # txpostgres hits reactor with errors
-        self.flushLoggedErrors(psycopg2.OperationalError)
+        yield d
+        # txpostgres hits reactor with errors, unfortunately, it takes
+        # time for reactor to realize that
+        yield common.delay(None, 0.1)
+        self.addCleanup(self.flushLoggedErrors, psycopg2.OperationalError)
 
     @defer.inlineCallbacks
     def testMisconfiguredDb(self):
@@ -117,16 +117,14 @@ class TestPostgressWriter(common.TestCase):
                                           database=DB_NAME,
                                           password=DB_PASSWORD,
                                           max_retries=1)
-        stub = StubJournaler()
-        writer.configure_with(stub)
         d = writer.insert_entries([self._generate_entry(),
                                    self._generate_log()])
         self.assertFailure(d, defer.FirstError)
 
         yield writer.initiate()
-        yield self.wait_for(stub.find_calls, 10,
-                            kwargs=dict(name='on_give_up'))
+        yield d
         # txpostgres hits reactor with errors
+        yield common.delay(None, 0.1)
         self.flushLoggedErrors(psycopg2.OperationalError)
 
     @defer.inlineCallbacks
@@ -149,6 +147,45 @@ class TestPostgressWriter(common.TestCase):
         # txpostgres hits reactor with errors
         self.flushLoggedErrors(psycopg2.OperationalError)
         yield jour.close()
+
+    @defer.inlineCallbacks
+    def testFallbackToSqliteAndReconnect(self):
+
+        def pg(user, password, host, name):
+            return 'postgres://%s:%s@%s/%s' % (user, password, host, name)
+
+        connstrs = [pg(DB_USER, DB_PASSWORD, DB_HOST, DB_NAME),
+                    'sqlite://journal.sqlite3']
+        jour = journaler.Journaler()
+        jour.set_connection_strings(connstrs)
+        jour.insert_entry(**self._generate_entry())
+
+        # validate the view
+        model = models.Journaler(jour)
+        yield self.validate_model_tree(model)
+
+        # connect to sqlite
+        yield jour.use_next_writer()
+
+        self.assertIsInstance(jour._writer, journaler.SqliteWriter)
+        self.assertEqual(1, jour.current_target_index)
+
+        jour.insert_entry(**self._generate_log(
+            message='Very special log entry'))
+
+        yield model.perform_action('reconnect')
+        self.assertIsInstance(jour._writer, journaler.PostgresWriter)
+        self.assertEqual(0, jour.current_target_index)
+
+        self.cursor.execute("SELECT COUNT(*) FROM feat.logs WHERE "
+                            "message='Very special log entry'")
+        self.assertEqual((1, ), self.cursor.fetchone())
+        yield jour.close()
+
+        # txpostgres will leave the error in the reactor,
+        # it's just a way it is, sorry
+        from twisted.internet.error import ConnectionDone
+        self.flushLoggedErrors(ConnectionDone)
 
     def _generate_log(self, **opts):
         defaults = {
@@ -181,10 +218,3 @@ class TestPostgressWriter(common.TestCase):
 
         defaults.update(opts)
         return defaults
-
-
-class StubJournaler(common.Mock):
-
-    @common.Mock.stub
-    def on_give_up(self):
-        pass

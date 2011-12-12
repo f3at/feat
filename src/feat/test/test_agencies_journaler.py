@@ -26,9 +26,11 @@ import os
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
+from feat.test.integration.common import ModelTestMixin
 from feat.common import defer, time
 from feat.agencies import journaler
 from feat.common.serialization import banana
+from feat.gateway import models
 
 
 class SqliteWriter(journaler.SqliteWriter, common.Mock):
@@ -40,7 +42,7 @@ class SqliteWriter(journaler.SqliteWriter, common.Mock):
     _create_schema = common.Mock.record(journaler.SqliteWriter._create_schema)
 
 
-class DBTests(common.TestCase):
+class DBTests(common.TestCase, ModelTestMixin):
 
     timeout = 2
 
@@ -193,7 +195,7 @@ class DBTests(common.TestCase):
     def testMisconfiguredPostgresFallbackToSqlite(self):
         postgres = ('postgres://%s:%s@%s/%s' %
                     ('user', 'password', 'localhost', 'name'))
-        sqlite = 'sqlite://journal.sqlite3'
+        sqlite = 'sqlite://testMisconfiguredPostgresFallbackToSqlite.sqlite3'
         connstrs = [postgres, sqlite]
         jour = journaler.Journaler()
         jour.set_connection_strings(connstrs)
@@ -202,10 +204,14 @@ class DBTests(common.TestCase):
         @defer.inlineCallbacks
         def check():
             w = jour._writer
+            self.log('writer is %r', w)
             if isinstance(w, journaler.SqliteWriter):
                 try:
-                    yield self._assert_entries(jour, 1)
-                except FailTest:
+                    num = yield self._get_number_of_entries(jour, 1)
+                    self.log('num is %d', num)
+                    defer.returnValue(num == 1)
+                except FailTest, e:
+                    self.log('assertation failure: %r', e)
                     defer.returnValue(False)
                 defer.returnValue(True)
             defer.returnValue(False)
@@ -215,6 +221,9 @@ class DBTests(common.TestCase):
 
         yield jour.insert_entry(**self._generate_data())
         yield self._assert_entries(jour, 2)
+
+        # now validate the model display
+        yield self.validate_model_tree(models.Journaler(jour))
 
         yield jour.close()
         import psycopg2
@@ -281,7 +290,12 @@ class DBTests(common.TestCase):
         return defaults
 
     @defer.inlineCallbacks
-    def _assert_entries(self, jour, num):
+    def _assert_entries(self, jour, expected):
+        num = yield self._get_number_of_entries(jour, expected)
+        self.assertEqual(expected, num)
+
+    @defer.inlineCallbacks
+    def _get_number_of_entries(self, jour, num):
         if isinstance(jour, journaler.Journaler):
             writer = jour._writer
         else:
@@ -293,7 +307,9 @@ class DBTests(common.TestCase):
             self.assertIsInstance(histories[0], journaler.History)
             entries = yield writer.get_entries(histories[0])
             self.assertIsInstance(entries, list)
-            self.assertEqual(num, len(entries))
+            defer.returnValue(len(entries))
+        else:
+            defer.returnValue(0)
 
 
 class TestParsingConnection(common.TestCase):

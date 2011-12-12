@@ -19,19 +19,21 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import pprint
+
 from zope.interface import implements
 
 from feat.agencies import journaler
 from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import resource, agent as base_agent
 
-from feat.common import adapter, defer
+from feat.common import adapter, defer, reflect
 from feat.models import model, value, reference, response
-from feat.models import effect, call, getter
+from feat.models import effect, call, getter, action
 
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
-from feat.models.interface import IModel, IReference
+from feat.models.interface import IModel, IReference, ActionCategories
 
 
 @adapter.register(net_agency.Agency, IModel)
@@ -230,6 +232,19 @@ class Agency(model.Model):
     model.item_meta("agents", "html-render", "array, 2")
 
 
+class ReconnectToPrimary(action.Action):
+    action.label('Reconnect to primary journaler target')
+    action.category(ActionCategories.command)
+
+    action.enabled(call.action_call('is_enabled'))
+    action.effect(call.source_call('reconnect_to_primary_writer'))
+    action.effect(effect.relative_ref())
+    action.effect(response.done("Reconnected"))
+
+    def is_enabled(self):
+        return self.model.source.current_target_index != 0
+
+
 class Journaler(model.Model):
     model.identity("feat.agency.journaler")
     model.attribute('pending_entries', value.Integer(),
@@ -238,12 +253,43 @@ class Journaler(model.Model):
     model.attribute('state', value.Enum(journaler.State),
                     getter=getter.source_attr('state'),
                     label='Connection state')
+    model.collection('possible_targets',
+                     child_names=getter.source_list_names('possible_targets'),
+                     child_view=getter.source_list_get('possible_targets'),
+                     child_model="feat.agency.journaler.target",
+                     model_meta=[('html-render', 'array, 1')],
+                     label="Possible targets")
+    model.item_meta("possible_targets", "html-render", "array, 1")
+
+    model.action('reconnect', ReconnectToPrimary)
 
     model.child('writer', source=getter.source_attr('_writer'),
                 label='Journal writer')
 
     def get_pending(self):
         return len(self.source._cache)
+
+
+class JournalTarget(model.Model):
+    model.identity('feat.agency.journaler.target')
+    model.attribute('class', value.String(), call.model_call('get_class'),
+                    desc='Class of writer', label='Class')
+    model.attribute('keywords', value.String(), call.model_call('get_params'),
+                    desc='Keywords to create the writer instance',
+                    label="Keywords")
+    model.attribute('current', value.Boolean(), call.model_call('is_current'),
+                    desc='Is it currently used', label='Current')
+
+    def get_class(self):
+        return reflect.canonical_name(self.view[0])
+
+    def get_params(self):
+        return pprint.pformat(self.view[1])
+
+    def is_current(self):
+        index = self.source.current_target_index
+        current = self.source.possible_targets[index]
+        return self.view == current
 
 
 class BaseJournalWriter(model.Model):

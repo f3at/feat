@@ -94,9 +94,9 @@ if [ $force_host_restart ]; then
 fi
 
 echo "Starting F3AT..."
-$ENV $FEAT -m "$master_host" -H "$master_host" \
+$ENV $FEAT "$@" -m "$master_host" -H "$master_host" \
            -L "$LOGDIR" -R "$RUNDIR" $daemon_args \
            -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" \
            -G "$GW_P12" -T "$TUNNEL_P12" \
            -j "sqlite://$JOURNAL" \
-           $force_args "$@"
+           $force_args

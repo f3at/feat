@@ -105,3 +105,18 @@ def local_ref(*parts):
         return reference.Local(*(parts + (context["key"], )))
 
     return local_ref
+
+
+def relative_ref(*parts):
+    """
+    Create a reference builder with specified base location.
+    using getter.relative_ref("some", "base") to get a value with key
+    "toto" will gives reference.Relative("some", "base", "toto")
+    """
+
+    def relative_ref(_value, context, **_params):
+        return reference.Relative(*(parts + (context["key"], )))
+
+    return relative_ref
+
+
