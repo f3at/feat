@@ -213,6 +213,36 @@ class Serializable(Snapshotable):
         pass
 
 
+class ImmutableSerializable(Snapshotable):
+    """Simple immutable L{ISerializable} that serialize and restore
+    the full instance dictionary. If the class attribute type_name
+    is not defined, the canonical name of the class is used.
+    Should be used for any serializable to be used as dictionary keys
+    or set elements (the one providing __hash__)."""
+
+    __metaclass__ = MetaSerializable
+
+    implements(ISerializable)
+
+    type_name = None
+
+    @classmethod
+    def prepare(cls):
+        return None
+
+    @classmethod
+    def restore(cls, snapshot):
+        instance = cls.__new__(cls)
+        instance.recover(snapshot)
+        return instance
+
+    def recover(self, snapshot):
+        self.__dict__.update(snapshot)
+
+    def restored(self):
+        pass
+
+
 class Registry(object):
     """Keep track of L{IRestorator}. Used by unserializers."""
 

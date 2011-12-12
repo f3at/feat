@@ -54,6 +54,28 @@ class DummyInterface(Interface):
     pass
 
 
+@serialization.register
+class DummySerializable(serialization.Serializable):
+
+    def __init__(self, value):
+        self.value = value
+        self._restored = False
+
+    def restored(self):
+        self._restored = True
+
+
+@serialization.register
+class DummyImmutableSerializable(serialization.ImmutableSerializable):
+
+    def __init__(self, value):
+        self.value = value
+        self._restored = False
+
+    def restored(self):
+        self._restored = True
+
+
 class Av1(serialization.Serializable):
     type_name = "A"
 
@@ -423,13 +445,25 @@ class PyTreeVersionTest(common.TestCase):
         self.assertEqual(b21.c.foo, "6")
 
 
-class PyTreeConvertersTest(common_serialization.ConverterTest):
+class GenericSerializationTest(common.TestCase):
 
     def setUp(self):
-        common_serialization.ConverterTest.setUp(self)
-        ext = self.externalizer
-        self.serializer = pytree.Serializer(externalizer = ext)
-        self.unserializer = pytree.Unserializer(externalizer = ext)
+        common.TestCase.setUp(self)
+        self.serializer = pytree.Serializer()
+        self.unserializer = pytree.Unserializer()
+
+    def testRestoredCall(self):
+        orig = DummySerializable(42)
+        obj = self.unserializer.convert(self.serializer.convert(orig))
+        self.assertEqual(type(orig), type(obj))
+        self.assertEqual(orig.value, obj.value)
+        self.assertTrue(obj._restored)
+
+        orig = DummyImmutableSerializable(42)
+        obj = self.unserializer.convert(self.serializer.convert(orig))
+        self.assertEqual(type(orig), type(obj))
+        self.assertEqual(orig.value, obj.value)
+        self.assertTrue(obj._restored)
 
     def testFreezingTags(self):
         instance = DummyClass()
@@ -450,6 +484,15 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
         data = self.serializer.freeze([obj, obj])
 
         self.assertEqual(data, [{"value": 42}, {"value": 42}])
+
+
+class PyTreeConvertersTest(common_serialization.ConverterTest):
+
+    def setUp(self):
+        common_serialization.ConverterTest.setUp(self)
+        ext = self.externalizer
+        self.serializer = pytree.Serializer(externalizer = ext)
+        self.unserializer = pytree.Unserializer(externalizer = ext)
 
     def convertion_table(self, capabilities, freezing):
         ### Basic immutable types ###

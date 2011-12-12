@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 from feat.common.serialization.base import (register, lookup,
                                             Registry, Snapshotable,
+                                            ImmutableSerializable,
                                             Serializable, MetaSerializable,
                                             Externalizer, get_registry,
                                             freeze_tag)
