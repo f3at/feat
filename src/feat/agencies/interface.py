@@ -395,14 +395,6 @@ class IJournaler(Interface):
         Returns bool saying if there are pending entries to get flushed.
         """
 
-    def on_give_up(cache):
-        """
-        Called by IJournalWriter when he decides that he will not be
-        able to keep on working.
-        @param cache: EntriesCache consiting entries which writer will
-                      not be able to store.
-        """
-
 
 class IRecord(Interface):
     '''

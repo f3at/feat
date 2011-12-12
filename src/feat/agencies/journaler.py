@@ -139,6 +139,14 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._possible_targets = list()
         self._current_target_index = None
 
+    @property
+    def possible_targets(self):
+        return self._possible_targets
+
+    @property
+    def current_target_index(self):
+        return self._writer is not None and self._current_target_index
+
     def set_connection_strings(self, con_strings):
         self.log("set_connection_strings() called with: %r", con_strings)
         for con_str in con_strings:
@@ -163,13 +171,14 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             self._current_target_index = 0
         else:
             self._current_target_index += 1
+            self._current_target_index %= len(self._possible_targets)
 
         klass, kwargs = self._possible_targets[self._current_target_index]
 
         writer = klass(self, **kwargs)
         d = self.close(flush_writer=False)
-        d.addCallback(defer.drop_param, writer.initiate)
         d.addCallback(defer.drop_param, self.configure_with, writer)
+        d.addCallback(defer.drop_param, writer.initiate)
         d.addCallback(defer.drop_param, self._schedule_flush)
         return d
 
@@ -197,10 +206,12 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
 
     @defer.inlineCallbacks
     def migrate_entries(self, reader):
+        self.log("Migrating entries from reader: %r", reader)
         while True:
             entries = yield reader.get_bare_journal_entries()
             if not entries:
                 break
+            self.log("Inserting %d journal entries", len(entries))
             yield self.insert_entries(entries)
             yield reader.delete_top_journal_entries(len(entries))
 
@@ -208,6 +219,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             entries = yield reader.get_log_entries(limit=1000)
             if not entries:
                 break
+            self.log("Inserting %d log entries", len(entries))
             yield self.insert_entries(entries)
             yield reader.delete_top_log_entries(len(entries))
 
@@ -226,6 +238,9 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             self._writer = None
             self._set_state(State.disconnected)
 
+        def errback(fail):
+            error.handle_failure(self, fail, "Closing journal writer failed")
+
         try:
             twisted_log.removeObserver(self.on_twisted_log)
         except ValueError:
@@ -234,7 +249,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             pass
 
         d = self._close_writer(flush_writer)
-        d.addCallback(defer.drop_param, set_disconnected)
+        d.addErrback(errback)
+        d.addBoth(defer.drop_param, set_disconnected)
         return d
 
     ### IJournaler ###
@@ -273,9 +289,6 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     def on_rotate(self):
         if callable(self._on_rotate_cb):
             self._on_rotate_cb()
-
-    def on_give_up(self):
-        time.call_next(self.use_next_writer)
 
     ### ILogObserver provider ###
 
@@ -367,6 +380,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._writer = None
         self._set_state(State.disconnected)
         self._flush_task = None
+        time.call_next(self.use_next_writer)
 
     def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
@@ -1203,8 +1217,11 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._initial_delay = initial_delay or type(self).initial_delay
 
         self._journaler = None
+        self._initiate_defer = None
+        self._should_giveup = False
 
     def initiate(self):
+        self._should_giveup = False
         self._db = self._txpostgres.ConnectionPool(
             "postgres", min=1, **self._credentials)
 
@@ -1220,15 +1237,20 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                       'SELECT message FROM feat.logs LIMIT 1')
         d.addCallback(self._connection_established)
         d.addErrback(self._connection_failed)
+        self._initiate_defer = d
         return d
 
     def close(self, flush=True):
+        self._should_giveup = True
+        if self._initiate_defer:
+            self._initiate_defer.cancel()
         d = defer.succeed(None)
-        if self._cmp_state(State.disconnected):
-            return d
-        if flush:
+        if flush and not self._cmp_state(State.disconnected):
             d.addCallback(defer.drop_param, self._flush_next)
-        d.addCallback(defer.drop_param, self._db.close)
+        if self._db:
+            db = self._db
+            self._db = None
+            d.addCallback(defer.drop_param, db.close)
         d.addCallback(defer.drop_param, self._set_state,
                       State.disconnected)
         d.addCallback(defer.drop_param,
@@ -1277,6 +1299,7 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     def _connection_established(self, _ignored):
         self._retry = None
         del(self._delay)
+        self._initiate_defer = None
 
         self.log("Connection established to postgres database.")
         self._set_state(State.connected)
@@ -1287,15 +1310,13 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         self.warning("Connection to postgres failed with credentials: %r. "
                      "Failure: %r. ", self._credentials, fail)
-        self._db.close()
-        self._db = None
-        if self._retry + 1 > self._max_retries:
+        if self._db:
+            self._db.close()
+            self._db = None
+        if self._should_giveup or self._retry + 1 > self._max_retries:
             error.handle_failure(self, fail,
                                  "Giving up connecting to postgres. ")
-            if self._journaler:
-                # removes calls waiting for us to get connected
-                self._notifier.cancel(State.connected)
-                time.call_next(self._journaler.on_give_up)
+            self._notifier.cancel(State.connected)
             return
 
         self.info("Will retry for %d time in %d seconds.",
@@ -1329,19 +1350,25 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         return d
 
     def _do_insert_entry(self, cursor, data):
+
+        def escape(binary):
+            if isinstance(binary, unicode):
+                binary = binary.encode('utf8')
+            return self._psycopg2.Binary(binary)
+
         return cursor.execute(
             'INSERT INTO feat.entries '
                     'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (data['agent_id'],
              data['instance_id'],
-             self._psycopg2.Binary(data['journal_id']),
+             escape(data['journal_id']),
              data['function_id'],
-             self._psycopg2.Binary(data['fiber_id']),
+             escape(data['fiber_id']),
              data['fiber_depth'],
-             self._psycopg2.Binary(data['args']),
-             self._psycopg2.Binary(data['kwargs']),
-             self._psycopg2.Binary(data['side_effects']),
-             self._psycopg2.Binary(data['result']),
+             escape(data['args']),
+             escape(data['kwargs']),
+             escape(data['side_effects']),
+             escape(data['result']),
              self._format_timestamp(data['timestamp'])))
 
     def _do_insert_log(self, cursor, data):
