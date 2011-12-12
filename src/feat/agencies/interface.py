@@ -502,6 +502,25 @@ class IJournalReader(Interface):
         @rtype: Deferred(list)
         '''
 
+    def get_bare_journal_entries(limit):
+        '''
+        Returns journal entries "from the top of the table". This is used
+        by migration procedure of entries.
+        @rtype: Same as get_entries() method
+        '''
+
+    def delete_top_journal_entries(num):
+        '''
+        Deletes journal entries from the database. It will remove entries
+        "from the top of the table" meaning with lowest timestamp.
+        '''
+
+    def delete_top_log_entries(num):
+        '''
+        Deletes log entries from the database. It will remove entries
+        "from the top of the table" meaning with lowest timestamp.
+        '''
+
     def get_log_entries(start_date, end_data, filters):
         '''
         Fetches the log entries for the given period of time and filters.
