@@ -121,6 +121,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         # agency can connect and stop retrying, overwise the test
         # will finish in undefined way (this is part of the teardown)
         fcntl.unlock(self.lock_fd)
+        self.lock_fd.close()
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()
