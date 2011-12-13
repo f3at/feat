@@ -853,7 +853,7 @@ class Unserializer(object):
     def reset(self):
         self._references = {} # {REFERENCE_ID: (DATA_ID, OBJECT)}
         self._pending = [] # Pendings unpacking
-        self._instances = [] # [(RESTORATOR, INSTANCE, SNAPSHOT)]
+        self._instances = [] # [(RESTORATOR, INSTANCE, SNAPSHOT, REFID)]
         self._delayed = 0 # If we are in a delayable unpacking
 
     def unpack_data(self, data):
@@ -882,10 +882,12 @@ class Unserializer(object):
             fun, args, kwargs = self._pending.pop(0)
             fun(*args, **kwargs)
 
-        # Initialize the instance in creation order
+        # Initialize delayed mutable instances in creation order
         for restorator, instance, snapshot, _refid in self._instances:
-            snapshot = self._adapt_snapshot(restorator, snapshot)
-            instance.recover(snapshot)
+            if restorator is not None:
+                # delayed mutable instances
+                snapshot = self._adapt_snapshot(restorator, snapshot)
+                instance.recover(snapshot)
 
         # Calls the instances post restoration callback in reversed order
         # in an intent to reduce the possibilities of instances relying
@@ -934,7 +936,9 @@ class Unserializer(object):
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
             snapshot = self._adapt_snapshot(restorator, snapshot)
-            return restorator.restore(snapshot)
+            instance = restorator.restore(snapshot)
+            self._instances.append((None, instance, None, refid))
+            return instance
 
         # Delay the instance restoration for later to handle circular refs
         return self.delayed_unpacking(instance,
