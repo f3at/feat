@@ -152,15 +152,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         return command, args, env
 
     def wait_for_master_gone(self, timeout=20):
-
-        def broker_disconnected():
-            return self.agency._broker.state == BrokerRole.disconnected
-
-        return self.wait_for(broker_disconnected, timeout)
+        return self.agency._broker.wait_for_state(BrokerRole.disconnected)
 
     def wait_for_master_back(self, timeout=20):
-
-        def broker_connected():
-            return self.agency._broker.state == BrokerRole.slave
-
-        return self.wait_for(broker_connected, timeout)
+        return self.agency._broker.wait_for_state(BrokerRole.slave)
