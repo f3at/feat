@@ -56,6 +56,8 @@ class Root(model.Model):
     model.child("agents", model="feat.agents",
                 fetch=getter.model_get("_locate_master"),
                 label="Agents", desc="Agents running on this host.")
+    model.child('api', model='feat.api',
+                label='Api', desc='Api exposed by subproject')
 
     model.meta("html-order", "agencies, agents")
     model.item_meta("agencies", "html-render", "array, 1")
@@ -78,6 +80,10 @@ class Root(model.Model):
         if not is_remote:
             return default
         return reference.Absolute((host, port), *location)
+
+
+class Api(model.Model):
+    model.identity('feat.api')
 
 
 class Agencies(model.Collection):
