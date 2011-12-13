@@ -34,3 +34,8 @@ To check local commits before pushing::
 To check PEP8:
 
 	make check-local-pep8
+
+=== Buildbot ===
+
+You can check the state of the builds in our public buildbot:
+	http://build.fluendo.com:8075/waterfall
