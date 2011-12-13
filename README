@@ -7,7 +7,7 @@ Get the code::
 	git clone --recursive git@github.com:f3at/feat.git
 	cd feat
 
-If you forgot parameter "--recursive" then you should then do::
+If you forgot the parameter "--recursive", then you should do::
 
 	git submodule init
 	git submodule update
@@ -19,7 +19,7 @@ From source directory.
 
 To run the tests::
 
-        cd src
+	cd src
 	make
 
 
