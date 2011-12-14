@@ -22,6 +22,7 @@
 import weakref
 
 from twisted.internet import defer
+from twisted.python import failure
 from zope.interface import implements
 
 from feat.interface.fiber import *
@@ -360,6 +361,16 @@ class Recorder(RecorderNode, annotate.Annotable):
                                          "section" % (fun_id, ))
 
             result = self._call_fun(fun_id, function, args, kwargs)
+
+        except failure.Failure as f:
+            # When trapping a failure it raised itself
+
+            if not section_first:
+                raise
+
+            result = fiber.fail(f.value)
+            error.handle_failure(self, f, "Failure inside recorded "
+                                   "function %s", fun_id)
 
         except Exception as e:
 
