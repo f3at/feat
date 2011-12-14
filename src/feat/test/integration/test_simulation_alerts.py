@@ -41,6 +41,35 @@ class Agent(agent.BaseAgent, alert.AgentMixin):
 
 
 @common.attr(timescale=0.1)
+class AlertAgentTestWithHostAgent(common.SimulationTest):
+
+    @defer.inlineCallbacks
+    def prolog(self):
+        setup = format_block("""
+        agency = spawn_agency(disable_monitoring=True)
+        recp = agency.spawn_agent('alert_agent')
+        medium = find_agent(recp)
+        agent = medium.get_agent()
+        """)
+        yield self.process(setup)
+        yield self.wait_for_idle(10)
+
+    @defer.inlineCallbacks
+    def testAgencyRaisingAndResolvingAlerts(self):
+        agency = self.get_local('agency')
+        hostname = agency.get_hostname()
+        alert_agent = self.get_local('agent')
+
+        yield agency.raise_alert('alert_text', alert.Severity.high)
+        yield self.wait_for_idle(10)
+        expected_key = "%s: %s" % (hostname, 'alert_text')
+        self.assertIn(expected_key, alert_agent.get_alerts())
+        yield agency.resolve_alert('alert_text', alert.Severity.high)
+        yield self.wait_for_idle(10)
+        self.assertNotIn(expected_key, alert_agent.get_alerts())
+
+
+@common.attr(timescale=0.1)
 class AlertAgentTest(common.SimulationTest):
 
     @defer.inlineCallbacks
@@ -59,10 +88,6 @@ class AlertAgentTest(common.SimulationTest):
         """)
         yield self.process(setup)
         yield self.wait_for_idle(10)
-
-    def testValidateProlog(self):
-        self.assertEqual(1, self.count_agents('alert_test_agent'))
-        self.assertEqual(1, self.count_agents('alert_agent'))
 
     @defer.inlineCallbacks
     def testMappingBroadcastWithNotification(self):

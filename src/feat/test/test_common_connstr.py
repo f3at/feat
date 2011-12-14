@@ -25,6 +25,3 @@ class ConnStrTest(common.TestCase):
         self.assertEqual(None, resp['password'])
         self.assertEqual(None, resp['port'])
         self.assertEqual('/var/log/journal.sqlite3', resp['host'])
-
-
-

@@ -26,7 +26,7 @@ import operator
 from feat.agents.base import (agent, contractor, recipient, message,
                               replay, descriptor, replier,
                               partners, resource, document, notifier,
-                              problem, task, requester, )
+                              problem, task, requester, alert)
 from feat.agents.common import host, rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
@@ -106,7 +106,8 @@ class Partners(agent.Partners):
 
 
 @agent.register('host_agent')
-class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
+class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
+                alert.AgentMixin):
 
     partners_class = Partners
 
@@ -252,6 +253,26 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                                       kwargs=kwargs)
         return task.notify_finish()
 
+    @manhole.expose()
+    @replay.journaled
+    def spawn_agent(self, state, desc, **kwargs):
+        """
+        This method is used by the agency to spawn agents. The desc parameter
+        can actually be a descriptor to be save into database, or just
+        it's identifier, it which case it should be created and saved
+        with default values.
+        """
+        if not isinstance(desc, descriptor.Descriptor):
+            factory = descriptor.lookup(desc)
+            if factory is None:
+                msg = ('No descriptor factory found for agent %r' % desc)
+                raise error.FeatError(msg)
+            desc = factory()
+        f = self.save_document(desc)
+        f.add_callback(self.start_agent, **kwargs)
+        f.add_errback(self._spawn_agent_failed, desc)
+        return f
+
     @replay.immutable
     def medium_start_agent(self, state, desc, **kwargs):
         '''
@@ -388,6 +409,15 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
         for name, (first, last) in ports_ranges.items():
             state.resources.define(name, resource.Range, first, last)
+
+    @replay.journaled
+    def _spawn_agent_failed(self, state, fail, desc):
+        error.handle_failure(self, fail, "Spawning agent failed! "
+                             "I will remove the descriptor.")
+        f = self.get_document(desc.doc_id)
+        f.add_callback(self.delete_document)
+        f.add_callback(fiber.override_result, fail)
+        return f
 
     @replay.immutable
     def check_requirements(self, state, doc):
