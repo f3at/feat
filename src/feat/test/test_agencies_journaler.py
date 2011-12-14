@@ -201,8 +201,11 @@ class DBTests(common.TestCase, ModelTestMixin):
                     ('user', 'password', 'localhost', 'name'))
         tmpfile = self._get_tmp_file()
         sqlite = 'sqlite://' + tmpfile
+
         connstrs = [postgres, sqlite]
-        jour = journaler.Journaler()
+        agency_stub = AgencyStub()
+        jour = journaler.Journaler(
+            on_switch_writer_cb=agency_stub.on_switch_writer)
         jour.set_connection_strings(connstrs)
         jour.insert_entry(**self._generate_data())
 
@@ -223,6 +226,8 @@ class DBTests(common.TestCase, ModelTestMixin):
 
         yield self.wait_for(check, 20)
         self.assertTrue(os.path.exists(tmpfile))
+
+        self.assertEqual([0, 1], agency_stub.calls)
 
         yield jour.insert_entry(**self._generate_data())
         yield self._assert_entries(jour, 2)
@@ -333,3 +338,12 @@ class TestParsingConnection(common.TestCase):
         self.assertEqual('feat', params['password'])
         self.assertEqual('flt1.somecluster.lt.net', params['host'])
         self.assertEqual('feat', params['database'])
+
+
+class AgencyStub(object):
+
+    def __init__(self):
+        self.calls = list()
+
+    def on_switch_writer(self, index):
+        self.calls.append(index)

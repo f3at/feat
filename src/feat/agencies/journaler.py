@@ -125,7 +125,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     # FIXME: at some point switch to False and remove this attribute
     should_keep_on_logging_to_flulog = True
 
-    def __init__(self, on_rotate_cb=None):
+    def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None):
         log.Logger.__init__(self, self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
@@ -135,6 +135,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._notifier = defer.Notifier()
 
         self._on_rotate_cb = on_rotate_cb
+        self._on_switch_writer_cb = on_switch_writer_cb
         # [(klass, params)]
         self._possible_targets = list()
         self._current_target_index = None
@@ -180,6 +181,9 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         d.addCallback(defer.drop_param, self.configure_with, writer)
         d.addCallback(defer.drop_param, writer.initiate)
         d.addCallback(defer.drop_param, self._schedule_flush)
+        if callable(self._on_switch_writer_cb):
+            d.addCallback(defer.drop_param, self._on_switch_writer_cb,
+                          self._current_target_index)
         return d
 
     def reconnect_to_primary_writer(self):

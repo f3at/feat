@@ -26,6 +26,7 @@ import sys
 
 from twisted.internet import reactor
 
+from feat.agents.base.alert import Severity
 from feat.agents.base.agent import registry_lookup
 from feat.agents.base import recipient
 from feat.agencies import agency, journaler
@@ -68,7 +69,8 @@ class Startup(agency.Startup):
         self._db = database.Database(dbc['host'],
                                      int(dbc['port']), dbc['name'])
         self._journaler = journaler.Journaler(
-            on_rotate_cb=self.friend._force_snapshot_agents)
+            on_rotate_cb=self.friend._force_snapshot_agents,
+            on_switch_writer_cb=self.friend._on_journal_writer_switch)
 
     def stage_private(self):
         reactor.addSystemEventTrigger('before', 'shutdown',
@@ -741,6 +743,7 @@ class Agency(agency.Agency):
 
     def _on_host_started(self):
         self._broker.shared_state['enable_host_restart'] = True
+        return agency.Agency._on_host_started(self)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
@@ -761,6 +764,16 @@ class Agency(agency.Agency):
         self.log("Journal has been rotated, forcing snapshot of agents")
         # TODO: Mind also the agents running in slave agencies
         self.snapshot_agents(force=True)
+
+    def _on_journal_writer_switch(self, current_index):
+        if current_index == 0:
+            method = self.resolve_alert
+            severity = Severity.recover
+        else:
+            method = self.raise_alert
+            severity = Severity.medium
+        alert_text = "primary journaler"
+        method(alert_text, severity)
 
     def _cancel_snapshoter(self):
         if self._snapshot_task is not None and self._snapshot_task.active():

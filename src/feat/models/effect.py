@@ -54,7 +54,7 @@ Effect's result is ALWAYSa defer.Deffered() instance fired
 with the new value of the processing chain.
 """
 
-from feat.common import log, defer, time
+from feat.common import defer, time
 from feat.models import reference
 
 
@@ -118,5 +118,3 @@ def relative_ref(*parts):
         return reference.Relative(*(parts + (context["key"], )))
 
     return relative_ref
-
-
