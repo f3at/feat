@@ -157,6 +157,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             d.addCallback(self._perform_reduce, factory)
         return d
 
+    def disconnect(self):
+        pass
+
     ### private
 
     def _matches_filter(self, tup, **filter_options):
