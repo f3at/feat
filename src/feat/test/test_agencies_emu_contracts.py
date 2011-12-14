@@ -900,6 +900,10 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
 
         d = self.recv_announce()
         d.addCallback(self._get_contractor)
+        d.addCallback(lambda contractor:
+            contractor._get_medium().wait_for_state(
+                contracts.ContractState.announced))
+        d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid)
         d.addCallback(self.stub_method, 'granted', custom_handler)
         d.addCallback(self.recv_grant)
