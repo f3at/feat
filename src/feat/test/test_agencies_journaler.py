@@ -221,7 +221,8 @@ class DBTests(common.TestCase, ModelTestMixin):
             defer.returnValue(False)
 
         yield self.wait_for(check, 20)
-        self.assertTrue(os.path.exists('journal.sqlite3'))
+        self.assertTrue(os.path.exists(
+            'testMisconfiguredPostgresFallbackToSqlite.sqlite3'))
 
         yield jour.insert_entry(**self._generate_data())
         yield self._assert_entries(jour, 2)
@@ -243,7 +244,7 @@ class DBTests(common.TestCase, ModelTestMixin):
         yield writer.insert_entries(data)
 
         jour = journaler.Journaler()
-        jour.set_connection_strings(['sqlite://journal.sqlite3'])
+        jour.set_connection_strings(['sqlite://testMigratingEntries.sqlite3'])
 
         yield jour.migrate_entries(writer)
         yield self._assert_entries(jour, 2400)

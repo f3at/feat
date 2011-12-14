@@ -155,7 +155,7 @@ class TestPostgressWriter(common.TestCase, ModelTestMixin):
             return 'postgres://%s:%s@%s/%s' % (user, password, host, name)
 
         connstrs = [pg(DB_USER, DB_PASSWORD, DB_HOST, DB_NAME),
-                    'sqlite://journal.sqlite3']
+                    'sqlite://testFallbackToSqliteAndReconnect.sqlite3']
         jour = journaler.Journaler()
         jour.set_connection_strings(connstrs)
         jour.insert_entry(**self._generate_entry())
