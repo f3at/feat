@@ -23,7 +23,7 @@ import signal
 import tempfile
 import os
 
-from twisted.trial.unittest import FailTest
+from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.test.integration.common import ModelTestMixin
@@ -193,6 +193,10 @@ class DBTests(common.TestCase, ModelTestMixin):
     @common.attr(timeout=30)
     @defer.inlineCallbacks
     def testMisconfiguredPostgresFallbackToSqlite(self):
+        try:
+            import txpostgres
+        except ImportError:
+            raise SkipTest('txpostgres package is missing')
         postgres = ('postgres://%s:%s@%s/%s' %
                     ('user', 'password', 'localhost', 'name'))
         sqlite = 'sqlite://testMisconfiguredPostgresFallbackToSqlite.sqlite3'
