@@ -42,9 +42,10 @@ class TaskState(enum.Enum):
     completed - Task is finished
     error - Task has an error
     expired - Task timeout
+    terminated - Task terminated while performing
     '''
 
-    (performing, completed, expired, error) = range(4)
+    performing, completed, expired, error, terminated = range(5)
 
 
 class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
@@ -189,6 +190,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         return d
 
     def _terminate(self, result):
+        if self._cmp_state(TaskState.performing):
+            self._set_state(TaskState.terminated)
         common.ExpirationCallsMixin._terminate(self)
 
         self.log("Unregistering task %s" % self.guid)

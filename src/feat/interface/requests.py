@@ -34,8 +34,9 @@ class RequestState(enum.Enum):
       - closed: The request expire or a response has been received
         from all repliers.
       - wtf: What a Terrible Failure
+      - terminated: the protocol has been terminated while requested
     '''
-    none, requested, closed, wtf = range(4)
+    none, requested, closed, wtf, terminated = range(5)
 
 
 class IRequestPeer(protocols.IAgencyProtocol):

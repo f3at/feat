@@ -139,6 +139,8 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Private Methods ###
 
     def _terminate(self, result):
+        if self._cmp_state(RequestState.requested):
+            self._set_state(RequestState.terminated)
         common.ExpirationCallsMixin._terminate(self)
         self.log("Unregistering requester")
         self.agent.unregister_protocol(self)
@@ -232,6 +234,8 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Overridden Methods ###
 
     def _terminate(self, result):
+        if self._cmp_state(RequestState.requested):
+            self._set_state(RequestState.terminated)
         common.ExpirationCallsMixin._terminate(self)
         self.debug('Terminate called')
         self.agent.unregister_protocol(self)
