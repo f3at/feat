@@ -374,6 +374,12 @@ class IAgencyAgent(Interface):
         @rtype: C{bool}
         '''
 
+    def get_canceller():
+        '''
+        @return: a canceller that cancel a fiber when the agent state changes.
+        @rtype: fiber.ICancellable
+        '''
+
 
 class IAgent(Interface):
     '''
