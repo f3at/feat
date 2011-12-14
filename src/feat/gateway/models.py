@@ -56,7 +56,7 @@ class Root(model.Model):
     model.child("agents", model="feat.agents",
                 fetch=getter.model_get("_locate_master"),
                 label="Agents", desc="Agents running on this host.")
-    model.child('api', model='feat.api',
+    model.child('apps', model='feat.apps',
                 label='Api', desc='Api exposed by subproject')
 
     model.meta("html-order", "agencies, agents")
@@ -82,8 +82,27 @@ class Root(model.Model):
         return reference.Absolute((host, port), *location)
 
 
-class Api(model.Model):
-    model.identity('feat.api')
+_app_names = dict()
+
+
+def register_app(name, model):
+    global _app_names
+    _app_names[name] = model
+
+
+class Apps(model.Collection):
+    model.identity('feat.apps')
+    model.child_names(call.model_call('get_names'))
+    model.child_model(getter.model_get('get_model'))
+    model.child_source(getter.model_attr('source'))
+
+    def get_names(self):
+        global _app_names
+        return _app_names.keys()
+
+    def get_model(self, name):
+        global _app_names
+        return _app_names.get(name)
 
 
 class Agencies(model.Collection):

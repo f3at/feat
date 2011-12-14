@@ -45,7 +45,7 @@ class ErrorPayload(object):
         if isinstance(ex, http.HTTPError):
             code = ex.status_code
         elif isinstance(ex, error.FeatError):
-            code = ex.eror_code
+            code = ex.error_code
         else:
             code = None
 
@@ -67,7 +67,7 @@ class ErrorPayload(object):
         if isinstance(ex, http.HTTPError):
             code = ex.status_code
         elif isinstance(ex, error.FeatError):
-            code = ex.eror_code
+            code = ex.error_code
         else:
             code = None
 

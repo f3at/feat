@@ -353,11 +353,6 @@ def _annotate(name, *args, **kwargs):
 ### Registry ###
 
 
-def delete_model(identity):
-    global _model_factories
-    del(_model_factories[identity])
-
-
 def register_factory(identity, factory):
     global _model_factories
     identity = unicode(identity)
