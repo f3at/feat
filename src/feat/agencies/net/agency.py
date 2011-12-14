@@ -416,6 +416,8 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param, self._gateway.cleanup)
         if self._journaler:
             d.addCallback(defer.drop_param, self._journaler.close)
+        if self._database:
+            d.addCallback(defer.drop_param, self._database.disconnect)
         if self._broker:
             d.addCallback(defer.drop_param, self._broker.disconnect)
         return d
