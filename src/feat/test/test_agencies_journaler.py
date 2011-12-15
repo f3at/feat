@@ -199,7 +199,8 @@ class DBTests(common.TestCase, ModelTestMixin):
             raise SkipTest('txpostgres package is missing')
         postgres = ('postgres://%s:%s@%s/%s' %
                     ('user', 'password', 'localhost', 'name'))
-        sqlite = 'sqlite://testMisconfiguredPostgresFallbackToSqlite.sqlite3'
+        tmpfile = self._get_tmp_file()
+        sqlite = 'sqlite://' + tmpfile
         connstrs = [postgres, sqlite]
         jour = journaler.Journaler()
         jour.set_connection_strings(connstrs)
@@ -221,8 +222,7 @@ class DBTests(common.TestCase, ModelTestMixin):
             defer.returnValue(False)
 
         yield self.wait_for(check, 20)
-        self.assertTrue(os.path.exists(
-            'testMisconfiguredPostgresFallbackToSqlite.sqlite3'))
+        self.assertTrue(os.path.exists(tmpfile))
 
         yield jour.insert_entry(**self._generate_data())
         yield self._assert_entries(jour, 2)
@@ -244,7 +244,7 @@ class DBTests(common.TestCase, ModelTestMixin):
         yield writer.insert_entries(data)
 
         jour = journaler.Journaler()
-        jour.set_connection_strings(['sqlite://testMigratingEntries.sqlite3'])
+        jour.set_connection_strings(['sqlite://' + self._get_tmp_file()])
 
         yield jour.migrate_entries(writer)
         yield self._assert_entries(jour, 2400)
