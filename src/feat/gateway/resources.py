@@ -562,18 +562,19 @@ class Root(ModelResource):
     label = "FEAT Gateway"
     desc = None
 
-    def __init__(self, hostname, port, source, static_path):
+    def __init__(self, hostname, port, source, static_path=None):
         self.source = source
         self.hostname = hostname
         self.port = port
         self._initiating = True
-        self._static = StaticResource(hostname, port, static_path)
+        self._static = (static_path and
+                        StaticResource(hostname, port, static_path))
         self._methods = set([http.Methods.GET])
 
     def locate_resource(self, request, location, remaining):
 
         def locate(_param):
-            if remaining[0] == u"static":
+            if self._static and remaining[0] == u"static":
                 return self._static, remaining[1:]
             return ModelResource.locate_resource(self, request,
                                                  location, remaining)
