@@ -22,6 +22,7 @@
 import operator
 import uuid
 import copy
+import sys
 
 import feat
 from feat.agents.base import (agent, replay, manager, contractor,
@@ -594,7 +595,8 @@ class CheckinList(serialization.Serializable, log.Logger):
             except BaseNotMigratable as e:
                 factory = type(e)
                 msg = str(e)
-                raise factory(msg, partial_solution=resp)
+                raise factory(msg, partial_solution=resp), \
+                      None, sys.exc_info()[2]
         return resp
 
     ### private ###

@@ -19,7 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 import inspect
+import sys
 
 from feat.common import fiber, defer
 
@@ -61,7 +63,7 @@ class Common(object):
                     except IndexError:
                         msg = ("Missing value for keyword argument %s "
                                "of the method %r" % (arg, method))
-                        raise AttributeError(msg)
+                        raise AttributeError(msg), None, sys.exc_info()[2]
 
             call_list.append((method, kwargs, ))
 

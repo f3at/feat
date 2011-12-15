@@ -19,7 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 import heapq
+import sys
 
 from zope.interface import implements, classProvides
 
@@ -642,7 +644,7 @@ class ExpQueue(ExpBase):
                 if item.exp is None or item.exp > now:
                     return item.value
             except IndexError:
-                raise Empty()
+                raise Empty(), None, sys.exc_info()[2]
 
     def size(self):
         '''Returns the current size counting expired values.'''

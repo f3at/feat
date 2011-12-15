@@ -19,7 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 from pprint import pformat
+import sys
 
 from zope.interface import implements, classProvides
 
@@ -563,9 +565,11 @@ class Replay(log.FluLogKeeper, log.Logger):
                                               % (pformat(old_protocols),
                                                  pformat(self.protocols)))
             except RuntimeError, e:
+                exc_info = sys.exc_info()
                 raise ReplayError("Runtime error during replay of %s: %s"
                                   % (self.agent.type_name,
-                                     error.get_exception_message(e)))
+                                     error.get_exception_message(e))), \
+                      None, exc_info[2]
 
 
 @serialization.register

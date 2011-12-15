@@ -991,13 +991,15 @@ class Request(log.Logger, log.LogProxy):
             method = http.Methods[self._ref.method]
         except KeyError:
             raise http.NotAllowedError("Method %s not supported"
-                                       % (self._ref.method, ))
+                                       % (self._ref.method, )), \
+                  None, sys.exc_info()[2]
 
         try:
             protocol = _protocol_lookup[self._ref.clientproto]
         except KeyError:
             raise http.BadRequestError("Protocol %s not supported"
-                                       % (self._ref.clientproto, ))
+                                       % (self._ref.clientproto, )), \
+                  None, sys.exc_info()[2]
 
         self._mime_type = mime_type
         self._encoding = encoding

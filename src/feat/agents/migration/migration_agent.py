@@ -19,6 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
+import sys
+
 from pprint import pformat
 
 from feat.agents.base import (agent, replay, recipient, task, descriptor,
@@ -410,7 +413,7 @@ class ExportAgents(serialization.Serializable):
             return self.entries[name]
         except KeyError as e:
             raise error.FeatError('Tunel with name %s not known.' % name,
-                                  cause=e)
+                                  cause=e), None, sys.exc_info()[2]
 
     def add_entry(self, entry):
         assert isinstance(entry, AgentEntry), entry

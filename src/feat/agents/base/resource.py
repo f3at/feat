@@ -21,6 +21,9 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+
+import sys
+
 from pprint import pformat
 
 from zope.interface import Interface, implements, Attribute, classProvides
@@ -244,7 +247,8 @@ class Scalar(serialization.Serializable):
             if self.total < 0:
                 raise ValueError("Should be positive integer")
         except ValueError as e:
-            raise DeclarationError("Bad total: %s. Exp: %r" % (total, e, ))
+            raise DeclarationError("Bad total: %s. Exp: %r"
+                                   % (total, e, )), None, sys.exc_info()[2]
 
     ### IResourceDefinition ###
 
@@ -254,7 +258,8 @@ class Scalar(serialization.Serializable):
             if value <= 0:
                 raise ValueError("Should be positive integer")
         except ValueError as e:
-            raise DeclarationError("Bad ammount: %s. Exp: %r" % (value, e, ))
+            raise DeclarationError("Bad ammount: %s. Exp: %r"
+                                   % (value, e, )), None, sys.exc_info()[2]
 
         total_allocated = self.reduce(allocations)
         if self.total < total_allocated + value:
@@ -703,7 +708,7 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
             return allocs[allocation_id]
         except KeyError:
             raise AllocationNotFound("Allocation with id=%s not found" %
-                                     allocation_id)
+                                     allocation_id), None, sys.exc_info()[2]
 
     @replay.immutable
     def get_allocation_expiration(self, state, allocation_id):
@@ -850,7 +855,8 @@ class Resources(log.Logger, log.LogProxy, replay.Replayable):
         try:
             return state.definitions[name]
         except KeyError:
-            raise UnknownResource('Unknown resource name: %r.' % name)
+            raise UnknownResource('Unknown resource name: %r.'
+                                  % name), None, sys.exc_info()[2]
 
     @replay.mutable
     def _next_id(self, state):

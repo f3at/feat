@@ -20,9 +20,12 @@
 
 # Headers in this file shall remain intact.
 
+import sys
 import types
 
 from zope.interface import implements
+
+from twisted.python.failure import Failure
 
 from feat.common import log, error, defer, mro, annotate, container
 from feat.models import utils, reference, meta as models_meta
@@ -370,7 +373,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                     d.addErrback(log_effect_Error, effect)
                 except AssertionError:
                     err = ValueError("Invalid action effect: %r" % (effect, ))
-                    return defer.fail(err)
+                    failure = Failure(err, exc_tb=sys.exc_info()[2])
+                    return defer.fail(failure)
 
             if self._result_info is not None:
                 d.addCallback(IValidator(self._result_info).publish)
