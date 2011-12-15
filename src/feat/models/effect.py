@@ -109,9 +109,9 @@ def local_ref(*parts):
 
 def relative_ref(*parts):
     """
-    Create a reference builder with specified base location.
-    using getter.relative_ref("some", "base") to get a value with key
-    "toto" will gives reference.Relative("some", "base", "toto")
+    Create a reference builder with specified relative location.
+    using getter.relative_ref("some", "submodel") to get a value with key
+    "toto" will gives reference.Relative("some", "submodel", "toto")
     """
 
     def relative_ref(_value, context, **_params):
