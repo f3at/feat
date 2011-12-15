@@ -204,6 +204,7 @@ class NestedManager(manager.BaseManager):
 
     @replay.immutable
     def wait_for_bids(self, state):
+        #FIXME: It would be better to use an agent notifier
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.medium.wait_for_state,
                        ContractState.closed, ContractState.expired)
@@ -219,6 +220,7 @@ class NestedManager(manager.BaseManager):
 
     @replay.immutable
     def wait_for_complete(self, state):
+        #FIXME: It would be better to use an agent notifier
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, state.medium.wait_for_state,
                        ContractState.completed, ContractState.expired)

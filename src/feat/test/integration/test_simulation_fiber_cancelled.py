@@ -69,8 +69,7 @@ class LateReplier(replier.BaseReplier):
 
     @replay.entry_point
     def requested(self, state, request):
-        c = state.medium.get_canceller()
-        f = fiber.Fiber(c)
+        f = self.fiber_new()
         f.add_callback(fiber.drop_param,\
                 state.agent.wait_for_event, "late event")
         f.add_callback(self.done)
