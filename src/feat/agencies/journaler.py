@@ -24,6 +24,7 @@
 import sqlite3
 import operator
 import types
+import sys
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
@@ -1404,4 +1405,4 @@ def parse_connstr(conn):
         return klass, params
     except ValueError as e:
         raise error.FeatError("%s is not a valid connection string" % (conn, ),
-                              cause=e)
+                              cause=e), None, sys.exc_info()[2]

@@ -22,6 +22,7 @@
 import optparse
 import tempfile
 import os
+import sys
 
 from feat.common import reflect
 
@@ -260,7 +261,7 @@ def _load_module(option, opt, value, parser):
     try:
         reflect.named_module(value)
     except ImportError:
-        raise OptionError("Unknown module %s" % value)
+        raise OptionError("Unknown module %s" % value), None, sys.exc_info()[2]
 
 
 def parse_config_file(option, opt_str, value, parser):

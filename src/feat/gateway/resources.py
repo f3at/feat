@@ -22,6 +22,7 @@
 
 import mimetypes
 import os
+import sys
 import time
 
 from twisted.internet import reactor, threads
@@ -529,7 +530,7 @@ class StaticResource(BaseResource):
         try:
             res = open(res_path, "rb")
         except IOError:
-            raise http.ForbiddenError()
+            raise http.ForbiddenError(), None, sys.exc_info()[2]
 
         response.do_not_cache()
 

@@ -1,3 +1,4 @@
+import sys
 import tempfile
 
 from OpenSSL import SSL, crypto
@@ -269,7 +270,8 @@ def _create_ssl_context(key_filename=None,
                 p12 = crypto.load_pkcs12(f.read(), p12_pass or "")
             except crypto.Error as e:
                 raise SecurityError("Invalid PKCS12 or passphrase for %s: %s"
-                                    % (p12_filename, e), cause=e)
+                                    % (p12_filename, e), cause=e), \
+                      None, sys.exc_info()[2]
 
             ctx.use_certificate(p12.get_certificate())
             ctx.use_privatekey(p12.get_privatekey())
@@ -289,10 +291,12 @@ def _create_ssl_context(key_filename=None,
                 cert = crypto.load_certificate(ft, f.read())
         except IOError as e:
             raise SecurityError("Certificate file access error for %s: %s"
-                                % (cert_filename, e), cause=e)
+                                % (cert_filename, e), cause=e), \
+                  None, sys.exc_info()[2]
         except crypto.Error as e:
             raise SecurityError("Invalid certificate %s: %s"
-                                % (cert_filename, e), cause=e)
+                                % (cert_filename, e), cause=e), \
+                  None, sys.exc_info()[2]
 
         try:
             with open(key_filename) as f:
@@ -300,10 +304,12 @@ def _create_ssl_context(key_filename=None,
                 key = crypto.load_privatekey(ft, f.read(), key_pass or "")
         except IOError as e:
             raise SecurityError("Private key file error for %s: %s"
-                                % (cert_filename, e), cause=e)
+                                % (cert_filename, e), cause=e), \
+                  None, sys.exc_info()[2]
         except crypto.Error as e:
             raise SecurityError("Invalid private key or passphrase for %s: %s"
-                                % (key_filename, e), cause=e)
+                                % (key_filename, e), cause=e), \
+                  None, sys.exc_info()[2]
 
         ctx.use_certificate(cert)
         ctx.use_privatekey(key)
@@ -313,7 +319,8 @@ def _create_ssl_context(key_filename=None,
         except crypto.Error as e:
             raise SecurityError("Certificate and private key files do not "
                                 "match; certificate: %s; private key: %s"
-                                % (cert_filename, key_filename, ), cause=e)
+                                % (cert_filename, key_filename, ), cause=e), \
+                  None, sys.exc_info()[2]
 
     if not verify_ca_from_p12 and verify_ca_filename is not None:
         ctx.load_verify_locations(verify_ca_filename)

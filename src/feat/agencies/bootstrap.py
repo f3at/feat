@@ -71,7 +71,7 @@ def check_options(opts, args):
                 parsed.append(p)
             except (TypeError, ValueError):
                 raise OptionError("Error unserializing json dictionary: %s " %
-                                  element)
+                                  element), None, sys.exc_info()[2]
         opts.agents_kwargs = parsed
 
     if args:
@@ -145,7 +145,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
                             value = int(parts[1])
                         except ValueError:
                             raise OptionError(
-                                "Invalid host resource: %s" % resdef)
+                                "Invalid host resource: %s" % resdef), \
+                                None, sys.exc_info()[2]
                     hostdef.resources[name] = value
 
                 for catdef in opts.hostcat:

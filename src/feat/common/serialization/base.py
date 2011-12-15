@@ -19,8 +19,10 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 import operator
 import copy
+import sys
 import types
 
 from zope.interface import implements
@@ -497,7 +499,8 @@ class Serializer(object):
                 raise TypeError("Freezing of type %s values "
                                 "not supported by %s. Value = %r."
                                 % (type(value).__name__,
-                                   reflect.canonical_name(self), value))
+                                   reflect.canonical_name(self), value)), \
+                      None, sys.exc_info()[2]
 
             return self.flatten_instance(snapshotable, caps, freezing)
 
@@ -509,7 +512,8 @@ class Serializer(object):
                 raise TypeError("Serialization of type %s values "
                                 "not supported by %s. Value = %r."
                                 % (type(value).__name__,
-                                   reflect.canonical_name(self), value))
+                                   reflect.canonical_name(self), value)), \
+                      None, sys.exc_info()[2]
 
             return self.flatten_instance(serializable, caps, freezing)
 
