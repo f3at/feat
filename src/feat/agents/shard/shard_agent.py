@@ -446,7 +446,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     @replay.entry_point
     def granted(self, state, grant):
         recp = grant.payload['joining_agent']
-        f = fiber.succeed(canceller=state.medium.get_canceller())
+        f = self.fiber_succeed()
         if grant.payload['solution_type'] == SolutionType.join:
             f.add_callback(fiber.drop_param,
                            state.agent.confirm_allocation,
@@ -790,8 +790,7 @@ class JoinShardContractor(contractor.NestingContractor):
 
     @replay.mutable
     def granted(self, state, grant):
-        f = fiber.succeed(state.preallocation_id,
-                          canceller=state.medium.get_canceller())
+        f = self.fiber_succeed(state.preallocation_id)
         f.add_callback(state.agent.confirm_allocation)
         f.add_callback(
             fiber.drop_param, state.agent.establish_partnership,
@@ -954,7 +953,7 @@ class QueryStructureContractor(contractor.BaseContractor):
         # of the graph for the arbitrary structure agent type
         partner_type = announcement.payload['partner_type']
 
-        f = fiber.succeed(canceller=state.medium.get_canceller())
+        f = self.fiber_succeed()
         f.add_callback(fiber.drop_param, state.agent.wait_for_structure)
         f.add_callback(fiber.drop_param, self._query_partners, partner_type)
         return f

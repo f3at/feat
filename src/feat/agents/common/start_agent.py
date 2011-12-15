@@ -49,7 +49,8 @@ class GloballyStartAgent(task.BaseTask):
         # we are setting shard=None here first, because of the logic in
         # Host Agent which prevents it from changing the shard field if it
         # has been set to sth meaningfull (not in [None, 'lobby'])
-        f = state.descriptor.set_shard(state.agent, None)
+        f = self.fiber_succeed(state.agent)
+        f.add_callback(state.descriptor.set_shard, None)
         f.add_callback(self._store_descriptor)
         f.add_callback(fiber.drop_param, self._retry)
         return f
@@ -57,18 +58,19 @@ class GloballyStartAgent(task.BaseTask):
     @replay.mutable
     def _retry(self, state):
         resc = state.descriptor.extract_resources()
-        f = raage.retrying_allocate_resource(
-            state.agent, resources=resc,
-            categories=state.factory.categories,
-            max_retries=state.max_retries,
-            agent_id=state.descriptor.doc_id)
+        f = self.fiber_succeed(state.agent)
+        f.add_callback(raage.retrying_allocate_resource, resources=resc,
+                       categories=state.factory.categories,
+                       max_retries=state.max_retries,
+                       agent_id=state.descriptor.doc_id)
         f.add_callback(self._request_starting_host)
         return f
 
     @replay.mutable
     def _request_starting_host(self, state, (allocation_id, recp)):
-        f = host.start_agent(state.agent, recp, state.descriptor,
-                             allocation_id, **state.keywords)
+        f = self.fiber_succeed(state.agent)
+        f.add_callback(host.start_agent, recp, state.descriptor,
+                       allocation_id, **state.keywords)
         f.add_errback(self._starting_failed)
         return f
 

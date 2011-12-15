@@ -49,6 +49,20 @@ class BaseProtocol(log.Logger, replay.Replayable):
         state.agent = agent
         state.medium = medium
 
+    ### public ###
+
+    @replay.immutable
+    def fiber_new(self, state):
+        return fiber.Fiber(canceller=state.medium.get_canceller())
+
+    @replay.immutable
+    def fiber_succeed(self, state, param=None):
+        return fiber.succeed(param, canceller=state.medium.get_canceller())
+
+    @replay.immutable
+    def fiber_fail(self, state, failure):
+        return fiber.fail(failure, canceller=state.medium.get_canceller())
+
     ### IAgentProtocol ###
 
     def initiate(self):
