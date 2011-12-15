@@ -232,9 +232,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             old_doc = self._documents.get(doc_id, None)
             if old_doc:
                 self.log('Checking the old document revision')
-                if doc.get('_rev', None) is None or\
-                       old_doc['_rev'] != doc['_rev']:
-                    raise ConflictError('Document update conflict.')
+                if not old_doc.get('_deleted', False):
+                    if (doc.get('_rev', None) is None
+                        or old_doc['_rev'] != doc['_rev']):
+                        raise ConflictError('Document update conflict.')
 
         doc['_rev'] = self._generate_rev(doc)
         doc['_id'] = doc_id
