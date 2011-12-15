@@ -117,6 +117,10 @@ def add_agency_options(parser):
     group.add_option('-a', '--agent', dest="agents", action="append",
                       help="Start an agent of specified type.",
                       metavar="AGENT_NAME", default=[])
+    group.add_option('--agent-kwargs', dest="agents_kwargs", action="append",
+                     help="Pass initialization keywords to the agent.",
+                     metavar="AGENT_NAME", default=[])
+
     group.add_option('-X', '--standalone',
                       action="store_true", dest="standalone",
                       help="run agent in standalone agency (default: False)",

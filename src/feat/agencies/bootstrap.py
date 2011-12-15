@@ -54,10 +54,25 @@ def check_options(opts, args):
         try:
             opts.standalone_kwargs = json.unserialize(
                 opts.standalone_kwargs)
-        except TypeError:
+        except (TypeError, ValueError):
             raise OptionError("Error unserializing json dictionary: %s " %
                               opts.standalone_kwargs)
-
+    if opts.agents_kwargs:
+        if len(opts.agents_kwargs) > len(opts.agents):
+            raise OptionError("Received keywords for %d agents and only %d "
+                              "to spawn." %
+                              (len(opts.agents_kwargs), len(opts.agents)))
+        parsed = list()
+        for element in opts.agents_kwargs:
+            try:
+                p = json.unserialize(element)
+                if not isinstance(p, dict):
+                    raise TypeError(element)
+                parsed.append(p)
+            except (TypeError, ValueError):
+                raise OptionError("Error unserializing json dictionary: %s " %
+                                  element)
+        opts.agents_kwargs = parsed
 
     if args:
         raise OptionError("Unexpected arguments: %r" % args)
@@ -147,8 +162,13 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
             d = agency.initiate()
             for desc in descriptors:
-                log.debug("feat", "Starting agent with descriptor %r", desc)
-                d.addCallback(defer.drop_param, agency.spawn_agent, desc)
+                kwargs = (opts.agents_kwargs.pop(0)
+                          if opts.agents_kwargs else {})
+                log.debug("feat", ("Starting agent with descriptor %r "
+                                   "Passing %r to his initiate()"),
+                          desc, kwargs)
+                d.addCallback(defer.drop_param, agency.spawn_agent, desc,
+                              **kwargs)
         else:
             # standalone specific
             kwargs = opts.standalone_kwargs or dict()
