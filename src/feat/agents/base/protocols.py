@@ -53,15 +53,18 @@ class BaseProtocol(log.Logger, replay.Replayable):
 
     @replay.immutable
     def fiber_new(self, state):
-        return fiber.Fiber(canceller=state.medium.get_canceller())
+        return fiber.Fiber(canceller=state.medium.get_canceller(),
+                           debug_depth=2)
 
     @replay.immutable
     def fiber_succeed(self, state, param=None):
-        return fiber.succeed(param, canceller=state.medium.get_canceller())
+        return fiber.succeed(param, canceller=state.medium.get_canceller(),
+                             debug_depth=2)
 
     @replay.immutable
     def fiber_fail(self, state, failure):
-        return fiber.fail(failure, canceller=state.medium.get_canceller())
+        return fiber.fail(failure, canceller=state.medium.get_canceller(),
+                          debug_depth=2)
 
     ### IAgentProtocol ###
 
@@ -83,11 +86,12 @@ class BaseInitiator(BaseProtocol):
 
     @replay.journaled
     def notify_state(self, state, *states):
-        return fiber.wrap_defer(state.medium.wait_for_state, *states)
+        return fiber.wrap_defer_ex(state.medium.wait_for_state,
+                                   states, debug_depth=2)
 
     @replay.journaled
     def notify_finish(self, state):
-        return fiber.wrap_defer(state.medium.notify_finish)
+        return fiber.wrap_defer_ex(state.medium.notify_finish, debug_depth=2)
 
     @replay.immutable
     def get_expiration_time(self, state):

@@ -81,10 +81,11 @@ class FiberMroMixin(Common):
     __slots__ = ()
 
     def call_mro(self, method_name, **keywords):
-        return self.call_mro_ex(method_name, keywords)
+        return self.call_mro_ex(method_name, keywords, _debug_depth=1)
 
-    def call_mro_ex(self, method_name, keywords, raise_on_unconsumed=True):
-        f = fiber.succeed()
+    def call_mro_ex(self, method_name, keywords,
+                    raise_on_unconsumed=True, _debug_depth=0):
+        f = fiber.succeed(debug_depth=_debug_depth+1)
         call_list = self._get_mro_call_list(
             method_name, keywords, raise_on_unconsumed)
         for method, kwargs in call_list:

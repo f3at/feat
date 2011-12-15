@@ -47,7 +47,7 @@ def update_descriptor(function):
     def decorated(self, state, *args, **kwargs):
         immfun = replay.immutable(function)
         method = types.MethodType(immfun, self, self.__class__)
-        f = fiber.succeed(method)
+        f = fiber.succeed(method, debug_depth=2, debug_call=function)
         f.add_callback(state.medium.update_descriptor, *args, **kwargs)
         return f
 
