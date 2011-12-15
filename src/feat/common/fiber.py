@@ -23,6 +23,8 @@ import os
 import sys
 import uuid
 import warnings
+import traceback
+import types
 
 from twisted.python import failure
 from zope.interface import implements
@@ -53,7 +55,7 @@ def bridge_result(_result, _method, *args, **kwargs):
                   "please use fiber.bridge_param()",
                   DeprecationWarning)
     assert callable(_method), "method %r is not callable" % (_method, )
-    f = Fiber()
+    f = Fiber(debug_depth=1, debug_call=_method)
     f.add_callback(drop_result, _method, *args, **kwargs)
     f.add_callback(override_result, _result)
     return f.succeed()
@@ -66,7 +68,7 @@ def drop_param(_param, _method, *args, **kwargs):
 
 def bridge_param(_param, _method, *args, **kwargs):
     assert callable(_method), "method %r is not callable" % (_method, )
-    f = Fiber()
+    f = Fiber(debug_depth=1, debug_call=_method)
     f.add_callback(drop_param, _method, *args, **kwargs)
     f.add_callback(override_result, _param)
     return f.succeed()
@@ -74,7 +76,7 @@ def bridge_param(_param, _method, *args, **kwargs):
 
 def keep_param(_param, _method, *args, **kwargs):
     assert callable(_method), "method %r is not callable" % (_method, )
-    f = Fiber()
+    f = Fiber(debug_depth=1, debug_call=_method)
     f.add_callback(_method, *args, **kwargs)
     f.add_callback(override_result, _param)
     return f.succeed(_param)
@@ -143,12 +145,14 @@ def trace(_param, _template="", *args):
     return _param
 
 
-def succeed(param=None, canceller=None):
-    return Fiber(canceller).succeed(param)
+def succeed(param=None, canceller=None, debug_depth=0, debug_call=None):
+    f = Fiber(canceller, debug_depth=debug_depth+1, debug_call=debug_call)
+    return f.succeed(param)
 
 
-def fail(failure=None, canceller=None):
-    return Fiber(canceller).fail(failure)
+def fail(failure=None, canceller=None, debug_depth=0, debug_call=None):
+    f = Fiber(canceller, debug_depth=debug_depth+1, debug_call=debug_call)
+    return f.fail(failure)
 
 
 def wrap_defer(_method, *args, **kwargs):
@@ -156,8 +160,11 @@ def wrap_defer(_method, *args, **kwargs):
     Quick way to call a function returning a Deferred from place when you are
     supposed to return the Fiber.
     '''
-    f = succeed()
-    f.add_callback(drop_param, _method, *args, **kwargs)
+    return wrap_defer_ex(_method, args, kwargs, debug_depth=1)
+
+def wrap_defer_ex(_method, args=None, kwargs=None, debug_depth=0):
+    f = succeed(debug_depth=debug_depth+1, debug_call=_method)
+    f.add_callback(drop_param, _method, *(args or ()), **(kwargs or {}))
     return f
 
 
@@ -179,6 +186,9 @@ def maybe_fiber(_function, *args, **kwargs):
 
 trace_fiber_calls = os.environ.get("FEAT_TRACE_FIBERS", "NO").upper() \
                     in ("YES", "1", "TRUE")
+
+debug_fibers = os.environ.get("FEAT_DEBUG_FIBERS", "NO").upper() \
+               in ("YES", "1", "TRUE")
 
 
 @decorator.simple_function
@@ -353,6 +363,33 @@ class RootFiberDescriptor(object):
         fiber._bind(self, self.fiber_id, 1)
 
 
+class FiberInfo(object):
+
+    def __init__(self, stack_depth, called_func):
+        self.creator = None
+        self.calling = None
+        self._init_creator(stack_depth)
+        self._init_calling(called_func)
+
+    def _init_creator(self, stack_depth):
+        stack = traceback.extract_stack(limit=stack_depth+3)
+        entry = stack[0]
+        self.creator = "%s:%s:%d" % (os.path.basename(entry[0]), entry[2], entry[1])
+
+    def _init_calling(self, func):
+        if func is None:
+            return
+
+        if isinstance(func, types.MethodType):
+            func = func.im_func
+
+        if hasattr(func, 'original_func'):
+            func = func.original_func
+
+        self.calling = "%s:%s:%d" % (os.path.basename(func.__module__),
+                                     func.func_name, func.func_code.co_firstlineno)
+
+
 class Fiber(object):
     '''Fibers are used to specify a chain of asynchronous execution.
 
@@ -410,7 +447,8 @@ class Fiber(object):
 
     implements(IFiber, ISnapshotable)
 
-    def __init__(self, canceller = None):
+    def __init__(self, canceller = None, debug_depth=0, debug_call=None):
+
         self._descriptor = None
         self.fiber_depth = None
         self.fiber_id = None
@@ -425,6 +463,10 @@ class Fiber(object):
         #  |Fiber]
         self._calls = []
         self.canceller = canceller
+        self.debug = None
+
+        if debug_fibers:
+            self.debug = FiberInfo(debug_depth+1, debug_call)
 
     @property
     def trigger_type(self):
@@ -454,9 +496,11 @@ class Fiber(object):
         # More checks
         if self._delegated_startup:
             raise FiberStartupError("Fiber with delegated startup cannot "
-                                    "be started directly")
+                                    "be started directly"
+                                    + self._get_debug_info())
         if self._trigger is None:
-            raise FiberTriggerError("Cannot start a fiber without trigger")
+            raise FiberTriggerError("Cannot start a fiber without trigger"
+                                    + self._get_debug_info())
 
         # Ensure there is a descriptor set
         self._ensure_descriptor()
@@ -472,9 +516,11 @@ class Fiber(object):
 
         if self._delegated_startup:
             raise FiberTriggerError("Fiber with delegated startup cannot "
-                                    "change it's trigger anymore")
+                                    "change it's trigger anymore"
+                                    + self._get_debug_info())
         if self._trigger is not None:
-            raise FiberTriggerError("Fiber already triggered")
+            raise FiberTriggerError("Fiber already triggered"
+                                    + self._get_debug_info())
 
         self._trigger = TriggerType(trigger_type)
         if self._trigger == TriggerType.fail and param is None:
@@ -526,7 +572,8 @@ class Fiber(object):
             if self._descriptor == desc:
                 # Already attached
                 return False
-            raise FiberError("Fiber already attached to another descriptor")
+            raise FiberError("Fiber already attached to another descriptor"
+                             + self._get_debug_info())
 
         self._descriptor = desc
         self.fiber_id = fiber_id
@@ -557,7 +604,8 @@ class Fiber(object):
 
     def _check_not_started(self):
         if self._started:
-            raise FiberStartupError("Fiber already started")
+            raise FiberStartupError("Fiber already started"
+                                    + self._get_debug_info())
 
     def _prepare(self, d):
         self._started = True
@@ -600,6 +648,16 @@ class Fiber(object):
 
     ### Private Methods ###
 
+    def _get_debug_info(self):
+        if self.debug is None:
+            return ""
+        result = []
+        if self.debug.creator:
+            result.append("created by %s" % self.debug.creator)
+        if self.debug.calling:
+            result.append("calling %s" % self.debug.calling)
+        return " (%s)" % ("; ".join(result), )
+
     def _wrap_callback(self, callback, args, kwargs):
         if callback:
             args = (self, callback, args or (), kwargs or {})
@@ -616,14 +674,17 @@ class Fiber(object):
             param.raiseException()
 
         if self.canceller and not self.canceller.is_active():
-            raise FiberCancelled("Fiber cancelled")
+            raise FiberCancelled("Fiber cancelled"
+                                 + self._get_debug_info())
 
         section = WovenSection(descriptor=fiber)
         section.enter()
         try:
             result = callback(param, *args, **kwargs)
-        except Exception:
+        except Exception, e:
             section.abort()
+            if debug_fibers:
+                e.args = (e.args[0] + self._get_debug_info(), ) + e.args[1:]
             raise
         else:
             return section.exit(result)
