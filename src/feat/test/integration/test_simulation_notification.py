@@ -149,5 +149,7 @@ class NotificationTest(common.SimulationTest):
 
         yield self.wait_for(check, 10)
 
-        self.assertEqual(collector1.get_notifications(), [1, 3, 4, 6])
-        self.assertEqual(collector2.get_notifications(), [2, 3, 5, 6])
+        self.assertEqual(set(collector1.get_notifications()),
+                         set([1, 3, 4, 6]))
+        self.assertEqual(set(collector2.get_notifications()),
+                         set([2, 3, 5, 6]))
