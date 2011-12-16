@@ -513,7 +513,7 @@ class IJournalReader(Interface):
         "from the top of the table" meaning with lowest timestamp.
         '''
 
-    def get_log_entries(start_date, end_data, filters):
+    def get_log_entries(start_date, end_data, filters, limit):
         '''
         Fetches the log entries for the given period of time and filters.
         All parameters are optional, by default this query will return
@@ -537,6 +537,7 @@ class IJournalReader(Interface):
                   If the key is not present its simply not taken into account
                   for the filter. If multiple filters are specified they are
                   combined with the OR operator in the query.
+        @param limit: maxium number of log entries to fetch
         @rtype: Deferred
         '''
 

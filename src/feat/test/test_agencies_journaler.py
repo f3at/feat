@@ -33,6 +33,44 @@ from feat.common.serialization import banana
 from feat.gateway import models
 
 
+class GenerateEntryMixin(object):
+
+    def _generate_log(self, **opts):
+        defaults = {
+            'entry_type': 'log',
+            'message': 'Some log message',
+            'level': 2,
+            'category': 'feat',
+            'log_name': None,
+            'file_path': __file__,
+            'line_num': 100,
+            'timestamp': int(time.time())}
+
+        defaults.update(opts)
+        return defaults
+
+    def _generate_entry(self, **opts):
+        if not hasattr(self, 'serializer'):
+            self.serializer = banana.Serializer()
+
+        defaults = {
+            'entry_type': 'journal',
+            'agent_id': 'some id',
+            'instance_id': 1,
+            'journal_id': self.serializer.convert(('some_id', 1, 0, )),
+            'function_id': 'some.canonical.name',
+            'args': self.serializer.convert(tuple()),
+            'kwargs': self.serializer.convert(dict()),
+            'fiber_id': 'some fiber id',
+            'fiber_depth': 1,
+            'result': self.serializer.convert(None),
+            'side_effects': self.serializer.convert(list()),
+            'timestamp': int(time.time())}
+
+        defaults.update(opts)
+        return defaults
+
+
 class SqliteWriter(journaler.SqliteWriter, common.Mock):
 
     def __init__(self, *args, **kwargs):
@@ -42,14 +80,12 @@ class SqliteWriter(journaler.SqliteWriter, common.Mock):
     _create_schema = common.Mock.record(journaler.SqliteWriter._create_schema)
 
 
-class DBTests(common.TestCase, ModelTestMixin):
+class DBTests(common.TestCase, ModelTestMixin, GenerateEntryMixin):
 
     timeout = 2
 
     def setUp(self):
         common.TestCase.setUp(self)
-        self.serializer = banana.Serializer()
-        self.unserializer = banana.Unserializer()
 
     @defer.inlineCallbacks
     def testInitiateInMemory(self):
@@ -76,7 +112,7 @@ class DBTests(common.TestCase, ModelTestMixin):
         jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self, encoding='zip')
         num = 10
-        defers = map(lambda _: jour.insert_entry(**self._generate_data()),
+        defers = map(lambda _: jour.insert_entry(**self._generate_entry()),
                      range(num))
         yield writer.initiate()
         yield jour.configure_with(writer)
@@ -88,10 +124,11 @@ class DBTests(common.TestCase, ModelTestMixin):
     def testStoringAndReadingEntries(self):
         jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self, encoding='zip')
+
         yield writer.initiate()
         yield jour.configure_with(writer)
 
-        yield jour.insert_entry(**self._generate_data())
+        yield jour.insert_entry(**self._generate_entry())
         histories = yield writer.get_histories()
         self.assertIsInstance(histories, list)
         self.assertIsInstance(histories[0], journaler.History)
@@ -103,13 +140,13 @@ class DBTests(common.TestCase, ModelTestMixin):
         self.assertEqual('some id', unpacked['agent_id'])
         self.assertEqual('some.canonical.name', unpacked['function_id'])
         self.assertEqual(('some_id', 1, 0, ),
-                         self.unserializer.convert(unpacked['journal_id']))
+                         banana.unserialize(unpacked['journal_id']))
         self.assertEqual(None,
-                         self.unserializer.convert(unpacked['result']))
+                         banana.unserialize(unpacked['result']))
         self.assertEqual(list(),
-                         self.unserializer.convert(unpacked['side_effects']))
+                         banana.unserialize(unpacked['side_effects']))
 
-        yield jour.insert_entry(**self._generate_data(function_id='other'))
+        yield jour.insert_entry(**self._generate_entry(function_id='other'))
         entries = yield writer.get_entries(histories[0])
         self.assertEqual(2, len(entries))
         first = entries[0]
@@ -167,7 +204,7 @@ class DBTests(common.TestCase, ModelTestMixin):
         writer = journaler.SqliteWriter(
             self, filename=filename, encoding='zip')
         yield writer.initiate()
-        d = jour.insert_entry(**self._generate_data())
+        d = jour.insert_entry(**self._generate_entry())
         yield jour.configure_with(writer)
         yield d
         yield self._assert_entries(jour, 1)
@@ -181,7 +218,7 @@ class DBTests(common.TestCase, ModelTestMixin):
             os.kill(ourpid, signal.SIGHUP)
 
             yield self._assert_entries(jour, 0)
-            yield jour.insert_entry(**self._generate_data())
+            yield jour.insert_entry(**self._generate_entry())
             yield self._assert_entries(jour, 1)
 
             self.assertTrue(os.path.exists(filename))
@@ -207,7 +244,7 @@ class DBTests(common.TestCase, ModelTestMixin):
         jour = journaler.Journaler(
             on_switch_writer_cb=agency_stub.on_switch_writer)
         jour.set_connection_strings(connstrs)
-        jour.insert_entry(**self._generate_data())
+        jour.insert_entry(**self._generate_entry())
 
         @defer.inlineCallbacks
         def check():
@@ -229,7 +266,7 @@ class DBTests(common.TestCase, ModelTestMixin):
 
         self.assertEqual([0, 1], agency_stub.calls)
 
-        yield jour.insert_entry(**self._generate_data())
+        yield jour.insert_entry(**self._generate_entry())
         yield self._assert_entries(jour, 2)
 
         # now validate the model display
@@ -243,7 +280,7 @@ class DBTests(common.TestCase, ModelTestMixin):
     @defer.inlineCallbacks
     def testMigratingEntries(self):
         writer = journaler.SqliteWriter(self)
-        data = [self._generate_data() for x in range(2400)]
+        data = [self._generate_entry() for x in range(2400)]
         data += [self._generate_log() for x in range(200)]
         yield writer.initiate()
         yield writer.insert_entries(data)
@@ -267,38 +304,6 @@ class DBTests(common.TestCase, ModelTestMixin):
         fd, name = tempfile.mkstemp(suffix='_journal.sqlite')
         self.addCleanup(os.remove, name)
         return name
-
-    def _generate_log(self, **opts):
-        defaults = {
-            'entry_type': 'log',
-            'message': 'Some log message',
-            'level': 2,
-            'category': 'feat',
-            'log_name': None,
-            'file_path': __file__,
-            'line_num': 100,
-            'timestamp': int(time.time())}
-
-        defaults.update(opts)
-        return defaults
-
-    def _generate_data(self, **opts):
-        defaults = {
-            'entry_type': 'journal',
-            'agent_id': 'some id',
-            'instance_id': 1,
-            'journal_id': self.serializer.convert(('some_id', 1, 0, )),
-            'function_id': 'some.canonical.name',
-            'args': self.serializer.convert(tuple()),
-            'kwargs': self.serializer.convert(dict()),
-            'fiber_id': 'some fiber id',
-            'fiber_depth': 1,
-            'result': self.serializer.convert(None),
-            'side_effects': self.serializer.convert(list()),
-            'timestamp': int(time.time())}
-
-        defaults.update(opts)
-        return defaults
 
     @defer.inlineCallbacks
     def _assert_entries(self, jour, expected):

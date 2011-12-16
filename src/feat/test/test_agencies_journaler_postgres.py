@@ -9,6 +9,9 @@ from feat.gateway import models
 from feat.test import common
 from feat.test.integration.common import ModelTestMixin
 
+from feat.test.test_agencies_journaler import GenerateEntryMixin
+
+
 psycopg2 = None
 try:
     import psycopg2
@@ -45,15 +48,9 @@ def getSkipForPsycopg2():
 _skip = getSkipForPsycopg2()
 
 
-class TestPostgressWriter(common.TestCase, ModelTestMixin):
-
-    skip = _skip
+class PostgresTestMixin(object):
 
     def setUp(self):
-        common.TestCase.setUp(self)
-        self.serializer = banana.Serializer()
-        self.unserializer = banana.Unserializer()
-
         self.connection = psycopg2.connect(
             user=DB_USER, password=DB_PASSWORD,
             host=DB_HOST, database=DB_NAME)
@@ -71,21 +68,230 @@ class TestPostgressWriter(common.TestCase, ModelTestMixin):
         self.cursor.execute(schema)
         self.cursor.execute('commit')
 
+
+class TestPostgressReader(common.TestCase, GenerateEntryMixin,
+                          PostgresTestMixin):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        common.TestCase.setUp(self)
+        PostgresTestMixin.setUp(self)
+
+        self.writer = journaler.PostgresWriter(
+            self, user=DB_USER, host=DB_HOST,
+            database=DB_NAME,
+            password=DB_PASSWORD)
+        self.reader = journaler.PostgresReader(
+            self, user=DB_USER, host=DB_HOST,
+            database=DB_NAME,
+            password=DB_PASSWORD)
+        yield self.writer.initiate()
+        yield self.reader.initiate()
+
+    def _populate_data(self):
+        e = self._generate_entry
+        l = self._generate_log
+
+        self.now = time.time()
+        self.past1 = self.now - 100
+        self.past2 = self.past1 - 100
+
+        return self.writer.insert_entries([
+            e(agent_id='other_agent', args='some args', timestamp=self.past1),
+            e(agent_id='other_agent'),
+            e(),
+            e(),
+            l(level=2, category='test', log_name='log_name',
+              timestamp=self.past2, message='m1'),
+            l(level=1, category='test', timestamp=self.past1, message='m2'),
+            l(level=1, message='m3'),
+            l(level=2, message='m4')])
+
+    @defer.inlineCallbacks
+    def testGettingJournalerEntries(self):
+        yield self._populate_data()
+
+        # test getting histories
+        histories = yield self.reader.get_histories()
+        self.assertEqual(2, len(histories))
+        self.assertEqual('other_agent', histories[0].agent_id)
+        self.assertEqual('some id', histories[1].agent_id)
+        self.assertEqual(1, histories[0].instance_id)
+        self.assertEqual(1, histories[1].instance_id)
+
+        # get entris for history
+        entries = yield self.reader.get_entries(histories[0])
+        self.assertEqual(2, len(entries))
+        self.assertEqual('some args', entries[0]['args'])
+
+        # same with start_date
+        entries = yield self.reader.get_entries(histories[0],
+                                                start_date=self.now-10)
+        self.assertEqual(1, len(entries))
+        self.assertEqual(tuple(), banana.unserialize(entries[0]['args']))
+
+        # same with limit on number
+        entries = yield self.reader.get_entries(histories[0], limit=1)
+        self.assertEqual(1, len(entries))
+        self.assertEqual('some args', entries[0]['args'])
+
+        # getting bare entries
+        entries = yield self.reader.get_bare_journal_entries()
+        self.assertEqual(4, len(entries))
+
+        # deleting entries
+        yield self.reader.delete_top_journal_entries(2)
+        entries = yield self.reader.get_bare_journal_entries()
+        self.assertEqual(2, len(entries))
+        self.assertEqual('some id', entries[0]['agent_id'])
+        self.assertEqual('some id', entries[1]['agent_id'])
+
+    @defer.inlineCallbacks
+    def testQueryingLogNamesAndCategories(self):
+        yield self._populate_data()
+
+        # test getting time boundaries
+        # tolerance of 1 seconds is due to converting float timestamp to int
+        start, end = yield self.reader.get_log_time_boundaries()
+        self.assertApproximates(self.past2, start, 1)
+        self.assertApproximates(self.now, end, 1)
+
+        #test getting categories
+        categories = yield self.reader.get_log_categories()
+        self.assertEqual(set(['feat', 'test']), set(categories))
+
+        #now with time conditions
+        categories = yield self.reader.get_log_categories(
+            start_date=self.now-10)
+        self.assertEqual(set(['feat']), set(categories))
+        categories = yield self.reader.get_log_categories(
+            end_date=self.now-10)
+        self.assertEqual(set(['test']), set(categories))
+
+        #test getting log names
+        names = yield self.reader.get_log_names('test')
+        self.assertEqual(2, len(names))
+        self.assertEqual(set([None, 'log_name']), set(names))
+
+        names = yield self.reader.get_log_names('test',
+                                                start_date=self.past1-10)
+        self.assertEqual(1, len(names))
+        self.assertEqual([None], names)
+        names = yield self.reader.get_log_names('test',
+                                                end_date=self.past1-10)
+        self.assertEqual(1, len(names))
+        self.assertEqual(['log_name'], names)
+
+        # unknown category
+        names = yield self.reader.get_log_names('unknown')
+        self.assertEqual([], names)
+
+    @defer.inlineCallbacks
+    def testGettingLogEntries(self):
+        yield self._populate_data()
+
+        # simple query
+        entries = yield self.reader.get_log_entries()
+        self.assertEqual(4, len(entries))
+
+        # with time condition
+        entries = yield self.reader.get_log_entries(start_date=self.now-10)
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m3', entries[0]['message'])
+        self.assertEqual('m4', entries[1]['message'])
+
+        entries = yield self.reader.get_log_entries(end_date=self.now-10)
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+        self.assertEqual('m2', entries[1]['message'])
+
+        # filter by category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)])
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+        self.assertEqual('m2', entries[1]['message'])
+
+        # category and time conditions
+        # filter by category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)],
+            start_date=self.now-10)
+        self.assertEqual(0, len(entries))
+
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)],
+            end_date=self.now-10)
+        self.assertEqual(2, len(entries))
+
+        # filter by name and category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5, name='log_name')])
+        self.assertEqual(1, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+
+        # filter by level
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=1)])
+        self.assertEqual(1, len(entries))
+        self.assertEqual('m2', entries[0]['message'])
+
+        # deleting top entries
+        yield self.reader.delete_top_log_entries(2)
+
+        # only 2 entries left
+        entries = yield self.reader.get_log_entries()
+        self.assertEqual(2, len(entries))
+
+        # now category test should be gone
+        categories = yield self.reader.get_log_categories()
+        self.assertEqual(['feat'], categories)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.reader.close()
+        yield self.writer.close()
+        yield common.TestCase.tearDown(self)
+
+
+class TestPostgressWriter(common.TestCase, ModelTestMixin, GenerateEntryMixin,
+                          PostgresTestMixin):
+
+    skip = _skip
+
+    def setUp(self):
+        common.TestCase.setUp(self)
+        PostgresTestMixin.setUp(self)
+
     @defer.inlineCallbacks
     def testConnectingAndStoringEntry(self):
         writer = journaler.PostgresWriter(self, user=DB_USER, host=DB_HOST,
                                           database=DB_NAME,
                                           password=DB_PASSWORD)
+        reader = journaler.PostgresReader(self, user=DB_USER, host=DB_HOST,
+                                          database=DB_NAME,
+                                          password=DB_PASSWORD)
         yield writer.initiate()
+        yield reader.initiate()
         self.assertEqual(journaler.State.connected,
                          writer._get_machine_state())
+        self.assertEqual(journaler.State.connected,
+                         reader._get_machine_state())
 
         yield writer.insert_entries([self._generate_entry(),
                                      self._generate_log()])
 
+        entries = yield reader.get_bare_journal_entries()
+        self.assertEqual(1, len(entries))
+        logs = yield reader.get_log_entries()
+        self.assertEqual(1, len(logs))
         yield writer.close()
+        yield reader.close()
+
         self.assertEqual(journaler.State.disconnected,
                          writer._get_machine_state())
+        self.assertEqual(journaler.State.disconnected,
+                         reader._get_machine_state())
 
         self.cursor.execute("SELECT COUNT(*) FROM feat.entries")
         self.assertEqual((1, ), self.cursor.fetchone())
@@ -186,35 +392,3 @@ class TestPostgressWriter(common.TestCase, ModelTestMixin):
         # it's just a way it is, sorry
         from twisted.internet.error import ConnectionDone
         self.flushLoggedErrors(ConnectionDone)
-
-    def _generate_log(self, **opts):
-        defaults = {
-            'entry_type': 'log',
-            'message': 'Some log message',
-            'level': 2,
-            'category': 'feat',
-            'log_name': None,
-            'file_path': __file__,
-            'line_num': 100,
-            'timestamp': int(time.time())}
-
-        defaults.update(opts)
-        return defaults
-
-    def _generate_entry(self, **opts):
-        defaults = {
-            'entry_type': 'journal',
-            'agent_id': 'some id',
-            'instance_id': 1,
-            'journal_id': self.serializer.convert(('some_id', 1, 0, )),
-            'function_id': 'some.canonical.name',
-            'args': self.serializer.convert(tuple()),
-            'kwargs': self.serializer.convert(dict()),
-            'fiber_id': 'some fiber id',
-            'fiber_depth': 1,
-            'result': self.serializer.convert(None),
-            'side_effects': self.serializer.convert(list()),
-            'timestamp': int(time.time())}
-
-        defaults.update(opts)
-        return defaults
