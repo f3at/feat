@@ -35,15 +35,19 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION test.insert_log() RETURNS void AS $$
 BEGIN
-  INSERT INTO feat.logs VALUES ('message', 2, 'feat', NULL, NULL, 0,
-                                 current_timestamp);
+  INSERT INTO feat.logs
+  (message, level, category, log_name, file_path, line_num, timestamp)
+  VALUES ('message', 2, 'feat', NULL, NULL, 0, current_timestamp);
 END;
 $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION test.insert_entry() RETURNS void AS $$
 BEGIN
-  INSERT INTO feat.entries VALUES ('agent_id', 0, NULL, NULL, NULL, 0,
+  INSERT INTO feat.entries
+  (agent_id, instance_id, journal_id, function_id, fiber_id,
+   fiber_depth, args, kwargs, side_effects, result, timestamp)
+  VALUES ('agent_id', 0, NULL, NULL, NULL, 0,
                                   NULL, NULL, NULL, NULL, current_timestamp);
 END;
 $$ LANGUAGE plpgsql;

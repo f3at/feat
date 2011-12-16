@@ -50,7 +50,7 @@ class State(enum.Enum):
     disconnected - there is no connection to database
     connected - connection is ready, entries can be insterted
     '''
-    (disconnected, connected, ) = range(2)
+    (disconnected, connected) = range(2)
 
 
 class EntriesCache(object):
@@ -534,7 +534,15 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     @in_state(State.connected)
     def get_histories(self):
-        return History.fetch(self._db)
+
+        def parse(rows):
+            return [History(history_id=x[0], agent_id=x[1], instance_id=x[2])
+                    for x in rows]
+
+        d = self._db.runQuery(
+            "SELECT id, agent_id, instance_id FROM histories")
+        d.addCallback(parse)
+        return d
 
     @in_state(State.connected)
     def get_bare_journal_entries(self, limit=1000):
@@ -1106,18 +1114,6 @@ class History(formatable.Formatable, pb.Copyable):
     formatable.field('agent_id', None)
     formatable.field('instance_id', None)
 
-    @classmethod
-    def fetch(cls, db):
-        d = db.runQuery(
-            "SELECT id, agent_id, instance_id FROM histories")
-        d.addCallback(cls._parse_resp)
-        return d
-
-    @classmethod
-    def _parse_resp(cls, resp):
-        columns = map(operator.attrgetter('name'), cls._fields)
-        return map(lambda row: cls(**dict(zip(columns, row))), resp)
-
 
 class AgencyJournalEntry(object):
 
@@ -1189,8 +1185,6 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                      manhole.Manhole):
 
     implements(IJournalWriter)
-
-    _error_handler = error_handler
 
     max_retries = 2
     max_delay = 120
@@ -1363,7 +1357,9 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         return cursor.execute(
             'INSERT INTO feat.entries '
-                    'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            '(agent_id, instance_id, journal_id, function_id, fiber_id,'
+            ' fiber_depth, args, kwargs, side_effects, result, timestamp) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
             (data['agent_id'],
              data['instance_id'],
              escape(data['journal_id']),
@@ -1378,7 +1374,9 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _do_insert_log(self, cursor, data):
         return cursor.execute(
-            'INSERT INTO feat.logs VALUES (%s, %s, %s, %s, %s, %s, %s)',
+            'INSERT INTO feat.logs '
+            '(message, level, category, log_name, file_path, line_num,'
+            ' timestamp) VALUES (%s, %s, %s, %s, %s, %s, %s)',
             (data['message'], int(data['level']),
              data['category'], data['log_name'],
              data['file_path'], data['line_num'],
@@ -1386,6 +1384,283 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _format_timestamp(self, epoch):
         return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
+
+
+class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
+                     manhole.Manhole):
+
+    implements(IJournalReader)
+
+    max_retries = 2
+    max_delay = 120
+    initial_delay = 1
+
+    def __init__(self, logger, host, database, user, password):
+        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
+        common.StateMachineMixin.__init__(self, State.disconnected)
+
+        from txpostgres import txpostgres
+        import psycopg2
+        self._txpostgres = txpostgres
+        self._psycopg2 = psycopg2
+
+        self._credentials = dict(host=host, user=user,
+                                 password=password, database=database)
+
+        self._db = None
+        self._error = None
+        self._initiate_defer = None
+
+    def initiate(self):
+        self._db = self._txpostgres.ConnectionPool(
+            "postgres", min=1, **self._credentials)
+        d = self._db.start()
+        # run simple query to make sure schema is loaded
+        d.addCallback(defer.drop_param, self._db.runQuery,
+                      'SELECT message FROM feat.logs LIMIT 1')
+        d.addCallback(defer.drop_param, self._connection_established)
+        d.addErrback(self._connection_failed)
+        self._initiate_defer = d
+        return d
+
+    def close(self):
+        if self._initiate_defer:
+            self._initiate_defer.cancel()
+            self._initiate_defer = None
+        if self._db:
+            self._db.close()
+            self._db.close()
+        self._set_state(State.disconnected)
+
+    ### IJournalReader ###
+
+    def get_histories(self):
+        self._ensure_connected()
+
+        def parse(rows):
+            return [History(agent_id=x[0], instance_id=x[1]) for x in rows]
+
+        d = self._db.runQuery(
+            "SELECT agent_id, instance_id FROM feat.entries "
+            "GROUP BY agent_id, instance_id")
+        d.addCallback(parse)
+        return d
+
+    def get_bare_journal_entries(self, limit=1000):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        SELECT agent_id, instance_id, journal_id, function_id, fiber_id,
+               fiber_depth, args, kwargs, side_effects, result,
+               date_part('epoch', timestamp)
+          FROM feat.entries
+          ORDER BY timestamp, ctid
+          LIMIT %s""")
+        d = self._db.runQuery(command, (limit, ))
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    def delete_top_journal_entries(self, num):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        DELETE FROM feat.entries
+        WHERE id IN (
+           SELECT id FROM feat.entries
+           ORDER BY timestamp, ctid
+           LIMIT %s)
+        """)
+        return self._db.runOperation(command, (num, ))
+
+    def get_entries(self, history, start_date=0, limit=None):
+        self._ensure_connected()
+
+        if not isinstance(history, History):
+            raise AttributeError(
+                'First paremeter is expected to be History instance, got %r'
+                % history)
+
+        command = text_helper.format_block("""
+        SELECT agent_id, instance_id, journal_id, function_id, fiber_id,
+               fiber_depth, args, kwargs, side_effects, result,
+               date_part('epoch', timestamp)
+          FROM feat.entries
+          WHERE agent_id = %s AND instance_id = %s""")
+        params = (history.agent_id, history.instance_id)
+        if start_date:
+            command += " AND date_part('epoch', timestamp) >= %s"
+            params += (start_date, )
+
+        command += " ORDER BY timestamp, ctid"
+        if limit:
+            command += " LIMIT %s"
+            params += (limit, )
+        d = self._db.runQuery(command, params)
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    def get_log_entries(self, start_date=None, end_date=None, filters=list(),
+                        limit=None):
+        self._ensure_connected()
+
+        query = text_helper.format_block("""
+        SELECT message, level, category, log_name, file_path, line_num,
+               date_part('epoch', timestamp)
+        FROM feat.logs
+        WHERE true
+        """)
+        query, params = self._add_timestamp_condition_sql(
+            query, tuple(), start_date, end_date)
+
+        def transform_filter(filter):
+            params = tuple()
+
+            level = filter.get('level', None)
+            category = filter.get('category', None)
+            name = filter.get('name', None)
+            if level is None:
+                raise AttributeError("level is mandatory parameter.")
+            resp = "(level <= %s"
+            params += (level, )
+            if category is not None:
+                resp += " AND category = %s"
+                params += (category, )
+            if name is not None:
+                resp += " AND log_name = %s"
+                params += (name, )
+            resp += ')'
+            return resp, params
+
+        parsed_filters = map(transform_filter, filters)
+        if parsed_filters:
+            filter_strings = [x[0] for x in parsed_filters]
+            query += " AND (" + ' OR '.join(filter_strings) + ')'
+            filter_params = [x[1] for x in parsed_filters]
+            params += reduce(lambda x, y: x + y, filter_params)
+        if limit:
+            query += " LIMIT %s"
+            params += (limit, )
+        query += " ORDER BY timestamp, ctid"
+        d = self._db.runQuery(query, params)
+        d.addCallback(self._decode, entry_type='log')
+        return d
+
+    def delete_top_log_entries(self, num):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        DELETE FROM feat.logs
+        WHERE id IN (
+           SELECT id FROM feat.logs
+           ORDER BY timestamp, ctid
+           LIMIT %s)
+        """)
+        return self._db.runOperation(command, (num, ))
+
+    def get_log_categories(self, start_date=None, end_date=None):
+        self._ensure_connected()
+
+        query = text_helper.format_block('''
+        SELECT DISTINCT category FROM feat.logs WHERE true
+        ''')
+
+        query, params = self._add_timestamp_condition_sql(
+            query, tuple(), start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_names(self, category, start_date=None, end_date=None):
+        query = text_helper.format_block('''
+        SELECT DISTINCT log_name FROM feat.logs WHERE category = %s
+        ''')
+        params = (category, )
+        query, params = self._add_timestamp_condition_sql(
+            query, params, start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_time_boundaries(self):
+        '''
+        @returns: a tuple of log entry timestaps (first, last) or None
+        '''
+        query = text_helper.format_block("""
+        SELECT min(date_part('epoch', timestamp)),
+               max(date_part('epoch', timestamp))
+        FROM feat.logs""")
+        d = self._db.runQuery(query)
+        d.addCallback(operator.itemgetter(0))
+        return d
+
+    ### private helper used by querying functions ###
+
+    def _decode(self, entries, entry_type):
+        '''
+        Takes the list of rows returned by postgres.
+        Returns rows in readable format. Transforms tuples into dictionaries,
+        and appends information about entry type to the rows.
+        '''
+
+        def decode_blobs(row):
+            row = list(row)
+            for index, value in zip(range(len(row)), row):
+                if isinstance(value, types.BufferType):
+                    value = str(value)
+                    row[index] = value
+            return row
+
+        decoded = map(decode_blobs, entries)
+        if entry_type == 'log':
+            mapping = ['message', 'level', 'category',
+                       'log_name', 'file_path', 'line_num', 'timestamp']
+        elif entry_type == 'journal':
+            mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
+                       'fiber_id', 'fiber_depth', 'args', 'kwargs',
+                       'side_effects', 'result', 'timestamp']
+        else:
+            raise ValueError('Unknown entry_type %r' % (entry_type, ))
+
+        def parse(row, mapping, entry_type):
+            resp = dict(zip(mapping, row))
+            resp['entry_type'] = entry_type
+            return resp
+
+        parsed = [parse(row, mapping, entry_type) for row in decoded]
+        return parsed
+
+    def _add_timestamp_condition_sql(self, query, params,
+                                     start_date, end_date):
+        if start_date is not None:
+            query += "  AND date_part('epoch', timestamp) >= %s\n"
+            params += (start_date, )
+        if end_date is not None:
+            query += "  AND date_part('epoch', timestamp) <= %s"
+            params += (end_date, )
+        return query, params
+
+    def _ensure_connected(self):
+        self._ensure_state(State.connected)
+
+    ### callbacks for initiate() ###
+
+    def _connection_failed(self, fail):
+        error.handle_failure(self, fail, "Connecting to postgres %r failed",
+                             self._credentials)
+        self._error = fail
+
+    def _connection_established(self):
+        self._initiate_defer = None
+        self._set_state(State.connected)
 
 
 def parse_connstr(conn):

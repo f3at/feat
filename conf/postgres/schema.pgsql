@@ -3,6 +3,7 @@ CREATE SCHEMA feat;
 
 
 CREATE TABLE feat.logs (
+       id serial PRIMARY KEY,
        message text not null,
        level int not null,
        category varchar(36) not null,
@@ -13,6 +14,7 @@ CREATE TABLE feat.logs (
 );
 
 CREATE TABLE feat.entries (
+       id serial PRIMARY KEY,
        agent_id varchar(36) not null,
        instance_id int not null,
        journal_id bytea,
