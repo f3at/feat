@@ -258,8 +258,9 @@ class DBTests(common.TestCase, ModelTestMixin):
         logs = yield writer.get_log_entries()
         self.assertEqual(0, len(logs))
         logs = yield jour._writer.get_log_entries()
-        # we have some extra logs comming from normal logging
-        self.assertTrue(len(logs) > 200)
+        # we might have some extra logs comming from normal logging
+        # in case we run with FEAT_DEBUG >=3
+        self.assertTrue(len(logs) >= 200)
         yield writer.close()
 
     def _get_tmp_file(self):
