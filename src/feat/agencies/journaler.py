@@ -1455,7 +1455,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
                fiber_depth, args, kwargs, side_effects, result,
                date_part('epoch', timestamp)
           FROM feat.entries
-          ORDER BY timestamp, ctid
+          ORDER BY timestamp, id
           LIMIT %s""")
         d = self._db.runQuery(command, (limit, ))
         d.addCallback(self._decode, entry_type='journal')
@@ -1468,7 +1468,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         DELETE FROM feat.entries
         WHERE id IN (
            SELECT id FROM feat.entries
-           ORDER BY timestamp, ctid
+           ORDER BY timestamp, id
            LIMIT %s)
         """)
         return self._db.runOperation(command, (num, ))
@@ -1492,7 +1492,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
             command += " AND date_part('epoch', timestamp) >= %s"
             params += (start_date, )
 
-        command += " ORDER BY timestamp, ctid"
+        command += " ORDER BY timestamp, id"
         if limit:
             command += " LIMIT %s"
             params += (limit, )
@@ -1541,7 +1541,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         if limit:
             query += " LIMIT %s"
             params += (limit, )
-        query += " ORDER BY timestamp, ctid"
+        query += " ORDER BY timestamp, id"
         d = self._db.runQuery(query, params)
         d.addCallback(self._decode, entry_type='log')
         return d
@@ -1553,7 +1553,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         DELETE FROM feat.logs
         WHERE id IN (
            SELECT id FROM feat.logs
-           ORDER BY timestamp, ctid
+           ORDER BY timestamp, id
            LIMIT %s)
         """)
         return self._db.runOperation(command, (num, ))

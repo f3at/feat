@@ -522,7 +522,7 @@ class IJournalReader(Interface):
         The return format is a list dictionaries with keys:
         - message,
         - level,
-        - log_category,
+        - category,
         - log_name,
         - file_path,
         - line_num,
