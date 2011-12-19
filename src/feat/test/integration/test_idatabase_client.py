@@ -448,7 +448,7 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
                              PaisleySpecific):
 
-    timeout = 3
+    timeout = 4
     slow = True
 
     @defer.inlineCallbacks
