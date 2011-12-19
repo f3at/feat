@@ -50,6 +50,8 @@ _skip = getSkipForPsycopg2()
 
 class PostgresTestMixin(object):
 
+    skip = _skip
+
     def setUp(self):
         self.connection = psycopg2.connect(
             user=DB_USER, password=DB_PASSWORD,
@@ -256,8 +258,6 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
 
 class TestPostgressWriter(common.TestCase, ModelTestMixin, GenerateEntryMixin,
                           PostgresTestMixin):
-
-    skip = _skip
 
     def setUp(self):
         common.TestCase.setUp(self)
