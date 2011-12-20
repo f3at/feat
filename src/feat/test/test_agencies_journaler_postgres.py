@@ -20,10 +20,10 @@ except ImportError:
     pass
 
 
-DB_NAME = "feat_test"
-DB_HOST = "localhost"
-DB_USER = "feat_test"
-DB_PASSWORD = "feat_test"
+DB_NAME = os.environ.get('FEAT_TEST_PG_NAME', "feat_test")
+DB_HOST = os.environ.get('FEAT_TEST_PG_HOST', "localhost")
+DB_USER = os.environ.get('FEAT_TEST_PG_USER', "feat_test")
+DB_PASSWORD = os.environ.get('FEAT_TEST_PG_PASSWORD', "feat_test")
 
 
 def getSkipForPsycopg2():
