@@ -534,6 +534,7 @@ class IJournalReader(Interface):
                   - level (log level)
                   - category (log category)
                   - name (log name)
+                  - hostname (hostname)
                   If the key is not present its simply not taken into account
                   for the filter. If multiple filters are specified they are
                   combined with the OR operator in the query.
@@ -541,17 +542,28 @@ class IJournalReader(Interface):
         @rtype: Deferred
         '''
 
-    def get_log_categories(start_date, end_date):
+    def get_log_hostnames(start_date, end_date):
+        '''
+        Fetches the hostnames for which we have log entries in the journal.
+        Parameters are optional and passed in epoch time format. (int)
+
+        @param start_date: epoch time to start search
+        @param end_date: epoch time to end search
+        @callback: list of unicode
+        '''
+
+    def get_log_categories(start_date, end_date, hostname):
         '''
         Fetch the log categories for the entries of the given period of time.
         Parameters are optional and passed in epoch time format. (int)
 
         @param start_date: epoch time to start search
         @param end_date: epoch time to end search
+        @param hostname: hostname for which we are asking
         @callback: list of unicode.
         '''
 
-    def get_log_names(category, start_date, end_date):
+    def get_log_names(category, hostname, start_date, end_date):
         '''
         Fetch the list of log_name for the given category in the period of
         time.
