@@ -48,7 +48,7 @@ paisley_pkg = os.path.join(paisley_dir, "paisley")
 
 NAME = 'feat'
 #VERSION = call(root_dir, git_ver_gen, tarball_ver_filepath)
-VERSION = '0.13'
+VERSION = '0.15'
 DESCRIPTION = 'Flumotion Asynchronous Autonomous Agent Toolkit'
 LONG_DESC = DESCRIPTION
 AUTHOR = 'Flumotion Developers',
@@ -99,8 +99,6 @@ class sdist(_sdist):
         self.filelist.append(tarball_ver_filename)
         # Adding paisley
         root_files = call(root_dir, "git", "ls-files").split("\n")
-        import pprint
-        pprint.pprint(root_files)
         self.filelist.extend(root_files)
         # Adding paisley
         git_files = call(paisley_dir, "git", "ls-files")
@@ -140,7 +138,13 @@ setup(name = NAME,
                  'bin/feat-locate',
                  'bin/feat-service'],
       package_data = {'feat': ['agencies/messaging/amqp0-8.xml',
-                               'gateway/static/default.css']},
+                               'gateway/static/default.css',
+                               'gateway/static/feat.css',
+                               'gateway/static/default.css'
+                               'gateway/static/script/feat.js',
+                               'gateway/static/script/form.js',
+                               'gateway/static/script/jquery.cseditable.js',
+                               'gateway/static/script/json2.js']},
       include_package_data = True,
       keywords = KEYWORDS,
       classifiers = CLASSIFIERS,

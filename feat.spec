@@ -1,8 +1,8 @@
 %global __python python2.6
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.13
-%define unmangled_version 0.13
+%define version 0.15
+%define unmangled_version 0.15
 %define build_rev 0
 
 Name:           python-feat
@@ -40,8 +40,29 @@ rm -rf $RPM_BUILD_ROOT
 %{__python} setup.py install --skip-build --root=$RPM_BUILD_ROOT \
      --record=INSTALLED_FILES
 
-install -m 644 src/feat/agencies/net/amqp0-8.xml \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/net/amqp0-8.xml
+install -m 644 src/feat/agencies/messaging/amqp0-8.xml \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/messaging/amqp0-8.xml
+
+install -m 644 src/feat/gateway/static/default.css \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/default.css
+
+install -m 644 src/feat/gateway/static/feat.css \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/feat.css
+
+install -m 644 src/feat/gateway/static/default.css \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/default.css
+
+install -m 644 src/feat/gateway/static/script/feat.js \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/feat.js
+
+install -m 644 src/feat/gateway/static/script/form.js \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/form.js
+
+install -m 644 src/feat/gateway/static/script/jquery.cseditable.js \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/jquery.cseditable.js
+
+install -m 644 src/feat/gateway/static/script/json2.js \
+     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/json2.js
 
 # create config dir
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/feat
@@ -86,6 +107,10 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Tue Dec 11 2011 Sebastien Merle <s.merle@gmail.com>
+- 0.15
+- FEAT Pre-Release 0.15
+
 * Tue Oct 11 2011 Sebastien Merle <s.merle@gmail.com>
 - 0.10.5
 - FEAT Release 0.10.5.
