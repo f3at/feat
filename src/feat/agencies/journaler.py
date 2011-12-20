@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import socket
 import sqlite3
 import operator
 import types
@@ -126,7 +127,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     # FIXME: at some point switch to False and remove this attribute
     should_keep_on_logging_to_flulog = True
 
-    def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None):
+    def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None,
+                 hostname=None):
         log.Logger.__init__(self, self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
@@ -140,6 +142,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         # [(klass, params)]
         self._possible_targets = list()
         self._current_target_index = None
+
+        self._hostname = hostname
 
     @property
     def possible_targets(self):
@@ -176,6 +180,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             self._current_target_index %= len(self._possible_targets)
 
         klass, kwargs = self._possible_targets[self._current_target_index]
+        kwargs['hostname'] = self._hostname
 
         writer = klass(self, **kwargs)
         d = self.close(flush_writer=False)
@@ -484,7 +489,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
     _error_handler = error_handler
 
-    def __init__(self, logger, filename=":memory:", encoding=None):
+    def __init__(self, logger, filename=":memory:", encoding=None,
+                 hostname=None):
         '''
         @param encoding: Optional encoding to be used for blob fields.
         @type encoding: Should be a valid parameter for str.encode() method.
@@ -498,6 +504,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._encoding = encoding
         self._db = None
         self._filename = filename
+        self._hostname = hostname
         self._reset_history_id_cache()
         self._cache = EntriesCache()
         # the semaphore is used to always have at most running
@@ -536,7 +543,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
     def get_histories(self):
 
         def parse(rows):
-            return [History(history_id=x[0], agent_id=x[1], instance_id=x[2])
+            return [History(history_id=x[0], agent_id=x[1], instance_id=x[2],
+                            hostname=self._hostname)
                     for x in rows]
 
         d = self._db.runQuery(
@@ -612,16 +620,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
     def get_log_entries(self, start_date=None, end_date=None, filters=list(),
                         limit=None):
         '''
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        @param limit: maxium number of log entries to fetch
-        @param filters: list of dictionaries with the following keys:
-                        level - mandatory, display entries with lvl <= level
-                        category - optional, limit to log_category
-                        name - optional, limit to log_name
-                        Leaving optional fields blank will match all the
-                        entries. The entries in this list are combined with
-                        OR operator.
+        See feat.agencies.interface.IJournalReader.get_log_entres
         '''
         query = text_helper.format_block('''
         SELECT logs.message,
@@ -672,7 +671,12 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         return self._db.runQuery(command, (num, ))
 
     @in_state(State.connected)
-    def get_log_categories(self, start_date=None, end_date=None):
+    def get_log_hostnames(self, start_date=None, end_date=None):
+        return [self._hostname]
+
+    @in_state(State.connected)
+    def get_log_categories(self, start_date=None, end_date=None,
+                           hostname=None):
         query = text_helper.format_block('''
         SELECT DISTINCT logs.category
         FROM logs
@@ -687,7 +691,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         d.addCallback(unpack)
         return d
 
-    def get_log_names(self, category, start_date=None, end_date=None):
+    def get_log_names(self, category, hostname=None,
+                      start_date=None, end_date=None):
         query = text_helper.format_block('''
         SELECT DISTINCT logs.log_name
         FROM logs
@@ -851,6 +856,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         d = self._db.runQuery(
             'SELECT value FROM metadata WHERE name = "encoding"')
         d.addCallbacks(self._got_encoding, self._create_schema)
+        d.addCallback(defer.drop_param, self._load_hostname)
+        d.addCallback(defer.drop_param, self._initiated_ok)
         return d
 
     def _got_encoding(self, res):
@@ -863,7 +870,20 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                          "the value of: %r",
                          self._encoding, encoding, encoding)
         self._encoding = encoding
-        self._initiated_ok()
+
+    def _load_hostname(self):
+
+        def callback(res):
+            try:
+                hostname = res[0][0]
+            except IndexError:
+                hostname = 'unknown'
+            self._hostname = hostname
+
+        d = self._db.runQuery(
+            'SELECT value FROM metadata WHERE name = "hostname"')
+        d.addCallback(callback)
+        return d
 
     def _create_schema(self, fail):
         fail.trap(sqlite3.OperationalError)
@@ -923,13 +943,17 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         insert_meta = "INSERT INTO metadata VALUES('%s', '%s')"
         commands += [insert_meta % (u'encoding', self._encoding, )]
 
+        hostname = self._hostname
+        if hostname is None:
+            self.warning("SqliteWriter initialized without hostname, "
+                         "falling back to value from socket.gethostname()")
+            hostname = socket.gethostname()
+        commands += [insert_meta % (u'hostname', hostname, )]
+
         self._reset_history_id_cache()
-        # insert_history = "INSERT INTO histories VALUES(%d, '%s', %d)"
-        # for (a_id, i_id), h_id in self._history_id_cache.iteritems():
-        #     commands += [insert_history % (h_id, a_id, i_id)]
 
         d = self._db.runWithConnection(run_all, commands)
-        d.addCallbacks(self._initiated_ok, self._error_handler)
+        d.addErrback(self._error_handler)
         return d
 
     def _initiated_ok(self, *_):
@@ -1113,6 +1137,7 @@ class History(formatable.Formatable, pb.Copyable):
     formatable.field('history_id', None)
     formatable.field('agent_id', None)
     formatable.field('instance_id', None)
+    formatable.field('hostname', None)
 
 
 class AgencyJournalEntry(object):
@@ -1191,7 +1216,8 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
     initial_delay = 1
 
     def __init__(self, logger, host, database, user, password,
-                 max_retries=None, initial_delay=None, max_delay=None):
+                 max_retries=None, initial_delay=None, max_delay=None,
+                 hostname=None):
         log.LogProxy.__init__(self, logger)
         log.Logger.__init__(self, logger)
         common.StateMachineMixin.__init__(self, State.disconnected)
@@ -1218,6 +1244,12 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._journaler = None
         self._initiate_defer = None
         self._should_giveup = False
+
+        if hostname is None:
+            hostname = socket.gethostname()
+            self.warning("Postgres writer was initialized without passing "
+                         "the hostname. Falling back to: %s", hostname)
+        self._hostname = hostname
 
     def initiate(self):
         self._should_giveup = False
@@ -1358,8 +1390,10 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         return cursor.execute(
             'INSERT INTO feat.entries '
             '(agent_id, instance_id, journal_id, function_id, fiber_id,'
-            ' fiber_depth, args, kwargs, side_effects, result, timestamp) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+            ' fiber_depth, args, kwargs, side_effects, result, timestamp,'
+            ' host_id) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                     'feat.host_id_for(%s))',
             (data['agent_id'],
              data['instance_id'],
              escape(data['journal_id']),
@@ -1370,17 +1404,20 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
              escape(data['kwargs']),
              escape(data['side_effects']),
              escape(data['result']),
-             self._format_timestamp(data['timestamp'])))
+             self._format_timestamp(data['timestamp']),
+             self._hostname))
 
     def _do_insert_log(self, cursor, data):
         return cursor.execute(
             'INSERT INTO feat.logs '
             '(message, level, category, log_name, file_path, line_num,'
-            ' timestamp) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+            ' timestamp, host_id) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, feat.host_id_for(%s))',
             (data['message'], int(data['level']),
              data['category'], data['log_name'],
              data['file_path'], data['line_num'],
-             self._format_timestamp(data['timestamp'])))
+             self._format_timestamp(data['timestamp']),
+             self._hostname))
 
     def _format_timestamp(self, epoch):
         return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
@@ -1439,11 +1476,16 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._ensure_connected()
 
         def parse(rows):
-            return [History(agent_id=x[0], instance_id=x[1]) for x in rows]
+            return [History(agent_id=x[0],
+                            instance_id=x[1],
+                            hostname=x[2]) for x in rows]
 
         d = self._db.runQuery(
-            "SELECT agent_id, instance_id FROM feat.entries "
-            "GROUP BY agent_id, instance_id")
+            "SELECT entries.agent_id, entries.instance_id, "
+                    "hosts.hostname, min(entries.id) min_id FROM feat.entries"
+            "  LEFT JOIN feat.hosts ON entries.host_id = hosts.id"
+            "  GROUP BY entries.agent_id, entries.instance_id, hosts.hostname"
+            "  ORDER BY min_id")
         d.addCallback(parse)
         return d
 
@@ -1492,12 +1534,24 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
             command += " AND date_part('epoch', timestamp) >= %s"
             params += (start_date, )
 
-        command += " ORDER BY timestamp, id"
+        command += " ORDER BY timestamp, entries.id"
         if limit:
             command += " LIMIT %s"
             params += (limit, )
         d = self._db.runQuery(command, params)
         d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    def get_log_hostnames(self, start_date=None, end_date=None):
+        query = "SELECT hostname FROM feat.hosts WHERE true"
+        query, params = self._add_timestamp_condition_sql(
+            query, tuple(), start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
         return d
 
     def get_log_entries(self, start_date=None, end_date=None, filters=list(),
@@ -1507,8 +1561,9 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         query = text_helper.format_block("""
         SELECT message, level, category, log_name, file_path, line_num,
                date_part('epoch', timestamp)
-        FROM feat.logs
-        WHERE true
+          FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE true
         """)
         query, params = self._add_timestamp_condition_sql(
             query, tuple(), start_date, end_date)
@@ -1519,10 +1574,14 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
             level = filter.get('level', None)
             category = filter.get('category', None)
             name = filter.get('name', None)
+            hostname = filter.get('hostname', None)
             if level is None:
                 raise AttributeError("level is mandatory parameter.")
             resp = "(level <= %s"
             params += (level, )
+            if hostname is not None:
+                resp += " AND hosts.hostname = %s"
+                params += (hostname, )
             if category is not None:
                 resp += " AND category = %s"
                 params += (category, )
@@ -1541,7 +1600,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         if limit:
             query += " LIMIT %s"
             params += (limit, )
-        query += " ORDER BY timestamp, id"
+        query += " ORDER BY timestamp, logs.id"
         d = self._db.runQuery(query, params)
         d.addCallback(self._decode, entry_type='log')
         return d
@@ -1553,20 +1612,25 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         DELETE FROM feat.logs
         WHERE id IN (
            SELECT id FROM feat.logs
-           ORDER BY timestamp, id
+           ORDER BY timestamp, logs.id
            LIMIT %s)
         """)
         return self._db.runOperation(command, (num, ))
 
-    def get_log_categories(self, start_date=None, end_date=None):
+    def get_log_categories(self, start_date=None, end_date=None,
+                           hostname=None):
         self._ensure_connected()
 
-        query = text_helper.format_block('''
-        SELECT DISTINCT category FROM feat.logs WHERE true
-        ''')
-
+        query = text_helper.format_block("""
+        SELECT DISTINCT category FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE true""")
+        params = tuple()
+        if hostname:
+            query += " AND hosts.hostname = %s"
+            params += (hostname, )
         query, params = self._add_timestamp_condition_sql(
-            query, tuple(), start_date, end_date)
+            query, params, start_date, end_date)
         d = self._db.runQuery(query, params)
 
         def unpack(res):
@@ -1575,11 +1639,16 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(unpack)
         return d
 
-    def get_log_names(self, category, start_date=None, end_date=None):
-        query = text_helper.format_block('''
-        SELECT DISTINCT log_name FROM feat.logs WHERE category = %s
-        ''')
+    def get_log_names(self, category, hostname=None,
+                      start_date=None, end_date=None):
+        query = text_helper.format_block("""
+        SELECT DISTINCT log_name FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE category = %s""")
         params = (category, )
+        if hostname:
+            query += " AND hosts.hostname = %s"
+            params += (hostname, )
         query, params = self._add_timestamp_condition_sql(
             query, params, start_date, end_date)
         d = self._db.runQuery(query, params)

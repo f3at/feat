@@ -70,7 +70,8 @@ class Startup(agency.Startup):
                                      int(dbc['port']), dbc['name'])
         self._journaler = journaler.Journaler(
             on_rotate_cb=self.friend._force_snapshot_agents,
-            on_switch_writer_cb=self.friend._on_journal_writer_switch)
+            on_switch_writer_cb=self.friend._on_journal_writer_switch,
+            hostname=self.friend.get_hostname())
 
     def stage_private(self):
         reactor.addSystemEventTrigger('before', 'shutdown',

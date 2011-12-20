@@ -79,17 +79,27 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
         common.TestCase.setUp(self)
         PostgresTestMixin.setUp(self)
 
+        self.hostname = 'hostname'
         self.writer = journaler.PostgresWriter(
             self, user=DB_USER, host=DB_HOST,
             database=DB_NAME,
-            password=DB_PASSWORD)
+            password=DB_PASSWORD,
+            hostname=self.hostname)
+        self.hostname2 = 'hostname2'
+        self.writer2 = journaler.PostgresWriter(
+            self, user=DB_USER, host=DB_HOST,
+            database=DB_NAME,
+            password=DB_PASSWORD,
+            hostname=self.hostname2)
         self.reader = journaler.PostgresReader(
             self, user=DB_USER, host=DB_HOST,
             database=DB_NAME,
             password=DB_PASSWORD)
         yield self.writer.initiate()
+        yield self.writer2.initiate()
         yield self.reader.initiate()
 
+    @defer.inlineCallbacks
     def _populate_data(self):
         e = self._generate_entry
         l = self._generate_log
@@ -98,7 +108,7 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
         self.past1 = self.now - 100
         self.past2 = self.past1 - 100
 
-        return self.writer.insert_entries([
+        yield self.writer.insert_entries([
             e(agent_id='other_agent', args='some args', timestamp=self.past1),
             e(agent_id='other_agent'),
             e(),
@@ -109,17 +119,31 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
             l(level=1, message='m3'),
             l(level=2, message='m4')])
 
+        yield self.writer2.insert_entries([
+            e(agent_id='cool_agent', args='some args'),
+            e(agent_id='cool_agent'),
+            l(level=2, category='spam', log_name='eggs',
+              timestamp=self.past2, message='n1'),
+            l(level=1, category='becon', timestamp=self.past1, message='n2'),
+            l(level=1, message='n3'),
+            l(level=2, message='n4')])
+
     @defer.inlineCallbacks
     def testGettingJournalerEntries(self):
         yield self._populate_data()
 
         # test getting histories
         histories = yield self.reader.get_histories()
-        self.assertEqual(2, len(histories))
+        self.assertEqual(3, len(histories))
         self.assertEqual('other_agent', histories[0].agent_id)
         self.assertEqual('some id', histories[1].agent_id)
         self.assertEqual(1, histories[0].instance_id)
         self.assertEqual(1, histories[1].instance_id)
+        self.assertEqual(self.hostname, histories[0].hostname)
+        self.assertEqual(self.hostname, histories[1].hostname)
+        self.assertEqual('cool_agent', histories[2].agent_id)
+        self.assertEqual(1, histories[2].instance_id)
+        self.assertEqual(self.hostname2, histories[2].hostname)
 
         # get entris for history
         entries = yield self.reader.get_entries(histories[0])
@@ -139,17 +163,19 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
 
         # getting bare entries
         entries = yield self.reader.get_bare_journal_entries()
-        self.assertEqual(4, len(entries))
+        self.assertEqual(6, len(entries))
+        self.assertEqual('other_agent', entries[0]['agent_id'])
+        self.assertEqual('other_agent', entries[1]['agent_id'])
 
         # deleting entries
         yield self.reader.delete_top_journal_entries(2)
         entries = yield self.reader.get_bare_journal_entries()
-        self.assertEqual(2, len(entries))
+        self.assertEqual(4, len(entries))
         self.assertEqual('some id', entries[0]['agent_id'])
         self.assertEqual('some id', entries[1]['agent_id'])
 
     @defer.inlineCallbacks
-    def testQueryingLogNamesAndCategories(self):
+    def testQueryingLogNamesHostsAndCategories(self):
         yield self._populate_data()
 
         # test getting time boundaries
@@ -158,29 +184,44 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
         self.assertApproximates(self.past2, start, 1)
         self.assertApproximates(self.now, end, 1)
 
+        # query available hostnames
+        hosts = yield self.reader.get_log_hostnames()
+        self.assertEqual(set([self.hostname, self.hostname2]), set(hosts))
+
         #test getting categories
         categories = yield self.reader.get_log_categories()
+        self.assertEqual(set(['feat', 'test', 'spam', 'becon']),
+                         set(categories))
+
+        # now limited for host
+        categories = yield self.reader.get_log_categories(
+            hostname=self.hostname)
         self.assertEqual(set(['feat', 'test']), set(categories))
+        categories = yield self.reader.get_log_categories(
+            hostname=self.hostname2)
+        self.assertEqual(set(['spam', 'becon', 'feat']), set(categories))
 
         #now with time conditions
         categories = yield self.reader.get_log_categories(
-            start_date=self.now-10)
+            start_date=self.now-10, hostname=self.hostname)
         self.assertEqual(set(['feat']), set(categories))
         categories = yield self.reader.get_log_categories(
-            end_date=self.now-10)
+            end_date=self.now-10, hostname=self.hostname)
         self.assertEqual(set(['test']), set(categories))
 
         #test getting log names
-        names = yield self.reader.get_log_names('test')
+        names = yield self.reader.get_log_names('test', hostname=self.hostname)
         self.assertEqual(2, len(names))
         self.assertEqual(set([None, 'log_name']), set(names))
 
         names = yield self.reader.get_log_names('test',
-                                                start_date=self.past1-10)
+                                                start_date=self.past1-10,
+                                                hostname=self.hostname)
         self.assertEqual(1, len(names))
         self.assertEqual([None], names)
         names = yield self.reader.get_log_names('test',
-                                                end_date=self.past1-10)
+                                                end_date=self.past1-10,
+                                                hostname=self.hostname)
         self.assertEqual(1, len(names))
         self.assertEqual(['log_name'], names)
 
@@ -194,22 +235,31 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
 
         # simple query
         entries = yield self.reader.get_log_entries()
-        self.assertEqual(4, len(entries))
+        self.assertEqual(8, len(entries))
 
         # with time condition
         entries = yield self.reader.get_log_entries(start_date=self.now-10)
-        self.assertEqual(2, len(entries))
+        self.assertEqual(4, len(entries))
         self.assertEqual('m3', entries[0]['message'])
         self.assertEqual('m4', entries[1]['message'])
+        self.assertEqual('n3', entries[2]['message'])
+        self.assertEqual('n4', entries[3]['message'])
 
         entries = yield self.reader.get_log_entries(end_date=self.now-10)
-        self.assertEqual(2, len(entries))
+        self.assertEqual(4, len(entries))
         self.assertEqual('m1', entries[0]['message'])
-        self.assertEqual('m2', entries[1]['message'])
+        self.assertEqual('n1', entries[1]['message'])
+        self.assertEqual('m2', entries[2]['message'])
+        self.assertEqual('n2', entries[3]['message'])
 
-        # filter by category
+        # filter by hostname
         entries = yield self.reader.get_log_entries(
-            filters=[dict(category='test', level=5)])
+            filters=[dict(level=5, hostname=self.hostname)])
+        self.assertEqual(4, len(entries))
+
+        # filter by category and host
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5, hostname=self.hostname)])
         self.assertEqual(2, len(entries))
         self.assertEqual('m1', entries[0]['message'])
         self.assertEqual('m2', entries[1]['message'])
@@ -217,18 +267,19 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
         # category and time conditions
         # filter by category
         entries = yield self.reader.get_log_entries(
-            filters=[dict(category='test', level=5)],
+            filters=[dict(category='test', level=5, hostname=self.hostname)],
             start_date=self.now-10)
         self.assertEqual(0, len(entries))
 
         entries = yield self.reader.get_log_entries(
-            filters=[dict(category='test', level=5)],
+            filters=[dict(category='test', level=5, hostname=self.hostname)],
             end_date=self.now-10)
         self.assertEqual(2, len(entries))
 
         # filter by name and category
         entries = yield self.reader.get_log_entries(
-            filters=[dict(category='test', level=5, name='log_name')])
+            filters=[dict(category='test', level=5, name='log_name',
+                          hostname=self.hostname)])
         self.assertEqual(1, len(entries))
         self.assertEqual('m1', entries[0]['message'])
 
@@ -239,13 +290,13 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
         self.assertEqual('m2', entries[0]['message'])
 
         # deleting top entries
-        yield self.reader.delete_top_log_entries(2)
+        yield self.reader.delete_top_log_entries(4)
 
-        # only 2 entries left
+        # only 4 entries left
         entries = yield self.reader.get_log_entries()
-        self.assertEqual(2, len(entries))
+        self.assertEqual(4, len(entries))
 
-        # now category test should be gone
+        # now categories test, spam, becon should be gone
         categories = yield self.reader.get_log_categories()
         self.assertEqual(['feat'], categories)
 
@@ -253,6 +304,7 @@ class TestPostgressReader(common.TestCase, GenerateEntryMixin,
     def tearDown(self):
         yield self.reader.close()
         yield self.writer.close()
+        yield self.writer2.close()
         yield common.TestCase.tearDown(self)
 
 

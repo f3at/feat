@@ -3,7 +3,8 @@ CREATE SCHEMA feat;
 
 
 CREATE TABLE feat.logs (
-       id serial PRIMARY KEY,
+       id serial primary key,
+       host_id int,
        message text not null,
        level int not null,
        category varchar(36) not null,
@@ -14,7 +15,8 @@ CREATE TABLE feat.logs (
 );
 
 CREATE TABLE feat.entries (
-       id serial PRIMARY KEY,
+       id serial primary key,
+       host_id int,
        agent_id varchar(36) not null,
        instance_id int not null,
        journal_id bytea,
@@ -27,6 +29,35 @@ CREATE TABLE feat.entries (
        result bytea,
        timestamp timestamp with time zone not null
 );
+
+
+CREATE TABLE feat.hosts (
+       id serial primary key,
+       hostname varchar(200)
+);
+
+ALTER TABLE feat.logs
+  ADD CONSTRAINT foreign_hook FOREIGN KEY (host_id) REFERENCES feat.hosts (id);
+
+
+ALTER TABLE feat.entries
+  ADD CONSTRAINT foreign_hook FOREIGN KEY (host_id) REFERENCES feat.hosts (id);
+
+
+CREATE OR REPLACE FUNCTION feat.host_id_for(varchar(200))
+       RETURNS int AS $$
+DECLARE
+  res int;
+  h_name ALIAS FOR $1;
+BEGIN
+  SELECT INTO res id FROM feat.hosts WHERE hostname = h_name;
+  IF res IS NULL THEN
+    INSERT INTO feat.hosts (hostname) VALUES(h_name);
+    SELECT INTO res id FROM feat.hosts WHERE hostname = h_name;
+  END IF;
+  RETURN res;
+END;
+$$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION feat.create_partitions(epoch_time double precision)
