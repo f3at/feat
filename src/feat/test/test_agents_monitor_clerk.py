@@ -20,6 +20,7 @@
 
 # Headers in this file shall remain intact.
 import operator
+import uuid
 
 from zope.interface import implements
 
@@ -172,7 +173,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
     def call_later_ex(self, delay, fun, args=(), kwargs={}, busy=True):
         payload = (delay + time.time(), fun, args, kwargs)
-        call_id = hash((delay + time.time(), fun))
+        call_id = str(uuid.uuid1())
         self.calls[call_id] = payload
         return call_id
 
