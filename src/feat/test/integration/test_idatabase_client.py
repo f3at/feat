@@ -408,6 +408,7 @@ class PaisleySpecific(object):
         yield self.process.restart()
 
     @defer.inlineCallbacks
+    @common.attr(timeout=6)
     def testDisconnection(self):
         self.changes = list()
         mock = self.setup_receiver()
