@@ -415,8 +415,8 @@ class TestPostgressWriter(common.TestCase, ModelTestMixin, GenerateEntryMixin,
         connstrs = [pg(DB_USER, DB_PASSWORD, DB_HOST, DB_NAME),
                     'sqlite://testFallbackToSqliteAndReconnect.sqlite3']
         jour = journaler.Journaler()
-        jour.set_connection_strings(connstrs)
-        jour.insert_entry(**self._generate_entry())
+        yield jour.set_connection_strings(connstrs)
+        yield jour.insert_entry(**self._generate_entry())
 
         # validate the view
         model = models.Journaler(jour)
@@ -439,8 +439,3 @@ class TestPostgressWriter(common.TestCase, ModelTestMixin, GenerateEntryMixin,
                             "message='Very special log entry'")
         self.assertEqual((1, ), self.cursor.fetchone())
         yield jour.close()
-
-        # txpostgres will leave the error in the reactor,
-        # it's just a way it is, sorry
-        from twisted.internet.error import ConnectionDone
-        self.flushLoggedErrors(ConnectionDone)

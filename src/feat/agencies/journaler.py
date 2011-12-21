@@ -164,7 +164,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
                 self.error("Connection string %s is wrong. Ignoring!", con_str)
                 continue
         if self._writer is None:
-            self.use_next_writer()
+            return self.use_next_writer()
 
     def use_next_writer(self, force_index=None):
         self.log("Will use next journaler target on the list")
@@ -1334,7 +1334,7 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         self.log("Connection established to postgres database.")
         self._set_state(State.connected)
-        self._flush_next()
+        return self._flush_next()
 
     def _connection_failed(self, fail):
         self._delay = min([self._max_delay, self._delay * 2])
