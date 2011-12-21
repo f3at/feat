@@ -27,7 +27,7 @@ from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.test.integration.common import ModelTestMixin
-from feat.common import defer, time
+from feat.common import defer, time, error
 from feat.agencies import journaler
 from feat.common.serialization import banana
 from feat.gateway import models
@@ -328,6 +328,196 @@ class DBTests(common.TestCase, ModelTestMixin, GenerateEntryMixin):
             defer.returnValue(0)
 
 
+class TestSqliteAsIJournalReader(common.TestCase, GenerateEntryMixin):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+
+        self.hostname = 'hostname'
+        self.writer = journaler.SqliteWriter(
+            self, encoding='zip', hostname=self.hostname)
+        self.reader = self.writer
+        yield self.writer.initiate()
+
+    @defer.inlineCallbacks
+    def _populate_data(self):
+        e = self._generate_entry
+        l = self._generate_log
+
+        self.now = time.time()
+        self.past1 = self.now - 100
+        self.past2 = self.past1 - 100
+
+        yield self.writer.insert_entries([
+            e(agent_id='other_agent', args='some args', timestamp=self.past1),
+            e(agent_id='other_agent'),
+            e(),
+            e(),
+            l(level=2, category='test', log_name='log_name',
+              timestamp=self.past2, message='m1'),
+            l(level=1, category='test', timestamp=self.past1, message='m2'),
+            l(level=1, message='m3'),
+            l(level=2, message='m4')])
+
+    @defer.inlineCallbacks
+    def testGettingJournalerEntries(self):
+        yield self._populate_data()
+
+        # test getting histories
+        histories = yield self.reader.get_histories()
+        self.assertEqual(2, len(histories))
+        self.assertEqual('other_agent', histories[0].agent_id)
+        self.assertEqual('some id', histories[1].agent_id)
+        self.assertEqual(1, histories[0].instance_id)
+        self.assertEqual(1, histories[1].instance_id)
+        self.assertEqual(self.hostname, histories[0].hostname)
+        self.assertEqual(self.hostname, histories[1].hostname)
+
+        # get entris for history
+        entries = yield self.reader.get_entries(histories[0])
+        self.assertEqual(2, len(entries))
+        self.assertEqual('some args', entries[0]['args'])
+
+        # same with start_date
+        entries = yield self.reader.get_entries(histories[0],
+                                                start_date=self.now-10)
+        self.assertEqual(1, len(entries))
+        self.assertEqual(tuple(), banana.unserialize(entries[0]['args']))
+
+        # same with limit on number
+        entries = yield self.reader.get_entries(histories[0], limit=1)
+        self.assertEqual(1, len(entries))
+        self.assertEqual('some args', entries[0]['args'])
+
+        # getting bare entries
+        entries = yield self.reader.get_bare_journal_entries()
+        self.assertEqual(4, len(entries))
+        self.assertEqual('other_agent', entries[0]['agent_id'])
+        self.assertEqual('other_agent', entries[1]['agent_id'])
+
+        # deleting entries
+        yield self.reader.delete_top_journal_entries(2)
+        entries = yield self.reader.get_bare_journal_entries()
+        self.assertEqual(2, len(entries))
+        self.assertEqual('some id', entries[0]['agent_id'])
+        self.assertEqual('some id', entries[1]['agent_id'])
+
+    @defer.inlineCallbacks
+    def testQueryingLogNamesHostsAndCategories(self):
+        yield self._populate_data()
+
+        # test getting time boundaries
+        # tolerance of 1 seconds is due to converting float timestamp to int
+        start, end = yield self.reader.get_log_time_boundaries()
+        self.assertApproximates(self.past2, start, 1)
+        self.assertApproximates(self.now, end, 1)
+
+        # query available hostnames
+        hosts = yield self.reader.get_log_hostnames()
+        self.assertEqual([self.hostname], hosts)
+
+        #test getting categories
+        categories = yield self.reader.get_log_categories()
+        self.assertEqual(set(['feat', 'test']), set(categories))
+
+        # now limited for host (it this case its just ignored)
+        categories = yield self.reader.get_log_categories(
+            hostname=self.hostname)
+        self.assertEqual(set(['feat', 'test']), set(categories))
+
+        #now with time conditions
+        categories = yield self.reader.get_log_categories(
+            start_date=self.now-10)
+        self.assertEqual(set(['feat']), set(categories))
+        categories = yield self.reader.get_log_categories(end_date=self.now-10)
+        self.assertEqual(set(['test']), set(categories))
+
+        #test getting log names
+        names = yield self.reader.get_log_names('test')
+        self.assertEqual(2, len(names))
+        self.assertEqual(set([None, 'log_name']), set(names))
+
+        names = yield self.reader.get_log_names('test',
+                                                start_date=self.past1-10)
+        self.assertEqual(1, len(names))
+        self.assertEqual([None], names)
+        names = yield self.reader.get_log_names('test',
+                                                end_date=self.past1-10)
+        self.assertEqual(1, len(names))
+        self.assertEqual(['log_name'], names)
+
+        # unknown category
+        names = yield self.reader.get_log_names('unknown')
+        self.assertEqual([], names)
+
+    @defer.inlineCallbacks
+    def testGettingLogEntries(self):
+        yield self._populate_data()
+
+        # simple query
+        entries = yield self.reader.get_log_entries()
+        self.assertEqual(4, len(entries))
+
+        # with time condition
+        entries = yield self.reader.get_log_entries(start_date=self.now-10)
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m3', entries[0]['message'])
+        self.assertEqual('m4', entries[1]['message'])
+
+        entries = yield self.reader.get_log_entries(end_date=self.now-10)
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+        self.assertEqual('m2', entries[1]['message'])
+
+        # filter by category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)])
+        self.assertEqual(2, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+        self.assertEqual('m2', entries[1]['message'])
+
+        # category and time conditions
+        # filter by category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)],
+            start_date=self.now-10)
+        self.assertEqual(0, len(entries))
+
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5)],
+            end_date=self.now-10)
+        self.assertEqual(2, len(entries))
+
+        # filter by name and category
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=5, name='log_name')])
+        self.assertEqual(1, len(entries))
+        self.assertEqual('m1', entries[0]['message'])
+
+        # filter by level
+        entries = yield self.reader.get_log_entries(
+            filters=[dict(category='test', level=1)])
+        self.assertEqual(1, len(entries))
+        self.assertEqual('m2', entries[0]['message'])
+
+        # deleting top entries
+        yield self.reader.delete_top_log_entries(2)
+
+        # only 2 entries left
+        entries = yield self.reader.get_log_entries()
+        self.assertEqual(2, len(entries))
+
+        # now category test should be gone
+        categories = yield self.reader.get_log_categories()
+        self.assertEqual(['feat'], categories)
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.writer.close()
+        yield common.TestCase.tearDown(self)
+
+
 class TestParsingConnection(common.TestCase):
 
     def testItWorks(self):
@@ -344,6 +534,9 @@ class TestParsingConnection(common.TestCase):
         self.assertEqual('feat', params['password'])
         self.assertEqual('flt1.somecluster.lt.net', params['host'])
         self.assertEqual('feat', params['database'])
+
+        self.assertRaises(error.FeatError, journaler.parse_connstr,
+                          'sqlite3://mistyped.sqlite3')
 
 
 class AgencyStub(object):

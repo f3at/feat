@@ -632,7 +632,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                logs.timestamp
         FROM logs
         WHERE 1
-        ORDER BY logs.timestamp, rowid
         ''')
         query = self._add_timestamp_condition_sql(query, start_date, end_date)
 
@@ -653,8 +652,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         filter_strings = map(transform_filter, filters)
         if filter_strings:
             query += " AND (%s)\n" % (' OR '.join(filter_strings), )
+        query += " ORDER BY logs.timestamp, rowid"
         if limit:
             query += " LIMIT %s" % (limit, )
+
         d = self._db.runQuery(query)
         d.addCallback(self._decode, entry_type='log')
         return d
