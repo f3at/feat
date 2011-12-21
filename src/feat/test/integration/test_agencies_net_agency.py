@@ -56,6 +56,15 @@ class UnitTestCase(common.TestCase):
         common.TestCase.setUp(self)
         self.agency = agency.Agency()
 
+    def testOtherEnvironmentVariables(self):
+        # this test checks the problem we had after indroducing other
+        # environment variable starting with FEAT_ is fixed
+        env = {
+            'FEAT_TEST_PG_NAME': 'feat_test',
+            }
+        self.agency._init_config()
+        self.agency._load_config(env) #no exception
+
     def testLoadConfig(self):
         env = {
             'FEAT_AGENT_ID': '"agent_id"',

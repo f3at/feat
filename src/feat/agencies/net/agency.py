@@ -661,8 +661,15 @@ class Agency(agency.Agency):
             if res:
                 c_key = res.group(1).lower()
                 c_kkey = res.group(2).lower()
-                value = json.unserialize(env[key])
-                if c_key in self.config:
+                if c_key not in self.config:
+                    continue
+                try:
+                    value = json.unserialize(env[key])
+                except ValueError:
+                    self.error("Environment variable does not unserialize"
+                               "to json. Variable: %s, Value: %s",
+                               key, env[key])
+                else:
                     self.log("Setting %s.%s to %r", c_key, c_kkey, value)
                     self.config[c_key][c_kkey] = value
 
