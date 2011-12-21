@@ -28,7 +28,7 @@ import uuid
 from twisted.python import failure
 from zope.interface import Interface, implements
 
-from feat.agents.base import replay, notifier
+from feat.agents.base import replay, notifier, view
 from feat.common import log, serialization, fiber, defer
 
 from feat.agencies.interface import NotFoundError, ConflictError
@@ -86,6 +86,15 @@ class ResignFromModifying(Exception):
     pass
 
 
+@view.register
+class DocumentDeletions(view.BaseView):
+
+    name = 'deletions'
+
+    def filter(doc, request):
+        return doc.get('_deleted', False)
+
+
 @serialization.register
 class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     """
@@ -130,6 +139,14 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         f.add_callback(fiber.drop_param, state.agent.register_change_listener,
                        state.view_factory, self._document_changed,
                        **state.filter_params)
+        # When a document gets deleted the filter function is given the
+        # json to evaluate. Unfortunately before doing this CouchDB removes
+        # all the information except the '_id', '_rev' and '_deleted keys'.
+        # Normal view functions will not make any use of the document like
+        # this. For this reason the document cache uses separate channel to
+        # receive the notification about the document deletions.
+        f.add_callback(fiber.drop_param, state.agent.register_change_listener,
+                       DocumentDeletions, self._document_changed)
         f.add_callback(fiber.drop_param, self.get_document_ids)
         return f
 
@@ -206,7 +223,8 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
 
     @replay.mutable
     def _delete_doc(self, state, doc_id):
-        state.documents.pop(doc_id, None)
+        res = state.documents.pop(doc_id, None)
+        return res is not None
 
     @replay.mutable
     def _update_not_found(self, state, fail, doc_id):
@@ -217,8 +235,8 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.journaled
     def _document_changed(self, state, doc_id, rev, deleted, own_change):
         if deleted:
-            self._delete_doc(doc_id)
-            if state.listener:
+            we_had_it = self._delete_doc(doc_id)
+            if we_had_it and state.listener:
                 state.listener.on_document_deleted(doc_id)
         else:
             should_update = doc_id not in state.documents or \

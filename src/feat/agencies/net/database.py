@@ -93,10 +93,10 @@ class Notifier(object):
         # strange logic above.
         if "changes" in change:
             doc_id = change['id']
+            deleted = change.get('deleted', False)
             for line in change['changes']:
                 # The changes are analized when there is not http request
                 # pending. Otherwise it can result in race condition problem.
-                deleted = line.get('deleted', False)
                 self._db.semaphore.run(self._filter.notified,
                                        doc_id, line['rev'], deleted)
         else:

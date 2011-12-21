@@ -138,6 +138,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             doc['_rev'] = self._generate_rev(doc)
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
+            for key in doc.keys():
+                if key in ['_rev', '_deleted', '_id']:
+                    continue
+                del(doc[key])
             self.log('Marking document %r as deleted', doc_id)
             self._analize_changes(doc)
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
