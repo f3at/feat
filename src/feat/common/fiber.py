@@ -162,6 +162,7 @@ def wrap_defer(_method, *args, **kwargs):
     '''
     return wrap_defer_ex(_method, args, kwargs, debug_depth=1)
 
+
 def wrap_defer_ex(_method, args=None, kwargs=None, debug_depth=0):
     f = succeed(debug_depth=debug_depth+1, debug_call=_method)
     f.add_callback(drop_param, _method, *(args or ()), **(kwargs or {}))
@@ -374,7 +375,8 @@ class FiberInfo(object):
     def _init_creator(self, stack_depth):
         stack = traceback.extract_stack(limit=stack_depth+3)
         entry = stack[0]
-        self.creator = "%s:%s:%d" % (os.path.basename(entry[0]), entry[2], entry[1])
+        self.creator = "%s:%s:%d" % (os.path.basename(entry[0]),
+                                     entry[2], entry[1])
 
     def _init_calling(self, func):
         if func is None:
@@ -387,7 +389,8 @@ class FiberInfo(object):
             func = func.original_func
 
         self.calling = "%s:%s:%d" % (os.path.basename(func.__module__),
-                                     func.func_name, func.func_code.co_firstlineno)
+                                     func.func_name,
+                                     func.func_code.co_firstlineno)
 
 
 class Fiber(object):
