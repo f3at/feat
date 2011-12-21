@@ -1091,15 +1091,13 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # flag saying that we are in the process of starting the Host Agent,
         # it's used not to do this more than once
         self._starting_host = False
-        # list of agent types or descriptors to spawn when the host agent
-        # is ready. Format (agent_type_or_desc, kwargs, d)
-        self._to_spawn = list()
-        # semaphore preventing multiple entries into logic spawning agents
-        # by host agent
-        self._flushing_sem = defer.DeferredSemaphore(1)
 
         self.add_reconnected_cb(self._notify_agents_about_reconnection)
         self.add_disconnected_cb(self._notify_agents_about_disconnection)
+
+        #actions to be performed on host agent, list of tuples
+        #(method_name, args, kwargs)
+        self._pending_host_agent_calls = list()
 
     ### Public Methods ###
 
@@ -1132,6 +1130,21 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             if agent.get_agent_id() == agent_id:
                 return agent
         return None
+
+    def set_host_def(self, hostdef):
+        '''
+        Sets the hostdef param which will get passed to the Host Agent which
+        the agency starts if it becomes the master.
+        '''
+        if not isinstance(hostdef,
+                          (host.HostDef, unicode, str, types.NoneType)):
+            raise AttributeError("Expected attribute 1 to be a HostDef or "
+                                 "a document id got %r instead." %
+                                 (hostdef, ))
+        if self._hostdef is not None:
+            self.info("Overwriting previous hostdef, which was %r",
+                      self._hostdef)
+        self._hostdef = hostdef
 
     @manhole.expose()
     def start_agent(self, descriptor, **kwargs):
@@ -1334,30 +1347,30 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         medium = self._get_host_medium()
         return medium and medium.get_agent()
 
-    def set_host_def(self, hostdef):
+    ### public methods doing things on Host Agent ###
+
+    def host_agent_call(self, _method, *args, **kwargs):
+        '''Public method exposed to all the agency submodules, which need
+        to call the method on the host agent.
+        This works regardless if host agent already running or not. If
+        it is still being started the method will be called when he is ready.
         '''
-        Sets the hostdef param which will get passed to the Host Agent which
-        the agency starts if it becomes the master.
-        '''
-        if not isinstance(hostdef,
-                          (host.HostDef, unicode, str, types.NoneType)):
-            raise AttributeError("Expected attribute 1 to be a HostDef or "
-                                 "a document id got %r instead." %
-                                 (hostdef, ))
-        if self._hostdef is not None:
-            self.info("Overwriting previous hostdef, which was %r",
-                      self._hostdef)
-        self._hostdef = hostdef
+        d = defer.Deferred()
+        self._pending_host_agent_calls.append((_method, args, kwargs, d))
+        self._flush_pending_host_agent_calls()
+        return d
+
+    def raise_alert(self, msg, severity):
+        msg = "%s: %s" % (self.get_hostname(), msg)
+        return self.host_agent_call('raise_alert', msg, severity)
+
+    def resolve_alert(self, msg, severity):
+        msg = "%s: %s" % (self.get_hostname(), msg)
+        return self.host_agent_call('resolve_alert', msg, severity)
 
     @manhole.expose()
     def spawn_agent(self, desc, **kwargs):
-        '''tells the host agent running in this agency to spawn a new agent
-        of the given type.'''
-        d = defer.Deferred()
-        self._to_spawn.append((desc, kwargs, d))
-        self._flush_agents_to_spawn()
-        return d
-
+        return self.host_agent_call('spawn_agent', desc, **kwargs)
 
     ### protected ###
 
@@ -1402,7 +1415,44 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         return True
 
     def _on_host_started(self):
-        pass
+        medium = self._get_host_medium()
+        d = medium.wait_for_state(AgencyAgentState.ready)
+        d.addCallback(defer.drop_param, self._flush_pending_host_agent_calls)
+        return d
+
+    def _flush_pending_host_agent_calls(self):
+        medium = self._get_host_medium()
+        illegal_states = [
+            AgencyAgentState.not_initiated,
+            AgencyAgentState.initiating,
+            AgencyAgentState.terminating,
+            AgencyAgentState.terminated]
+        if not medium:
+            self.debug("Host agent is not there yet, we will perform "
+                       "his calls later.")
+            return
+        if medium._cmp_state(illegal_states):
+            self.debug("Host agent is in state %r, we will perform "
+                       "his calls later.", medium.state)
+            return
+
+        agent = medium.get_agent()
+        while True:
+            try:
+                method_name, args, kwargs, d = \
+                             self._pending_host_agent_calls.pop(0)
+            except IndexError:
+                break
+            else:
+                method = getattr(agent, method_name)
+                if not callable(method):
+                    self.error("Unknown method name %r on host agent. "
+                               "Ignoring.", method_name)
+                    continue
+                d2 = defer.Deferred()
+                d2.addCallback(defer.drop_param, method, *args, **kwargs)
+                d2.chainDeferred(d)
+                medium.call_next(d2.callback, None)
 
     def _get_host_agent_id(self):
         return self.get_hostname()
@@ -1457,50 +1507,14 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(self.start_agent, hostdef=self._hostdef)
         d.addBoth(defer.bridge_param, set_flag, False)
         d.addCallback(defer.drop_param, self._on_host_started)
-        d.addCallback(defer.drop_param, self._flush_agents_to_spawn)
         d.addErrback(self._host_restart_failed)
         time.callLater(0, d.callback, None)
-
-    def _flush_agents_to_spawn(self):
-        return self._flushing_sem.run(self._flush_agents_body)
 
     ### private ###
 
     def _get_host_medium(self):
         return first((x for x in self._agents
                       if x.get_descriptor().document_type == 'host_agent'))
-
-    @defer.inlineCallbacks
-    def _flush_agents_body(self):
-        medium = self._get_host_medium()
-        if medium is None:
-            msg = "Host Agent not ready yet, agent will be spawned later."
-            defer.returnValue(msg)
-        yield medium.wait_for_state(AgencyAgentState.ready)
-        agent = medium.get_agent()
-        while True:
-            try:
-                to_spawn = self._to_spawn.pop(0)
-            except IndexError:
-                break
-            desc, kwargs, d = to_spawn
-            try:
-                if not isinstance(desc, descriptor.Descriptor):
-                    factory = descriptor.lookup(desc)
-                    if factory is None:
-                        raise ValueError(
-                            'No descriptor factory found for agent %r' % desc)
-                    desc = factory()
-                desc = yield medium.save_document(desc)
-                # FIXME: make sure to remove the descriptor if start fails
-                result = yield agent.start_agent(desc, **kwargs)
-            except:
-                if d is not None:
-                    d.errback()
-                raise
-            else:
-                if d is not None:
-                    d.callback(result)
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")

@@ -167,7 +167,15 @@ class DummyMediumBase(DummyAgent):
 
 
 class DummyMedium(DummyMediumBase):
-    pass
+
+    def leave_shard(self, shard):
+        pass
+
+    def join_shard(self, shard):
+        pass
+
+    def get_own_address(self):
+        return self.get_ip()
 
 
 class DummyProtocol(object):

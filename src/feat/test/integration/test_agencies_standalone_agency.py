@@ -60,6 +60,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         options = OptParseMock()
         options.agency_lock_path = self.lock_path
         options.agency_socket_path = self.socket_path
+        options.agency_journal = ["sqlite://%s" % (self.jourfile, )]
         self.agency = standalone_agency.Agency(options)
 
         yield self.spawn_agency()
@@ -121,6 +122,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         # agency can connect and stop retrying, overwise the test
         # will finish in undefined way (this is part of the teardown)
         fcntl.unlock(self.lock_fd)
+        self.lock_fd.close()
 
     def spawn_agency(self):
         cmd, cmd_args, env = self.get_cmd_line()
@@ -140,6 +142,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
                 '--dbname', self.db_name,
                 '--rundir', os.path.abspath(os.path.curdir),
                 '--logdir', os.path.abspath(os.path.curdir),
+                '--journal', "sqlite://%s" % (self.jourfile, ),
                 '--socket-path', self.socket_path,
                 '--lock-path', self.lock_path,
                 '-D']
@@ -151,15 +154,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         return command, args, env
 
     def wait_for_master_gone(self, timeout=20):
-
-        def broker_disconnected():
-            return self.agency._broker.state == BrokerRole.disconnected
-
-        return self.wait_for(broker_disconnected, timeout)
+        return self.agency._broker.wait_for_state(BrokerRole.disconnected)
 
     def wait_for_master_back(self, timeout=20):
-
-        def broker_connected():
-            return self.agency._broker.state == BrokerRole.slave
-
-        return self.wait_for(broker_connected, timeout)
+        return self.agency._broker.wait_for_state(BrokerRole.slave)

@@ -52,7 +52,7 @@ class Agent(agent.BaseAgent):
         return self.discover_service(Initiator)
 
 
-@common.attr(timescale=0.03)
+@common.attr(timescale=0.1)
 class ServiceDiscoverySimulation(common.SimulationTest):
 
     @defer.inlineCallbacks

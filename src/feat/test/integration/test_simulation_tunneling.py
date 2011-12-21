@@ -239,7 +239,7 @@ class DummyPrivateManager(manager.BaseManager):
                 return
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.2)
 class TunnellingTest(common.SimulationTest):
 
     def setUp(self):

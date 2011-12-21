@@ -54,7 +54,7 @@ Effect's result is ALWAYSa defer.Deffered() instance fired
 with the new value of the processing chain.
 """
 
-from feat.common import log, defer, time
+from feat.common import defer, time
 from feat.models import reference
 
 
@@ -105,3 +105,16 @@ def local_ref(*parts):
         return reference.Local(*(parts + (context["key"], )))
 
     return local_ref
+
+
+def relative_ref(*parts):
+    """
+    Create a reference builder with specified relative location.
+    using getter.relative_ref("some", "submodel") to get a value with key
+    "toto" will gives reference.Relative("some", "submodel", "toto")
+    """
+
+    def relative_ref(_value, context, **_params):
+        return reference.Relative(*(parts + (context["key"], )))
+
+    return relative_ref

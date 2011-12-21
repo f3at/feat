@@ -155,7 +155,7 @@ class RPCReplier(replier.BaseReplier):
         fun_id = request.payload['fun_id']
         args = request.payload['args']
         kwargs = request.payload['kwargs']
-        f = fiber.succeed(fun_id)
+        f = fiber.succeed(fun_id, state.medium.get_canceller())
         f.add_callback(state.agent.call_local, *args, **kwargs)
         f.add_callbacks(callback=self.got_result, errback=self.got_failure)
         return f

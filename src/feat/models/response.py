@@ -48,6 +48,16 @@ def deleted(message):
     return deleted
 
 
+def done(message):
+    """Create a Deleted response builder with specified message."""
+
+    def done(value, _context, **_params):
+        return Done(value, message)
+
+    return done
+
+
+
 ### classes ###
 
 
@@ -110,5 +120,6 @@ class Done(Response):
 
     model.identity("feat.response.done")
 
-    def __init__(self, message):
+    def __init__(self, reference, message):
         Response.__init__(self, ResponseTypes.done, message)
+        self.reference = reference if reference is not None else None

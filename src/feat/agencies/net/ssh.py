@@ -23,6 +23,7 @@ import pprint
 import binascii
 import base64
 import os
+import sys
 
 from zope.interface import implements
 from twisted.cred import portal
@@ -120,7 +121,8 @@ class Commands(manhole.Manhole, manhole.Parser):
         except KeyError:
             raise RuntimeError(
                 'Requested medium class of %s with index %d, but found only '
-                '%d mediumf of this type' % (agent_type, index, len(mediums)))
+                '%d medium of this type'
+                % (agent_type, index, len(mediums))), None, sys.exc_info()[2]
 
     @manhole.expose()
     def restart_agent(self, agent_id, **kwargs):

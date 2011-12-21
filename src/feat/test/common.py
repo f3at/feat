@@ -470,7 +470,7 @@ class AgencyTestHelper(object):
         mesg = rabbitmq.Client(self._messaging, 'agency_queue')
         self._db = database.Database()
         writer = journaler.SqliteWriter(self)
-        journal = journaler.Journaler(self)
+        journal = journaler.Journaler()
         journal.configure_with(writer)
 
         d = writer.initiate()

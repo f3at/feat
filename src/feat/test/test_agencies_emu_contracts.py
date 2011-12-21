@@ -625,31 +625,48 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         correctly. Second announcement with same traversal id
         should be ignored.
         '''
-        expiration_time = time.future(1)
-        yield self.recv_announce(expiration_time, traversal_id='first')
 
-        self.assertEqual(1, self._get_number_of_protocols())
-        yield self._expire_contractor()
-        self.assertEqual(0, self._get_number_of_protocols())
+        def count(num):
+            return num == self._get_number_of_protocols()
 
-        yield self.recv_announce(expiration_time, traversal_id='first')
-        self.assertEqual(0, self._get_number_of_protocols())
+        def check_protocols(num):
+            return self.wait_for(count, 5, freq=0.05, kwargs={'num': num})
 
-        yield self.recv_announce(expiration_time, traversal_id='other')
-        self.assertEqual(1, self._get_number_of_protocols())
-        yield self._expire_contractor()
-
-        yield common.delay(None, 2)
-        # now receive expired message
-        yield self.recv_announce(expiration_time, traversal_id='first')
-        self.assertEqual(0, self._get_number_of_protocols())
-
+        # First
         yield self.recv_announce(time.future(3), traversal_id='first')
-        self.assertEqual(1, self._get_number_of_protocols())
+        yield check_protocols(1)
+        # Expire first
+        yield common.delay(None, 1)
         yield self._expire_contractor()
+        yield check_protocols(0)
+
+        # Duplicated
+        yield self.recv_announce(time.future(1), traversal_id='first')
+        self.assertEqual(0, self._get_number_of_protocols())
+        yield common.delay(None, 2)
+
+        yield self.recv_announce(time.future(3), traversal_id='other')
+        yield check_protocols(1)
+        yield common.delay(None, 1)
+        yield self._expire_contractor()
+        yield check_protocols(0)
+
+        # now receive expired message
+        yield self.recv_announce(1, traversal_id='first')
+        self.assertEqual(0, self._get_number_of_protocols())
+        yield check_protocols(0)
+
+        yield self.recv_announce(time.future(10), traversal_id='first')
+        yield check_protocols(1)
+        yield common.delay(None, 1)
+        yield self._expire_contractor()
+        yield check_protocols(0)
 
     def _expire_contractor(self):
-        return self.agent._protocols.values()[0].expire_now()
+        c = self.agent._protocols.values()[0]
+        d = c.wait_for_state(contracts.ContractState.announced)
+        d.addCallback(defer.drop_param, c.expire_now)
+        return d
 
     def _get_number_of_protocols(self):
         return len(self.agent._protocols.values())
@@ -899,6 +916,10 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
             state.medium.refuse(msg)
 
         d = self.recv_announce()
+        d.addCallback(self._get_contractor)
+        d.addCallback(lambda contractor:
+            contractor._get_medium().wait_for_state(
+                contracts.ContractState.announced))
         d.addCallback(self._get_contractor)
         d.addCallback(self.send_bid)
         d.addCallback(self.stub_method, 'granted', custom_handler)

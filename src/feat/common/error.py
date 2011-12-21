@@ -21,7 +21,9 @@
 # Headers in this file shall remain intact.
 import re
 import StringIO
+import traceback
 import types
+import sys
 
 from twisted.python.failure import Failure
 
@@ -246,6 +248,10 @@ def handle_exception(source, exception, template, *args, **kwargs):
             logger.info("Additional Information:\n%s", debug)
         if debug:
             logger.debug("Additional Debug:\n%s", debug)
+
+
+def print_stack():
+    traceback.print_stack(file=sys.stdout)
 
 
 ### private ###

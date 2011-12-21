@@ -19,7 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import operator
+import uuid
 
 from zope.interface import implements
 
@@ -125,7 +125,7 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         log.LogProxy.__init__(self, logger)
         log.Logger.__init__(self, logger)
         self.calls = {} # {CALL_ID: (time, call_id, fun, args, kwargs)}
-
+        self._call_index = 0
         self.reset()
 
     ### Public Methods ###
@@ -149,9 +149,10 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         if not self.calls:
             raise AssertionError("No pending call")
 
-        calls = [(t, i, f, a, k) for i, (t, f, a, k) in self.calls.items()]
-        calls.sort(key=operator.itemgetter(0))
-        _t, call_id, fun, args, kwargs = calls.pop(0)
+        calls = [(t, i, f, a, k, index)
+                 for i, (t, f, a, k, index) in self.calls.items()]
+        calls.sort(key=lambda x: (x[0], x[5]))
+        _t, call_id, fun, args, kwargs, _index = calls.pop(0)
         del self.calls[call_id]
 
         fun(*args, **kwargs)
@@ -171,8 +172,14 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         return self.call_later_ex(delay, fun, args, kwargs)
 
     def call_later_ex(self, delay, fun, args=(), kwargs={}, busy=True):
-        payload = (delay + time.time(), fun, args, kwargs)
-        call_id = hash((delay + time.time(), fun))
+        # on 32-bit machines we can have
+        # time.time() == time.time() evaluating to True
+        # for this reason it's necessary to include call index to be able
+        # to later sort in correctly according to the order of calls of
+        # call_later()
+        self._call_index += 1
+        payload = (delay + time.time(), fun, args, kwargs, self._call_index)
+        call_id = str(uuid.uuid1())
         self.calls[call_id] = payload
         return call_id
 

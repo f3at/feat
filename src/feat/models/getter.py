@@ -32,7 +32,6 @@ This module defines a set of "effects" defining ways of retrieving values:
 """
 
 from feat.common import defer
-from feat.models import reference
 
 
 def source_get(method_name):
@@ -77,6 +76,28 @@ def source_getattr():
         return _attr(value)
 
     return source_getattr
+
+
+def source_list_names(attr_name):
+
+    def source_list_names(_value, context, **_params):
+        value = getattr(context["model"].source, attr_name)
+        if not isinstance(value, list):
+            raise ValueError("Expected a list, got %r" % (value, ))
+        return _attr(map(str, range(len(value))))
+
+    return source_list_names
+
+
+def source_list_get(attr_name):
+
+    def source_list_get(_value, context, **_params):
+        list_ = getattr(context["model"].source, attr_name)
+        if not isinstance(list_, list):
+            raise ValueError("Expected a list, got %r" % (list_, ))
+        return _attr(list_[int(context["key"])])
+
+    return source_list_get
 
 
 def model_get(method_name):

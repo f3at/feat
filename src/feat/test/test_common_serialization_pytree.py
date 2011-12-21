@@ -539,7 +539,7 @@ class PyTreeConvertersTest(common_serialization.ConverterTest):
             yield (type(self.ext_val), [self.ext_val],
                    tuple, [identifier], False)
             yield (type(self.ext_snap_val), [self.ext_snap_val],
-                   int, [id(self.ext_snap_val)], False)
+                   type(id(self.ext_snap_val)), [id(self.ext_snap_val)], False)
         else:
             identifier = (self.ext_val.type_name, id(self.ext_val))
             yield (common_serialization.SerializableDummy, [self.ext_val],

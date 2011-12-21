@@ -21,19 +21,20 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import socket
 import sqlite3
 import operator
 import types
+import sys
 
 from zope.interface import implements
 from twisted.enterprise import adbapi
 from twisted.spread import pb
-
-from twisted.python import log as twisted_log
+from twisted.python import log as twisted_log, failure
 
 from feat.common import (log, text_helper, error_handler, defer,
                          formatable, enum, decorator, time, manhole,
-                         fiber, signal, )
+                         fiber, signal, error, connstr)
 from feat.agencies import common
 from feat.common.serialization import banana
 from feat.extern.log import log as flulog
@@ -42,7 +43,7 @@ from feat.interface.journal import IJournalSideEffect, IJournalEntry
 from feat.interface.serialization import IExternalizer
 from feat.interface.log import ILogKeeper
 from feat.agencies.interface import (IJournaler, IJournalWriter, IRecord,
-                                     IJournalerConnection)
+                                     IJournalerConnection, IJournalReader)
 
 
 class State(enum.Enum):
@@ -50,7 +51,7 @@ class State(enum.Enum):
     disconnected - there is no connection to database
     connected - connection is ready, entries can be insterted
     '''
-    (disconnected, connected, ) = range(2)
+    (disconnected, connected) = range(2)
 
 
 class EntriesCache(object):
@@ -110,12 +111,13 @@ def in_state(func, *states):
         if not self._cmp_state(states):
             d.addCallback(defer.drop_param, self.wait_for_state, *states)
         d.addCallback(defer.drop_param, func, self, *args, **kwargs)
+        d.addErrback(failure.Failure.trap, defer.CancelledError)
         return d
 
     return wrapper
 
 
-class Journaler(log.Logger, common.StateMachineMixin):
+class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     implements(IJournaler, ILogKeeper)
 
     log_category = 'journaler'
@@ -125,7 +127,8 @@ class Journaler(log.Logger, common.StateMachineMixin):
     # FIXME: at some point switch to False and remove this attribute
     should_keep_on_logging_to_flulog = True
 
-    def __init__(self, logger):
+    def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None,
+                 hostname=None):
         log.Logger.__init__(self, self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
@@ -134,18 +137,119 @@ class Journaler(log.Logger, common.StateMachineMixin):
         self._cache = EntriesCache()
         self._notifier = defer.Notifier()
 
+        self._on_rotate_cb = on_rotate_cb
+        self._on_switch_writer_cb = on_switch_writer_cb
+        # [(klass, params)]
+        self._possible_targets = list()
+        self._current_target_index = None
+
+        self._hostname = hostname
+
+    @property
+    def possible_targets(self):
+        return self._possible_targets
+
+    @property
+    def current_target_index(self):
+        return self._writer is not None and self._current_target_index
+
+    def set_connection_strings(self, con_strings):
+        self.log("set_connection_strings() called with: %r", con_strings)
+        for con_str in con_strings:
+            try:
+                self._possible_targets.append(parse_connstr(con_str))
+                self.log("Adding journaler target: %r",
+                         self._possible_targets[-1])
+            except error.FeatError:
+                self.error("Connection string %s is wrong. Ignoring!", con_str)
+                continue
+        if self._writer is None:
+            return self.use_next_writer()
+
+    def use_next_writer(self, force_index=None):
+        self.log("Will use next journaler target on the list")
+        if not self._possible_targets:
+            raise ValueError("_possible targets are empty")
+
+        if force_index:
+            self._current_target_index = force_index
+        elif self._current_target_index is None:
+            self._current_target_index = 0
+        else:
+            self._current_target_index += 1
+            self._current_target_index %= len(self._possible_targets)
+
+        klass, kwargs = self._possible_targets[self._current_target_index]
+        kwargs['hostname'] = self._hostname
+
+        writer = klass(self, **kwargs)
+        d = self.close(flush_writer=False)
+        d.addCallback(defer.drop_param, self.configure_with, writer)
+        d.addCallback(defer.drop_param, writer.initiate)
+        d.addCallback(defer.drop_param, self._schedule_flush)
+        if callable(self._on_switch_writer_cb):
+            d.addCallback(defer.drop_param, self._on_switch_writer_cb,
+                          self._current_target_index)
+        return d
+
+    def reconnect_to_primary_writer(self):
+        if self._current_target_index == 0:
+            raise ValueError("Journaler is already using primary writer.")
+        old_writer = None
+        if self._writer is not None:
+            old_writer = self._writer
+            self._writer = None
+            self._set_state(State.disconnected)
+        d = self.use_next_writer(force_index=0)
+        if old_writer:
+            try:
+                reader = IJournalReader(old_writer)
+            except TypeError:
+                self.error("Could not adapt writer: %r to IJournalReader "
+                           "interface. Migration of entries will be skipped.",
+                           old_writer)
+            else:
+                d.addCallback(defer.drop_param, self.migrate_entries,
+                              reader)
+                d.addBoth(defer.keep_param, old_writer.close)
+        return d
+
+    @defer.inlineCallbacks
+    def migrate_entries(self, reader):
+        self.log("Migrating entries from reader: %r", reader)
+        while True:
+            entries = yield reader.get_bare_journal_entries()
+            if not entries:
+                break
+            self.log("Inserting %d journal entries", len(entries))
+            yield self.insert_entries(entries)
+            yield reader.delete_top_journal_entries(len(entries))
+
+        while True:
+            entries = yield reader.get_log_entries(limit=1000)
+            if not entries:
+                break
+            self.log("Inserting %d log entries", len(entries))
+            yield self.insert_entries(entries)
+            yield reader.delete_top_log_entries(len(entries))
+
     def configure_with(self, writer):
         self._ensure_state(State.disconnected)
         twisted_log.addObserver(self.on_twisted_log)
         self._writer = IJournalWriter(writer)
+        self._writer.configure_with(self)
         self._set_state(State.connected)
         self._schedule_flush()
+        self.on_rotate()
 
     def close(self, flush_writer=True):
 
         def set_disconnected():
             self._writer = None
             self._set_state(State.disconnected)
+
+        def errback(fail):
+            error.handle_failure(self, fail, "Closing journal writer failed")
 
         try:
             twisted_log.removeObserver(self.on_twisted_log)
@@ -155,7 +259,8 @@ class Journaler(log.Logger, common.StateMachineMixin):
             pass
 
         d = self._close_writer(flush_writer)
-        d.addCallback(defer.drop_param, set_disconnected)
+        d.addErrback(errback)
+        d.addBoth(defer.drop_param, set_disconnected)
         return d
 
     ### IJournaler ###
@@ -168,22 +273,19 @@ class Journaler(log.Logger, common.StateMachineMixin):
     def prepare_record(self):
         return Record(self)
 
-    @in_state(State.connected)
-    def get_histories(self):
-        return self._writer.get_histories()
-
-    @in_state(State.connected)
-    def get_entries(self, history):
-        return self._writer.get_entries(history)
-
     def insert_entry(self, **data):
         self._cache.append(data)
         self._schedule_flush()
         return self._notifier.wait('flush')
 
-    @in_state(State.connected)
-    def get_filename(self):
-        return self._writer.get_filename()
+    def insert_entries(self, entries):
+        for entry in entries:
+            self._cache.append(entry)
+        self._schedule_flush()
+        return self._notifier.wait('flush')
+
+    # used by remote ProxyBrokerWriter
+    remote_insert_entries = insert_entries
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -191,6 +293,12 @@ class Journaler(log.Logger, common.StateMachineMixin):
         if self._writer:
             return self._writer.is_idle()
         return True
+
+    ### methods called by journaler writers ###
+
+    def on_rotate(self):
+        if callable(self._on_rotate_cb):
+            self._on_rotate_cb()
 
     ### ILogObserver provider ###
 
@@ -243,11 +351,21 @@ class Journaler(log.Logger, common.StateMachineMixin):
     ### private ###
 
     def _schedule_flush(self):
+        if not self._cmp_state(State.connected):
+            return
         if self._flush_task is None:
             self._flush_task = time.call_next(self._flush)
 
-    @in_state(State.connected)
     def _flush(self):
+        d = defer.succeed(None)
+        if not self._cmp_state(State.connected):
+            d.addCallback(defer.drop_param,
+                          self.wait_for_state, State.connected)
+        d.addCallback(defer.drop_param, self._flush_body)
+        d.addErrback(self._flush_error)
+        return d
+
+    def _flush_body(self):
         entries = self._cache.fetch()
         if entries:
             d = self._writer.insert_entries(entries)
@@ -267,7 +385,12 @@ class Journaler(log.Logger, common.StateMachineMixin):
 
     def _flush_error(self, fail):
         self._cache.rollback()
-        fail.raiseException()
+        error.handle_failure(self, fail,
+                           'Flushing entries to the writer failed')
+        self._writer = None
+        self._set_state(State.disconnected)
+        self._flush_task = None
+        time.call_next(self.use_next_writer)
 
     def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
@@ -293,13 +416,13 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         common.StateMachineMixin.__init__(self, State.disconnected)
 
         self._broker = broker
-        self._set_writer(None)
+        self._set_journaler(None)
         self._cache = EntriesCache()
         self._semaphore = defer.DeferredSemaphore(1)
 
     def initiate(self):
-        d = self._broker.get_journal_writer()
-        d.addCallback(self._set_writer)
+        d = self._broker.get_journaler()
+        d.addCallback(self._set_journaler)
         d.addCallback(defer.drop_param, self._set_state, State.connected)
         return d
 
@@ -308,25 +431,17 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         if flush:
             d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._set_state, State.disconnected)
-        d.addCallback(defer.drop_param, self._set_writer, None)
+        d.addCallback(defer.drop_param, self._set_journaler, None)
         return d
 
-    @in_state(State.connected)
-    def get_histories(self):
-        return self._writer.callRemote('get_histories')
-
-    @in_state(State.connected)
-    def get_entries(self, history):
-        return self._writer.callRemote('get_entries', history)
+    def configure_with(self, journaler):
+        pass
 
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
-        return self._flush_next()
-
-    @in_state(State.connected)
-    def get_filename(self):
-        return self._writer.callRemote('get_filename')
+        self._flush_next()
+        return self._notifier.wait('flushed')
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -338,6 +453,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     @in_state(State.connected)
     def _flush_next(self):
         if len(self._cache) == 0:
+            self._notifier.callback('flushed', None)
             return defer.succeed(None)
         else:
             d = self._semaphore.run(self._push_entries)
@@ -348,7 +464,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         entries = self._cache.fetch()
         if entries:
             try:
-                d = self._writer.callRemote('insert_entries', entries)
+                d = self._journaler.callRemote('insert_entries', entries)
                 d.addCallbacks(defer.drop_param, defer.drop_param,
                                callbackArgs=(self._cache.commit, ),
                                errbackArgs=(self._cache.rollback, ))
@@ -358,24 +474,25 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
                 # instead of giving failed Deferred
                 self._cache.rollback()
 
-    def _set_writer(self, writer):
-        self._writer = writer
-        if isinstance(self._writer, pb.RemoteReference):
-            self._writer.notifyOnDisconnect(self._on_disconnect)
+    def _set_journaler(self, journaler):
+        self._journaler = journaler
+        if isinstance(self._journaler, pb.RemoteReference):
+            self._journaler.notifyOnDisconnect(self._on_disconnect)
 
     def _on_disconnect(self, writer):
         self._set_state(State.disconnected)
-        self._set_writer(None)
+        self._set_journaler(None)
 
 
-class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
-                   manhole.Manhole):
-    implements(IJournalWriter)
+class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
+
+
+    implements(IJournalWriter, IJournalReader)
 
     _error_handler = error_handler
 
     def __init__(self, logger, filename=":memory:", encoding=None,
-                 on_rotate=None):
+                 hostname=None):
         '''
         @param encoding: Optional encoding to be used for blob fields.
         @type encoding: Should be a valid parameter for str.encode() method.
@@ -389,6 +506,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._encoding = encoding
         self._db = None
         self._filename = filename
+        self._hostname = hostname
         self._reset_history_id_cache()
         self._cache = EntriesCache()
         # the semaphore is used to always have at most running
@@ -397,7 +515,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         self._sighup_installed = False
 
-        self._on_rotate_cb = on_rotate
+        self._journaler = None
 
     def initiate(self):
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
@@ -406,8 +524,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                                          timeout=10)
         self._install_sighup()
         return self._check_schema()
-
-    ### IJournalWriter ###
 
     def close(self, flush=True):
         d = defer.succeed(None)
@@ -419,19 +535,60 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(defer.drop_param, self._uninstall_sighup)
         d.addCallback(defer.drop_param, self._set_state,
                       State.disconnected)
+        d.addCallback(defer.drop_param,
+                      self._notifier.cancel, State.connected)
         return d
 
-    @manhole.expose()
+    ### IJournalReader ###
+
     @in_state(State.connected)
     def get_histories(self):
-        return History.fetch(self._db)
 
-    @manhole.expose()
+        def parse(rows):
+            return [History(history_id=x[0], agent_id=x[1], instance_id=x[2],
+                            hostname=self._hostname)
+                    for x in rows]
+
+        d = self._db.runQuery(
+            "SELECT id, agent_id, instance_id FROM histories")
+        d.addCallback(parse)
+        return d
+
+    @in_state(State.connected)
+    def get_bare_journal_entries(self, limit=1000):
+        command = text_helper.format_block("""
+        SELECT histories.agent_id,
+               histories.instance_id,
+               entries.journal_id,
+               entries.function_id,
+               entries.fiber_id,
+               entries.fiber_depth,
+               entries.args,
+               entries.kwargs,
+               entries.side_effects,
+               entries.result,
+               entries.timestamp
+          FROM entries
+          LEFT JOIN histories ON histories.id = entries.history_id
+          ORDER BY entries.timestamp ASC
+          LIMIT ?""")
+        d = self._db.runQuery(command, (limit, ))
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    @in_state(State.connected)
+    def delete_top_journal_entries(self, num):
+        command = text_helper.format_block("""
+        DELETE FROM entries
+        WHERE id IN (
+           SELECT id FROM entries
+           ORDER BY timestamp, rowid
+           LIMIT ?)
+        """)
+        return self._db.runQuery(command, (num, ))
+
     @in_state(State.connected)
     def get_entries(self, history, start_date=0, limit=None):
-        '''
-        Returns a list of journal entries  for the given history_id.
-        '''
         if not isinstance(history, History):
             raise AttributeError(
                 'First paremeter is expected to be History instance, got %r'
@@ -458,21 +615,14 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         if limit:
             command += " LIMIT %s" % (limit, )
         d = self._db.runQuery(command, (history.history_id, ))
-        d.addCallback(self._decode)
+        d.addCallback(self._decode, entry_type='journal')
         return d
 
     @in_state(State.connected)
-    def get_log_entries(self, start_date=None, end_date=None, filters=list()):
+    def get_log_entries(self, start_date=None, end_date=None, filters=list(),
+                        limit=None):
         '''
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        @param filters: list of dictionaries with the following keys:
-                        level - mandatory, display entries with lvl <= level
-                        category - optional, limit to log_category
-                        name - optional, limit to log_name
-                        Leaving optional fields blank will match all the
-                        entries. The entries in this list are combined with
-                        OR operator.
+        See feat.agencies.interface.IJournalReader.get_log_entres
         '''
         query = text_helper.format_block('''
         SELECT logs.message,
@@ -504,16 +654,32 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         filter_strings = map(transform_filter, filters)
         if filter_strings:
             query += " AND (%s)\n" % (' OR '.join(filter_strings), )
+        query += " ORDER BY logs.timestamp, rowid"
+        if limit:
+            query += " LIMIT %s" % (limit, )
+
         d = self._db.runQuery(query)
-        d.addCallback(self._decode)
+        d.addCallback(self._decode, entry_type='log')
         return d
 
     @in_state(State.connected)
-    def get_log_categories(self, start_date=None, end_date=None):
-        '''
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        '''
+    def delete_top_log_entries(self, num):
+        command = text_helper.format_block("""
+        DELETE FROM logs
+        WHERE id IN (
+           SELECT id FROM logs
+           ORDER BY timestamp, rowid
+           LIMIT ?)
+        """)
+        return self._db.runQuery(command, (num, ))
+
+    @in_state(State.connected)
+    def get_log_hostnames(self, start_date=None, end_date=None):
+        return [self._hostname]
+
+    @in_state(State.connected)
+    def get_log_categories(self, start_date=None, end_date=None,
+                           hostname=None):
         query = text_helper.format_block('''
         SELECT DISTINCT logs.category
         FROM logs
@@ -528,12 +694,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(unpack)
         return d
 
-    def get_log_names(self, category, start_date=None, end_date=None):
-        '''
-        Fetches log names for the given category.
-        @param start_date: epoch time to start search
-        @param end_date: epoch time to end search
-        '''
+    def get_log_names(self, category, hostname=None,
+                      start_date=None, end_date=None):
         query = text_helper.format_block('''
         SELECT DISTINCT logs.log_name
         FROM logs
@@ -565,15 +727,18 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d.addCallback(unpack)
         return d
 
-    @manhole.expose()
+    ### IJournalWriter ###
+
+    def configure_with(self, journaler):
+        self.log("configure_with() called. journaler=%r", journaler)
+        if self._journaler:
+            self.warning("We already have a journaler reference, substituing")
+        self._journaler = journaler
+
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
         return self._flush_next()
-
-    @manhole.expose()
-    def get_filename(self):
-        return self._filename
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -595,10 +760,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def _sighup_handler(self, signum, frame):
         self.log("Received SIGHUP, reopening the journal.")
+        if self._journaler:
+            time.call_next(self._journaler.on_rotate)
         self.close()
         self.initiate()
-        if callable(self._on_rotate_cb):
-            self._on_rotate_cb()
 
     def _install_sighup(self):
         if self._sighup_installed:
@@ -620,10 +785,11 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             self.warning("Unregistering of sighup failed. Straaange!")
         self._sighup_installed = False
 
-    def _decode(self, entries):
+    def _decode(self, entries, entry_type):
         '''
         Takes the list of rows returned by sqlite.
-        Returns rows in readable format.
+        Returns rows in readable format. Transforms tuples into dictionaries,
+        and appends information about entry type to the rows.
         '''
 
         def decode_blobs(row):
@@ -636,7 +802,24 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                     row[index] = value
             return row
 
-        return map(decode_blobs, entries)
+        decoded = map(decode_blobs, entries)
+        if entry_type == 'log':
+            mapping = ['message', 'level', 'category',
+                       'log_name', 'file_path', 'line_num', 'timestamp']
+        elif entry_type == 'journal':
+            mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
+                       'fiber_id', 'fiber_depth', 'args', 'kwargs',
+                       'side_effects', 'result', 'timestamp']
+        else:
+            raise ValueError('Unknown entry_type %r' % (entry_type, ))
+
+        def parse(row, mapping, entry_type):
+            resp = dict(zip(mapping, row))
+            resp['entry_type'] = entry_type
+            return resp
+
+        parsed = [parse(row, mapping, entry_type) for row in decoded]
+        return parsed
 
     def _encode(self, data):
         result = dict()
@@ -676,6 +859,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         d = self._db.runQuery(
             'SELECT value FROM metadata WHERE name = "encoding"')
         d.addCallbacks(self._got_encoding, self._create_schema)
+        d.addCallback(defer.drop_param, self._load_hostname)
+        d.addCallback(defer.drop_param, self._initiated_ok)
         return d
 
     def _got_encoding(self, res):
@@ -688,13 +873,27 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
                          "the value of: %r",
                          self._encoding, encoding, encoding)
         self._encoding = encoding
-        self._initiated_ok()
+
+    def _load_hostname(self):
+
+        def callback(res):
+            try:
+                hostname = res[0][0]
+            except IndexError:
+                hostname = 'unknown'
+            self._hostname = hostname
+
+        d = self._db.runQuery(
+            'SELECT value FROM metadata WHERE name = "hostname"')
+        d.addCallback(callback)
+        return d
 
     def _create_schema(self, fail):
         fail.trap(sqlite3.OperationalError)
         commands = [
             text_helper.format_block("""
             CREATE TABLE entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
               history_id INTEGER NOT NULL,
               journal_id BLOB,
               function_id VARCHAR(200),
@@ -709,6 +908,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
             """),
             text_helper.format_block("""
             CREATE TABLE logs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
               message BLOB,
               level INTEGER,
               category VARCHAR(36),
@@ -746,13 +946,17 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
         insert_meta = "INSERT INTO metadata VALUES('%s', '%s')"
         commands += [insert_meta % (u'encoding', self._encoding, )]
 
+        hostname = self._hostname
+        if hostname is None:
+            self.warning("SqliteWriter initialized without hostname, "
+                         "falling back to value from socket.gethostname()")
+            hostname = socket.gethostname()
+        commands += [insert_meta % (u'hostname', hostname, )]
+
         self._reset_history_id_cache()
-        # insert_history = "INSERT INTO histories VALUES(%d, '%s', %d)"
-        # for (a_id, i_id), h_id in self._history_id_cache.iteritems():
-        #     commands += [insert_history % (h_id, a_id, i_id)]
 
         d = self._db.runWithConnection(run_all, commands)
-        d.addCallbacks(self._initiated_ok, self._error_handler)
+        d.addErrback(self._error_handler)
         return d
 
     def _initiated_ok(self, *_):
@@ -765,7 +969,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         def do_insert_entry(connection, history_id, data):
             command = text_helper.format_block("""
-            INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO entries VALUES (null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (history_id,
@@ -777,7 +981,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         def do_insert_log(connection, data):
             command = text_helper.format_block("""
-            INSERT INTO logs VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO logs VALUES (null, ?, ?, ?, ?, ?, ?, ?)
             """)
             connection.execute(
                 command, (data['message'], int(data['level']),
@@ -877,9 +1081,6 @@ class JournalerConnection(log.Logger, log.LogProxy):
             journal_id, function_id, *args, **kwargs)
         return entry
 
-    def get_filename(self):
-        return self.journaler.get_filename()
-
     def snapshot(self, agent_id, instance_id, snapshot):
         record = self.journaler.prepare_record()
         entry = AgencyJournalEntry(
@@ -939,18 +1140,7 @@ class History(formatable.Formatable, pb.Copyable):
     formatable.field('history_id', None)
     formatable.field('agent_id', None)
     formatable.field('instance_id', None)
-
-    @classmethod
-    def fetch(cls, db):
-        d = db.runQuery(
-            "SELECT id, agent_id, instance_id FROM histories")
-        d.addCallback(cls._parse_resp)
-        return d
-
-    @classmethod
-    def _parse_resp(cls, resp):
-        columns = map(operator.attrgetter('name'), cls._fields)
-        return map(lambda row: cls(**dict(zip(columns, row))), resp)
+    formatable.field('hostname', None)
 
 
 class AgencyJournalEntry(object):
@@ -1017,3 +1207,549 @@ class AgencyJournalEntry(object):
             self._not_serialized['args'] = None
             self._not_serialized['kwargs'] = None
             self.commit()
+
+
+class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
+                     manhole.Manhole):
+
+    implements(IJournalWriter)
+
+    max_retries = 2
+    max_delay = 120
+    initial_delay = 1
+
+    def __init__(self, logger, host, database, user, password,
+                 max_retries=None, initial_delay=None, max_delay=None,
+                 hostname=None):
+        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
+        common.StateMachineMixin.__init__(self, State.disconnected)
+
+        # lazy import not to require psycopg2 and txpostgres
+        # packages if the writer is not used
+        from txpostgres import txpostgres
+        import psycopg2
+        self._txpostgres = txpostgres
+        self._psycopg2 = psycopg2
+
+        self._credentials = dict(host=host, user=user,
+                                 password=password, database=database)
+
+        self._cache = EntriesCache()
+        self._db = None
+
+        self._retry = None
+
+        self._max_delay = max_delay or type(self).max_delay
+        self._max_retries = max_retries or type(self).max_retries
+        self._initial_delay = initial_delay or type(self).initial_delay
+
+        self._journaler = None
+        self._initiate_defer = None
+        self._should_giveup = False
+
+        if hostname is None:
+            hostname = socket.gethostname()
+            self.warning("Postgres writer was initialized without passing "
+                         "the hostname. Falling back to: %s", hostname)
+        self._hostname = hostname
+
+    def initiate(self):
+        self._should_giveup = False
+        self._db = self._txpostgres.ConnectionPool(
+            "postgres", min=1, **self._credentials)
+
+        if self._retry is not None:
+            self._retry += 1
+        else:
+            self._retry = 1
+            self._delay = self._initial_delay
+
+        d = self._db.start()
+        # run simple query to make sure schema is loaded
+        d.addCallback(defer.drop_param, self._db.runQuery,
+                      'SELECT message FROM feat.logs LIMIT 1')
+        d.addCallback(self._connection_established)
+        d.addErrback(self._connection_failed)
+        self._initiate_defer = d
+        return d
+
+    def close(self, flush=True):
+        self._should_giveup = True
+        if self._initiate_defer:
+            self._initiate_defer.cancel()
+        d = defer.succeed(None)
+        if flush and not self._cmp_state(State.disconnected):
+            d.addCallback(defer.drop_param, self._flush_next)
+        if self._db:
+            db = self._db
+            self._db = None
+            d.addCallback(defer.drop_param, db.close)
+        d.addCallback(defer.drop_param, self._set_state,
+                      State.disconnected)
+        d.addCallback(defer.drop_param,
+                      self._notifier.cancel, State.connected)
+        return d
+
+    ### Used by model ###
+
+    @property
+    def host(self):
+        return self._credentials['host']
+
+    @property
+    def dbname(self):
+        return self._credentials['database']
+
+    @property
+    def user(self):
+        return self._credentials['user']
+
+    @property
+    def password(self):
+        return self._credentials['password']
+
+    ### IJournalWriter ###
+
+    def configure_with(self, journaler):
+        self.log("configure_with() called. journaler=%r", journaler)
+        if self._journaler:
+            self.warning("We already have a journaler reference, substituing")
+        self._journaler = journaler
+
+    @manhole.expose()
+    def insert_entries(self, entries):
+        for data in entries:
+            self._cache.append(data)
+        return self._flush_next()
+
+    def is_idle(self):
+        if len(self._cache) > 0:
+            return False
+        return True
+
+    ### private ###
+
+    def _connection_established(self, _ignored):
+        self._retry = None
+        del(self._delay)
+        self._initiate_defer = None
+
+        self.log("Connection established to postgres database.")
+        self._set_state(State.connected)
+        return self._flush_next()
+
+    def _connection_failed(self, fail):
+        self._delay = min([self._max_delay, self._delay * 2])
+
+        self.warning("Connection to postgres failed with credentials: %r. "
+                     "Failure: %r. ", self._credentials, fail)
+        if self._db:
+            self._db.close()
+            self._db = None
+        if self._should_giveup or self._retry + 1 > self._max_retries:
+            error.handle_failure(self, fail,
+                                 "Giving up connecting to postgres. ")
+            self._notifier.cancel(State.connected)
+            return
+
+        self.info("Will retry for %d time in %d seconds.",
+                  self._retry, self._delay)
+        time.call_later(self._delay, self.initiate)
+
+    @in_state(State.connected)
+    def _flush_next(self):
+        if len(self._cache) == 0:
+            return defer.succeed(None)
+        else:
+            d = self._db.runInteraction(self._perform_inserts)
+            d.addCallback(defer.drop_param, self._flush_next)
+            return d
+
+    def _perform_inserts(self, cursor):
+        entries = self._cache.fetch()
+        if not entries:
+            return
+
+        d = defer.succeed(None)
+        for data in entries:
+            if data['entry_type'] == 'journal':
+                d.addCallback(defer.drop_param,
+                              self._do_insert_entry, cursor, data)
+            elif data['entry_type'] == 'log':
+                d.addCallback(defer.drop_param, self._do_insert_log,
+                              cursor, data)
+        d.addCallback(defer.bridge_param, self._cache.commit)
+        d.addErrback(defer.bridge_param, self._cache.rollback)
+        return d
+
+    def _do_insert_entry(self, cursor, data):
+
+        def escape(binary):
+            if isinstance(binary, unicode):
+                binary = binary.encode('utf8')
+            return self._psycopg2.Binary(binary)
+
+        return cursor.execute(
+            'INSERT INTO feat.entries '
+            '(agent_id, instance_id, journal_id, function_id, fiber_id,'
+            ' fiber_depth, args, kwargs, side_effects, result, timestamp,'
+            ' host_id) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,'
+                     'feat.host_id_for(%s))',
+            (data['agent_id'],
+             data['instance_id'],
+             escape(data['journal_id']),
+             data['function_id'],
+             escape(data['fiber_id']),
+             data['fiber_depth'],
+             escape(data['args']),
+             escape(data['kwargs']),
+             escape(data['side_effects']),
+             escape(data['result']),
+             self._format_timestamp(data['timestamp']),
+             self._hostname))
+
+    def _do_insert_log(self, cursor, data):
+        return cursor.execute(
+            'INSERT INTO feat.logs '
+            '(message, level, category, log_name, file_path, line_num,'
+            ' timestamp, host_id) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, feat.host_id_for(%s))',
+            (data['message'], int(data['level']),
+             data['category'], data['log_name'],
+             data['file_path'], data['line_num'],
+             self._format_timestamp(data['timestamp']),
+             self._hostname))
+
+    def _format_timestamp(self, epoch):
+        return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
+
+
+class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
+                     manhole.Manhole):
+
+    implements(IJournalReader)
+
+    max_retries = 2
+    max_delay = 120
+    initial_delay = 1
+
+    def __init__(self, logger, host, database, user, password):
+        log.LogProxy.__init__(self, logger)
+        log.Logger.__init__(self, logger)
+        common.StateMachineMixin.__init__(self, State.disconnected)
+
+        from txpostgres import txpostgres
+        import psycopg2
+        self._txpostgres = txpostgres
+        self._psycopg2 = psycopg2
+
+        self._credentials = dict(host=host, user=user,
+                                 password=password, database=database)
+
+        self._db = None
+        self._error = None
+        self._initiate_defer = None
+
+    def initiate(self):
+        self._db = self._txpostgres.ConnectionPool(
+            "postgres", min=1, **self._credentials)
+        d = self._db.start()
+        # run simple query to make sure schema is loaded
+        d.addCallback(defer.drop_param, self._db.runQuery,
+                      'SELECT message FROM feat.logs LIMIT 1')
+        d.addCallback(defer.drop_param, self._connection_established)
+        d.addErrback(self._connection_failed)
+        self._initiate_defer = d
+        return d
+
+    def close(self):
+        if self._initiate_defer:
+            self._initiate_defer.cancel()
+            self._initiate_defer = None
+        if self._db:
+            self._db.close()
+            self._db.close()
+        self._set_state(State.disconnected)
+
+    ### IJournalReader ###
+
+    def get_histories(self):
+        self._ensure_connected()
+
+        def parse(rows):
+            return [History(agent_id=x[0],
+                            instance_id=x[1],
+                            hostname=x[2]) for x in rows]
+
+        d = self._db.runQuery(
+            "SELECT entries.agent_id, entries.instance_id, "
+                    "hosts.hostname, min(entries.id) min_id FROM feat.entries"
+            "  LEFT JOIN feat.hosts ON entries.host_id = hosts.id"
+            "  GROUP BY entries.agent_id, entries.instance_id, hosts.hostname"
+            "  ORDER BY min_id")
+        d.addCallback(parse)
+        return d
+
+    def get_bare_journal_entries(self, limit=1000):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        SELECT agent_id, instance_id, journal_id, function_id, fiber_id,
+               fiber_depth, args, kwargs, side_effects, result,
+               date_part('epoch', timestamp)
+          FROM feat.entries
+          ORDER BY timestamp, id
+          LIMIT %s""")
+        d = self._db.runQuery(command, (limit, ))
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    def delete_top_journal_entries(self, num):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        DELETE FROM feat.entries
+        WHERE id IN (
+           SELECT id FROM feat.entries
+           ORDER BY timestamp, id
+           LIMIT %s)
+        """)
+        return self._db.runOperation(command, (num, ))
+
+    def get_entries(self, history, start_date=0, limit=None):
+        self._ensure_connected()
+
+        if not isinstance(history, History):
+            raise AttributeError(
+                'First paremeter is expected to be History instance, got %r'
+                % history)
+
+        command = text_helper.format_block("""
+        SELECT agent_id, instance_id, journal_id, function_id, fiber_id,
+               fiber_depth, args, kwargs, side_effects, result,
+               date_part('epoch', timestamp)
+          FROM feat.entries
+          WHERE agent_id = %s AND instance_id = %s""")
+        params = (history.agent_id, history.instance_id)
+        if start_date:
+            command += " AND date_part('epoch', timestamp) >= %s"
+            params += (start_date, )
+
+        command += " ORDER BY timestamp, entries.id"
+        if limit:
+            command += " LIMIT %s"
+            params += (limit, )
+        d = self._db.runQuery(command, params)
+        d.addCallback(self._decode, entry_type='journal')
+        return d
+
+    def get_log_hostnames(self, start_date=None, end_date=None):
+        query = "SELECT hostname FROM feat.hosts WHERE true"
+        query, params = self._add_timestamp_condition_sql(
+            query, tuple(), start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_entries(self, start_date=None, end_date=None, filters=list(),
+                        limit=None):
+        self._ensure_connected()
+
+        query = text_helper.format_block("""
+        SELECT message, level, category, log_name, file_path, line_num,
+               date_part('epoch', timestamp)
+          FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE true
+        """)
+        query, params = self._add_timestamp_condition_sql(
+            query, tuple(), start_date, end_date)
+
+        def transform_filter(filter):
+            params = tuple()
+
+            level = filter.get('level', None)
+            category = filter.get('category', None)
+            name = filter.get('name', None)
+            hostname = filter.get('hostname', None)
+            if level is None:
+                raise AttributeError("level is mandatory parameter.")
+            resp = "(level <= %s"
+            params += (level, )
+            if hostname is not None:
+                resp += " AND hosts.hostname = %s"
+                params += (hostname, )
+            if category is not None:
+                resp += " AND category = %s"
+                params += (category, )
+            if name is not None:
+                resp += " AND log_name = %s"
+                params += (name, )
+            resp += ')'
+            return resp, params
+
+        parsed_filters = map(transform_filter, filters)
+        if parsed_filters:
+            filter_strings = [x[0] for x in parsed_filters]
+            query += " AND (" + ' OR '.join(filter_strings) + ')'
+            filter_params = [x[1] for x in parsed_filters]
+            params += reduce(lambda x, y: x + y, filter_params)
+        if limit:
+            query += " LIMIT %s"
+            params += (limit, )
+        query += " ORDER BY timestamp, logs.id"
+        d = self._db.runQuery(query, params)
+        d.addCallback(self._decode, entry_type='log')
+        return d
+
+    def delete_top_log_entries(self, num):
+        self._ensure_connected()
+
+        command = text_helper.format_block("""
+        DELETE FROM feat.logs
+        WHERE id IN (
+           SELECT id FROM feat.logs
+           ORDER BY timestamp, logs.id
+           LIMIT %s)
+        """)
+        return self._db.runOperation(command, (num, ))
+
+    def get_log_categories(self, start_date=None, end_date=None,
+                           hostname=None):
+        self._ensure_connected()
+
+        query = text_helper.format_block("""
+        SELECT DISTINCT category FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE true""")
+        params = tuple()
+        if hostname:
+            query += " AND hosts.hostname = %s"
+            params += (hostname, )
+        query, params = self._add_timestamp_condition_sql(
+            query, params, start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_names(self, category, hostname=None,
+                      start_date=None, end_date=None):
+        query = text_helper.format_block("""
+        SELECT DISTINCT log_name FROM feat.logs
+          LEFT JOIN feat.hosts ON logs.host_id = hosts.id
+          WHERE category = %s""")
+        params = (category, )
+        if hostname:
+            query += " AND hosts.hostname = %s"
+            params += (hostname, )
+        query, params = self._add_timestamp_condition_sql(
+            query, params, start_date, end_date)
+        d = self._db.runQuery(query, params)
+
+        def unpack(res):
+            return map(operator.itemgetter(0), res)
+
+        d.addCallback(unpack)
+        return d
+
+    def get_log_time_boundaries(self):
+        '''
+        @returns: a tuple of log entry timestaps (first, last) or None
+        '''
+        query = text_helper.format_block("""
+        SELECT min(date_part('epoch', timestamp)),
+               max(date_part('epoch', timestamp))
+        FROM feat.logs""")
+        d = self._db.runQuery(query)
+        d.addCallback(operator.itemgetter(0))
+        return d
+
+    ### private helper used by querying functions ###
+
+    def _decode(self, entries, entry_type):
+        '''
+        Takes the list of rows returned by postgres.
+        Returns rows in readable format. Transforms tuples into dictionaries,
+        and appends information about entry type to the rows.
+        '''
+
+        def decode_blobs(row):
+            row = list(row)
+            for index, value in zip(range(len(row)), row):
+                if isinstance(value, types.BufferType):
+                    value = str(value)
+                    row[index] = value
+            return row
+
+        decoded = map(decode_blobs, entries)
+        if entry_type == 'log':
+            mapping = ['message', 'level', 'category',
+                       'log_name', 'file_path', 'line_num', 'timestamp']
+        elif entry_type == 'journal':
+            mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
+                       'fiber_id', 'fiber_depth', 'args', 'kwargs',
+                       'side_effects', 'result', 'timestamp']
+        else:
+            raise ValueError('Unknown entry_type %r' % (entry_type, ))
+
+        def parse(row, mapping, entry_type):
+            resp = dict(zip(mapping, row))
+            resp['entry_type'] = entry_type
+            return resp
+
+        parsed = [parse(row, mapping, entry_type) for row in decoded]
+        return parsed
+
+    def _add_timestamp_condition_sql(self, query, params,
+                                     start_date, end_date):
+        if start_date is not None:
+            query += "  AND date_part('epoch', timestamp) >= %s\n"
+            params += (start_date, )
+        if end_date is not None:
+            query += "  AND date_part('epoch', timestamp) <= %s"
+            params += (end_date, )
+        return query, params
+
+    def _ensure_connected(self):
+        self._ensure_state(State.connected)
+
+    ### callbacks for initiate() ###
+
+    def _connection_failed(self, fail):
+        error.handle_failure(self, fail, "Connecting to postgres %r failed",
+                             self._credentials)
+        self._error = fail
+
+    def _connection_established(self):
+        self._initiate_defer = None
+        self._set_state(State.connected)
+
+
+def parse_connstr(conn):
+    try:
+        resp = connstr.parse(conn)
+        if resp['protocol'] == 'sqlite':
+            klass = SqliteWriter
+            params = dict(filename=resp['host'], encoding='zip')
+        elif resp['protocol'] == 'postgres':
+            klass = PostgresWriter
+            host, dbname = resp['host'].split('/')
+            params = dict(host=host, database=dbname,
+                          password=resp['password'], user=resp['user'],
+                          max_retries=3)
+        else:
+            raise ValueError("Unknown protocol")
+        return klass, params
+    except ValueError as e:
+        raise error.FeatError("%s is not a valid connection string" % (conn, ),
+                              cause=e), None, sys.exc_info()[2]

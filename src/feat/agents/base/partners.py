@@ -22,6 +22,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import types
+import sys
 
 from twisted.python import components
 
@@ -358,7 +359,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     @replay.mutable
     def create(self, state, partner_class, recp,
                allocation_id=None, role=None, substitute=None,
-               options=dict()):
+               options=None):
+        options = options or dict()
         found = self.find(recp)
         if found:
             self.info('We already are in partnership with recipient '
@@ -510,7 +512,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         try:
             return self._relations[name]
         except KeyError:
-            raise ValueError('Unknown relation name %r: ' % (name, ))
+            raise ValueError('Unknown relation name %r: ' % (name, )), \
+                  None, sys.exc_info()[2]
 
     def _do_update_partner(self, desc, partner, substitute=None):
         if substitute:

@@ -104,6 +104,22 @@ class CountingView(view.BaseView):
 class TestCase(object):
 
     @defer.inlineCallbacks
+    def testSavingDeletedDoc(self):
+        doc1 = DummyDocument(field=u'something')
+        doc1 = yield self.connection.save_document(doc1)
+        fetched_doc1 = yield self.connection.get_document(doc1.doc_id)
+        self.assertEqual(u'something', fetched_doc1.field)
+        yield self.connection.delete_document(fetched_doc1)
+        yield self.asyncErrback(NotFoundError,
+                                 self.connection.get_document, doc1.doc_id)
+        doc2 = DummyDocument(field=u'someone')
+        doc2.doc_id = doc1.doc_id
+        doc2 = yield self.connection.save_document(doc2)
+        self.assertEqual(doc1.doc_id, doc2.doc_id)
+        fetched_doc2 = yield self.connection.get_document(doc1.doc_id)
+        self.assertEqual(u'someone', fetched_doc2.field)
+
+    @defer.inlineCallbacks
     def testQueryingViews(self):
         # create design document
         views = (SummingView, CountingView, )
@@ -392,6 +408,7 @@ class PaisleySpecific(object):
         yield self.process.restart()
 
     @defer.inlineCallbacks
+    @common.attr(timeout=6)
     def testDisconnection(self):
         self.changes = list()
         mock = self.setup_receiver()
@@ -431,7 +448,7 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
                              PaisleySpecific):
 
-    timeout = 3
+    timeout = 4
     slow = True
 
     @defer.inlineCallbacks

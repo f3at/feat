@@ -219,7 +219,7 @@ class Driver(log.Logger, log.FluLogKeeper, Commands):
             jouropts['filename'] = jourfile
             jouropts['encoding'] = 'zip'
         self._jourwriter = journaler.SqliteWriter(self, **jouropts)
-        self._journaler = journaler.Journaler(self)
+        self._journaler = journaler.Journaler()
 
         self._output = Output()
         self._parser = manhole.Parser(self, self._output, self,

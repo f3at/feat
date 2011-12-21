@@ -128,20 +128,18 @@ class Agency(agency.Agency):
         self._lock_file.close()
         self._lock_file = None
 
-    def _flush_agents_body(self):
-        if self._to_spawn:
-            aid, kwargs, sd = self._to_spawn.pop(0)
-            d = self.wait_running()
-            d.addCallback(lambda _: self._database.get_connection())
-            d.addCallback(defer.call_param, 'get_document', aid)
-            d.addCallback(self.start_agent_locally, **kwargs)
-            if sd is not None:
-                d.addCallbacks(defer.keep_param, defer.keep_param,
-                               callbackArgs=(sd.callback, ),
-                               errbackArgs=(sd.errback, ))
-            d.addCallbacks(self.notify_running, self.notify_failed,
-                           errbackArgs=(aid, ))
-            return d
+    def spawn_agent(self, aid, **kwargs):
+        # spawn_agent() from base agency asks host agent to start the agent.
+        # Here we need to do something different as this agency will never
+        # run a host agent. Instead we just download the descriptor and
+        # run the agent locally.
+        d = self.wait_running()
+        d.addCallback(lambda _: self._database.get_connection())
+        d.addCallback(defer.call_param, 'get_document', aid)
+        d.addCallback(self.start_agent_locally, **kwargs)
+        d.addCallbacks(self.notify_running, self.notify_failed,
+                       errbackArgs=(aid, ))
+        return d
 
     def notify_running(self, medium):
         recp = IRecipient(medium)

@@ -23,7 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, contractor, manager, partners,
-                              message, replay, )
+                              message, replay, notifier)
 from feat.agents.common import rpc, shard, monitor, export
 from feat.common import fiber, serialization
 from feat.interface.contracts import ContractState
@@ -79,25 +79,32 @@ class AllocationContractor(contractor.NestingContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
-        f = fiber.Fiber()
+        #FIXME: Fiber cancellation cannot be used because the following fiber
+        #       would ALWAYS be cancelled and never reach
+        #       terminate_nexted_manager.
+        #f = self.fiber_succeed()
+        f = fiber.succeed()
         f.add_callback(fiber.drop_param,
                        self._ask_own_shard, announcement)
         f.add_callback(self._pick_best_bid)
         f.add_errback(self._nest_to_neighbours, announcement)
         f.add_callback(self._refuse_or_handover)
         f.add_both(fiber.drop_param, self.terminate_nested_manager)
-        return f.succeed()
+        return f
 
     @replay.mutable
     def _ask_own_shard(self, state, announcement):
-        f = state.agent.get_list_of_hosts_in_shard()
+        f = self.fiber_succeed()
+        f.add_callback(fiber.drop_param,
+                       state.agent.get_list_of_hosts_in_shard)
         f.add_callback(self._start_manager, announcement.duplicate())
         return f
 
     @replay.mutable
     def _nest_to_neighbours(self, state, fail, announcement):
         fail.trap(EmptyBids)
-        f = state.agent.get_neighbours()
+        f = self.fiber_succeed()
+        f.add_callback(fiber.drop_param, state.agent.get_neighbours)
         f.add_callback(self.fetch_nested_bids, announcement)
         f.add_callback(self._pick_best_bid)
         return f
@@ -142,14 +149,31 @@ class HostAllocationManager(manager.BaseManager):
     def initiate(self, state, announcement):
         state.medium.announce(announcement)
 
-    @replay.immutable
+    @replay.mutable
+    def _init_notifier(self, state):
+        if not hasattr(state, 'notifier'):
+            state.notifier = notifier.AgentNotifier(state.agent)
+
+    @replay.mutable
     def wait_for_bids(self, state):
-        f = fiber.succeed()
-        f.add_callback(fiber.drop_param,
-                       state.medium.wait_for_state,
-                       ContractState.closed, ContractState.expired)
-        f.add_callback(lambda _: state.medium.get_bids())
-        return f
+        if hasattr(state, 'bids'):
+            return fiber.succeed(state.bids)
+        self._init_notifier()
+        return state.notifier.wait('bids')
+
+    @replay.journaled
+    def closed(self, state):
+        self._notify_bids()
+
+    @replay.journaled
+    def expired(self, state):
+        self._notify_bids()
+
+    @replay.mutable
+    def _notify_bids(self, state):
+        state.bids = state.medium.get_bids()
+        if hasattr(state, 'notifier'):
+            state.notifier.callback('bids', state.bids)
 
     @replay.immutable
     def elect(self, state, bid):

@@ -56,7 +56,7 @@ def check_options(opts, args):
                 opts.standalone_kwargs)
         except (TypeError, ValueError):
             raise OptionError("Error unserializing json dictionary: %s " %
-                              opts.standalone_kwargs)
+                              opts.standalone_kwargs), None, sys.exc_info()[2]
     if opts.agents_kwargs:
         if len(opts.agents_kwargs) > len(opts.agents):
             raise OptionError("Received keywords for %d agents and only %d "
@@ -145,7 +145,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
                             value = int(parts[1])
                         except ValueError:
                             raise OptionError(
-                                "Invalid host resource: %s" % resdef)
+                                "Invalid host resource: %s" % resdef), \
+                                None, sys.exc_info()[2]
                     hostdef.resources[name] = value
 
                 for catdef in opts.hostcat:

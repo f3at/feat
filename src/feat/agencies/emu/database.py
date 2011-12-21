@@ -138,6 +138,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             doc['_rev'] = self._generate_rev(doc)
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
+            for key in doc.keys():
+                if key in ['_rev', '_deleted', '_id']:
+                    continue
+                del(doc[key])
             self.log('Marking document %r as deleted', doc_id)
             self._analize_changes(doc)
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
@@ -156,6 +160,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         if use_reduce:
             d.addCallback(self._perform_reduce, factory)
         return d
+
+    def disconnect(self):
+        pass
 
     ### private
 
@@ -229,9 +236,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             old_doc = self._documents.get(doc_id, None)
             if old_doc:
                 self.log('Checking the old document revision')
-                if doc.get('_rev', None) is None or\
-                       old_doc['_rev'] != doc['_rev']:
-                    raise ConflictError('Document update conflict.')
+                if not old_doc.get('_deleted', False):
+                    if (doc.get('_rev', None) is None
+                        or old_doc['_rev'] != doc['_rev']):
+                        raise ConflictError('Document update conflict.')
 
         doc['_rev'] = self._generate_rev(doc)
         doc['_id'] = doc_id
