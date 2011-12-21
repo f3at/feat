@@ -22,13 +22,15 @@
 import signal
 import tempfile
 import os
+import uuid
 
 from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.test.integration.common import ModelTestMixin
-from feat.common import defer, time, error
+from feat.common import defer, time, error, log, manhole, first
 from feat.agencies import journaler
+from feat.agencies.net import broker
 from feat.common.serialization import banana
 from feat.gateway import models
 
@@ -546,3 +548,80 @@ class AgencyStub(object):
 
     def on_switch_writer(self, index):
         self.calls.append(index)
+
+
+class DummyAgency(log.LogProxy, manhole.Manhole, log.Logger):
+
+    log_category = 'dummy_agency'
+
+    def __init__(self, testcase):
+        log.Logger.__init__(self, testcase)
+        log.LogProxy.__init__(self, testcase)
+        self.agency_id = str(uuid.uuid1())
+
+        self._journaler = journaler.Journaler(self)
+        self.broker = broker.Broker(self)
+
+    @property
+    def journaler(self):
+        return self._journaler
+
+    def iter_agents(self):
+        # used by broker initialization
+        return iter([])
+
+
+class TestWritingEntriesThroughBrokerConnection(
+    common.TestCase, GenerateEntryMixin):
+
+    timeout=10
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+
+        self.agencies = [DummyAgency(self) for x in range(2)]
+        self.brokers = [x.broker for x in self.agencies]
+        self.journalers = [x.journaler for x in self.agencies]
+        self._delete_socket_file()
+
+        yield self.brokers[0].initiate_broker()
+        yield self.brokers[1].initiate_broker()
+
+        self.sql_writer = journaler.SqliteWriter(self)
+        yield self.sql_writer.initiate()
+        self.journalers[0].configure_with(self.sql_writer)
+
+        self.broker_writer = journaler.BrokerProxyWriter(self.brokers[1])
+        yield self.broker_writer.initiate()
+        self.journalers[1].configure_with(self.broker_writer)
+
+    @defer.inlineCallbacks
+    def testStoringEntries(self):
+        l = self._generate_log
+        e = self._generate_entry
+
+        yield self.journalers[1].insert_entries([
+            l(message="some cool msg"),
+            e(agent_id='standalone_agent')])
+        histories = yield self.sql_writer.get_histories()
+        self.assertEqual(1, len(histories))
+        self.assertEqual('standalone_agent', histories[0].agent_id)
+
+        logs = yield self.sql_writer.get_log_entries()
+        self.assertTrue(first(x for x in logs
+                              if x['message'] == 'some cool msg'))
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        for x in self.journalers:
+            yield x.close(False)
+        for x in self.brokers:
+            yield x.disconnect()
+        yield common.TestCase.tearDown(self)
+
+    def _delete_socket_file(self):
+        try:
+            os.unlink(self.brokers[0].socket_path)
+        except OSError:
+            pass

@@ -440,7 +440,8 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     def insert_entries(self, entries):
         for data in entries:
             self._cache.append(data)
-        return self._flush_next()
+        self._flush_next()
+        return self._notifier.wait('flushed')
 
     def is_idle(self):
         if len(self._cache) > 0:
@@ -452,6 +453,7 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     @in_state(State.connected)
     def _flush_next(self):
         if len(self._cache) == 0:
+            self._notifier.callback('flushed', None)
             return defer.succeed(None)
         else:
             d = self._semaphore.run(self._push_entries)
