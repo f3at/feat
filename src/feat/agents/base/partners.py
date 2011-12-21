@@ -359,7 +359,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     @replay.mutable
     def create(self, state, partner_class, recp,
                allocation_id=None, role=None, substitute=None,
-               options=dict()):
+               options=None):
+        options = options or dict()
         found = self.find(recp)
         if found:
             self.info('We already are in partnership with recipient '
