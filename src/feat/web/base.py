@@ -130,6 +130,7 @@ class RangeServer(log.LogProxy, log.Logger):
     def _create_tcp_setup(self, factory):
 
         def setup(port):
+            self.info('TCP listening on port %r', port)
             self._port = reactor.listenTCP(port, factory) #@UndefinedVariable
             self._scheme = http.Schemes.HTTP
 
@@ -138,6 +139,7 @@ class RangeServer(log.LogProxy, log.Logger):
     def _create_ssl_setup(self, server, ssl_ctx_factory):
 
         def setup(port):
+            self.info('SSL listening on port %r', port)
             self._port = reactor.listenSSL(port, server, #@UndefinedVariable
                                            ssl_ctx_factory)
             self._scheme = http.Schemes.HTTPS

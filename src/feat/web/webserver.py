@@ -438,10 +438,12 @@ class Server(log.LogProxy, log.Logger):
         site = server.Site(RootResourceWrapper(self))
         if self._policy.use_ssl:
             ssl_context_factory = self._policy.get_ssl_context_factory()
+            self.info('SSL listening on port %r', self._port)
             listener = reactor.listenSSL(self._port, site, ssl_context_factory)
             self._secured = True
             self._scheme = http.Schemes.HTTPS
         else:
+            self.info('TCP listening on port %r', self._port)
             listener = reactor.listenTCP(self._port, site)
             self._scheme = http.Schemes.HTTP
         self._listener = listener
