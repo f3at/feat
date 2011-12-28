@@ -25,12 +25,16 @@ from twisted.trial.unittest import FailTest
 from feat.test.integration import common
 
 from feat.agents.base import agent, descriptor, replay, resource
-from feat.agents.common import dns
+from feat.agents.common import dns, host
+from feat.agents.dns import api, dns_agent
 from feat.agents.dns.dns_agent import DnsName
 
 from feat.agencies.interface import NotFoundError
+from feat.models import reference, response
 
 from feat.common import defer
+
+from feat.interface.agent import Address
 
 
 @descriptor.register("dns_test_agent")
@@ -438,3 +442,92 @@ class DNSAgentTest(common.SimulationTest):
 
         yield agent2.unregister_alias_with_mapper()
         yield self.wait_for_idle(10)
+
+
+@common.attr(timescale=0.1)
+class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
+
+    @defer.inlineCallbacks
+    def prolog(self):
+        hostdef = host.HostDef()
+        hostdef.categories['address'] = Address.fixed
+        hostdef.ports_ranges['dns'] = (5000, 5010)
+        self.hostdef = hostdef
+
+        self.agency = yield self.driver.spawn_agency(
+            hostdef=hostdef, hostname='host1.test.lan')
+
+    @defer.inlineCallbacks
+    def _assert_address(self, name, expected, exp_ttl = 300):
+        for dns_medium in self.driver.iter_agents("dns_agent"):
+            dns_agent = dns_medium.get_agent()
+            result = yield dns_agent.lookup_address(name, "127.0.0.1")
+            for ip, ttl in result:
+                self.assertEqual(exp_ttl, ttl)
+            self.assertEqual(set(expected),
+                             set([ip for ip, _ttl in result]))
+
+
+    @defer.inlineCallbacks
+    def _assert_alias(self, name, expected, exp_ttl = 300):
+        for dns_medium in self.driver.iter_agents("dns_agent"):
+            dns_agent = dns_medium.get_agent()
+            alias, _ = yield dns_agent.lookup_alias(name)
+            self.assertEqual(expected, alias)
+
+    @defer.inlineCallbacks
+    def testPlayingWithApi(self):
+        # first check that locating from different agency works fine
+        self.agency2 = yield self.driver.spawn_agency(
+            hostdef=self.hostdef, hostname='host2.test.lan')
+
+        desc = dns_agent.Descriptor(suffix=u'test.lan')
+        recp = yield self.agency.spawn_agent(desc)
+
+        model = api.Root(self.agency2)
+        yield self.validate_model_tree(model)
+        ref = yield self.model_descend(model, 'entries', 'test.lan')
+        self.assertIsInstance(ref, reference.Absolute)
+
+        # check non existing suffix
+        ref = yield self.model_descend(model, 'entries', 'nonexisting')
+        self.assertIs(None, ref)
+
+        # now fetch the model from right agency and add some entries
+        model = api.Root(self.agency)
+        yield self.validate_model_tree(model)
+        suffix_model = yield self.model_descend(model, 'entries', 'test.lan')
+        self.assertIsInstance(suffix_model, api.EntrySuffix)
+
+        # create entry
+        resp = yield suffix_model.perform_action(
+            'post', prefix='prefix', type='record_A', entry='1.2.3.4')
+        self.assertIsInstance(resp, response.Created)
+        dns = yield self.driver.find_agent(recp)
+        dns = dns.get_agent()
+
+        yield self._assert_address("prefix.test.lan", ["1.2.3.4"])
+        # add another one
+        resp = yield suffix_model.perform_action(
+            'post', prefix='prefix', type='record_A', entry='1.2.3.5')
+        yield self._assert_address("prefix.test.lan", ["1.2.3.4", '1.2.3.5'])
+
+        # now delete first entry
+        suffix_model = yield self.model_descend(model, 'entries', 'test.lan')
+        entry_model = yield self.model_descend(suffix_model, 'prefix',
+                                               '1.2.3.4')
+        resp = yield entry_model.perform_action('delete')
+        self.assertIsInstance(resp, response.Deleted)
+        yield self._assert_address("prefix.test.lan", ['1.2.3.5'])
+
+        # now add alias
+        resp = yield suffix_model.perform_action(
+            'post', prefix='prefix', type='record_CNAME', entry='google.com')
+        yield self._assert_address("prefix.test.lan", [])
+        yield self._assert_alias("prefix.test.lan", 'google.com')
+
+        # and delete it
+        entry_model = yield self.model_descend(suffix_model, 'prefix',
+                                               'google.com')
+        yield entry_model.perform_action('delete')
+        yield self._assert_alias("prefix.test.lan", None)

@@ -140,6 +140,10 @@ class Agency(agency.Agency):
         agency.Agency.__init__(self)
         self._disabled_protocols = set()
 
+        # config is used by some models, this is to be able to tests them
+        self.config = dict()
+        self.config['gateway'] = dict(port=5550)
+
     ### Public Methods ###
 
     def is_protocol_disabled(self, protocol_id, protocol_type=None):
