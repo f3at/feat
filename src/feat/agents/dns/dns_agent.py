@@ -198,10 +198,12 @@ class DNSAgent(agent.BaseAgent):
 
     @replay.journaled
     def on_killed(self, state):
+        state.cache.cleanup()
         return fiber.wrap_defer(state.labour.cleanup)
 
     @replay.journaled
     def shutdown(self, state):
+        state.cache.cleanup()
         return fiber.wrap_defer(state.labour.cleanup)
 
     ### IDocumentChangeListner ###
@@ -283,15 +285,26 @@ class DNSAgent(agent.BaseAgent):
         return state.suffix
 
     @replay.immutable
+    def get_records(self, state, name):
+        doc_id = DnsName.name_to_id(name)
+        try:
+            doc = state.cache.get_document(doc_id)
+            return doc.entries
+        except NotFoundError:
+            return []
+
+    ### Used by model ###
+
+    @replay.immutable
     def get_names(self, state):
-        # used by api model
+
         resp = [self._name_to_prefix(x[4:], state.suffix)
                 for x in state.cache.get_document_ids()]
         return resp
 
     @replay.immutable
     def get_name_document(self, state, prefix):
-        # used by api model
+
         name = self._format_name(prefix, state.suffix)
         doc_id = DnsName.name_to_id(name)
         try:
@@ -301,13 +314,17 @@ class DNSAgent(agent.BaseAgent):
             return []
 
     @replay.immutable
-    def get_records(self, state, name):
-        doc_id = DnsName.name_to_id(name)
-        try:
-            doc = state.cache.get_document(doc_id)
-            return doc.entries
-        except NotFoundError:
-            return []
+    def get_port(self, state):
+        return state.port
+
+    @replay.immutable
+    def get_ip(self, state):
+        return state.medium.get_ip()
+
+    @replay.immutable
+    def get_slaves(self, state):
+        slaves = ['%s:%d' % x for x in state.notify_cfg.slaves]
+        return ", ".join(slaves)
 
     ### Private Methods ###
 

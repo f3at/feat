@@ -19,6 +19,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import copy
+
 from feat.agents.base import task, replay, agent
 from feat.agents.common import raage, host
 from feat.common import fiber
@@ -66,10 +68,10 @@ class GloballyStartAgent(task.BaseTask):
         f.add_callback(self._request_starting_host)
         return f
 
-    @replay.mutable
+    @replay.immutable
     def _request_starting_host(self, state, (allocation_id, recp)):
         f = self.fiber_succeed(state.agent)
-        f.add_callback(host.start_agent, recp, state.descriptor,
+        f.add_callback(host.start_agent, recp, copy.deepcopy(state.descriptor),
                        allocation_id, **state.keywords)
         f.add_errback(self._starting_failed)
         return f

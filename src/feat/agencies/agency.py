@@ -412,12 +412,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self._database.delete_document(document)
 
     @serialization.freeze_tag('AgencyAgent.register_change_listener')
-    @replay.named_side_effect('AgencyAgent.register_change_listener')
     def register_change_listener(self, filter_, callback, **kwargs):
         if isinstance(filter_, (str, unicode)):
             filter_ = (filter_, )
 
-        self._database.changes_listener(filter_, callback, **kwargs)
+        return self._database.changes_listener(filter_, callback, **kwargs)
 
     @serialization.freeze_tag('AgencyAgent.cancel_change_listener')
     @replay.named_side_effect('AgencyAgent.cancel_change_listener')
@@ -472,7 +471,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         try:
             _busy, call = self._delayed_calls.remove(call_id)
         except KeyError:
-            self.warning('Tried to cancel nonexisting call id: %r', call_id)
+            self.log('Tried to cancel nonexisting call id: %r', call_id)
             return
 
         if not call.active():

@@ -28,7 +28,7 @@ agents, descriptors, things which needs to be declared.
 from feat.agents.host import host_agent
 from feat.agents.shard import shard_agent
 from feat.agents.raage import raage_agent
-from feat.agents.dns import dns_agent
+from feat.agents.dns import dns_agent, api
 from feat.agents.monitor import monitor_agent
 from feat.agents.alert import alert_agent
 from feat.agents.export import export_agent

@@ -456,6 +456,7 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
 
         self.agency = yield self.driver.spawn_agency(
             hostdef=hostdef, hostname='host1.test.lan')
+        yield self.wait_for_idle(15)
 
     @defer.inlineCallbacks
     def _assert_address(self, name, expected, exp_ttl = 300):
@@ -467,7 +468,6 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
             self.assertEqual(set(expected),
                              set([ip for ip, _ttl in result]))
 
-
     @defer.inlineCallbacks
     def _assert_alias(self, name, expected, exp_ttl = 300):
         for dns_medium in self.driver.iter_agents("dns_agent"):
@@ -477,15 +477,23 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
 
     @defer.inlineCallbacks
     def testPlayingWithApi(self):
-        # first check that locating from different agency works fine
+        # start new dns agent by api call
+        model = api.Root(self.agency)
+        submodel = yield self.model_descend(model, 'servers')
+        self.info('spawning dns agent')
+        res = yield submodel.perform_action('post', suffix=u'test.lan')
+        self.assertEqual(1, self.count_agents('dns_agent'))
+        yield self.wait_for_idle(10)
+
+        # check that locating from different agency works fine
         self.agency2 = yield self.driver.spawn_agency(
             hostdef=self.hostdef, hostname='host2.test.lan')
 
-        desc = dns_agent.Descriptor(suffix=u'test.lan')
-        recp = yield self.agency.spawn_agent(desc)
-
         model = api.Root(self.agency2)
         yield self.validate_model_tree(model)
+        ref = yield self.model_descend(model, 'entries')
+        items = yield ref.fetch_items()
+
         ref = yield self.model_descend(model, 'entries', 'test.lan')
         self.assertIsInstance(ref, reference.Absolute)
 
@@ -503,8 +511,6 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
         resp = yield suffix_model.perform_action(
             'post', prefix='prefix', type='record_A', entry='1.2.3.4')
         self.assertIsInstance(resp, response.Created)
-        dns = yield self.driver.find_agent(recp)
-        dns = dns.get_agent()
 
         yield self._assert_address("prefix.test.lan", ["1.2.3.4"])
         # add another one
@@ -516,7 +522,7 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
         suffix_model = yield self.model_descend(model, 'entries', 'test.lan')
         entry_model = yield self.model_descend(suffix_model, 'prefix',
                                                '1.2.3.4')
-        resp = yield entry_model.perform_action('delete')
+        resp = yield entry_model.perform_action('del')
         self.assertIsInstance(resp, response.Deleted)
         yield self._assert_address("prefix.test.lan", ['1.2.3.5'])
 
@@ -529,5 +535,11 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
         # and delete it
         entry_model = yield self.model_descend(suffix_model, 'prefix',
                                                'google.com')
-        yield entry_model.perform_action('delete')
+        yield entry_model.perform_action('del')
         yield self._assert_alias("prefix.test.lan", None)
+
+        # remove dns agent
+        agent_model = yield self.model_descend(model, 'servers', 'dns_agent_1')
+        yield agent_model.perform_action('del')
+        yield self.wait_for_idle(10)
+        self.assertEqual(0, self.count_agents('dns_agent'))

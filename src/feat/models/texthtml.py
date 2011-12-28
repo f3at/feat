@@ -221,8 +221,10 @@ class ModelWriter(log.Logger):
                         option["selected"] = None
                 select.close()
             else:
-                markup.input(type='text', default=default,
-                             name=param.name)
+                extra = {}
+                if default:
+                    extra['value'] = default
+                markup.input(type='text', name=param.name, **extra)
         elif v_t == ValueTypes.boolean:
             extra = {}
             if default is True:

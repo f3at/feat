@@ -19,6 +19,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import socket
+
 from feat.common import formatable, enum, serialization
 
 from zope.interface import Interface
@@ -70,6 +72,10 @@ class _BaseRecord(formatable.Formatable):
 class RecordA(_BaseRecord):
 
     type_name = 'dns_record_a'
+
+    def __init__(self, ip=None, **kwargs):
+        socket.inet_aton(ip) #this is to validate the IP
+        _BaseRecord.__init__(self, ip=ip, **kwargs)
 
     @property
     def type(self):
