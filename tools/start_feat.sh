@@ -1,8 +1,8 @@
 #!/bin/bash
 
-DB_PORT="5984"
-DB_NAME="feat"
-NTP_SERVER="ntp.fluendo.net"
+DB_PORT=${DB_PORT:-"5984"}
+DB_NAME=${DB_NAME:-"feat"}
+NTP_SERVER=${NTP_SERVER:-"ntp.fluendo.net"}
 ROOT=$(cd $(dirname $0); cd ..; pwd)
 ENV="$ROOT/env"
 BIN="$ROOT/bin"
@@ -15,11 +15,11 @@ JOURNAL="$LOGDIR/journal.sqlite3"
 LOGFILES="$LOGDIR/feat.*.log"
 PIDFILE="$RUNDIR/feat.pid"
 DBLOAD="$BIN/feat-dbload"
-MHPUB="$CONF/public.key"
-MHPRIV="$CONF/private.key"
-MHAUTH="$CONF/authorized_keys"
-GW_P12="$CONF/gateway.p12"
-TUNNEL_P12="$CONF/tunneling.p12"
+MHPUB=${MHPUB:-"$CONF/public.key"}
+MHPRIV=${MHPRIV:-"$CONF/private.key"}
+MHAUTH=${MHAUTH:-"$CONF/authorized_keys"}
+GW_P12=${GW_P12:-"$CONF/gateway.p12"}
+TUNNEL_P12=${TUNNEL_P12:-"$CONF/tunneling.p12"}
 
 no_daemon=
 do_cleanup=
