@@ -67,7 +67,7 @@ class Gateway(log.LogProxy, log.Logger):
                                   log_keeper=self)
         self._initiate_server(server)
         self._server = server
-        self.info("Master gateway started on port %d", self.port)
+        self.info("Master gateway started on %s:%d", self._host, self.port)
 
     def initiate_slave(self):
         min, max = self._ports
@@ -80,7 +80,8 @@ class Gateway(log.LogProxy, log.Logger):
                                           log_keeper=self)
                 self._initiate_server(server)
                 self._server = server
-                self.info("Slave gateway started on port %d", self.port)
+                self.info("Slave gateway started on %s:%d",
+                          self._host, self.port)
                 return
 
             except terror.CannotListenError:
