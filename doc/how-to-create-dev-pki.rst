@@ -4,15 +4,15 @@ How to create a PKI
 
 **WARNING**:
 
-	This is describing a quick, simple and **UNSAFE** way of creating a PKI.
-	this is good for development purpose but a proper PKI infrastructure should
-	be use for production.
+	This describes a quick, simple and **UNSAFE** way of creating a [PKI]_.
+        This is acceptable for development purposes, but a proper PKI
+        infrastructure should be used for production.
 
 The Quick and Lazy Way
 ======================
 
-To create new CA and certificates from scratch assuming the current directory
-is the root of Feat checkout::
+To create a new CA and certificates from scratch (assuming the current directory
+is the root of your feat checkout)::
 
 	cd tools/PKI
 	bin/create_root_ca
@@ -22,7 +22,7 @@ is the root of Feat checkout::
 	bin/issue_cert gateway gateway ssl_server *.flumotion.fluendo.lan
 	bin/issue_cert gateway dummy ssl_client Name Surname email@address.lan
 
-Then the generated files can be found there:
+The generated files can be found there:
 
  - Tunneling Server PKCS12: ./tunneling_ca/certs/tunneling.p12
  - Gateway Server PKCS12: ./gateway_ca/certs/gateway.p12
@@ -33,28 +33,28 @@ PKI and Feat
 ============
 
 Feat needs keys and certificates for securing the gateway and the
-tunneling backend. Both are using SSL and verify the other side certificate
-has been issued by there own CA.
+tunneling backend. Both components use SSL and verify that the other side's
+certificate has been issued by its own CA.
 
-In practice it mean that Feat needs two CA or sub-CA, one for the gateway
-and one for tunneling. This is required to prevent user with valid gateway
-certificate to be able to push random message through a tunnel.
+In practice this means that Feat needs two CA's or sub-CA's: one for the gateway
+and one for tunneling. This is required to prevent a user with a valid gateway
+certificate to be able to push random messages through a tunnel.
 
-To facilitate maintenance, Feat is using PKCS12 format. This format allows
+To facilitate maintenance, Feat is using the PKCS12 format. This format allows
 to store the private key, the certificate and the CA certification chain
 all in only one file.
 
-In theory, each feat service should have there own PKCS12 for gateway and
-tunneling but for development we could use the same for all services.
+In theory, each feat service should have its own PKCS12 for gateway and
+tunneling, but for development we could use the same for all services.
 
 To be able to connect to the gateway using a web browser, one should import
-a PKCS12 issued but the gateway CA and set the gateway CA as trusted.
+a PKCS12 issued by the gateway CA and set the gateway CA as trusted.
 
-To prevent the browser to ask for confirmation every time it connect to
+To prevent the browser to ask for confirmation every time it connects to
 a gateway server with different hostname, one should generate a gateway
-certificate with a common name matching there hostname. The default one
-use *.flumotion.fluendo.lan, so when the CA is marked as trusted all
-services hosted on any sub-domain of flumotion.fluendo.lan will do not
+certificate with a common name matching the gateway's hostname. The default one
+uses \*.flumotion.fluendo.lan, so when the CA is marked as trusted, all
+services hosted on any sub-domain of flumotion.fluendo.lan will not
 ask for confirmation.
 
 
@@ -135,14 +135,19 @@ Generated files can be found at::
 Issue SSL Client Certificate
 ============================
 
-A SSL client certificate contains client name surname and email.
+A SSL client certificate contains client name, surname and email.
 
 To issue a new SSL server certificate, execute::
 
-	tools/PKI/bin/issu_cert SUB_CA_PREFIX CERT_PREFIX ssl_client NAME SURNAME EMAIL
+	tools/PKI/bin/issue_cert SUB_CA_PREFIX CERT_PREFIX ssl_client NAME SURNAME EMAIL
 
 Generated files can be found at::
 
  - Private Key: tool/PKI/SUB_CA_PREFIX_ca/private/CERT_PREFIX_private_key.pem
  - PEM Certificate: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX_public_cert.pem
  - PKCS12: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX.p12
+
+References
+==========
+
+.. [PKI] `<http://en.wikipedia.org/wiki/Public_key_infrastructure>`_
