@@ -216,5 +216,5 @@ class HeartBeatCollector(collector.BaseCollector):
     @replay.immutable
     def notified(self, state, msg):
         agent_id, _time, index = msg.payload
-        self.log("Hard beat %s received from agent %s", index, agent_id)
+        self.log("Heartbeat %s received from agent %s", index, agent_id)
         state.monitor.beat(agent_id)
