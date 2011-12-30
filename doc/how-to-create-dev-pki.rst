@@ -24,9 +24,17 @@ is the root of your feat checkout)::
 
 The generated files can be found there:
 
- - Tunneling Server PKCS12: ./tunneling_ca/certs/tunneling.p12
- - Gateway Server PKCS12: ./gateway_ca/certs/gateway.p12
- - Gateway Dummy Client PKCS12: ./gateway_ca/certs/dummy.p12
+ - Tunneling Server PKCS12::
+
+   ./tunneling_ca/certs/tunneling.p12
+
+ - Gateway Server PKCS12::
+
+   ./gateway_ca/certs/gateway.p12
+
+ - Gateway Dummy Client PKCS12::
+
+   ./gateway_ca/certs/dummy.p12
 
 
 PKI and Feat
@@ -62,6 +70,7 @@ Creating the Root CA
 ====================
 
 The root CA is only used to issue sub-CA certificates.
+Only one root CA should be generated and reused for all sub-CA's.
 
 To create one from scratch execute::
 
@@ -71,46 +80,69 @@ The new root CA will be created in::
 
     tools/PKI/root_ca
 
-Generated files can be found at::
+Generated files can be found at:
 
- - Private Key: tool/PKI/root_ca/private/root_ca_private_key.pem
- - PEM Certificate: tool/PKI/root_ca/root_ca_public_cert.pem
- - DER Certificate: tool/PKI/root_ca/root_ca_public_cert.der
+ - Private Key::
+
+    tools/PKI/root_ca/private/root_ca_private_key.pem
+
+ - PEM Certificate::
+
+    tools/PKI/root_ca/root_ca_public_cert.pem
+
+ - DER Certificate::
+
+    tools/PKI/root_ca/root_ca_public_cert.der
 
 
 Creating Issuing CA
 ===================
 
 When we have a root CA we want to create sub-CA that will be used later
-to issue certificates. In practice we want a different one for each
-services with different authentication space.
+to issue certificates.
+
+In practice we want a different one for each
+service in a different authentication space (gateway versus tunneling,
+production versus staging, ...)
 
 To create one from scratch execute::
 
-	tools/PKI/bin/create_issuing_ca SUB_CA_PREFIX
+	tools/PKI/bin/create_issuing_ca $SUB_CA_PREFIX
 
-Where *SUB_CA_PREFIX* is the unique name to identify the CA.
+Where *$SUB_CA_PREFIX* is the unique name to identify the CA.
 
 The new CA will be created in::
 
-	tools/PKI/SUB_CA_PREFIX_ca
+	tools/PKI/$SUB_CA_PREFIX_ca
 
-Generated files can be found at::
+Generated files can be found at:
 
- - Private Key: tool/PKI/SUB_CA_PREFIX_ca/private/ca_private_key.pem
- - PEM Certificate: tool/PKI/SUB_CA_PREFIX_ca/ca_public_cert.pem
- - DER Certificate: tool/PKI/SUB_CA_PREFIX_ca/ca_public_cert.der
- - CA Certificate Chain: tool/PKI/SUB_CA_PREFIX_ca/global_ca_public_cert.pem
+ - Private Key::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/private/ca_private_key.pem
+
+ - PEM Certificate::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/ca_public_cert.pem
+
+ - DER Certificate::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/ca_public_cert.der
+
+ - CA Certificate Chain::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/global_ca_public_cert.pem
 
 
 Issue SSL Server Certificate
 ============================
 
-A SSL server certificate most important parameter is the hostname it is
-valid for. If the hostname is *flumotion.net*, the web browser will connect
-without any complains only if the URL hostname is **EXACTLY** *flumotion.net*.
-if it is *www.flumotion.net* the browser will complains. To use a certificate
-with multiple domain us a wildcard in the hostname like::
+The most important attribute of an SSL server certificate
+is the hostname it is valid for.
+If the hostname is *flumotion.net*, the web browser will only connect
+without any complaints if the URL hostname is **EXACTLY** *flumotion.net*.
+if it is *www.flumotion.net* the browser will complain. To use a certificate
+with multiple domains, use a wildcard in the hostname like::
 
 	*.flumotion.net
 
@@ -119,17 +151,25 @@ for *sub.domain.flumotion.net*.
 
 To issue a new SSL server certificate, execute::
 
-	tools/PKI/bin/issu_cert SUB_CA_PREFIX CERT_PREFIX ssl_server HOSTNAME
+	tools/PKI/bin/issue_cert $SUB_CA_PREFIX $CERT_PREFIX ssl_server $HOSTNAME
 
-Where *SUB_CA_PREFIX* is the prefix of the sub-CA to use to issue the
-certificate, *CERT_PREFIX* is a unique prefix use to generate certificate
-files and *HOSTNAME* is the hostname explain before.
+Where *$SUB_CA_PREFIX* is the prefix of the sub-CA to use to issue the
+certificate, *$CERT_PREFIX* is a unique prefix used to generate certificate
+files and *$HOSTNAME* is the hostname as explained before.
 
-Generated files can be found at::
+Generated files can be found at:
 
- - Private Key: tool/PKI/SUB_CA_PREFIX_ca/private/CERT_PREFIX_private_key.pem
- - PEM Certificate: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX_public_cert.pem
- - PKCS12: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX.p12
+ - Private Key::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/private/${CERT_PREFIX}_private_key.pem
+
+ - PEM Certificate::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/certs/${CERT_PREFIX}_public_cert.pem
+
+ - PKCS12::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/certs/${CERT_PREFIX}.p12
 
 
 Issue SSL Client Certificate
@@ -139,13 +179,21 @@ A SSL client certificate contains client name, surname and email.
 
 To issue a new SSL server certificate, execute::
 
-	tools/PKI/bin/issue_cert SUB_CA_PREFIX CERT_PREFIX ssl_client NAME SURNAME EMAIL
+	tools/PKI/bin/issue_cert $SUB_CA_PREFIX $CERT_PREFIX ssl_client $NAME $SURNAME $EMAIL
 
-Generated files can be found at::
+Generated files can be found at:
 
- - Private Key: tool/PKI/SUB_CA_PREFIX_ca/private/CERT_PREFIX_private_key.pem
- - PEM Certificate: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX_public_cert.pem
- - PKCS12: tool/PKI/SUB_CA_PREFIX_ca/certs/CERT_PREFIX.p12
+ - Private Key::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/private/${CERT_PREFIX}_private_key.pem
+
+ - PEM Certificate::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/certs/${CERT_PREFIX}_public_cert.pem
+
+ - PKCS12::
+
+    tools/PKI/${SUB_CA_PREFIX}_ca/certs/${CERT_PREFIX}.p12
 
 References
 ==========
