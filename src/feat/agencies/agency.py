@@ -1077,7 +1077,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # IDbConnectionFactory
         self._database = None
         self._ip = unicode(socket.gethostbyname(socket.gethostname()))
-        self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+        self._hostname = unicode(socket.gethostname())
 
         self._shutdown_task = None
         self._startup_task = None
