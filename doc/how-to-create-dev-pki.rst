@@ -134,6 +134,18 @@ Generated files can be found at:
     tools/PKI/${SUB_CA_PREFIX}_ca/global_ca_public_cert.pem
 
 
+The PEM certificate can be used with tools like curl (using --cacert) to
+verify the server keys issued under this sub-CA.
+
+When testing with curl, use the sub-CA PEM certificate::
+
+     --cacert ${SUB_CA_PREFIX}_ca/ca_public_cert.pem
+
+
+FIXME: global_ca_public_cert.pem also works; why should the other one be
+used ?
+
+
 Issue SSL Server Certificate
 ============================
 
@@ -177,7 +189,7 @@ Issue SSL Client Certificate
 
 A SSL client certificate contains client name, surname and email.
 
-To issue a new SSL server certificate, execute::
+To issue a new SSL client certificate, execute::
 
 	tools/PKI/bin/issue_cert $SUB_CA_PREFIX $CERT_PREFIX ssl_client $NAME $SURNAME $EMAIL
 
@@ -194,6 +206,15 @@ Generated files can be found at:
  - PKCS12::
 
     tools/PKI/${SUB_CA_PREFIX}_ca/certs/${CERT_PREFIX}.p12
+
+When testing with curl, use the PEM certificate and Private Key::
+
+     --cert ./${CERT_PREFIX}_public_cert.pem --key ${CERT_PREFIX}_private_key.pem
+
+to present the client certificate to the server.
+
+FIXME: should each separate client we want to give access get its own client
+key ?
 
 References
 ==========
