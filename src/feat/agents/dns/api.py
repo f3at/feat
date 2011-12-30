@@ -1,3 +1,5 @@
+import socket
+
 from feat.agents.base import view
 from feat.agents.common import start_agent
 from feat.common import serialization, defer, first
@@ -48,10 +50,48 @@ class Root(model.Model):
     model.child('entries', model='apps.dns.entries', label='Dns entries')
 
 
+class SlavesValue(value.String):
+
+    def validate(self, value):
+        """
+        Accepts: str, unicode
+        Returns: list of tuples in the format (ip, port)
+        """
+        val = super(SlavesValue, self).validate(value)
+
+        slaves = val.replace(" ", "")
+        slaves = filter(None, slaves.split(','))
+        slaves = [x.split(":") for x in slaves]
+        res = list()
+        for x in slaves:
+            self._validate_ip(x[0])
+            if len(x) == 1:
+                res.append((x[0], 53))
+            else:
+                res.append((x[0], int(x[1])))
+        return res
+
+    def publish(self, value):
+        """
+        Accepts: list of tuples in the format (ip, port)
+        Returns: unicode
+        """
+        if not isinstance(value, list):
+            raise ValueError(value)
+        slaves = ['%s:%d' % x for x in value]
+        return unicode(", ".join(slaves))
+
+    def _validate_ip(self, ip):
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            raise ValueError("%s is not a valid ip address" % (ip, ))
+
+
 class SpawnServer(action.Action):
     action.label('Start new server')
     action.param('suffix', value.String())
-    action.param('slaves', value.String(),
+    action.param('slaves', SlavesValue(),
                  desc=("Slaves to push zone updates. Format: "
                        "'ip:port, ip:port'"),
                  is_required=False)
@@ -76,11 +116,6 @@ class SpawnServer(action.Action):
 
     def spawn_agent(self, suffix, slaves=None, ns=None, refresh=None,
                     retry=None, expire=None, minimum=None):
-        if slaves:
-            slaves = slaves.replace(" ", "")
-            slaves = slaves.split(',')
-            slaves = [x.split(":") for x in slaves]
-
         notify = dns_agent.NotifyConfiguration(
             slaves=slaves, refresh=refresh,
             expire=expire, minimum=minimum, retry=retry)
@@ -143,7 +178,7 @@ class Server(model.Model):
     model.attribute('port', value.Integer(), call.source_call('get_port'))
     model.attribute('ip', value.String(), call.source_call('get_ip'))
     model.attribute('suffix', value.String(), call.source_call('get_suffix'))
-    model.attribute('slaves', value.String(), call.source_call('get_slaves'))
+    model.attribute('slaves', SlavesValue(), call.source_call('get_slaves'))
 
     model.delete("del",
                  call.source_call("terminate"),
@@ -233,6 +268,7 @@ class EntrySuffix(model.Collection):
     model.child_names(call.source_call("get_names"))
     model.child_view(getter.model_get("get_entry"))
     model.child_model('apps.dns.entries.suffix.name')
+    model.meta("html-render", "array, 2")
 
     model.action('post', CreateEntry)
 
@@ -291,6 +327,7 @@ class DnsName(model.Model):
     model.attribute('type', value.Enum(RecordType), getter.model_attr('type'))
 
     model.action('del', DeleteEntry)
+    model.item_meta('entry', "html-link", "owner")
 
     @property
     def ip(self):

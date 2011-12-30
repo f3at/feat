@@ -323,8 +323,7 @@ class DNSAgent(agent.BaseAgent):
 
     @replay.immutable
     def get_slaves(self, state):
-        slaves = ['%s:%d' % x for x in state.notify_cfg.slaves]
-        return ", ".join(slaves)
+        return state.notify_cfg.slaves
 
     ### Private Methods ###
 
