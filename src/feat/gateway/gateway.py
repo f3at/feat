@@ -45,7 +45,7 @@ class Gateway(log.LogProxy, log.Logger):
     log_category = "gateway"
 
     def __init__(self, agency, port_range=None,
-                 static_path=None, security_policy=None):
+                 static_path=None, security_policy=None, hostname=None):
         log.Logger.__init__(self, self)
         log.LogProxy.__init__(self, agency)
 
@@ -54,14 +54,14 @@ class Gateway(log.LogProxy, log.Logger):
             static_path = os.path.join(os.path.dirname(__file__), "static")
         self._static_path = static_path
 
-        self._host = socket.gethostbyaddr(socket.gethostname())[0]
+        self._host = hostname or socket.gethostbyaddr(socket.gethostname())[0]
         self._ports = port_range
         self._security = security.ensure_policy(security_policy)
         self._server = None
 
     def initiate_master(self):
         port = self._ports[0]
-        self.log("Initializing master gateway on port %d", port)
+        self.log("Initializing master gateway on %s:%d", self._host, port)
         server = webserver.Server(port, self._build_root(port),
                                   security_policy=self._security,
                                   log_keeper=self)
@@ -73,7 +73,8 @@ class Gateway(log.LogProxy, log.Logger):
         min, max = self._ports
         for port in xrange(min + 1, max):
             try:
-                self.log("Initializing slave gateway on port %d", port)
+                self.log("Initializing slave gateway on %s:%d",
+                         self._host, port)
                 server = webserver.Server(port, self._build_root(port),
                                           security_policy=self._security,
                                           log_keeper=self)

@@ -625,7 +625,7 @@ class Agency(agency.Agency):
                             allow_tcp=allow_tcp_gateway)
 
         if tunneling_host is None:
-            tunneling_host = socket.gethostbyaddr(socket.gethostname())[0]
+            tunneling_host = self.get_hostname()
 
         tunnel_conf = dict(host=tunneling_host,
                            port=tunneling_port,
@@ -810,7 +810,8 @@ class Agency(agency.Agency):
                 self.info("Setting up SSL gateway on ports %d-%d "
                           "using PKCS12 %r", range[0], range[-1], p12)
 
-            return gateway.Gateway(self, range, security_policy=sec)
+            return gateway.Gateway(self, range, security_policy=sec,
+                                   hostname=self.get_hostname())
         except Exception as e:
             error.handle_exception(self, e, "Failed to setup gateway")
 
