@@ -113,7 +113,7 @@ Where *$SUB_CA_PREFIX* is the unique name to identify the CA.
 
 The new CA will be created in::
 
-	tools/PKI/$SUB_CA_PREFIX_ca
+	tools/PKI/${SUB_CA_PREFIX}_ca
 
 Generated files can be found at:
 
