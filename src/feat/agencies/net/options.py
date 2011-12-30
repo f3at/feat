@@ -269,7 +269,7 @@ def parse_config_file(option, opt_str, value, parser):
     try:
         cfg = ConfigParser.ConfigParser()
         cfg.readfp(open(value, 'r'))
-        for dest, value in cfg.items('Feat'):
+        for dest, value in cfg.items('Feat', raw=True):
             values = value.split()
             opt = parser.get_option('--' + dest)
             if not opt:
