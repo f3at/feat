@@ -328,10 +328,19 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
 
     @replay.journaled
     def _retry(self, state, operation_id, doc_id, args, kwargs, item_id):
-        try:
-            document = state.cache.get_document(doc_id)
-        except NotFoundError:
+        f = fiber.succeed(doc_id)
+        f.add_callback(state.cache.get_document)
+        f.add_both(self._get_document_callback, operation_id,
+                   doc_id, args, kwargs, item_id)
+        return f
+
+    @replay.mutable
+    def _get_document_callback(self, state, result, operation_id,
+                               doc_id, args, kwargs, item_id):
+        if isinstance(result, failure.Failure):
             document = None
+        else:
+            document = copy.deepcopy(result)
 
         try:
             document = state.queue_holder.perform(operation_id,

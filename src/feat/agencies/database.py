@@ -222,7 +222,7 @@ class Connection(log.Logger, log.LogProxy):
         return self.get_document(doc.doc_id)
 
     def delete_document(self, doc):
-        assert isinstance(doc, document.Document)
+        assert isinstance(doc, document.Document), type(doc)
         d = self._database.delete_doc(doc.doc_id, doc.rev)
         d.addCallback(self._update_id_and_rev, doc)
         return d
