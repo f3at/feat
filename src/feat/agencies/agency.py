@@ -1412,9 +1412,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             return False
         return True
 
-    def _host_agent_restart_enabled(self):
-        return True
-
     def _on_host_started(self):
         medium = self._get_host_medium()
         d = medium.wait_for_state(AgencyAgentState.ready)
@@ -1477,23 +1474,20 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         def handle_error_on_get(fail, connection, doc_id):
             fail.trap(NotFoundError)
             desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
-            self.log("Host Agent descriptor not found in database, "
-                     "creating a brand new instance.")
+            self.info("Host Agent descriptor not found in database, "
+                      "creating a brand new instance.")
             return connection.save_document(desc)
 
         def handle_success_on_get(desc):
-            if not self._host_agent_restart_enabled():
-                msg = ("Descriptor of host agent has been found in "
-                       "database (hostname: %s). This should not happen "
-                       "on the first run. If you really want to restart "
-                       "the host agent include --force-host-restart "
-                       "options to feat script." % desc.doc_id)
-                self.error(msg)
-                d = self.full_shutdown(stop_process=True)
-                d.addBoth(defer.raise_error, RuntimeError, msg)
-                return d
-            self.log("Host Agent descriptor found in database, will restart.")
-            return desc
+            msg = ("Descriptor of host agent has been found in "
+                   "database (hostname: %s). I will wait patiently "
+                   "until in disappears. It should happend any minute now "
+                   "providing there is still a monitor agent in the "
+                   "cluster who will take care of it. In other case "
+                   "you would have to cleanup the database. In development "
+                   "the --force-host-restart feat script option is your "
+                   "only friend. " % desc.doc_id)
+            raise error.FeatError(msg)
 
         set_flag(True)
         self.info('Starting host agent.')

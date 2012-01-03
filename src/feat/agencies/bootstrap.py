@@ -27,10 +27,11 @@ import sys
 from feat import everything
 from feat.agents.base import descriptor
 from feat.agents.common import host
-from feat.agencies.net import agency as net_agency, standalone
+from feat.agencies.net import agency as net_agency, standalone, database
 from feat.agencies.net.options import add_options, OptionError
 from feat.common import log, run, defer
 from feat.common.serialization import json
+from feat.utils import host_restart
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
@@ -123,8 +124,18 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
         descriptors = descriptors or []
 
+        d = defer.succeed(None)
+
         if not opts.standalone:
             # specific to running normal agency
+            if opts.force_host_restart:
+                dbc = agency.config['db']
+                db = database.Database(
+                    dbc['host'], int(dbc['port']), dbc['name'])
+                connection = db.get_connection()
+                d.addCallback(defer.drop_param, host_restart.do_cleanup,
+                              connection, agency._get_host_agent_id())
+
             for name in opts.agents:
                 factory = descriptor.lookup(name)
                 if factory is None:
@@ -161,7 +172,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
             agency.set_host_def(hostdef)
 
-            d = agency.initiate()
+            d.addCallback(defer.drop_param, agency.initiate)
             for desc in descriptors:
                 kwargs = (opts.agents_kwargs.pop(0)
                           if opts.agents_kwargs else {})
@@ -173,7 +184,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
         else:
             # standalone specific
             kwargs = opts.standalone_kwargs or dict()
-            d = agency.initiate()
+            d.addCallback(defer.drop_param, agency.initiate)
             d.addCallback(defer.drop_param, agency.spawn_agent,
                           opts.agents[0], **kwargs)
         return d

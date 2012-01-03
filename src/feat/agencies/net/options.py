@@ -55,7 +55,6 @@ DEFAULT_RUNDIR = "/var/run/feat"
 DEFAULT_LOGDIR = "/var/log/feat"
 DEFAULT_DAEMONIZE = False
 
-DEFAULT_FORCE_HOST_RESTART = False
 MASTER_LOG_LINK = "feat.master.log"
 
 DEFAULT_LOCK_PATH = os.path.join(tempfile.gettempdir(), 'feat.agency.lock')
@@ -114,9 +113,9 @@ def add_agency_options(parser):
                      action="store_true", dest="agency_daemonize",
                      help="run in background as a daemon")
     group.add_option('--force-host-restart',
-                     action="store_true", dest="agency_force_host_restart",
-                     help=("force restarting host agent which descriptor "
-                           "exists in database."))
+                     action="store_true", dest="force_host_restart",
+                     help=("cleanup first after an host agent and the "
+                           "agents he was running"), default=False)
     group.add_option('-a', '--agent', dest="agents", action="append",
                       help="Start an agent of specified type.",
                       metavar="AGENT_NAME", default=[])

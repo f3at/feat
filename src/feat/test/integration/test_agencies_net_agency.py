@@ -39,6 +39,7 @@ from feat.agencies.net import agency, broker
 from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, partners, replay
 from feat.common import serialization, fiber, log, first, run
+from feat.utils import host_restart
 
 from feat.interface.agent import AgencyAgentState
 from feat.agencies.interface import NotFoundError
@@ -461,15 +462,20 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
 
         pid = run.get_pid(os.path.curdir)
         run.term_pid(pid)
+        # now cleanup the stale descriptors the way the monitor agent would
+
         yield self.wait_for_master()
+        yield host_restart.do_cleanup(self.db, hostname)
 
         def has_host():
             m = self.agency._get_host_medium()
             return m is not None and m.is_ready()
 
-        yield self.wait_for(has_host, 10)
+        yield self.wait_for(has_host, 15)
         host_desc = yield self.db.get_document(hostname)
-        self.assertEqual(2, host_desc.instance_id)
+        # for host agent the instance id should not increase
+        # (this is only the case for agents run by host agent)
+        self.assertEqual(1, host_desc.instance_id)
 
         yield self.wait_for_backup()
         slave = self.agency._broker.slaves.values()[0]

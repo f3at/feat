@@ -177,7 +177,6 @@ class Agency(agency.Agency):
                  rundir=None,
                  logdir=None,
                  daemonize=options.DEFAULT_DAEMONIZE,
-                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART,
                  hostname=None,
                  domainname=None):
 
@@ -212,7 +211,6 @@ class Agency(agency.Agency):
                           rundir=rundir,
                           logdir=logdir,
                           daemonize=daemonize,
-                          force_host_restart=force_host_restart,
                           hostname=hostname,
                           domainname=domainname)
 
@@ -284,10 +282,6 @@ class Agency(agency.Agency):
 
         signal.signal(signal.SIGUSR1, self._sigusr1_handler)
         signal.signal(signal.SIGUSR2, self._sigusr2_handler)
-
-        if 'enable_host_restart' not in self._broker.shared_state:
-            value = self.config['agency']['force_host_restart']
-            self._broker.shared_state['enable_host_restart'] = value
 
         backends = []
         backends.append(self._initiate_messaging(self.config['msg']))
@@ -596,7 +590,6 @@ class Agency(agency.Agency):
                      rundir=None,
                      logdir=None,
                      daemonize=None,
-                     force_host_restart=None,
                      hostname=None,
                      domainname=None):
 
@@ -625,7 +618,6 @@ class Agency(agency.Agency):
                            logdir=logdir,
                            enable_spawning_slave=enable_spawning_slave,
                            daemonize=daemonize,
-                           force_host_restart=force_host_restart,
                            hostname=hostname,
                            domainname=domainname)
         gateway_conf = dict(port=gateway_port,
@@ -763,13 +755,6 @@ class Agency(agency.Agency):
                      'master agency')
             return False
         return agency.Agency._can_start_host_agent(self, startup)
-
-    def _host_agent_restart_enabled(self):
-        return self._broker.shared_state['enable_host_restart']
-
-    def _on_host_started(self):
-        self._broker.shared_state['enable_host_restart'] = True
-        return agency.Agency._on_host_started(self)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
