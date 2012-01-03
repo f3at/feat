@@ -136,6 +136,12 @@ def add_agency_options(parser):
                       action="store", dest="lock_path",
                       help="path for the inter agencies lock (default: "
                            "$TEMPDIR/feat.lock)", default=DEFAULT_LOCK_PATH)
+    group.add_option('--hostname',
+                      action="store", dest="agency_hostname",
+                      help="overrides the host name used by the agency")
+    group.add_option('--domainname',
+                      action="store", dest="agency_domainname",
+                      help="overrides the domain name used by the agency")
 
     parser.add_option_group(group)
 

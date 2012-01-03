@@ -177,7 +177,9 @@ class Agency(agency.Agency):
                  rundir=None,
                  logdir=None,
                  daemonize=options.DEFAULT_DAEMONIZE,
-                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART):
+                 force_host_restart=options.DEFAULT_FORCE_HOST_RESTART,
+                 hostname=None,
+                 domainname=None):
 
         agency.Agency.__init__(self)
 
@@ -210,7 +212,9 @@ class Agency(agency.Agency):
                           rundir=rundir,
                           logdir=logdir,
                           daemonize=daemonize,
-                          force_host_restart=force_host_restart)
+                          force_host_restart=force_host_restart,
+                          hostname=hostname,
+                          domainname=domainname)
 
         self._ssh = None
         self._broker = None
@@ -592,7 +596,9 @@ class Agency(agency.Agency):
                      rundir=None,
                      logdir=None,
                      daemonize=None,
-                     force_host_restart=None):
+                     force_host_restart=None,
+                     hostname=None,
+                     domainname=None):
 
         msg_conf = dict(host=msg_host,
                         port=msg_port,
@@ -619,7 +625,9 @@ class Agency(agency.Agency):
                            logdir=logdir,
                            enable_spawning_slave=enable_spawning_slave,
                            daemonize=daemonize,
-                           force_host_restart=force_host_restart)
+                           force_host_restart=force_host_restart,
+                           hostname=hostname,
+                           domainname=domainname)
         gateway_conf = dict(port=gateway_port,
                             p12=gateway_p12,
                             allow_tcp=allow_tcp_gateway)
@@ -689,6 +697,16 @@ class Agency(agency.Agency):
                                 self.log("Overriding %s.%s to %r",
                                          group_key, conf_key, new_value)
                             conf_group[conf_key] = new_value
+
+        #override the agency hostname if specified
+        hostname = self.config['agency']['hostname']
+        domainname = self.config['agency']['domainname']
+        if hostname is not None and domainname is not None:
+            hostname = ".".join([hostname, domainname])
+        elif hostname is not None and domainname is None:
+            hostname = socket.getfqdn(hostname)
+        if hostname is not None:
+            self._hostname = unicode(hostname)
 
     def _initiate_messaging(self, config):
         try:
