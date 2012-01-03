@@ -29,16 +29,17 @@ debug=
 sync_time=
 force_host_restart=
 
-while getopts 'fntcrm:d:' OPTION
+while getopts 'fntcrm:d:j:' OPTION
 do
     case $OPTION in
-	    f) force_host_restart=1;;
+	f) force_host_restart=1;;
         n) no_daemon=1;;
         t) sync_time=1;;
         c) do_cleanup=1;;
         r) db_reset=1;;
         m) master_host="$OPTARG";;
         d) debug="$OPTARG";;
+	j) extra_journaler_args="-j $OPTARG";;
         ?) printf "Usage: %s: [-ncfrt] [-d DEBUG] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
            exit 2;;
     esac
@@ -94,9 +95,9 @@ if [ $force_host_restart ]; then
 fi
 
 echo "Starting F3AT..."
-$ENV $FEAT "$@" -m "$master_host" -H "$master_host" \
+$ENV $FEAT -m "$master_host" -H "$master_host" \
            -L "$LOGDIR" -R "$RUNDIR" $daemon_args \
            -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" \
            -G "$GW_P12" -T "$TUNNEL_P12" \
-           -j "sqlite://$JOURNAL" \
-           $force_args
+           $extra_journaler_args -j "sqlite://$JOURNAL" \
+           $force_args "$@"
