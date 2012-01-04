@@ -26,19 +26,19 @@ commonName_max			= 64
 emailAddress			= Email Address (max 64 characters)
 emailAddress_max		= 64
 0.organizationName		= Organization Name (eg, company)
-0.organizationName_default	= Flumotion Services S.A.
+0.organizationName_default	= %(company)s
 1.organizationName		= Internet Company Web Site
-1.organizationName_default	= http://www.flumotion.net/feat
+1.organizationName_default	= %(projecturl)s
 organizationalUnitName		= Organizational Unit Name (eg, section)
-organizationalUnitName_default	= Flumotion Core Team
+organizationalUnitName_default	= %(orgunitname)s
 localityName			= Locality Name (eg, city)
-localityName_default		= Barcelona
+localityName_default		= %(locality)s
 countryName			= Country Name (2 letter code)
-countryName_default		= ES
+countryName_default		= %(country)s
 countryName_min			= 2
 countryName_max			= 2
 stateOrProvinceName		= State or Province Name (full name)
-stateOrProvinceName_default	= Spain
+stateOrProvinceName_default	= %(state)s
 # SET-ex3			= SET extension number 3
 
 # Challenge password section

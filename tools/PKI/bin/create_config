@@ -1,0 +1,36 @@
+#!/usr/bin/python
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+
+import os
+import sys
+import glob
+import ConfigParser
+
+if __name__ == '__main__':
+    try:
+        config = sys.argv[1]
+    except IndexError:
+        print 'Please specify a config file.'
+        sys.exit(1)
+
+    cp = ConfigParser.SafeConfigParser()
+    cp.read(config)
+
+    vars = dict(cp.items('config'))
+
+    templatedir = os.path.join(os.path.dirname(__file__), '..', 'template', '*')
+    for path in glob.glob(templatedir):
+        contents = open(path).read()
+
+        outdir = os.path.join(os.path.dirname(__file__), '..', 'config')
+        try:
+            os.makedirs(outdir)
+        except:
+            pass
+        outpath = os.path.join(outdir, os.path.basename(path))
+        handle = open(outpath, 'w')
+        handle.write(contents % vars)
+        handle.close()
+
+

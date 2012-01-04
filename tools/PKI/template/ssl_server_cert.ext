@@ -1,0 +1,32 @@
+# ssl_server_cert.ext
+
+basicConstraints	= CA:false
+nsComment		= "SSL Server Certificate"
+nsCertType		= server, client
+keyUsage		= critical, digitalSignature, keyEncipherment
+extendedKeyUsage	= serverAuth, clientAuth, msSGC, nsSGC
+nsCertType		= server, client
+subjectKeyIdentifier	= hash
+authorityKeyIdentifier	= keyid, issuer:always
+authorityInfoAccess	= caIssuers;URI:%(projecturl)s/dev_ca/cainfo.html
+crlDistributionPoints	= URI:%(projecturl)s/dev_crl/issuing_ca.crl
+certificatePolicies	= ia5org,@%(project)s_CPS,@%(project)s_Web_Server_CA_Policy
+
+[ %(project)s_CPS ]
+# FAKE OID !
+policyIdentifier	= 1.3.6.1.4.1.31012.1.1
+CPS.1			= "%(projecturl)s/dev_ca/feat_cps.html"
+userNotice.1		= @%(project)s_CPS_Notice
+
+[ %(project)s_CPS_Notice ]
+explicitText		= "%(company)s Certification Practice Statement"
+
+[ %(project)s_Web_Server_CA_Policy ]
+# FAKE OID !
+policyIdentifier	= 1.3.6.1.4.1.31012.3.2
+userNotice.2		= @%(project)s_Web_Server_CA_Notice
+
+[ %(project)s_Web_Server_CA_Notice ]
+explicitText		= "%(company)s Secure Communications Web Server Certificate Policy"
+
+# End File
