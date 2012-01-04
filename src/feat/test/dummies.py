@@ -60,7 +60,7 @@ class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         return self.now
 
     def call_next(self, call, *args, **kwargs):
-        call(*args, **kwargs)
+        time.call_later(0, fiber.maybe_fiber, call, *args, **kwargs)
 
     def call_later(self, time, fun, *args, **kwargs):
         payload = (time, fun, args, kwargs)
