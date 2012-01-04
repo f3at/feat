@@ -155,7 +155,8 @@ class TestDNSAgentMisc(common.TestCase):
                 'zone': 'test.lan', 'name': 'jander'}
         view = dns_agent.DnsView()
 
-        self.assertEquals(list(view.map(name))[0], (name['zone'], name['_id']))
+        self.assertEquals(list(view.map(name))[0],
+                          (name['zone'], {'doc_id': name['_id']}))
         query1 = {'query': {'zone': 'test.lan'}}
         query2 = {'query': {'zone': 'test1.lan'}}
         self.assertTrue(view.filter(name, query1))

@@ -109,20 +109,23 @@ class DnsName(document.Document):
         return unicode(match.group(1))
 
 
+@serialization.register
 @view.register
-class DnsView(view.BaseView):
+class DnsView(view.FormatableView):
 
     name = 'dns'
 
     def map(doc):
         if doc.get('.type') == 'dns_name':
             zone = doc.get('zone')
-            yield zone, doc.get('_id')
+            yield zone, dict(doc_id=doc.get('_id'))
 
     def filter(doc, request):
         zone = request['query'].get('zone')
         return doc.get('.type') == 'dns_name' and \
                (zone is None or doc.get('zone') == zone)
+
+    formatable.field('doc_id', None)
 
 
 @agent.register('dns_agent')

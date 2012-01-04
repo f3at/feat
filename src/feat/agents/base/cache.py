@@ -206,7 +206,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     @replay.mutable
     def _view_loaded(self, state, result):
         state.documents.clear()
-        fibers = [self._refresh_document(doc_id) for doc_id in result]
+        fibers = [self._refresh_document(x.doc_id) for x in result]
         return fiber.FiberList(fibers, consumeErrors=True).succeed()
 
     @replay.immutable

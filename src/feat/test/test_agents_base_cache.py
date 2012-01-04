@@ -27,7 +27,7 @@ from zope.interface import implements
 
 from feat.agencies.emu import database
 from feat.agents.base import cache, document, view, descriptor
-from feat.common import journal, defer, log, fiber, time
+from feat.common import journal, defer, log, fiber, time, serialization
 from feat.test import common
 
 from feat.agencies.interface import NotFoundError
@@ -146,19 +146,22 @@ class TestDocument(document.Document):
     document.field('zone', None)
 
 
-class TestView(view.BaseView):
+@serialization.register
+class TestView(view.FormatableView):
 
     name = 'test_view'
 
     def map(doc):
         if doc.get('.type') == 'test_document':
             zone = doc.get('zone')
-            yield zone, doc.get('_id')
+            yield zone, dict(doc_id=doc.get('_id'))
 
     def filter(doc, request):
         zone = request['query'].get('zone')
         return doc.get('.type') == 'test_document' and \
                (zone is None or zone == doc.get('zone'))
+
+    view.field('doc_id', None)
 
 
 class TestCacheWorkingWithViewFilter(common.TestCase):
