@@ -172,7 +172,7 @@ class TestCacheWorkingWithViewFilter(common.TestCase):
         db = database.Database()
         self._db = db.get_connection()
 
-        design_doc = view.DesignDocument.generate_from_views((TestView, ))
+        design_doc = view.DesignDocument.generate_from_views((TestView, ))[0]
         yield self._db.save_document(design_doc)
 
         self.agent = DummyAgent(self, db.get_connection())
@@ -349,7 +349,7 @@ class TestPersistentUpdater(common.TestCase):
         db = database.Database()
         self._db = db.get_connection()
 
-        design_doc = view.DesignDocument.generate_from_views((TestView, ))
+        design_doc = view.DesignDocument.generate_from_views((TestView, ))[0]
         yield self._db.save_document(design_doc)
 
         self.agent = DummyAgent(self, db.get_connection())

@@ -34,7 +34,7 @@ from feat.agents.base import document
 from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
                                      IRevisionStore)
 from feat.interface.generic import ITimeProvider
-from feat.interface.view import IViewFactory, DESIGN_DOC_ID
+from feat.interface.view import IViewFactory
 
 
 class ViewFilter(object):
@@ -66,7 +66,7 @@ class ViewFilter(object):
             # returning None prevents channel for being established
             return
         p = dict(self._request['query'])
-        p['filter'] = "%s/%s" % (DESIGN_DOC_ID, self.view.name)
+        p['filter'] = "%s/%s" % (self.view.design_doc_id, self.view.name)
         return p
 
 

@@ -76,8 +76,9 @@ def push_initial_data(connection):
             log.error('script', 'Document with id %s already exists!',
                       doc.doc_id)
 
-    design = view.generate_design_doc()
-    yield connection.save_document(design)
+    design_docs = view.generate_design_docs()
+    for design_doc in design_docs:
+        yield connection.save_document(design_doc)
 
 
 def parse_options():

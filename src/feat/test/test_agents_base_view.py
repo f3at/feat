@@ -56,7 +56,7 @@ class TestDesignDocument(common.TestCase):
 
     def testGenerateDesignDoc(self):
         views = (SomeView, ReducingView, FilterView, )
-        doc = view.DesignDocument.generate_from_views(views)
+        doc = view.DesignDocument.generate_from_views(views)[0]
 
         self.assertIsInstance(doc, view.DesignDocument)
         self.assertEquals(u'python', doc.language)

@@ -170,8 +170,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
         d = self._paisley_call(self.paisley.openView,
-                               self.db_name, DESIGN_DOC_ID, factory.name,
-                               **options)
+                               self.db_name, factory.design_doc_id,
+                               factory.name, **options)
         d.addCallback(self._parse_view_result)
         return d
 

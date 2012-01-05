@@ -123,7 +123,7 @@ class TestCase(object):
     def testQueryingViews(self):
         # create design document
         views = (SummingView, CountingView, )
-        design_doc = view.DesignDocument.generate_from_views(views)
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
         yield self.connection.save_document(design_doc)
 
         # check formatable view returning empty list
@@ -330,7 +330,7 @@ class TestCase(object):
     def testChangesWithFilterView(self):
         # create design document
         views = (FilteringView, )
-        design_doc = view.DesignDocument.generate_from_views(views)
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
         yield self.connection.save_document(design_doc)
 
         yield self.connection.changes_listener(FilteringView, self.change_cb,

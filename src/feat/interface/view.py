@@ -21,10 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import Interface, Attribute
 
-__all__ = ["DESIGN_DOC_ID", "IViewFactory"]
-
-
-DESIGN_DOC_ID = u'feat'
+__all__ = ["IViewFactory"]
 
 
 class IViewFactory(Interface):
@@ -36,6 +33,8 @@ class IViewFactory(Interface):
 
     name = Attribute('C{unicode}. Unique name of the view')
     use_reduce = Attribute('C{bool}. Should the reduce function be used')
+    design_doc_id = Attribute('C{unicode}. The id of the design_doc to put'
+                              ' this view in.')
 
     def map(doc):
         '''

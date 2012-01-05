@@ -27,7 +27,7 @@ from zope.interface import directlyProvides
 from feat.common import formatable, decorator, log, annotate
 from feat.agents.base import document
 
-from feat.interface.view import IViewFactory, DESIGN_DOC_ID
+from feat.interface.view import IViewFactory
 
 
 @decorator.simple_class
@@ -35,11 +35,12 @@ def register(view):
     global _registry
 
     view = IViewFactory(view)
-    if view.name in _registry:
-        log.warning('view-registry', 'View with the name %s is already '
-                    'registered and points to %r. Overwriting!', view.name,
-                    _registry[view.name])
-    _registry[view.name] = view
+    key = (view.design_doc_id, view.name)
+    if key in _registry:
+        log.warning('view-registry', 'View with the name %s for the design doc'
+                    ' %s is already registered and points to %r. Overwriting!',
+                    view.name, view.design_doc_id, _registry[view.name])
+    _registry[key] = view
     return view
 
 field = formatable.field
@@ -49,6 +50,7 @@ class BaseView(annotate.Annotable):
 
     name = None
     use_reduce = False
+    design_doc_id = u'feat'
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
@@ -130,16 +132,27 @@ class DesignDocument(document.Document):
 
     document_type = "design"
 
-    document.field('doc_id', u"_design/%s" % (DESIGN_DOC_ID, ), "_id")
     document.field('language', u'python')
     document.field('views', dict())
     document.field('filters', dict())
 
     @classmethod
     def generate_from_views(cls, views):
-        instance = cls()
+
+        # id -> instance
+        instances = dict()
+
+        def get_instance(name):
+            existing = instances.get(name, None)
+            if not existing:
+                doc_id = u"_design/%s" % (name, )
+                existing = cls(doc_id=doc_id)
+                instances[name] = existing
+            return existing
+
         for view in views:
             view = IViewFactory(view)
+            instance = get_instance(view.design_doc_id)
             entry = dict()
             if hasattr(view, 'map'):
                 entry['map'] = unicode(view.map.source)
@@ -153,8 +166,8 @@ class DesignDocument(document.Document):
 
             if hasattr(view, 'filter'):
                 instance.filters[view.name] = unicode(view.filter.source)
-        return instance
+        return instances.values()
 
 
-def generate_design_doc():
+def generate_design_docs():
     return DesignDocument.generate_from_views(_iterviews())
