@@ -25,14 +25,13 @@ from twisted.python import components
 from feat.common import defer, time, log, journal, fiber
 from feat.agents.base import descriptor, requester, replier, replay, message,\
                              cache
-from feat.agencies import protocols
+from feat.agencies import protocols, common
 from feat.agencies.emu import database
 
-from feat.agencies.interface import *
-from feat.agents.monitor.interface import *
-from feat.interface.protocols import *
-from feat.interface.log import *
-from feat.interface.agent import *
+from feat.agencies.interface import IAgencyInterestInternalFactory
+from feat.agencies.interface import NotFoundError
+from feat.interface.protocols import IInterest, InterestType
+from feat.interface.agent import IAgencyAgent
 from feat.interface.agency import ExecMode
 
 
@@ -176,6 +175,11 @@ class DummyMedium(DummyMediumBase):
 
     def get_own_address(self):
         return self.get_ip()
+
+    def observe(self, _method, *args, **kwargs):
+        res = common.Observer(_method, *args, **kwargs)
+        self.call_next(res.initiate)
+        return res
 
 
 class DummyProtocol(object):
