@@ -127,7 +127,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
 
         descriptors = descriptors or []
 
-        d = defer.succeed(None)
+        d = defer.Deferred()
+        reactor.callWhenRunning(d.callback, None)
 
         if not opts.standalone:
             # specific to running normal agency
@@ -202,24 +203,20 @@ class _Bootstrap(object):
         self.agency = None
 
     def __enter__(self):
-        log.FluLogKeeper.init()
         self._parse_opts()
+        log.FluLogKeeper.init(buffer_mode=self.opts.agency_daemonize)
         if self.opts.debug:
             log.FluLogKeeper.set_debug(self.opts.debug)
-        if self.opts.agency_daemonize:
-            tmp = tempfile.mktemp(suffix="feat.temp.log")
-            log.info("run", "Logging will temporarily be done to: %s", tmp)
-            run.daemonize(stdout=tmp, stderr=tmp)
         self.agency = self._run_agency()
         return self
 
     def __exit__(self, type, value, traceback):
         if type is not None:
-            if issubclass(type, OptionError):
-                print >> sys.stderr, "ERROR: %s" % str(value)
-                return True
-            return
-
+            raise type, value, traceback
+        if self.opts.agency_daemonize:
+            tmp = tempfile.mktemp(suffix="feat.temp.log")
+            log.info("run", "Logging will temporarily be done to: %s", tmp)
+            run.daemonize(stdout=tmp, stderr=tmp)
         reactor.run()
 
     def _parse_opts(self):

@@ -27,7 +27,7 @@ import sys
 
 from zope.interface import implements
 
-from feat.interface.log import *
+from feat.interface.log import ILogKeeper, ILogger, LogLevel
 
 
 verbose = os.environ.get("FEAT_VERBOSE", "NO").upper() in ("YES", "1", "TRUE")
@@ -179,11 +179,14 @@ class FluLogKeeper(object):
     _initialized = False
 
     @classmethod
-    def init(cls, path=None):
+    def init(cls, path=None, buffer_mode=False):
         global flulog
         if not cls._initialized:
             if path:
                 sys.stderr = file(path, 'a')
+            cls.buffer_mode = buffer_mode
+            if cls.buffer_mode:
+                cls.buffer = list()
             from feat.extern.log import log as flulog
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')
@@ -196,6 +199,12 @@ class FluLogKeeper(object):
     def redirect_to(cls, stdout, stderr):
         global flulog
         flulog.outputToFiles(stdout, stderr)
+        if cls.buffer_mode:
+            # dump the buffer
+            cls.buffer_mode = False
+            for lvl, object, category, format, args, extra in cls.buffer:
+                flulog.doLog(lvl, object, category, format, args, **extra)
+            del(cls.buffer)
 
     @classmethod
     def move_files(cls, stdout, stderr):
@@ -224,6 +233,10 @@ class FluLogKeeper(object):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
                      where=depth, filePath=file_path, line=line_num)
+        if type(self).buffer_mode:
+            type(self).buffer.append(
+                (int(level), object, category, format, args,
+                 dict(where=depth, filePath=file_path, line=line_num)))
 
 
 _default_keeper = None
