@@ -334,14 +334,14 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                             if p.is_required])
 
             if not required <= params:
-                raise TypeError("Action %s require parameters: %s"
-                                % (self.name, ", ".join(required)))
+                raise TypeError("Action %s is missing parameters: %s"
+                                % (self.name, ", ".join(required - params)))
 
             if not params <= expected:
                 if not expected:
-                    raise TypeError("Action %s expect no parameter"
+                    raise TypeError("Action %s expects no parameters"
                                     % (self.name, ))
-                raise TypeError("Action %s expect only parameters: %s"
+                raise TypeError("Action %s expects only parameters: %s"
                                 % (self.name, ", ".join(expected)))
 
             validated = {}
