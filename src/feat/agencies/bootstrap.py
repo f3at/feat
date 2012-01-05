@@ -208,8 +208,7 @@ class _Bootstrap(object):
             log.FluLogKeeper.set_debug(self.opts.debug)
         if self.opts.agency_daemonize:
             tmp = tempfile.mktemp(suffix="feat.temp.log")
-            log.info("run", "Until we agency figures out it's role logging "
-                     "will be done to the file: %s", tmp)
+            log.info("run", "Logging will temporarily be done to: %s", tmp)
             run.daemonize(stdout=tmp, stderr=tmp)
         self.agency = self._run_agency()
         return self
