@@ -95,7 +95,7 @@ class Agency(agency.Agency):
             self._starting_master = True
             # Allow restarting a master if we didn't succeed after 10 seconds
             self._release_lock_cl = time.callLater(10, self._release_lock)
-            return self._spawn_agency('master', ['--force-host-restart'])
+            return self._spawn_agency('master')
 
     def on_become_slave(self):
         if self._release_lock_cl is not None:
