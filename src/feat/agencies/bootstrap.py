@@ -60,9 +60,12 @@ def check_options(opts, args):
                               opts.standalone_kwargs), None, sys.exc_info()[2]
     if opts.agents_kwargs:
         if len(opts.agents_kwargs) > len(opts.agents):
-            raise OptionError("Received keywords for %d agents and only %d "
-                              "to spawn." %
-                              (len(opts.agents_kwargs), len(opts.agents)))
+            msg = "Received keywords for %d agents and only %d to spawn." % (
+                              len(opts.agents_kwargs), len(opts.agents))
+            log.debug("feat", msg)
+            log.debug("feat", "keywords: %r, agents: %r",
+                opts.agents_kwargs, opts.agents)
+            raise OptionError(msg)
         parsed = list()
         for element in opts.agents_kwargs:
             try:
