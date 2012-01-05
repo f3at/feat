@@ -15,12 +15,13 @@ To create a new CA and certificates from scratch (assuming the current directory
 is the root of your feat checkout)::
 
 	cd tools/PKI
+	bin/create_config feat.conf
 	bin/create_root_ca
 	bin/create_issuing_ca tunneling
 	bin/issue_cert tunneling tunneling ssl_server *.flumotion.fluendo.lan
 	bin/create_issuing_ca gateway
 	bin/issue_cert gateway gateway ssl_server *.flumotion.fluendo.lan
-	bin/issue_cert gateway dummy ssl_client Name Surname email@address.lan
+	bin/issue_cert gateway dummy ssl_client $NAME $EMAIL admin
 
 The generated files can be found there:
 
@@ -66,6 +67,18 @@ services hosted on any sub-domain of flumotion.fluendo.lan will not
 ask for confirmation.
 
 
+Creating configuration files
+============================
+
+Needed configuration files are generated from a set of template and
+a configuration file containing the variable that must be substituted.
+
+To customise the PKI copy the file tools/PKI/feat.conf to another name,
+update it, and use it to generate the configuration with the command::
+
+    tools/PKI/bin/create_config $CONFIG_FILE
+
+
 Creating the Root CA
 ====================
 
@@ -74,7 +87,7 @@ Only one root CA should be generated and reused for all sub-CA's.
 
 To create one from scratch execute::
 
-	tools/PKI/bin/create_root_ca
+    tools/PKI/bin/create_root_ca
 
 The new root CA will be created in::
 
@@ -191,7 +204,7 @@ A SSL client certificate contains client name, surname and email.
 
 To issue a new SSL client certificate, execute::
 
-	tools/PKI/bin/issue_cert $SUB_CA_PREFIX $CERT_PREFIX ssl_client $NAME $SURNAME $EMAIL
+	tools/PKI/bin/issue_cert $SUB_CA_PREFIX $CERT_PREFIX ssl_client $NAME $EMAIL $ROLE1 $ROLE2 $ROLE3
 
 Generated files can be found at:
 

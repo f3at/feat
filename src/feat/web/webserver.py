@@ -105,6 +105,7 @@ class IWebResource(Interface):
 class IWebRequest(Interface):
 
     peer = Attribute("")
+    peer_info = Attribute("security.IPeerInfo")
     is_secured = Attribute("")
     domain = Attribute("")
     scheme = Attribute("")
@@ -532,13 +533,15 @@ class Server(log.LogProxy, log.Logger):
         self.log("%s on %s from %s:%s", priv_request.method, priv_request.uri,
                  priv_request.client.host, priv_request.client.port)
 
+        peer_info = self._policy.get_peer_info(priv_request.channel.transport)
+
         request = None
         response = None
 
         try:
 
             # First create request and response parsing HTTP headers and so
-            request = Request(self, priv_request)
+            request = Request(self, priv_request, peer_info)
             response = Response(self, request)
 
         except Exception, e:
@@ -970,12 +973,13 @@ class Request(log.Logger, log.LogProxy):
 
     implements(IWebRequest, document.IReadableDocument)
 
-    def __init__(self, server, priv_request):
+    def __init__(self, server, priv_request, peer_info=None):
         log.Logger.__init__(self, server)
         log.LogProxy.__init__(self, server)
         self._server = server
         self._ref = priv_request
         self._secured = server.is_secured
+        self._peer_info = peer_info
 
         content_type = self.get_header("content-type")
         mime_type, encoding = http.parse_content_type(content_type)
@@ -1051,6 +1055,10 @@ class Request(log.Logger, log.LogProxy):
     @property
     def peer(self):
         return self._ref.client
+
+    @property
+    def peer_info(self):
+        return self._peer_info
 
     @property
     def is_secured(self):

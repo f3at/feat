@@ -33,16 +33,19 @@ source "$CONF_DIR/subject.env"
 case "x$CERT_TYPE" in
 
     xssl_client )
-        USAGE="$0 CA_NAME PREFIX ssl_client NAME SURNAME EMAIL"
+        USAGE="$0 CA_NAME PREFIX ssl_client NAME EMAIL [ROLE [ROLE ...]]"
         PURPOSE="sslclient"
         NAME="$1"
-        SURNAME="$2"
-        EMAIL="$3"
+        COMMON_NAME="$1"
+        EMAIL="$2"
+        shift; shift
+        for r in "$@"; do
+            COMMON_NAME=$COMMON_NAME,$r
+        done
         check_arg "Name not specified" "$NAME"
-        check_arg "Surname not specified" "$SURNAME"
         check_arg "eMail not specified" "$EMAIL"
-        REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$NAME $SURNAME/emailAddress=$EMAIL/name=$NAME/surname=$SURNAME/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
-        echo "Generating client $NAME $SURNAME credencials..."
+        REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$COMMON_NAME/emailAddress=$EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
+        echo "Generating client $NAME credencials..."
         ;;
 
     xssl_server )

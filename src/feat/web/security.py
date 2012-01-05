@@ -19,6 +19,18 @@ class SecurityError(error.FeatError):
 ### Interfaces ###
 
 
+class IPeerInfo(Interface):
+
+    identity = Attribute("Name uniquely identifying a user")
+    email = Attribute("User email address")
+
+    def has_role(role):
+        pass
+
+    def iter_roles():
+        pass
+
+
 class ISecurityPolicy(Interface):
 
     use_ssl = Attribute("Specifies if the service must use SSL")
@@ -26,8 +38,54 @@ class ISecurityPolicy(Interface):
     def get_ssl_context_factory(self):
         """Returns an SSL context factory."""
 
+    def get_peer_info(connection):
+        """Return peer information from a connection."""
+
 
 ### Implementations ###
+
+
+class PeerInfo(object):
+
+    implements(IPeerInfo)
+
+    @classmethod
+    def from_certificate(cls, x509):
+        subj = x509.get_subject()
+        parts = [p.strip() for p in unicode(subj.commonName).split(",")]
+        identity = parts[0]
+        roles = parts[1:]
+        email = subj.emailAddress
+        return cls(identity, roles, email)
+
+    def __init__(self, identity, roles=None, email=None):
+        self._identity = unicode(identity)
+        if roles:
+            self._roles = set([str(r) for r in roles])
+        else:
+            self._roles = set()
+        self._email = str(email)
+
+    def __repr__(self):
+        l = [self._identity]
+        l.extend(self._roles)
+        return "<User %s>" % (", ".join(l), )
+
+    ### IPeerInfo ###
+
+    @property
+    def identity(self):
+        return self._identity
+
+    @property
+    def email(self):
+        return self._email
+
+    def has_role(self, role):
+        return role in self._roles
+
+    def iter_roles(self):
+        return iter(self._roles)
 
 
 class ContextCache(object):
@@ -56,7 +114,8 @@ class BaseContextFactory(object):
                  verify_ca_filename=None,
                  p12_filename=None,
                  verify_ca_from_p12=False,
-                 key_pass=None, p12_pass=None):
+                 key_pass=None, p12_pass=None,
+                 enforce_cert=True):
 
         self._cert_filename = cert_filename
         self._key_filename = key_filename
@@ -65,6 +124,7 @@ class BaseContextFactory(object):
         self._verify_ca_from_p12 = verify_ca_from_p12
         self._key_pass = key_pass
         self._p12_pass = p12_pass
+        self._enforce_cert = enforce_cert
 
     def getContext(self):
         ctx = _create_ssl_context(self._key_filename,
@@ -75,7 +135,9 @@ class BaseContextFactory(object):
                                   self._key_pass, self._p12_pass)
 
         if self._verify_ca_from_p12 or self._verify_ca_filename is not None:
-            opts = SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+            opts = SSL.VERIFY_PEER
+            if self._enforce_cert:
+                opts |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
             ctx.set_verify(opts, self._verify_callback)
 
         return ctx
@@ -99,7 +161,8 @@ class ServerContextFactory(BaseContextFactory, ssl.ContextFactory):
                  verify_ca_filename=None,
                  p12_filename=None,
                  verify_ca_from_p12=False,
-                 key_pass=None, p12_pass=None):
+                 key_pass=None, p12_pass=None,
+                 enforce_cert=True):
 
         if p12_filename is None:
             if p12_pass:
@@ -130,7 +193,8 @@ class ServerContextFactory(BaseContextFactory, ssl.ContextFactory):
                                     verify_ca_filename=verify_ca_filename,
                                     p12_filename=p12_filename,
                                     verify_ca_from_p12=verify_ca_from_p12,
-                                    key_pass=key_pass, p12_pass=p12_pass)
+                                    key_pass=key_pass, p12_pass=p12_pass,
+                                    enforce_cert=enforce_cert)
 
 
 class ClientContextFactory(BaseContextFactory, ssl.ClientContextFactory):
@@ -176,6 +240,9 @@ class UnsecuredPolicy(object):
     def use_ssl(self):
         return False
 
+    def get_peer_info(self, connection):
+        return None
+
     def get_ssl_context_factory(self):
         return None
 
@@ -186,18 +253,29 @@ class ServerPolicy(object):
 
     _factory = None
 
-    def __init__(self, context_factory=None):
+    def __init__(self, context_factory=None, default_info=None):
         if context_factory is not None:
             if context_factory.isClient:
                 raise ValueError("Server security policy needs a server "
                                  "SSL context factory")
             self._factory = ContextCache(context_factory)
+            if default_info is not None:
+                self._default_info = IPeerInfo(default_info)
+            else:
+                self._default_info = None
 
     ### ISecurityPolicy Methods ###
 
     @property
     def use_ssl(self):
         return self._factory is not None
+
+    def get_peer_info(self, connection):
+        if self._factory:
+            x509 = connection.getPeerCertificate()
+            if x509:
+                return PeerInfo.from_certificate(x509)
+        return self._default_info
 
     def get_ssl_context_factory(self):
         return self._factory
@@ -221,6 +299,9 @@ class ClientPolicy(object):
     @property
     def use_ssl(self):
         return self._factory is not None
+
+    def get_peer_info(self, connection):
+        return None
 
     def get_ssl_context_factory(self):
         return self._factory
