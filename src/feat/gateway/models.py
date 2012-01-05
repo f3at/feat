@@ -34,6 +34,7 @@ from feat.models import effect, call, getter, action
 from feat.agencies.interface import AgencyRoles
 from feat.interface.agent import AgencyAgentState
 from feat.models.interface import IModel, IReference, ActionCategories
+from feat.models.interface import Unauthorized
 
 
 @adapter.register(net_agency.Agency, IModel)
@@ -56,7 +57,7 @@ class Root(model.Model):
                 fetch=getter.model_get("_locate_master"),
                 label="Agents", desc="Agents running on this host.")
     model.child('apps', model='feat.apps',
-                label='Api', desc='Api exposed by subproject')
+                label='Applications', desc='Running applications')
 
     model.meta("html-order", "agencies, agents")
     model.item_meta("agencies", "html-render", "array, 1")
@@ -133,6 +134,10 @@ class Agencies(model.Collection):
                        "stopping all agents properly"))
 
     model.meta("html-render", "array, 1")
+
+    def init(self):
+        if not self.officer.peer_info.has_role("admin"):
+            raise Unauthorized("You are not administrator")
 
     ### custom ###
 
@@ -406,6 +411,10 @@ class Agents(model.Collection):
                  label="Spawn Agent", desc="Spawn a new agent on this host")
 
     model.meta("html-render", "array, 1")
+
+    def init(self):
+        if not self.officer.peer_info.has_role("admin"):
+            raise Unauthorized("You are not administrator")
 
     ### custom ###
 

@@ -32,6 +32,7 @@ from twisted.web import server, resource
 
 from feat.common import log, defer, error, decorator
 from feat.web import http, compat, document, auth, security
+from feat.interface.security import IPeerInfo
 
 
 ### Errors ###

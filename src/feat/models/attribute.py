@@ -149,16 +149,16 @@ class _DynAttribute(Attribute):
 
     ### IModel ###
 
-    def initiate(self, aspect=None, view=None, parent=None):
+    def initiate(self, aspect=None, view=None, parent=None, officer=None):
         self.parent = parent
-        return Attribute.initiate(self, aspect=aspect,
-                                  view=view, parent=parent)
+        return Attribute.initiate(self, aspect=aspect, view=view,
+                                  parent=parent, officer=officer)
 
     ### IContextMaker ###
 
     def make_context(self, key=None, view=None, action=None):
         model = self.parent or self
-        return {"model": model,
+        return {"model": model, "officer": model.officer,
                 "view": model.view,
                 "key": unicode(key) if key is not None else self.name,
                 "action": action}

@@ -29,7 +29,8 @@ __all__ = ["ResponseTypes", "ActionCategories", "ValueTypes",
            "NotSupported", "Unauthorized", "NotAvailable",
            "ActionFailed", "ActionConflict",
            "IMetadata", "IMetadataItem",
-           "IContext", "IReference", "IRelativeReference",
+           "IOfficer", "IContext",
+           "IReference", "IRelativeReference",
            "ILocalReference", "IAbsoluteReference",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
@@ -259,6 +260,133 @@ class IMetadataItem(Interface):
     scheme = Attribute("Metadata format. @type unicode or None")
 
 
+class IOfficer(Interface):
+    """
+    Represent the authority in mater of what could be done and what not.
+    """
+
+    peer_info = Attribute("Peer information as a security.IPeerInfo")
+
+    def identify_item_name(model, item_name):
+        """
+        Returns the string representation of the model item
+        with specified name. Used for formating error messages.
+        @param model: model of the item to be converted.
+        @type model: IModel
+        @param item_name: item name to identify.
+        @type item_name: unicode or str
+        @return: a string representation of the specified item name.
+        @rtype: unicode
+        """
+
+    def identify_item(model, item):
+        """
+        Returns the string representation of the model item
+        with specified name. Used for formating error messages.
+        @param model: model of the item to be converted.
+        @type model: IModel
+        @param item: model item to identify.
+        @type item: IModelItem
+        @return: a string representation of the specified item.
+        @rtype: unicode
+        """
+
+    def identify_action_name(model, action_name):
+        """
+        Returns the string representation of the model action
+        with specified name. Used for formating error messages.
+        @param model: model of the item to be converted.
+        @type model: IModel
+        @param action_name: action name to identify.
+        @type action_name: unicode or str
+        @return: a string representation of the specified action name.
+        @rtype: unicode
+        """
+
+    def identify_action(model, action):
+        """
+        Returns the string representation of the model action
+        with specified name. Used for formating error messages.
+        @param model: model of the item to be converted.
+        @type model: IModel
+        @param action: model action to identify.
+        @type action: IModelAction
+        @return: a string representation of the specified action.
+        @rtype: unicode
+        """
+
+    def is_item_allowed(model, item_name):
+        """
+        @param model: model of the item to check for permission.
+        @type model: IModel
+        @param item_name: item name to check for permission.
+        @type item_name: unicode or str
+        @return: if the current peer is allowed to retrieve
+                 the model item with specified name.
+        @rtype: bool
+        """
+
+    def is_fetch_allowed(model, item):
+        """
+        @param model: parent of the model that would be fetched.
+        @type model: IModel
+        @param item: model item the sub-model would be fetched from.
+        @type item: IModelItem
+        @return: If fetching a model from specified item is allowed.
+        """
+
+    def is_browse_allowed(model, item):
+        """
+        @param model: parent of the model that would be browsed.
+        @type model: IModel
+        @param item: model item the sub-model would be browsed from.
+        @type item: IModelItem
+        @return: If browsing a model from specified item is allowed.
+        """
+
+    def is_action_allowed(model, action_name):
+        """
+        @param model: model of the item to check for permission.
+        @type model: IModel
+        @param action_name: action name to check for permision.
+        @type action_name: str or unicode
+        @return: if the current peer is allowed to retrieve
+                 the model action with specified name.
+        @rtype: bool
+        """
+
+    def is_perform_allowed(model, action):
+        """
+        @param model: model of the action to check for permission.
+        @type model: IModel
+        @param action: action to check for permission.
+        @type action: IModelAction
+        @return: if the current peer is allowed to perform
+                 the specified action.
+        @rtype: bool
+        """
+
+    def get_fetch_officer(model, item):
+        """
+        @param model: parent of the model that would be fetched.
+        @type model: IModel
+        @param item: model item the sub-model would be fetched from.
+        @type item: IModelItem
+        @return: the officer responsible for the model that would
+                 be fetched from specified model item.
+        """
+
+    def get_browse_officer(model, item):
+        """
+        @param model: parent of the model that would be browsed.
+        @type model: IModel
+        @param item: model item the sub-model would be browsed from.
+        @type item: IModelItem
+        @return: the officer responsible for the model that would
+                 be browsed from specified model item.
+        """
+
+
 class  IContext(Interface):
     """
     Represent a context use in resolving a reference.
@@ -395,7 +523,7 @@ class IModel(Interface):
     reference = Attribute("Reference to the real model or None. "
                           "@type: IReference or None")
 
-    def initiate(aspect=None, view=None, parent=None):
+    def initiate(aspect=None, view=None, parent=None, officer=None):
         """
         Initiates a model with specified aspect, view and parent.
         @param aspect: the model aspect.
@@ -404,6 +532,8 @@ class IModel(Interface):
         @type view: object()
         @param parent: the parent model if known.
         @type parent: IModel or None
+        @param officer: the officer controlling this model.
+        @type parent: IOfficer or None
         @return: a deferred fired with the model itself.
         @rtype: defer.Deferred
         @callback: IModel
@@ -815,17 +945,19 @@ class IAspect(Interface):
 
 class IModelFactory(Interface):
 
-    def __call__(source, aspect=None, view=None, parent=None):
+    def __call__(source, aspect=None, view=None, parent=None, officer=None):
         """
         Creates a model instance for the specified source reference.
-        @param parent: the parent model if known.
-        @type parent: IModel or None
         @param source: the source the model should reference.
         @type source: object
         @param aspect: the model aspect.
         @type aspect: IAspect
         @param view: if the mode is a view, contains view value.
         @type view: object()
+        @param parent: the parent model if known.
+        @type parent: IModel or None
+        @param officer: the officer controlling the model accesses.
+        @type officer: IOfficer or None
         @return: a model for the given source and aspect.
         @rtype: IModel
         """

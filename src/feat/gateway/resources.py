@@ -30,10 +30,11 @@ from zope.interface import implements
 
 from feat.common import defer, error
 from feat.web import http, webserver
+from feat.models.model import DummyOfficer
 
 from feat.models.interface import ActionCategories, IActionPayload, IAspect
 from feat.models.interface import IContext, IModel, IModelAction, IReference
-from feat.models.interface import IErrorPayload
+from feat.models.interface import IErrorPayload, Unauthorized
 
 
 class ErrorPayload(object):
@@ -169,6 +170,10 @@ class BaseResource(webserver.BaseResource):
     def make_context(self, request):
         """Overridden in sub-classes."""
 
+    def filter_errors(self, failure):
+        failure.trap(Unauthorized)
+        raise http.ForbiddenError, None, failure.tb
+
     def render_error(self, request, response, ex):
 
         def nice_error_failed(failure):
@@ -240,6 +245,7 @@ class ModelResource(BaseResource):
         d = self.model.fetch_actions()
         d.addCallback(deduce_methods)
         d.addCallback(defer.override_result, self)
+        d.addErrback(self.filter_errors)
         return d
 
     def make_context(self, request, remaining=None):
@@ -349,7 +355,9 @@ class ModelResource(BaseResource):
             action_name = self.method_actions.get(request.method)
             return locate_default_action(resource_name, action_name)
 
-        return locate_model(resource_name)
+        d = locate_model(resource_name)
+        d.addErrback(self.filter_errors)
+        return d
 
     def action_GET(self, request, response, location):
         response.set_header("Cache-Control", "no-cache")
@@ -378,12 +386,15 @@ class ModelResource(BaseResource):
 
         d = self.model.fetch_action(action_name)
         d.addCallback(got_action)
+        d.addErrback(self.filter_errors)
         return d
 
     def render_model(self, request, response, context):
         #FIXME: passing query arguments without validation is not safe
-        return response.write_object(self.model, context=context,
-                                     **request.arguments)
+        d = response.write_object(self.model, context=context,
+                                  **request.arguments)
+        d.addErrback(self.filter_errors)
+        return d
 
 
 class ActionResource(BaseResource):
@@ -552,10 +563,7 @@ class StaticResource(BaseResource):
             res.close()
 
 
-class Root(ModelResource):
-    """
-    FIXME: The resource initiate itself the first time it is rendered
-    or when locating children in a rather ugly way."""
+class Root(BaseResource):
 
     implements(IAspect)
 
@@ -567,49 +575,28 @@ class Root(ModelResource):
         self.source = source
         self.hostname = hostname
         self.port = port
-        self._initiating = True
         self._static = (static_path and
                         StaticResource(hostname, port, static_path))
         self._methods = set([http.Methods.GET])
 
     def locate_resource(self, request, location, remaining):
 
-        def locate(_param):
-            if self._static and remaining[0] == u"static":
-                return self._static, remaining[1:]
-            return ModelResource.locate_resource(self, request,
-                                                 location, remaining)
+        if self._static and remaining[0] == u"static":
+            return self._static, remaining[1:]
 
-        d = self.initiate()
-        return d.addCallback(locate)
+        return self._build_root(request), remaining
 
-    def render_resource(self, request, response, location):
-        d = self.initiate()
-        d.addCallback(ModelResource.render_resource,
-                      request, response, location)
-        return d
+    ### private ###
 
-    def initiate(self):
-        if isinstance(self._initiating, defer.Deferred):
-            d = defer.Deferred()
-            self._initiating.addCallback(d.callback)
-            self._initiating.addCallback(defer.override_result, self)
-            return d
-
-        if self._initiating is None:
-            return defer.succeed(self)
-
-        self._methods.clear()
+    def _build_root(self, request):
         root = (self.hostname, self.port)
-        ModelResource.__init__(self, self.source, root)
-        d = self.model.initiate(aspect=self)
-        d.addCallback(defer.drop_param, ModelResource.initiate, self)
-        self._initiating = d
-        d.addCallback(self._initiated)
-        return d
+        model = IModel(self.source)
+        officer = DummyOfficer(request.peer_info)
 
-    def _initiated(self, _param):
-        self._initiating.addErrback(defer.handle_failure, "Failure during "
-                                    "root resource initialization")
-        self._initiating = None
-        return self
+        d = defer.succeed(None)
+        d.addCallback(defer.drop_param, model.initiate,
+                      aspect=self, officer=officer)
+        d.addCallback(ModelResource, root)
+        d.addCallback(ModelResource.initiate)
+        d.addErrback(self.filter_errors)
+        return d

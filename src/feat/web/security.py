@@ -6,29 +6,12 @@ from OpenSSL import SSL, crypto
 from twisted.internet import ssl
 from zope.interface import Interface, Attribute, implements
 
-from feat.common import log, error
+from feat.common import log
 
-
-### Exceptions ###
-
-
-class SecurityError(error.FeatError):
-    pass
+from feat.interface.security import SecurityError, IPeerInfo
 
 
 ### Interfaces ###
-
-
-class IPeerInfo(Interface):
-
-    identity = Attribute("Name uniquely identifying a user")
-    email = Attribute("User email address")
-
-    def has_role(role):
-        pass
-
-    def iter_roles():
-        pass
 
 
 class ISecurityPolicy(Interface):
@@ -65,11 +48,14 @@ class PeerInfo(object):
         else:
             self._roles = set()
         self._email = str(email)
+        context = [self._identity]
+        context.extend(self._roles)
+        self._context = (u", ".join(context)).encode("utf8")
 
     def __repr__(self):
         l = [self._identity]
         l.extend(self._roles)
-        return "<User %s>" % (", ".join(l), )
+        return "<User %s>" % (self._context, )
 
     ### IPeerInfo ###
 
@@ -80,6 +66,10 @@ class PeerInfo(object):
     @property
     def email(self):
         return self._email
+
+    @property
+    def context(self):
+        return self._context
 
     def has_role(self, role):
         return role in self._roles

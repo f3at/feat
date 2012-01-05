@@ -31,9 +31,12 @@ from feat.models import reference as models_reference
 from feat.models import action as models_action
 
 from feat.models.interface import ActionCategories, ModelError, NotSupported
+from feat.models.interface import IOfficer, Unauthorized
 from feat.models.interface import IModel, IModelItem
 from feat.models.interface import IActionFactory, IModelFactory
 from feat.models.interface import IAspect, IReference, IContextMaker
+
+from feat.interface.security import IPeerInfo
 
 
 ### Annotations ###
@@ -380,6 +383,79 @@ def restore_factories(snapshot):
 ### Classes ###
 
 
+class DummyPeerInfo(object):
+
+    implements(IPeerInfo)
+
+    @property
+    def identity(self):
+        return "gest"
+
+    @property
+    def email(self):
+        return "gest@gest"
+
+    @property
+    def context(self):
+        return "gest"
+
+    def has_role(role):
+        return False
+
+    def iter_roles():
+        return iter([])
+
+
+class DummyOfficer(object):
+
+    implements(IOfficer)
+
+    def __init__(self, peer_info=None):
+        self._peer_info = peer_info or DummyPeerInfo()
+
+    ### IOfficer ###
+
+    @property
+    def peer_info(self):
+        return self._peer_info
+
+    def identify_item_name(self, model, item_name):
+        return item_name
+
+    def identify_item(self, model, item):
+        return self.identify_item_name(model, item.name)
+
+    def identify_action_name(self, model, action_name):
+        return action_name
+
+    def identify_action(self, model, action):
+        return self.identify_action_name(model, action.name)
+
+    def is_item_allowed(self, model, item_name):
+        return True
+
+    def is_fetch_allowed(self, model, item):
+        return True
+
+    def is_browse_allowed(self, model, item):
+        return True
+
+    def is_action_allowed(self, model, action_name):
+        return True
+
+    def is_perform_allowed(self, model, action):
+        return True
+
+    def get_fetch_officer(self, model, item):
+        return self
+
+    def get_browse_officer(self, model, item):
+        return self
+
+
+_dummy_officer = DummyOfficer()
+
+
 class MetaModel(type(models_meta.Metadata)):
     implements(IModelFactory)
 
@@ -393,7 +469,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     """
 
     __metaclass__ = MetaModel
-    __slots__ = ("source", "aspect", "view", "reference")
+    __slots__ = ("source", "aspect", "view", "reference", "officer")
 
     implements(IModel, IContextMaker)
 
@@ -405,9 +481,11 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     ### class methods ###
 
     @classmethod
-    def create(cls, source, aspect=None, view=None, parent=None):
+    def create(cls, source, aspect=None, view=None,
+               parent=None, officer=None):
         m = cls(source)
-        return m.initiate(aspect=aspect, view=view, parent=parent)
+        return m.initiate(aspect=aspect, view=view,
+                          parent=parent, officer=officer)
 
     ### public ###
 
@@ -416,6 +494,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         self.aspect = None
         self.view = None
         self.reference = None
+        self.officer = _dummy_officer
 
     def __repr__(self):
         return "<%s %s '%s'>" % (type(self).__name__,
@@ -434,7 +513,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     ### IContextMaker ###
 
     def make_context(self, key=None, view=None, action=None):
-        return {"model": self,
+        return {"model": self, "officer": self.officer,
                "view": view if view is not None else self.view,
                "key": unicode(key) if key is not None else self.name,
                "action": action}
@@ -457,7 +536,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     def desc(self):
         return self.aspect.desc if self.aspect is not None else None
 
-    def initiate(self, aspect=None, view=None, parent=None):
+    def initiate(self, aspect=None, view=None, parent=None, officer=None):
         """Do not keep any reference to its parent,
         this way it can be garbage-collected."""
 
@@ -483,6 +562,8 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
             self.reference = reference
             return self
 
+        if officer is not None:
+            self.officer = IOfficer(officer)
         self.aspect = IAspect(aspect) if aspect is not None else None
         if self._model_view is not None:
             if callable(self._model_view):
@@ -895,12 +976,20 @@ class BaseModelItem(models_meta.Metadata):
     ### protected ###
 
     def _filter_errors(self, failure):
+        if failure.check(Unauthorized):
+            return failure
+
         error.handle_failure(None, failure,
                              "Failure creating model for '%s'", self.name)
         return None
 
     def _create_model(self, view_getter=None, source_getters=None,
-                      model_factory=None):
+                      model_factory=None, officer=None):
+        """
+        Creates a model from the model factory after retrieving
+        the source and the view. The officer is the IOfficer
+        FOR THE MODEL TO BE CREATED and NO OFFICER CHECKS ARE PERFORMED.
+        """
 
         if view_getter is not None:
             d = defer.succeed(view_getter)
@@ -910,7 +999,8 @@ class BaseModelItem(models_meta.Metadata):
             # views are inherited
             d = defer.succeed(self.model.view)
 
-        d.addCallback(self._retrieve_model, source_getters, model_factory)
+        d.addCallback(self._retrieve_model, source_getters,
+                      model_factory, officer)
 
         d.addErrback(self._filter_errors)
         return d
@@ -927,12 +1017,12 @@ class BaseModelItem(models_meta.Metadata):
             raise ModelError("'%s' view not found" % (self.name, ))
         return view
 
-    def _retrieve_model(self, view, source_getters, model_factory):
+    def _retrieve_model(self, view, source_getters, model_factory, officer):
         d = defer.succeed(self.model.source)
         context = self.model.make_context(key=self.name, view=view)
         for getter in source_getters:
             d.addCallback(self._retrieve_source, getter, context)
-        d.addCallback(self._wrap_source, view, model_factory)
+        d.addCallback(self._wrap_source, view, model_factory, officer)
         return d
 
     def _retrieve_source(self, source, source_getter, context):
@@ -940,7 +1030,7 @@ class BaseModelItem(models_meta.Metadata):
             return source_getter(source, context)
         return source
 
-    def _wrap_source(self, source, view, model_factory):
+    def _wrap_source(self, source, view, model_factory, officer):
         if source is None:
             return source
 
@@ -948,18 +1038,18 @@ class BaseModelItem(models_meta.Metadata):
             return source
 
         if IModel.providedBy(source):
-            return self._init_model(source, view)
+            return self._init_model(source, view, officer)
 
         if not IModelFactory.providedBy(model_factory):
             if callable(model_factory):
                 ctx = self.model.make_context(key=self.name, view=view)
                 d = model_factory(source, ctx)
-                d.addCallback(self._got_model_factory, source, view)
+                d.addCallback(self._got_model_factory, source, view, officer)
                 return d
 
-        return self._got_model_factory(model_factory, source, view)
+        return self._got_model_factory(model_factory, source, view, officer)
 
-    def _got_model_factory(self, model_factory, source, view):
+    def _got_model_factory(self, model_factory, source, view, officer):
         model = source
         factory = None
         if IModelFactory.providedBy(model_factory):
@@ -968,11 +1058,11 @@ class BaseModelItem(models_meta.Metadata):
             factory = get_factory(model_factory)
         if factory is not None:
             model = factory(source)
-        return self._init_model(model, view)
+        return self._init_model(model, view, officer)
 
-    def _init_model(self, model, view):
-        return IModel(model).initiate(aspect=self.aspect,
-                                      view=view, parent=self.model)
+    def _init_model(self, model, view, officer):
+        return IModel(model).initiate(aspect=self.aspect, view=view,
+                                      parent=self.model, officer=officer)
 
 
 class MetaModelItem(type(BaseModelItem)):
@@ -1076,14 +1166,18 @@ class ModelItem(BaseModelItem):
         return self._reference
 
     def browse(self):
+        officer = self.model.officer.get_browse_officer(self.model, self)
         return self._create_model(view_getter=self._view,
                                   source_getters=[self._source, self._browse],
-                                  model_factory=self._factory)
+                                  model_factory=self._factory,
+                                  officer=officer)
 
     def fetch(self):
+        officer = self.model.officer.get_fetch_officer(self.model, self)
         return self._create_model(view_getter=self._view,
                                   source_getters=[self._source, self._fetch],
-                                  model_factory=self._factory)
+                                  model_factory=self._factory,
+                                  officer=officer)
 
 
 class MetaActionItem(type):
@@ -1324,10 +1418,10 @@ class _DynCollection(Collection):
 
     ### IModel ###
 
-    def initiate(self, aspect=None, view=None, parent=None):
+    def initiate(self, aspect=None, view=None, parent=None, officer=None):
         self.parent = parent
-        return Collection.initiate(self, aspect=aspect,
-                                   view=view, parent=parent)
+        return Collection.initiate(self, aspect=aspect, view=view,
+                                   parent=parent, officer=officer)
 
     ### IContextMaker ###
 
@@ -1362,10 +1456,13 @@ class DynamicModelItem(BaseModelItem):
         return self
 
     def initiate(self):
+        #FIXME: dynamic items officer are always fetched never browsed
+        officer = self.model.officer.get_fetch_officer(self.model, self)
         # We need to do it right away to be sure the source exists
         d = self._create_model(view_getter=self.model._fetch_view,
                                source_getters=[self.model._fetch_source],
-                               model_factory=self.model._item_model)
+                               model_factory=self.model._item_model,
+                               officer=officer)
         d.addCallback(self._got_model)
         return d
 
@@ -1392,7 +1489,7 @@ class DynamicModelItem(BaseModelItem):
     ### IModelItem ###
 
     def browse(self):
-        return self._child
+        return defer.succeed(self._child)
 
     def fetch(self):
         return defer.succeed(self._child)

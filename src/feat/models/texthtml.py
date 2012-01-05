@@ -8,6 +8,7 @@ from feat.web.markup import html
 from feat.models.interface import ActionCategories, ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
 from feat.models.interface import IValueOptions, IErrorPayload
+from feat.models.interface import Unauthorized
 
 
 MIME_TYPE = "text/html"
@@ -41,14 +42,16 @@ class BaseLayout(html.Document):
 
 class ModelLayout(BaseLayout):
 
-    def __init__(self, title, context):
+    def __init__(self, title, model, context):
         BaseLayout.__init__(self, title, context)
-        self.div(_class='header')(*self._render_header(context)).close()
+        headers = self._render_header(model, context)
+        self.div(_class='header')(*headers).close()
         self.h1()(title).close()
         self.content = self.div(_class='content')()
 
-    def _render_header(self, context):
-        res = list("History: ")
+    def _render_header(self, model, context):
+        identity = model.officer.peer_info.identity
+        res = [identity, " | History: "]
         host, port = context.names[0]
         root_url = reference.Local().resolve(context)
         res.append(html.tags.a(href=root_url)("%s:%d" % (host, port)))
@@ -104,7 +107,7 @@ class ModelWriter(log.Logger):
         context = kwargs['context']
 
         title = model.label or model.name
-        markup = ModelLayout(title, context)
+        markup = ModelLayout(title, model, context)
 
         if IAttribute.providedBy(model):
             attr = self._format_attribute(model, context)
@@ -140,14 +143,18 @@ class ModelWriter(log.Logger):
             ordered = self._order_items(model, items)
             ul = markup.ul(_class="items")
             for item in ordered:
+                try:
+                    #FIXME: shouldn't need to fetch the model for that
+                    m = yield item.fetch()
+                except Unauthorized:
+                    continue
+
                 li = markup.li()
 
                 url = item.reference.resolve(context)
                 markup.span(_class='name')(
                     html.tags.a(href=url)(item.label or item.name)).close()
 
-                #FIXME: shouldn't need to fetch the model for that
-                m = yield item.fetch()
                 if IAttribute.providedBy(m):
                     li.append(self._format_attribute_item(item, context))
                 else:
@@ -160,10 +167,13 @@ class ModelWriter(log.Logger):
                 if array_deepness:
                         submodel = yield item.fetch()
                         if IModel.providedBy(submodel):
-                            array = self._render_array(submodel,
-                                                       array_deepness,
-                                                       context)
-                            markup.div(_class='array')(array).close()
+                            try:
+                                array = self._render_array(submodel,
+                                                           array_deepness,
+                                                           context)
+                                markup.div(_class='array')(array).close()
+                            except Unauthorized:
+                                pass
                 li.close()
             ul.close()
         markup.hr()
