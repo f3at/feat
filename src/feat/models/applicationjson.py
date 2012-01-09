@@ -264,10 +264,12 @@ def render_compact_submodel(submodel, item, context):
             d = attr.fetch_value()
             d.addCallback(render_value, context)
             return d
+    raise Exception("No compact value")
 
 
 def filter_model_errors(failure, item, context):
     failure.trap(Unauthorized)
+    print "E"*80, item.name
     if item.reference is not None:
         return item.reference.resolve(context)
     return failure
