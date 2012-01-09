@@ -437,6 +437,7 @@ class PaisleySpecific(object):
 
 @common.attr(timescale=0.05)
 class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
+    skip_coverage = False
 
     def setUp(self):
         common.IntegrationTest.setUp(self)
@@ -450,6 +451,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
 
     timeout = 4
     slow = True
+    skip_coverage = False
 
     @defer.inlineCallbacks
     def setUp(self):
