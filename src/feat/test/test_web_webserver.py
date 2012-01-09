@@ -245,6 +245,7 @@ class TestTypeNegociation(common.TestCase):
 
 ### TestResourceWrapper ###
 
+
 class DummyPrivateChannel(object):
 
     def __init__(self):
