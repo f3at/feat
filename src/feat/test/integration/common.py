@@ -469,6 +469,16 @@ class ModelTestMixin(object):
         return self._model_tree_iteration(model, visited, context)
 
     @defer.inlineCallbacks
+    def model_descend(self, model, *path):
+        i = model
+        for part in path:
+            i = yield i.fetch_item(part)
+            if i is None:
+                return
+            i = yield i.fetch()
+        defer.returnValue(i)
+
+    @defer.inlineCallbacks
     def _model_tree_iteration(self, model, visited, context):
         model = IModel(model)
         if model in visited:

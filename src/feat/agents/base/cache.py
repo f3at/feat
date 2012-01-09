@@ -150,6 +150,11 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         f.add_callback(fiber.drop_param, self.get_document_ids)
         return f
 
+    @replay.mutable
+    def cleanup(self, state):
+        state.agent.cancel_change_listener(DocumentDeletions)
+        state.agent.cancel_change_listener(state.view_factory)
+
     @replay.immutable
     def get_document_ids(self, state):
         return state.documents.keys()

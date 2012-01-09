@@ -201,10 +201,12 @@ class DNSAgent(agent.BaseAgent):
 
     @replay.journaled
     def on_killed(self, state):
+        state.cache.cleanup()
         return fiber.wrap_defer(state.labour.cleanup)
 
     @replay.journaled
     def shutdown(self, state):
+        state.cache.cleanup()
         return fiber.wrap_defer(state.labour.cleanup)
 
     ### IDocumentChangeListner ###
@@ -294,6 +296,38 @@ class DNSAgent(agent.BaseAgent):
         except NotFoundError:
             return []
 
+    ### Used by model ###
+
+    @replay.immutable
+    def get_names(self, state):
+
+        resp = [self._name_to_prefix(x[4:], state.suffix)
+                for x in state.cache.get_document_ids()]
+        return resp
+
+    @replay.immutable
+    def get_name_document(self, state, prefix):
+
+        name = self._format_name(prefix, state.suffix)
+        doc_id = DnsName.name_to_id(name)
+        try:
+            doc = state.cache.get_document(doc_id)
+            return doc
+        except NotFoundError:
+            return []
+
+    @replay.immutable
+    def get_port(self, state):
+        return state.port
+
+    @replay.immutable
+    def get_ip(self, state):
+        return state.medium.get_ip()
+
+    @replay.immutable
+    def get_slaves(self, state):
+        return state.notify_cfg.slaves
+
     ### Private Methods ###
 
     @replay.mutable
@@ -361,6 +395,9 @@ class DNSAgent(agent.BaseAgent):
 
     def _format_name(self, prefix, suffix):
         return unicode(prefix+"."+suffix)
+
+    def _name_to_prefix(self, name, suffix):
+        return name[:-(len(suffix) + 1)]
 
     @agent.update_descriptor
     def _save_configuration_to_descriptor(self, state, desc):

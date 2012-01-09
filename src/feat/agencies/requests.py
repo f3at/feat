@@ -237,7 +237,6 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         if self._cmp_state(RequestState.requested):
             self._set_state(RequestState.terminated)
         common.ExpirationCallsMixin._terminate(self)
-        self.debug('Terminate called')
         self.agent.unregister_protocol(self)
         common.TransientInterestedMediumBase._terminate(self, result)
         return defer.succeed(self)

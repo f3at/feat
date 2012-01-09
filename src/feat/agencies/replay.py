@@ -831,7 +831,6 @@ class AgencyAgent(BaseReplayDummy):
         raise RuntimeError('This should never be called!')
 
     @serialization.freeze_tag('AgencyAgent.register_change_listener')
-    @replay.named_side_effect('AgencyAgent.register_change_listener')
     def register_change_listener(self, filter_, callback):
         raise RuntimeError('This should never be called!')
 
