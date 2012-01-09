@@ -399,10 +399,10 @@ class DummyPeerInfo(object):
     def context(self):
         return "gest"
 
-    def has_role(role):
+    def has_role(self, role):
         return False
 
-    def iter_roles():
+    def iter_roles(self):
         return iter([])
 
 
