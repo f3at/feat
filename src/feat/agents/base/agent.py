@@ -424,7 +424,7 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.immutable
     def register_change_listener(self, state, filter_, callback, **kwargs):
-        return state.medium.register_change_listener(
+        return fiber.wrap_defer(state.medium.register_change_listener,
             filter_, callback, **kwargs)
 
     @replay.immutable

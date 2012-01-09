@@ -48,7 +48,7 @@ class Agent(agent.BaseAgent):
 
     @replay.mutable
     def register(self, state):
-        self.register_change_listener('some_doc', self._callback)
+        return self.register_change_listener('some_doc', self._callback)
 
     @replay.mutable
     def cancel(self, state):
