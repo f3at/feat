@@ -240,9 +240,12 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(set_listener_id, filter_)
         return d
 
-    def cancel_listener(self, doc_id):
-        for l_id, doc_ids in self._listeners.items():
-            self._cancel_listener(l_id)
+    def cancel_listener(self, filter_):
+        for l_id, listener_filter in self._listeners.items():
+            if ((IViewFactory.providedBy(listener_filter) and
+                 filter_ is listener_filter) or
+                (filter_ in listener_filter)):
+                self._cancel_listener(l_id)
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
