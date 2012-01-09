@@ -81,8 +81,12 @@ class ErrorPayload(object):
         if not message:
             message = type(ex).__name__
 
-        debug = error.get_exception_message(ex)
-        trace = error.get_exception_traceback(ex)
+        debug = None
+        trace = None
+
+        if not isinstance(ex, http.HTTPError):
+            debug = error.get_exception_message(ex)
+            trace = error.get_exception_traceback(ex)
 
         return cls(code=code, message=message, debug=debug, trace=trace)
 
@@ -353,9 +357,10 @@ class ModelResource(BaseResource):
             if resource_name.startswith('_'):
                 return locate_action(resource_name[1:])
             action_name = self.method_actions.get(request.method)
-            return locate_default_action(resource_name, action_name)
+            d = locate_default_action(resource_name, action_name)
+        else:
+            d = locate_model(resource_name)
 
-        d = locate_model(resource_name)
         d.addErrback(self.filter_errors)
         return d
 
@@ -456,6 +461,7 @@ class ActionResource(BaseResource):
                     self._context.models[-1].name, params)
         d = self._action.perform(**params)
         d.addCallback(got_data)
+        d.addErrback(self.filter_errors)
         return d
 
     ### private ###
