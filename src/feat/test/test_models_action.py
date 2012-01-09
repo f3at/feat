@@ -103,6 +103,16 @@ class TestAction(action.Action):
     action.effect(call.model_perform("do_format"))
 
 
+class TestParamOrder1(action.Action):
+    action.param("c", value.Integer())
+    action.param("b", value.Integer())
+
+
+class TestParamOrder2(TestParamOrder1):
+    action.param("a", value.Integer())
+    action.param("c", value.Integer())
+
+
 class TestSubAction(TestAction):
     action.label(u"Sub Action")
     action.desc(u"Some sub action")
@@ -152,6 +162,16 @@ class TestModelsAction(common.TestCase):
                           % (Error.__name__, type(e).__name__, str(e)))
         else:
             self.fail("Should have raised %s: %s" % (Error.__name__, ))
+
+    def testParamOrder(self):
+        source = DummySource()
+        model = DummyModel(source)
+
+        a1 = TestParamOrder1(model)
+        a2 = TestParamOrder2(model)
+
+        self.assertEqual([p.name for p in a1.parameters], [u"c", u"b"])
+        self.assertEqual([p.name for p in a2.parameters], [u"b", u"a", u"c"])
 
     @defer.inlineCallbacks
     def testAvailability(self):

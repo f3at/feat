@@ -220,7 +220,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
     _is_idempotent = False
     _result_info = None
     _enabled = True
-    _parameters = container.MroDict("_mro_parameters")
+    _parameters = container.MroList("_mro_parameters")
     _effects = container.MroList("_mro_effects")
 
     ### class methods ###
@@ -279,7 +279,13 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
     @property
     def parameters(self):
-        return self._parameters.values()
+        inverted_result = []
+        already_added = set()
+        for p in reversed(self._parameters):
+            if p.name not in already_added:
+                inverted_result.append(p)
+                already_added.add(p.name)
+        return list(reversed(inverted_result))
 
     @property
     def result_info(self):
@@ -312,7 +318,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
             d.addCallback(raise_if_disabled, value)
             return d
 
-        parameters = self._parameters # Only once cause it is costly
+        parameters = self.parameters # Only once cause it is costly
         value = None
         d = defer.Deferred()
         d.addCallback(check_enabled)
@@ -329,9 +335,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                     kwargs[u"value"] = args[0]
 
             params = set(kwargs.keys())
-            expected = set(parameters.keys())
-            required = set([p.name for p in parameters.itervalues()
-                            if p.is_required])
+            expected = set([p.name for p in parameters])
+            required = set([p.name for p in parameters if p.is_required])
 
             if not required <= params:
                 raise TypeError("Action %s is missing parameters: %s"
@@ -344,12 +349,13 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                 raise TypeError("Action %s expects only parameters: %s"
                                 % (self.name, ", ".join(expected)))
 
+            param_index = dict([(p.name, p) for p in parameters])
             validated = {}
             for param_name, param_value in kwargs.iteritems():
-                info = parameters[param_name].value_info
+                info = param_index[param_name].value_info
                 validated[param_name] = IValidator(info).validate(param_value)
 
-            for param in parameters.itervalues():
+            for param in parameters:
                 if not param.is_required:
                     info = param.value_info
                     if param.name not in validated and info.use_default:
@@ -429,7 +435,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
         """@see: feat.models.action.value"""
         param = Param(u"value", value_info, is_required=True,
                       label=label, desc=desc)
-        cls._parameters[u"value"] = param
+        cls._parameters.append(param)
 
     @classmethod
     def annotate_param(cls, name, value_info, is_required=True,
@@ -438,11 +444,11 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
         name = _validate_str(name)
         param = Param(name, value_info, is_required=is_required,
                       label=label, desc=desc)
-        cls._parameters[name] = param
+        cls._parameters.append(param)
 
     @classmethod
     def annotate_param_instance(cls, param):
-        cls._parameters[param.name] = param
+        cls._parameters.append(param)
 
     @classmethod
     def annotate_effect(cls, effect):
