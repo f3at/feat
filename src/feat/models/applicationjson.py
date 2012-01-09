@@ -31,6 +31,7 @@ from feat.web import document
 from feat.models.interface import IModel, IReference, IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
+from feat.models.interface import Unauthorized
 
 MIME_TYPE = "application/json"
 
@@ -119,7 +120,9 @@ def render_item(item, context):
     result.add_if_not_none("desc", item.desc)
     result.add_if_true("metadata", render_metadata(item))
     result.add_result("href", item.reference, "resolve", context)
-    return item.fetch().addCallback(render_attribute, context, result)
+    args = (context, result)
+    return item.fetch().addCallbacks(render_attribute, filter_errors,
+                                     callbackArgs=args, errbackArgs=args)
 
 
 def render_attribute(model, context, result=None):
@@ -137,6 +140,11 @@ def render_attribute(model, context, result=None):
         d.addCallback(render_value, subcontext)
         result.add("value", d)
     return result.wait()
+
+
+def filter_errors(failure, context, result):
+    failure.trap(Unauthorized)
+    return result and result.wait()
 
 
 def render_action(action, context):
@@ -238,7 +246,10 @@ def render_compact_model(model, context):
 def render_compact_items(items, context, result):
     for item in items:
         d = item.fetch()
-        d.addCallback(render_compact_submodel, item, context)
+        args = (item, context)
+        d.addCallbacks(render_compact_submodel, filter_model_errors,
+                       callbackArgs=args, errbackArgs=args)
+
         result.add(item.name, d)
     return result.wait()
 
@@ -253,7 +264,13 @@ def render_compact_submodel(submodel, item, context):
             d = attr.fetch_value()
             d.addCallback(render_value, context)
             return d
-    raise Exception("No compact value")
+
+
+def filter_model_errors(failure, item, context):
+    failure.trap(Unauthorized)
+    if item.reference is not None:
+        return item.reference.resolve(context)
+    return failure
 
 
 def render_json(data, doc):
