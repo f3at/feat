@@ -13,6 +13,7 @@ from feat import gateway
 from feat.web import document, http
 
 from feat.models.interface import IModel, IContext, ActionCategories
+from feat.models.interface import Unauthorized
 
 
 class TestContext(object):
@@ -31,7 +32,7 @@ class TestContext(object):
         return self.make_model_address(self.names + (action.name, ))
 
     def make_model_address(self, path):
-        path = filter(None, path)
+        path = filter(None, path[1:])
         return '/'.join(str(p) for p in path)
 
     def descend(self, model):
@@ -156,8 +157,8 @@ class Node(_Base):
 class NodeModel(model.Model):
 
     model.identity('node-model')
-    model.collection('locations', getter.source_get('get_child'),
-                     call.source_call('iter_child_names'),
+    model.collection('locations', call.source_call('iter_child_names'),
+                     getter.source_get('get_child'),
                      meta=[('html-render', 'array, 3')],
                      model_meta=[('html-render', 'array, 3')],
                      desc="Locations or whatever",
@@ -170,8 +171,16 @@ class LocationModel(model.Model):
     model.identity('location-model')
     model.attribute('name', value.String(), getter.source_attr('name'),
                     label='hostname')
-    model.collection('agents', getter.source_get('get_child'),
-                     call.source_call('iter_child_names'))
+    model.child('unauthorized', model='unauthorized')
+    model.collection('agents', call.source_call('iter_child_names'),
+                     getter.source_get('get_child'))
+
+
+class UnauthorizedModel(model.Model):
+    model.identity('unauthorized')
+
+    def init(self, *args, **kwargs):
+        raise Unauthorized()
 
 
 class ShutdownAction(action.Action):
@@ -204,5 +213,7 @@ class AgentModel(model.Model):
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'),
                     setter.source_attr('count'))
+    model.child('unauthorized', model='unauthorized')
+
     model.action('shutdown', ShutdownAction)
     model.action('delete', DeleteAction)

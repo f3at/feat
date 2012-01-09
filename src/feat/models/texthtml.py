@@ -95,6 +95,16 @@ def html_links(meta):
     return set(str(m.value) for m in meta.get_meta('html-link'))
 
 
+@defer.inlineCallbacks
+def safe_fetch(item):
+    '''Fetch model or return None if unauthorized'''
+    try:
+        resp = yield item.fetch()
+        defer.returnValue(resp)
+    except Unauthorized:
+        return
+
+
 class ModelWriter(log.Logger):
     implements(document.IWriter)
 
@@ -143,19 +153,14 @@ class ModelWriter(log.Logger):
             ordered = self._order_items(model, items)
             ul = markup.ul(_class="items")
             for item in ordered:
-                try:
-                    #FIXME: shouldn't need to fetch the model for that
-                    m = yield item.fetch()
-                except Unauthorized:
-                    continue
-
+                submodel = yield safe_fetch(item)
                 li = markup.li()
 
                 url = item.reference.resolve(context)
                 markup.span(_class='name')(
                     html.tags.a(href=url)(item.label or item.name)).close()
 
-                if IAttribute.providedBy(m):
+                if IAttribute.providedBy(submodel):
                     li.append(self._format_attribute_item(item, context))
                 else:
                     markup.span(_class="value").close()
@@ -164,16 +169,12 @@ class ModelWriter(log.Logger):
                     markup.span(_class='desc')(item.desc).close()
 
                 array_deepness = render_array(item)
-                if array_deepness:
-                        submodel = yield item.fetch()
-                        if IModel.providedBy(submodel):
-                            try:
-                                array = self._render_array(submodel,
-                                                           array_deepness,
-                                                           context)
-                                markup.div(_class='array')(array).close()
-                            except Unauthorized:
-                                pass
+
+                if submodel and array_deepness:
+                    if IModel.providedBy(submodel):
+                        array = self._render_array(
+                            submodel, array_deepness, context)
+                        markup.div(_class='array')(array).close()
                 li.close()
             ul.close()
         markup.hr()
@@ -251,7 +252,7 @@ class ModelWriter(log.Logger):
 
     @defer.inlineCallbacks
     def _format_attribute_item(self, item, context):
-        model = yield item.fetch()
+        model = yield safe_fetch(item)
         if not IModel.providedBy(model):
             defer.returnValue("")
         result = yield self._format_attribute(model, context.descend(model),
@@ -317,16 +318,14 @@ class ModelWriter(log.Logger):
         if not IModel.providedBy(model):
             return
         items = yield model.fetch_items()
-        #FIXME: column ordering do not work
-        ordered = self._order_items(model, items)
         # [dict of attributes added by this level, list of child rows]
         tree.append([dict(), list()])
-        for item in ordered:
-            #FIXME: should not need to fetch model for this
-            m = yield item.fetch()
-            if not IAttribute.providedBy(m):
+        for item in items:
+            submodel = yield safe_fetch(item)
+            if not submodel:
+                continue
+            if not IAttribute.providedBy(submodel):
                 if limit > 0:
-                    submodel = yield item.fetch()
                     if IModel.providedBy(submodel):
                         subcontext = context.descend(submodel)
                         yield self._build_tree(tree[-1][1], submodel,
