@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import log, defer
+from feat.common import log, defer, first
 from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
@@ -86,6 +86,16 @@ def render_array(meta):
     for fields in meta:
         if fields[0] == "array":
             return int(fields[1])
+    return None
+
+
+def column_names(meta):
+    if not IMetadata.providedBy(meta):
+        return False
+    meta = (parse_meta(i) for i in meta.get_meta('html-render'))
+    for fields in meta:
+        if fields[0] == "array-columns":
+            return fields[1:]
     return None
 
 
@@ -284,6 +294,7 @@ class ModelWriter(log.Logger):
     def _render_array(self, model, limit, context):
         tree = list()
         flattened = list()
+        # tuples (column_name, deepness)
         columns = list()
 
         if not context.models or model != context.models[-1]:
@@ -292,6 +303,16 @@ class ModelWriter(log.Logger):
             context = context.descend(model)
         yield self._build_tree(tree, model, limit, context)
         self._flatten_tree(flattened, columns, dict(), tree[0], limit)
+
+        #sort and whitelist column if array-column meta is specified
+        desired_column_names = column_names(model)
+        if desired_column_names:
+            new_columns = list()
+            for name in desired_column_names:
+                found = first(x for x in columns if x[0] == name)
+                if found:
+                    new_columns.append(found)
+            columns = new_columns
 
         headers = [html.tags.th()(x) for x, _ in columns]
         table = html.tags.table()(

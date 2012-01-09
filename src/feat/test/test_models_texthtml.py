@@ -153,14 +153,19 @@ class Node(_Base):
         self.locations[name] = node
 
 
+array_columns_meta = 'array-columns, hostname, name, status, count'
+
+
 @adapter.register(Node, IModel)
 class NodeModel(model.Model):
 
     model.identity('node-model')
     model.collection('locations', call.source_call('iter_child_names'),
                      getter.source_get('get_child'),
-                     meta=[('html-render', 'array, 3')],
-                     model_meta=[('html-render', 'array, 3')],
+                     meta=[('html-render', 'array, 3'),
+                           ('html-render', array_columns_meta)],
+                     model_meta=[('html-render', 'array, 3'),
+                                 ('html-render', array_columns_meta)],
                      desc="Locations or whatever",
                      label='locations')
 
@@ -212,6 +217,10 @@ class AgentModel(model.Model):
                     meta=[('link_owner', True)], label='name')
     model.attribute('status', value.String(), getter.source_attr('status'))
     model.attribute('count', value.Integer(), getter.source_attr('count'),
+                    setter.source_attr('count'))
+    model.attribute('not_rendered_in_array',
+                    value.Integer(),
+                    getter.source_attr('count'),
                     setter.source_attr('count'))
     model.child('unauthorized', model='unauthorized')
 
