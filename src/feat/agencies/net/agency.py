@@ -693,12 +693,13 @@ class Agency(agency.Agency):
         #override the agency hostname if specified
         hostname = self.config['agency']['hostname']
         domainname = self.config['agency']['domainname']
-        if hostname is not None and domainname is not None:
+        if hostname is None:
+            hostname = socket.gethostname()
+        if domainname is not None:
             hostname = ".".join([hostname, domainname])
-        elif hostname is not None and domainname is None:
+        else:
             hostname = socket.getfqdn(hostname)
-        if hostname is not None:
-            self._hostname = unicode(hostname)
+        self._hostname = unicode(hostname)
 
     def _initiate_messaging(self, config):
         try:
