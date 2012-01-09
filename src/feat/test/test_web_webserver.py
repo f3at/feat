@@ -245,6 +245,11 @@ class TestTypeNegociation(common.TestCase):
 
 ### TestResourceWrapper ###
 
+class DummyPrivateChannel(object):
+
+    def __init__(self):
+        self.transport = None
+
 
 class DummyPrivateRequest(object):
 
@@ -260,6 +265,7 @@ class DummyPrivateRequest(object):
         self.request_headers = {}
         self.response_headers = {}
         self._finished = defer.Deferred()
+        self.channel = DummyPrivateChannel()
 
     def setResponseCode(self, code):
         self.code = code
