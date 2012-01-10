@@ -486,7 +486,7 @@ class String(Value):
             val = unicode(value)
         val = super(String, self).validate(val)
         if not isinstance(val, unicode):
-            raise ValueError(value)
+            raise ValueError("Not a string: %r" % (value, ))
         return val
 
     def publish(self, value):
@@ -500,7 +500,7 @@ class String(Value):
             val = unicode(value)
         val = super(String, self).publish(val)
         if not isinstance(val, unicode):
-            raise ValueError(value)
+            raise ValueError("Not a string: %r" % (value, ))
         return val
 
 
@@ -520,7 +520,7 @@ class Integer(Value):
             value = int(value)
         value = super(Integer, self).validate(value)
         if not isinstance(value, (int, long)):
-            raise ValueError(value)
+            raise ValueError("Not an integer: %r" % (value, ))
         return value
 
     def publish(self, value):
@@ -530,7 +530,7 @@ class Integer(Value):
         """
         value = super(Integer, self).publish(value)
         if not isinstance(value, (int, long)):
-            raise ValueError(value)
+            raise ValueError("Not an integer: %r" % (value, ))
         return value
 
 
@@ -557,16 +557,16 @@ class Boolean(Value):
             elif value.lower() == "false":
                 value = False
             else:
-                raise ValueError(value)
+                raise ValueError("Not a boolean: %r" % (value, ))
         value = super(Boolean, self).validate(value)
         if not isinstance(value, bool):
-            raise ValueError(value)
+            raise ValueError("Not a boolean: %r" % (value, ))
         return value
 
     def publish(self, value):
         value = super(Boolean, self).publish(value)
         if not isinstance(value, bool):
-            raise ValueError(value)
+            raise ValueError("Not a boolean: %r" % (value, ))
         return value
 
 

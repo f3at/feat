@@ -24,10 +24,13 @@ from zope.interface import Interface, Attribute
 
 from feat.common import enum, error
 
-__all__ = ["ResponseTypes", "ActionCategories", "ValueTypes",
+__all__ = ["ResponseTypes", "ActionCategories",
+           "ValueTypes", "ErrorTypes",
            "ModelError", "TransientError", "BadReference",
            "NotSupported", "Unauthorized", "NotAvailable",
            "ActionFailed", "ActionConflict",
+           "ParameterError", "MissingParameters",
+           "UnknownParameters", "InvalidParameters",
            "IMetadata", "IMetadataItem",
            "IOfficer", "IContext",
            "IReference", "IRelativeReference",
@@ -81,6 +84,24 @@ class ValueTypes(enum.Enum):
      collection, binary) = range(9)
 
 
+class ErrorTypes(enum.Enum):
+    """
+    Types of parameter error:
+     - generic: any error uncovered by the other types.
+     - http: http protocol specific error.
+     - parameter_error: action parameter error not covered by the other types
+     - missing_parameters: missing action parameters.
+     - unknown_parameters: unknown action parameters.
+     - invalid_parameters: invalid action parameters.
+    """
+    (generic,
+     http,
+     parameter_error,
+     missing_parameters,
+     unknown_parameters,
+     invalid_parameters) = range(6)
+
+
 class ModelError(error.FeatError):
     """Base exception for model related errors."""
 
@@ -126,6 +147,53 @@ class ActionFailed(ModelError):
 class ActionConflict(ActionFailed):
     """Raised when an action could not be performed because
     it conflict with the current state of the model."""
+
+
+class ParameterError(ModelError):
+    """Raised when an action cannot be performed because
+    a required parameter is missing, an unknown parameter
+    has been specified or the value failed validation.
+    @ivar parameters: parameters that raised the error.
+    @type parameters: (str, )
+    @ivar error_type: type of parameter error
+    @type error_type: ParameterErrorTypes
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.parameters = tuple(kwargs.pop("params", ()))
+        self.error_type = kwargs.pop("error_type", ErrorTypes.parameter_error)
+        ModelError.__init__(self, *args, **kwargs)
+
+
+class MissingParameters(ParameterError):
+    """Raised when some required parameters are missing
+    to perform an action."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["error_type"] = ErrorTypes.missing_parameters
+        ParameterError.__init__(self, *args, **kwargs)
+
+
+class UnknownParameters(ParameterError):
+    """Raised when some required unknown parameters have been specified."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["error_type"] = ErrorTypes.unknown_parameters
+        ParameterError.__init__(self, *args, **kwargs)
+
+
+class InvalidParameters(ParameterError):
+    """Raised when some parameters failed validation.
+    @ivar reasons: reasons of the validation failure indexed
+                   by parameter name.
+    @type reasons: {str: str}
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.reasons = dict(kwargs.pop("params", {}))
+        kwargs["params"] = self.reasons.keys()
+        kwargs["error_type"] = ErrorTypes.invalid_parameters
+        ParameterError.__init__(self, *args, **kwargs)
 
 
 class IMetadata(Interface):
@@ -863,9 +931,8 @@ class IModelAction(Interface):
                                to perform the action.
         @errback NotAvailable: if the model source is not available
                                or the action is not enabled.
-        @errback ValueError: if an action parameter is wrong.
-        @errback TypeError: if a parameter is missing
-                            or an unknown parameter was specified.
+        @errback ParameterError: if an action parameter is missing, wrong
+                                 or an unknown parameter was specified.
         @errback ActionFailed: if the action failed in any ways.
         """
 
@@ -893,10 +960,16 @@ class IActionPayload(Interface):
 
 
 class IErrorPayload(Interface):
-    """Interface identifying an error object."""
+    """Interface identifying a generic error object."""
 
-    code = Attribute("Error number. @type: int or None")
+    error_type = Attribute("Error type. @type: ErrorTypes")
+    error_code = Attribute("Error number. @type: int or None")
     message = Attribute("Short error message. @type: unicode or None")
+    subjects = Attribute("Subject of the error, what causes the error. "
+                        "@type: list of unicode or None")
+    reasons = Attribute("Reasons of the errors, optional dictionary indexed "
+                        "by a subject describing the reason why it failed "
+                        "@type: {unicode(): unicode()}")
     debug = Attribute("Debugging information. @type: unicode or None")
     trace = Attribute("Debugging trace. @type: unicode or None")
 

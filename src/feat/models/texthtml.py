@@ -389,9 +389,9 @@ class ErrorWriter(log.Logger):
         markup = ErrorLayout("Error", context)
 
         s = markup.span(_class="error")("ERROR")
-        if obj.code is not None:
+        if obj.error_code is not None:
             s.content.append(" ")
-            s.content.append(str(obj.code))
+            s.content.append(str(obj.error_code))
         if obj.message is not None:
             s.content.append(": ")
             s.content.append(obj.message)

@@ -27,7 +27,7 @@ from zope.interface import implements
 
 from twisted.python.failure import Failure
 
-from feat.common import log, error, defer, mro, annotate, container
+from feat.common import error, defer, mro, annotate, container
 from feat.models import utils, reference, meta as models_meta
 
 from feat.models.interface import *
@@ -310,7 +310,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
 
         def raise_if_disabled(enabled, value):
             if not enabled:
-                raise TypeError('Action %s is not enabled' % (self.name, ))
+                raise NotAvailable('Action %s is not enabled' % (self.name, ))
             return value
 
         def check_enabled(value):
@@ -323,14 +323,13 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
         d = defer.Deferred()
         d.addCallback(check_enabled)
         try:
-
             if len(args) > 0:
                 values = list(args)
                 values += [kwargs[u"value"]] if u"value" in kwargs else []
                 if len(values) > 1:
-                    raise TypeError("Action %s can only have one value: %s"
-                                    % (self.name,
-                                       ", ".join([repr(v) for v in values])))
+                    m = ("Action %s can only have one value: %s"
+                         % (self.name, ", ".join([repr(v) for v in values])))
+                    raise ParameterError(m, params=("value", ))
                 if args:
                     kwargs[u"value"] = args[0]
 
@@ -339,21 +338,37 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
             required = set([p.name for p in parameters if p.is_required])
 
             if not required <= params:
-                raise TypeError("Action %s is missing parameters: %s"
-                                % (self.name, ", ".join(required - params)))
+                missings = required - params
+                msg = ("Action %s is missing parameter(s): %s"
+                       % (self.name, ", ".join(missings)))
+                raise MissingParameters(msg, params=missings)
 
             if not params <= expected:
+                unknown = params - expected
                 if not expected:
-                    raise TypeError("Action %s expects no parameters"
-                                    % (self.name, ))
-                raise TypeError("Action %s expects only parameters: %s"
-                                % (self.name, ", ".join(expected)))
+                    msg = ("Action %s expects no parameters" % (self.name, ))
+                else:
+                    msg = ("Action %s do not expects parameter(s): %s"
+                           % (self.name, ", ".join(unknown)))
+                raise UnknownParameters(msg, params=unknown)
 
             param_index = dict([(p.name, p) for p in parameters])
             validated = {}
+            errors = {}
             for param_name, param_value in kwargs.iteritems():
                 info = param_index[param_name].value_info
-                validated[param_name] = IValidator(info).validate(param_value)
+                try:
+                    valval = IValidator(info).validate(param_value)
+                    validated[param_name] = valval
+                except ValueError, e:
+                    errors[param_name] = str(e)
+
+            if errors:
+                param_errors = ", ".join("%s: %s" % (p, m)
+                                         for p, m in errors.iteritems())
+                msg = ("Action %s parameter(s) invalid: %s"
+                       % (self.name, param_errors))
+                raise InvalidParameters(msg, params=errors)
 
             for param in parameters:
                 if not param.is_required:
@@ -387,10 +402,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
             else:
                 d.addCallback(defer.override_result, None)
 
-        except ValueError:
-            return defer.fail()
-
-        except TypeError:
+        except:
             return defer.fail()
 
         else:

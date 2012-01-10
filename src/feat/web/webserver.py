@@ -271,6 +271,9 @@ def read_object(function, iface, *default):
             return function(self, obj, request, *args, **kwargs)
 
         def error(failure):
+            if failure.check(document.DocumentFormatError):
+                raise http.BadRequestError(failure.getErrorMessage(),
+                                           cause=failure.value)
             failure.trap(http.BadRequestError)
             if default:
                 return function(self, default[0], request, *args, **kwargs)

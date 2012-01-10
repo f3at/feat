@@ -164,9 +164,12 @@ class TestModelsProperty(common.TestCase):
         v = yield action_get.perform()
         self.assertEqual(v, u"foo")
         self.assertTrue(isinstance(v, unicode))
-        yield self.asyncErrback(TypeError, action_get.perform, "bad")
-        yield self.asyncErrback(TypeError, action_get.perform, bad=True)
-        yield self.asyncErrback(TypeError, action_get.perform, "bad", "bad")
+        yield self.asyncErrback(interface.UnknownParameters,
+                                action_get.perform, "bad")
+        yield self.asyncErrback(interface.UnknownParameters,
+                                action_get.perform, bad=True)
+        yield self.asyncErrback(interface.ParameterError,
+                                action_get.perform, "bad", "bad")
 
         self.assertEqual(src.sync, "foo")
         self.assertFalse(isinstance(src.sync, unicode))
@@ -182,13 +185,22 @@ class TestModelsProperty(common.TestCase):
         self.assertEqual(v, u"biz")
         self.assertTrue(isinstance(v, unicode))
 
-        yield self.asyncErrback(ValueError, attr.update_value, 45)
-        yield self.asyncErrback(ValueError, attr.update_value, None)
-        yield self.asyncErrback(ValueError, action_set.perform, 45)
-        yield self.asyncErrback(ValueError, action_set.perform, None)
-        yield self.asyncErrback(TypeError, action_set.perform)
-        yield self.asyncErrback(TypeError, action_set.perform, bad=True)
-        yield self.asyncErrback(TypeError, action_set.perform, 45, 46)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                attr.update_value, 45)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                attr.update_value, None)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                action_set.perform, 45)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                action_set.perform, None)
+        yield self.asyncErrback(interface.MissingParameters,
+                                action_set.perform)
+        yield self.asyncErrback(interface.MissingParameters,
+                                action_set.perform, bad=True)
+        yield self.asyncErrback(interface.UnknownParameters,
+                                action_set.perform, 5, bad=True)
+        yield self.asyncErrback(interface.ParameterError,
+                                action_set.perform, 45, 46)
 
         v = yield attr.fetch_value()
         self.assertEqual(v, u"biz")
@@ -240,14 +252,24 @@ class TestModelsProperty(common.TestCase):
         v = yield action_get.perform()
         self.assertEqual(v, 789)
 
-        yield self.asyncErrback(ValueError, attr.update_value, None)
-        yield self.asyncErrback(ValueError, attr.update_value, 5.8)
-        yield self.asyncErrback(ValueError, attr.update_value, "XXX")
-        yield self.asyncErrback(ValueError, action_set.perform, None)
-        yield self.asyncErrback(ValueError, action_set.perform, 5.8)
-        yield self.asyncErrback(ValueError, action_set.perform, "XXX")
-        yield self.asyncErrback(TypeError, action_set.perform)
-        yield self.asyncErrback(TypeError, action_set.perform, bad="True")
+        yield self.asyncErrback(interface.InvalidParameters,
+                                attr.update_value, None)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                attr.update_value, 5.8)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                attr.update_value, "XXX")
+        yield self.asyncErrback(interface.InvalidParameters,
+                                action_set.perform, None)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                action_set.perform, 5.8)
+        yield self.asyncErrback(interface.InvalidParameters,
+                                action_set.perform, "XXX")
+        yield self.asyncErrback(interface.MissingParameters,
+                                action_set.perform)
+        yield self.asyncErrback(interface.MissingParameters,
+                                action_set.perform, bad="True")
+        yield self.asyncErrback(interface.UnknownParameters,
+                                action_set.perform, 5, bad="True")
 
     @defer.inlineCallbacks
     def testReadOnly(self):

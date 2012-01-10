@@ -163,6 +163,18 @@ class TestModelsAction(common.TestCase):
         else:
             self.fail("Should have raised %s: %s" % (Error.__name__, ))
 
+    @defer.inlineCallbacks
+    def asyncParamError(self, Error, params, fun, *args, **kwargs):
+        try:
+            yield fun(*args, **kwargs)
+        except Exception, e:
+            if not isinstance(e, Error):
+                self.fail("Should have raised %s not %s: %s"
+                          % (Error.__name__, type(e).__name__, str(e)))
+            self.assertEqual(set(params), set(e.parameters))
+        else:
+            self.fail("Should have raised %s: %s" % (Error.__name__, ))
+
     def testParamOrder(self):
         source = DummySource()
         model = DummyModel(source)
@@ -396,19 +408,33 @@ class TestModelsAction(common.TestCase):
         source = DummySource()
         model = DummyModel(source)
         action = yield TestAction.create(model)
-
-        # No value specified
-        yield self.asyncRaises(TypeError, action.perform)
-        # Missing parameter
-        yield self.asyncRaises(TypeError, action.perform, 0)
-        # Unknown parameter
-        yield self.asyncRaises(TypeError, action.perform, 0, foo=0)
-        # Only one value allowed
-        yield self.asyncRaises(TypeError, action.perform, 0, 1, toto=0)
-        # Invalid values
-        yield self.asyncRaises(ValueError, action.perform, "X", toto=0)
-        yield self.asyncRaises(ValueError, action.perform, 0, toto="X")
         empty = yield EmptyAction.create(model)
 
-        # Value not allowed
-        yield self.asyncRaises(TypeError, empty.perform, 0)
+        # No value specified
+        yield self.asyncParamError(MissingParameters, ["value", "toto"],
+                                   action.perform)
+        # Missing parameter
+        yield self.asyncParamError(MissingParameters, ["toto"],
+                                   action.perform, 0)
+        yield self.asyncParamError(MissingParameters, ["toto"],
+                                   action.perform, 0, foo=0)
+        # Unknown parameter
+        yield self.asyncParamError(UnknownParameters, ["foo"],
+                                   action.perform, 0, toto=0, foo=0)
+        yield self.asyncParamError(UnknownParameters, ["value"],
+                                   empty.perform, 0)
+        yield self.asyncParamError(UnknownParameters, ["toto"],
+                                   empty.perform, toto=0)
+        # Only one value allowed
+        yield self.asyncParamError(ParameterError, ["value"],
+                                   action.perform, 0, 1, toto=0)
+        # Invalid values
+        yield self.asyncParamError(InvalidParameters, ["value"],
+                                   action.perform, "X", toto=0)
+        yield self.asyncParamError(InvalidParameters, ["toto"],
+                                   action.perform, 0, toto="X")
+        yield self.asyncParamError(InvalidParameters, ["value", "toto"],
+                                   action.perform, "X", toto="X")
+        yield self.asyncParamError(InvalidParameters,
+                                   ["value", "toto", "titi"],
+                                   action.perform, "X", toto="X", titi="X")

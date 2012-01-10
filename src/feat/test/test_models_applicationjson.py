@@ -35,7 +35,7 @@ from feat.models import model, action, value, call, getter, setter, effect
 from feat.web import document, http
 
 from feat.test import common
-from feat.models.interface import ActionCategories
+from feat.models.interface import ActionCategories, ErrorTypes
 
 
 class DummyEnum(enum.Enum):
@@ -75,9 +75,12 @@ class DummyError(object):
 
     implements(interface.IErrorPayload)
 
-    def __init__(self, code, message, debug, trace):
-        self.code = code
+    def __init__(self, type, code, message, subjects, reasons, debug, trace):
+        self.error_type = type
+        self.error_code = code
         self.message = message
+        self.subjects = subjects
+        self.reasons = reasons
         self.debug = debug
         self.trace = trace
 
@@ -564,19 +567,42 @@ class TestApplicationJSON(common.TestCase):
 
     @defer.inlineCallbacks
     def testErrorWriter(self):
-        yield self.check(DummyError(None, None, None, None), {})
-        yield self.check(DummyError(42, None, None, None), {u"code": 42})
-        yield self.check(DummyError(None, "spam", None, None),
-                         {u"message": u"spam"})
-        yield self.check(DummyError(None, None, "bacon", None),
-                         {u"debug": u"bacon"})
-        yield self.check(DummyError(None, None, None, "sausage"),
-                         {u"trace": u"sausage"})
-        yield self.check(DummyError(42, "spam", "bacon", "sausage"),
-                         {u"code": 42,
+        K = DummyError
+        t = ErrorTypes.generic
+        yield self.check(K(t, None, None, None, None, None, None),
+                         {u"type": u"error",
+                          u"error": u"generic"})
+        yield self.check(K(t, 42, None, None, None, None, None),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"code": 42})
+        yield self.check(K(t, None, "spam", None, None, None, None),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"message": u"spam"})
+        yield self.check(K(t, None, None, None, None, "bacon", None),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"debug": u"bacon"})
+        yield self.check(K(t, None, None, None, None, None, "sausage"),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"trace": u"sausage"})
+        yield self.check(K(t, 42, "spam", None, None, "bacon", "sausage"),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"code": 42,
                           u"message": u"spam",
                           u"debug": u"bacon",
                           u"trace": u"sausage"})
+        yield self.check(K(t, None, None, ["a", "b"], None, None, None),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"subjects": [u"a", u"b"]})
+        yield self.check(K(t, None, None, None, {"a": "spam"}, None, None),
+                         {u"type": u"error",
+                          u"error": u"generic",
+                          u"reasons": {u"a": u"spam"}})
 
     @defer.inlineCallbacks
     def testBadData(self):
@@ -589,7 +615,7 @@ class TestApplicationJSON(common.TestCase):
     @defer.inlineCallbacks
     def testReferenceWriter(self):
         yield self.check(reference.Local("some", "place"),
-                         {'href': "root/some/place"})
+                         {u"type": u"reference", u"href": u"root/some/place"})
 
     @defer.inlineCallbacks
     def testCompactModelWriter(self):

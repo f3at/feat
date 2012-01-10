@@ -28,10 +28,11 @@ from feat.common import defer, serialization
 from feat.common.serialization import json as feat_json
 from feat.web import document
 
-from feat.models.interface import IModel, IReference, IErrorPayload
+from feat.models.interface import IModel, IReference
+from feat.models.interface import IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
-from feat.models.interface import Unauthorized
+from feat.models.interface import ErrorTypes, Unauthorized
 
 MIME_TYPE = "application/json"
 
@@ -269,7 +270,6 @@ def render_compact_submodel(submodel, item, context):
 
 def filter_model_errors(failure, item, context):
     failure.trap(Unauthorized)
-    print "E"*80, item.name
     if item.reference is not None:
         return item.reference.resolve(context)
     return failure
@@ -296,19 +296,25 @@ def write_model(doc, obj, *args, **kwargs):
 def write_reference(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = obj.resolve(context)
-    render_json({'href': result}, doc)
+    render_json({u"type": u"reference", u"href": result}, doc)
 
 
 def write_error(doc, obj, *args, **kwargs):
     result = {}
-    if obj.code is not None:
-        result["code"] = obj.code
+    result[u"type"] = u"error"
+    result[u"error"] = unicode(obj.error_type.name)
+    if obj.error_code is not None:
+        result[u"code"] = int(obj.error_code)
     if obj.message is not None:
-        result["message"] = obj.message
+        result[u"message"] = obj.message
+    if obj.subjects is not None:
+        result[u"subjects"] = list(obj.subjects)
+    if obj.reasons:
+        result[u"reasons"] = dict(obj.reasons)
     if obj.debug is not None:
-        result["debug"] = obj.debug
+        result[u"debug"] = obj.debug
     if obj.trace is not None:
-        result["trace"] = obj.trace
+        result[u"trace"] = obj.trace
     render_json(result, doc)
 
 
@@ -320,7 +326,13 @@ def read_action(doc, *args, **kwargs):
     data = doc.read()
     if not data:
         return ActionPayload()
-    params = json.loads(data)
+
+    try:
+        params = json.loads(data)
+    except ValueError, e:
+        raise document.DocumentFormatError("Invalid JSON document: %s"
+                                           % (e, ))
+
     if not isinstance(params, dict):
         return ActionPayload([(u"value", params)])
     return ActionPayload(params)

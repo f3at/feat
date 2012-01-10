@@ -35,6 +35,8 @@ from feat.models.model import DummyOfficer
 from feat.models.interface import ActionCategories, IActionPayload, IAspect
 from feat.models.interface import IContext, IModel, IModelAction, IReference
 from feat.models.interface import IErrorPayload, Unauthorized
+from feat.models.interface import ErrorTypes
+from feat.models.interface import ParameterError, InvalidParameters
 
 
 class ErrorPayload(object):
@@ -42,64 +44,74 @@ class ErrorPayload(object):
     implements(IErrorPayload)
 
     @classmethod
-    def from_failure(cls, failure):
-        ex = failure.value
-        if isinstance(ex, http.HTTPError):
-            code = ex.status_code
-        elif isinstance(ex, error.FeatError):
-            code = ex.error_code
-        else:
-            code = None
-
-        if isinstance(ex, error.FeatError):
-            message = ex.error_name
-        else:
-            message = failure.getErrorMessage()
-
-        if not message:
-            message = type(ex).__name__
-
-        debug = error.get_failure_message(failure)
-        trace = error.get_failure_traceback(failure)
-
-        return cls(code=code, message=message, debug=debug, trace=trace)
-
-    @classmethod
     def from_exception(cls, ex):
-        if isinstance(ex, http.HTTPError):
-            code = ex.status_code
-        elif isinstance(ex, error.FeatError):
-            code = ex.error_code
-        else:
-            code = None
-
-        if isinstance(ex, error.FeatError):
-            message = ex.error_name
-        else:
-            message = str(ex)
-
-        if not message:
-            message = type(ex).__name__
-
+        error_type = ErrorTypes.generic
+        status_code = None
+        error_code = None
+        subjects = None
+        reasons = None
         debug = None
         trace = None
+
+        if isinstance(ex, error.FeatError):
+            error_code = ex.error_code
+            message = ex.error_name
+
+        if isinstance(ex, http.HTTPError):
+            error_type = ErrorTypes.http
+            status_code = ex.status_code
+            if error_code is None:
+                error_code = int(status_code)
+
+        if isinstance(ex, ParameterError):
+            error_type = ex.error_type
+            status_code = http.Status.BAD_REQUEST
+            subjects = ex.parameters
+            if isinstance(ex, InvalidParameters):
+                reasons = ex.reasons
+
+        if not message:
+            message = str(ex) or type(ex).__name__
 
         if not isinstance(ex, http.HTTPError):
             debug = error.get_exception_message(ex)
             trace = error.get_exception_traceback(ex)
 
-        return cls(code=code, message=message, debug=debug, trace=trace)
+        return cls(error_type=error_type, error_code=error_code,
+                   status_code=status_code, message=message,
+                   subjects=subjects, reasons=reasons,
+                   debug=debug, trace=trace)
 
-    def __init__(self, code=None, message=None, debug=None, trace=None):
-        self.code = int(code) if code is not None else None
-        self.message = unicode(message) if message is not None else None
-        self.debug = unicode(debug) if debug is not None else None
-        self.trace = unicode(trace) if trace is not None else None
+    def __init__(self, error_type, error_code=None, status_code=None,
+                 message=None, subjects=None, reasons=None,
+                 debug=None, trace=None):
+
+        def convert_value(value, converter):
+            return converter(value) if value is not None else None
+
+        def convert_list(values, converter):
+            if values is None:
+                return None
+            return tuple([converter(v) for v in values])
+
+        def convert_dict(items, kconv, vconv):
+            if items is None:
+                return None
+            return dict((kconv(k), vconv(v)) for k, v in items.iteritems())
+
+        self.error_type = ErrorTypes(error_type)
+        self.error_code = convert_value(error_code, int)
+        self.status_code = convert_value(status_code, http.Status)
+        self.message = convert_value(message, unicode)
+        self.subjects = convert_list(subjects, unicode)
+        self.reasons = convert_dict(reasons, unicode, unicode)
+        self.debug = convert_value(debug, unicode)
+        self.trace = convert_value(trace, unicode)
 
     def __str__(self):
         msg = "ERROR"
-        if self.code is not None:
-            msg += " %d" % (self.code, )
+        if self.error_code is not None:
+            msg += " %d" % (self.error_code, )
         if self.message is not None:
             msg += ": %s" % (self.message, )
         if self.debug is not None:
@@ -197,6 +209,8 @@ class BaseResource(webserver.BaseResource):
 
         response.set_header("Cache-Control", "no-cache")
         response.set_header("connection", "close")
+        if payload.status_code is not None:
+            response.set_status(payload.status_code)
 
         context = self.make_context(request)
         #FIXME: passing query arguments without validation is not safe
@@ -387,6 +401,7 @@ class ModelResource(BaseResource):
                         action_name, self.model.identity, self.model.name)
             d = action.perform()
             d.addCallback(got_data)
+            d.addErrback(self.filter_errors)
             return d
 
         d = self.model.fetch_action(action_name)
