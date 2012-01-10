@@ -228,7 +228,7 @@ From now on FEAT is running. We can do some requests to the gateway. To keep it 
 We are ready to request starting the dns server. In my case it looks like this. ::
 
   > ./request /apps/dns/servers
-   -d"{\"suffix\":\"service.flt.fluendo.lan\",\"slaves\": \"192.168.64.11\"}"
+   -d'{"suffix":"service.flt.fluendo.lan","slaves": "192.168.64.11"}"
 
   {
     "message": "Server spawned",
@@ -249,8 +249,7 @@ The *192.168.64.11* is the IP of the host I have my named server running. Lets t
 We are ready to create an entry. I do this like this: ::
 
     > ./request /apps/dns/entries/service.flt.fluendo.lan -d
-     "{\"prefix\": \"spam\", \"entry\": \"1.2.3.4\",
-       \"type\": \"record_A\"}"
+     '{"prefix": "spam", "entry": "1.2.3.4", "type": "record_A"}"
 
     {
       "message": "Entry created",
