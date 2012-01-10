@@ -212,7 +212,7 @@ class _Bootstrap(object):
 
     def __exit__(self, type, value, traceback):
         if type is not None:
-            raise type, value, traceback
+            raise type(value), None, traceback
         if self.opts.agency_daemonize:
             tmp = tempfile.mktemp(suffix="feat.temp.log")
             log.info("run", "Logging will temporarily be done to: %s", tmp)
