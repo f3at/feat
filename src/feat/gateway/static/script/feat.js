@@ -4,35 +4,50 @@ feat = {};
 
 feat.ajax = {};
 
-feat.ajax.send = function(method, url, params) {
+feat.ajax.send = function(method, url, params, success, failure) {
     if (typeof params != 'string') {
       params = JSON.stringify(params);
     };
     $.ajax({type: method,
 	    url: url,
 	    data: params,
-	    success: feat.ajax._onSuccess,
-	    error: feat.ajax._onError,
+	    success: feat.ajax._onSuccessBuilder(success),
+	    error: feat.ajax._onErrorBuilder(failure),
 	    dataType: 'json',
 	    contentType: 'application/json'
 	});
 };
 
-feat.ajax._onSuccess = function(env) {
-    console.log("Success: ", env);
-    if (typeof env.href != 'undefined'){
-	document.location = env.href;
+feat.ajax._onSuccessBuilder = function(callback) {
+
+    var handler = function(env) {
+	console.log("Success: ", env);
+	// if (typeof env.href != 'undefined'){
+	//     document.location = env.href;
+	// };
+	if (typeof(callback) == 'function') {
+	    callback(env);
+	};
     };
+    return handler;
 };
 
-feat.ajax._onError = function(resp) {
-    try {
-	var envelope = $.parseJSON(resp);
-	console.log('Error: ', envelope);
-    } catch (e) {
-	console.error('Failed unpacking the envelope', e);
-	console.error('Response: ', resp);
-    }
+feat.ajax._onErrorBuilder = function(callback) {
+
+    var handler = function(resp) {
+	try {
+	    var envelope = $.parseJSON(resp);
+	    console.log('Error: ', envelope);
+	} catch (e) {
+	    console.error('Failed unpacking the envelope', e);
+	    console.error('Response: ', resp);
+	    return;
+	}
+	if (typeof(callback) == 'function') {
+	    callback(envelope);
+	};
+    };
+    return handler;
 };
 
 if (typeof console == 'undefined') {
@@ -45,12 +60,18 @@ if (typeof console == 'undefined') {
 
 feat.inplace = {};
 
-feat.inplace._onSubmit = function(value) {
+feat.inplace._onSubmit = function(value, errorHandler) {
+
+  var setReturnedValue = function(value) {
+    var $this = $(this);
+    $this.text(value);
+  };
+
   if (value.current != value.previous) {
     var $this = $(this);
     var url = $this.attr('rel');
     var params = {value: value.current};
-    feat.ajax.send('PUT', url, params);
+    feat.ajax.send('PUT', url, params, setReturnedValue, errorHandler);
   };
 };
 
