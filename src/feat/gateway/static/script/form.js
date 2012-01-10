@@ -47,6 +47,10 @@ $.fn.featform._renderJSONList = function(json) {
 
 $.fn.featform._reset = function() {
     $(this).trigger("reset");
+    $.fn.featform._removeErrors.call(this);
+};
+
+$.fn.featform._removeErrors = function() {
     $(this).find('.invalid').removeClass('invalid');
     $(this).find('.explanation').remove();
 };
@@ -93,6 +97,7 @@ $.fn.featform._onSubmit = function(ev) {
 	}
     };
 
+    $.fn.featform._removeErrors.call($this);
     options = $this.data('featform.options');
     feat.ajax.send(options.method, options.url, params, success, failure);
 };
