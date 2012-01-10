@@ -411,6 +411,8 @@ class Agents(model.Collection):
                  label="Spawn Agent", desc="Spawn a new agent on this host")
 
     model.meta("html-render", "array, 1")
+    model.meta("html-render",
+               "array-columns, Agent Id, Agent type, Status")
 
     def init(self):
         if not self.officer.peer_info.has_role("admin"):
