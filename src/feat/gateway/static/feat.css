@@ -107,6 +107,16 @@ actions .name {
     color: orange;
     margin-left: 20px;
 }
+
+.action_form .explanation {
+    color: red;
+    margin-left: 20px;
+}
+
+.action_form input.invalid {
+    background: red;
+}
+
 .action_form .optional {
     color: grey;
     margin-left: 20px;
@@ -123,4 +133,17 @@ span.inplace {
 
 .submit-cancel-container {
     float: right;
+}
+
+/* Resposne rendered in facebox */
+
+.response span.key,
+.response span.value{
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.response span.key {
+    min-width: 60px;
+    color: orange;
 }

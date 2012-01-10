@@ -21,9 +21,11 @@ class BaseLayout(html.Document):
         self._link_static_files(context)
 
     def _link_static_files(self, context):
-        url = self._local_url(context, 'static', 'feat.css')
-        self.head.content.append(
-            html.tags.link(type='text/css', rel='stylesheet', href=url)())
+        csses = [self._local_url(context, 'static', 'feat.css'),
+                 self._local_url(context, 'static', 'facebox.css')]
+        for url in csses:
+            self.head.content.append(
+                html.tags.link(type='text/css', rel='stylesheet', href=url)())
 
         scripts = [('http://ajax.googleapis.com/ajax/libs/'
                    'jquery/1.6/jquery.min.js'),
@@ -31,7 +33,8 @@ class BaseLayout(html.Document):
                    self._local_url(context, 'static', 'script', 'feat.js'),
                    self._local_url(context, 'static', 'script', 'form.js'),
                    self._local_url(context, 'static', 'script',
-                                   'jquery.cseditable.js')]
+                                   'jquery.cseditable.js'),
+                   self._local_url(context, 'static', 'script', 'facebox.js')]
         for url in scripts:
             self.head.content.append(
                 html.tags.script(src=url, type='text/javascript'))

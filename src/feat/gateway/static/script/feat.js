@@ -36,7 +36,7 @@ feat.ajax._onErrorBuilder = function(callback) {
 
     var handler = function(resp) {
 	try {
-	    var envelope = $.parseJSON(resp);
+	    var envelope = $.parseJSON(resp.responseText);
 	    console.log('Error: ', envelope);
 	} catch (e) {
 	    console.error('Failed unpacking the envelope', e);
