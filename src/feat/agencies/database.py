@@ -244,7 +244,8 @@ class Connection(log.Logger, log.LogProxy):
         for l_id, listener_filter in self._listeners.items():
             if ((IViewFactory.providedBy(listener_filter) and
                  filter_ is listener_filter) or
-                (filter_ in listener_filter)):
+                (isinstance(listener_filter, (list, tuple)) and
+                 (filter_ in listener_filter))):
                 self._cancel_listener(l_id)
 
     def query_view(self, factory, **options):
