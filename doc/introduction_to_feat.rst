@@ -5,98 +5,117 @@
 ====================
 Introduction to FEAT
 ====================
-Feat is a set of utility classes build on top of well known twisted
-python library which simplifies the development of cloud
-applications. Feat based application consists of some number of
-agents of different types which form a 'society' to solve some a
+
+
+.. sidebar:: Contents
+
+    .. contents::
+
+.. sectnum::
+
+Feat is a set of utility classes built on top of the well-known Twisted_
+Python_ library which simplifies the development of distributed
+applications. A Feat-based application consists of a number of
+agents of different types, which form a 'society' to solve some a
 given problem.
 
+.. _Twisted: http://www.twistedmatrix.com/
+.. _Python: http://www.python.org/
+
 What kind of problem would that be ? Well, anything that requires
-the usage of multiple hosts and communicating between them would
+the use of multiple hosts, communicating between one another, would
 qualify. It has been created to help us develop the backend of
-www.livetranscoding.com.
+LiveTranscoding_
 
-The goal set upon was to handle the huge number of encoding units,
-keep track of their cpu, memory and bandwidth usage and run some
-network services on them, which, in the end of the day, produce the
-correct stream.
+.. _LiveTranscoding: http://www.livetranscoding.com/
 
-To make the system predictable it had to be highly testable. To
+The goal in LiveTranscoding is to handle the huge number of encoding machines,
+keep track of their CPU, memory and bandwidth usage, and run some
+network services on them, which enables the system to create and encode
+the live stream.
+
+To make the system predictable, it has to be highly testable. To
 meet this requirement we have introduced the concept of dependency
-labours and execution mode. The real resource consuming work is
-performed by production mode labour implementation. For testing and
-simulation purpose we have different implementations which merely
-expose the same interface, without burdening cpu too much.
+labours and execution modes. The real resource-intensive work is
+performed by production mode labour implementations. For testing and
+simulation purposes, we have different implementations which merely
+expose the same interface, without actually encoding and thus consuming
+CPU resources.
 
-The code of the agents themselves is replayable. It means that
-while the service is running we record and store on
-disk [#]_ enough information to be able to restore state of
-any agent in any time in history. This led us to introduce the
-concept of the `hamsterball <http://xkcd.com/152/>`_. Inside we put
-the code which meats the highest standards of predictability and
+The code of the agents themselves is replayable. This means that
+while the service is running, we record and store enough information on
+disk [#]_ to be able to restore the state of
+any agent at any time in history. This led us to introduce the
+concept of the `hamsterball <http://xkcd.com/152/>`_. Inside the hamsterball,
+we put the code which meets the highest standards of predictability and
 allow only synchronous computation. Whatever crosses the edge of
 the hamsterball is being recorded. This subject will be discussed
 further below.
 
 To ensure the reliability of the system, every agent is monitored.
-If he dies his partners will get notified, someone will take care
-to restart him or take other meaningful action. Important part here
+If it dies, its partners will get notified, and something will
+restart the agent or take another meaningful action. The important part here
 is that an agent can obtain and store a reference to the other
-agent running on a different machine. Framework ensures that if the
-agent dies or changes address this entry will be updated.
+agent running on a different machine. The framework ensures that if the
+agent dies or changes address, this entry will be updated.
 
-.. [#] it's getting stored in a journal, which for the current version is a sqlite3 database.
+.. [#] it's stored in a journal, which for the current version is an
+   sqlite3 database.
 
 -----------------------------
 Structure of the feat service
 -----------------------------
-Feat runs multiple processes. They communicate thought an unix socket.
-The process which manages to listen on the unix socket becomes the
-*master*, all the following one take the *slave* role.
 
-Master agency is running all the agents, and managing logging and
+Feat runs multiple processes. They communicate thought a UNIX socket.
+The process which is first to listen on the UNIX socket becomes the
+*master*, all the following ones take the *slave* role.
+
+The master agency runs all the agents and manages logging and
 journaling tasks. Slave agencies access these services through
-perspective broker interface. In future version we also plan to
+the `Perspective Broker <http://twistedmatrix.com/documents/current/core/howto/pb-intro.html>`_ interface. In a future version, we also plan to
 reuse the same mechanism for sharing connections to messaging and
 database servers in order to reduce the footprint of the agency.
-However right now every agency manages its own connections.
+Right now however, every agency manages its own connections.
 
 We always have at least two agencies. We will have more than two if
-the we run a *standalone agent* [#]_. If one agency is
-killed the rest of them will get notified through the socket. If we
-are down to only one agency, it will spawn another one. This
-mechanism is thought as a form of the local monitoring, our first
-line of defense in the struggle for the reliable service.
+we run a *standalone agent* [#]_. If one agency is
+killed, the other agencies will be notified through the socket. If we
+are down to only one agency, this last agency will spawn another one. This
+mechanism is thought as a form of local monitoring, and our first
+line of defense in the struggle for a reliable service.
 
-.. [#] It's possible to start an agent in a way that he is always separated in his own process. This is useful for running integrating with other twisted projects which would, for instance use different reactor or run code which is likely to leak memory, segfault of whatever.
+.. [#] It's possible to start an agent such that its separated in
+   its own process. This is useful for example when integrating with other
+   Twisted projects which could use a different reactor, or when running code
+   which is likely to leak memory, segfault, ...
 
-Single feat process structure
-=============================
-Roughly speaking we can divide objects in feat process memory into three categories: *twisted layer*, *agency* and *agent code*. Twisted
-layer consists of reactor, protocols, factories run by both agency
-and the agent labours. This article is not going into depths of
+Roughly speaking we can divide objects in the feat process into three
+layers: *twisted layer*, *agency* and *agent code*. The Twisted layer consists
+of reactor, protocols, and factories run by both the agency
+and the agent labours. This article is not going into depth on
 this part.
 
-Agency.
--------
-Agency is responsible for providing the environment necessary for the
-agents to run. It creates a layer between the agents code and
-twisted framework, allowing developers to create highly testable,
-reliable code. Feat comes with various implementations of the
-agency. The main one, called network agency, is used in the real
-process. Apart from that we have slightly different implementations
-for running tests and different for simulations.
+Agency
+======
 
-To explain further, for example simulation agency does not require
-RabbitMQ or CouchDB servers running. It simulates their behavior
+The agency is responsible for providing the environment necessary for the
+agents to run. It creates a layer between the agents' code and
+the Twisted framework, allowing developers to create highly testable,
+reliable code. Feat comes with various implementations of the
+agency. The main one, called the *network agency*, is used in the real
+process. We have slightly different implementations
+for either running tests or for simulations.
+
+To explain further: the simulation agency does not require
+RabbitMQ or CouchDB servers running. It simulates their behavior,
 vastly simplifying the setup of the environment needed for running
 tests.
 
-The following subsections introduces most important components of
+The following subsections introduce the most important components of
 the agency. This is not a complete list though.
 
 Messaging
-`````````
+---------
 This component is responsible for dispatching messages between the
 agents. It's built on top of the amqp protocol and shares its
 terminology.
@@ -132,7 +151,7 @@ The strategy of using amqp can be summarized in following points:
 
 
 Tunneling.
-``````````
+----------
 This component provides the alternative way of sending messages between agents. In this case the connection between the agencies is direct, no external server is used. The connection is done over HTTPS
 protocol.
 
@@ -149,7 +168,7 @@ channel [#]_ and pass a correct IRecipient.
 .. [#] Call enable\_channel('tunnel') on medium class.
 
 Database.
-`````````
+---------
 It's responsible for storing persistent state of the agents. We use a
 document oriented database backend. In production environment the
 CouchDB server is used.
@@ -166,7 +185,7 @@ into two parts, the agents get duplicated and then the connections
 is reestablished.
 
 Manhole.
-````````
+--------
 Agency runs a SSH server. A developer may connect to it using normal ssh client to perform maintenance and/or debugging tasks. The part of
 feat configuration is the path to *authorized\_keys* file. After
 logging in one can see the command line service understanding a
@@ -178,7 +197,7 @@ Also same pseudo language is understood by the simulation driver.
 .. [#] feat.common.manhole.expose
 
 Gateway.
-````````
+--------
 Gateway opens a HTTPS server that can be used to quickly navigate through the cluster and inspect it's state. It requires client's SSL
 certificate to connect. To configure it you need to specify the p12
 certificate file.
@@ -194,24 +213,24 @@ in progress, currently only HTML format is supported and it has to
 be generated somewhat by hand.
 
 Broker.
-```````
+-------
 Is managing communication with other feat processes running on the
 same machine through the UNIX socket. It's responsible for the
 process of the agency role negotiation (master/slave) and manages
 the list of other processes. It also exposes the interfaces
 necessary for other components to obtain the reference to objects
 living in a different process. This is useful for sharing services
-through the unix socket instead of concurring, for example, on
+through the UNIX socket instead of concurring, for example, on
 database writes. Example of service shared this way is Journaler
 (explained below). In future we intend to do the same with
 Messaging and Database.
 
 Journaler.
-``````````
-Journaler is responsible for storing the journal and log entries. On one side it is integrated with the layer of the *medium class* recording execution chain coming in and out of the hamsterball. On the other end it passes information to the writer which inserts it to sqlite database or sends it to the unix socket.
+----------
+Journaler is responsible for storing the journal and log entries. On one side it is integrated with the layer of the *medium class* recording execution chain coming in and out of the hamsterball. On the other end it passes information to the writer which inserts it to sqlite database or sends it to the UNIX socket.
 
 Medium class.
-`````````````
+-------------
 The medium class (AgencyAgent) is the one the agent is given the
 reference to. Agency creates one instance of it for every agent it
 runs. This is the most complex part of the agency side. It creates
@@ -225,7 +244,7 @@ it. The implementation used in replay stubs out all the actual
 effect of the agent's side calls, only validating its correctness.
 
 (Un)serializer.
-```````````````
+---------------
 This is more an utility than an agency component, although it's
 definitely worth mentioning. Feat comes with a very powerful
 serialization module. It is capable of serializing and
@@ -248,8 +267,8 @@ formats the serialization can (un)serialize to/from:
 -  sexp,
 -  banana.
 
-Agent code.
------------
+Agent code
+==========
 The code of an agent is special in many ways. It's important to
 understand the concepts behind, because using feat framework 90% of
 the time means writing and testing the agent-side code. The
@@ -259,7 +278,7 @@ various types of objects encountered inside, without getting into
 the details on how they are done.
 
 Agent class.
-````````````
+------------
 It inherits from Base Agent class [#]_. There is a number of
 methods called by the agency during the lifespan of the agent. Take
 a look at state machine diagram for reference [#]_.
@@ -272,7 +291,7 @@ implementation.
 .. [#] it can be found under path docf/uml/agency\_agent.xmi
 
 Protocol classes.
-`````````````````
+-----------------
 Agents use them to communicate with other agents. We have 3 types of
 protocols: *notifications*, *requestes*, *contracts*. Roughly
 speaking they differ in the level of complexity. There is always an
@@ -297,7 +316,7 @@ The characteristics of the protocols we have goes as follows:
 
 
 Tasks.
-``````
+------
 They are in fact a special case of protocols. The difference is that
 tasks are not necessarily used for communication with other agents.
 Clearly they can do this, but using as the building blocks one or
@@ -317,7 +336,7 @@ disable this behavior creating the so called
 .. [#] Example of such tasks is the HeartbeatTask run by every monitored agent. It is defined in feat.agents.monitor.pacemaker module.
 
 Custom replayables.
-```````````````````
+-------------------
 One can always inherit from the base replayable class [#]_ and create whatever piece of logic he needs. The example of such class is Partners module [#]_ which is responsible for tracking the references to the other agents and reacting on events. The next chapter is dedicated creating classes like this.
 
 .. [#] feat.agents.base.replay.Replayable
@@ -867,7 +886,7 @@ creating a chat broadcast servers.
 
 It's not a 100% valid example of the use case the feat framework.
 To make it really make sense the connection agents should use a lot
-of resource of some kind (cpu/memory/bandwidth) to justify running
+of resource of some kind (CPU/memory/bandwidth) to justify running
 them on the cloud. But let's not be too critic, it's just an
 example.
 
@@ -1727,7 +1746,7 @@ Feat is still in quite early development stage. We are still working on it rapid
 
 In many places in previous sections it was mentioned that some features will be introduced in future. The point of this section is to put them in one place, unfortunately we are not yet ready to make the product backlog public. Feel welcome to contribute if you'd like to work on some of the features mentioned below. Or anything else.
 
-- Reducing footprint on RabbitMQ. The master agency will establish a connection to the RabbitMQ server and share it with slaves through the unix socket. The messages should be dispatched locally exactly as it is done in emulation messaging module. They should be sent to RabbitMQ server only if we cannot find the local recipient for them or if their IRecipient.type == *broadcast*.
+- Reducing footprint on RabbitMQ. The master agency will establish a connection to the RabbitMQ server and share it with slaves through the UNIX socket. The messages should be dispatched locally exactly as it is done in emulation messaging module. They should be sent to RabbitMQ server only if we cannot find the local recipient for them or if their IRecipient.type == *broadcast*.
 
 - Starting RabbitMQ automaticly. We should resolve messaging server by DNS query and start the Messaging Agent in case it fails. This agent should be a part of the shard structure. All agents in the shard use the same node, nodes are connected to the cluster using the graph topology.
 
