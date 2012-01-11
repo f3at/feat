@@ -62,8 +62,12 @@ $.fn.featform._onSubmit = function(ev) {
     var $this = $(ev.target);
     var params = {};
     var array = $this.serializeArray();
-    $.each(array, function(i, element) {
-	    params[element.name] = element.value;
+    $.each(
+	array,
+	function(i, element) {
+	    if (element.value != '') {
+		params[element.name] = element.value;
+	    }
 	});
 
     var spinner = $this.data('featform.spinner');

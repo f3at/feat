@@ -22,9 +22,6 @@ feat.ajax._onSuccessBuilder = function(callback) {
 
     var handler = function(env) {
 	console.log("Success: ", env);
-	// if (typeof env.href != 'undefined'){
-	//     document.location = env.href;
-	// };
 	if (typeof(callback) == 'function') {
 	    callback(env);
 	};
