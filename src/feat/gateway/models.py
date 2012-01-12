@@ -333,7 +333,7 @@ class PostgresWriter(BaseJournalWriter):
 
 
 @adapter.register(journaler.SqliteWriter, IModel)
-class PostgresWriter(BaseJournalWriter):
+class SQLiteWriter(BaseJournalWriter):
 
     model.identity('feat.agency.journaler.sqlite_writer')
     model.attribute('filename', value.String(),
@@ -509,6 +509,19 @@ class Agent(model.Model):
                 enabled=call.model_call("_has_resources"),
                 label="Resources", desc="Agent's resources.")
 
+    #FIXME: use another mean to specify the default action than name
+    model.delete("del",
+                 call.model_call("_terminate"),
+                 response.deleted("Agent Terminated"),
+                 label="Terminate", desc=("Terminate the agent, "
+                                          "without saying goodbye"))
+
+    model.delete("shutdown",
+                 call.model_call("_shutdown"),
+                 response.deleted("Agent Shutdown"),
+                 label="Shutdown", desc=("Shutdown the agent, "
+                                         "saying goodbye to partners"))
+
     model.meta("html-order", "type, shard, id, instance, "
                "status, partners, resources")
     model.item_meta("id", "html-link", "owner")
@@ -517,8 +530,19 @@ class Agent(model.Model):
 
     ### custom ###
 
+    def init(self):
+        self._medium = self.source._get_state().medium
+
     def _has_resources(self):
         return isinstance(self.source, resource.AgentMixin)
+
+    def _shutdown(self):
+        self._medium.terminate()
+        return reference.Local("agents")
+
+    def _terminate(self):
+        self._medium.terminate_hard()
+        return reference.Local("agents")
 
 
 class Resources(model.Model):
