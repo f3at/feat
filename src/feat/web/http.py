@@ -461,6 +461,8 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         if is_header_multifield(header):
             values = [f.strip() for f in data.split(",")]
             self.process_extend_header(header, values)
+        elif header == 'set-cookie':
+            self.process_extend_header(header, (data, ))
         else:
             self.process_set_header(header, data)
 
