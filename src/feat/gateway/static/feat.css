@@ -18,8 +18,8 @@ h1 {
 /* Error */
 
 .error {
-	color: red;
-	font-size: 20px;
+    color: red;
+    font-size: 20px;
 }
 
 /* Header */
@@ -43,10 +43,13 @@ h1 {
 
 /* List of items */
 
-.items .name,
+.items .name {
+    display: inline-block;
+    min-width: 150px;
+}
+
 .items .value,
 .items .desc {
-    min-width: 200px;
     display: inline-block;
     margin-right: 20px;
 }
@@ -56,7 +59,6 @@ items .name {
 }
 
 .items .value {
-    min-width: 300px;
     color: blue;
 }
 
