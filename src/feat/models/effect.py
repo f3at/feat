@@ -29,8 +29,11 @@ This module defines a set of generic effects:
  - select_param: drop the current value and use the parameter
                  with specified name as the new value.
 
-  - local_ref: return a local reference constructed from the factory
-               arguments and finishing with the context's key.
+ - local_ref: return a local reference constructed from the factory
+              arguments and finishing with the context's key.
+
+ - context_key: return the context key as the new value.
+
 
 EFFECT DEFINITION:
 
@@ -118,3 +121,13 @@ def relative_ref(*parts):
         return reference.Relative(*(parts + (context["key"], )))
 
     return relative_ref
+
+
+def context_value(name):
+    """Drop the current value, and return context's value
+    with specified name."""
+
+    def context_value(_value, context, **_params):
+        return context[name]
+
+    return context_value

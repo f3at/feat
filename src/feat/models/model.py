@@ -513,10 +513,13 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     ### IContextMaker ###
 
     def make_context(self, key=None, view=None, action=None):
-        return {"model": self, "officer": self.officer,
-               "view": view if view is not None else self.view,
-               "key": unicode(key) if key is not None else self.name,
-               "action": action}
+        return {"model": self,
+                "source": self.source,
+                "view": self.view,
+                "officer": self.officer,
+                "view": view if view is not None else self.view,
+                "key": unicode(key) if key is not None else self.name,
+                "action": action}
 
     ### IModel ###
 

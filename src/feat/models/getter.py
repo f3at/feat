@@ -232,6 +232,49 @@ def view_getattr():
     return view_getattr
 
 
+def value_get(method_name):
+    """
+    Creates a getter that will call value's method with specified name
+    using the context's key as first argument.
+    @param method_name: the name of a method belonging to the value.
+    @type method_name: str
+    """
+
+    def value_get(value, context, **_params):
+        method = getattr(value, method_name)
+        return _get(method, context["key"], (), {})
+
+    return value_get
+
+
+def value_attr(attr_name):
+    """
+    Creates a getter that will retrieve value's attribute
+    with specified name.
+    @param attr_name: the name of an attribute belonging to the value.
+    @type attr_name: str
+    """
+
+    def value_attr(value, context, **_params):
+        value = getattr(value, attr_name)
+        return _attr(value)
+
+    return value_attr
+
+
+def value_getattr():
+    """
+    Creates a getter that will retrieve the value's attribute
+    with the context key as name.
+    """
+
+    def value_getattr(value, context, **_params):
+        value = getattr(value, context["key"])
+        return _attr(value)
+
+    return source_getattr
+
+
 ### private ###
 
 

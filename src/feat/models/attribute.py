@@ -158,7 +158,10 @@ class _DynAttribute(Attribute):
 
     def make_context(self, key=None, view=None, action=None):
         model = self.parent or self
-        return {"model": model, "officer": model.officer,
+        return {"model": model,
+                "source": model.source,
+                "view": model.view,
+                "officer": model.officer,
                 "view": model.view,
                 "key": unicode(key) if key is not None else self.name,
                 "action": action}

@@ -230,6 +230,21 @@ def view_perform(method_name, *args, **kwargs):
     return view_perform
 
 
+def value_call(method_name, *args, **kwargs):
+    """
+    Creates an effect that will call value's method with specified name
+    with the specified arguments and keywords.
+    @param method_name: the name of method belonging to the value.
+    @type method_name: str
+    """
+
+    def value_call(value, context, **_params):
+        method = getattr(value, method_name)
+        return _call(method, args, kwargs)
+
+    return value_call
+
+
 ### private ###
 
 
