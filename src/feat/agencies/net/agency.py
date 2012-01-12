@@ -815,7 +815,8 @@ class Agency(agency.Agency):
                           "using PKCS12 %r", range[0], range[-1], p12)
 
             return gateway.Gateway(self, range, security_policy=sec,
-                                   hostname=self.get_hostname())
+                                   hostname=self.get_hostname(),
+                                   log_keeper=self)
         except Exception as e:
             error.handle_exception(self, e, "Failed to setup gateway")
 

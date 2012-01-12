@@ -23,13 +23,11 @@
 import os
 import socket
 
-from OpenSSL import SSL
-
 from twisted.internet import error as terror
 
 from feat.common import log, defer
 from feat.gateway import resources
-from feat.web import security, http, webserver
+from feat.web import security, webserver
 
 # Import supported formats
 from feat.models import applicationjson
@@ -44,52 +42,42 @@ class Gateway(log.LogProxy, log.Logger):
 
     log_category = "gateway"
 
-    def __init__(self, agency, port_range=None,
-                 static_path=None, security_policy=None, hostname=None):
+    def __init__(self, root, port_range=None, static_path=None,
+                 security_policy=None, hostname=None, log_keeper=None):
         log.Logger.__init__(self, self)
-        log.LogProxy.__init__(self, agency)
+        log.LogProxy.__init__(self, log_keeper or log.get_default())
 
-        self._agency = agency
+        self._root = root
         if not static_path:
             static_path = os.path.join(os.path.dirname(__file__), "static")
         self._static_path = static_path
 
+        tmp_range = port_range
+        if isinstance(tmp_range, int):
+            tmp_range = (tmp_range, tmp_range)
+        try:
+            min_port, max_port = tmp_range
+            if not (isinstance(min_port, int)
+                    and isinstance(max_port, int)
+                    and min_port <= max_port):
+                raise ValueError()
+            self._ports = (min_port, max_port)
+        except ValueError:
+            raise ValueError("Invalid gateway port/range specified: %r"
+                             % (port_range, ))
+
         self._host = hostname or socket.gethostbyaddr(socket.gethostname())[0]
-        self._ports = port_range
         self._security = security.ensure_policy(security_policy)
         self._server = None
 
+    def initiate(self):
+        return self._initiate(self._ports[0], self._ports[1])
+
     def initiate_master(self):
-        port = self._ports[0]
-        self.log("Initializing master gateway on %s:%d", self._host, port)
-        server = webserver.Server(port, self._build_root(port),
-                                  security_policy=self._security,
-                                  log_keeper=self)
-        self._initiate_server(server)
-        self._server = server
-        self.info("Master gateway started on %s:%d", self._host, self.port)
+        return self._initiate(self._ports[0], self._ports[0], "master")
 
     def initiate_slave(self):
-        min, max = self._ports
-        for port in xrange(min + 1, max):
-            try:
-                self.log("Initializing slave gateway on %s:%d",
-                         self._host, port)
-                server = webserver.Server(port, self._build_root(port),
-                                          security_policy=self._security,
-                                          log_keeper=self)
-                self._initiate_server(server)
-                self._server = server
-                self.info("Slave gateway started on %s:%d",
-                          self._host, self.port)
-                return
-
-            except terror.CannotListenError:
-
-                self.log("Port %d not available for slave gateway", port)
-                continue
-
-        raise NoPortAvailableError("No port available for slave gateway")
+        return self._initiate(self._ports[0] + 1, self._ports[1], "slave")
 
     def cleanup(self):
         if self._server:
@@ -105,9 +93,31 @@ class Gateway(log.LogProxy, log.Logger):
 
     ### private ###
 
-    def _build_root(self, port):
+    def _initiate(self, min_port, max_port, log_tag=""):
+        log_tag = log_tag + " " if log_tag else ""
+        for port in xrange(min_port, max_port + 1):
+            try:
+                self.log("Initializing %sgateway on %s:%d",
+                         log_tag, self._host, port)
+                server = webserver.Server(port, self._build_resource(port),
+                                          security_policy=self._security,
+                                          log_keeper=self)
+                self._initiate_server(server)
+                self._server = server
+                self.info("%sgateway started on %s:%d".capitalize(),
+                          log_tag, self._host, self.port)
+                return
+
+            except terror.CannotListenError:
+
+                self.log("Port %d not available for %sgateway", port, log_tag)
+                continue
+
+        raise NoPortAvailableError("No port available for %sgateway", log_tag)
+
+    def _build_resource(self, port):
         return resources.Root(self._host, port,
-                              self._agency, self._static_path)
+                              self._root, self._static_path)
 
     def _initiate_server(self, server):
         server.initiate()
