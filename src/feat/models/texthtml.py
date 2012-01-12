@@ -288,6 +288,8 @@ class ModelWriter(log.Logger):
         get_action = yield model.fetch_action('get')
         if get_action is not None:
             value = yield get_action.perform()
+            if get_action.result_info.value_type is ValueTypes.binary:
+                value = "%d bytes" % len(value)
             if supercontext and "owner" in links:
                 url = reference.Relative().resolve(supercontext)
                 value = html.tags.a(href=url)(value)

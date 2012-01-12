@@ -32,10 +32,11 @@ from feat.common import defer, error
 from feat.web import http, webserver
 from feat.models.model import DummyOfficer
 
-from feat.models.interface import ActionCategories, IActionPayload, IAspect
-from feat.models.interface import IContext, IModel, IModelAction, IReference
-from feat.models.interface import IErrorPayload, Unauthorized
-from feat.models.interface import ErrorTypes
+from feat.models.interface import ActionCategories, IActionPayload, IAspect,\
+    ValueTypes, IEncodingInfo
+from feat.models.interface import IContext, IModel, IModelAction
+from feat.models.interface import IAttribute, IReference
+from feat.models.interface import ErrorTypes, IErrorPayload, Unauthorized
 from feat.models.interface import ParameterError, InvalidParameters
 
 
@@ -48,6 +49,7 @@ class ErrorPayload(object):
         error_type = ErrorTypes.generic
         status_code = None
         error_code = None
+        message = None
         subjects = None
         reasons = None
         debug = None
@@ -384,23 +386,29 @@ class ModelResource(BaseResource):
         context = self.make_context(request)
         if location[-1] == u"":
             return self.render_action("get", request, response, context)
-        return self.render_model(request, response, context)
+        return self.render_model(self.model, request, response, context)
 
     def render_action(self, action_name, request, response, context):
 
-        def got_data(data):
+        def got_data(data, action):
+            result_info = action.result_info
+            if result_info.value_type is ValueTypes.binary:
+                return self.render_binary(data, request, response,
+                                          context, action.result_info)
+
             #FIXME: passing query arguments without validation is not safe
             return response.write_object(data, context=context,
                                          **request.arguments)
 
         def got_action(action):
             if action is None:
-                return self.render_model(request, response, context)
+                return self.render_model(self.model, request,
+                                         response, context)
 
             request.log("Performing action %r on %s model %r",
                         action_name, self.model.identity, self.model.name)
             d = action.perform()
-            d.addCallback(got_data)
+            d.addCallback(got_data, action)
             d.addErrback(self.filter_errors)
             return d
 
@@ -409,12 +417,43 @@ class ModelResource(BaseResource):
         d.addErrback(self.filter_errors)
         return d
 
-    def render_model(self, request, response, context):
+    def render_model(self, model, request, response, context):
+        if IAttribute.providedBy(model):
+            return self.render_attribute(model, request, response, context)
+
         #FIXME: passing query arguments without validation is not safe
         d = response.write_object(self.model, context=context,
                                   **request.arguments)
         d.addErrback(self.filter_errors)
         return d
+
+    def render_attribute(self, attr, request, response, context):
+        if attr.value_info.value_type is ValueTypes.binary:
+            if attr.is_readable:
+                d = attr.fetch_value()
+                d.addCallback(self.render_binary, request, response,
+                              context, attr.value_info)
+                return d
+
+        #FIXME: passing query arguments without validation is not safe
+        d = response.write_object(attr, context=context,
+                                  **request.arguments)
+        d.addErrback(self.filter_errors)
+        return d
+
+    def render_binary(self, value, request, response, context, value_info):
+        mime_type = None
+        encoding = None
+        if IEncodingInfo.providedBy(value_info):
+            enc_info = IEncodingInfo(value_info)
+            mime_type = enc_info.mime_type
+            encoding = enc_info.encoding
+        mime_type = mime_type or "application/octet-stream"
+        response.set_mime_type(mime_type)
+        if encoding:
+            response.set_encoding(encoding)
+        response.set_length(len(value))
+        response.write(value)
 
 
 class ActionResource(BaseResource):

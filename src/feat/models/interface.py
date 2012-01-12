@@ -38,7 +38,7 @@ __all__ = ["ResponseTypes", "ActionCategories",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
            "IValueInfo", "IValueCollection", "IValueRange",
-           "IValueOptions", "IValueOption",
+           "IEncodingInfo", "IValueOptions", "IValueOption",
            "IActionPayload", "IErrorPayload"]
 
 
@@ -242,6 +242,13 @@ class IValueInfo(Interface):
 
     def __ne__(other):
         """IValueInfo implements equality operators."""
+
+
+class IEncodingInfo(Interface):
+    mime_type = Attribute("Mime-type of the value if meaningful. "
+                          "@type: str or None")
+    encoding = Attribute("Encoding information if meaningful. "
+                          "@type: str or None")
 
 
 class IValueCollection(IValueInfo):

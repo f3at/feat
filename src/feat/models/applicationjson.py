@@ -32,6 +32,7 @@ from feat.models.interface import IModel, IReference
 from feat.models.interface import IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
+from feat.models.interface import IEncodingInfo, ValueTypes
 from feat.models.interface import ErrorTypes, Unauthorized
 
 MIME_TYPE = "application/json"
@@ -137,9 +138,10 @@ def render_attribute(model, context, result=None):
     result.add_if_true("writable", attr.is_writable)
     result.add_if_true("deletable", attr.is_deletable)
     if attr.is_readable:
-        d = attr.fetch_value()
-        d.addCallback(render_value, subcontext)
-        result.add("value", d)
+        if attr.value_info.value_type is not ValueTypes.binary:
+            d = attr.fetch_value()
+            d.addCallback(render_value, subcontext)
+            result.add("value", d)
     return result.wait()
 
 
@@ -172,6 +174,10 @@ def render_value_info(value):
     result.add_if_not_none("label", value.label)
     result.add_if_not_none("desc", value.desc)
     result.add_if_true("metadata", render_metadata(value))
+    if IEncodingInfo.providedBy(value):
+        encinfo = IEncodingInfo(value)
+        result.add_if_not_none("mimetype", encinfo.mime_type)
+        result.add_if_not_none("encoding", encinfo.encoding)
     if IValueCollection.providedBy(value):
         coll = IValueCollection(value)
         allowed = [render_value_info(v) for v in coll.allowed_types]
@@ -261,10 +267,13 @@ def render_compact_submodel(submodel, item, context):
             return item.reference.resolve(context)
     else:
         attr = IAttribute(submodel)
-        if attr.is_readable:
-            d = attr.fetch_value()
-            d.addCallback(render_value, context)
-            return d
+        if attr.value_info.value_type is ValueTypes.binary:
+            if item.reference is not None:
+                return item.reference.resolve(context)
+        elif attr.is_readable:
+                d = attr.fetch_value()
+                d.addCallback(render_value, context)
+                return d
     raise Exception("No compact value")
 
 

@@ -237,6 +237,27 @@ class BaseValue(models_meta.Metadata):
         cls._class_default = default
 
 
+class Binary(BaseValue):
+
+    implements(IEncodingInfo)
+
+    value_type(ValueTypes.binary)
+
+    def __init__(self, mime_type=None, encoding=None):
+        self._mime_type = mime_type
+        self._encoding = encoding
+
+    ### IEncodingInfo ###
+
+    @property
+    def mime_type(self):
+        return self._mime_type
+
+    @property
+    def encoding(self):
+        return self._encoding
+
+
 class _InterfaceValue(BaseValue):
 
     _value_interface = None
@@ -353,13 +374,13 @@ class Value(BaseValue):
     def validate(self, value):
         value = BaseValue.validate(self, value)
         if self._options_only and not self._has_option(value):
-            raise ValueError(value)
+            raise ValueError("Value not allowed: %r" % (value, ))
         return value
 
     def publish(self, value):
         value = BaseValue.validate(self, value)
         if self._options_only and not self.has_option(value):
-            raise ValueError(value)
+            raise ValueError("Value not allowed: %r" % (value, ))
         return value
 
     ### IValueOptions ###
