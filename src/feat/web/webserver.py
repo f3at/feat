@@ -202,6 +202,10 @@ class IWebResponse(Interface):
         """Sets the response encoding,
         fail if the headers were already sent."""
 
+    def force_encoding(encoding):
+        """Sets the response encoding,
+        regardless of what client accepts."""
+
     def set_mime_type(mime_type):
         """Sets the response mime-type,
         fail if the headers were already sent."""
@@ -1330,6 +1334,10 @@ class Response(log.Logger):
         if self.strict_negotiation:
             if not self._request.does_accept_encoding(encoding):
                 raise http.NotAcceptableError()
+        self._encoding = encoding
+
+    def force_encoding(self, encoding):
+        self._check_header_not_sent()
         self._encoding = encoding
 
     def set_mime_type(self, mime_type):
