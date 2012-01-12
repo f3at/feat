@@ -226,6 +226,17 @@ When testing with curl, use the PEM certificate and Private Key::
 
 to present the client certificate to the server.
 
+Chrome
+------
+To use this client certificate in Chrome:
+ - Go to Preferences>Under the Hood>HTTPS/SSL and click Manage Certificates
+ - Click Import
+ - Browse to the ${CERT_PREFIX}.p12 file you generated
+ - Go to Authorities, and select the authority for its Root CA which by default
+   is untrusted
+ - Click Edit...
+ - Check 'Trust this certificate for identifying websites'
+
 FIXME: should each separate client we want to give access get its own client
 key ?
 
