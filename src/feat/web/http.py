@@ -387,7 +387,12 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 
     def _on_inactivity_timeout(self):
         self.warning("Inactivity timeout")
-        self.process_timeout()
+        # FIXME: Line below was probably put on the reason,
+        # however it results in Exception as process_timeout() tries
+        # to cancel the current request, while 'inactivity' means
+        # that there has been no request for a long time. Probably
+        # there should be some diffrent method call here.
+        # self.process_timeout()
 
     def _on_idle_timeout(self):
         self.warning("Idle timeout")
