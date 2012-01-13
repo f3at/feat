@@ -81,15 +81,25 @@ $.fn.featform._onSubmit = function(ev) {
 	$.facebox(html);
     };
 
+    var getReason = function(envelope, subject) {
+	if (envelope.error == "invalid_parameters") {
+	    return envelope.reasons[subject];
+	} else if (envelope.error == "missing_parameters") {
+	    return "Is required and missing.";
+	};
+	return "Unknown";
+    };
+    
     var failure = function(envelope) {
 	spinner.hide();
-	if (envelope.error == "invalid_parameters") {
+	if (envelope.error == "invalid_parameters" ||
+	    envelope.error == "missing_parameters") {
 	    $.each(
 		envelope.subjects,
 		function(index, subject) {
 		    var input = $this.find("input[name=" + subject + "]");
 		    input.addClass('invalid');
-		    var reason = envelope.reasons[subject];
+		    var reason = getReason(envelope, subject);
 		    var explanation = $("<span class='explanation'>" +
 					reason + "</span>");
 		    explanation.insertAfter(input);
