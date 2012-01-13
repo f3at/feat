@@ -172,8 +172,9 @@ class Protocol(http.BaseProtocol):
     ### Private Methods ###
 
     def _client_error(self, exception):
-        d = self._requests.pop(0)
-        d.errback(exception)
+        if self._requests:
+            d = self._requests.pop(0)
+            d.errback(exception)
         self.transport.loseConnection()
 
 
