@@ -1076,8 +1076,14 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         # IDbConnectionFactory
         self._database = None
 
-        self._hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
-        self._ip = unicode(socket.gethostbyname(self._hostname))
+        try:
+            self._hostname = unicode(
+                socket.gethostbyaddr(socket.gethostname())[0])
+            self._ip = unicode(socket.gethostbyname(self._hostname))
+        except socket.gaierror:
+            # this fixes the issues when office is out of internet ;)
+            self._hostname = unicode(socket.gethostname())
+            self._ip = u'127.0.0.1'
 
         self._shutdown_task = None
         self._startup_task = None
