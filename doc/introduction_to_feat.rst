@@ -107,8 +107,9 @@ process. We have slightly different implementations
 for either running tests or for simulations.
 
 To explain further: the simulation agency does not require
-RabbitMQ or CouchDB servers running. It simulates their behavior,
-vastly simplifying the setup of the environment needed for running
+`RabbitMQ <http://www.rabbitmq.com>`_ or
+`CouchDB <http://couchdb.apache.org/>`_ servers running. It simulates their
+behavior, vastly simplifying the setup of the environment needed for running
 tests.
 
 The following subsections introduce the most important components of
@@ -117,48 +118,49 @@ the agency. This is not a complete list though.
 Messaging
 ---------
 This component is responsible for dispatching messages between the
-agents. It's built on top of the amqp protocol and shares its
-terminology.
+agents. It's built on top of the `AMQP <http://www.amqp.org/>`_ protocol and
+shares its terminology.
 
-For production, network implementation we use
+For production, we use the
 `txAMQP <https://launchpad.net/txamqp>`_ library. On top of it
-there is a layer which ensures it works regardless if we are
-currently connected. If we're not the library calls are queued and
-wait for the reconnection.
+there is a layer which ensures it works regardless of whether we are
+currently connected. If we're not, the library calls queue up messages
+which will be sent after reconnecting.
 
-The strategy of using amqp can be summarized in following points:
+The strategy of using AMQP can be summarized as follows:
 
 -  Every agent owns a queue. The queue name is the agent\_id.
 
--  For every agent we create a direct binding between the shard
-   exchange (for explanation what shard is look in the cluster
-   section) and his queue. The routing key is agent\_id.
+-  For every agent, we create a direct binding between the shard
+   exchange (see further explanation of a shard_ in the cluster section)
+   and its queue. The routing key is agent\_id.
 
--  In case of agent expressing interest in one-to-many type of
-   communication (called later the *public interest*) another direct
+-  In case of an agent expressing interest in one-to-many type of
+   communication (later called the *public interest*) another direct
    binding is created between his queue and the shard exchange. The
-   routing key it protocol\_id (uniquely identifying type of
+   routing key is protocol\_id (uniquely identifying the type of
    protocol).
 
--  There is one special exchange called *lobby* which we use for
-   discovering globally defined public interest. If agent wants to be
-   accessible in this way it results in creating the direct binding
+-  There is one special exchange called the *lobby*, which we use for
+   discovering globally defined public interests. If an agent wants to be
+   accessible in this way, it results in creating the direct binding
    between exchange named lobby and his queue.
 
--  The queue and it's binding are deleted when the agents
-   terminates in the clean way. It continues to exist and cumulate
-   messages in case of the violent agents death.
+-  The queue and its binding are deleted when the agent
+   terminates in a clean way. It continues to exist and accumulate
+   messages in case of an agent's violent death.
 
 
-Tunneling.
-----------
-This component provides the alternative way of sending messages between agents. In this case the connection between the agencies is direct, no external server is used. The connection is done over HTTPS
-protocol.
+Tunneling
+---------
+This component provides an alternative way of sending messages between agents.
+In this case the connection between the agencies is direct: no external server
+is used. The connection is done over the HTTPS protocol.
 
-This feature is used for communicating between agents leaving in
-different clusters. Also it might be used in future for reducing
-the load of RabbitMQ server. Any high rate messages might be sent
-through this channel instead which obviously has better scaling
+This feature is used for communicating between agents in
+different clusters. It might also be used in the future for reducing
+the load on the RabbitMQ server. Any high-rate messages might be sent
+through this channel instead, which obviously has better scaling
 properties.
 
 For the agent to send a message using this channel instead the
@@ -167,105 +169,112 @@ channel [#]_ and pass a correct IRecipient.
 
 .. [#] Call enable\_channel('tunnel') on medium class.
 
-Database.
----------
-It's responsible for storing persistent state of the agents. We use a
-document oriented database backend. In production environment the
-CouchDB server is used.
-
-Every agent owns a document (called *descriptor* further on) in
-which he stores all the information which should survive him being
-restarted. In general all agents store there the allocated
-resources and the references to their partners.
-
-Only the owner of the descriptor can update it. In case it has been
-updated by someone else the agent dies violently. This is the means
-of solving the *network split* scenario, where cluster gets divided
-into two parts, the agents get duplicated and then the connections
-is reestablished.
-
-Manhole.
+Database
 --------
-Agency runs a SSH server. A developer may connect to it using normal ssh client to perform maintenance and/or debugging tasks. The part of
-feat configuration is the path to *authorized\_keys* file. After
-logging in one can see the command line service understanding a
-python-like syntax. It lets traverse through the instances and call
+The database is responsible for storing the persistent state of the agents. We
+use a document-oriented database backend. In our production environment the
+`CouchDB <http://www.couchdb.org/>`_ server is used.
+
+Every agent owns a document (called its *descriptor* further on) in
+which it stores all the information which should live longer than the agent
+process to survive being restarted.
+In general, all agents store the allocated
+resources and the references to their partners in the descriptor.
+
+Only the owner of the descriptor can update it. If an agent notices it has been
+updated by somethings else, the agent dies violently. This approach solves
+the *network split* scenario, where cluster gets divided
+into separate parts, the agents get duplicated, and afterwards connections
+are re-established and a conflict occurs.
+
+Manhole
+-------
+The agency runs an SSH server. A developer can connect to it using a standard
+ssh client to perform maintenance and/or debugging tasks. Authentication is
+configured through configuration of the path to *authorized\_keys* file. After
+logging in, one can see the command line service which implements a
+python-like syntax. It lets you traverse through the instances and call
 the methods decorated with the proper decorator [#]_.
 
-Also same pseudo language is understood by the simulation driver.
+The same pseudo-language used in this shell is also understood by the
+simulation driver.
 
 .. [#] feat.common.manhole.expose
 
-Gateway.
---------
-Gateway opens a HTTPS server that can be used to quickly navigate through the cluster and inspect it's state. It requires client's SSL
-certificate to connect. To configure it you need to specify the p12
+Gateway
+-------
+The gateway opens an HTTPS server that can be used to quickly navigate through
+the cluster and inspect its state. It requires a client SSL certificate to
+connect. To configure it, you need to specify the p12
 certificate file.
 
-For some tasks gateway is way more comfortable to use than ssh. The
+For some tasks, the gateway is way more comfortable to use than ssh. The
 reason for introducing this component is to build a GUI interface
-for the whole cluster fetching information from it. But this is far
-future.
+for the whole cluster, fetching information from it. But this is a future plan.
 
-The direction this component is going is the MVP
+The direction this component is going in is the MVP
 (model-view-presenter) pattern. However it's still very much work
-in progress, currently only HTML format is supported and it has to
+in progress: currently only the HTML format is supported and it has to
 be generated somewhat by hand.
 
-Broker.
--------
-Is managing communication with other feat processes running on the
+Broker
+------
+The broker manages communication with other feat processes running on the
 same machine through the UNIX socket. It's responsible for the
 process of the agency role negotiation (master/slave) and manages
 the list of other processes. It also exposes the interfaces
 necessary for other components to obtain the reference to objects
 living in a different process. This is useful for sharing services
 through the UNIX socket instead of concurring, for example, on
-database writes. Example of service shared this way is Journaler
-(explained below). In future we intend to do the same with
+database writes. An example of a service shared this way is Journaler
+(explained below). In the future we intend to do the same with
 Messaging and Database.
 
-Journaler.
-----------
-Journaler is responsible for storing the journal and log entries. On one side it is integrated with the layer of the *medium class* recording execution chain coming in and out of the hamsterball. On the other end it passes information to the writer which inserts it to sqlite database or sends it to the UNIX socket.
+Journaler
+---------
+The journaler is responsible for storing the journal and log entries. On the
+one end, it is integrated with the layer of the *medium class*, recording the
+execution chain coming in and out of the hamsterball. On the other end it
+passes information to the writer, which inserts it into the sqlite database or
+sends it to the UNIX socket.
 
-Medium class.
--------------
-The medium class (AgencyAgent) is the one the agent is given the
-reference to. Agency creates one instance of it for every agent it
-runs. This is the most complex part of the agency side. It creates
+Medium class
+------------
+The medium class (AgencyAgent) is the one the agent is given a
+reference to. The agency creates one instance of it for every agent it
+runs. This is the most complex part on the agency's side. It creates
 a proxy between the agent code and the outside world. Essentially
 it creates the border of the hamsterball and keeps track of its
 contents.
 
 There are two significantly different implementations of the medium
-class. One is used for runnnig code and the other one for replaying
+class. One is used for running code, and the other one for replaying
 it. The implementation used in replay stubs out all the actual
-effect of the agent's side calls, only validating its correctness.
+side effects of the agent's calls, only validating its correctness.
 
-(Un)serializer.
----------------
-This is more an utility than an agency component, although it's
+(Un)serializer
+--------------
+This is more a utility than an agency component, although it's
 definitely worth mentioning. Feat comes with a very powerful
 serialization module. It is capable of serializing and
-unserializing any complex structure of objects implementing
-ISerializable interface. It most of the typical serialization
-gotchas like cyclic references, different strings encoding, etc.
+unserializing any complex structure of objects which implements
+the ISerializable interface. It handles most of the typical serialization
+gotchas, like cyclic references, strings with different encodings, etc.
 
-It allows creating very specific unserialization schemas. Example
-of one of them would be a process of loading a snapshot into a
-replay hamsterball. The unserializer registry used there is built
-in a way to substitute some agency-side instances with the ones
+It allows creating very specific unserialization schemas. An example
+would be the process of loading a snapshot into a
+replaying hamsterball. The unserializer registry used there is built
+to substitute some agency-side instances with the ones
 specific for the replay.
 
 It's also worth mentioning that the logic of the serializer is
-separated from the formater. This allowed is to support multiple
+separated from the formatter. This allows us to support multiple
 formats the serialization can (un)serialize to/from:
 
 -  json,
 -  pytree,
--  sexp,
--  banana.
+-  s-expressions,
+-  `banana <http://twistedmatrix.com/documents/current/core/specifications/banana.html>`_.
 
 Agent code
 ==========
@@ -669,6 +678,9 @@ we need to use two instances and than compare them.
 ---------------------------
 Feat cluster in macro scale
 ---------------------------
+
+.. _shard:
+
 What has been discussed so far is the features of feat service running
 on a single host. But clearly using it this way is not the point of
 the framework. So how does it look in a big scale ?
@@ -1572,7 +1584,7 @@ classes.
 This technique would not work if we want to have the same protocol
 class registered by the factories with the different parameters. In
 our case the parameter which is changing is *protocol\_id*.
-Reminding our amqp strategy, the protocol\_id is used as a routing
+Reminding our AMQP strategy, the protocol\_id is used as a routing
 key for the direct binding created by agent for each of his
 *public interests*. In our case every room will use different
 *protocol\_id*. Moreover the RoomCollector interest is being bound
