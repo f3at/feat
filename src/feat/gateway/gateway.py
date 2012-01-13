@@ -42,12 +42,14 @@ class Gateway(log.LogProxy, log.Logger):
 
     log_category = "gateway"
 
-    def __init__(self, root, port_range=None, static_path=None,
-                 security_policy=None, hostname=None, log_keeper=None):
+    def __init__(self, root, port_range=None, hostname=None,
+                 static_path=None, security_policy=None,
+                 log_keeper=None, label=None):
         log.Logger.__init__(self, self)
         log.LogProxy.__init__(self, log_keeper or log.get_default())
 
         self._root = root
+        self._label = label
         if not static_path:
             static_path = os.path.join(os.path.dirname(__file__), "static")
         self._static_path = static_path
@@ -117,7 +119,8 @@ class Gateway(log.LogProxy, log.Logger):
 
     def _build_resource(self, port):
         return resources.Root(self._host, port,
-                              self._root, self._static_path)
+                              self._root, self._label,
+                              self._static_path)
 
     def _initiate_server(self, server):
         server.initiate()

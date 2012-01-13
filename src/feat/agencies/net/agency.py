@@ -814,9 +814,8 @@ class Agency(agency.Agency):
                 self.info("Setting up SSL gateway on ports %d-%d "
                           "using PKCS12 %r", range[0], range[-1], p12)
 
-            return gateway.Gateway(self, range, security_policy=sec,
-                                   hostname=self.get_hostname(),
-                                   log_keeper=self)
+            return gateway.Gateway(self, range, hostname=self.get_hostname(),
+                                   security_policy=sec, log_keeper=self)
         except Exception as e:
             error.handle_exception(self, e, "Failed to setup gateway")
 

@@ -631,10 +631,12 @@ class Root(BaseResource):
     label = "FEAT Gateway"
     desc = None
 
-    def __init__(self, hostname, port, source, static_path=None):
+    def __init__(self, hostname, port, source, label=None, static_path=None):
         self.source = source
         self.hostname = hostname
         self.port = port
+        if label:
+            self.label = label
         self._static = (static_path and
                         StaticResource(hostname, port, static_path))
         self._methods = set([http.Methods.GET])
