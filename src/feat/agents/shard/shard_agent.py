@@ -266,8 +266,8 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
 
         def swallow_initiator_failed(fail):
             fail.trap(ProtocolFailed)
-            self.debug('query_structure failed with %r, returning empty '
-                       'list', fail)
+            self.log('query_structure failed with %r, returning empty '
+                     'list', fail)
             return list()
 
         if distance != 1:
