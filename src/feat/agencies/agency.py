@@ -744,7 +744,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         def not_found(fail, doc_id):
             fail.trap(NotFoundError)
-            self.warning('Agents configuration not found in database. '
+            self.info('Agent configuration not found in database. '
                          'Expected doc_id: %r', doc_id)
             return
 
