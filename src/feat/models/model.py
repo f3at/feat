@@ -389,15 +389,15 @@ class DummyPeerInfo(object):
 
     @property
     def identity(self):
-        return "gest"
+        return "guest"
 
     @property
     def email(self):
-        return "gest@gest"
+        return "guest@guest"
 
     @property
     def context(self):
-        return "gest"
+        return "guest"
 
     def has_role(self, role):
         return False
