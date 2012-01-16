@@ -48,7 +48,7 @@ paisley_pkg = os.path.join(paisley_dir, "paisley")
 
 NAME = 'feat'
 #VERSION = call(root_dir, git_ver_gen, tarball_ver_filepath)
-VERSION = '0.15'
+VERSION = '0.16'
 DESCRIPTION = 'Flumotion Asynchronous Autonomous Agent Toolkit'
 LONG_DESC = DESCRIPTION
 AUTHOR = 'Flumotion Developers',

@@ -1,8 +1,8 @@
 %global __python python2.6
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.15
-%define unmangled_version 0.15
+%define version 0.16
+%define unmangled_version 0.16
 %define build_rev 0
 
 Name:           python-feat
@@ -107,6 +107,9 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 rm -rf $RPM_BUILD_ROOT
 
 %changelog
+* Mon Jan 16 2012 Sebastien Merle <s.merle@gmail.com>
+- Bumped to 0.16
+
 * Tue Dec 11 2011 Sebastien Merle <s.merle@gmail.com>
 - 0.15
 - FEAT Pre-Release 0.15
