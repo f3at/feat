@@ -37,8 +37,6 @@ from feat.interface.view import *
 
 
 from feat import extern
-# Add feat/extern/paisley to the load path
-sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
 from paisley.changes import ChangeNotifier
 from paisley.client import CouchDB
 

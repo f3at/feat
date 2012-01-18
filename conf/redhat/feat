@@ -9,7 +9,7 @@
 # source function library
 . /etc/rc.d/init.d/functions
 PROG="feat-service"
-USER="flumotion"
+USER="feat"
 CONF="/etc/feat/feat.ini"
 
 RETVAL=0
