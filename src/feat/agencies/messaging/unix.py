@@ -4,6 +4,7 @@ from zope.interface import implements
 from twisted.spread import pb
 
 from feat.common import log, defer, first
+from feat.common.serialization import banana
 
 from feat.agencies.messaging import routing
 from feat.agencies import common
@@ -27,6 +28,10 @@ class Master(log.Logger, log.LogProxy, common.ConnectionManager,
         self._messaging = None
         # routing key -> SlaveReference
         self._slaves = dict()
+
+        # We do banana over banana ...
+        self._serializer = banana.Serializer()
+        self._unserializer = banana.Unserializer()
 
     ### IBackend ###
 
@@ -67,7 +72,8 @@ class Master(log.Logger, log.LogProxy, common.ConnectionManager,
                          "is %r, slaves we know: %r",
                          key, self._slaves.keys())
         else:
-            d = [s.dispatch(message) for s in self._slaves[key]]
+            data = self._serializer.convert(message)
+            d = [s.dispatch(data) for s in self._slaves[key]]
             return defer.DeferredList(d, consumeErrors=True)
 
     ### Methods called by Slave ###
@@ -83,7 +89,8 @@ class Master(log.Logger, log.LogProxy, common.ConnectionManager,
     def remote_unbind_me(self, slave, key):
         self._remove(key, slave)
 
-    def remote_dispatch(self, message):
+    def remote_dispatch(self, data):
+        message = self._unserializer.convert(data)
         self._messaging.dispatch(message, outgoing=True)
 
     def remote_create_external_route(self, backend_id, **kwargs):
@@ -134,8 +141,8 @@ class SlaveReference(object):
     def route(self):
         return self._route
 
-    def dispatch(self, message):
-        return self._slave.callRemote('dispatch', message)
+    def dispatch(self, data):
+        return self._slave.callRemote('dispatch', data)
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -162,8 +169,12 @@ class Slave(log.Logger, log.LogProxy, common.ConnectionManager,
 
         self._broker = broker
         self._messaging = None
-        # PBReference to Master
+        # PBReference to Master137
         self._master = None
+
+        # We do banana over banana ...
+        self._serializer = banana.Serializer()
+        self._unserializer = banana.Unserializer()
 
     ### IBackend ###
 
@@ -209,9 +220,11 @@ class Slave(log.Logger, log.LogProxy, common.ConnectionManager,
     ### ISink ###
 
     def on_message(self, message):
-        return self._master.callRemote('dispatch', message)
+        data = self._serializer.convert(message)
+        return self._master.callRemote('dispatch', data)
 
     ### Called by Master ###
 
-    def remote_dispatch(self, message):
+    def remote_dispatch(self, data):
+        message = self._unserializer.convert(data)
         self._messaging.dispatch(message, outgoing=False)
