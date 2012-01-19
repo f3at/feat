@@ -144,26 +144,30 @@ def get_failure_message(failure):
 
 def get_exception_traceback(exception=None, cleanup=False):
     #FIXME: Only work if the exception was raised in the current context
-    f = Failure(exception)
-
-    if exception and (f.value != exception):
-        return "Not Traceback information available"
-
     io = StringIO.StringIO()
-    tb = f.getTraceback()
+    traceback.print_exc(limit=30, file=io)
+    tb = io.getvalue()
+    if not tb:
+        tb = ("Exception has no traceback information. \n",
+              "This can happen for 2 known reasons: \n",
+              "1) error.handle_exception is called ",
+              "getting passed as a parameter exception instance extracted ",
+              "from the failure. Solution: use error.handle_failure()\n",
+              "2) error.handle_exception is called with an exception ",
+              "created by hand like 'return TypeError(msg)'. You should ",
+              "raise this exception instead.")
     if cleanup:
         tb = clean_traceback(tb)
-    print >> io, tb
 
-    if isinstance(f.value, FeatError):
-        if f.value.cause_traceback:
+    if isinstance(exception, FeatError):
+        if exception.cause_traceback:
             print >> io, "\n\nCAUSED BY:\n\n"
-            tb = f.value.cause_traceback
+            ctb = exception.cause_traceback
             if cleanup:
-                tb = clean_traceback(tb)
-            print >> io, tb
+                ctb = clean_traceback(ctb)
+            tb += ctb
 
-    return io.getvalue()
+    return tb
 
 
 def get_failure_traceback(failure, cleanup=False):
