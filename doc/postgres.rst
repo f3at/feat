@@ -63,3 +63,14 @@ The entries are stored using horizontal table partitioning. The reponsability of
 The new entries are always stored to the latest partitions. The naming convention used is <tablename_timestamp> where timestamp has a format: year_month_day_hour_minute_second. Loading the schema does not create the first partition, remember to do this seting up your database for the first time. To trigger it run a command: ::
 
   psql <dbname> -c "select feat.rotate()"
+
+
+Allowing network access
+-----------------------
+
+You need to edit the */var/lib/pgsql/data/pg_hba.conf* file. The example config for devcluster goes as follows: ::
+
+  # allow access from the office
+  host 	feat        feat        172.17.5.1/8	      md5
+  # allow access from inside the cluster
+  host 	feat        feat        192.168.65.61/8	      md5
