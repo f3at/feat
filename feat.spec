@@ -131,6 +131,10 @@ fi
 
 %doc README RELEASE LICENSE.GPL doc examples
 
+%config(noreplace) %{_sysconfdir}/feat/feat.ini
+%attr(775, root, feat) %{_sysconfdir}/feat
+%attr(664, root, feat) %{_sysconfdir}/feat/feat.ini
+
 %{_sysconfdir}/rc.d/init.d/feat
 
 %{python_sitelib}/*
@@ -143,7 +147,6 @@ fi
 %{_datadir}/python-feat/*
 
 %attr(775,root,feat) %{_sysconfdir}/feat
-%attr(660,root,feat) %{_sysconfdir}/feat/*
 %attr(775,root,feat) %{_localstatedir}/run/feat
 %attr(775,root,feat) %{_localstatedir}/log/feat
 %attr(770,feat,feat) %{_localstatedir}/cache/feat
