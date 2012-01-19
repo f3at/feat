@@ -6,6 +6,22 @@ Feat may be configured to use the postgres server for storing log and journal en
 It wouldn't be clear which agency is responsable for creating the schema, for this reason this task is moved to administration.
 
 
+Creating the database and user
+------------------------------
+
+Creating *feat* user. ::
+
+   sudo -u postgres createuser -l feat -R -l -d -s
+
+Setting the password. ::
+
+  sudo -u postgres psql -c "ALTER USER feat WITH PASSWORD 'feat'"
+
+Creating the databse. ::
+
+  sudo -u postgres createdb -O feat feat
+
+
 Language support
 ----------------
 
@@ -18,8 +34,8 @@ Before loading the schema make sure postgres is configured with support for foll
 They should be enabled on the level of template1 database, hence the schema script does not declare them.
 To enable a language log in to template1 database and type: ::
 
-  CREATE LANGAUGE plpgsql;
-  CREATE LANGAUGE plpythonu;
+  CREATE LANGUAGE plpgsql;
+  CREATE LANGUAGE plpythonu;
 
 
 Loading the schema
