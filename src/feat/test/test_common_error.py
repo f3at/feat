@@ -64,7 +64,7 @@ class TestError(common.TestCase):
         self.assertEqual(2, len(self.keeper.errors[0][1]))
         traceback = self.keeper.errors[0][1][1]
         self.assertIn(
-            '/home/kowal/projects/messy/src/feat/test/test_common_error.py',
+            'feat/test/test_common_error.py',
             traceback)
 
     @defer.inlineCallbacks
@@ -79,7 +79,7 @@ class TestError(common.TestCase):
         self.assertEqual(2, len(self.keeper.errors[0][1]))
         traceback = self.keeper.errors[0][1][1]
         self.assertIn(
-            '/home/kowal/projects/messy/src/feat/test/test_common_error.py',
+            'feat/test/test_common_error.py',
             traceback)
 
     @defer.inlineCallbacks
@@ -115,7 +115,7 @@ class TestAction(action.Action):
 
 class Root(model.Model):
 
-    model.identity('test.root')
+    model.identity('feat.test.test_common_error.root')
     model.action('post', TestAction)
 
 
