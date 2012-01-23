@@ -33,6 +33,7 @@ from zope.interface import implements
 
 from feat.common import log, defer, enum, time, error, container
 from feat.common.serialization import banana
+from feat.agencies.messaging import debug_message
 from feat.agencies.messaging.rabbitmq import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
 from feat.agents.base.message import BaseMessage
@@ -337,7 +338,11 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         result = self.unserializer.convert(msg.content.body)
 
         if result.message_id in self._seen_messages:
+            debug_message(">>>X", result, "DUPLICATED")
             return
+
+        debug_message(">>>>", result)
+
         self._seen_messages.set(result.message_id, True,
                                 expiration=result.expiration_time)
         return result
@@ -365,19 +370,25 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         if message.expiration_time:
             delta = message.expiration_time - time.time()
             if delta < 0:
+                debug_message("X<<<", message, "EXPIRED")
                 self.log('Not sending expired message. msg=%s, shard=%s, '
                          'key=%s, delta=%r', message, shard, key, delta)
                 return
+
         serialized = self.serializer.convert(message)
         content = Content(serialized)
         content.properties['delivery mode'] = 1  # non-persistent
 
         self.log('Publishing msg=%s, shard=%s, key=%s', message, shard, key)
         if shard is None:
+            debug_message("X<<<", message, "SHARD IS NONE")
             self.error('Tried to send message to exchange=None. This would '
                        'mess up the whole txamqp library state, therefore '
                        'this message is ignored')
             return defer.succeed(None)
+
+        debug_message("<<<<", message)
+
         d = self.channel.basic_publish(exchange=shard, content=content,
                                        routing_key=key, immediate=False)
         d.addCallback(defer.drop_param, self.channel.tx_commit)
