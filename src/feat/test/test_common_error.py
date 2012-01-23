@@ -84,6 +84,7 @@ class TestError(common.TestCase):
 
     @defer.inlineCallbacks
     def testExceptionInGateway(self):
+        xlog.setDebug('4')
         root = Root(None)
         gate = gateway.Gateway(root, (5000, 10000), log_keeper=self.keeper,
                                label='Test gateway')
