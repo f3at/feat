@@ -11,6 +11,11 @@
 PROG="feat-service"
 USER="feat"
 CONF="/etc/feat/feat.ini"
+SYSCONFIG="/etc/sysconfig/feat"
+
+if [ -f "$SYSCONFIG" ]; then
+    source "$SYSCONFIG"
+fi
 
 RETVAL=0
 

@@ -45,9 +45,13 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/feat
 
 # Setup service script
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+install -d $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
 install -m 755 \
         conf/redhat/feat \
         $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+install -m 640 \
+        conf/redhat/feat.sysconfig \
+        $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/feat
 
 # Create log and run directory
 install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
@@ -132,6 +136,7 @@ fi
 %doc README RELEASE LICENSE.GPL doc examples
 
 %config(noreplace) %{_sysconfdir}/feat/feat.ini
+%config(noreplace) %{_sysconfdir}/sysconfig/feat
 %attr(775, root, feat) %{_sysconfdir}/feat
 %attr(664, root, feat) %{_sysconfdir}/feat/feat.ini
 
