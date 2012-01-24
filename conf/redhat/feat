@@ -13,6 +13,8 @@ USER="feat"
 CONF="/etc/feat/feat.ini"
 SYSCONFIG="/etc/sysconfig/feat"
 
+FEAT_DEBUG="*:3"
+
 if [ -f "$SYSCONFIG" ]; then
     source "$SYSCONFIG"
 fi
@@ -21,7 +23,7 @@ RETVAL=0
 
 start() {
     echo -n $"Starting $PROG: "
-    daemon --user $USER $PROG -D -d5 -C $CONF start 2> /dev/null
+    daemon --user $USER $PROG -D -C $CONF start 2> /dev/null
     RETVAL=$?
     let $RETVAL && echo "failed..." || echo "done!"
 }
