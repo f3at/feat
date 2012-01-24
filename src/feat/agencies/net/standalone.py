@@ -30,9 +30,7 @@ from feat.interface.recipient import IRecipient
 
 
 class Startup(agency.Startup):
-
-    def stage_finish(self):
-        self.friend._notifications.callback("running", self)
+    pass
 
 
 class Shutdown(agency.Shutdown):
@@ -54,21 +52,19 @@ class Agency(agency.Agency):
         # Load configuration from environment and options
         self._load_config(os.environ, options)
 
-        self._notifications = defer.Notifier()
         self._starting_master = False
         self._release_lock_cl = None
         self._lock_file = None
-
-    def initiate(self):
-        reactor.callWhenRunning(self._initiate)
-        return defer.succeed(self)
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
         return self._shutdown(stop_process=True)
 
     def wait_running(self):
-        return self._notifications.wait("running")
+        d = defer.succeed(None)
+        if self._startup_task:
+            d.addCallback(defer.drop_param, self._startup_task.notify_finish)
+        return d
 
     def on_master_missing(self):
         '''
@@ -146,5 +142,6 @@ class Agency(agency.Agency):
         return self._broker.push_event(recp.key, 'started')
 
     def notify_failed(self, failure, agent_id):
+        # FIXME: I guess here we should shutdown ourselves
         self._error_handler(failure)
         return self._broker.fail_event(failure, agent_id, 'started')

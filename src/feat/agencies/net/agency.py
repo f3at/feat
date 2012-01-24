@@ -72,6 +72,7 @@ class Startup(agency.Startup):
             on_rotate_cb=self.friend._force_snapshot_agents,
             on_switch_writer_cb=self.friend._on_journal_writer_switch,
             hostname=self.friend.get_hostname())
+        log.set_default(self._journaler)
 
     def stage_private(self):
         reactor.addSystemEventTrigger('before', 'shutdown',
