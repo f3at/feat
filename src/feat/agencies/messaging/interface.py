@@ -55,16 +55,7 @@ class IChannel(Interface):
 class IChannelBinding(Interface):
 
     recipient = Attribute('Recipient to which I bind')
-
-    def create_route(sink, priority=0, final=None):
-        '''
-        Generate a Route instance ready to insert to the routing table.
-        @param sink: Sink to route to.
-        @priority: Optional. Specify the priority.
-        @final: Optional. Should the routing stop if this rule matches,
-                by default this parameter is deducted from IRecipient.
-        @return: Route.
-        '''
+    route = Attribute('Route for the binding')
 
 
 class IBackend(Interface):

@@ -89,7 +89,6 @@ class Master(log.Logger, log.LogProxy, common.ConnectionManager,
         cb = functools.partial(self._remove, key)
         slave.notifyOnDisconnect(cb)
         self._append(key, reference)
-#        self._messaging.routing.append_route(route)
         self._messaging.append_binding(reference)
 
     def remote_unbind_me(self, slave, key):
@@ -126,7 +125,6 @@ class Master(log.Logger, log.LogProxy, common.ConnectionManager,
             else:
                 self._slaves[key].remove(found)
                 self._messaging.remove_binding(found)
-#                self._messaging.routing.remove_route(found.route)
             if not self._slaves[key]:
                 del(self._slaves[key])
 
@@ -141,15 +139,18 @@ class SlaveReference(object):
         assert isinstance(route, routing.Route), type(route)
 
         self._slave = slave
-        self._route = route
 
-        self.recipient = recipient.Agent(*route.key)
+        self._route = route
+        self._recipient = recipient.Agent(*route.key)
 
     ### IChannelBinding ###
 
-    def create_route(self, sink, priority=0, final=None):
-        # FIXME: What final and priority is supposed to be used,
-        #        the one from slave or the one from arguments ?
+    @property
+    def recipient(self):
+        return self._recipient
+
+    @property
+    def route(self):
         return self._route
 
     ### public ###
@@ -212,11 +213,11 @@ class Slave(log.Logger, log.LogProxy, common.ConnectionManager,
         return d
 
     def binding_created(self, binding):
-        route = binding.create_route(self)
+        route = binding.route.copy(sink=self)
         return self._master.callRemote('bind_me', self, route.key, route.final)
 
     def binding_removed(self, binding):
-        route = binding.create_route(self)
+        route = binding.route.copy(sink=self)
         return self._master.callRemote('unbind_me', self, route.key)
 
     def create_external_route(self, backend_id, **kwargs):
