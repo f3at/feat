@@ -625,7 +625,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         See feat.agencies.interface.IJournalReader.get_log_entres
         '''
         query = text_helper.format_block('''
-        SELECT logs.message,
+        SELECT "localhost",
+               logs.message,
                logs.level,
                logs.category,
                logs.log_name,
@@ -804,7 +805,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         decoded = map(decode_blobs, entries)
         if entry_type == 'log':
-            mapping = ['message', 'level', 'category',
+            mapping = ['hostname', 'message', 'level', 'category',
                        'log_name', 'file_path', 'line_num', 'timestamp']
         elif entry_type == 'journal':
             mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
@@ -1562,8 +1563,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         self._ensure_connected()
 
         query = text_helper.format_block("""
-        SELECT message, level, category, log_name, file_path, line_num,
-               date_part('epoch', timestamp)
+        SELECT hosts.hostname, message, level, category, log_name,
+               file_path, line_num, date_part('epoch', timestamp)
           FROM feat.logs
           LEFT JOIN feat.hosts ON logs.host_id = hosts.id
           WHERE true
@@ -1693,7 +1694,7 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
 
         decoded = map(decode_blobs, entries)
         if entry_type == 'log':
-            mapping = ['message', 'level', 'category',
+            mapping = ['hostname', 'message', 'level', 'category',
                        'log_name', 'file_path', 'line_num', 'timestamp']
         elif entry_type == 'journal':
             mapping = ['agent_id', 'instance_id', 'journal_id', 'function_id',
