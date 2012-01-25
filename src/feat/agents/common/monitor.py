@@ -179,7 +179,6 @@ class SetupMonitoringTask(task.BaseTask):
             ex = MonitoringFailed("No monitor agent found in shard for %s %s"
                                   % (state.agent.descriptor_type,
                                      state.agent.get_full_id()))
-            #raise ex
             return fiber.fail(ex)
 
         monitor = monitors[0]
