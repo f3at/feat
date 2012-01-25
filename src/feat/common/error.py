@@ -90,9 +90,9 @@ class FeatError(Exception):
             if isinstance(self.cause, Exception):
                 self.cause_details = get_exception_message(self.cause)
             elif isinstance(self.cause, Failure):
-                self.causeDetails = get_failure_message(self.cause)
+                self.cause_details = get_failure_message(self.cause)
             else:
-                self.causeDetails = "Unknown"
+                self.cause_details = "Unknown"
 
             if isinstance(self.cause, Failure):
                 f = self.cause
