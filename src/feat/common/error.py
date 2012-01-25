@@ -112,6 +112,15 @@ class FeatError(Exception):
                     pass
 
 
+class NonCritical(FeatError):
+    '''Subclasses of this exception are logged with custom log_level
+    and message. Use this to create exceptions which are not errors
+    but an expected valid behaviour of some protocol.
+    '''
+    log_level = 4
+    log_line_template = "Noncritical error occured: %(class_name)s"
+
+
 def get_exception_message(exception):
     try:
         msg = xlog.getExceptionMessage(exception)
@@ -192,6 +201,10 @@ def get_failure_traceback(failure, cleanup=False):
 
 
 def clean_traceback(tb):
+    '''Fixes up the traceback to remove the from the file paths the part
+    preceeding the project root.
+    @param tb: C{str}
+    @rtype: C{str}'''
     prefix = __file__[:__file__.find("feat/common/error.py")]
     regex = re.compile("(\s*File\s*\")(%s)([a-zA-Z-_\. \\/]*)(\".*)"
                        % prefix.replace("\\", "\\\\"))
@@ -216,7 +229,11 @@ def handle_failure(source, failure, template, *args, **kwargs):
     category = logger.log_category
     if category is None:
         category = 'feat'
-    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
+    if failure.check(NonCritical):
+        e = failure.value
+        msg = e.log_line_template % dict(class_name=type(failure.value))
+        logger.logex(e.log_level, msg, ())
+    elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_failure_traceback(failure, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))
@@ -240,7 +257,11 @@ def handle_exception(source, exception, template, *args, **kwargs):
     category = logger.log_category
     if category is None:
         category = 'feat'
-    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
+    if isinstance(exception, NonCritical):
+        e = exception
+        msg = e.log_line_template % dict(class_name=type(exception))
+        logger.logex(e.log_level, msg, ())
+    elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_exception_traceback(exception, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))
