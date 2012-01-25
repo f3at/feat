@@ -214,7 +214,7 @@ class StandaloneAgent(agent.BaseAgent):
                 '-R', os.path.curdir,
                 '-D',
                 '-X',
-                '-a', agent_id]
+                '--agent-id', agent_id]
         if s_kwargs:
             args += ['--kwargs', s_kwargs]
         path = ":".join([bin_path, os.environ["PATH"]])

@@ -21,10 +21,9 @@
 # Headers in this file shall remain intact.
 import os
 
-from twisted.internet import reactor
-
+from feat.agents.base import descriptor
 from feat.agencies.net import agency, broker
-from feat.common import manhole, defer, time, fcntl, error
+from feat.common import defer, time, fcntl, error
 
 from feat.interface.recipient import IRecipient
 
@@ -130,8 +129,11 @@ class Agency(agency.Agency):
         # run a host agent. Instead we just download the descriptor and
         # run the agent locally.
         d = self.wait_running()
-        d.addCallback(lambda _: self._database.get_connection())
-        d.addCallback(defer.call_param, 'get_document', aid)
+        if isinstance(aid, descriptor.Descriptor):
+            d.addCallback(defer.override_result, aid)
+        else:
+            d.addCallback(lambda _: self._database.get_connection())
+            d.addCallback(defer.call_param, 'get_document', aid)
         d.addCallback(self.start_agent_locally, **kwargs)
         d.addCallbacks(self.notify_running, self.notify_failed,
                        errbackArgs=(aid, ))
