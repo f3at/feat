@@ -129,8 +129,8 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         self.debug("With arguments:   %s",
                    " ".join("'%s'" % (a, ) for a in args))
         self.log("With environment: %s",
-                 ", ".join("%s='%s'" % (n, v)
-                           for n, v in self.env.iteritems()))
+                 " ".join("%s='%s'" % (n, v)
+                          for n, v in self.env.iteritems()))
         self._process = reactor.spawnProcess(
             self._control, self.command,
             args=args, env=self.env)

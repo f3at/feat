@@ -100,7 +100,7 @@ def check_category(catdef):
     raise OptionError("Invalid host category: %s" % catdef)
 
 
-def bootstrap(parser=None, args=None, descriptors=None):
+def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
         added to the parser; if not specified or None
@@ -124,6 +124,9 @@ def bootstrap(parser=None, args=None, descriptors=None):
         opts = bootstrap.opts
         args = bootstrap.args
         opts, args = check_options(opts, args)
+
+        if callable(init_callback):
+            init_callback(agency, opts, args)
 
         descriptors = descriptors or []
 

@@ -1161,6 +1161,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
         d = self._database.wait_connected()
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
+        d.addCallback(defer.override_result, medium)
         return d
 
     @manhole.expose()
