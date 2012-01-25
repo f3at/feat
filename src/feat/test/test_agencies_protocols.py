@@ -42,6 +42,13 @@ class DummyAgent(object):
 
     def __init__(self):
         self.descriptor_type = "dummy-agent"
+        self.alert_actions = list()
+
+    def raise_alert(self, msg, severity):
+        self.alert_actions.append(('raise', msg, severity))
+
+    def resolve_alert(self, msg, severity):
+        self.alert_actions.append(('resolve', msg, severity))
 
 
 class CallLaterMixin(object):
@@ -173,9 +180,13 @@ class TestRetryingProtocol(common.TestCase):
 
     timeout = 20
 
+    configurable_attributes = common.TestCase.configurable_attributes +\
+                              ['success_at_try']
+    success_at_try = None
+
     def setUp(self):
-        self.medium = DummyRepeatMedium(self)
-        common.TestCase.setUp(self)
+        self.medium = DummyRepeatMedium(self, self.success_at_try)
+        return common.TestCase.setUp(self)
 
     @defer.inlineCallbacks
     def testRetriesForever(self):
@@ -188,6 +199,17 @@ class TestRetryingProtocol(common.TestCase):
         yield self.cb_after(None, self.medium, 'initiate_protocol')
         instance.cancel()
         self.assertEqual(5, self.medium.number_called)
+
+    @defer.inlineCallbacks
+    @common.attr(success_at_try=2)
+    def testRaisingAndResolvingAlert(self):
+        instance = self._start_instance(None, 1, None, 1)
+        yield instance.notify_finish()
+        self.assertEqual(3, self.medium.number_called)
+        self.assertEqual(3, len(self.medium.agent.alert_actions))
+        self.assertEqual('raise', self.medium.agent.alert_actions[0][0])
+        self.assertEqual('raise', self.medium.agent.alert_actions[1][0])
+        self.assertEqual('resolve', self.medium.agent.alert_actions[2][0])
 
     @defer.inlineCallbacks
     def testMaximumNumberOfRetries(self):
@@ -207,10 +229,12 @@ class TestRetryingProtocol(common.TestCase):
         self.assertEqual(4, self.medium.number_called)
         self.assertEqual(2, instance.delay)
 
-    def _start_instance(self, max_retries, initial_delay, max_delay):
+    def _start_instance(self, max_retries, initial_delay, max_delay,
+                        alert_after=None):
         instance = retrying.RetryingProtocol(
             self.medium, DummyInitiator, max_retries=max_retries,
-            initial_delay=initial_delay, max_delay=max_delay)
+            initial_delay=initial_delay, max_delay=max_delay,
+            alert_after=alert_after)
         return instance.initiate()
 
 
