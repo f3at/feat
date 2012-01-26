@@ -133,7 +133,8 @@ class AgentMixin(object):
     def lookup_monitor(self, state):
         if self.need_local_monitoring:
             Factory = retrying.RetryingProtocolFactory
-            factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
+            factory = Factory(SetupMonitoringTask, max_delay=60, busy=False,
+                              alert_after=5)
             self.initiate_protocol(factory)
 
     def query_monitoring_info(self, recipient):
