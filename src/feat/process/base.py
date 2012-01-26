@@ -80,8 +80,24 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         self.owner = owner
         self.name = name
 
+    def connectionMade(self):
+        self._check_for_ready()
+
     def outReceived(self, data):
         self.out_buffer += data
+        self._check_for_ready()
+
+    def errReceived(self, data):
+        self.err_buffer += data
+
+    def processExited(self, status):
+        self.debug("Process %s exited with a status: %r", self.name,
+                   status.value.status)
+        self.transport.loseConnection()
+
+        self.owner.on_process_exited(status.value)
+
+    def _check_for_ready(self):
         if not self.ready and self.success_test():
             self.debug("Process %s started successfuly", self.name)
             self.log("Process %s stdout so far:\n%s",
@@ -89,18 +105,11 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
             self.ready_cb(self.out_buffer)
             self.ready = True
 
-    def errReceived(self, data):
-        self.err_buffer += data
-
-    def processExited(self, status):
-        self.debug("Process %s exited with a status: %r", self.name, status)
-        self.transport.loseConnection()
-
-        self.owner.on_process_exited(status.value)
-
 
 class Base(log.Logger, log.LogProxy, StateMachineMixin,
            serialization.Serializable):
+
+    log_category = 'process'
 
     def __init__(self, logger, *args, **kwargs):
         log.LogProxy.__init__(self, logger)
@@ -116,6 +125,8 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
 
         self.initiate(*args, **kwargs)
         self.validate_setup()
+
+        self.log_name = self.command
 
     def restart(self):
         self._ensure_state([ProcessState.initiated,
@@ -154,7 +165,8 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         pass
 
     def on_failed(self, exception):
-        pass
+        self.error("Process %s ended with %d status. Its stderr buffer: %s",
+                   self.command, exception.status, self._control.err_buffer)
 
     def on_process_exited(self, exception):
         mapping = {
