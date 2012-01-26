@@ -48,6 +48,15 @@ def init(path=None):
     return tee
 
 
+def test_reset():
+    '''Called from test setUp to get rid of keepers left by the testcases.'''
+    tee = get_default()
+    for name in tee.get_names():
+        if name == 'flulog':
+            continue
+        tee.remove_keeper(name)
+
+
 def set_default(keeper):
     global _default_keeper
     _default_keeper = keeper
@@ -182,7 +191,7 @@ class LogTee(object):
     def add_keeper(self, name, logkeeper):
         if name in self._logkeepers:
             raise ValueError("LogTee already has a keeper with the "
-                             "name %r -> %r", name, self._logkeepers[name])
+                             "name %r -> %r" % (name, self._logkeepers[name]))
         self._logkeepers[name] = ILogKeeper(logkeeper)
 
     def remove_keeper(self, name):
@@ -190,6 +199,9 @@ class LogTee(object):
 
     def get_keeper(self, name):
         return self._logkeepers[name]
+
+    def get_names(self):
+        return self._logkeepers.keys()
 
     ### ILogKeeper ###
 
@@ -233,7 +245,7 @@ class LogBuffer(object):
                 self._already_raised = True
                 error('log-buffer', "LogBuffer has reached it's limit of %d "
                       "entries. It will not accept any more data",
-                      len(self._limit))
+                      len(self._buffer))
             return
         else:
             data = (level, object, category, format, args,

@@ -124,6 +124,11 @@ class Shutdown(agency.Shutdown):
         self.friend._cancel_snapshoter()
 
     def stage_internals(self):
+        tee = log.get_default()
+        try:
+            tee.remove_keeper('journaler')
+        except KeyError:
+            pass
         return self.friend._disconnect()
 
     def stage_process(self):
@@ -409,6 +414,7 @@ class Agency(agency.Agency):
     @manhole.expose()
     def shutdown(self, stop_process=False):
         '''Shutdown the agency in gentel manner (terminate all the agents).'''
+        self.info("Agency.shutdown() called.")
         return self._shutdown(stop_process=stop_process, gentle=True)
 
     @manhole.expose()
@@ -420,17 +426,29 @@ class Agency(agency.Agency):
                               upgrade_cmd=upgrade_cmd, gentle=True)
 
     def _disconnect(self):
+        self.debug('In agent._disconnect(), '
+                   'ssh: %r, gateway: %r, journaler: %r, '
+                   'database: %r, broker: %r', self._ssh, self._gateway,
+                   self._journaler, self._database, self._broker)
         d = defer.succeed(None)
         if self._ssh:
             d.addCallback(defer.drop_param, self._ssh.stop_listening)
+            d.addBoth(defer.inject_param, 1, self.debug, "Ssh stopped: %r")
         if self._gateway:
             d.addCallback(defer.drop_param, self._gateway.cleanup)
+            d.addBoth(defer.inject_param, 1, self.debug, "Gateway stopped: %r")
         if self._journaler:
             d.addCallback(defer.drop_param, self._journaler.close)
+            d.addBoth(defer.inject_param, 1, self.debug,
+                      "Journaler closed: %r")
         if self._database:
             d.addCallback(defer.drop_param, self._database.disconnect)
+            d.addBoth(defer.inject_param, 1, self.debug,
+                      "Database disconnected: %r")
         if self._broker:
             d.addCallback(defer.drop_param, self._broker.disconnect)
+            d.addBoth(defer.inject_param, 1, self.debug,
+                      "Broker disconnected: %r")
         return d
 
     def register_agent(self, medium):
@@ -722,7 +740,6 @@ class Agency(agency.Agency):
                       host, port)
 
             backend = net.RabbitMQ(host, port, username, password)
-            backend.redirect_log(self)
             client = rabbitmq.Client(backend, self.get_hostname())
             return client
         except Exception as e:
@@ -751,7 +768,6 @@ class Agency(agency.Agency):
             backend = tunneling.Backend(host, port_range,
                                         client_security_policy=cpol,
                                         server_security_policy=spol)
-            backend.redirect_log(self)
             frontend = tunneling.Tunneling(backend)
             return frontend
 

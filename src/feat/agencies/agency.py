@@ -1011,7 +1011,6 @@ class Startup(common.Procedure):
 
         self.friend._journaler = IJournaler(self._journaler)
         self.friend._jourconn = self._journaler.get_connection(self.friend)
-        self.friend.redirect_log(self.friend._jourconn)
 
     def stage_messaging(self):
         self.friend._messaging = self._messaging

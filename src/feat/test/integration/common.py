@@ -27,7 +27,7 @@ import os
 from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
-from feat.common import text_helper, defer, reflect, error
+from feat.common import text_helper, defer, reflect, error, log
 from feat.process import couchdb, rabbitmq
 from feat.process.base import DependencyError
 from feat.simulation import driver
@@ -103,6 +103,9 @@ class FullIntegrationTest(IntegrationTest):
     @defer.inlineCallbacks
     def setUp(self):
         yield IntegrationTest.setUp(self)
+
+        tee = log.get_default()
+        tee.add_keeper('buffer', log.LogBuffer(limit=10000))
 
         self.tempdir = os.path.curdir
         self.socket_path = os.path.join(os.path.curdir, 'feat-test.socket')

@@ -160,6 +160,7 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
             raise unittest.SkipTest("Test Skipped during coverage")
 
     def setUp(self):
+        log.test_reset()
         self.assert_not_skipped()
         # Scale time if configured
         scale = util.acquireAttribute(self._parents, 'timescale', None)
@@ -396,6 +397,7 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
         return obj
 
     def tearDown(self):
+        log.test_reset()
         time.reset()
         signal.reset()
 

@@ -126,7 +126,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
 
     def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None,
                  hostname=None):
-        log.Logger.__init__(self, self)
+        log.Logger.__init__(self, log.get_default() or self)
 
         common.StateMachineMixin.__init__(self, State.disconnected)
         self._writer = None
@@ -240,6 +240,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self.on_rotate()
 
     def close(self, flush_writer=True):
+        self.debug('In journaler.close(), flush_writer=%r, self.state=%r',
+                   flush_writer, self.state)
 
         def set_disconnected():
             self._writer = None
@@ -282,13 +284,18 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         return self._notifier.wait('flush')
 
     # used by remote ProxyBrokerWriter
+
     remote_insert_entries = insert_entries
 
     def is_idle(self):
         if len(self._cache) > 0:
+            self.debug("Journaler has nonempty cache, hence is not idle")
             return False
         if self._writer:
-            return self._writer.is_idle()
+            writer_idle = self._writer.is_idle()
+            self.debug("The writer (%r) is not idle, hence journaler neither",
+                     self._writer)
+            return writer_idle
         return True
 
     ### methods called by journaler writers ###
@@ -338,7 +345,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             file_path=file_path,
             line_num=line_num,
             message=message,
-            timestamp=int(time.time()))
+            timestamp=time.time())
         self.insert_entry(**data)
 
     ### private ###
@@ -420,8 +427,10 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         return d
 
     def close(self, flush=True):
+        self.debug("In BrokerProxyWriter close(), self.state=%r", self.state)
         d = defer.succeed(None)
         if flush:
+            self.debug('Flushing to master agency before closing.')
             d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._set_state, State.disconnected)
         d.addCallback(defer.drop_param, self._set_journaler, None)
@@ -458,6 +467,8 @@ class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
         if entries:
             try:
                 d = self._journaler.callRemote('insert_entries', entries)
+                d = defer.Timeout(2, d, message=("Timeout expired "
+                                                 "pushing entries to master."))
                 d.addCallbacks(defer.drop_param, defer.drop_param,
                                callbackArgs=(self._cache.commit, ),
                                errbackArgs=(self._cache.rollback, ))
@@ -971,7 +982,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                           data['fiber_id'], data['fiber_depth'],
                           data['args'], data['kwargs'],
                           data['side_effects'], data['result'],
-                          data['timestamp']))
+                          int(data['timestamp'])))
 
         def do_insert_log(connection, data):
             command = text_helper.format_block("""
@@ -981,7 +992,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                 command, (data['message'], int(data['level']),
                           data['category'], data['log_name'],
                           data['file_path'], data['line_num'],
-                          data['timestamp']))
+                          int(data['timestamp'])))
 
         def transaction(connection, cache):
             entries = cache.fetch()
@@ -1154,7 +1165,7 @@ class AgencyJournalEntry(object):
             'fiber_id': None,
             'fiber_depth': None,
             'side_effects': list(),
-            'timestamp': int(time.time())}
+            'timestamp': time.time()}
 
         self._not_serialized = {
             'args': args or None,
@@ -1417,7 +1428,9 @@ class PostgresWriter(log.Logger, log.LogProxy, common.StateMachineMixin,
              self._hostname))
 
     def _format_timestamp(self, epoch):
-        return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
+        t = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(epoch))
+        t += str(epoch % 1)[1:]
+        return t
 
 
 class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
