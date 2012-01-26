@@ -26,8 +26,10 @@ import sys
 
 from feat import everything
 from feat.agents.common import host
-from feat.agencies.net import agency as net_agency, standalone, database
-from feat.agencies.net.options import add_options, OptionError
+from feat.agencies.net import agency as net_agency, standalone
+from feat.agencies.net import database, options
+from feat.agencies.net.options import OptionError
+
 from feat.common import log, run, defer
 from feat.common.serialization import json
 from feat.utils import host_restart
@@ -88,6 +90,9 @@ def check_category(catdef):
     raise OptionError("Invalid host category: %s" % catdef)
 
 
+def add_options(parser):
+    options.add_options(parser)
+
 def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
@@ -104,8 +109,9 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
     @return: the deferred of the bootstrap chain
     @rtype:  defer.Deferred()"""
 
-    parser = parser or optparse.OptionParser()
-    add_options(parser)
+    if parser is None:
+        parser = optparse.OptionParser()
+        options.add_options(parser)
 
     with _Bootstrap(parser=parser, args=args) as bootstrap:
         agency = bootstrap.agency
