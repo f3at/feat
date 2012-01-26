@@ -42,5 +42,6 @@ def debug_message(prefix, message, postfix=""):
     mrec = mrec.key if mrec is not None else None
     mrep = getattr(message, "reply_to", None)
     mrep = mrep.key if mrep is not None else None
-    log.debug("messages", "%s Type: %s; Id: %s; Recipient: %s; Reply-To: %s; %s",
+    log.debug("messages",
+              "%s Type: %s; Id: %s; Recipient: %s; Reply-To: %s; %s",
               prefix, mtype, mid, mrec, mrep, postfix)
