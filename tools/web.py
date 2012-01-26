@@ -5,7 +5,7 @@ from flt.agents.hapi import dummy, web
 from feat.common import log
 
 
-log.FluLogKeeper.init()
+log.init()
 
 agent = dummy.DummyAgent()
 port = 8800

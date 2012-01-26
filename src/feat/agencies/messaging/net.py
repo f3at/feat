@@ -172,7 +172,7 @@ class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
     def __init__(self, host, port, user='guest', password='guest',
                  timeout=5):
         ConnectionManager.__init__(self)
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         self._user = user

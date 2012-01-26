@@ -112,7 +112,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def __init__(self, host, port, db_name):
         common.ConnectionManager.__init__(self)
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
 
         self.semaphore = defer.DeferredSemaphore(1)

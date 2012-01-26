@@ -28,9 +28,24 @@ import sys
 from zope.interface import implements
 
 from feat.interface.log import ILogKeeper, ILogger, LogLevel
-
+flulog = None #dynamicaly imported from FluLogKeeper.init()
 
 verbose = os.environ.get("FEAT_VERBOSE", "NO").upper() in ("YES", "1", "TRUE")
+
+
+def init(path=None):
+    '''Initialize the logging module. Construct the LogTee as the default
+    keeper. Initialize the flulog and append it to the tee.'''
+    default = get_default()
+    if default is not None:
+        warning('log-init', 'It appears that logging has already been '
+                'initialized. The default keeper is %r', default)
+        return default
+    tee = LogTee()
+    set_default(tee)
+    FluLogKeeper.init(path)
+    tee.add_keeper('flulog', FluLogKeeper())
+    return tee
 
 
 def set_default(keeper):
@@ -155,6 +170,77 @@ class LogProxy(object):
         self._logkeeper = ILogKeeper(logkeeper)
 
 
+class LogTee(object):
+    '''Proxies log entries to more than one log keeper.'''
+
+    implements(ILogKeeper)
+
+    def __init__(self):
+        # name -> ILogKeeper
+        self._logkeepers = dict()
+
+    def add_keeper(self, name, logkeeper):
+        if name in self._logkeepers:
+            raise ValueError("LogTee already has a keeper with the "
+                             "name %r -> %r", name, self._logkeepers[name])
+        self._logkeepers[name] = ILogKeeper(logkeeper)
+
+    def remove_keeper(self, name):
+        del(self._logkeepers[name])
+
+    def get_keeper(self, name):
+        return self._logkeepers[name]
+
+    ### ILogKeeper ###
+
+    def do_log(self, level, object, category, format, args,
+               depth=1, file_path=None, line_num=None):
+        for logkeeper in self._logkeepers.itervalues():
+            logkeeper.do_log(
+                level, object, category, format, args,
+                depth=depth+1, file_path=file_path, line_num=line_num)
+
+
+class LogBuffer(object):
+    '''Keeps log entries in memory to later be able to dump them. We are
+    using this class not to loose log lines logged before the proper logging
+    infrastracture is set up.'''
+
+    implements(ILogKeeper)
+
+    def __init__(self, limit):
+        self._limit = limit
+        self._buffer = list()
+        self._already_raised = False
+
+    ### public ###
+
+    def dump(self, logkeeper):
+        logkeeper = ILogKeeper(logkeeper)
+        for line in self._buffer:
+            logkeeper.do_log(*line)
+
+    def clean(self):
+        del self._buffer[:]
+        self._already_raised = False
+
+    ### ILogKeeper ###
+
+    def do_log(self, level, object, category, format, args,
+               depth=1, file_path=None, line_num=None):
+        if len(self._buffer) > self._limit:
+            if not self._already_raised:
+                self._already_raised = True
+                error('log-buffer', "LogBuffer has reached it's limit of %d "
+                      "entries. It will not accept any more data",
+                      len(self._limit))
+            return
+        else:
+            data = (level, object, category, format, args,
+                    depth, file_path, line_num)
+            self._buffer.append(data)
+
+
 class VoidLogKeeper(object):
 
     implements(ILogKeeper)
@@ -179,14 +265,11 @@ class FluLogKeeper(object):
     _initialized = False
 
     @classmethod
-    def init(cls, path=None, buffer_mode=False):
+    def init(cls, path=None):
         global flulog
         if not cls._initialized:
             if path:
                 sys.stderr = file(path, 'a')
-            cls.buffer_mode = buffer_mode
-            if cls.buffer_mode:
-                cls.buffer = list()
             from feat.extern.log import log as flulog
             flulog.init('FEAT_DEBUG')
             flulog.setPackageScrubList('feat', 'twisted')
@@ -199,12 +282,6 @@ class FluLogKeeper(object):
     def redirect_to(cls, stdout, stderr):
         global flulog
         flulog.outputToFiles(stdout, stderr)
-        if cls.buffer_mode:
-            # dump the buffer
-            cls.buffer_mode = False
-            for lvl, object, category, format, args, extra in cls.buffer:
-                flulog.doLog(lvl, object, category, format, args, **extra)
-            del(cls.buffer)
 
     @classmethod
     def move_files(cls, stdout, stderr):
@@ -233,10 +310,6 @@ class FluLogKeeper(object):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
                      where=depth, filePath=file_path, line=line_num)
-        if type(self).buffer_mode:
-            type(self).buffer.append(
-                (int(level), object, category, format, args,
-                 dict(where=depth, filePath=file_path, line=line_num)))
 
 
 _default_keeper = None

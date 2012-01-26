@@ -12,7 +12,7 @@ class RangeServer(log.LogProxy, log.Logger):
 
     def __init__(self, port_or_range, hostname=None,
                  security_policy=None, log_keeper=None):
-        log_keeper = log.FluLogKeeper() if log_keeper is None else log_keeper
+        log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
         log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, log_keeper)
 

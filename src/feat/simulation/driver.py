@@ -200,13 +200,14 @@ class Commands(manhole.Manhole):
             self.info('All ok!')
 
 
-class Driver(log.Logger, log.FluLogKeeper, Commands):
+class Driver(log.Logger, log.LogProxy, Commands):
 
     log_category = 'simulation-driver'
 
     def __init__(self, jourfile=None,
                  tunneling_version=None, tunneling_bridge=None):
-        log.FluLogKeeper.__init__(self)
+        log_keeper = log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, self)
         Commands.__init__(self)
 

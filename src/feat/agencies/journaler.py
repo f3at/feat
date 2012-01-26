@@ -124,9 +124,6 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
 
     _error_handler = error_handler
 
-    # FIXME: at some point switch to False and remove this attribute
-    should_keep_on_logging_to_flulog = True
-
     def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None,
                  hostname=None):
         log.Logger.__init__(self, self)
@@ -343,10 +340,6 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             message=message,
             timestamp=int(time.time()))
         self.insert_entry(**data)
-
-        if self.should_keep_on_logging_to_flulog:
-            flulog.doLog(level, object, category, format, args,
-                         where=depth, filePath=file_path, line=line_num)
 
     ### private ###
 

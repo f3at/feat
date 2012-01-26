@@ -190,8 +190,10 @@ class _Bootstrap(object):
         self.agency = None
 
     def __enter__(self):
+        tee = log.init()
+        tee.add_keeper('buffer', log.LogBuffer(limit=10000))
         self._parse_opts()
-        log.FluLogKeeper.init(buffer_mode=self.opts.agency_daemonize)
+
         if self.opts.debug:
             log.FluLogKeeper.set_debug(self.opts.debug)
         self.agency = self._run_agency()
@@ -204,6 +206,13 @@ class _Bootstrap(object):
             tmp = tempfile.mktemp(suffix="feat.temp.log")
             log.info("run", "Logging will temporarily be done to: %s", tmp)
             run.daemonize(stdout=tmp, stderr=tmp)
+            # dump all the log entries logged so far to the FluLogKeeper again
+            # the reason for this is that we want them to be included in text
+            # file (so far they have been printed to the console)
+            tee = log.get_default()
+            buff = tee.get_keeper('buffer')
+            flulog = tee.get_keeper('flulog')
+            buff.dump(flulog)
         reactor.run()
 
     def _parse_opts(self):

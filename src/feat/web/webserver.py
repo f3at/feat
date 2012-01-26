@@ -426,7 +426,8 @@ class Server(log.LogProxy, log.Logger):
                  default_authenticator=None, default_authorizer=None,
                  log_keeper=None):
         log.Logger.__init__(self, self)
-        log.LogProxy.__init__(self, log_keeper or log.FluLogKeeper())
+        log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         self._port = port
         self._resource = root_resource
         self._registry = registry or document.get_registry()

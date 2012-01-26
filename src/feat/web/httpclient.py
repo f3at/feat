@@ -236,7 +236,7 @@ class Connection(log.LogProxy, log.Logger):
 
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None):
-        logger = logger if logger is not None else log.FluLogKeeper()
+        logger = logger or log.get_default() or log.FluLogKeeper()
         log.LogProxy.__init__(self, logger)
         log.Logger.__init__(self, logger)
 

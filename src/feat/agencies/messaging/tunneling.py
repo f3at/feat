@@ -147,7 +147,7 @@ class _BaseTunnelBackend(common.ConnectionManager,
 
     def __init__(self, version=None, registry=None):
         common.ConnectionManager.__init__(self)
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         log.Logger.__init__(self, self)
 
         ver = version if version is not None else feat.version

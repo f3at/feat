@@ -51,7 +51,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
     def __init__(self):
         common.ConnectionManager.__init__(self)
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
         common.Statistics.__init__(self)
 

@@ -51,7 +51,7 @@ except AttributeError:
     # trial.getConfig() is only available when using flumotion-trial
     _getConfig = dict
 
-log.FluLogKeeper.init('test.log')
+log.init('test.log')
 
 
 def delay(value, delay):
@@ -102,7 +102,7 @@ def attr(*args, **kwargs):
     return wrap
 
 
-class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
+class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
 
     implements(ITimeProvider)
 
@@ -114,7 +114,8 @@ class TestCase(unittest.TestCase, log.FluLogKeeper, log.Logger):
     skip_coverage = False
 
     def __init__(self, methodName=' impossible-name '):
-        log.FluLogKeeper.__init__(self)
+        log_keeper = log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, self)
 
         # Twisted changed the TestCase.__init__ signature several

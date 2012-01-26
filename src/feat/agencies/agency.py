@@ -1061,7 +1061,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     start_host_agent = False
 
     def __init__(self):
-        log.LogProxy.__init__(self, log.FluLogKeeper())
+        log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         log.Logger.__init__(self, self)
         dependency.AgencyDependencyMixin.__init__(self, ExecMode.test)
         common.ConnectionManager.__init__(self)
