@@ -144,18 +144,19 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     ### IDatabaseDriver
 
     def open_doc(self, doc_id):
-        return self._paisley_call(self.paisley.openDoc, self.db_name, doc_id)
+        return self._paisley_call(doc_id, self.paisley.openDoc,
+                                  self.db_name, doc_id)
 
     def save_doc(self, doc, doc_id=None):
-        return self._paisley_call(self.paisley.saveDoc,
+        return self._paisley_call(doc_id, self.paisley.saveDoc,
                                   self.db_name, doc, doc_id)
 
     def delete_doc(self, doc_id, revision):
-        return self._paisley_call(self.paisley.deleteDoc,
+        return self._paisley_call(doc_id, self.paisley.deleteDoc,
                                   self.db_name, doc_id, revision)
 
     def create_db(self):
-        return self._paisley_call(self.paisley.createDB,
+        return self._paisley_call(self.db_name, self.paisley.createDB,
                                   self.db_name)
 
     def disconnect(self):
@@ -167,7 +168,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
-        d = self._paisley_call(self.paisley.openView,
+        d = self._paisley_call(factory.design_doc_id,
+                               self.paisley.openView,
                                self.db_name, factory.design_doc_id,
                                factory.name, **options)
         d.addCallback(self._parse_view_result)
@@ -184,7 +186,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         if self.reconnector is None or not self.reconnector.active():
             d = defer.Deferred()
             d.addCallback(defer.drop_param, self._paisley_call,
-                           self.paisley.listDB)
+                           None, self.paisley.listDB)
             d.addErrback(failure.Failure.trap, NotConnectedError)
             self.reconnector = time.callLater(wait, d.callback, None)
             return d
@@ -251,24 +253,25 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self.reconnector = None
             self.retry = 0
 
-    def _paisley_call(self, method, *args, **kwargs):
+    def _paisley_call(self, tag, method, *args, **kwargs):
         # It is necessarry to acquire the lock to perform the http request
         # because we need to be sure that we are not in the middle of sth
         # while analizing the change notification
         d = self.semaphore.run(method, *args, **kwargs)
         d.addCallback(defer.bridge_param, self._on_connected)
-        d.addErrback(self._error_handler)
+        d.addErrback(self._error_handler, tag)
         return d
 
-    def _error_handler(self, failure):
+    def _error_handler(self, failure, tag=None):
         exception = failure.value
         msg = failure.getErrorMessage()
         if isinstance(exception, web_error.Error):
+            prefix = (tag + " ") if tag is not None else ""
             status = int(exception.status)
             if status == 409:
-                raise ConflictError(msg)
+                raise ConflictError("%s%s" % (prefix, msg))
             elif status == 404:
-                raise NotFoundError(msg)
+                raise NotFoundError("%s%s" % (prefix, msg))
             else:
                 self.info(exception.response)
                 raise NotImplementedError(

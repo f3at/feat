@@ -116,7 +116,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             doc = self._get_doc(doc_id)
             doc = copy.deepcopy(doc)
             if doc.get('_deleted', None):
-                raise NotFoundError('deleted')
+                raise NotFoundError('%s deleted' % doc_id)
             d.callback(Response(doc))
         except NotFoundError as e:
             d.errback(e)
@@ -134,7 +134,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             if doc['_rev'] != revision:
                 raise ConflictError("Document update conflict.")
             if doc.get('_deleted', None):
-                raise NotFoundError('deleted')
+                raise NotFoundError('%s deleted' % doc_id)
             doc['_rev'] = self._generate_rev(doc)
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
@@ -249,7 +249,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _get_doc(self, docId):
         doc = self._documents.get(docId, None)
         if not doc:
-            raise NotFoundError("missing")
+            raise NotFoundError("%s missing" % docId)
         return doc
 
     def _generate_id(self, doc):
