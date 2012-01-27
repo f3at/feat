@@ -4,6 +4,8 @@ import os
 import optparse
 import signal
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from feat.common import run, log
 
 
