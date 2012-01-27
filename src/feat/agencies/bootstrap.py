@@ -93,6 +93,7 @@ def check_category(catdef):
 def add_options(parser):
     options.add_options(parser)
 
+
 def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
