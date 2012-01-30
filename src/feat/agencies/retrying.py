@@ -106,7 +106,7 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
             self.warning("Retrying protocol was asked to raise an alert in "
                          "case of %d failed attempts. However the agent does "
                          "not mixin in alert.AgentMixin. This functionality "
-                         "will be disabled.")
+                         "will be disabled.", self.alert_after)
             self.alert_after = None
 
 

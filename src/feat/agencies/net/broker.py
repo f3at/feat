@@ -257,7 +257,8 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def remove_stale_socket(self):
         self.debug('Removing stale socket file at: %s', self.socket_path)
         try:
-            os.unlink(self.socket_path)
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
         except OSError as e:
             self.error('Failed to remove socket file: %s, reason: %r',
                        self.socket_path, e)

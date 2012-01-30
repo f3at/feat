@@ -13,7 +13,7 @@ USER="feat"
 CONF="/etc/feat/feat.ini"
 SYSCONFIG="/etc/sysconfig/feat"
 
-FEAT_DEBUG="*:3"
+export FEAT_DEBUG="*:3"
 
 if [ -f "$SYSCONFIG" ]; then
     source "$SYSCONFIG"
