@@ -90,9 +90,9 @@ class FeatError(Exception):
             if isinstance(self.cause, Exception):
                 self.cause_details = get_exception_message(self.cause)
             elif isinstance(self.cause, Failure):
-                self.causeDetails = get_failure_message(self.cause)
+                self.cause_details = get_failure_message(self.cause)
             else:
-                self.causeDetails = "Unknown"
+                self.cause_details = "Unknown"
 
             if isinstance(self.cause, Failure):
                 f = self.cause
@@ -110,6 +110,15 @@ class FeatError(Exception):
                 except:
                     # Ignore failure.NoCurrentExceptionError
                     pass
+
+
+class NonCritical(FeatError):
+    '''Subclasses of this exception are logged with custom log_level
+    and message. Use this to create exceptions which are not errors
+    but an expected valid behaviour of some protocol.
+    '''
+    log_level = 4
+    log_line_template = "Noncritical error occured: %(class_name)s"
 
 
 def get_exception_message(exception):
@@ -144,26 +153,30 @@ def get_failure_message(failure):
 
 def get_exception_traceback(exception=None, cleanup=False):
     #FIXME: Only work if the exception was raised in the current context
-    f = Failure(exception)
-
-    if exception and (f.value != exception):
-        return "Not Traceback information available"
-
     io = StringIO.StringIO()
-    tb = f.getTraceback()
+    traceback.print_exc(limit=30, file=io)
+    tb = io.getvalue()
+    if not tb:
+        tb = ("Exception has no traceback information. \n",
+              "This can happen for 2 known reasons: \n",
+              "1) error.handle_exception is called ",
+              "getting passed as a parameter exception instance extracted ",
+              "from the failure. Solution: use error.handle_failure()\n",
+              "2) error.handle_exception is called with an exception ",
+              "created by hand like 'return TypeError(msg)'. You should ",
+              "raise this exception instead.")
     if cleanup:
         tb = clean_traceback(tb)
-    print >> io, tb
 
-    if isinstance(f.value, FeatError):
-        if f.value.cause_traceback:
+    if isinstance(exception, FeatError):
+        if exception.cause_traceback:
             print >> io, "\n\nCAUSED BY:\n\n"
-            tb = f.value.cause_traceback
+            ctb = exception.cause_traceback
             if cleanup:
-                tb = clean_traceback(tb)
-            print >> io, tb
+                ctb = clean_traceback(ctb)
+            tb += ctb
 
-    return io.getvalue()
+    return tb
 
 
 def get_failure_traceback(failure, cleanup=False):
@@ -188,6 +201,10 @@ def get_failure_traceback(failure, cleanup=False):
 
 
 def clean_traceback(tb):
+    '''Fixes up the traceback to remove the from the file paths the part
+    preceeding the project root.
+    @param tb: C{str}
+    @rtype: C{str}'''
     prefix = __file__[:__file__.find("feat/common/error.py")]
     regex = re.compile("(\s*File\s*\")(%s)([a-zA-Z-_\. \\/]*)(\".*)"
                        % prefix.replace("\\", "\\\\"))
@@ -212,7 +229,11 @@ def handle_failure(source, failure, template, *args, **kwargs):
     category = logger.log_category
     if category is None:
         category = 'feat'
-    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
+    if failure.check(NonCritical):
+        e = failure.value
+        msg = e.log_line_template % dict(class_name=type(failure.value))
+        logger.logex(e.log_level, msg, ())
+    elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_failure_traceback(failure, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))
@@ -236,7 +257,11 @@ def handle_exception(source, exception, template, *args, **kwargs):
     category = logger.log_category
     if category is None:
         category = 'feat'
-    if xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
+    if isinstance(exception, NonCritical):
+        e = exception
+        msg = e.log_line_template % dict(class_name=type(exception))
+        logger.logex(e.log_level, msg, ())
+    elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_exception_traceback(exception, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))

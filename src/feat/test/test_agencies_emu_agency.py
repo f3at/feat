@@ -26,18 +26,16 @@ import uuid
 import time
 
 from twisted.internet import defer
-from twisted.python import components
 from zope.interface import implements
 
 from feat.agents.base import descriptor, requester, message, replier, replay
 from feat.interface.agency import ExecMode
-from feat.agencies import protocols
 
-from feat.agencies.interface import *
-from feat.interface.requests import *
-from feat.interface.protocols import *
+from feat.agencies.interface import NotFoundError
+from feat.interface.requests import RequestState
+from feat.interface.protocols import ProtocolFailed, IInterest, InterestType
 
-from . import common
+from feat.test import common, dummies #don't remove dummies, it defines adapter
 
 
 class DummyRequester(requester.BaseRequester):

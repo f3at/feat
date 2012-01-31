@@ -44,7 +44,7 @@ class DummyStandalone(agent.BaseAgent):
 
         command = 'feat'
         args = ['-X',
-                '-a', str(desc.doc_id),
+                '--agent-id', str(desc.doc_id),
                 '-D']
         env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
         return command, args, env

@@ -118,7 +118,7 @@ def script():
 class dbscript(object):
 
     def __enter__(self):
-        log.FluLogKeeper.init()
+        log.init()
         log.FluLogKeeper.set_debug('5')
 
         opts, args = parse_options()

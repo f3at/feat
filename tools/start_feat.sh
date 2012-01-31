@@ -28,19 +28,21 @@ master_host="localhost"
 debug=
 sync_time=
 force_host_restart=
+imports=( )
 
-while getopts 'fntcrm:d:j:' OPTION
+while getopts 'fntcrm:d:i:j:' OPTION
 do
     case $OPTION in
-	f) force_host_restart=1;;
+    f) force_host_restart=1;;
         n) no_daemon=1;;
         t) sync_time=1;;
         c) do_cleanup=1;;
         r) db_reset=1;;
+        i) imports+=("-i"); imports+=("$OPTARG");;
         m) master_host="$OPTARG";;
         d) debug="$OPTARG";;
-	j) extra_journaler_args="-j $OPTARG";;
-        ?) printf "Usage: %s: [-ncfrt] [-d DEBUG] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
+    j) extra_journaler_args="-j $OPTARG";;
+        ?) printf "Usage: %s: [-ncfrt] [-d DEBUG] [-i MODULE] [-m MASTER_HOSTNAME]\n" $(basename $0) >&2
            exit 2;;
     esac
 done
@@ -70,7 +72,7 @@ if [ $db_reset ]; then
     url="http://$master_host:$DB_PORT/$DB_NAME"
     curl -X DELETE "$url"
     echo "Initializing database $DB_NAME..."
-    $ENV $DBLOAD -H $master_host
+    $ENV $DBLOAD -H $master_host ${imports[@]}
 fi
 
 if [ $debug ]; then
@@ -100,4 +102,4 @@ $ENV $FEAT -m "$master_host" -H "$master_host" \
            -k "$MHPUB" -K "$MHPRIV" -A "$MHAUTH" \
            -G "$GW_P12" -T "$TUNNEL_P12" \
            $extra_journaler_args -j "sqlite://$JOURNAL" \
-           $force_args "$@"
+           $force_args ${imports[@]} "$@"

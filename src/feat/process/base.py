@@ -66,7 +66,7 @@ class ProcessState(enum.Enum):
 
 class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
-    def __init__(self, owner, success_test, ready_cb):
+    def __init__(self, owner, success_test, ready_cb, name):
         log.Logger.__init__(self, owner)
 
         assert callable(success_test)
@@ -78,27 +78,38 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
         self.out_buffer = ""
         self.err_buffer = ""
         self.owner = owner
+        self.name = name
+
+    def connectionMade(self):
+        self._check_for_ready()
 
     def outReceived(self, data):
         self.out_buffer += data
-        if not self.ready and self.success_test():
-            self.log("Process start successful. "
-                     "Process stdout buffer so far:\n%s", self.out_buffer)
-            self.ready_cb(self.out_buffer)
-            self.ready = True
+        self._check_for_ready()
 
     def errReceived(self, data):
         self.err_buffer += data
 
     def processExited(self, status):
-        self.log("Process exited with a status: %r", status)
+        self.debug("Process %s exited with a status: %r", self.name,
+                   status.value.status)
         self.transport.loseConnection()
 
         self.owner.on_process_exited(status.value)
 
+    def _check_for_ready(self):
+        if not self.ready and self.success_test():
+            self.debug("Process %s started successfuly", self.name)
+            self.log("Process %s stdout so far:\n%s",
+                     self.name, self.out_buffer)
+            self.ready_cb(self.out_buffer)
+            self.ready = True
+
 
 class Base(log.Logger, log.LogProxy, StateMachineMixin,
            serialization.Serializable):
+
+    log_category = 'process'
 
     def __init__(self, logger, *args, **kwargs):
         log.LogProxy.__init__(self, logger)
@@ -115,15 +126,22 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         self.initiate(*args, **kwargs)
         self.validate_setup()
 
+        self.log_name = self.command
+
     def restart(self):
         self._ensure_state([ProcessState.initiated,
                             ProcessState.finished,
                             ProcessState.failed])
         self._set_state(ProcessState.starting)
-        self._control = ControlProtocol(self, self.started_test, self.on_ready)
+        self._control = ControlProtocol(self, self.started_test,
+                                        self.on_ready, self.command)
         args = [self.command] + self.args
-        self.log('Running command: %s, with env: %r',
-                 " ".join(args), self.env)
+        self.info("Running command:  %s", self.command)
+        self.debug("With arguments:   %s",
+                   " ".join("'%s'" % (a, ) for a in args))
+        self.log("With environment: %s",
+                 " ".join("%s='%s'" % (n, v)
+                          for n, v in self.env.iteritems()))
         self._process = reactor.spawnProcess(
             self._control, self.command,
             args=args, env=self.env)
@@ -147,7 +165,8 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         pass
 
     def on_failed(self, exception):
-        pass
+        self.error("Process %s ended with %d status. Its stderr buffer: %s",
+                   self.command, exception.status, self._control.err_buffer)
 
     def on_process_exited(self, exception):
         mapping = {

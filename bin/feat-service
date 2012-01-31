@@ -34,38 +34,53 @@ def setup_log(debug):
     if debug:
         log.FluLogKeeper.set_debug(debug)
 
-if __name__ == '__main__':
+def main(args):
     usage = "usage: feat [options] {start|stop|status}"
     parser = optparse.OptionParser(usage)
-    options_module.add_options(parser)
-    options, args = parser.parse_args()
+    bootstrap.add_options(parser)
+
     try:
-        command = sys.argv[-1]
+        command = args[-1]
     except IndexError:
         print parser.usage
         sys.exit(0)
 
-    try:
-        if command == 'start':
-            bootstrap.bootstrap(args=sys.argv[1:-1])
-        elif command == 'stop':
-            setup_log(options.debug)
-            pid = run.get_pid(options.agency_rundir)
-            if pid is None:
-                sys.stderr.write("PID file not found!\n")
-                sys.exit(1)
-            if not run.signal_pid(pid, signal.SIGUSR1):
-                sys.stderr.write("Process with PID %d not found!\n" % (pid, ))
-                sys.exit(1)
-            while run.get_pid(options.agency_rundir):
-                time.sleep(0.1)
-            sys.stdout.write("Done.\n")
-        elif command == 'status':
-            setup_log(options.debug)
-            run.status(processName='', rundir=options.agency_rundir)
-        else:
-            sys.stderr.write("No such command '%s'\n" % command)
-            sys.stderr.write(parser.usage)
+    if command == 'start':
+        bootstrap.bootstrap(args=args[:-1])
+        return
+
+    options, args = parser.parse_args()
+
+    if command == 'stop':
+        setup_log(options.debug)
+        # It will still not work if the option is set from environment
+        rundir = options.agency_rundir or options_module.DEFAULT_RUNDIR
+        pid = run.get_pid(rundir)
+        if pid is None:
+            sys.stderr.write("PID file not found!\n")
             sys.exit(1)
+        if not run.signal_pid(pid, signal.SIGUSR1):
+            sys.stderr.write("Process with PID %d not found!\n" % (pid, ))
+            sys.exit(1)
+        while run.get_pid(rundir):
+            time.sleep(0.1)
+        sys.stdout.write("Done.\n")
+        return
+
+    if command == 'status':
+        setup_log(options.debug)
+        run.status(processName='', rundir=options.agency_rundir)
+        return
+
+    sys.stderr.write("No such command '%s'\n" % command)
+    sys.stderr.write(parser.usage)
+    sys.exit(1)
+
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
     except KeyboardInterrupt:
         pass
+

@@ -33,14 +33,3 @@ class Process(base.Base):
     def started_test(self):
         # Process should deamonize itself.
         return True
-
-    def restart(self):
-        d = base.Base.restart(self)
-        # This fakes process output and is needed because it might deamonize
-        # itself without puting anything to stdout.
-        self._control.outReceived("")
-        return d
-
-    @replay.side_effect
-    def on_finished(self, e):
-        base.Base.on_finished(self, e)

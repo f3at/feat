@@ -353,9 +353,11 @@ class Binding(object):
 
     def __init__(self, recp, owner):
         self.recipient = recp
-        self.route = self.create_route(owner)
+        self.route = self._create_route(owner)
 
-    def create_route(self, sink, priority=0, **kwargs):
+    ### private ###
+
+    def _create_route(self, sink, priority=0, **kwargs):
         key = (self.recipient.key, self.recipient.route)
 
         final = kwargs.pop('final', self.recipient.type == RecipientType.agent)

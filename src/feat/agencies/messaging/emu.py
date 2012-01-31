@@ -98,7 +98,7 @@ class FanoutExchange(object):
             queue.enqueue(message)
 
 
-class RabbitMQ(common.ConnectionManager, log.Logger, log.FluLogKeeper,
+class RabbitMQ(common.ConnectionManager, log.Logger, log.LogProxy,
                common.Statistics):
 
     implements(IMessagingClient)
@@ -110,7 +110,8 @@ class RabbitMQ(common.ConnectionManager, log.Logger, log.FluLogKeeper,
 
     def __init__(self):
         common.ConnectionManager.__init__(self)
-        log.FluLogKeeper.__init__(self)
+        log_keeper = log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, self)
         common.Statistics.__init__(self)
 

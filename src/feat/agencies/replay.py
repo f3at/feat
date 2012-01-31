@@ -325,7 +325,7 @@ class JournalReplayEntry(object):
         return self._replay.unserializer.convert(result)
 
 
-class Replay(log.FluLogKeeper, log.Logger):
+class Replay(log.LogProxy, log.Logger):
     '''
     Class managing the replay of the single agent.
     '''
@@ -335,7 +335,8 @@ class Replay(log.FluLogKeeper, log.Logger):
     implements(IExternalizer, IEffectHandler)
 
     def __init__(self, journal, agent_id, inject_dummy_externals=False):
-        log.FluLogKeeper.__init__(self)
+        log_keeper = log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         log.Logger.__init__(self, self)
 
         self.journal = journal

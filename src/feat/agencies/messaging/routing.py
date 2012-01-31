@@ -22,6 +22,14 @@ class Route(object):
         # flag saying that if the route matches the processing should finish
         self.final = final
 
+    def copy(self, **params):
+        '''Creates the new instance of the Route substituting the requested
+        parameters.'''
+        new_params = dict()
+        for name in ['owner', 'priority', 'key', 'final']:
+            new_params[name] = params.get(name, getattr(self, name))
+        return Route(**new_params)
+
     def match(self, message):
         if not isinstance(message, BaseMessage):
             raise AttributeError("Expected BaseMessage got %r" % (message, ))

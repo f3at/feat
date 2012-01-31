@@ -22,10 +22,10 @@
 from twisted.python.failure import Failure
 from zope.interface import implements, classProvides
 
-from feat.common import serialization, adapter
+from feat.common import serialization, adapter, error
 from feat.common.serialization import base
 
-from feat.interface.serialization import *
+from feat.interface.serialization import IRestorator, ISerializable
 
 
 class AdaptedMarker(object):
@@ -103,6 +103,21 @@ class ExceptionAdapter(BaseAdapter):
         ex.args = args
         ex.__dict__.update(attrs)
         return ex
+
+
+@adapter.register(error.FeatError, ISerializable)
+@serialization.register
+class FeatErrorAdapter(ExceptionAdapter):
+    """I'm cleaning up information about the traceback as we don't want it
+    to end up in journal."""
+
+    classProvides(IRestorator)
+
+    def __init__(self, exception):
+        ExceptionAdapter.__init__(self, exception)
+        if self._attrs.get('cause_traceback'):
+            self._attrs['cause_traceback'] = (
+                "Traceback information was cleanup up by FeatErrorAdapter")
 
 
 @adapter.register(Failure, ISerializable)

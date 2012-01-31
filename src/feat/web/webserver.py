@@ -426,7 +426,8 @@ class Server(log.LogProxy, log.Logger):
                  default_authenticator=None, default_authorizer=None,
                  log_keeper=None):
         log.Logger.__init__(self, self)
-        log.LogProxy.__init__(self, log_keeper or log.FluLogKeeper())
+        log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
+        log.LogProxy.__init__(self, log_keeper)
         self._port = port
         self._resource = root_resource
         self._registry = registry or document.get_registry()
@@ -836,14 +837,15 @@ class Server(log.LogProxy, log.Logger):
         return self._terminate(request, response)
 
     def _process_failure(self, failure, request, response, resource):
-        error = self._prepare_error(failure.value, request, response)
+        error = self._prepare_error(failure, request, response)
         if error is None:
             # Error has been resolved
             return self._terminate(request, response)
 
         return self._render_error(request, response, resource, error)
 
-    def _prepare_error(self, exception, request, response):
+    def _prepare_error(self, failure, request, response):
+        exception = failure.value
         if isinstance(exception, http.NotAuthorizedError):
 
             if response.can_update_headers:
@@ -901,14 +903,14 @@ class Server(log.LogProxy, log.Logger):
             # but it would be hard at this point given we don't know what
             # triggered this exception.
             msg = "Failed to encode response to accepted charset"
-            error.handle_exception(self, exception, msg)
+            error.handle_failure(self, failure, msg)
             if response.can_update_headers:
                 response.set_status(http.Status.NOT_ACCEPTABLE)
 
         else:
 
             msg = "Exception during HTTP resource rendering"
-            error.handle_exception(self, exception, msg)
+            error.handle_failure(self, failure, msg)
             if response.can_update_headers:
                 response.set_status(http.Status.INTERNAL_SERVER_ERROR)
 

@@ -1,6 +1,0 @@
-[submodule "src/feat/extern/paisley"]
-	path = src/feat/extern/paisley
-	url = git://github.com/kowalski/paisley.git
-[submodule "src/flumotion-flt"]
-	path = src/flumotion-flt
-	url = ssh://git@thinkmux.fluendo.lan/srv/git/flumotion-flt

@@ -25,6 +25,7 @@ import os
 import sys
 
 from feat.common import reflect
+from feat.agencies.net import configfile
 
 from feat.agencies.net.broker import DEFAULT_SOCKET_PATH
 from feat.agencies.net.database import DEFAULT_DB_HOST, DEFAULT_DB_PORT
@@ -116,13 +117,14 @@ def add_agency_options(parser):
                      action="store_true", dest="force_host_restart",
                      help=("cleanup first after an host agent and the "
                            "agents he was running"), default=False)
-    group.add_option('-a', '--agent', dest="agents", action="append",
-                      help="Start an agent of specified type.",
-                      metavar="AGENT_NAME", default=[])
-    group.add_option('--agent-kwargs', dest="agents_kwargs", action="append",
-                     help="Pass initialization keywords to the agent.",
-                     metavar="AGENT_NAME", default=[])
-
+    group.add_option('-a', '--agent', dest="agents", action="callback",
+                      help="Start an agent of the specified type.",
+                      metavar="AGENT_NAME", default=[], type='str',
+                      callback=append_agent)
+    group.add_option('--agent-id', dest="agent_id", action="store",
+                      help=("Start an agent with specified id. Its descriptor "
+                            "will be fetched from the database."),
+                      metavar="AGENT_ID", type='str')
     group.add_option('-X', '--standalone',
                       action="store_true", dest="standalone",
                       help="run agent in standalone agency (default: False)",
@@ -270,21 +272,12 @@ def _load_module(option, opt, value, parser):
 
 
 def parse_config_file(option, opt_str, value, parser):
-    import ConfigParser
-    try:
-        cfg = ConfigParser.ConfigParser()
-        cfg.readfp(open(value, 'r'))
-        for dest, value in cfg.items('Feat', raw=True):
-            values = value.split()
-            opt = parser.get_option('--' + dest)
-            if not opt:
-                print ("Ignoring unknown option %s defined in config file" %
-                       (dest, ))
-                continue
-            for value in values:
-                opt.process(opt_str, value, parser.values, parser)
-    except IOError:
-        print 'Config file not found, skipping ...'
+    f = open(value, 'r')
+    configfile.parse_file(parser, f)
+
+
+def append_agent(option, opt_str, value, parser):
+    configfile.append_agent(parser, value)
 
 
 class OptionError(Exception):

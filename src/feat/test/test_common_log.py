@@ -72,7 +72,9 @@ class TestLogging(common.TestCase):
 
     def testDefaultLogging(self):
         keeper = DummyLogKeeper()
+        current = log.get_default()
         log.set_default(keeper)
+        self.addCleanup(log.set_default, current)
 
         log.log("foo", "1")
         log.debug("bar", "2", 42)

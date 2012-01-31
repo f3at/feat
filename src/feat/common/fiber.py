@@ -150,9 +150,11 @@ def succeed(param=None, canceller=None, debug_depth=0, debug_call=None):
     return f.succeed(param)
 
 
-def fail(failure=None, canceller=None, debug_depth=0, debug_call=None):
+def fail(fail=None, canceller=None, debug_depth=0, debug_call=None):
+    if isinstance(fail, error.FeatError) and fail.cause_traceback is None:
+        fail.cause_traceback = ''.join(traceback.format_stack()[:-1])
     f = Fiber(canceller, debug_depth=debug_depth+1, debug_call=debug_call)
-    return f.fail(failure)
+    return f.fail(fail)
 
 
 def wrap_defer(_method, *args, **kwargs):

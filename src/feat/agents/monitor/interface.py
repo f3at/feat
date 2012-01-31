@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import Interface, Attribute
 
-from feat.common import enum
+from feat.common import enum, error
 
 __all__ = ['DEFAULT_HEARTBEAT_PERIOD',
            'DEFAULT_DEATH_SKIPS', 'DEFAULT_DYING_SKIPS',
@@ -45,12 +45,14 @@ DEFAULT_HOST_QUARANTINE_LENGTH = 60*2
 DEFAULT_SELF_QUARANTINE_LENGTH = 60*3
 
 
-class RestartFailed(Exception):
+class RestartFailed(error.FeatError):
     pass
 
 
-class MonitoringFailed(Exception):
-    pass
+class MonitoringFailed(error.NonCritical):
+    log_level = 3
+    log_line_template = ("Monitor agent not found. This is normal "
+                         "I will keep on retrying untill he is started.")
 
 
 class PatientState(enum.Enum):

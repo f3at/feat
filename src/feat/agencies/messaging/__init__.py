@@ -22,4 +22,26 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
+import os
+
+from feat.common import log
+
 from .messaging import *
+
+
+debug_messages = os.environ.get("FEAT_DEBUG_MESSAGES", "NO").upper() \
+                 in ("YES", "1", "TRUE")
+
+
+def debug_message(prefix, message, postfix=""):
+    if not debug_message:
+        return
+    mtype = type(message).__name__
+    mid = getattr(message, "message_id", None)
+    mrec = getattr(message, "recipient", None)
+    mrec = mrec.key if mrec is not None else None
+    mrep = getattr(message, "reply_to", None)
+    mrep = mrep.key if mrep is not None else None
+    log.debug("messages",
+              "%s Type: %s; Id: %s; Recipient: %s; Reply-To: %s; %s",
+              prefix, mtype, mid, mrec, mrep, postfix)

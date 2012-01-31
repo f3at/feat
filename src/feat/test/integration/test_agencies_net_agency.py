@@ -27,7 +27,6 @@ import operator
 import re
 
 from twisted.python import failure
-from twisted.internet import defer
 from twisted.spread import pb
 
 from feat.test import common
@@ -38,7 +37,7 @@ from feat.agencies.messaging import rabbitmq
 from feat.agencies.net import agency, broker
 from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, partners, replay
-from feat.common import serialization, fiber, log, first, run
+from feat.common import serialization, fiber, log, first, run, defer
 from feat.utils import host_restart
 
 from feat.interface.agent import AgencyAgentState
@@ -214,7 +213,7 @@ class StandaloneAgent(agent.BaseAgent):
                 '-R', os.path.curdir,
                 '-D',
                 '-X',
-                '-a', agent_id]
+                '--agent-id', agent_id]
         if s_kwargs:
             args += ['--kwargs', s_kwargs]
         path = ":".join([bin_path, os.environ["PATH"]])
@@ -461,6 +460,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
         yield self.wait_for_slave()
 
         pid = run.get_pid(os.path.curdir)
+
         run.term_pid(pid)
         # now cleanup the stale descriptors the way the monitor agent would
 
@@ -472,6 +472,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
             return m is not None and m.is_ready()
 
         yield self.wait_for(has_host, 15)
+
         host_desc = yield self.db.get_document(hostname)
         # for host agent the instance id should not increase
         # (this is only the case for agents run by host agent)
@@ -480,12 +481,14 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
         yield self.wait_for_backup()
         slave = self.agency._broker.slaves.values()[0]
 
-        self.info('killing slave')
+        self.info('killing slave %s', slave.slave_id)
         d = slave.callRemote('shutdown', stop_process=True)
         self.assertFailure(d, pb.PBConnectionLost)
         yield d
+
         yield common.delay(None, 0.5)
         yield self.wait_for_backup()
+
         slave2 = self.agency._broker.slaves.values()[0]
         self.assertNotEqual(slave.slave_id, slave2.slave_id)
 
@@ -539,7 +542,6 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
     @defer.inlineCallbacks
     def tearDown(self):
         yield self.wait_for(self.agency.is_idle, 20)
-
         if self.shutdown:
             yield self.agency.full_shutdown()
         yield FullIntegrationTest.tearDown(self)
@@ -556,7 +558,8 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
     @defer.inlineCallbacks
     def assert_journal_contains(self, agent_ids):
         jour = self.agency._journaler
-        yield self.wait_for(jour.is_idle, 10)
+        self.info("Starting waiting for journal to be idle, jour=%r", jour)
+        yield self.wait_for(jour.is_idle, 15)
         resp = yield jour._writer.get_histories()
         ids_got = map(operator.attrgetter('agent_id'), resp)
         set1 = set(agent_ids)

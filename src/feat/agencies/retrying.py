@@ -22,7 +22,7 @@
 from twisted.python.failure import Failure
 from zope.interface import implements
 
-from feat.agents.base import replay
+from feat.agents.base import replay, alert
 from feat.agencies import common
 from feat.common import log, defer, serialization, error
 
@@ -42,13 +42,15 @@ class RetryingProtocolFactory(serialization.Serializable):
     protocol_type = "Special"
 
     def __init__(self, factory, max_retries=None,
-                 initial_delay=1, max_delay=None, busy=True):
+                 initial_delay=1, max_delay=None, busy=True,
+                 alert_after=None):
         self.protocol_id = "retried-" + factory.protocol_id
         self.factory = factory
         self.max_retries = max_retries
         self.initial_delay = initial_delay
         self.max_delay = max_delay
         self.busy = busy
+        self.alert_after = alert_after
 
     def __call__(self, agency_agent, *args, **kwargs):
         return RetryingProtocol(agency_agent, self.factory,
@@ -56,7 +58,8 @@ class RetryingProtocolFactory(serialization.Serializable):
                                 max_retries=self.max_retries,
                                 initial_delay=self.initial_delay,
                                 max_delay=self.max_delay,
-                                busy=self.busy)
+                                busy=self.busy,
+                                alert_after=self.alert_after)
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -78,7 +81,8 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
     protocol_type = "Special"
 
     def __init__(self, agency_agent, factory, args=None, kwargs=None,
-                 max_retries=None, initial_delay=1, max_delay=None, busy=True):
+                 max_retries=None, initial_delay=1, max_delay=None, busy=True,
+                 alert_after=None):
         common.TransientInitiatorMediumBase.__init__(self)
         log.Logger.__init__(self, agency_agent)
 
@@ -94,6 +98,17 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         self.attempt = 0
         self.delay = initial_delay
         self.busy = busy # If the protocol should not be idle between retries
+        self.alert_after = alert_after
+
+        # check that agent supports raising alerts
+        if not hasattr(self.medium.agent, 'raise_alert') or \
+           not hasattr(self.medium.agent, 'resolve_alert'):
+            self.warning("Retrying protocol was asked to raise an alert in "
+                         "case of %d failed attempts. However the agent does "
+                         "not mixin in alert.AgentMixin. This functionality "
+                         "will be disabled.", self.alert_after)
+            self.alert_after = None
+
 
         self._delayed_call = None
         self._initiator = None
@@ -166,6 +181,11 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         return d
 
     def _finalize(self, result):
+        # check if we should resolve an alert
+        if self.alert_after is not None and self.attempt > self.alert_after:
+            self.medium.agent.resolve_alert(
+                self._get_alert_msg(), alert.Severity.recover)
+
         common.TransientInitiatorMediumBase._terminate(self, result)
 
     def _wait_and_retry(self, failure):
@@ -174,6 +194,12 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
                   self.medium.get_full_id(), self.factory)
 
         self._initiator = None
+
+        # check if we should raise an alert
+        if self.alert_after is not None and self.attempt >= self.alert_after:
+            self.info("I will raise an alert.")
+            self.medium.agent.raise_alert(
+                self._get_alert_msg(), alert.Severity.low)
 
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
@@ -190,3 +216,8 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
             self.delay *= 2
         elif self.delay < self.max_delay:
             self.delay = min((2 * self.delay, self.max_delay, ))
+
+    def _get_alert_msg(self):
+        msg = ("%s has failed more than %d times for agent %s" %
+               (self.factory, self.alert_after, self.medium.get_full_id()))
+        return msg

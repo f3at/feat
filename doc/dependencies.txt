@@ -3,8 +3,8 @@ Things needed by Messy to run.
 * Python 2.6
 * Twisted >= 8.2.0
 * CouchDB >= 0.10
-* Paisley 0.2 (Paisley has been frozen in feat.extern.paisley, because of
-  	       annoying bugs which needed to be fixed)
+* Paisley 0.3.1-feat.1 (There is a fork of paisley that can be found at:
+                        https://github.com/f3at/paisley)
 * simplejson
 * Txamqp 0.3
 * Amqp (required by txamqp)

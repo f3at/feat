@@ -25,10 +25,11 @@ import optparse
 import sys
 
 from feat import everything
-from feat.agents.base import descriptor
 from feat.agents.common import host
-from feat.agencies.net import agency as net_agency, standalone, database
-from feat.agencies.net.options import add_options, OptionError
+from feat.agencies.net import agency as net_agency, standalone
+from feat.agencies.net import database, options
+from feat.agencies.net.options import OptionError
+
 from feat.common import log, run, defer
 from feat.common.serialization import json
 from feat.utils import host_restart
@@ -43,9 +44,17 @@ def check_options(opts, args):
                           "specified when specifyin"
                           "a host definition document.")
 
-    if opts.standalone and len(opts.agents) != 1:
-        raise OptionError("Running standalone agency requires passing "
-                          "run host_id with --agent option.")
+    if (opts.standalone and not
+        ((len(opts.agents) == 1 and opts.agent_id is None) or
+         (len(opts.agents) == 0 and opts.agent_id is not None))):
+        raise OptionError("Running standalone agent requires passing the "
+                          "information about what agent to run. You can "
+                          "either specify one '--agent AGENT_TYPE' paremeter "
+                          "or '--agent-id AGENT_ID'")
+
+    if opts.agent_id and not opts.standalone:
+        raise OptionError("--agent-id options should only be used for "
+                          "the standalone agent.")
 
     if opts.standalone_kwargs:
         if not opts.standalone:
@@ -58,25 +67,6 @@ def check_options(opts, args):
         except (TypeError, ValueError):
             raise OptionError("Error unserializing json dictionary: %s " %
                               opts.standalone_kwargs), None, sys.exc_info()[2]
-    if opts.agents_kwargs:
-        if len(opts.agents_kwargs) > len(opts.agents):
-            msg = "Received keywords for %d agents and only %d to spawn." % (
-                              len(opts.agents_kwargs), len(opts.agents))
-            log.debug("feat", msg)
-            log.debug("feat", "keywords: %r, agents: %r",
-                opts.agents_kwargs, opts.agents)
-            raise OptionError(msg)
-        parsed = list()
-        for element in opts.agents_kwargs:
-            try:
-                p = json.unserialize(element)
-                if not isinstance(p, dict):
-                    raise TypeError(element)
-                parsed.append(p)
-            except (TypeError, ValueError):
-                raise OptionError("Error unserializing json dictionary: %s " %
-                                  element)
-        opts.agents_kwargs = parsed
 
     if args:
         raise OptionError("Unexpected arguments: %r" % args)
@@ -100,7 +90,11 @@ def check_category(catdef):
     raise OptionError("Invalid host category: %s" % catdef)
 
 
-def bootstrap(parser=None, args=None, descriptors=None):
+def add_options(parser):
+    options.add_options(parser)
+
+
+def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
         added to the parser; if not specified or None
@@ -116,8 +110,9 @@ def bootstrap(parser=None, args=None, descriptors=None):
     @return: the deferred of the bootstrap chain
     @rtype:  defer.Deferred()"""
 
-    parser = parser or optparse.OptionParser()
-    add_options(parser)
+    if parser is None:
+        parser = optparse.OptionParser()
+        options.add_options(parser)
 
     with _Bootstrap(parser=parser, args=args) as bootstrap:
         agency = bootstrap.agency
@@ -125,7 +120,8 @@ def bootstrap(parser=None, args=None, descriptors=None):
         args = bootstrap.args
         opts, args = check_options(opts, args)
 
-        descriptors = descriptors or []
+        if callable(init_callback):
+            init_callback(agency, opts, args)
 
         d = defer.Deferred()
         reactor.callWhenRunning(d.callback, None)
@@ -139,13 +135,6 @@ def bootstrap(parser=None, args=None, descriptors=None):
                 connection = db.get_connection()
                 d.addCallback(defer.drop_param, host_restart.do_cleanup,
                               connection, agency._get_host_agent_id())
-
-            for name in opts.agents:
-                factory = descriptor.lookup(name)
-                if factory is None:
-                    msg = "No descriptor factory found for agent %s" % name
-                    raise OptionError(msg)
-                descriptors.append(factory())
 
             hostdef = opts.hostdef
 
@@ -177,20 +166,19 @@ def bootstrap(parser=None, args=None, descriptors=None):
             agency.set_host_def(hostdef)
 
             d.addCallback(defer.drop_param, agency.initiate)
-            for desc in descriptors:
-                kwargs = (opts.agents_kwargs.pop(0)
-                          if opts.agents_kwargs else {})
-                log.debug("feat", ("Starting agent with descriptor %r "
+            for desc, kwargs in opts.agents:
+                log.debug("feat", ("Starting agent %s with descriptor %r "
                                    "Passing %r to his initiate()"),
-                          desc, kwargs)
+                          desc.document_type, desc, kwargs)
                 d.addCallback(defer.drop_param, agency.spawn_agent, desc,
                               **kwargs)
         else:
             # standalone specific
             kwargs = opts.standalone_kwargs or dict()
+            to_spawn = opts.agent_id or opts.agents[0][0]
             d.addCallback(defer.drop_param, agency.initiate)
             d.addCallback(defer.drop_param, agency.spawn_agent,
-                          opts.agents[0], **kwargs)
+                          to_spawn, **kwargs)
         return d
 
 
@@ -203,8 +191,10 @@ class _Bootstrap(object):
         self.agency = None
 
     def __enter__(self):
+        tee = log.init()
+        tee.add_keeper('buffer', log.LogBuffer(limit=10000))
         self._parse_opts()
-        log.FluLogKeeper.init(buffer_mode=self.opts.agency_daemonize)
+
         if self.opts.debug:
             log.FluLogKeeper.set_debug(self.opts.debug)
         self.agency = self._run_agency()
@@ -217,6 +207,13 @@ class _Bootstrap(object):
             tmp = tempfile.mktemp(suffix="feat.temp.log")
             log.info("run", "Logging will temporarily be done to: %s", tmp)
             run.daemonize(stdout=tmp, stderr=tmp)
+            # dump all the log entries logged so far to the FluLogKeeper again
+            # the reason for this is that we want them to be included in text
+            # file (so far they have been printed to the console)
+            tee = log.get_default()
+            buff = tee.get_keeper('buffer')
+            flulog = tee.get_keeper('flulog')
+            buff.dump(flulog)
         reactor.run()
 
     def _parse_opts(self):

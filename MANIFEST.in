@@ -1,5 +1,26 @@
 graft tools
 graft doc
 graft conf
+graft examples
+
+include README
+include RELEASE
+include LICENSE.GPL
+include setup.py
+include feat.spec
 include env
-include src/feat/agencies/net/amqp0-8.xml
+
+include src/feat/agencies/messaging/amqp0-8.xml
+include src/feat/process/local.ini.template
+include src/feat/test/data/*.pem
+include src/feat/test/data/*.p12
+
+include src/feat/extern/log/ChangeLog
+include src/feat/extern/log/README
+
+recursive-include src/feat *.py
+recursive-include src/feat/gateway/static *.css *.js *.gif *.png
+
+recursive-exclude doc *.pyc
+recursive-exclude examples *.pyc
+recursive-exclude tools *.pyc

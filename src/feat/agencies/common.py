@@ -515,6 +515,9 @@ class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
             self.opts = opts
         return self._observer.notify_finish()
 
+    def notify_finish(self):
+        return self._observer.notify_finish()
+
     ### private ###
 
     def _initiate(self):
@@ -522,13 +525,16 @@ class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
         for stage in self.stages:
             method_name = "stage_%s" % (stage.name, )
 
-            d.addBoth(self._print_log, stage)
+            d.addBoth(defer.drop_param, self.log, "Entering stage %s",
+                      stage.name)
             d.addBoth(defer.drop_param, self._set_state, stage)
             d.addBoth(defer.drop_param, self.call_mro, method_name)
+            d.addBoth(self._print_log, stage)
         return d
 
     def _print_log(self, param, stage):
-        self.log('Entering stage %s. Defer result at this point: %r',
+        self.log('Finished stage %s. Defer result at this point: %r',
                  stage.name, param)
         if isinstance(param, failure.Failure):
-            error.handle_failure(self, param, 'Failure in previous stage: ')
+            error.handle_failure(self, param, 'Failure in stage %s: ',
+                                 stage.name)

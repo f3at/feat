@@ -1,8 +1,8 @@
 %global __python python2.6
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.15
-%define unmangled_version 0.15
+%define version 0.16
+%define unmangled_version 0.16
 %define build_rev 0
 
 Name:           python-feat
@@ -17,13 +17,13 @@ URL:            http://flumotion.com
 
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
-BuildRequires:  python-devel
+BuildRequires:  python-devel >= 2.6
 BuildRequires:  python-setuptools >= 0.6c9
+
 Requires:       python-twisted-core
 Requires:       python-twisted-web
-#Requires:      couchdb >= 0.10
-#Requires:      python-txamqp >= 0.3
-#Requires:      rabbitmq-server >= 2.0
+Requires:       python-paisley >= 0.3.1-feat.1
+
 Provides:       %{name}
 
 %description
@@ -40,73 +40,132 @@ rm -rf $RPM_BUILD_ROOT
 %{__python} setup.py install --skip-build --root=$RPM_BUILD_ROOT \
      --record=INSTALLED_FILES
 
-install -m 644 src/feat/agencies/messaging/amqp0-8.xml \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/agencies/messaging/amqp0-8.xml
+# Create config directory
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/feat
 
-install -m 644 src/feat/gateway/static/default.css \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/default.css
-
-install -m 644 src/feat/gateway/static/feat.css \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/feat.css
-
-install -m 644 src/feat/gateway/static/default.css \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/default.css
-
-install -m 644 src/feat/gateway/static/script/feat.js \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/feat.js
-
-install -m 644 src/feat/gateway/static/script/form.js \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/form.js
-
-install -m 644 src/feat/gateway/static/script/jquery.cseditable.js \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/jquery.cseditable.js
-
-install -m 644 src/feat/gateway/static/script/json2.js \
-     $RPM_BUILD_ROOT%{python_sitelib}/feat/gateway/static/script/json2.js
-
-# create config dir
-install -d $RPM_BUILD_ROOT%{_sysconfdir}/feat
-install -m 644  \
-        conf/feat.ini \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
-install -m 644  \
-        conf/public.key \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/public.key
-install -m 644  \
-        conf/private.key \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/private.key
-install -m 644  \
-        conf/authorized_keys \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/authorized_keys
-install -m 644  \
-        conf/tunneling.p12 \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/tunneling.p12
-install -m 644  \
-        conf/gateway.p12 \
-              $RPM_BUILD_ROOT%{_sysconfdir}/feat/gateway.p12
-
+# Setup service script
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+install -d $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
 install -m 755 \
         conf/redhat/feat \
-            $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+        $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+install -m 640 \
+        conf/redhat/feat.sysconfig \
+        $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/feat
 
-# create log and run and cache and lib rrd directory
+# Create log and run directory
 install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
 install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 
-%files
-%defattr(-,root,root,-)
-%{python_sitelib}/*
-%_usr/bin/*
-%{_sysconfdir}/rc.d/init.d/feat
-%attr(775,root,flumotion) %{_sysconfdir}/feat
-%attr(775,root,flumotion) %{_localstatedir}/run/feat
-%attr(775,root,flumotion) %{_localstatedir}/log/feat
+# Creates feat user home directory
+install -d $RPM_BUILD_ROOT%{_localstatedir}/cache/feat
+
+# Install default configuration file
+install -m 644  conf/feat.ini $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
+
+# Install share files
+%define _sharedir $RPM_BUILD_ROOT%{_datadir}/python-feat
+install -m 755 -d %{_sharedir}/conf
+install -m 755 -d %{_sharedir}/conf/postgres
+install -m 755 -d %{_sharedir}/conf/redhat
+install -m 755 -d %{_sharedir}/tools
+install -m 755 -d %{_sharedir}/tools/PKI
+install -m 755 -d %{_sharedir}/tools/PKI/bin
+install -m 755 -d %{_sharedir}/tools/PKI/template
+install -m 644 -t %{_sharedir}/conf \
+  conf/authorized_keys \
+  conf/dummy.p12 \
+  conf/dummy_private_key.pem \
+  conf/dummy_public_cert.pem \
+  conf/feat.ini \
+  conf/gateway.p12 \
+  conf/gateway_ca.pem \
+  conf/private.key \
+  conf/public.key \
+  conf/tunneling.p12
+install -m 644 -t %{_sharedir}/conf/postgres conf/postgres/*
+install -m 644 -t %{_sharedir}/conf/redhat conf/redhat/*
+install -m 644 -t %{_sharedir}/tools \
+  tools/configure_test_postgres.sh \
+  tools/env \
+  tools/flumotion-trial \
+  tools/pep8.py \
+  tools/show-coverage.py \
+  tools/start_couch.sh \
+  tools/start_feat.sh \
+  tools/start_rabbitctl.sh \
+  tools/start_rabbit.sh \
+  tools/stop_feat.sh \
+  tools/web.py
+install -m 644 -t %{_sharedir}/tools/PKI tools/PKI/feat.conf
+install -m 644 -t %{_sharedir}/tools/PKI/bin tools/PKI/bin/*
+install -m 644 -t %{_sharedir}/tools/PKI/template tools/PKI/template/*
+
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
+
+%pre
+/usr/sbin/useradd -s /sbin/nologin \
+        -r -d %{_localstatedir}/cache/feat -M \
+        feat > /dev/null 2> /dev/null || :
+/usr/sbin/usermod -d %{_localstatedir}/cache/feat \
+        feat > /dev/null 2> /dev/null || :
+
+
+%preun
+# if removal and not upgrade, stop the processes and clean up
+if [ $1 -eq 0 ]
+then
+  /sbin/service feat stop > /dev/null
+
+  rm -rf %{_localstatedir}/run/feat*
+
+  # clean out the cache/home dir too, without deleting it or the user
+  rm -rf %{_localstatedir}/cache/feat/*
+  rm -rf %{_localstatedir}/cache/feat/.[^.]*
+
+  /sbin/chkconfig --del feat
+fi
+
+
+%files
+%defattr(-,root,root,-)
+
+%doc README RELEASE LICENSE.GPL doc examples
+
+%config(noreplace) %{_sysconfdir}/feat/feat.ini
+%config(noreplace) %{_sysconfdir}/sysconfig/feat
+%attr(775, root, feat) %{_sysconfdir}/feat
+%attr(664, root, feat) %{_sysconfdir}/feat/feat.ini
+
+%{_sysconfdir}/rc.d/init.d/feat
+
+%{python_sitelib}/*
+%{_bindir}/feat
+%{_bindir}/feat-couchpy
+%{_bindir}/feat-dbload
+%{_bindir}/feat-locate
+%{_bindir}/feat-service
+
+%{_datadir}/python-feat/*
+
+%attr(775,root,feat) %{_sysconfdir}/feat
+%attr(775,root,feat) %{_localstatedir}/run/feat
+%attr(775,root,feat) %{_localstatedir}/log/feat
+%attr(770,feat,feat) %{_localstatedir}/cache/feat
+
+
 %changelog
+* Mon Jan 16 2012 Sebastien Merle <s.merle@gmail.com>
+- 0.16-1
+- Updated the spec file to reflect setuptools changes.
+- Added user feat creation.
+
+* Mon Jan 16 2012 Sebastien Merle <s.merle@gmail.com>
+- Bumped to 0.16
+
 * Tue Dec 11 2011 Sebastien Merle <s.merle@gmail.com>
 - 0.15
 - FEAT Pre-Release 0.15

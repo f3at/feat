@@ -133,7 +133,8 @@ class AgentMixin(object):
     def lookup_monitor(self, state):
         if self.need_local_monitoring:
             Factory = retrying.RetryingProtocolFactory
-            factory = Factory(SetupMonitoringTask, max_delay=60, busy=False)
+            factory = Factory(SetupMonitoringTask, max_delay=60, busy=False,
+                              alert_after=5)
             self.initiate_protocol(factory)
 
     def query_monitoring_info(self, recipient):
@@ -179,7 +180,6 @@ class SetupMonitoringTask(task.BaseTask):
             ex = MonitoringFailed("No monitor agent found in shard for %s %s"
                                   % (state.agent.descriptor_type,
                                      state.agent.get_full_id()))
-            #raise ex
             return fiber.fail(ex)
 
         monitor = monitors[0]
