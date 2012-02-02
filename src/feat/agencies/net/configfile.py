@@ -91,11 +91,21 @@ def _parse_agent_section(cfg, parser, section):
     for name, value in cfg.items(section):
         if name.startswith('descriptor'):
             key = name.split('.')[1]
-            desc_keywords[key] = json.unserialize(value)
+            desc_keywords[key] = _unserialize_json_field(
+                section, name, value)
         elif name.startswith('initiate'):
             key = name.split('.')[1]
-            initiate_keywords[key] = json.unserialize(value)
+            initiate_keywords[key] = _unserialize_json_field(
+                section, name, value)
     append_agent(parser, agent_type, desc_keywords, initiate_keywords)
+
+
+def _unserialize_json_field(section, key, value):
+    try:
+        return json.unserialize(value)
+    except ValueError:
+        raise ConfigParser.Error("Value: %r is not a valid json. Section=%s "
+                                 "Key=%s" % (value, section, key))
 
 
 def _parse_include_section(cfg, parser, section):
