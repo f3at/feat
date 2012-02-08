@@ -103,6 +103,23 @@ class TestAction(action.Action):
     action.effect(call.model_perform("do_format"))
 
 
+class TestStructure(value.Structure):
+    value.field("field1", value.Integer(), is_required=True)
+    value.field("string", value.String(), is_required=False)
+    value.field("field2", value.Integer(6), is_required=False)
+
+
+class TestAction2(action.Action):
+    action.label("Test Action")
+    action.desc("Some test action")
+    action.result(value.String())
+    action.param("struc", TestStructure())
+    action.effect(call.action_perform('result'))
+
+    def result(self, struc):
+        return str(struc['field1'])
+
+
 class TestParamOrder1(action.Action):
     action.param("c", value.Integer())
     action.param("b", value.Integer())
@@ -334,6 +351,40 @@ class TestModelsAction(common.TestCase):
         res = yield action.perform("12", toto="3", titi="5") # 12 + 3 - 5
         self.assertEqual(res, u"10 foo")
         self.assertEqual(model.value, 10)
+
+    @defer.inlineCallbacks
+    def testStructureParams(self):
+        source = DummySource()
+        model = DummyModel(source)
+        action = yield TestAction2.create(model)
+
+        res = yield action.perform(struc=dict(field1=444))
+        self.assertEqual('444', res)
+
+        # now test errors
+        try:
+            yield action.perform(
+                struc=dict(field1='not integer'))
+        except InvalidParameters, e:
+            self.assertEqual(('struc.field1', ), e.parameters)
+        else:
+            self.fail("Didn't raise!")
+
+        try:
+            yield action.perform(
+                struc=dict(field1=2, unknown='a'))
+        except UnknownParameters, e:
+            self.assertEqual(('struc.unknown', ), e.parameters)
+        else:
+            self.fail("Didn't raise!")
+
+        try:
+            yield action.perform(
+                struc=dict())
+        except MissingParameters, e:
+            self.assertEqual(('struc.field1', ), e.parameters)
+        else:
+            self.fail("Didn't raise!")
 
     @defer.inlineCallbacks
     def testSubAction(self):

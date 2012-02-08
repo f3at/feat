@@ -62,11 +62,23 @@ $.fn.featform._onSubmit = function(ev) {
     var $this = $(ev.target);
     var params = {};
     var array = $this.serializeArray();
+
     $.each(
 	array,
 	function(i, element) {
 	    if (element.value != '') {
-		params[element.name] = element.value;
+		// split names on dot, put the value inside the nested
+		// structure like a.b.c -> {a:{b:{c: value}}}
+		var parts = element.name.split('.');
+		var current = params;
+		while (parts.length > 1) {
+		    var name = parts.shift();
+		    if (typeof(current[name]) == 'undefined') {
+			current[name] = {};
+		    };
+		    current = current[name];
+		}
+		current[parts[0]] = element.value;
 	    }
 	});
 

@@ -362,6 +362,19 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                     validated[param_name] = valval
                 except ValueError, e:
                     errors[param_name] = str(e)
+                except MissingParameters, e:
+                    missings  = ['.'.join([param_name, x]) for x in e.parameters]
+                    msg = ("Action %s is missing parameter(s): %s"
+                           % (self.name, ", ".join(missings)))
+                    raise MissingParameters(msg, params=missings)
+                except UnknownParameters, e:
+                    unknown = ['.'.join([param_name, x]) for x in e.parameters]
+                    msg = ("Action %s is missing parameter(s): %s"
+                           % (self.name, ", ".join(unknown)))
+                    raise UnknownParameters(msg, params=unknown)
+                except InvalidParameters, e:
+                    params = self._prepend_name(param_name, e.reasons)
+                    errors.update(params)
 
             if errors:
                 param_errors = ", ".join("%s: %s" % (p, m)
@@ -467,6 +480,12 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
         """@see: feat.models.action.effect"""
         cls._effects.append(effect)
 
+    ### privvate ###
+
+    def _prepend_name(self, prefix, dict_):
+        '''changes the keys of the dictionary prepending them with "name."'''
+        return dict(['.'.join([prefix, name]), msg]
+                    for name, msg in dict_.iteritems())
 
 ### private ###
 

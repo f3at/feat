@@ -188,6 +188,12 @@ class UnauthorizedModel(model.Model):
         raise Unauthorized()
 
 
+class TestStructure(value.Structure):
+    value.field("field1", value.Integer(), is_required=True)
+    value.field("string", value.String(), is_required=False)
+    value.field("field2", value.Integer(6), is_required=False)
+
+
 class ShutdownAction(action.Action):
 
     action.label("Test Action")
@@ -200,6 +206,7 @@ class ShutdownAction(action.Action):
     action.param("titi", value.Integer(), is_required=False)
     action.param("checkbox1", value.Boolean(default=True))
     action.param("checkbox2", value.Boolean())
+    action.param("structure", TestStructure())
 
 
 class DeleteAction(action.Action):

@@ -25,6 +25,9 @@ from feat.models import interface, value
 
 from feat.test import common
 
+from feat.models.interface import UnknownParameters, InvalidParameters
+from feat.models.interface import MissingParameters
+
 
 class DummyString(value.String):
     value.label("Dummy")
@@ -68,7 +71,33 @@ class TestCollection2(value.Collection):
     value.max_size(4)
 
 
+class TestStructure(value.Structure):
+    value.field("field1", value.Integer(), is_required=True)
+    value.field("string", value.String(), is_required=False)
+    value.field("field2", value.Integer(6), is_required=False)
+
+
 class TestModelsValue(common.TestCase):
+
+    def testStructure(self):
+        v = TestStructure()
+
+        res = v.validate(dict(field1=2, string="hi", field2=10))
+        self.assertEqual(2, res['field1'])
+        self.assertEqual('hi', res['string'])
+        self.assertEqual(10, res['field2'])
+
+        res = v.validate(dict(field1=2))
+        self.assertEqual(2, res['field1'])
+        self.assertNotIn('string', res)
+        self.assertEqual(6, res['field2'])
+
+        self.assertRaises(InvalidParameters, v.validate,
+                          dict(field1='string'))
+        self.assertRaises(MissingParameters, v.validate,
+                          dict(field2=10))
+        self.assertRaises(UnknownParameters, v.validate,
+                          dict(field1=1, unknown=10))
 
     def testCollection(self):
         v = TestCollection1()

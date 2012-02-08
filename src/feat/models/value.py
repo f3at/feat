@@ -23,10 +23,14 @@
 from zope.interface import implements, classImplements
 
 from feat.common import annotate, container
-from feat.models import meta as models_meta
+from feat.models import meta as models_meta, action
 
-from feat.models.interface import *
-from feat.models.interface import IValidator
+from feat.models.interface import IValueInfo, NotSupported, IValueOptions
+from feat.models.interface import IValidator, IValueRange, ValueTypes
+from feat.models.interface import IEncodingInfo, IModel, IReference
+from feat.models.interface import IValueOption, IResponse, MissingParameters
+from feat.models.interface import UnknownParameters, InvalidParameters
+from feat.models.interface import IValueCollection, IValueList
 from feat.interface.serialization import ISnapshotable
 
 
@@ -642,6 +646,81 @@ class Enum(Value):
         if isinstance(value, self._enum):
             value = unicode(value.name)
         return Value._add_option(self, value, label)
+
+
+class Structure(Value):
+
+    implements(IValueList)
+
+    value_type(ValueTypes.struct)
+    _fields = container.MroList("_mro_fields")
+
+    def validate(self, value):
+        if not isinstance(value, dict):
+            raise ValueError("Expected dictionary, got %r" % (value, ))
+
+        fields = self.fields
+        params = set(value.keys())
+        expected = set([p.name for p in fields])
+        required = set([p.name for p in fields if p.is_required])
+
+        missing = required - params
+        if missing:
+            raise MissingParameters("", params=missing)
+
+        unknown = params - expected
+        if unknown:
+            raise UnknownParameters("", params=unknown)
+
+        param_index = dict([(p.name, p) for p in fields])
+        validated = {}
+        errors = {}
+        for param_name, param_value in value.iteritems():
+            info = param_index[param_name].value_info
+            try:
+                valval = IValidator(info).validate(param_value)
+                validated[param_name] = valval
+            except ValueError, e:
+                errors[param_name] = str(e)
+
+        if errors:
+            raise InvalidParameters("", params=errors)
+
+        for param in fields:
+            if not param.is_required:
+                info = param.value_info
+                if param.name not in validated and info.use_default:
+                    validated[param.name] = info.default
+
+        return validated
+
+    def publish(self, value):
+        return unicode(value)
+
+    ### IValueList ###
+
+    @property
+    def fields(self):
+        inverted_result = []
+        already_added = set()
+        for p in reversed(self._fields):
+            if p.name not in already_added:
+                inverted_result.append(p)
+                already_added.add(p.name)
+        return list(reversed(inverted_result))
+
+    ### annotations ###
+
+    @classmethod
+    def annotate_param(cls, name, value_info, is_required=True,
+                       label=None, desc=None):
+        name = unicode(name)
+        param = action.Param(name, value_info, is_required=is_required,
+                             label=label, desc=desc)
+        cls._fields.append(param)
+
+
+field = action.param
 
 
 class Collection(Value):

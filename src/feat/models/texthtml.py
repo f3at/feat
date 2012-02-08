@@ -226,19 +226,20 @@ class ModelWriter(log.Logger):
         div.close()
         form.close()
 
-    def _render_param_field(self, markup, context, param):
+    def _render_param_field(self, markup, context, param, nested_name=None):
         default = param.value_info.use_default and \
                   param.value_info.default
 
         label = param.label or param.value_info.label or param.name
-        markup.label()(label).close()
         text_types = [ValueTypes.integer, ValueTypes.number,
                       ValueTypes.string]
         v_t = param.value_info.value_type
+        input_name = '.'.join(filter(None, [nested_name, param.name]))
         if v_t in text_types:
+            markup.label()(label).close()
             if IValueOptions.providedBy(param.value_info):
                 options = IValueOptions(param.value_info)
-                select = markup.select(name=param.name)
+                select = markup.select(name=input_name)
                 for o in options.iter_options():
                     option = markup.option(value=o.value)(o.label).close()
                     if o.value == default:
@@ -248,13 +249,20 @@ class ModelWriter(log.Logger):
                 extra = {}
                 if default:
                     extra['value'] = default
-                markup.input(type='text', name=param.name, **extra)
+                markup.input(type='text', name=input_name, **extra)
         elif v_t == ValueTypes.boolean:
+            markup.label()(label).close()
             extra = {}
             if default is True:
                 extra['checked'] = '1'
             markup.input(type='checkbox', value='true',
-                         name=param.name, **extra)
+                         name=input_name, **extra)
+        elif v_t == ValueTypes.struct:
+            fieldset = markup.fieldset()
+            markup.legend()(label).close()
+            for field in param.value_info.fields:
+                self._render_param_field(markup, context, field, input_name)
+            fieldset.close()
         else:
             msg = ("ValueType %s is not supported by HTML writer" %
                    (v_t.__name__))

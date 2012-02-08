@@ -37,7 +37,7 @@ __all__ = ["ResponseTypes", "ActionCategories",
            "ILocalReference", "IAbsoluteReference",
            "IModel", "IAttribute", "IResponse",
            "IModelItem", "IModelAction", "IActionParam",
-           "IValueInfo", "IValueCollection", "IValueRange",
+           "IValueInfo", "IValueCollection", "IValueList", "IValueRange",
            "IEncodingInfo", "IValueOptions", "IValueOption",
            "IActionPayload", "IErrorPayload"]
 
@@ -271,6 +271,14 @@ class IValueRange(IValueInfo):
     minimum = Attribute("Minimum value. @type: int")
     maximum = Attribute("Maximum value. @type: int")
     increment = Attribute("Value increment. @type: int")
+
+
+class IValueList(Interface):
+    """
+    Implemented by structured values. Gives list of subvalues.
+    """
+
+    fields = Attribute("List of IValueInfo")
 
 
 class IValueOptions(Interface):
