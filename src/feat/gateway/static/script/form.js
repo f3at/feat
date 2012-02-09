@@ -109,7 +109,7 @@ $.fn.featform._onSubmit = function(ev) {
 	    $.each(
 		envelope.subjects,
 		function(index, subject) {
-		    var input = $this.find("input[name=" + subject + "]");
+		    var input = $this.find("input[name='" + subject + "']");
 		    input.addClass('invalid');
 		    var reason = getReason(envelope, subject);
 		    var explanation = $("<span class='explanation'>" +
