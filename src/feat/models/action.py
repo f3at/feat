@@ -363,7 +363,8 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                 except ValueError, e:
                     errors[param_name] = str(e)
                 except MissingParameters, e:
-                    missings  = ['.'.join([param_name, x]) for x in e.parameters]
+                    missings = ['.'.join([param_name, x])
+                                for x in e.parameters]
                     msg = ("Action %s is missing parameter(s): %s"
                            % (self.name, ", ".join(missings)))
                     raise MissingParameters(msg, params=missings)
