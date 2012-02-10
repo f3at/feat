@@ -27,7 +27,7 @@ from twisted.internet import reactor
 from feat.agents.base import document, view
 from feat.agencies.net import options, database
 from feat.agencies.interface import ConflictError
-from feat.common import log, defer
+from feat.common import log, defer, error
 
 
 _documents = []
@@ -66,25 +66,48 @@ def create_connection(host, port, name):
 
 
 @defer.inlineCallbacks
-def push_initial_data(connection):
+def push_initial_data(connection, overwrite=False):
     global _documents
 
     for doc in _documents:
         try:
             yield connection.save_document(doc)
         except ConflictError:
-            log.error('script', 'Document with id %s already exists!',
-                      doc.doc_id)
+            if not overwrite:
+                log.error('script', 'Document with id %s already exists!',
+                          doc.doc_id)
+            else:
+                yield _delete_old(connection, doc.doc_id)
+                yield connection.save_document(doc)
 
     design_docs = view.generate_design_docs()
     for design_doc in design_docs:
-        yield connection.save_document(design_doc)
+        try:
+            yield connection.save_document(design_doc)
+        except ConflictError:
+            yield _delete_old(connection, design_doc.doc_id)
+            yield connection.save_document(design_doc)
+
+
+@defer.inlineCallbacks
+def _delete_old(connection, doc_id):
+    log.info('script', 'Deleting old version of the document, id: %s', doc_id)
+    old = yield connection.get_document(doc_id)
+    yield connection.delete_document(old)
 
 
 def parse_options():
     parser = optparse.OptionParser()
     options.add_general_options(parser)
     options.add_db_options(parser)
+    parser.add_option('-f', '--force', dest='force', default=False,
+                      help=('Overwrite documents which are '
+                            'already in the database.'),
+                      action="store_true")
+    parser.add_option('-m', '--migration', dest='migration', default=False,
+                      help='Run migration script.',
+                      action="store_true")
+
     opts, args = parser.parse_args()
     opts.db_host = opts.db_host or options.DEFAULT_DB_HOST
     opts.db_port = opts.db_port or options.DEFAULT_DB_PORT
@@ -104,15 +127,32 @@ def create_db(connection):
 
 
 def script():
-    with dbscript() as (d, args):
+    with dbscript() as (d, opts):
 
         def body(connection):
             log.info('script', "I will push %d documents.", len(_documents))
             d = create_db(connection)
-            d.addCallback(defer.drop_param, push_initial_data, connection)
+            d.addCallback(defer.drop_param, push_initial_data, connection,
+                          opts.force)
+            if opts.migration:
+                d.addCallback(defer.drop_param, migration_script, connection)
             return d
 
         d.addCallback(body)
+
+
+@defer.inlineCallbacks
+def migration_script(connection):
+    log.info("script", "Running the migration script.")
+    to_migrate = yield connection.query_view(VersionedDocuments)
+    log.info("script", "%d documents will be updated.", len(to_migrate))
+    for doc_id in to_migrate:
+        try:
+            doc = yield connection.get_document(doc_id)
+            # unserializing the document promotes it to new version
+            yield connection.save_document(doc)
+        except Exception, e:
+            error.handle_exception(None, e, "Failed saving migrated document")
 
 
 class dbscript(object):
@@ -128,9 +168,19 @@ class dbscript(object):
         log.info('script', "Using host: %s, port: %s, db_name; %s",
                  opts.db_host, opts.db_port, opts.db_name)
         self._deferred = defer.Deferred()
-        return self._deferred, args
+        return self._deferred, opts
 
     def __exit__(self, type, value, traceback):
         self._deferred.addBoth(defer.drop_param, reactor.stop)
         reactor.callWhenRunning(self._deferred.callback, self.connection)
         reactor.run()
+
+
+@view.register
+class VersionedDocuments(view.BaseView):
+
+    name = 'versioned_documents'
+
+    def map(doc):
+        if '.version' in doc:
+            yield None, doc.get('_id')

@@ -23,6 +23,7 @@ from twisted.internet import defer
 from feat.agents.base import dbtools, document
 from feat.test import common
 from feat.test.integration.common import SimulationTest
+from feat.common import serialization
 
 
 @document.register
@@ -32,6 +33,26 @@ class SomeDocument(document.Document):
     document.field('field1', u'default')
 
 
+class VersionedTest1(document.VersionedDocument):
+
+    version = 1
+    type_name = 'version-document-test'
+
+    document.field('doc_id', 'testdoc', '_id')
+    document.field('field1', u'default')
+
+
+class VersionedTest2(VersionedTest1):
+
+    version = 2
+    type_name = 'version-document-test'
+
+    @classmethod
+    def upgrade_to_2(cls, snapshot):
+        snapshot['field1'] += " upgraded"
+        return snapshot
+
+
 class TestCase(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
@@ -39,7 +60,21 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         yield common.AgencyTestHelper.setUp(self)
         self.db = self.agency._database
         self.connection = self.db.get_connection()
-        dbtools._documents = []
+        self.patch(dbtools, '_documents', list())
+
+    @defer.inlineCallbacks
+    def testMigrating(self):
+        serialization.register(VersionedTest1)
+        dbtools.initial_data(VersionedTest1)
+        yield dbtools.push_initial_data(self.connection)
+        doc = yield self.connection.get_document('testdoc')
+        self.assertEqual('default', doc.field1)
+
+        serialization.register(VersionedTest2)
+        yield dbtools.migration_script(self.connection)
+
+        doc = yield self.connection.get_document('testdoc')
+        self.assertEqual('default upgraded', doc.field1)
 
     @defer.inlineCallbacks
     def testDefiningDocument(self):

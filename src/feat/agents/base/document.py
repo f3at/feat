@@ -22,6 +22,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.common import formatable, serialization
+from feat.common.serialization.json import VERSION_ATOM
 
 documents = dict()
 
@@ -50,3 +51,14 @@ class Document(formatable.Formatable):
 
     field('doc_id', None, '_id')
     field('rev', None, '_rev')
+
+
+@serialization.register
+class VersionedDocument(Document):
+
+    version = 1
+
+    def snapshot(self):
+        snapshot = Document.snapshot(self)
+        snapshot[str(VERSION_ATOM)] = type(self).version
+        return snapshot
