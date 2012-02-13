@@ -25,7 +25,7 @@ from twisted.internet import reactor, error, defer
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization, time
+from feat.common import serialization, time, error as feat_error
 
 from feat.agents.dns.interface import (RecordType, IDNSServerLabourFactory,
                                        IDNSServerLabour)
@@ -109,11 +109,18 @@ class Labour(labour.BaseLabour):
     @replay.side_effect
     def startup(self, port):
         try:
-            self._listener = reactor.listenUDP(port, self._factory)
             self._tcp_listener = reactor.listenTCP(port, self._dns_fact)
-            return True
-        except error.CannotListenError:
+        except error.CannotListenError, e:
+            feat_error.handle_exception(
+                self, e, "Error listening on TCP on port %r", port)
             return False
+        try:
+            self._listener = reactor.listenUDP(port, self._factory)
+        except error.CannotListenError, e:
+            feat_error.handle_exception(
+                self, e, "Error listening on UDP on port %r", port)
+            return False
+        return True
 
     def cleanup(self):
         d = defer.maybeDeferred(self._tcp_listener.stopListening)
