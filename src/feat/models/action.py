@@ -361,7 +361,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                     valval = IValidator(info).validate(param_value)
                     validated[param_name] = valval
                 except ValueError, e:
-                    errors[param_name] = str(e)
+                    errors[param_name] = e
                 except MissingParameters, e:
                     missings = ['.'.join([param_name, x])
                                 for x in e.parameters]

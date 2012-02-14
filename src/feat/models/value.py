@@ -681,7 +681,7 @@ class Structure(Value):
                 valval = IValidator(info).validate(param_value)
                 validated[param_name] = valval
             except ValueError, e:
-                errors[param_name] = str(e)
+                errors[param_name] = e
 
         if errors:
             raise InvalidParameters("", params=errors)
