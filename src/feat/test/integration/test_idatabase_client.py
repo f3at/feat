@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import operator
 
 from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
@@ -77,10 +78,13 @@ class SummingView(view.FormatableView):
     use_reduce = True
 
     view.field('value', None)
+    view.field('field', None)
 
     def map(doc):
         if doc['.type'] == 'dummy':
-            yield None, {"value": doc['value']}
+            field = doc.get('field', None)
+            yield field, {"value": doc.get('value', None),
+                          "field": field}
 
     def reduce(keys, values):
         value = 0
@@ -96,12 +100,78 @@ class CountingView(view.BaseView):
 
     def map(doc):
         if doc['.type'] == 'dummy':
-            yield doc['_id'], 1
+            yield doc.get('field', None), 1
 
     reduce = "_count"
 
 
+class GroupCountingView(CountingView):
+
+    @classmethod
+    def parse(cls, key, value, reduced):
+        return key, value
+
+
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testQueryingWithRanges(self):
+        views = (SummingView, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        docs = [
+            DummyDocument(field=u'A', value=1),
+            DummyDocument(field=u'B', value=1),
+            DummyDocument(field=u'C', value=1),
+            DummyDocument(field=u'D', value=1)]
+        for doc in docs:
+            yield self.connection.save_document(doc)
+
+        res = yield self.connection.query_view(SummingView, reduce=False,
+                                               startkey='B')
+        self.assertEqual(3, len(res))
+        res = sorted(res, key=operator.attrgetter('field'))
+        self.assertEqual('B', res[0].field)
+        self.assertEqual('C', res[1].field)
+        self.assertEqual('D', res[2].field)
+
+        res = yield self.connection.query_view(SummingView, reduce=False,
+                                               endkey='B')
+        self.assertEqual(2, len(res))
+        res = sorted(res, key=operator.attrgetter('field'))
+        self.assertEqual('A', res[0].field)
+        self.assertEqual('B', res[1].field)
+
+        res = yield self.connection.query_view(SummingView, reduce=False,
+                                               startkey='B', endkey='C')
+        self.assertEqual(2, len(res))
+        res = sorted(res, key=operator.attrgetter('field'))
+        self.assertEqual('B', res[0].field)
+        self.assertEqual('C', res[1].field)
+
+    @defer.inlineCallbacks
+    def testCountingWithGroup(self):
+        views = (GroupCountingView, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        docs = [
+            DummyDocument(field=u'key1', value=1),
+            DummyDocument(field=u'key2', value=1),
+            DummyDocument(field=u'key1', value=1)]
+        for doc in docs:
+            yield self.connection.save_document(doc)
+
+        res = yield self.connection.query_view(GroupCountingView)
+        self.assertEqual([(None, 3)], res)
+
+        res = yield self.connection.query_view(GroupCountingView, group=True)
+        dres = dict(res)
+        self.assertIn('key1', dres)
+        self.assertIn('key2', dres)
+        self.assertEqual(dres['key1'], 2)
+        self.assertEqual(dres['key2'], 1)
 
     @defer.inlineCallbacks
     def testSavingDeletedDoc(self):

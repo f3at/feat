@@ -153,12 +153,13 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
         use_reduce = factory.use_reduce and options.get('reduce', True)
+        group = options.pop('group', False)
         iterator = (self._perform_map(doc, factory)
                     for doc in self._iterdocs())
         d = defer.succeed(iterator)
         d.addCallback(self._flatten, **options)
         if use_reduce:
-            d.addCallback(self._perform_reduce, factory)
+            d.addCallback(self._perform_reduce, factory, group=group)
         return d
 
     def disconnect(self):
@@ -167,9 +168,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     ### private
 
     def _matches_filter(self, tup, **filter_options):
-        # We only support filtering by key at the moment
         if 'key' in filter_options:
             if filter_options['key'] != tup[0]:
+                return False
+        if 'startkey' in filter_options:
+            if filter_options['startkey'] > tup[0]:
+                return False
+        if 'endkey' in filter_options:
+            if filter_options['endkey'] < tup[0]:
                 return False
         return True
 
@@ -193,12 +199,29 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         self._set_cache(doc['_id'], factory.name, res)
         return res
 
-    def _perform_reduce(self, map_results, factory):
+    def _perform_reduce(self, map_results, factory, group=False):
         '''
         map_results here is a list of tuples (key, value)
         '''
-        keys = map(operator.itemgetter(0), map_results)
-        values = map(operator.itemgetter(1), map_results)
+        if not group:
+            keys = map(operator.itemgetter(0), map_results)
+            values = map(operator.itemgetter(1), map_results)
+            return self._reduce_values(factory, None, keys, values)
+        else:
+            groups = dict()
+            for key, value in map_results:
+                if key not in groups:
+                    groups[key] = list()
+                groups[key].append((key, value))
+            resp = list()
+            for group_key, results in groups.iteritems():
+                keys = map(operator.itemgetter(0), results)
+                values = map(operator.itemgetter(1), results)
+                resp.extend(
+                    self._reduce_values(factory, group_key, keys, values))
+            return resp
+
+    def _reduce_values(self, factory, group_key, keys, values):
         if not values:
             return []
         if callable(factory.reduce):
@@ -208,7 +231,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         elif factory.reduce == '_count':
             result = len(values)
 
-        return [(None, result, )]
+        return [(group_key, result, )]
 
     def _iterdocs(self):
         for did, doc in self._documents.iteritems():
