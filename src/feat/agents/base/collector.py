@@ -52,9 +52,9 @@ class BaseCollector(log.Logger, replay.Replayable):
     protocol_type = "Notification"
     protocol_id = None
 
-    def __init__(self, agent, medium):
+    def __init__(self, agent, medium, *args, **kwargs):
         log.Logger.__init__(self, medium)
-        replay.Replayable.__init__(self, agent, medium)
+        replay.Replayable.__init__(self, agent, medium, *args, **kwargs)
 
     def init_state(self, state, agent, medium):
         state.agent = agent
