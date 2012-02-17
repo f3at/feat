@@ -274,7 +274,7 @@ def render_compact_submodel(submodel, item, context):
                 d = attr.fetch_value()
                 d.addCallback(render_value, context)
                 return d
-    raise Exception("No compact value")
+    return render_compact_model(submodel, context)
 
 
 def filter_model_errors(failure, item, context):

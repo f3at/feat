@@ -622,6 +622,7 @@ class TestApplicationJSON(common.TestCase):
         rm = RootModelTest(object())
         yield self.check(rm, {u"structs": u"root/structs",
                               u"refs": u"root/refs",
+                              u"tata": None,
                               u"toto": u"spam",
                               u"titi": True,
                               u"tutu": u"B!",
