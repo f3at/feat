@@ -1,4 +1,5 @@
-%global __python python2.6
+%global __python python
+
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.16
@@ -12,8 +13,8 @@ Release:        %{?build_rev}%{?dist}
 Source0:        feat-%{unmangled_version}.tar.gz
 
 Group:          Development/Languages
-License:        Propietary
-URL:            http://flumotion.com
+License:        GPL
+URL:            http://www.flumotion.com
 
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
