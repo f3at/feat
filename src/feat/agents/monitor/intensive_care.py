@@ -22,11 +22,14 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, collector, labour, task
-from feat.common import serialization
+from feat.agents.application import feat
 
-from feat.agents.monitor.interface import *
-from feat.interface.protocols import *
-from feat.interface.recipient import *
+from feat.agents.monitor.interface import (
+    IPatientStatus, DEFAULT_HEARTBEAT_PERIOD, DEFAULT_DYING_SKIPS,
+    DEFAULT_DEATH_SKIPS, PatientState, IIntensiveCare,
+    IIntensiveCareFactory, IAssistant, IDoctor, DEFAULT_CONTROL_PERIOD)
+from feat.interface.protocols import InterestType
+from feat.interface.recipient import IRecipient
 
 PATIENT_RESET_EXTRA = 2/3.0
 
@@ -78,7 +81,7 @@ class Patient(object):
         return self.last_state, self.state
 
 
-@serialization.register
+@feat.register_restorator
 class IntensiveCare(labour.BaseLabour):
 
     classProvides(IIntensiveCareFactory)

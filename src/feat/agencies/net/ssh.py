@@ -35,7 +35,7 @@ from twisted.internet import reactor
 from twisted.conch.insults import insults
 
 from feat.common import log, manhole, reflect
-from feat.agents.base import recipient
+from feat.agencies import recipient
 
 
 def commands_factory(agency):
@@ -115,7 +115,7 @@ class Commands(manhole.Manhole, manhole.Parser):
         '''Returns the medium class for the
         given agent_type. Optional index tells which one to give.'''
         mediums = list(x for x in self.agency._agents
-                       if x.get_descriptor().document_type == agent_type)
+                       if x.get_descriptor().type_name == agent_type)
         try:
             return mediums[index]
         except KeyError:

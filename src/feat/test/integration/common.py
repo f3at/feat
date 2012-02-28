@@ -34,7 +34,9 @@ from feat.simulation import driver
 from feat.agencies import replay
 from feat.agencies.messaging import tunneling
 from feat.agencies.net import database
-from feat.agents.base import dbtools, registry
+from feat.agents.base import dbtools
+from feat.agents.application import feat
+from feat import applications
 from feat.gateway.resources import Context
 from feat.web import document, http
 
@@ -232,9 +234,10 @@ class OverrideConfigMixin(object):
         if not hasattr(self, 'overriden_agents'):
             self.overriden_agents = dict()
 
-        old = registry.registry_lookup(agent_type)
+        old = applications.lookup_agent(agent_type)
         self.overriden_agents[agent_type] = old
-        registry.override(agent_type, factory)
+        applications.get_agent_registry().register(factory, key=agent_type,
+                                               application=feat)
 
     def revert_overrides_agents(self):
         if not hasattr(self, 'overriden_agents'):
@@ -242,12 +245,13 @@ class OverrideConfigMixin(object):
         else:
             for agent_type, factory in self.overriden_agents.iteritems():
                 if factory:
-                    registry.override(agent_type, factory)
+                    applications.get_agent_registry().register(
+                        factory, key=agent_type, application=feat)
 
     def override_config(self, agent_type, config):
         if not hasattr(self, 'overriden_configs'):
             self.overriden_configs = dict()
-        factory = registry.registry_lookup(agent_type)
+        factory = applications.lookup_agent(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
 
@@ -255,7 +259,7 @@ class OverrideConfigMixin(object):
         if not hasattr(self, 'overriden_configs'):
             return
         for key, value in self.overriden_configs.iteritems():
-            factory = registry.registry_lookup(key)
+            factory = applications.lookup_agent(key)
             factory.configuration_doc_id = value
 
     def tearDown(self):

@@ -62,7 +62,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
         self._on_connected()
 
-        # document_type -> int, used for generating nice agent IDs in
+        # type_name -> int, used for generating nice agent IDs in
         # simulations
         self._doc_type_counters = dict()
 

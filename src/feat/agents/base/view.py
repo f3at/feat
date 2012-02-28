@@ -24,24 +24,12 @@ import inspect
 
 from zope.interface import directlyProvides
 
-from feat.common import formatable, decorator, log, annotate
-from feat.agents.base import document
+from feat.common import formatable, annotate
+from feat.agencies import document
+from feat import applications
 
 from feat.interface.view import IViewFactory
 
-
-@decorator.simple_class
-def register(view):
-    global _registry
-
-    view = IViewFactory(view)
-    key = (view.design_doc_id, view.name)
-    if key in _registry:
-        log.warning('view-registry', 'View with the name %s for the design doc'
-                    ' %s is already registered and points to %r. Overwriting!',
-                    view.name, view.design_doc_id, _registry[view.name])
-    _registry[key] = view
-    return view
 
 field = formatable.field
 
@@ -115,22 +103,9 @@ class FormatableView(BaseView, formatable.Formatable):
             return cls(**value)
 
 
-### module private ###
-
-
-# name -> IViewFactory
-_registry = dict()
-
-
-def _iterviews():
-    global _registry
-    return _registry.itervalues()
-
-
-@document.register
 class DesignDocument(document.Document):
 
-    document_type = "design"
+    type_name = "design"
 
     document.field('language', u'python')
     document.field('views', dict())
@@ -170,4 +145,5 @@ class DesignDocument(document.Document):
 
 
 def generate_design_docs():
-    return DesignDocument.generate_from_views(_iterviews())
+    generator = applications.get_view_registry().itervalues()
+    return DesignDocument.generate_from_views(generator)

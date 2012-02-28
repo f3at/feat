@@ -23,13 +23,12 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat import everything
 from feat.common import time
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.agents.base import agent, replay, descriptor
+from feat.agents.base import agent, replay, descriptor, resource
 from feat.agents.common import host, rpc
-from feat.agents.base import resource
+from feat.agents.application import feat
 from feat.common import fiber
 
 from feat.interface.generic import *
@@ -54,12 +53,12 @@ class Common(object):
         return result
 
 
-@descriptor.register('requesting_agent_mod')
+@feat.register_descriptor('requesting_agent_mod')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('requesting_agent_mod')
+@feat.register_agent('requesting_agent_mod')
 class RequestingAgent(agent.BaseAgent):
 
     @replay.journaled

@@ -23,15 +23,14 @@ import inspect
 import sys
 import re
 
-from feat.agents.base import document
+from feat import applications
 
 
 def build(document_type, **options):
     '''Builds document of selected class with default parameters for testing'''
 
-    try:
-        doc_class = document.documents[document_type]
-    except KeyError:
+    doc_class = applications.lookup_descriptor(document_type)
+    if not doc_class:
         raise AttributeError("Unknown document type: %r", document_type)
 
     name = "%s_factory" % re.sub(r'-', '_', document_type.lower())

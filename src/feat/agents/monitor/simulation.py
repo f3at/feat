@@ -22,7 +22,7 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization
+from feat.agents.application import feat
 
 from feat.agents.monitor.interface import *
 from feat.interface.agent import *
@@ -88,7 +88,7 @@ class Patient(object):
         self.death_skips = death_skips
 
 
-@serialization.register
+@feat.register_restorator
 class Clerk(labour.BaseLabour):
 
     classProvides(IClerkFactory)
@@ -174,7 +174,7 @@ class Clerk(labour.BaseLabour):
         self._locations[location]._add_patient(patient)
 
 
-@serialization.register
+@feat.register_restorator
 class IntensiveCare(labour.BaseLabour):
 
     classProvides(IIntensiveCareFactory)

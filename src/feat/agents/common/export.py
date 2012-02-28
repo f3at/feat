@@ -19,12 +19,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.python import components
-
-from feat.agents.base import (descriptor, message, replay,
-                              contractor, recipient, )
-from feat.common import fiber, formatable, enum, serialization, manhole
+from feat.agents.base import descriptor, replay, contractor
+from feat.agencies import message, recipient
 from feat.agents.common import rpc
+from feat.agents.application import feat
+from feat.common import fiber, formatable, enum, manhole
 
 
 class Migratability(enum.Enum):
@@ -188,14 +187,14 @@ class AgentMigrationBase(object):
                 state.migrations.remove(migration_id)
 
 
-@descriptor.register('export_agent')
+@feat.register_descriptor('export_agent')
 class Descriptor(descriptor.Descriptor):
 
     # agent_id -> [PendingNotification]
     formatable.field('pending_notifications', dict())
 
 
-@serialization.register
+@feat.register_restorator
 class CheckinEntry(formatable.Formatable):
 
     type_name = 'checkin_entry'
@@ -245,15 +244,11 @@ class CheckinEntry(formatable.Formatable):
         self.dependencies.remove(agent_id)
 
 
+@feat.register_adapter(CheckinEntry, recipient.IRecipient)
+@feat.register_adapter(CheckinEntry, recipient.IRecipients)
 class RecipientFromCheckinEntry(recipient.Recipient):
 
     type_name = 'recipient'
 
     def __init__(self, entry):
         recipient.Recipient.__init__(self, entry.agent_id, entry.shard)
-
-
-components.registerAdapter(RecipientFromCheckinEntry, CheckinEntry,
-                           recipient.IRecipient)
-components.registerAdapter(RecipientFromCheckinEntry, CheckinEntry,
-                           recipient.IRecipients)

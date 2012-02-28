@@ -21,11 +21,11 @@
 # Headers in this file shall remain intact.
 import os
 
-from feat.agents.base import descriptor
 from feat.agencies.net import agency, broker
 from feat.common import defer, time, fcntl, error
 
 from feat.interface.recipient import IRecipient
+from feat.interface.agent import IDocument
 
 
 class Startup(agency.Startup):
@@ -129,7 +129,7 @@ class Agency(agency.Agency):
         # run a host agent. Instead we just download the descriptor and
         # run the agent locally.
         d = self.wait_running()
-        if isinstance(aid, descriptor.Descriptor):
+        if IDocument.providedBy(aid):
             d.addCallback(defer.override_result, aid)
         else:
             d.addCallback(lambda _: self._database.get_connection())

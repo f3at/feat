@@ -19,20 +19,22 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import agent, view, descriptor, replay, document
+from feat.agents.base import agent, view, descriptor, replay
+from feat.agencies import document
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.common import defer
+from feat.common import defer, serialization
+from feat.agents.application import feat
 
 
-@document.register
+@serialization.register
 class SomeDocument(document.Document):
 
-    document_type = "test-document"
+    type_name = "test-document"
     document.field('value', None)
 
 
-@view.register
+@feat.register_view
 class SummingView(view.BaseView):
 
     name = "sum"
@@ -45,7 +47,7 @@ class SummingView(view.BaseView):
     reduce = "_sum"
 
 
-@view.register
+@feat.register_view
 class VerboseView(view.FormatableView):
 
     name = "verbose"
@@ -56,12 +58,12 @@ class VerboseView(view.FormatableView):
             yield None, dict(result=doc['value'])
 
 
-@descriptor.register('querying-view-agent')
+@feat.register_descriptor('querying-view-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('querying-view-agent')
+@feat.register_agent('querying-view-agent')
 class Agent(agent.BaseAgent):
 
     @replay.journaled
@@ -89,6 +91,7 @@ class ViewTest(common.SimulationTest):
         """)
         return self.process(setup)
 
+    @common.attr(timescale=0.1)
     @defer.inlineCallbacks
     def testItWorks(self):
         agent = self.get_local('medium').get_agent()

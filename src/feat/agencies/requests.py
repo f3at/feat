@@ -23,13 +23,12 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.python import components
 from zope.interface import implements
 from twisted.internet import defer
 
-from feat.common import log, time, serialization
-from feat.agents.base import message, replay
-from feat.agencies import common, protocols
+from feat.common import log, time, serialization, adapter
+from feat.agents.base import replay
+from feat.agencies import common, protocols, message
 
 from interface import *
 from feat.interface.serialization import *
@@ -253,30 +252,18 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
         pass
 
 
+@adapter.register(IRequesterFactory, IAgencyInitiatorFactory)
 class AgencyRequesterFactory(protocols.BaseInitiatorFactory):
     type_name = "requester-medium-factory"
     protocol_factory = AgencyRequester
 
 
-components.registerAdapter(AgencyRequesterFactory,
-                           IRequesterFactory,
-                           IAgencyInitiatorFactory)
-
-
+@adapter.register(IReplierFactory, IAgencyInterestInternalFactory)
 class AgencyReplierInterest(protocols.DialogInterest):
     pass
 
 
-components.registerAdapter(AgencyReplierInterest,
-                           IReplierFactory,
-                           IAgencyInterestInternalFactory)
-
-
+@adapter.register(IReplierFactory, IAgencyInterestedFactory)
 class AgencyReplierFactory(protocols.BaseInterestedFactory):
     type_name = "replier-medium-factory"
     protocol_factory = AgencyReplier
-
-
-components.registerAdapter(AgencyReplierFactory,
-                           IReplierFactory,
-                           IAgencyInterestedFactory)

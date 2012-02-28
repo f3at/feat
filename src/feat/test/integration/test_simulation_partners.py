@@ -25,16 +25,18 @@ from twisted.internet import defer
 
 from feat.common.text_helper import format_block
 from feat.test.integration import common
-from feat.agents.base import (agent, descriptor, recipient,
+from feat.agents.base import (agent, descriptor,
                               partners, replay, resource, requester, )
+from feat.agencies import recipient
 from feat.common import serialization, fiber
+from feat.agents.application import feat
 
 
 class FailureOfPartner(Exception):
     pass
 
 
-@descriptor.register('partner-agent')
+@feat.register_descriptor('partner-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
@@ -87,7 +89,7 @@ class Partners(partners.Partners):
     partners.has_many('param', 'partner-agent', ExtraParamsPartner, 'param')
 
 
-@agent.register('partner-agent')
+@feat.register_agent('partner-agent')
 class Agent(agent.BaseAgent, resource.AgentMixin):
 
     partners_class = Partners

@@ -22,12 +22,12 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization
 
 from feat.agents.alert.interface import *
+from feat.agents.application import feat
 
 
-@serialization.register
+@feat.register_restorator
 class MailLabour(labour.BaseLabour):
 
     classProvides(IEmailSenderLabourFactory)
@@ -38,7 +38,7 @@ class MailLabour(labour.BaseLabour):
         """Nothing"""
 
 
-@serialization.register
+@feat.register_restorator
 class NagiosLabour(labour.BaseLabour):
 
     classProvides(INagiosSenderLabourFactory)

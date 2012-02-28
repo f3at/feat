@@ -33,7 +33,8 @@ except ImportError as e:
     import_error = e
 
 from feat.agencies.emu import database as emu_database
-from feat.agents.base import document, view
+from feat.agents.base import view
+from feat.agencies import document
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization
@@ -45,19 +46,19 @@ from feat.test.common import attr, Mock
 from feat.agencies.interface import *
 
 
-@document.register
+@serialization.register
 class DummyDocument(document.Document):
 
-    document_type = 'dummy'
+    type_name = 'dummy'
 
     document.field('field', None)
     document.field('value', 0)
 
 
-@document.register
+@serialization.register
 class ViewDocument(document.Document):
 
-    document_type = 'view-dummy'
+    type_name = 'view-dummy'
 
     document.field('field', None)
     document.field('value', 0)

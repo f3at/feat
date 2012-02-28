@@ -22,7 +22,8 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization, error
+from feat.common import error
+from feat.agents.application import feat
 
 from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
@@ -231,7 +232,7 @@ class Location(object):
             return
 
 
-@serialization.register
+@feat.register_restorator
 class Clerk(labour.BaseLabour):
 
     classProvides(IClerkFactory)

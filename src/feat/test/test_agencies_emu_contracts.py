@@ -24,9 +24,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
+from feat.agencies import message, recipient
 from feat.agencies.contracts import ContractorState
-from feat.agents.base import (descriptor, contractor, replay,
-                              message, manager, recipient)
+from feat.agents.base import descriptor, contractor, replay, manager
 from feat.interface import contracts, protocols
 from feat.common import time, defer, first
 

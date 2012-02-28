@@ -22,9 +22,10 @@
 from feat.agents.base import agent, replay, descriptor
 from feat.agents.common import raage
 from feat.common import manhole
+from feat.agents.application import feat
 
 
-@agent.register('requesting_agent')
+@feat.register_agent('requesting_agent')
 class RequestingAgent(agent.BaseAgent):
 
     @manhole.expose()
@@ -42,6 +43,6 @@ class RequestingAgent(agent.BaseAgent):
                                        max_distance=0)
 
 
-@descriptor.register('requesting_agent')
+@feat.register_descriptor('requesting_agent')
 class Descriptor(descriptor.Descriptor):
     pass

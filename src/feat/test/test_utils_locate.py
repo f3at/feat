@@ -21,7 +21,8 @@
 # Headers in this file shall remain intact.
 from feat.test import common
 from feat.agents.common import host
-from feat.agents.base import descriptor, agent, recipient
+from feat.agents.base import descriptor, agent
+from feat.agencies import recipient
 from feat.agencies.emu import database
 from feat.utils.locate import locate
 from feat.common import defer

@@ -23,6 +23,7 @@ from zope.interface import implements
 
 from feat.agents.base import protocols, replay
 from feat.common import serialization, reflect, defer, error
+from feat.agents.application import feat
 
 from feat.interface.protocols import *
 from feat.interface.task import *
@@ -34,7 +35,7 @@ class Meta(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(Meta, cls).__init__(name, bases, dct)
 
 
@@ -44,6 +45,7 @@ class BaseTask(protocols.BaseInitiator):
     """
 
     __metaclass__ = Meta
+    application = feat
 
     implements(IAgentTask)
 

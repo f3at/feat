@@ -23,7 +23,8 @@ from zope.interface import classProvides, implements
 
 from feat.common import serialization, log, defer
 from feat.agencies.messaging import net
-from feat.agents.base import recipient
+from feat.agencies import recipient
+from feat.agents.application import feat
 
 from feat.agents.base import replay
 
@@ -31,7 +32,7 @@ from feat.agents.base.amqp.interface import IAMQPClientFactory, IAMQPClient
 from feat.agencies.messaging.interface import ISink
 
 
-@serialization.register
+@feat.register_restorator
 class AMQPClient(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IAMQPClientFactory)
     implements(IAMQPClient, ISink)

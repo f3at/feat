@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agents.base import message, recipient
+from feat.agencies import message, recipient
 from feat.agents.monitor import intensive_care
 from feat.common import journal, log, time
 

@@ -24,13 +24,16 @@
 import types
 import sys
 
-from twisted.python import components
+from zope.interface import implements
 
 from feat.common import log, serialization, fiber, defer, annotate
 from feat.common import formatable, mro, error_handler, error
-from feat.agents.base import replay, recipient, requester
+from feat.agents.base import replay, requester
+from feat.agencies import recipient
+from feat.agents.application import feat
 
 from feat.interface.protocols import IInitiator
+from feat.interface.agent import IPartner
 
 
 def accept_responsability(initiator):
@@ -39,7 +42,7 @@ def accept_responsability(initiator):
     return ResponsabilityAccepted(expiration_time=expiration_time)
 
 
-@serialization.register
+@feat.register_restorator
 class ResponsabilityAccepted(formatable.Formatable):
     formatable.field('expiration_time', None)
 
@@ -129,8 +132,9 @@ def _inject_definition(relation, descriptor_type, factory, role, force):
                              relation.name + "_with_role", getter_with_role)
 
 
-@serialization.register
+@feat.register_restorator
 class BasePartner(serialization.Serializable, mro.FiberMroMixin):
+    implements(IPartner)
 
     type_name = 'partner'
 
@@ -237,6 +241,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     default_handler = BasePartner
     default_role = None
 
+    application = feat
+
     _error_handler = error_handler
 
     has_many("all", "whatever", BasePartner, force=True)
@@ -269,7 +275,7 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
             cls._handlers.update(getattr(base, '_handlers', dict()))
 
         cls._define_default_handler(cls.default_handler)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
 
     @classmethod
     def query_handler(cls, identifier, role=None):
@@ -324,8 +330,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     @replay.immutable
     def query(self, state, name_or_class):
         partners = state.agent.get_descriptor().partners
-        if isinstance(name_or_class, types.TypeType) and \
-            issubclass(name_or_class, BasePartner):
+        if (isinstance(name_or_class, types.TypeType) and
+            IPartner.implementedBy(name_or_class)):
             return filter(lambda x: isinstance(x, name_or_class), partners)
         else:
             relation = self._get_relation(name_or_class)
@@ -540,6 +546,8 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return "<Partners>"
 
 
+@feat.register_adapter(BasePartner, recipient.IRecipient)
+@feat.register_adapter(BasePartner, recipient.IRecipients)
 class RecipientFromPartner(recipient.Recipient):
 
     type_name = 'recipient'
@@ -547,9 +555,3 @@ class RecipientFromPartner(recipient.Recipient):
     def __init__(self, partner):
         recipient.Recipient.__init__(self, partner.recipient.key,
                                      partner.recipient.route)
-
-
-components.registerAdapter(RecipientFromPartner, BasePartner,
-                           recipient.IRecipient)
-components.registerAdapter(RecipientFromPartner, BasePartner,
-                           recipient.IRecipients)

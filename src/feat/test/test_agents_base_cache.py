@@ -26,7 +26,8 @@ import uuid
 from zope.interface import implements
 
 from feat.agencies.emu import database
-from feat.agents.base import cache, document, view, descriptor
+from feat.agencies import document
+from feat.agents.base import cache, view, descriptor
 from feat.common import journal, defer, log, fiber, time, serialization
 from feat.test import common
 
@@ -138,10 +139,10 @@ class DummyAgent(journal.DummyRecorderNode, log.LogProxy, log.Logger):
                 call.cancel()
 
 
-@document.register
+@serialization.register
 class TestDocument(document.Document):
 
-    document_type = 'test_document'
+    type_name = 'test_document'
     document.field('field', 0)
     document.field('zone', None)
 

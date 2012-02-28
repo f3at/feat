@@ -26,7 +26,7 @@ import functools
 from zope.interface import implements
 from feat.common import log, defer
 from feat.agencies.messaging.rabbitmq import Connection, Queue
-from feat.agents.base.message import BaseMessage
+from feat.agencies.message import BaseMessage
 
 from feat.agencies import common
 

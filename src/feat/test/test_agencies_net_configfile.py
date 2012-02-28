@@ -138,15 +138,17 @@ class TestConfigFile(common.TestCase):
             del(sys.modules['feat.everything'])
         test_config = format_block("""
         [application:feat]
-        import: feat.everything""")
+        import: feat.agents.application
+        name: feat""")
         f = StringIO(test_config)
         configfile.parse_file(self.parser, f)
-        self.assertIn('feat.everything', sys.modules)
+        self.assertIn('feat.agents.application', sys.modules)
 
     def testParsingAgent(self):
         test_config = format_block("""
         [application:feat]
-        import: feat.everything
+        import: feat.agents.application
+        name: feat
 
         [agent:dns_0]
         agent_type: dns_agent

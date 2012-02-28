@@ -21,16 +21,17 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat import everything
 from feat.common import first, defer
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.agents.base import (descriptor, agent, replay, document, )
+from feat.agents.base import descriptor, agent, replay
+from feat.agencies import document
 
 from feat.agencies.interface import ConflictError
+from feat.agents.application import feat
 
 
-@agent.register('some-stupid-agent')
+@feat.register_agent('some-stupid-agent')
 class SomeAgent(agent.BaseAgent):
 
     @replay.mutable
@@ -43,7 +44,7 @@ class SomeAgent(agent.BaseAgent):
         return self.update_descriptor(do_changes)
 
 
-@descriptor.register('some-stupid-agent')
+@feat.register_descriptor('some-stupid-agent')
 class Descriptor(descriptor.Descriptor):
 
     document.field('field', None)

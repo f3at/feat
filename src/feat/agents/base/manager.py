@@ -21,8 +21,10 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agents.base import protocols, replay, message
+from feat.agents.base import protocols, replay
+from feat.agencies import message
 from feat.common import serialization, reflect
+from feat.agents.application import feat
 
 from feat.interface.manager import *
 from feat.interface.protocols import *
@@ -34,7 +36,7 @@ class MetaManager(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(MetaManager, cls).__init__(name, bases, dct)
 
 
@@ -51,6 +53,8 @@ class BaseManager(protocols.BaseInitiator):
     __metaclass__ = MetaManager
 
     implements(IAgentManager)
+
+    application = feat
 
     protocol_type = "Contract"
     protocol_id = None
@@ -78,7 +82,7 @@ class BaseManager(protocols.BaseInitiator):
         '''@see: L{manager.IAgentManager}'''
 
 
-@serialization.register
+@feat.register_restorator
 class DiscoverService(serialization.Serializable):
 
     implements(IManagerFactory)

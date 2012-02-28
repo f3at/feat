@@ -21,9 +21,10 @@
 # Headers in this file shall remain intact.
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.common import defer, time
-from feat.agents.base import (agent, descriptor, manager, contractor,
-                              recipient, replay, document, )
+from feat.common import defer
+from feat.agents.base import agent, descriptor, manager, contractor, replay
+from feat.agencies import recipient
+from feat.agents.application import feat
 
 
 class Interest(contractor.BaseContractor):
@@ -36,12 +37,12 @@ class Initiator(manager.BaseManager):
     protocol_id = 'spam'
 
 
-@descriptor.register('discoverer-agent')
+@feat.register_descriptor('discoverer-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('discoverer-agent')
+@feat.register_agent('discoverer-agent')
 class Agent(agent.BaseAgent):
 
     @replay.journaled

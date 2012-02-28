@@ -153,6 +153,10 @@ class ActionTest(action.Action):
     action.meta("action-meta", "METAVALUE")
 
 
+register = model.get_registry().register
+
+
+@register
 class RootModelTest(model.Model):
     model.identity("test.root")
     model.attribute("toto", value.String(),
@@ -190,6 +194,7 @@ class RootModelTest(model.Model):
         self.tutu = DummyEnum.b
 
 
+@register
 class StructModelTest(model.Model):
     model.identity("test.structs")
     model.attribute("dummy1", value.Struct(),
@@ -209,6 +214,7 @@ class StructModelTest(model.Model):
         self.dummy3 = DummyParent()
 
 
+@register
 class ReferenceModel(model.Model):
     model.identity("test.refs")
     model.reference(call.model_call("_get_ref"))

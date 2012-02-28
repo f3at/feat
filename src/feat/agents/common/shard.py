@@ -23,9 +23,10 @@ import uuid
 
 from zope.interface import Interface
 
-from feat.agents.base import replay, message, descriptor, recipient
-from feat.agents.base import manager, collector
+from feat.agents.base import replay, descriptor, manager, collector
+from feat.agencies import message, recipient
 from feat.common import fiber
+from feat.agents.application import feat
 
 from feat.interface.protocols import *
 
@@ -110,7 +111,7 @@ def generate_shard_value():
     return unicode(uuid.uuid1())
 
 
-@descriptor.register("shard_agent")
+@feat.register_descriptor("shard_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 

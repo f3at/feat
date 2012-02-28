@@ -24,7 +24,8 @@ from twisted.python import failure
 from feat.agencies import retrying
 from feat.agents.base import replay, task, partners, descriptor, dependency
 from feat.agents.common import rpc
-from feat.common import fiber, formatable, serialization
+from feat.common import fiber, formatable
+from feat.agents.application import feat
 
 # To access from this module
 from feat.agents.monitor.interface import RestartStrategy
@@ -60,7 +61,7 @@ def discover(agent, shard=None):
     return agent.discover_service("monitoring", timeout=1, shard=shard)
 
 
-@serialization.register
+@feat.register_restorator
 class MonitoringInfo(formatable.Formatable):
 
     type_name = "monitoring-info"
@@ -190,7 +191,7 @@ class SetupMonitoringTask(task.BaseTask):
         return f
 
 
-@descriptor.register("monitor_agent")
+@feat.register_descriptor("monitor_agent")
 class Descriptor(descriptor.Descriptor):
 
     # agent_id -> [PendingNotification]

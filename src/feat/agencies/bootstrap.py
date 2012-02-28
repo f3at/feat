@@ -24,18 +24,16 @@ import os
 import optparse
 import sys
 
-from feat import everything
-from feat.agents.common import host
 from feat.agencies.net import agency as net_agency, standalone
 from feat.agencies.net import database, options
 from feat.agencies.net.options import OptionError
 
 from feat.common import log, run, defer
 from feat.common.serialization import json
-from feat.utils import host_restart
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
+from feat import applications
 
 
 def check_options(opts, args):
@@ -123,12 +121,18 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
         if callable(init_callback):
             init_callback(agency, opts, args)
 
+        applications.load('feat.agents.application', 'feat')
+        applications.load('feat.gateway.application', 'featmodels')
+
         d = defer.Deferred()
         reactor.callWhenRunning(d.callback, None)
 
         if not opts.standalone:
             # specific to running normal agency
             if opts.force_host_restart:
+                # lazy import not to load descriptor before feat is loaded
+                from feat.utils import host_restart
+
                 dbc = agency.config['db']
                 db = database.Database(
                     dbc['host'], int(dbc['port']), dbc['name'])
@@ -139,6 +143,7 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
             hostdef = opts.hostdef
 
             if opts.hostres or opts.hostcat or opts.hostports:
+                from feat.agents.common import host
                 hostdef = host.HostDef()
                 for resdef in opts.hostres:
                     parts = resdef.split(":", 1)
@@ -169,7 +174,7 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
             for desc, kwargs in opts.agents:
                 log.debug("feat", ("Starting agent %s with descriptor %r "
                                    "Passing %r to his initiate()"),
-                          desc.document_type, desc, kwargs)
+                          desc.type_name, desc, kwargs)
                 d.addCallback(defer.drop_param, agency.spawn_agent, desc,
                               **kwargs)
         else:

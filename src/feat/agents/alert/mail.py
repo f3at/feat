@@ -25,12 +25,12 @@ from email.mime.text import MIMEText
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization
 
 from feat.agents.alert.interface import *
+from feat.agents.application import feat
 
 
-@serialization.register
+@feat.register_restorator
 class Labour(labour.BaseLabour):
 
     classProvides(IEmailSenderLabourFactory)

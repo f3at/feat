@@ -114,19 +114,26 @@ class DummyAction(action.Action):
     action.desc("Default description")
 
 
+register = model.get_registry().register
+
+
+@register
 @adapter.register(DummySource, interface.IModel)
 class DummyModel1(model.Model):
     model.identity("dummy-model1")
 
 
+@register
 class DummyModel2(model.Model):
     model.identity("dummy-model2")
 
 
+@register
 class DummyModel3(model.Model):
     model.identity("dummy-model3")
 
 
+@register
 class TestModel(model.Model):
     __slots__ = ()
     model.identity("test-model")
@@ -160,6 +167,7 @@ class TestModel(model.Model):
                      label="Some Values", desc="Some dynamic values")
 
 
+@register
 class TestView(model.Model):
     __slots__ = ()
     model.identity("test-view")
@@ -168,6 +176,7 @@ class TestView(model.Model):
                     setter=setter.view_attr("num"))
 
 
+@register
 class TestCollection(model.Collection):
     __slots__ = ()
     model.identity("test-collection")
@@ -179,6 +188,7 @@ class TestCollection(model.Collection):
     model.action("action", DummyAction)
 
 
+@register
 class TestModelMeta(model.Model):
     model.identity("test-model-meta")
     model.meta("foo", "foo1")
@@ -213,12 +223,14 @@ class TestModelMeta(model.Model):
     model.item_meta("collection", "foo", "foo4")
 
 
+@register
 class TestReference(model.Model):
     model.identity("test-reference")
     model.child("child", getter.model_attr("source"), model="test-reference")
     model.action("action", DummyAction)
 
 
+@register
 class TestModelEffects(model.Model):
     model.identity("test-model-calls")
     model.attribute("attr1", value.String(),

@@ -24,15 +24,18 @@ import sys
 
 from pprint import pformat
 
-from feat.agents.base import (agent, replay, recipient, task, descriptor,
+from feat.agents.base import (agent, replay, task, descriptor,
                               alert, notifier, )
+from feat.agencies import recipient
 from feat.agents.common import start_agent, export
+from feat.agents.application import feat
+from feat import applications
 from feat.common import (fiber, serialization, formatable, manhole,
                          error, text_helper, )
 from feat.agents.migration import protocol, spec
 
 
-@agent.register('migration_agent')
+@feat.register_agent('migration_agent')
 class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
     migratability = export.Migratability.not_migratable
@@ -238,7 +241,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
         entry = self.get_top_import_entry()
         if entry is not None:
-            factory = descriptor.lookup(entry.agent_type)
+            factory = applications.lookup_descriptor(entry.agent_type)
             if factory is None:
                 raise ValueError('Unknown agent type: %r' %
                                  (entry.agent_type, ))
@@ -375,7 +378,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
         return f
 
 
-@serialization.register
+@feat.register_restorator
 class ExportAgents(serialization.Serializable):
 
     def __init__(self):
@@ -437,7 +440,7 @@ class ExportAgents(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class AgentEntry(formatable.Formatable):
 
     formatable.field('recipient', None)
@@ -485,7 +488,7 @@ class ApplyMigration(task.BaseTask):
         state.migration = migration
 
 
-@descriptor.register('migration_agent')
+@feat.register_descriptor('migration_agent')
 class Descriptor(descriptor.Descriptor):
 
     # agent_id -> [PendingNotification]
@@ -494,7 +497,7 @@ class Descriptor(descriptor.Descriptor):
     formatable.field('import_entries', list())
 
 
-@serialization.register
+@feat.register_restorator
 class ImportEntry(formatable.Formatable):
     type_name = 'import_entry'
 

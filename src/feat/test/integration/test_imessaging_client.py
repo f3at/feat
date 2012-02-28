@@ -29,7 +29,7 @@ from twisted.trial.unittest import SkipTest
 from feat.test.common import attr, delay, StubAgent, Mock
 from feat.common import defer
 from feat.agencies.messaging import emu
-from feat.agents.base import message, recipient
+from feat.agencies import message, recipient
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
 

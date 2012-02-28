@@ -24,27 +24,29 @@
 
 from feat.common import manhole, text_helper, serialization, formatable
 from feat.agents.base import (agent, replay, descriptor, alert, collector,
-                              document, dbtools, dependency, )
+                              dbtools, dependency, )
+from feat.agencies import document
 from feat.agents.common import export
 from feat.interface.protocols import *
 from feat.interface.agency import *
 
 from feat.agents.alert import mail, nagios, simulation
 from feat.agents.alert.interface import *
+from feat.agents.application import feat
 
 
-@descriptor.register("alert_agent")
+@feat.register_descriptor("alert_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class AlertSenderConfiguration(formatable.Formatable):
 
     formatable.field('enabled', True)
 
 
-@serialization.register
+@feat.register_restorator
 class AlertMailConfiguration(AlertSenderConfiguration):
 
     formatable.field('fromaddr', u'feat.alert.agent@gmail.com')
@@ -54,7 +56,7 @@ class AlertMailConfiguration(AlertSenderConfiguration):
     formatable.field('SMTP', u'smtp.gmail.com:587')
 
 
-@serialization.register
+@feat.register_restorator
 class AlertNagiosConfiguration(AlertSenderConfiguration):
 
     formatable.field('monitor', u'monitor01.bcn.fluendo.net')
@@ -64,18 +66,18 @@ class AlertNagiosConfiguration(AlertSenderConfiguration):
     formatable.field('host', u'flt1.livetranscoding.net')
 
 
-@document.register
+@feat.register_restorator
 class AlertAgentConfiguration(document.Document):
 
-    document_type = 'alert_agent_conf'
+    type_name = 'alert_agent_conf'
     document.field('doc_id', u'alert_agent_conf', '_id')
     document.field('mail_config', AlertMailConfiguration())
     document.field('nagios_config', AlertNagiosConfiguration())
 
-dbtools.initial_data(AlertAgentConfiguration)
+feat.initial_data(AlertAgentConfiguration)
 
 
-@agent.register('alert_agent')
+@feat.register_agent('alert_agent')
 class AlertAgent(agent.BaseAgent, alert.AgentMixin):
 
     dependency.register(IEmailSenderLabourFactory,

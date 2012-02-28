@@ -2,7 +2,7 @@ import operator
 
 from zope.interface import implements
 
-from feat.agents.base.message import BaseMessage
+from feat.agencies.message import BaseMessage
 
 from feat.common import log, container, time
 

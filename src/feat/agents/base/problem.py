@@ -23,11 +23,12 @@ import copy
 
 from zope.interface import implements, Interface, Attribute
 
-from feat.agents.base import task, contractor, manager, message, replay
-from feat.common import serialization, fiber, log
+from feat.agents.base import task, contractor, manager, replay
+from feat.agencies import message
+from feat.common import fiber, log, serialization
+from feat.agents.application import feat
 
 from feat.interface.protocols import InterestType
-from feat.interface.contracts import ContractState
 
 
 class IProblemFactory(Interface):
@@ -158,7 +159,7 @@ class CollectiveSolver(task.BaseTask):
         return self._iterate(new_list)
 
 
-@serialization.register
+@feat.register_restorator
 class SolveProblemInterest(serialization.Serializable):
     implements(contractor.IContractorFactory)
 
@@ -226,7 +227,7 @@ class SolveProblemContractor(contractor.BaseContractor):
         state.medium.finalize(report)
 
 
-@serialization.register
+@feat.register_restorator
 class SolveProblemManagerFactory(serialization.Serializable):
     implements(manager.IManagerFactory)
 

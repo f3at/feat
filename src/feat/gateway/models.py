@@ -25,19 +25,24 @@ from zope.interface import implements
 
 from feat.agencies import journaler
 from feat.agencies.net import agency as net_agency, broker
-from feat.agents.base import resource, agent as base_agent
+from feat.agents.base import resource
 
-from feat.common import adapter, defer, reflect
+from feat.common import defer, reflect, error
 from feat.models import model, value, reference, response
 from feat.models import effect, call, getter, action
+from feat.gateway.application import featmodels
+from feat import applications
 
 from feat.agencies.interface import AgencyRoles
-from feat.interface.agent import AgencyAgentState
+from feat.agents.monitor.interface import MonitorState, LocationState
+from feat.agents.monitor.interface import PatientState
+from feat.interface.agent import AgencyAgentState, IAgent, IMonitorAgent
 from feat.models.interface import IModel, IReference, ActionCategories
 from feat.models.interface import Unauthorized
 
 
-@adapter.register(net_agency.Agency, IModel)
+@featmodels.register_adapter(net_agency.Agency, IModel)
+@featmodels.register_model
 class Root(model.Model):
     """
     Root model over an agency reference.
@@ -52,18 +57,23 @@ class Root(model.Model):
     model.child("agencies", model="feat.agencies",
                 fetch=getter.model_get("_locate_master"),
                 label="Agencies", desc="Agencies running on this host.")
-
     model.child("agents", model="feat.agents",
                 fetch=getter.model_get("_locate_master"),
                 label="Agents", desc="Agents running on this host.")
     model.child('apps', model='feat.apps',
-                label='Applications', desc='Running applications')
+                label='Api', desc='Api exposed by services')
+    model.child('applications', model='feat.applications',
+                label='Applications', desc='Loaded applications',
+                view=call.model_call('get_applications'))
 
     model.meta("html-order", "agencies, agents")
     model.item_meta("agencies", "html-render", "array, 1")
     model.item_meta("agents", "html-render", "array, 1")
 
     ### custom ###
+
+    def get_applications(self):
+        return list(applications.get_application_registry().itervalues())
 
     def _get_reference(self):
         d = self.source.locate_master()
@@ -90,6 +100,7 @@ def register_app(name, model):
     _app_names[name] = model
 
 
+@featmodels.register_model
 class Apps(model.Collection):
     model.identity('feat.apps')
     model.child_names(call.model_call('get_names'))
@@ -105,6 +116,85 @@ class Apps(model.Collection):
         return _app_names.get(name)
 
 
+@featmodels.register_model
+class Applications(model.Collection):
+    model.identity('feat.applications')
+    model.child_names(call.model_call('get_names'))
+    model.child_model('feat.applications.<name>')
+    model.child_source(getter.model_get('get_app'))
+    model.child_view(effect.context_value('source'))
+
+    def get_names(self):
+        return [x.name for x in self.view]
+
+    def get_app(self, name):
+        return applications.get_application_registry().lookup(name)
+
+
+class ReloadApplication(action.Action):
+    action.label('Reload the application')
+    action.category(ActionCategories.command)
+    action.result(value.Response())
+
+    action.effect(call.action_call('terminate_agents'))
+    action.effect(call.action_perform('do_reload'))
+    action.effect(call.action_perform('restart_agents'))
+    action.effect(response.done("Done"))
+
+    @defer.inlineCallbacks
+    def terminate_agents(self):
+        self._agency = self.model.view
+        self._agency._starting_host = True
+        application = self.model.source
+
+        agent_ids = []
+        for medium in list(self._agency.iter_agents()):
+            if medium.agent.application != application:
+                self._agency.info(
+                    "Leaving in peace the agent %s, he belongs to application"
+                    " %s", medium.get_agent_type(),
+                    medium.agent.application.name)
+                continue
+            a_id = medium.get_agent_id()
+            agent_ids.append(a_id)
+            self._agency.info("Terminating %s with id: %s",
+                              medium.get_agent_type(), a_id)
+            try:
+                yield medium.terminate_hard()
+            except Exception as e:
+                error.handle_exception('restart', e, "Error termination.")
+        defer.returnValue(agent_ids)
+
+    def do_reload(self, value):
+        applications.unload(self.model.source.name)
+        applications.load(self.model.source.module, self.model.source.name)
+        return value
+
+    @defer.inlineCallbacks
+    def restart_agents(self, value):
+        db = self._agency._database.get_connection()
+        for agent_id in value:
+            d = db.get_document(agent_id)
+            d.addCallback(self._agency.start_agent_locally)
+            yield d
+        self._agency._starting_host = False
+
+
+@featmodels.register_model
+class Application(model.Model):
+    model.identity('feat.applications.<name>')
+
+    model.attribute('name', value.String(), getter.source_attr('name'),
+                    label="Name")
+    model.attribute('version', value.Integer(), getter.source_attr('version'),
+                    label="Version")
+    model.attribute('module', value.String(), getter.source_attr('module'),
+                    label="Module", desc="Module the application is defined")
+
+    model.action('reload', ReloadApplication)
+
+
+@featmodels.register_model
 class Agencies(model.Collection):
     """
     Could only be fetched from the master agency.
@@ -161,6 +251,7 @@ class Agencies(model.Collection):
         return reference.Absolute((host, port), "agencies", agency_id)
 
 
+@featmodels.register_model
 class RemoteAgency(model.Model):
 
     model.identity("feat.remote_agency")
@@ -192,6 +283,7 @@ class RemoteAgency(model.Model):
         self._reference = reference.Absolute(root, "agencies", self.name)
 
 
+@featmodels.register_model
 class Agency(model.Model):
     model.identity("feat.agency")
 
@@ -250,6 +342,7 @@ class ReconnectToPrimary(action.Action):
         return self.model.source.current_target_index != 0
 
 
+@featmodels.register_model
 class Journaler(model.Model):
     model.identity("feat.agency.journaler")
     model.attribute('pending_entries', value.Integer(),
@@ -275,6 +368,7 @@ class Journaler(model.Model):
         return len(self.source._cache)
 
 
+@featmodels.register_model
 class JournalTarget(model.Model):
     model.identity('feat.agency.journaler.target')
     model.attribute('class', value.String(), call.model_call('get_class'),
@@ -297,6 +391,8 @@ class JournalTarget(model.Model):
         return self.view == current
 
 
+@featmodels.register_model
+@featmodels.register_adapter(journaler.BrokerProxyWriter, IModel)
 class BaseJournalWriter(model.Model):
     model.identity("feat.agency.journaler.base_writer")
     model.attribute('type', value.String(), getter=call.model_call('get_type'))
@@ -314,10 +410,8 @@ class BaseJournalWriter(model.Model):
         return len(self.source._cache)
 
 
-adapter.register(journaler.BrokerProxyWriter, IModel)(BaseJournalWriter)
-
-
-@adapter.register(journaler.PostgresWriter, IModel)
+@featmodels.register_model
+@featmodels.register_adapter(journaler.PostgresWriter, IModel)
 class PostgresWriter(BaseJournalWriter):
 
     model.identity('feat.agency.journaler.postgres_writer')
@@ -332,7 +426,8 @@ class PostgresWriter(BaseJournalWriter):
                "pending_entries")
 
 
-@adapter.register(journaler.SqliteWriter, IModel)
+@featmodels.register_model
+@featmodels.register_adapter(journaler.SqliteWriter, IModel)
 class SQLiteWriter(BaseJournalWriter):
 
     model.identity('feat.agency.journaler.sqlite_writer')
@@ -340,6 +435,7 @@ class SQLiteWriter(BaseJournalWriter):
                     getter=getter.source_attr('_filename'))
 
 
+@featmodels.register_model
 class AgencyAgents(model.Collection):
     model.identity("feat.agency.agents")
 
@@ -356,6 +452,7 @@ class AgencyAgents(model.Collection):
         return res
 
 
+@featmodels.register_model
 class AgencyAgent(model.Model):
 
     implements(IReference)
@@ -396,6 +493,7 @@ class AgentTypeValue(value.String):
     value.options_only()
 
 
+@featmodels.register_model
 class Agents(model.Collection):
     model.identity("feat.agents")
 
@@ -412,7 +510,7 @@ class Agents(model.Collection):
 
     model.meta("html-render", "array, 1")
     model.meta("html-render",
-               "array-columns, Agent Id, Agent type, Status")
+               "array-columns, Agent Id, Agent type, Status, Application")
 
     def init(self):
         if not self.officer.peer_info.has_role("admin"):
@@ -451,7 +549,8 @@ class Agents(model.Collection):
         return reference.Local("agents", recipient.key)
 
 
-@adapter.register(broker.AgentReference, IModel)
+@featmodels.register_model
+@featmodels.register_adapter(broker.AgentReference, IModel)
 class RemoteAgent(model.Model):
     model.identity("feat.remote_agent")
     model.reference(getter.model_attr("_reference"))
@@ -482,7 +581,8 @@ class RemoteAgent(model.Model):
         return self.source.callRemote('get_agent_type')
 
 
-@adapter.register(base_agent.BaseAgent, IModel)
+@featmodels.register_model
+@featmodels.register_adapter(IAgent, IModel)
 class Agent(model.Model):
     model.identity("feat.agent")
 
@@ -499,6 +599,10 @@ class Agent(model.Model):
     model.attribute("type", value.String(),
                     getter=call.source_call("get_agent_type"),
                     label="Agent type", desc="Agent type")
+    model.attribute("application", value.String(),
+                    getter=call.model_call("get_application"),
+                    label="Application",
+                    desc="Application the agent belongs to")
 
     model.child("partners",
                 model="feat.partners",
@@ -544,7 +648,11 @@ class Agent(model.Model):
         self._medium.terminate_hard()
         return reference.Local("agents")
 
+    def get_application(self):
+        return self.source.application.name
 
+
+@featmodels.register_model
 class Resources(model.Model):
     model.identity("feat.resources")
 
@@ -557,6 +665,7 @@ class Resources(model.Model):
     model.item_meta("classes", "html-render", "array, 3")
 
 
+@featmodels.register_model
 class ResourceClasses(model.Collection):
     model.identity("feat.resource_classes")
 
@@ -575,6 +684,7 @@ class ResourceClasses(model.Collection):
         return self._models_lookup.get(self.view[name][0])
 
 
+@featmodels.register_model
 class ScalarResourceClass(model.Model):
     model.identity("feat.scalar_resource")
 
@@ -599,6 +709,7 @@ class RangeItems(value.Collection):
     value.allows(value.Integer())
 
 
+@featmodels.register_model
 class RangeResourceClass(model.Model):
     model.identity("feat.range_resource")
 
@@ -613,6 +724,7 @@ class RangeResourceClass(model.Model):
     model.meta("html-order", "name, total, allocated, reserved")
 
 
+@featmodels.register_model
 class Partners(model.Collection):
     model.identity("feat.partners")
 
@@ -637,6 +749,7 @@ class Partners(model.Collection):
         return None
 
 
+@featmodels.register_model
 class Partner(model.Model):
     #FIXME: should be more dynamic and dynamically add attribute
     model.identity("feat.partner")
@@ -655,6 +768,7 @@ class Partner(model.Model):
     model.item_meta("recipient", "html-render", "array, 1")
 
 
+@featmodels.register_model
 class Recipient(model.Model):
     model.identity("feat.recipient")
     model.reference(call.model_call("_get_reference"))
@@ -675,13 +789,8 @@ class Recipient(model.Model):
         return reference.Local("agents", self.source.key)
 
 
-from feat.agents.monitor import monitor_agent
-from feat.agents.monitor.interface import MonitorState
-from feat.agents.monitor.interface import LocationState
-from feat.agents.monitor.interface import PatientState
-
-
-@adapter.register(monitor_agent.MonitorAgent, IModel)
+@featmodels.register_model
+@featmodels.register_adapter(IMonitorAgent, IModel)
 class MonitorAgent(Agent):
     model.identity("feat.agent.monitor")
     model.view(call.source_call("get_monitoring_status"))
@@ -712,6 +821,7 @@ class MonitorAgent(Agent):
         return self.view["locations"][name]
 
 
+@featmodels.register_model
 class MonitoredLocation(model.Model):
     model.identity("feat.monitored_location")
 
@@ -742,6 +852,7 @@ class MonitoredLocation(model.Model):
         return self.view["patients"][name]
 
 
+@featmodels.register_model
 class MonitoredAgent(model.Model):
     model.identity("feat.monitored_agent")
 

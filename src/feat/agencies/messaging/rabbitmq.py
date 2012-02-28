@@ -25,11 +25,10 @@ from zope.interface import implements
 
 from twisted.internet import reactor
 from feat.common import log, defer
-from feat.agents.base import recipient
-from feat.agents.base.message import BaseMessage
+from feat.agencies.message import BaseMessage
 
 from feat.agencies.messaging.interface import ISink, IBackend
-from feat.agencies import common
+from feat.agencies import common, recipient
 
 
 class Sink(log.Logger):

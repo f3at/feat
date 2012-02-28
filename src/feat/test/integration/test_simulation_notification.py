@@ -24,9 +24,10 @@ from twisted.python import failure
 
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, replay, recipient
-from feat.agents.base import collector, poster
+from feat.agents.base import agent, descriptor, replay, collector, poster
+from feat.agencies import recipient
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 from feat.interface.recipient import *
 from feat.interface.protocols import *
@@ -34,12 +35,12 @@ from feat.interface.collector import *
 from feat.interface.poster import *
 
 
-@descriptor.register("poster_test_agent")
+@feat.register_descriptor("poster_test_agent")
 class PosterDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("poster_test_agent")
+@feat.register_agent("poster_test_agent")
 class PosterAgent(agent.BaseAgent):
 
     @replay.mutable
@@ -52,12 +53,12 @@ class PosterAgent(agent.BaseAgent):
         state.poster.notify(*args, **kwargs)
 
 
-@descriptor.register("collector_test_agent")
+@feat.register_descriptor("collector_test_agent")
 class CollectorDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("collector_test_agent")
+@feat.register_agent("collector_test_agent")
 class CollectorAgent(agent.BaseAgent):
 
     @replay.mutable

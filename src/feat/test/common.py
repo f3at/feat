@@ -31,16 +31,15 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.agencies.emu import database
-from feat.agencies import agency, messaging, journaler
+from feat.agencies import agency, messaging, journaler, message, recipient
 from feat.agencies.messaging import emu, rabbitmq
-from feat.agents.base import message, recipient, agent
+from feat.agents.base import agent
 from feat.common import log, defer, decorator, journal, time, signal
 
 from feat.interface.generic import ITimeProvider
 from feat.agencies.messaging.interface import ISink
+from feat.agents.application import feat
 
-# Import for registering stuff
-from feat import everything
 
 from . import factories
 from twisted.trial.unittest import FailTest
@@ -52,6 +51,7 @@ except AttributeError:
     _getConfig = dict
 
 log.init('test.log')
+feat.load()
 
 
 def delay(value, delay):
@@ -514,7 +514,7 @@ class AgencyTestHelper(object):
         @returns: Document with id and revision set
         @return_type: subclass of feat.agents.document.Document
         '''
-        document = factories.build(doc_class.document_type, **options)
+        document = factories.build(doc_class.type_name, **options)
         return self.agency._database.get_connection().save_document(document)
 
     # methods for sending and receiving custom messages
@@ -641,7 +641,7 @@ class StubAgent(object):
         self.messages.append(msg)
 
 
-@agent.register('descriptor')
+@feat.register_agent('descriptor')
 class DummyAgent(agent.BaseAgent, Mock):
 
     def __init__(self, medium):

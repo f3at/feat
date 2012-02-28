@@ -23,13 +23,14 @@ import socket
 
 from twisted.internet import defer
 
-from feat import everything
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, document, replay, resource
+from feat.agents.base import agent, descriptor, replay, resource
+from feat.agencies import document
 from feat.agents.common import host
 from feat.common.text_helper import format_block
 from feat.common import first
+from feat.agents.application import feat
 
 from feat.interface.recipient import IRecipient
 from feat.interface.agent import Access, Address, Storage
@@ -183,7 +184,7 @@ class HostAgentRequerimentsTest(common.SimulationTest):
         self.assertEqual(cats["storage"], Storage.static)
 
 
-@agent.register('condition-agent')
+@feat.register_agent('condition-agent')
 class ConditionAgent(agent.BaseAgent):
 
     categories = {'access': Access.private,
@@ -191,13 +192,12 @@ class ConditionAgent(agent.BaseAgent):
                   'storage': Storage.static}
 
 
-@document.register
+@feat.register_descriptor('condition-agent')
 class Descriptor(descriptor.Descriptor):
+    pass
 
-    document_type = 'condition-agent'
 
-
-@agent.register('conditionerror-agent')
+@feat.register_agent('conditionerror-agent')
 class ConditionAgent2(agent.BaseAgent):
 
     categories = {'access': Access.none,
@@ -205,10 +205,9 @@ class ConditionAgent2(agent.BaseAgent):
                   'storage': Storage.none}
 
 
-@document.register
+@feat.register_descriptor('conditionerror-agent')
 class Descriptor2(descriptor.Descriptor):
-
-    document_type = 'conditionerror-agent'
+    pass
 
 
 @common.attr(timescale=0.05)
@@ -262,7 +261,7 @@ class HostAgentCheckTest(common.SimulationTest):
         check_requeriments(test_agent.categories)
 
 
-@agent.register('contract-running-agent')
+@feat.register_agent('contract-running-agent')
 class RequestingAgent(agent.BaseAgent):
 
     @replay.mutable
@@ -278,7 +277,7 @@ class RequestingAgent(agent.BaseAgent):
         return f
 
 
-@descriptor.register('contract-running-agent')
+@feat.register_descriptor('contract-running-agent')
 class Descriptor3(descriptor.Descriptor):
     pass
 

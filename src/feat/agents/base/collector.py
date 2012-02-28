@@ -22,7 +22,9 @@
 from zope.interface import implements
 
 from feat.common import log, defer, reflect, serialization, fiber
-from feat.agents.base import message, replay
+from feat.agents.base import replay
+from feat.agencies import message
+from feat.agents.application import feat
 
 from feat.interface.protocols import *
 from feat.interface.collector import *
@@ -34,7 +36,7 @@ class Meta(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(Meta, cls).__init__(name, bases, dct)
 
 
@@ -48,6 +50,8 @@ class BaseCollector(log.Logger, replay.Replayable):
 
     initiator = message.Notification
     interest_type = InterestType.private
+
+    application = feat
 
     protocol_type = "Notification"
     protocol_id = None

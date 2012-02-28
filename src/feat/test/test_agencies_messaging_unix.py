@@ -5,7 +5,7 @@ from twisted.spread import pb
 
 from feat.test import common
 
-from feat.agents.base import recipient, message
+from feat.agencies import recipient, message
 
 from feat.agencies.net import broker
 from feat.agencies.messaging import messaging, unix

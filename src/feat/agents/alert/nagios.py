@@ -27,6 +27,7 @@ from feat.agents.base import replay, alert
 from feat.common import log, serialization
 
 from feat.agents.alert.interface import *
+from feat.agents.application import feat
 
 
 CODES = {alert.Severity.recover: 0,
@@ -35,7 +36,7 @@ CODES = {alert.Severity.recover: 0,
          alert.Severity.high: 2}
 
 
-@serialization.register
+@feat.register_restorator
 class Labour(log.Logger, serialization.Serializable):
 
     classProvides(INagiosSenderLabourFactory)

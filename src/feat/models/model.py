@@ -24,7 +24,7 @@ import types
 
 from zope.interface import implements
 
-from feat.common import error, annotate, container, mro, defer, error, log
+from feat.common import annotate, container, mro, defer, error, log, registry
 from feat.models import utils, value
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
@@ -356,28 +356,34 @@ def _annotate(name, *args, **kwargs):
 ### Registry ###
 
 
-def register_factory(identity, factory):
+class Registry(registry.BaseRegistry):
+
+    allow_blank_application = True
+    verify_interface = IModelFactory
+    key_attribute = '_model_identity'
+
+
+_model_factories = Registry()
+
+
+def get_registry():
     global _model_factories
-    identity = unicode(identity)
-    if identity in _model_factories:
-        raise KeyError("Factory already registered for %s: %r"
-                       % (identity, _model_factories[identity]))
-    _model_factories[identity] = IModelFactory(factory)
+    return _model_factories
 
 
 def get_factory(identity):
     global _model_factories
-    return _model_factories.get(unicode(identity))
+    return _model_factories.lookup(unicode(identity))
 
 
 def snapshot_factories():
     global _model_factories
-    return dict(_model_factories)
+    return _model_factories.get_snapshot()
 
 
 def restore_factories(snapshot):
     global _model_factories
-    _model_factories = dict(snapshot)
+    _model_factories.reset(snapshot)
 
 
 ### Classes ###
@@ -605,7 +611,6 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
     def annotate_identity(cls, identity):
         """@see: feat.models.model.identity"""
         cls._model_identity = _validate_str(identity)
-        register_factory(cls._model_identity, cls)
 
     @classmethod
     def annotate_is_detached(cls, flag):
@@ -1507,9 +1512,6 @@ class DynamicModelItem(BaseModelItem):
 
 
 ### private ###
-
-
-_model_factories = {}
 
 
 def _validate_flag(value):

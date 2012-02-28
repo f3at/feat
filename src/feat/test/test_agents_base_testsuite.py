@@ -25,15 +25,16 @@ from twisted.internet import defer
 from twisted.trial.unittest import FailTest
 
 from feat.test import common
-from feat.agents.base import (resource, testsuite, agent, recipient,
-                              replay, manager, message, )
+from feat.agents.base import resource, testsuite, agent, replay, manager
+from feat.agencies import message, recipient
 from feat.common import guard, fiber
 from feat.agencies.replay import AgencyManager
 
 from feat.interface.journal import *
+from feat.agents.application import feat
 
 
-@agent.register('descriptor')
+@feat.register_agent('descriptor')
 class DummyAgent(common.DummyAgent):
 
     @replay.mutable

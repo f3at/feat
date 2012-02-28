@@ -21,23 +21,23 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat import everything
 from feat.agents.base import replay, descriptor, agent
 from feat.agents.common import shard
 from feat.common import defer, first, time
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 from feat.interface.recipient import *
 
 from feat.test.integration import common
 
 
-@descriptor.register("test_shard_notif_agent")
+@feat.register_descriptor("test_shard_notif_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("test_shard_notif_agent")
+@feat.register_agent("test_shard_notif_agent")
 class Agent(agent.BaseAgent):
 
     implements(shard.IShardNotificationHandler)

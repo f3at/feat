@@ -22,29 +22,25 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.spread import pb
+from zope.interface import implements
 
-from feat.common import decorator, fiber, first
-from feat.agents.base import document, registry, resource
+from feat.common import fiber, first, serialization
+from feat.agents.base import resource
+from feat.agents.application import feat
+from feat import applications
+from feat.agencies import recipient, document
 
+from feat.interface.recipient import IRecipient, IRecipients
+from feat.interface.agent import IDescriptor
 
 field = document.field
 
 
-@decorator.parametrized_class
-def register(klass, name):
-    klass.type_name = name
-    klass.document_type = name
-    return document.register(klass)
-
-
-def lookup(name):
-    return document.lookup(name)
-
-
-@document.register
+@serialization.register
 class Descriptor(document.Document, pb.Copyable):
+    implements(IDescriptor)
 
-    document_type = 'descriptor'
+    type_name = 'descriptor'
     # Shard identifier (unicode)
     document.field('shard', None)
     # List of allocations
@@ -77,7 +73,7 @@ class Descriptor(document.Document, pb.Copyable):
             agent.warning(
                 "Agent %r didn't have a partner with a role='host' in his "
                 "descriptor. This is kind of weird. His partners: %r",
-                self.document_type, self.partners)
+                self.type_name, self.partners)
             return fiber.succeed(self)
 
     def set_shard(self, agent, shard):
@@ -93,4 +89,4 @@ class Descriptor(document.Document, pb.Copyable):
                 resp[name] = value
             return resp
         else:
-            return registry.registry_lookup(self.document_type).resources
+            return applications.lookup_agent(self.type_name).resources

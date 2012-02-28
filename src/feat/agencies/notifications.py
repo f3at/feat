@@ -26,7 +26,7 @@ import uuid
 from twisted.python import components
 from zope.interface import implements
 
-from feat.common import log, defer, error_handler
+from feat.common import log, defer, error_handler, adapter
 from feat.agencies import common, protocols
 from feat.agents.base import replay
 
@@ -100,14 +100,10 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
         return d
 
 
+@adapter.register(IPosterFactory, IAgencyInitiatorFactory)
 class AgencyPosterFactory(protocols.BaseInitiatorFactory):
     type_name = "poster-medium-factory"
     protocol_factory = AgencyPoster
-
-
-components.registerAdapter(AgencyPosterFactory,
-                           IPosterFactory,
-                           IAgencyInitiatorFactory)
 
 
 class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
@@ -175,6 +171,7 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
         return d
 
 
+@adapter.register(ICollectorFactory, IAgencyInterestInternalFactory)
 class AgencyCollectorInterest(protocols.BaseInterest):
 
     ### Overridden IAgencyInterestInternalFactory Methods ###
@@ -209,8 +206,3 @@ class AgencyCollectorInterest(protocols.BaseInterest):
     def _pass_message(self, message):
         d = self.agency_collector.on_message(message)
         d.addBoth(defer.drop_param, self._message_processed, message)
-
-
-components.registerAdapter(AgencyCollectorInterest,
-                           ICollectorFactory,
-                           IAgencyInterestInternalFactory)

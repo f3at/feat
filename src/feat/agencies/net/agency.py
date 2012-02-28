@@ -27,19 +27,17 @@ import sys
 from twisted.internet import reactor
 
 from feat.agents.base.alert import Severity
-from feat.agents.base.agent import registry_lookup
-from feat.agents.base import recipient
-from feat.agencies import agency, journaler
+from feat.agencies import agency, journaler, recipient
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
+from feat import applications
 from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
 from feat.common.serialization import json
 from feat.process import standalone
 from feat.process.base import ProcessState
 from feat.gateway import gateway
-from feat.utils import locate
 from feat.web import security
 
 from feat.interface.agent import IAgentFactory
@@ -475,14 +473,11 @@ class Agency(agency.Agency):
         This method will be run only on the master agency.
         """
         factory = IAgentFactory(
-            registry_lookup(descriptor.document_type))
+            applications.lookup_agent(descriptor.type_name))
         if factory.standalone:
             return self.start_standalone_agent(descriptor, factory, **kwargs)
         else:
             return self.start_agent_locally(descriptor, **kwargs)
-
-    def start_agent_locally(self, descriptor, **kwargs):
-        return agency.Agency.start_agent(self, descriptor, **kwargs)
 
     def start_standalone_agent(self, descriptor, factory, **kwargs):
         if sys.platform == "win32":
@@ -519,6 +514,8 @@ class Agency(agency.Agency):
             port = yield found.reference.callRemote('get_gateway_port')
             defer.returnValue((host, port, True, ))
         else: # None
+            # lazy import not to load descriptor before feat is loaded
+            from feat.utils import locate
             db = self._database.get_connection()
             host = yield locate.locate(db, agent_id)
             port = self.config["gateway"]["port"]

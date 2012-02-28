@@ -21,8 +21,11 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agents.base import message, replay, protocols
+from feat.agents.base import replay, protocols
+from feat.agencies import message
 from feat.common import defer, reflect, serialization, fiber
+
+from feat.agents.application import feat
 
 from feat.interface.poster import *
 from feat.interface.protocols import *
@@ -34,7 +37,7 @@ class MetaPoster(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(MetaPoster, cls).__init__(name, bases, dct)
 
 
@@ -46,6 +49,8 @@ class BasePoster(protocols.BaseInitiator):
 
     protocol_type = "Notification"
     protocol_id = None
+
+    application = feat
 
     notification_timeout = 10
 

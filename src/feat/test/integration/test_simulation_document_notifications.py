@@ -20,24 +20,25 @@
 
 # Headers in this file shall remain intact.
 from feat.test.integration import common
-from feat.agents.base import agent, descriptor, replay, document
-from feat.common import defer, text_helper
+from feat.agents.base import agent, descriptor, replay
+from feat.agencies import document
+from feat.common import defer, text_helper, serialization
+from feat.agents.application import feat
 
 
-@descriptor.register('document-agent')
+@feat.register_descriptor('document-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@document.register
+@serialization.register
 class Doc(document.Document):
 
-    document_type = 'test_doc'
-
+    type_name = 'test_doc'
     document.field("counter", 0)
 
 
-@agent.register('document-agent')
+@feat.register_agent('document-agent')
 class Agent(agent.BaseAgent):
 
     @replay.mutable

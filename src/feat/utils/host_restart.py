@@ -22,7 +22,7 @@ def do_cleanup(connection, host_agent_id):
                                 'Agent id: %s type: %s did not have any '
                                 'host partner. So we are leaving it be.',
                                 partner_desc.doc_id,
-                                partner_desc.document_type)
+                                partner_desc.type_name)
                 elif host_part.recipient.key == host_agent_id:
                     log.info('host_restart', "Deleting document with ID: %s",
                              partner_desc.doc_id)
@@ -35,7 +35,7 @@ def do_cleanup(connection, host_agent_id):
                                 "that he will not receive the goodbye "
                                 "notification from us!",
                                 partner_desc.doc_id,
-                                partner_desc.document_type,
+                                partner_desc.type_name,
                                 host_part.recipient.key)
         log.info('host_restart', "Deleting document with ID: %s",
                  desc.doc_id)

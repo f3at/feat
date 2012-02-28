@@ -2,10 +2,9 @@ import sys
 import ConfigParser
 import StringIO
 
-from feat.agents.base import descriptor
+from feat import applications
 from feat.common.text_helper import format_block
-from feat.common.serialization import json
-from feat.common import reflect
+from feat.common import serialization
 
 
 def parse_file(parser, fp):
@@ -29,7 +28,7 @@ def parse_file(parser, fp):
 
 def append_agent(parser, agent_type,
                  desc_keywords=dict(), initiate_keywords=dict()):
-    desc_factory = descriptor.lookup(agent_type)
+    desc_factory = serialization.lookup(agent_type)
     if not desc_factory:
         raise ConfigParser.Error("Uknown agent_type: %s" % (agent_type, ))
     desc = desc_factory(**desc_keywords)
@@ -61,17 +60,19 @@ def _parse_application_section(cfg, parser, section):
     '''
     Example of application section:
     [application:flt]
-    import: flt.everything
+    import: flt.application
+    name: flt
     '''
     #TODO: Create an Application object here which will manage loading
     #the modules and (in future) reloading them.
     module = cfg.get(section, 'import')
+    name = cfg.get(section, 'name')
     try:
-        reflect.named_module(module)
+        applications.load(module, name)
     except ImportError:
         raise (ConfigParser.Error(
-            "Importing module %s failed, requested from section %s" %
-            (module, section, )), None, sys.exc_info()[2])
+            "Loading application %s.%s failed, requested from section %s" %
+            (module, name, section, )), None, sys.exc_info()[2])
 
 
 def _parse_agent_section(cfg, parser, section):
@@ -102,7 +103,7 @@ def _parse_agent_section(cfg, parser, section):
 
 def _unserialize_json_field(section, key, value):
     try:
-        return json.unserialize(value)
+        return serialization.json.unserialize(value)
     except ValueError:
         raise ConfigParser.Error("Value: %r is not a valid json. Section=%s "
                                  "Key=%s" % (value, section, key))

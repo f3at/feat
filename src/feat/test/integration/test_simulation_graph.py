@@ -21,15 +21,13 @@
 # Headers in this file shall remain intact.
 import uuid
 
-from feat import everything
 from feat.test.integration import common
 from feat.agents.shard import shard_agent
-from feat.agents.base import dbtools
-from feat.agents.common import host
-from feat.common import defer, time
+from feat.agents.application import feat
+from feat.common import defer
 from feat.common.text_helper import format_block
 from feat.test.common import attr
-from feat.agents.base.recipient import IRecipient, dummy_agent
+from feat.agencies.recipient import IRecipient, dummy_agent
 from feat.agents.base.partners import FindPartnerError
 
 
@@ -300,7 +298,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         config = shard_agent.ShardAgentConfiguration(
             doc_id = u'test-config',
             hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 
@@ -315,7 +313,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         This testcase doesn't check the third-party agent reaction for this
         process.
         """
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(1, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(1, self.count_agents('raage_agent'))
@@ -323,14 +321,14 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
         shard_to_kill = list(self.driver.iter_agents('shard_agent'))[0]
 
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(2, self.count_agents('host_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(1, self.count_agents('raage_agent'))
         expected = self._get_exp(1, 0, 0, 0, kings=1)
         self.check_structure(expected)
 
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(3, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('raage_agent'))
@@ -338,7 +336,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('4th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(4, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
         self.assertEqual(2, self.count_agents('raage_agent'))
@@ -346,7 +344,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('5th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(5, self.count_agents('host_agent'))
         self.assertEqual(3, self.count_agents('shard_agent'))
         self.assertEqual(3, self.count_agents('raage_agent'))
@@ -354,7 +352,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('6th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(6, self.count_agents('host_agent'))
         self.assertEqual(3, self.count_agents('shard_agent'))
         self.assertEqual(3, self.count_agents('raage_agent'))
@@ -362,7 +360,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('7th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(7, self.count_agents('host_agent'))
         self.assertEqual(4, self.count_agents('shard_agent'))
         self.assertEqual(4, self.count_agents('raage_agent'))
@@ -370,7 +368,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('8th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(8, self.count_agents('host_agent'))
         self.assertEqual(4, self.count_agents('shard_agent'))
         self.assertEqual(4, self.count_agents('raage_agent'))
@@ -378,7 +376,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('9th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(9, self.count_agents('host_agent'))
         self.assertEqual(5, self.count_agents('shard_agent'))
         self.assertEqual(5, self.count_agents('raage_agent'))
@@ -386,7 +384,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('10th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(10, self.count_agents('host_agent'))
         self.assertEqual(5, self.count_agents('shard_agent'))
         self.assertEqual(5, self.count_agents('raage_agent'))
@@ -394,7 +392,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('11th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(11, self.count_agents('host_agent'))
         self.assertEqual(6, self.count_agents('shard_agent'))
         self.assertEqual(6, self.count_agents('raage_agent'))
@@ -402,7 +400,7 @@ class TestHostsAndShards(common.SimulationTest, CommonMixin):
         self.check_structure(expected)
 
         self.info('12th host starting')
-        agent = yield self.start_host()
+        yield self.start_host()
         self.assertEqual(12, self.count_agents('host_agent'))
         self.assertEqual(6, self.count_agents('shard_agent'))
         self.assertEqual(6, self.count_agents('raage_agent'))

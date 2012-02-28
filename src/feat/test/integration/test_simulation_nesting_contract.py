@@ -20,19 +20,20 @@
 
 # Headers in this file shall remain intact.
 from feat.test.integration import common
-from feat.agents.base import (agent, message, contractor, replay,
-                              manager, descriptor, recipient)
+from feat.agents.base import agent, contractor, replay, manager, descriptor
+from feat.agencies import message, recipient
 from feat.common import text_helper, defer, fiber
 
 from feat.interface.protocols import *
+from feat.agents.application import feat
 
 
-@descriptor.register('contract_nesting_agent')
+@feat.register_descriptor('contract_nesting_agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('contract_nesting_agent')
+@feat.register_agent('contract_nesting_agent')
 class Agent(agent.BaseAgent):
 
     @replay.mutable

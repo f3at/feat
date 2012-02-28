@@ -114,6 +114,10 @@ class TestAction(action.Action):
         do_raise() #fail with 500 Internal Server Error
 
 
+register = model.get_registry().register
+
+
+@register
 class Root(model.Model):
 
     model.identity('feat.test.test_common_error.root')

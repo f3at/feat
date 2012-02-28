@@ -39,6 +39,7 @@ from feat.agencies.net import options as options_module
 from feat.agents.base import agent, descriptor, partners, replay
 from feat.common import serialization, fiber, log, first, run, defer
 from feat.utils import host_restart
+from feat.agents.application import feat
 
 from feat.interface.agent import AgencyAgentState
 from feat.agencies.interface import NotFoundError
@@ -190,7 +191,7 @@ class StandalonePartners(partners.Partners):
     default_role = u'standalone'
 
 
-@agent.register('standalone')
+@feat.register_agent('standalone')
 class StandaloneAgent(agent.BaseAgent):
 
     partners_class = StandalonePartners
@@ -222,12 +223,12 @@ class StandaloneAgent(agent.BaseAgent):
         return command, args, env
 
 
-@descriptor.register('standalone')
+@feat.register_descriptor('standalone')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('standalone_with_args')
+@feat.register_agent('standalone_with_args')
 class StandaloneAgentWithArgs(StandaloneAgent):
 
     standalone = True
@@ -245,12 +246,12 @@ class StandaloneAgentWithArgs(StandaloneAgent):
             raise Exception("Unexpected arguments or keyword in initiate()")
 
 
-@descriptor.register('standalone_with_args')
+@feat.register_descriptor('standalone_with_args')
 class DescriptorWithArgs(descriptor.Descriptor):
     pass
 
 
-@agent.register('standalone-master')
+@feat.register_agent('standalone-master')
 class MasterAgent(StandaloneAgent):
     """
     This agents job is to start another standalone agent from his standalone
@@ -280,10 +281,9 @@ class MasterAgent(StandaloneAgent):
         return f.succeed(desc)
 
 
-@serialization.register
+@feat.register_descriptor('standalone-master')
 class MasterDescriptor(descriptor.Descriptor):
-
-    document_type = 'standalone-master'
+    pass
 
 
 @common.attr('slow', timeout=40)

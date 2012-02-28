@@ -21,21 +21,23 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.common import defer
+from feat.common import defer, serialization
 from feat.interface.agent import AgencyAgentState
-from feat.agents.base import descriptor, agent, document
+from feat.agents.base import descriptor, agent
+from feat.agencies import document
 from feat.test import common
+from feat.agents.application import feat
 
 
-@descriptor.register('startup-test')
+@feat.register_descriptor('startup-test')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@document.register
+@serialization.register
 class Config(document.Document):
 
-    document_type = 'startup-test_conf'
+    type_name = 'startup-test_conf'
     document.field('field', None)
 
 
@@ -43,7 +45,7 @@ class DummyException(Exception):
     pass
 
 
-@agent.register('startup-test')
+@feat.register_agent('startup-test')
 class DummyAgent(agent.BaseAgent, common.Mock):
 
     def __init__(self, medium):

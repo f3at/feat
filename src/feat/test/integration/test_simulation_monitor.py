@@ -23,13 +23,14 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat import everything
-from feat.agents.base import recipient, descriptor, agent, partners, replay
-from feat.agents.base import dbtools, resource
-from feat.agents.common import monitor, host, start_agent
+from feat.agents.base import descriptor, agent, partners, replay
+from feat.agents.base import resource
+from feat.agents.common import monitor, start_agent, host
+from feat.agencies import recipient
 from feat.common import first, serialization, defer
 from feat.common.text_helper import format_block
 from feat.gateway import dummies
+from feat.agents.application import feat
 
 from feat.interface.recipient import IRecipient
 from feat.agents.monitor.interface import PatientState
@@ -38,7 +39,7 @@ from feat.test.integration import common
 from feat.agents.monitor import monitor_agent
 
 
-@agent.register('dummy_monitor_agent')
+@feat.register_agent('dummy_monitor_agent')
 class DummyMonitorAgent(agent.BaseAgent):
 
     @replay.mutable
@@ -46,19 +47,19 @@ class DummyMonitorAgent(agent.BaseAgent):
         self.startup_monitoring()
 
 
-@descriptor.register('dummy_monitor_agent')
+@feat.register_descriptor('dummy_monitor_agent')
 class DummyMonitorDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_monitored_agent')
+@feat.register_agent('dummy_monitored_agent')
 class DummyMonitoredAgent(agent.BaseAgent):
 
     def startup(self):
         self.startup_monitoring()
 
 
-@descriptor.register('dummy_monitored_agent')
+@feat.register_descriptor('dummy_monitored_agent')
 class DummyMonitoredDescriptor(descriptor.Descriptor):
     pass
 
@@ -106,12 +107,12 @@ class SingleHostMonitorSimulation(common.SimulationTest):
         self.assertEqual(4, len(partners)) # host, shard, raag, dummy
 
 
-@descriptor.register('random-agent')
+@feat.register_descriptor('random-agent')
 class RandomDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('random-agent')
+@feat.register_agent('random-agent')
 class RandomAgent(agent.BaseAgent):
     '''
     Agent nobody cares to restart.
@@ -126,7 +127,7 @@ class RandomAgent(agent.BaseAgent):
         return state.partners.all_with_role(u'monitor')
 
 
-@descriptor.register('bad-manager-agent')
+@feat.register_descriptor('bad-manager-agent')
 class BadManangerDescriptor(descriptor.Descriptor):
     pass
 
@@ -146,7 +147,7 @@ class Partners(partners.Partners):
     default_handler = BadHandler
 
 
-@agent.register('bad-manager-agent')
+@feat.register_agent('bad-manager-agent')
 class BadManagerAgent(agent.BaseAgent):
     '''
     Agent monitoring other agents. It commits to restart them once and
@@ -172,14 +173,6 @@ class BadManagerAgent(agent.BaseAgent):
 @common.attr(timescale=0.4)
 @common.attr('slow')
 class RestartingSimulation(common.SimulationTest):
-
-    # def setUp(self):
-    #     # Overriding monitor configuration
-    #     monitor_conf = monitor_agent.MonitorAgentConfiguration()
-    #     monitor_conf.notification_period = 1
-    #     dbtools.initial_data(monitor_conf)
-    #     self.override_config('monitor_agent', monitor_conf)
-    #     return common.SimulationTest.setUp(self)
 
     @defer.inlineCallbacks
     def prolog(self):
@@ -225,8 +218,8 @@ class RestartingSimulation(common.SimulationTest):
 
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assert_has_host('shard_agent')
-        for host in self.hosts:
-            self.assertTrue(host.query_partners('shard') is not None)
+        for agent in self.hosts:
+            self.assertTrue(agent.query_partners('shard') is not None)
         shard_partner = self.monitor.query_partners('shard')
         self.assertEqual(2, shard_partner.instance_id)
 
@@ -247,8 +240,8 @@ class RestartingSimulation(common.SimulationTest):
         self.assertTrue(medium is not None)
         agent = medium.get_agent()
         partners = agent.query_partners('all')
-        host = [x for x in partners if x.role == 'host']
-        self.assertEqual(1, len(host))
+        hosts = [x for x in partners if x.role == 'host']
+        self.assertEqual(1, len(hosts))
 
     def _kill_first_host(self):
         medium = first(self.driver.iter_agents('host_agent'))
@@ -307,10 +300,11 @@ class RestartingSimulation(common.SimulationTest):
 class MonitoringMonitor(common.SimulationTest):
 
     def setUp(self):
-        config = everything.shard_agent.ShardAgentConfiguration(
+        from feat.agents.shard.shard_agent import ShardAgentConfiguration
+        config = ShardAgentConfiguration(
             doc_id = 'test-config',
             hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 
@@ -401,8 +395,6 @@ class MonitoringMonitor(common.SimulationTest):
         script = format_block("""
         last_host.start_agent(descriptor_factory('random-agent'))
         """)
-        second_shard = self.hosts[2].get_shard_id()
-
         yield self.process(script)
         random_medium = first(self.driver.iter_agents('random-agent'))
         yield self.monitors[1].establish_partnership(
@@ -427,8 +419,8 @@ class MonitoringMonitor(common.SimulationTest):
                         if x.get_descriptor().shard == shard)
         self.assertTrue(monitor is not None)
         partners = monitor.get_agent().query_partners('all')
-        host = [x for x in partners if x.role == 'host']
-        self.assertEqual(1, len(host))
+        hosts = [x for x in partners if x.role == 'host']
+        self.assertEqual(1, len(hosts))
         return monitor.get_agent()
 
 
@@ -437,10 +429,11 @@ class MonitoringMonitor(common.SimulationTest):
 class SimulateMultipleMonitors(common.SimulationTest):
 
     def setUp(self):
-        config = everything.shard_agent.ShardAgentConfiguration(
+        from feat.agents.shard.shard_agent import ShardAgentConfiguration
+        config = ShardAgentConfiguration(
             doc_id = 'test-config',
             hosts_per_shard = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 
@@ -538,11 +531,13 @@ class TestMonitorPartnerships(common.SimulationTest):
         self.assertEqual(a2.find_partner(IRecipient(a1)), None)
 
     def setUp(self):
+        from feat.agents.shard.shard_agent import ShardAgentConfiguration
+
         if self.hosts_per_shard:
-            config = everything.shard_agent.ShardAgentConfiguration()
+            config = ShardAgentConfiguration()
             config.doc_id = 'test-config'
             config.hosts_per_shard = self.hosts_per_shard
-            dbtools.initial_data(config)
+            feat.initial_data(config)
             self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 
@@ -786,35 +781,35 @@ class DummyAgent(agent.BaseAgent):
         return copy.deepcopy(state.calls)
 
 
-@agent.register("test_buryme_agent")
+@feat.register_agent("test_buryme_agent")
 class DummyBuryMeAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.buryme
 
 
-@descriptor.register("test_buryme_agent")
+@feat.register_descriptor("test_buryme_agent")
 class DummyBuryMeDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('test_local_agent')
+@feat.register_agent('test_local_agent')
 class DummyLocalAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.local
 
 
-@descriptor.register('test_local_agent')
+@feat.register_descriptor('test_local_agent')
 class DummyLocalDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('test_wherever_agent')
+@feat.register_agent('test_wherever_agent')
 class DummyWhereverAgent(DummyAgent):
 
     restart_strategy = monitor.RestartStrategy.wherever
 
 
-@descriptor.register('test_wherever_agent')
+@feat.register_descriptor('test_wherever_agent')
 class DummyWhereverDescriptor(descriptor.Descriptor):
     pass
 
@@ -833,7 +828,7 @@ class TestRealMonitoring(common.SimulationTest):
         monitor_conf.enable_quarantine = True
         monitor_conf.control_period = 0.2
         monitor_conf.notification_period = 1
-        dbtools.initial_data(monitor_conf)
+        feat.initial_data(monitor_conf)
         self.override_config('monitor_agent', monitor_conf)
         return common.SimulationTest.setUp(self)
 

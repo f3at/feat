@@ -23,7 +23,7 @@ import uuid
 
 from zope.interface import implements
 
-from feat.agents.base.recipient import Recipient
+from feat.agencies.recipient import Recipient
 from feat.agents.monitor.clerk import Location, Clerk
 
 from feat.agents.monitor.interface import *

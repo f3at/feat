@@ -22,7 +22,8 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, task, poster, labour
-from feat.common import serialization, fiber, error_handler
+from feat.common import fiber, error_handler
+from feat.agents.application import feat
 
 from feat.agencies import periodic
 from feat.agents.monitor.interface import *
@@ -30,7 +31,7 @@ from feat.interface.agent import *
 from feat.interface.task import *
 
 
-@serialization.register
+@feat.register_restorator
 class Pacemaker(labour.BaseLabour):
 
     classProvides(IPacemakerFactory)
@@ -72,7 +73,7 @@ class Pacemaker(labour.BaseLabour):
         return False
 
 
-@serialization.register
+@feat.register_restorator
 class FakePacemaker(labour.BaseLabour):
 
     classProvides(IPacemakerFactory)

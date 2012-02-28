@@ -22,7 +22,7 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.agents.base import (descriptor, replay, task)
+from feat.agents.base import descriptor, replay, task
 from feat.agencies.tasks import TaskState, NOT_DONE_YET
 from feat.common import defer
 from feat.interface import protocols

@@ -28,7 +28,7 @@ import types
 from zope.interface import implements
 from zope.interface.interface import InterfaceClass
 
-from feat.common import decorator, enum, adapter, reflect
+from feat.common import decorator, enum, adapter, reflect, registry
 from feat.interface.serialization import ISerializable, Capabilities
 from feat.interface.serialization import ISnapshotable, IFreezer, IConverter
 from feat.interface.serialization import IRegistry, IExternalizer, IRestorator
@@ -95,7 +95,7 @@ def register(restorator):
 
 def lookup(type_name):
     global _global_registry
-    return _global_registry.lookup_restorator(type_name)
+    return _global_registry.lookup(type_name)
 
 
 def get_registry():
@@ -245,27 +245,14 @@ class ImmutableSerializable(Snapshotable):
         pass
 
 
-class Registry(object):
+class Registry(registry.BaseRegistry):
     """Keep track of L{IRestorator}. Used by unserializers."""
 
     implements(IRegistry)
 
-    def __init__(self, *restorators):
-        self._restorators = {} # {TYPE_NAME: IRestorator}
-        for restorator in restorators:
-            self.register(restorator)
-
-    ### IRegistry ###
-
-    def clone(self):
-        return type(self)(*self._restorators.values())
-
-    def register(self, restorator):
-        r = IRestorator(restorator)
-        self._restorators[r.type_name] = r
-
-    def lookup(self, type_name):
-        return self._restorators.get(type_name)
+    allow_blank_application = True
+    verify_interface = IRestorator
+    key_attribute = 'type_name'
 
 
 class Externalizer(object):

@@ -22,7 +22,8 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.common import enum
-from feat.agents.base import replay, poster, message, recipient
+from feat.agents.base import replay, poster
+from feat.agencies import message, recipient
 from feat.interface.protocols import *
 
 

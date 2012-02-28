@@ -19,11 +19,12 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import (requester, replay, message, document,
-                              manager, descriptor, )
+from feat.agents.base import requester, replay, manager, descriptor
+from feat.agencies import message, document
 from feat.common import fiber
 from feat.interface.agent import Access, Address, Storage
 from feat.interface.recipient import IRecipient
+from feat.agents.application import feat
 
 
 __all__ = ['start_agent', 'start_agent_in_shard', 'check_categories',
@@ -98,10 +99,10 @@ DEFAULT_CATEGORIES = {'access': Access.none,
 DEFAULT_PORTS_RANGES = {'misc': (8000, 9000)}
 
 
-@document.register
+@feat.register_restorator
 class HostDef(document.Document):
 
-    document_type = "hostdef"
+    type_name = "hostdef"
 
     # The resources available for this host type.
     document.field('resources', DEFAULT_RESOURCES)
@@ -227,7 +228,7 @@ class StartAgentRequester(requester.BaseRequester):
         return reply.payload['agent']
 
 
-@descriptor.register("host_agent")
+@feat.register_descriptor("host_agent")
 class Descriptor(descriptor.Descriptor):
 
     @property

@@ -26,11 +26,13 @@ import sys
 
 import feat
 from feat.agents.base import (agent, replay, manager, contractor,
-                              message, task, document, dbtools, sender, )
+                              task, dbtools, sender, )
+from feat.agencies import message, document
 from feat.agents.common import (rpc, export, host, start_agent, )
 from feat.common import (formatable, serialization, log, fiber,
                          text_helper, manhole, first, )
 from feat.agents.migration import protocol, spec
+from feat.agents.application import feat
 
 from feat.interface.recipient import IRecipients, IRecipient
 
@@ -42,7 +44,7 @@ class Partners(agent.Partners):
     pass
 
 
-@agent.register('export_agent')
+@feat.register_agent('export_agent')
 class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     partners_class = Partners
@@ -388,7 +390,7 @@ class ApplyMigrationStep(task.BaseTask):
         mig_recp = state.migration.get_migration_agent()
         if mig_recp is None:
             return fiber.succeed()
-        cmd = spec.HandleImport(agent_type=state.descriptor.document_type,
+        cmd = spec.HandleImport(agent_type=state.descriptor.type_name,
                                 blackbox=blackbox)
         req = state.agent.initiate_protocol(protocol.Requester, mig_recp, cmd)
         f = req.notify_finish()
@@ -528,7 +530,7 @@ class RecursiveDependency(BaseNotMigratable):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class MigrationStep(formatable.Formatable):
 
     formatable.field('recipient', None)
@@ -556,7 +558,7 @@ class MigrationStep(formatable.Formatable):
         self.applied = True
 
 
-@serialization.register
+@feat.register_restorator
 class CheckinList(serialization.Serializable, log.Logger):
 
     type_name = 'export-checkin-list'
@@ -677,10 +679,12 @@ class CheckinList(serialization.Serializable, log.Logger):
         return self.data != other.data
 
 
-@serialization.register
+@feat.register_restorator
 class Migration(replay.Replayable):
 
     ignored_state_keys = ['agent']
+
+    application = feat
 
     def init_state(self, state, agent, host_cmd=None, migration_agent=None):
         state.agent = agent
@@ -849,14 +853,14 @@ class Migration(replay.Replayable):
         return str(uuid.uuid1())
 
 
-@document.register
+@feat.register_restorator
 class ExportAgentConfiguration(document.Document):
 
-    document_type = 'export_agent_conf'
+    type_name = 'export_agent_conf'
     document.field('doc_id', u'export_agent_conf', '_id')
     document.field('notification_period', 12)
     document.field('default_host_cmd', '/bin/true')
     document.field('sitename', 'local')
 
 
-dbtools.initial_data(ExportAgentConfiguration)
+feat.initial_data(ExportAgentConfiguration)

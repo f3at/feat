@@ -23,13 +23,14 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat import everything
 from feat.common import first
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.agents.base import recipient, dbtools
+from feat.agents.base import dbtools
+from feat.agencies import recipient
 from feat.agents.common import host, raage
 from feat.interface.agent import Access, Address, Storage
+from feat.agents.application import feat
 
 
 def checkAllocation(test, agent, resources):
@@ -273,10 +274,11 @@ class ContractNestingSimulation(common.SimulationTest):
     timeout = 40
 
     def setUp(self):
-        config = everything.shard_agent.ShardAgentConfiguration(
+        from feat.agents.shard.shard_agent import ShardAgentConfiguration
+        config = ShardAgentConfiguration(
             doc_id = u'test-config',
             hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 

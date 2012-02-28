@@ -21,8 +21,9 @@
 # Headers in this file shall remain intact.
 import uuid
 
-from feat.common import serialization, fiber, defer, journal
+from feat.common import serialization, fiber, defer
 from feat.agents.base import replay
+from feat.agents.application import feat
 
 
 class TimeoutError(Exception):
@@ -38,7 +39,7 @@ class Notification(object):
         self.cancellation_id = None
 
 
-@serialization.register
+@feat.register_restorator
 class AgentNotifier(serialization.Serializable):
 
     def __init__(self, agent):

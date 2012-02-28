@@ -28,7 +28,8 @@ import time
 from twisted.internet import defer
 from zope.interface import implements
 
-from feat.agents.base import descriptor, requester, message, replier, replay
+from feat.agents.base import descriptor, requester, replier, replay
+from feat.agencies import message
 from feat.interface.agency import ExecMode
 
 from feat.agencies.interface import NotFoundError

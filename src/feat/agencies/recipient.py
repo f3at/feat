@@ -20,18 +20,16 @@
 
 # Headers in this file shall remain intact.
 import uuid
-from types import NoneType
 import warnings
 
-from twisted.python import components
 from zope.interface import implements
 from twisted.spread import pb
 
-from feat.agents.base import message, descriptor
-from feat.interface.agent import *
-from feat.interface.recipient import *
+from feat.agencies import message
 from feat.common import serialization, adapter
 
+from feat.interface.agent import IAgent, IAgencyAgent, IDescriptor
+from feat.interface.recipient import IRecipient, IRecipients, RecipientType
 
 '''
 Provides interfaces for specifing the recipients of messages.
@@ -135,6 +133,8 @@ class Broadcast(BaseRecipient):
         return RecipientType.broadcast
 
 
+@adapter.register(None, IRecipients)
+@adapter.register(list, IRecipients)
 @serialization.register
 class Recipients(serialization.ImmutableSerializable, pb.Copyable):
 
@@ -185,10 +185,6 @@ class Recipients(serialization.ImmutableSerializable, pb.Copyable):
         return self._recipients.__iter__()
 
 
-components.registerAdapter(Recipients, list, IRecipients)
-components.registerAdapter(Recipients, NoneType, IRecipients)
-
-
 class Agent(Recipient):
 
     type_name = 'recipient'
@@ -221,19 +217,19 @@ class RecipientFromMessage(Recipient):
                            message.reply_to.route)
 
 
-@adapter.register(descriptor.Descriptor, IRecipient)
-@adapter.register(descriptor.Descriptor, IRecipients)
-class RecipientFromDescriptor(Recipient):
-
-    type_name = 'recipient'
-
-    def __init__(self, desc):
-        BaseRecipient.__init__(self, desc.doc_id, desc.shard)
-
-
 def dummy_agent():
     '''
     For usage in tests only. Easy way of getting a unique but valid
     recipient.
     '''
     return Agent(str(uuid.uuid1()), 'shard')
+
+
+@adapter.register(IDescriptor, IRecipient)
+@adapter.register(IDescriptor, IRecipients)
+class RecipientFromDescriptor(Recipient):
+
+    type_name = 'recipient'
+
+    def __init__(self, desc):
+        Recipient.__init__(self, desc.doc_id, desc.shard)

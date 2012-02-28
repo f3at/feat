@@ -23,9 +23,10 @@ from feat.test.integration import common
 from feat.common import defer, text_helper, first
 from feat.agents.export import export_agent
 from feat.agents.shard import shard_agent
-from feat.agents.base import (agent, descriptor, replay, recipient, alert,
-                              dbtools, )
+from feat.agents.base import agent, descriptor, replay, alert, dbtools
 from feat.agents.common import export
+from feat.agencies import recipient
+from feat.agents.application import feat
 
 from feat.interface.agent import *
 
@@ -56,24 +57,24 @@ class TestAgent(agent.BaseAgent):
             entry.add_dependency(partner.recipient.key)
 
 
-@agent.register('test_worker_agent')
+@feat.register_agent('test_worker_agent')
 class ShutdownAgent(TestAgent):
 
     migratability = export.Migratability.shutdown
 
 
-@descriptor.register('test_worker_agent')
+@feat.register_descriptor('test_worker_agent')
 class Desc1(descriptor.Descriptor):
     pass
 
 
-@agent.register('test_signal_agent')
+@feat.register_agent('test_signal_agent')
 class ExportableAgent(TestAgent):
 
     migratability = export.Migratability.exportable
 
 
-@descriptor.register('test_signal_agent')
+@feat.register_descriptor('test_signal_agent')
 class Desc2(descriptor.Descriptor):
     pass
 
@@ -101,7 +102,7 @@ class ExportTest(common.SimulationTest, Common):
         config = export_agent.ExportAgentConfiguration(
             doc_id = 'test-config',
             notification_period = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('export_agent', config)
         return common.SimulationTest.setUp(self)
 
@@ -341,13 +342,13 @@ class TestShutingDownShard(common.SimulationTest, Common):
         config = export_agent.ExportAgentConfiguration(
             doc_id = 'test-export-config',
             notification_period = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('export_agent', config)
 
         config = shard_agent.ShardAgentConfiguration(
             doc_id = 'test-shard-config',
             hosts_per_shard = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
 
         return common.SimulationTest.setUp(self)

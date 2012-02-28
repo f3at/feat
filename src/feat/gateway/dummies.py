@@ -24,6 +24,7 @@ import os
 
 from feat.agents.base import agent, descriptor
 from feat.agents.common import monitor
+from feat.gateway.application import featmodels
 
 
 class StandalonePartners(agent.Partners):
@@ -59,61 +60,61 @@ class DummyAgent(agent.BaseAgent):
         self.startup_monitoring()
 
 
-@descriptor.register('dummy_buryme_standalone')
+@featmodels.register_descriptor('dummy_buryme_standalone')
 class DummyBuryMeStandaloneDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_buryme_standalone')
+@featmodels.register_agent('dummy_buryme_standalone')
 class DummyBuryMeStandalone(DummyStandalone):
     restart_strategy = monitor.RestartStrategy.buryme
 
 
-@descriptor.register('dummy_local_standalone')
+@featmodels.register_descriptor('dummy_local_standalone')
 class DummyLocalStandaloneDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_local_standalone')
+@featmodels.register_agent('dummy_local_standalone')
 class DummyLocalStandalone(DummyStandalone):
     restart_strategy = monitor.RestartStrategy.local
 
 
-@descriptor.register('dummy_wherever_standalone')
+@featmodels.register_descriptor('dummy_wherever_standalone')
 class DummyWhereverStandaloneDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_wherever_standalone')
+@featmodels.register_agent('dummy_wherever_standalone')
 class DummyWhereverStandalone(DummyStandalone):
     restart_strategy = monitor.RestartStrategy.wherever
 
 
-@descriptor.register('dummy_buryme_agent')
+@featmodels.register_descriptor('dummy_buryme_agent')
 class DummyBuryMeAgentDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_buryme_agent')
+@featmodels.register_agent('dummy_buryme_agent')
 class DummyBuryMeAgent(DummyAgent):
     restart_strategy = monitor.RestartStrategy.buryme
 
 
-@descriptor.register('dummy_local_agent')
+@featmodels.register_descriptor('dummy_local_agent')
 class DummyLocalAgentDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_local_agent')
+@featmodels.register_agent('dummy_local_agent')
 class DummyLocalAgent(DummyAgent):
     restart_strategy = monitor.RestartStrategy.local
 
 
-@descriptor.register('dummy_wherever_agent')
+@featmodels.register_descriptor('dummy_wherever_agent')
 class DummyWhereverAgentDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('dummy_wherever_agent')
+@featmodels.register_agent('dummy_wherever_agent')
 class DummyWhereverAgent(DummyAgent):
     restart_strategy = monitor.RestartStrategy.wherever

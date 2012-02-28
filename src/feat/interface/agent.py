@@ -24,7 +24,7 @@ from feat.common import enum
 
 __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
            "AgencyAgentState", "Access", "Address", "Storage",
-           "CategoryError"]
+           "CategoryError", "IDocument"]
 
 
 class CategoryError(RuntimeError):
@@ -231,8 +231,6 @@ class IAgencyAgent(Interface):
     def get_document(document_id):
         '''
         Download the document from the database and instantiate it.
-        The document should have the 'document_type' basing on which we decide
-        which subclass of L{feat.agents.document.Document} to instantiate.
 
         @param document_id: The id of the document in the database.
         @returns: The Deffered called with the instance representing downloaded
@@ -429,3 +427,90 @@ class IAgent(Interface):
         Called when both connections to messaging and database are restored.
         Calls on_reconnect() methods from MRO  in reverse-mro order.
         '''
+
+
+class IDocument(Interface):
+    '''Interface implemented by objects stored in database.'''
+
+    type_name = Attribute('type identifying the document')
+    doc_id = Attribute('id of the docuemnt')
+    rev = Attribute('revision of the document')
+
+
+class IVersionedDocument(IDocument):
+
+    version = Attribute('C{int} current version')
+
+
+class IDescriptor(IDocument):
+    '''Interface implemented by the documents holding persitent state of the
+    agent'''
+
+    shard = Attribute('C{unicode} Shard the agent runs in')
+    instance_id = Attribute('C{int} counter of agent incarnation')
+    resources = Attribute('C{dict} name -> IAllocatedResource '
+                          'resources allocated by HA for this agent')
+    under_restart = Attribute('C{bool} flag saying that the agent is '
+                              'being restarted right now my the monitor')
+    partners = Attribute('C{list} of IPartner')
+
+
+class IPartner(Interface):
+
+    recipient = Attribute('IRecipient of the agent on the other side')
+    allocation_id = Attribute('C{int} id of the allocation representing this '
+                              'partnership (or None)')
+    role = Attribute('C{unicode} optional role identifier')
+
+    def initiate(agent):
+        """After returning a synchronous result or when the returned fiber
+        is finished the partner is stored to descriptor."""
+
+    def on_shutdown(agent):
+        pass
+
+    def on_goodbye(agent, brothers):
+        '''
+        Called when the partner goes through the termination procedure.
+        @param brothers: The list of the partner of the same class
+                         of the agent.
+        '''
+
+    def on_breakup(agent):
+        '''
+        Called when we have successfully broken up with the partner.
+        '''
+
+    def on_died(agent, brothers, monitor):
+        '''
+        Called by the monitoring agent, when he detects that the partner has
+        died. If your handler is going to solve this problem return the
+        L{feat.agents.base.partners.ResponsabilityAccepted} instance.
+
+        @param brothers: Same as in on_goodbye.
+        @param monitor: IRecipient of monitoring agent who notified us about
+                        this unfortunate event
+        '''
+
+    def on_restarted(agent, old_recipient):
+        '''
+        Called after the partner is restarted by the monitoring agent.
+        After returning a synchronous result or when the returned fiber
+        is finished the partner is stored to descriptor.
+        @param migrated: Flag saying whether the IRecipient of partner has
+                         changed
+        '''
+
+    def on_buried(agent, brothers=None):
+        '''
+        Called when all the hope is lost. Noone took the responsability for
+        handling the agents death, and monitoring agent failed to restart it.
+
+        @param payload: Same as in on_goodbye.
+        '''
+
+
+class IMonitorAgent(IAgent):
+    '''Point of defining this interface is to be have a interface type to
+    adapt agent class to IModel without the instance checks. Without this
+    adaptation will not work after reloading the feat module.'''

@@ -25,11 +25,11 @@ import StringIO
 import uuid
 
 from feat.common import log, manhole, defer, reflect, time
-from feat.agencies import journaler
+from feat.agencies import journaler, document
 from feat.agencies.emu import database
 from feat.agencies.messaging import emu, rabbitmq, tunneling
 from feat.test import factories
-from feat.agents.base import document, dbtools
+from feat.agents.base import dbtools
 from feat.agents.shard import shard_agent
 from feat.simulation import agency
 
@@ -101,15 +101,15 @@ class Commands(manhole.Manhole):
         return str(uuid.uuid1())
 
     @manhole.expose()
-    def descriptor_factory(self, document_type, shard=u'lobby', **kwargs):
+    def descriptor_factory(self, type_name, shard=u'lobby', **kwargs):
         """
         Creates and returns a descriptor to pass it later
         for starting the agent.
-        First parameter is a document_type representing the descirptor.
+        First parameter is a type_name representing the descirptor.
         Second parameter is optional (default lobby). Usage:
         > descriptor_factory('shard_descriptor', 'some shard')
         """
-        desc = factories.build(document_type, shard=unicode(shard), **kwargs)
+        desc = factories.build(type_name, shard=unicode(shard), **kwargs)
         return self._database_connection.save_document(desc)
 
     @manhole.expose()

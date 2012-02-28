@@ -26,9 +26,9 @@ import uuid
 from twisted.python import components, failure
 from zope.interface import implements
 
-from feat.agents.base import message, recipient, replay
-from feat.common import log, enum, time, serialization, defer
-from feat.agencies import common, protocols
+from feat.agents.base import replay
+from feat.common import log, enum, time, serialization, defer, adapter
+from feat.agencies import common, protocols, message, recipient
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -711,30 +711,18 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
         d.addCallback(self._terminate)
 
 
+@adapter.register(IManagerFactory, IAgencyInitiatorFactory)
 class AgencyManagerFactory(protocols.BaseInitiatorFactory):
     type_name = "manager-medium-factory"
     protocol_factory = AgencyManager
 
 
-components.registerAdapter(AgencyManagerFactory,
-                           IManagerFactory,
-                           IAgencyInitiatorFactory)
-
-
+@adapter.register(IContractorFactory, IAgencyInterestInternalFactory)
 class AgencyContractorInterest(protocols.DialogInterest):
     pass
 
 
-components.registerAdapter(AgencyContractorInterest,
-                           IContractorFactory,
-                           IAgencyInterestInternalFactory)
-
-
+@adapter.register(IContractorFactory, IAgencyInterestedFactory)
 class AgencyContractorFactory(protocols.BaseInterestedFactory):
     type_name = "contractor-medium-factory"
     protocol_factory = AgencyContractor
-
-
-components.registerAdapter(AgencyContractorFactory,
-                           IContractorFactory,
-                           IAgencyInterestedFactory)

@@ -786,6 +786,8 @@ class TestJournaling(common.TestCase):
 
         return d
 
+    @common.attr(skip=
+                 "TODO: this behavior is switched off as a WIP on updates")
     def testErrors(self):
         # Check initialization errors
         self.assertTrue(duplicated_function_error1)
