@@ -155,8 +155,20 @@ class ListeningPort(log.Logger):
 
         try:
             public_key_str = file(public_key).read()
+        except IOError as e:
+            self.sshFactory = None
+            self.warning("Failed to setup the manhole. File '%s' missing. %r",
+                public_key, e)
+            return
+        try:
             private_key_str = file(private_key).read()
+        except IOError as e:
+            self.sshFactory = None
+            self.warning("Failed to setup the manhole. File '%s' missing. %r",
+                private_key, e)
+            return
 
+        try:
             self.sshFactory = factory.SSHFactory()
             self.sshFactory.portal = portal.Portal(SSHRealm(parser_factory))
             self.sshFactory.portal.registerChecker(KeyChecker(authorized_keys))
@@ -167,7 +179,7 @@ class ListeningPort(log.Logger):
                 'ssh-rsa': keys.Key.fromString(data=private_key_str)}
         except IOError as e:
             self.sshFactory = None
-            self.error('Failed to setup the manhole. File missing. %r', e)
+            self.warning('Failed to setup the manhole. File missing. %r', e)
             return
 
     def start_listening(self):
