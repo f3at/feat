@@ -1,0 +1,5 @@
+- log as INFO level each service configured or provided what port it uses
+  - couchdb
+  - gateway
+  - manhole
+- fix service script madness
