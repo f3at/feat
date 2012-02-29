@@ -94,7 +94,8 @@ def add_options(parser):
     options.add_options(parser)
 
 
-def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
+def bootstrap(parser=None, args=None, descriptors=None, init_callback=None,
+        logging=True):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
         added to the parser; if not specified or None
@@ -107,6 +108,10 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
         of the host agent; if not specified or None
         no additional agents will be started
     @type  descriptors: [Descriptor()] or None
+    @type  logging: whether to enable logging; use False if you set up logging
+                    beforehand.
+    @param logging: bool
+
     @return: the deferred of the bootstrap chain
     @rtype:  defer.Deferred()"""
 
@@ -114,7 +119,7 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
         parser = optparse.OptionParser()
         options.add_options(parser)
 
-    with _Bootstrap(parser=parser, args=args) as bootstrap:
+    with _Bootstrap(parser=parser, args=args, logging=logging) as bootstrap:
         agency = bootstrap.agency
         opts = bootstrap.opts
         args = bootstrap.args
@@ -184,19 +189,22 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
 
 class _Bootstrap(object):
 
-    def __init__(self, parser=None, args=None):
+    def __init__(self, parser=None, args=None, logging=True):
         self._parser = parser
         self.args = args
         self.opts = None
         self.agency = None
+        self.logging = logging
 
     def __enter__(self):
-        tee = log.init()
-        tee.add_keeper('buffer', log.LogBuffer(limit=10000))
+        if self.logging:
+            tee = log.init()
+            tee.add_keeper('buffer', log.LogBuffer(limit=10000))
         self._parse_opts()
 
-        if self.opts.debug:
-            log.FluLogKeeper.set_debug(self.opts.debug)
+        if self.logging:
+            if self.opts.debug:
+                log.FluLogKeeper.set_debug(self.opts.debug)
         self.agency = self._run_agency()
         return self
 
@@ -210,10 +218,11 @@ class _Bootstrap(object):
             # dump all the log entries logged so far to the FluLogKeeper again
             # the reason for this is that we want them to be included in text
             # file (so far they have been printed to the console)
-            tee = log.get_default()
-            buff = tee.get_keeper('buffer')
-            flulog = tee.get_keeper('flulog')
-            buff.dump(flulog)
+            if self.logging:
+                tee = log.get_default()
+                buff = tee.get_keeper('buffer')
+                flulog = tee.get_keeper('flulog')
+                buff.dump(flulog)
         reactor.run()
 
     def _parse_opts(self):
