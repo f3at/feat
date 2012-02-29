@@ -225,6 +225,7 @@ def get_pidpath(rundir, process_type, name=None):
     """
     Get the full path to the pid file for the given process type and name.
     """
+    assert rundir, "rundir is not configured"
     path = os.path.join(rundir, '%s.pid' % process_type)
     if name:
         path = os.path.join(rundir, '%s.%s.pid' % (process_type, name))
