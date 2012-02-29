@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.16
 %define unmangled_version 0.16
-%define build_rev 0
+%define build_rev 2
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -54,7 +54,9 @@ install -m 640 \
         conf/redhat/feat.sysconfig \
         $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/feat
 
-# Create log and run directory
+# Create support directories
+install -d $RPM_BUILD_ROOT%{_localstatedir}/lib/feat
+install -d $RPM_BUILD_ROOT%{_localstatedir}/lock/feat
 install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
 install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 
@@ -153,12 +155,18 @@ fi
 %{_datadir}/python-feat/*
 
 %attr(775,root,feat) %{_sysconfdir}/feat
-%attr(775,root,feat) %{_localstatedir}/run/feat
+%attr(775,root,feat) %{_localstatedir}/lib/feat
+%attr(775,root,feat) %{_localstatedir}/lock/feat
 %attr(775,root,feat) %{_localstatedir}/log/feat
+%attr(775,root,feat) %{_localstatedir}/run/feat
 %attr(770,feat,feat) %{_localstatedir}/cache/feat
 
 
 %changelog
+* Wed Feb 29 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.16-2
+- Create directories for sockets and locks
+
 * Mon Jan 16 2012 Sebastien Merle <s.merle@gmail.com>
 - 0.16-1
 - Updated the spec file to reflect setuptools changes.
