@@ -196,11 +196,11 @@ def add_db_options(parser):
                            "(default: %s)" % DEFAULT_DB_HOST),
                      metavar="HOST")
     group.add_option('-P', '--dbport', dest="db_port",
-                     help=("port of messaging server to connect to "
+                     help=("port of database server to connect to "
                            "(default: %s)" % DEFAULT_DB_PORT),
                      metavar="PORT", type="int")
     group.add_option('-N', '--dbname', dest="db_name",
-                     help=("host of database server to connect to "
+                     help=("name of database to use "
                            "(default: %s)" % DEFAULT_DB_NAME),
                      metavar="NAME")
     parser.add_option_group(group)
