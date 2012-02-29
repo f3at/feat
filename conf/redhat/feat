@@ -47,8 +47,8 @@ case "$1" in
         stop
         ;;
   restart|reload)
-        stop
-        start
+        $PROG -C $CONF restart
+        RETVAL=$?
         ;;
   status)
         status
