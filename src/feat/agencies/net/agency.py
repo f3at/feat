@@ -77,11 +77,15 @@ class Startup(agency.Startup):
         # at this point in future if we decide not to log to text files
         # we should remove the 'flulog' keeper from the tee as well
         tee = log.get_default()
-        buff = tee.get_keeper('buffer')
-        buff.dump(self._journaler)
-        buff.clean()
-        tee.remove_keeper('buffer')
-        tee.add_keeper('journaler', self._journaler)
+        # FIXME: get_keeper is not an ILogWhatever method, only Tee has it
+        try:
+            buff = tee.get_keeper('buffer')
+            buff.dump(self._journaler)
+            buff.clean()
+            tee.remove_keeper('buffer')
+            tee.add_keeper('journaler', self._journaler)
+        except AttributeError:
+            self.warning('Programmer error, interface disrespect')
 
     def stage_private(self):
         reactor.addSystemEventTrigger('before', 'shutdown',
