@@ -47,7 +47,9 @@ case "$1" in
         stop
         ;;
   restart|reload)
-        $PROG -C $CONF restart
+	# fixme: feat-service restart should just spawn off a new feat instead
+        # of being it itself; right now it does not finish, so we need daemon
+        daemon --user $USER $PROG -D -C $CONF restart 2> /dev/null
         RETVAL=$?
         ;;
   status)
