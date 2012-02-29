@@ -365,9 +365,11 @@ class Agency(agency.Agency):
                          logfile, linkname, error.get_exception_message(e))
 
     def _sigusr1_handler(self, _signum, _frame):
+        self.info("Process received signal USR1")
         self.full_kill(stop_process=True)
 
     def _sigusr2_handler(self, _signum, _frame):
+        self.info("Process received signal USR2")
         self.full_shutdown(stop_process=True)
 
     def on_broker_disconnect(self, pre_state):
