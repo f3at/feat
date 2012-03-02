@@ -37,18 +37,17 @@ def setup_log(debug):
     if debug:
         log.FluLogKeeper.set_debug(debug)
 
-def start(args):
-        bootstrap.bootstrap(args=args[:-1])
+def start(args, logging=True):
+        bootstrap.bootstrap(args=args[:-1], logging=logging)
 
 def stop(options, sig=signal.SIGUSR1):
-    setup_log(options.debug)
     # It will still not work if the option is set from environment
     rundir = options.agency_rundir or options_module.DEFAULT_RUNDIR
     pid = run.get_pid(rundir)
     if pid is None:
         sys.stderr.write("PID file not found!\n")
         sys.exit(1)
-    if not run.signal_pid(pid, signal.SIGUSR1):
+    if not run.signal_pid(pid, sig):
         sys.stderr.write("Process with PID %d not found!\n" % (pid, ))
         sys.exit(1)
     while run.get_pid(rundir):
@@ -80,7 +79,11 @@ restart restarts feat gently, so agents can restart on the same host.
         start(args)
         return
 
-    options, args = parser.parse_args()
+    options, new_args = parser.parse_args()
+
+    # stop cannot work without logging setup, and start by default sets up
+    # logging again and fails
+    setup_log(options.debug)
 
     if command == 'stop':
         stop(options, signal.SIGUSR1)
@@ -88,11 +91,10 @@ restart restarts feat gently, so agents can restart on the same host.
 
     if command == 'restart':
         stop(options, signal.SIGUSR2)
-        start(args)
+        start(args, logging=False)
         return
 
     if command == 'status':
-        setup_log(options.debug)
         run.status(processName='', rundir=options.agency_rundir)
         return
 
