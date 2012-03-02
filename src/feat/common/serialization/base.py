@@ -103,9 +103,8 @@ def get_registry():
     return _global_registry
 
 
-@adapter.register(object, ISnapshotable)
 class SnapshotableAdapter(object):
-    """Make any object a L{ISnapshotable} that return itself as snapshot."""
+    """Make basic types a L{ISnapshotable} that return itself as snapshot."""
 
     implements(ISnapshotable)
 
@@ -116,6 +115,10 @@ class SnapshotableAdapter(object):
 
     def snapshot(self):
         return self.value
+
+basic_types = (int, str, unicode, float, type, bool, types.NoneType)
+for adapted in basic_types:
+    adapter.register(adapted, ISnapshotable)
 
 
 class MetaVersionAdapter(type):
