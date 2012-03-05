@@ -216,8 +216,9 @@ class JournalReplayEntry(object):
 
             return self
         except Exception as e:
-            self._replay.error("Failed trying to apply instance %r entry %r: "
-                               "%s" % (self.journal_id, self.function_id, e))
+            error.handle_exception(
+                'replay', e, "Failed trying to apply instance %r entry %r: ",
+                self.journal_id, self.function_id)
             raise
 
     def to_string(self, header=""):
