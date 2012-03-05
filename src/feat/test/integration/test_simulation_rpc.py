@@ -27,16 +27,17 @@ from feat.test.integration import common
 from feat.agents.base import agent, descriptor, replay
 from feat.agents.common import rpc
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 from feat.interface.recipient import *
 
 
-@descriptor.register("rpc_test_agent")
+@feat.register_descriptor("rpc_test_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("rpc_test_agent")
+@feat.register_agent("rpc_test_agent")
 class Agent(agent.BaseAgent):
 
     @replay.mutable

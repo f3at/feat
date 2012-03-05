@@ -29,7 +29,8 @@ from twisted.python import failure
 from zope.interface import Interface, implements
 
 from feat.agents.base import replay, notifier, view
-from feat.common import log, serialization, fiber, defer
+from feat.common import log, fiber, defer
+from feat.agents.application import feat
 
 from feat.agencies.interface import NotFoundError, ConflictError
 from feat.interface.view import IViewFactory
@@ -86,7 +87,7 @@ class ResignFromModifying(Exception):
     pass
 
 
-@view.register
+@feat.register_view
 class DocumentDeletions(view.BaseView):
 
     name = 'deletions'
@@ -95,7 +96,7 @@ class DocumentDeletions(view.BaseView):
         return doc.get('_deleted', False)
 
 
-@serialization.register
+@feat.register_restorator
 class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     """
     I'm a utility one can keep in his state to keep track of the set of
@@ -104,6 +105,8 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     """
 
     ignored_state_keys = ['agent', 'listener']
+
+    application = feat
 
     def __init__(self, patron, listener=None,
                  view_factory=None, filter_params=None):
@@ -256,7 +259,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
             return f
 
 
-@serialization.register
+@feat.register_restorator
 class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
     """
     I'm a utility used for performing the updates of the documents in
@@ -268,6 +271,8 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
     """
 
     ignored_state_keys = ['queue_holder', 'cache', 'medium', 'notifier']
+
+    application = feat
 
     def __init__(self, queue_holder, cache, medium):
         log.LogProxy.__init__(self, cache)
@@ -395,7 +400,7 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
         state.working = flag
 
 
-@serialization.register
+@feat.register_restorator
 class DescriptorQueueHolder(replay.Replayable, log.Logger, log.LogProxy):
     """
     I'm an object storing the queue of function calls which will be performed
@@ -404,6 +409,8 @@ class DescriptorQueueHolder(replay.Replayable, log.Logger, log.LogProxy):
     """
 
     ignored_state_keys = ['agent']
+
+    application = feat
 
     implements(IQueueHolder)
 

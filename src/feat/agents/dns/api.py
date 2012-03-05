@@ -2,7 +2,7 @@ import socket
 
 from feat.agents.base import view
 from feat.agents.common import start_agent
-from feat.common import serialization, defer, first
+from feat.common import defer, first
 
 from feat.models import model, getter, call, reference, value, action, response
 from feat.gateway import models
@@ -12,10 +12,11 @@ from feat.agents.dns.interface import RecordType
 from feat.agents.dns import dns_agent
 from feat.models.interface import ActionCategories
 from feat.interface.recipient import IRecipient
+from feat.agents.application import feat
 
 
-@view.register
-@serialization.register
+@feat.register_view
+@feat.register_restorator
 class DnsZones(view.FormatableView):
 
     name = 'dns_zones'
@@ -42,6 +43,7 @@ class DnsZones(view.FormatableView):
     view.field('port', None)
 
 
+@feat.register_model
 class Root(model.Model):
     model.identity('apps.dns')
 
@@ -130,6 +132,7 @@ class SpawnServer(action.Action):
             return reference.Relative('servers', value.key)
 
 
+@feat.register_model
 class Servers(model.Collection):
     model.identity('apps.dns.servers')
 
@@ -173,6 +176,7 @@ class Servers(model.Collection):
         defer.returnValue(res)
 
 
+@feat.register_model
 class Server(model.Model):
     model.identity('apps.dns.servers.id')
     model.attribute('port', value.Integer(), call.source_call('get_port'))
@@ -190,6 +194,7 @@ class Server(model.Model):
         return reference.Local('apps', 'dns', 'servers')
 
 
+@feat.register_model
 class Entries(model.Collection):
     model.identity('apps.dns.entries')
 
@@ -262,6 +267,7 @@ class CreateEntry(action.Action):
         return reference.Relative(self.model.source.get_suffix())
 
 
+@feat.register_model
 class EntrySuffix(model.Collection):
     model.identity('apps.dns.entries.suffix')
 
@@ -277,6 +283,7 @@ class EntrySuffix(model.Collection):
         return ret
 
 
+@feat.register_model
 class DnsName(model.Collection):
     model.identity('apps.dns.entries.suffix.name')
 
@@ -318,6 +325,7 @@ class DeleteEntry(action.Action):
         return reference.Local('apps', 'dns', 'entries', suffix)
 
 
+@feat.register_model
 class DnsName(model.Model):
     model.identity('apps.dns.entries.suffix.name.entry')
 

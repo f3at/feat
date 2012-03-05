@@ -23,14 +23,16 @@
 # vi:si:et:sw=4:sts=4:ts=4
 
 from feat.agents.base import (agent, contractor, manager, partners,
-                              message, replay, notifier)
+                              replay, notifier)
+from feat.agencies import message
 from feat.agents.common import rpc, shard, monitor, export
-from feat.common import fiber, serialization
+from feat.common import fiber
 from feat.interface.contracts import ContractState
 from feat.interface.protocols import InterestType
+from feat.agents.application import feat
 
 
-@serialization.register
+@feat.register_restorator
 class ShardPartner(agent.BasePartner):
 
     type_name = 'raage->shard'
@@ -41,7 +43,7 @@ class Partners(agent.Partners):
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
 
-@agent.register('raage_agent')
+@feat.register_agent('raage_agent')
 class ResourcesAllocationAgent(agent.BaseAgent):
 
     partners_class = Partners

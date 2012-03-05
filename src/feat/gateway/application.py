@@ -19,28 +19,20 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.common import decorator, serialization
 
-registry = dict()
-
-
-@decorator.parametrized_class
-def register(klass, name, configuration_id=None):
-    klass = override(name, klass, configuration_id)
-    return klass
+from feat import applications
 
 
-def registry_lookup(name):
-    global registry
-    return registry.get(name, None)
+class FeatModels(applications.Application):
 
+    name = 'featmodels'
+    version = 1
+    module_prefixes = [
+        'feat.gateway.models',
+        'feat.gateway.dummies',
+        'feat.gateway.application']
+    loadlist = [
+        'feat.gateway.models',
+        'feat.gateway.dummies']
 
-def override(name, klass, configuration_id=None):
-    global registry
-    registry[name] = klass
-    doc_id = configuration_id or name + "_conf"
-    klass.descriptor_type = name
-    klass.type_name = name + ":data"
-    klass.configuration_doc_id = doc_id
-    serialization.register(klass)
-    return klass
+featmodels = FeatModels()

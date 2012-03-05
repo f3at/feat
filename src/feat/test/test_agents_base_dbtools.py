@@ -20,16 +20,21 @@
 
 # Headers in this file shall remain intact.
 from twisted.internet import defer
-from feat.agents.base import dbtools, document
+
+from feat.agents.base import dbtools
+from feat.agencies import document
 from feat.test import common
 from feat.test.integration.common import SimulationTest
 from feat.common import serialization
+from feat.agents.application import feat
+from feat import applications
 
 
-@document.register
+@serialization.register
 class SomeDocument(document.Document):
 
-    document_type = 'spam'
+    type_name = 'spam'
+    document.field('doc_id', 'somedoc', '_id')
     document.field('field1', u'default')
 
 
@@ -60,12 +65,15 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         yield common.AgencyTestHelper.setUp(self)
         self.db = self.agency._database
         self.connection = self.db.get_connection()
-        self.patch(dbtools, '_documents', list())
+        r = applications.get_initial_data_registry()
+        snapshot = r.get_snapshot()
+        self.addCleanup(r.reset, snapshot)
+        r.reset([])
 
     @defer.inlineCallbacks
     def testMigrating(self):
         serialization.register(VersionedTest1)
-        dbtools.initial_data(VersionedTest1)
+        feat.initial_data(VersionedTest1)
         yield dbtools.push_initial_data(self.connection)
         doc = yield self.connection.get_document('testdoc')
         self.assertEqual('default', doc.field1)
@@ -78,8 +86,8 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testDefiningDocument(self):
-        dbtools.initial_data(SomeDocument)
-        dbtools.initial_data(
+        feat.initial_data(SomeDocument)
+        feat.initial_data(
             SomeDocument(doc_id=u'special_id', field1=u'special'))
 
         yield dbtools.push_initial_data(self.connection)
@@ -96,7 +104,7 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
 
     def testRevertingDocuments(self):
         old = dbtools.get_current_initials()
-        dbtools.initial_data(SomeDocument)
+        feat.initial_data(SomeDocument)
         current = dbtools.get_current_initials()
         self.assertEqual(len(old) + 1, len(current))
         dbtools.reset_documents(old)
@@ -107,7 +115,7 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
 class IntegrationWithSimulation(SimulationTest):
 
     def setUp(self):
-        dbtools.initial_data(SomeDocument)
+        feat.initial_data(SomeDocument)
         return SimulationTest.setUp(self)
 
     def testItWorks(self):

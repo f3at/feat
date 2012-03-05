@@ -19,26 +19,28 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+from feat.agencies import message
 from feat.test.integration import common
 from feat.process import rabbitmq
 from feat.process.base import DependencyError
-from feat.agents.base import agent, descriptor, dependency, replay, message
+from feat.agents.base import agent, descriptor, dependency, replay
 from feat.agents.base.amqp.interface import *
 from feat.interface.agency import ExecMode
 from feat.common import fiber, manhole, defer, first
 from feat.common.text_helper import format_block
 from feat.test.common import delay, StubAgent, attr
 from feat.agencies.messaging import net
+from feat.agents.application import feat
 
 from twisted.trial.unittest import SkipTest
 
 
-@descriptor.register('test-agent')
+@feat.register_descriptor('test-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('test-agent')
+@feat.register_agent('test-agent')
 class Agent(agent.BaseAgent):
 
     dependency.register(IAMQPClientFactory,

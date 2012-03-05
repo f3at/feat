@@ -27,7 +27,7 @@ import os
 from twisted.internet import defer
 
 from feat.agencies.messaging import tunneling
-from feat.agents.base import message, recipient
+from feat.agencies import message, recipient
 from feat.common import serialization
 from feat.web import security
 

@@ -22,7 +22,8 @@
 from zope.interface import directlyProvides, Interface
 
 from feat.interface.agency import ExecMode
-from feat.agents.base import (testsuite, agent, dependency, descriptor, )
+from feat.agents.base import testsuite, agent, dependency, descriptor
+from feat.agents.application import feat
 from feat.test import common
 
 
@@ -114,7 +115,7 @@ class AgentMixin(object):
         ExecMode.test)
 
 
-@agent.register('blah_blah_blah')
+@feat.register_agent('blah_blah_blah')
 class OtherAgent(agent.BaseAgent, AgentMixin):
     '''Important is not to move this definion below AgentWithDependency.
     This is here to reproduce the bug related to annotations and it depends
@@ -122,7 +123,7 @@ class OtherAgent(agent.BaseAgent, AgentMixin):
     '''
 
 
-@agent.register('blah_blah')
+@feat.register_agent('blah_blah')
 class AgentWithDependency(agent.BaseAgent, AgentMixin):
 
     dependency.register(
@@ -133,6 +134,6 @@ class AgentWithDependency(agent.BaseAgent, AgentMixin):
         ExecMode.production)
 
 
-@descriptor.register('blah_blah')
+@feat.register_descriptor('blah_blah')
 class Descriptor(descriptor.Descriptor):
     pass

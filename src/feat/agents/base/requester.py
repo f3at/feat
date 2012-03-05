@@ -22,8 +22,10 @@
 from twisted.python.failure import Failure
 from zope.interface import implements
 
-from feat.agents.base import replay, protocols, message, recipient
+from feat.agents.base import replay, protocols
+from feat.agencies import message, recipient
 from feat.common import reflect, serialization, fiber, error_handler
+from feat.agents.application import feat
 
 from feat.interface.protocols import *
 from feat.interface.requester import *
@@ -73,7 +75,7 @@ class MetaRequester(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(MetaRequester, cls).__init__(name, bases, dct)
 
 
@@ -84,6 +86,8 @@ class BaseRequester(protocols.BaseInitiator):
     implements(IAgentRequester)
 
     protocol_type = "Request"
+
+    application = feat
 
     timeout = 0
 

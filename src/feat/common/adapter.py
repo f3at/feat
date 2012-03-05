@@ -24,6 +24,9 @@ from twisted.python import components
 from feat.common import decorator
 
 
+components.ALLOW_DUPLICATES = True
+
+
 @decorator.parametrized_class
 def register(cls, adapted, interface):
     components.registerAdapter(cls, adapted, interface)

@@ -156,6 +156,10 @@ class Node(_Base):
 array_columns_meta = 'array-columns, hostname, name, status, count'
 
 
+register = model.get_registry().register
+
+
+@register
 @adapter.register(Node, IModel)
 class NodeModel(model.Model):
 
@@ -170,6 +174,7 @@ class NodeModel(model.Model):
                      label='locations')
 
 
+@register
 @adapter.register(Location, IModel)
 class LocationModel(model.Model):
 
@@ -181,6 +186,7 @@ class LocationModel(model.Model):
                      getter.source_get('get_child'))
 
 
+@register
 class UnauthorizedModel(model.Model):
     model.identity('unauthorized')
 
@@ -216,6 +222,7 @@ class DeleteAction(action.Action):
     action.desc("Delete the agent")
 
 
+@register
 @adapter.register(Agent, IModel)
 class AgentModel(model.Model):
 

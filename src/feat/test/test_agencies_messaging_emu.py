@@ -24,7 +24,7 @@
 from twisted.internet import reactor
 
 from feat.agencies.messaging import emu
-from feat.agents.base import message, recipient
+from feat.agencies import message, recipient
 from feat.common import defer
 
 from . import common

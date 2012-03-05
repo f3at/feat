@@ -22,14 +22,15 @@
 from feat.test.integration import common
 from feat.agents.base import agent, descriptor, notifier, replay
 from feat.common import defer, text_helper, time
+from feat.agents.application import feat
 
 
-@descriptor.register('notifier-agent')
+@feat.register_descriptor('notifier-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('notifier-agent')
+@feat.register_agent('notifier-agent')
 class Agent(agent.BaseAgent, notifier.AgentMixin):
     pass
 

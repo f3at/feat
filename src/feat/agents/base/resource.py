@@ -31,6 +31,7 @@ from zope.interface import Interface, implements, Attribute, classProvides
 from feat.common import log, serialization, fiber
 from feat.agents.base import replay
 from feat.common.container import ExpDict
+from feat.agents.application import feat
 
 
 ALLOCATION_TIMEOUT = 10
@@ -120,7 +121,7 @@ class IAllocatedResource(Interface):
         """
 
 
-@serialization.register
+@feat.register_restorator
 class Range(serialization.Serializable):
     implements(IResourceDefinition)
     classProvides(IResourceDefinitionFactory)
@@ -233,7 +234,7 @@ class Range(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class Scalar(serialization.Serializable):
     implements(IResourceDefinition)
     classProvides(IResourceDefinitionFactory)
@@ -309,7 +310,7 @@ class Scalar(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class AllocatedRange(serialization.Serializable):
     implements(IAllocatedResource)
 
@@ -365,7 +366,7 @@ class AllocatedRange(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class AllocatedScalar(serialization.Serializable):
     implements(IAllocatedResource)
 
@@ -409,19 +410,19 @@ class AllocatedScalar(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class ScalarModification(AllocatedScalar):
 
     type_name = 'scalar_change'
 
 
-@serialization.register
+@feat.register_restorator
 class RangeModification(AllocatedRange):
 
     type_name = 'range_change'
 
 
-@serialization.register
+@feat.register_restorator
 class Allocation(serialization.Serializable):
 
     type_name = 'alloc'
@@ -472,7 +473,7 @@ class Allocation(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class AllocationChange(serialization.Serializable):
 
     type_name = 'alloc_change'
@@ -582,7 +583,7 @@ class AgentMixin(object):
         return state.resources.release(change_id)
 
 
-@serialization.register
+@feat.register_restorator
 class Resources(log.Logger, log.LogProxy, replay.Replayable):
 
     ignored_state_keys = ['agent']

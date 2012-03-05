@@ -19,7 +19,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import replay, manager, poster, message, recipient
+from feat.agents.base import replay, manager, poster
+from feat.agencies import message, recipient
 from feat.common import fiber
 
 from feat.agents.dns.interface import RecordType

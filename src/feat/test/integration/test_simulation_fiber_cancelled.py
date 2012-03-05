@@ -24,21 +24,23 @@ from twisted.internet import defer
 from feat.test import common as test_common
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, replay, message
+from feat.agents.base import agent, descriptor, replay
 from feat.agents.base import requester, replier, notifier
+from feat.agencies import message
 from feat.common import fiber
 from feat.common.text_helper import format_block
 from feat.interface import protocols
+from feat.agents.application import feat
 
 from feat.interface.recipient import *
 
 
-@descriptor.register("test_prop_agent")
+@feat.register_descriptor("test_prop_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("test_prop_agent")
+@feat.register_agent("test_prop_agent")
 class Agent(agent.BaseAgent, notifier.AgentMixin,
         test_common.Mock):
 

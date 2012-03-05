@@ -23,12 +23,12 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from twisted.internet import defer
 
-from feat import everything
 from feat.common import serialization
 from feat.test.integration import common
 from feat.common.text_helper import format_block
 from feat.agents.base import agent, replay, descriptor
 from feat.common import fiber
+from feat.agents.application import feat
 
 from feat.interface.generic import *
 from feat.interface.recipient import *
@@ -38,12 +38,12 @@ class U2(object):
     pass
 
 
-@descriptor.register('sample_agent')
+@feat.register_descriptor('sample_agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('sample_agent')
+@feat.register_agent('sample_agent')
 class SampleAgent(agent.BaseAgent):
 
     @replay.mutable

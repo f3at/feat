@@ -8,11 +8,9 @@ from feat.common.serialization import banana
 
 from feat.agencies.messaging import routing, debug_message
 from feat.agencies.messaging.interface import IChannelBinding
-from feat.agencies import common
+from feat.agencies import common, recipient
 
 from feat.agencies.messaging.interface import ISink, IBackend
-
-from feat.agents.base import recipient
 
 
 class Master(log.Logger, log.LogProxy, common.ConnectionManager,

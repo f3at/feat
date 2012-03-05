@@ -19,46 +19,30 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-# -*- Mode: Python -*-
-# vi:si:et:sw=4:sts=4:ts=4
-from feat.common import formatable, serialization
-from feat.common.serialization.json import VERSION_ATOM
 
-documents = dict()
+from feat import applications
 
 
-def register(klass):
-    global documents
-    if klass.document_type in documents:
-        raise ValueError('document_type %s already registered!' %
-                         klass.document_type)
-    documents[klass.document_type] = klass
-    klass.type_name = klass.document_type
-    serialization.register(klass)
-    return klass
+class Feat(applications.Application):
 
-
-def lookup(document_type):
-    global documents
-    return documents.get(document_type)
-
-
-field = formatable.field
-
-
-@serialization.register
-class Document(formatable.Formatable):
-
-    field('doc_id', None, '_id')
-    field('rev', None, '_rev')
-
-
-@serialization.register
-class VersionedDocument(Document):
-
+    name = 'feat'
     version = 1
+    module_prefixes = ['feat.agents']
+    loadlist = [
+        'feat.agents.host.host_agent',
+        'feat.agents.shard.shard_agent',
+        'feat.agents.raage.raage_agent',
+        'feat.agents.dns.dns_agent',
+        'feat.agents.monitor.monitor_agent',
+        'feat.agents.alert.alert_agent',
+        'feat.agents.export.export_agent',
+        'feat.agents.migration.migration_agent',
+        'feat.agents.common.host',
+        'feat.agents.common.shard',
+        'feat.agents.common.raage',
+        'feat.agents.common.dns',
+        'feat.agents.common.monitor',
+        'feat.agents.common.export']
 
-    def snapshot(self):
-        snapshot = Document.snapshot(self)
-        snapshot[str(VERSION_ATOM)] = type(self).version
-        return snapshot
+
+feat = Feat()

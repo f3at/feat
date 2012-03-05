@@ -36,7 +36,7 @@ from feat.common.serialization import banana
 from feat.agencies.messaging import debug_message
 from feat.agencies.messaging.rabbitmq import Connection, Queue
 from feat.agencies.common import StateMachineMixin, ConnectionManager
-from feat.agents.base.message import BaseMessage
+from feat.agencies.message import BaseMessage
 
 from feat.agencies.messaging.interface import IMessagingClient
 from feat.interface.generic import ITimeProvider

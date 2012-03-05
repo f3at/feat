@@ -25,10 +25,11 @@ from twisted.internet import reactor, error, defer
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization, time, error as feat_error
+from feat.common import time, error as feat_error
 
 from feat.agents.dns.interface import (RecordType, IDNSServerLabourFactory,
                                        IDNSServerLabour)
+from feat.agents.application import feat
 
 
 def get_serial():
@@ -85,7 +86,7 @@ class Resolver(authority.PySourceAuthority):
         self.soa[1].serial = dns.str2time(get_serial())
 
 
-@serialization.register
+@feat.register_restorator
 class Labour(labour.BaseLabour):
 
     classProvides(IDNSServerLabourFactory)

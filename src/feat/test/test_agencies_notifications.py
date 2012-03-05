@@ -22,8 +22,8 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.agents.base import descriptor, replay, message, recipient
-from feat.agents.base import collector, poster
+from feat.agencies import message, recipient
+from feat.agents.base import descriptor, replay, collector, poster
 from feat.common import defer
 
 from feat.interface.protocols import *

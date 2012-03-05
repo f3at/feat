@@ -23,16 +23,18 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import operator
 
-from feat.agents.base import (agent, message, contractor, manager, recipient,
-                              replay, partners, resource, document, dbtools,
+from feat.agents.base import (agent, contractor, manager,
+                              replay, partners, resource, dbtools,
                               task, poster, notifier)
+from feat.agencies import message, recipient, document
 from feat.agents.common import rpc, raage, host, monitor, export
-from feat.common import fiber, serialization, manhole, enum
+from feat.common import fiber, manhole, enum
+from feat.agents.application import feat
 
 from feat.interface.protocols import ProtocolFailed
 
 
-@serialization.register
+@feat.register_restorator
 class HostPartner(agent.HostPartner):
 
     type_name = 'shard->host'
@@ -52,7 +54,7 @@ class HostPartner(agent.HostPartner):
         self.allocation_id = allocation.id
 
 
-@serialization.register
+@feat.register_restorator
 class ShardPartner(agent.BasePartner):
 
     type_name = 'shard->neighbour'
@@ -106,7 +108,7 @@ class StructuralPartner(agent.BasePartner):
         return fiber.maybe_fiber(agent.fix_shard_structure)
 
 
-@serialization.register
+@feat.register_restorator
 class RaagePartner(StructuralPartner):
 
     type_name = 'shard->raage'
@@ -121,7 +123,7 @@ class RaagePartner(StructuralPartner):
         return agent.save_document(desc)
 
 
-@serialization.register
+@feat.register_restorator
 class MonitorPartner(monitor.PartnerMixin, StructuralPartner):
 
     type_name = 'shard->monitor'
@@ -154,19 +156,19 @@ class ShardAgentRole(enum.Enum):
     (king, peasant, ) = range(2)
 
 
-@document.register
+@feat.register_restorator
 class ShardAgentConfiguration(document.Document):
 
-    document_type = 'shard_agent_conf'
+    type_name = 'shard_agent_conf'
     document.field('doc_id', u'shard_agent_conf', '_id')
     document.field('hosts_per_shard', 10)
     document.field('neighbours', 3)
 
 
-dbtools.initial_data(ShardAgentConfiguration)
+feat.initial_data(ShardAgentConfiguration)
 
 
-@agent.register('shard_agent')
+@feat.register_agent('shard_agent')
 class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
                  host.SpecialHostPartnerMixin):
 
@@ -402,7 +404,7 @@ class SolutionType(enum.Enum):
     (join, divorce, ) = range(2)
 
 
-@serialization.register
+@feat.register_restorator
 class FindNeighboursContractor(contractor.BaseContractor):
 
     bid_timeout = 6
@@ -500,7 +502,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
         return announcement.payload['joining_agent'] == own
 
 
-@serialization.register
+@feat.register_restorator
 class FindNeighboursManager(manager.BaseManager):
 
     protocol_id = 'find-neighbours'
@@ -705,7 +707,7 @@ class FindNeighboursManager(manager.BaseManager):
         return msg
 
 
-@serialization.register
+@feat.register_restorator
 class JoinShardContractor(contractor.NestingContractor):
 
     protocol_id = 'join-shard'
@@ -863,7 +865,7 @@ class AbstractStartPartner(task.BaseTask):
         except IndexError:
             return self._fail(
                 'No of the Host Partners managed to start a partner %r' %\
-                (state.descriptor.document_type, ))
+                (state.descriptor.type_name, ))
 
         f = host.start_agent(state.agent, partner, state.descriptor)
         f.add_errback(self._failed_to_start, partner)
@@ -872,7 +874,7 @@ class AbstractStartPartner(task.BaseTask):
     @replay.immutable
     def _failed_to_start(self, state, fail, partner):
         self.error('Failed to start %r on partner %r. Reason: %r. Will retry '
-                   'with the next', state.descriptor.document_type, partner,
+                   'with the next', state.descriptor.type_name, partner,
                    fail)
         return self._try_next()
 

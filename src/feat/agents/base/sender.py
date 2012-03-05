@@ -21,7 +21,8 @@
 # Headers in this file shall remain intact.
 from feat.agents.base import task, replay, requester
 
-from feat.common import defer, fiber, serialization, formatable
+from feat.common import defer, fiber, formatable
+from feat.agents.application import feat
 
 from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
@@ -53,7 +54,7 @@ class AgentMixin(object):
         return state.notification_sender.has_empty_outbox()
 
 
-@serialization.register
+@feat.register_restorator
 class PendingNotification(formatable.Formatable):
 
     type_name = 'notification'

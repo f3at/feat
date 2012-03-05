@@ -21,7 +21,8 @@
 # Headers in this file shall remain intact.
 import socket
 
-from feat.common import formatable, enum, serialization
+from feat.common import formatable, enum
+from feat.agents.application import feat
 
 from zope.interface import Interface
 
@@ -68,7 +69,7 @@ class _BaseRecord(formatable.Formatable):
     formatable.field('ip', None)
 
 
-@serialization.register
+@feat.register_restorator
 class RecordA(_BaseRecord):
 
     type_name = 'dns_record_a'
@@ -82,7 +83,7 @@ class RecordA(_BaseRecord):
         return RecordType.record_A
 
 
-@serialization.register
+@feat.register_restorator
 class RecordCNAME(_BaseRecord):
 
     type_name = 'dns_record_cname'

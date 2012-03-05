@@ -25,7 +25,9 @@ from feat.common import fiber
 from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.base import (agent, descriptor, partners,
-                              task, replay, document, notifier, )
+                              task, replay, notifier, )
+from feat.agencies import document
+from feat.agents.application import feat
 
 
 class Task(task.BaseTask):
@@ -60,12 +62,12 @@ class WaitingTask(task.BaseTask):
         return state.agent.wait_for_event('finish_task')
 
 
-@descriptor.register('task-agent')
+@feat.register_descriptor('task-agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('task-agent')
+@feat.register_agent('task-agent')
 class Agent(agent.BaseAgent, notifier.AgentMixin):
 
     @replay.mutable

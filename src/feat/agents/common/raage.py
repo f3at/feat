@@ -19,7 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import manager, replay, message, descriptor
+from feat.agents.base import manager, replay, descriptor
+from feat.agencies import message
+from feat.agents.application import feat
 from feat.common import error, fiber
 
 __all__ = ['allocate_resource', 'AllocationManager', 'discover', 'Descriptor']
@@ -97,6 +99,6 @@ class AllocationManager(manager.BaseManager):
         return report.payload['allocation_id'], report.reply_to
 
 
-@descriptor.register("raage_agent")
+@feat.register_descriptor("raage_agent")
 class Descriptor(descriptor.Descriptor):
     pass

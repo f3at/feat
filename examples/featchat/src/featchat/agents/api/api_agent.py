@@ -23,30 +23,32 @@
 from zope.interface import implements
 
 from feat.common import fiber, defer
-from feat.agents.base import agent, dependency, document, replay, view, dbtools
-from feat.agents.base import dbtools, recipient, alert
+from feat.agencies import recipient, document
+from feat.agents.base import agent, dependency, replay, view, alert
 from feat.agents.common import dns, monitor, start_agent
 
 from feat.interface.agency import ExecMode
 from featchat.agents.api.interface import IWebAgent, IServerFactory
 from featchat.agents.common import room
+from featchat.application import featchat
+
 
 DEFAULT_PORT = 8880
 DEFAULT_DNS_PREFIX = u'api'
 
 
-@document.register
+@featchat.register_restorator
 class ApiAgentConfiguration(document.Document):
 
-    document_type = 'api_agent_conf'
+    type_name = 'api_agent_conf'
     document.field('doc_id', u'api_agent_conf', '_id')
     document.field('dns_prefix', DEFAULT_DNS_PREFIX)
     document.field('port', DEFAULT_PORT)
 
-dbtools.initial_data(ApiAgentConfiguration)
+featchat.initial_data(ApiAgentConfiguration)
 
 
-@agent.register('api_agent')
+@featchat.register_agent('api_agent')
 class ApiAgent(agent.BaseAgent, alert.AgentMixin):
     implements(IWebAgent)
 
@@ -185,7 +187,7 @@ class ApiAgent(agent.BaseAgent, alert.AgentMixin):
     ### endof IWebAgent
 
 
-@view.register
+@featchat.register_view
 class Rooms(view.FormatableView):
 
     name = 'rooms'

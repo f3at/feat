@@ -20,25 +20,28 @@
 
 # Headers in this file shall remain intact.
 
-from feat.common import fiber, serialization
-from feat.agents.base import agent, partners, contractor, replay, message
-from feat.agents.base import manager
+from feat.common import fiber
+from feat.agencies import message
+from feat.agents.base import agent, partners, contractor, replay, manager
 from feat.agents.common import rpc, start_agent, monitor
 
 from featchat.agents.common import connection
+from featchat.application import featchat
 
 
-@serialization.register
+@featchat.register_restorator
 class ConnectionPartner(agent.BasePartner):
     pass
 
 
 class Partners(agent.Partners):
 
+    application = featchat
+
     partners.has_many('connections', 'connection_agent', ConnectionPartner)
 
 
-@agent.register('room_agent')
+@featchat.register_agent('room_agent')
 class RoomAgent(agent.BaseAgent):
 
     restart_strategy = monitor.RestartStrategy.wherever
@@ -95,6 +98,8 @@ class JoinManager(manager.BaseManager):
 
     protocol_id = 'join-room'
 
+    application = featchat
+
     @replay.journaled
     def initiate(self, state):
         announce = message.Announcement()
@@ -118,6 +123,8 @@ class CreateConnectionContractor(contractor.BaseContractor):
     cost so that it is always the last choice.
     '''
     protocol_id = 'join-room'
+
+    application = featchat
 
     @replay.journaled
     def announced(self, state, announce):
@@ -143,6 +150,8 @@ class CreateConnectionContractor(contractor.BaseContractor):
 class InspectManager(manager.BaseManager):
 
     protocol_id = 'inspect-room'
+
+    application = featchat
 
     @replay.mutable
     def initiate(self, state):

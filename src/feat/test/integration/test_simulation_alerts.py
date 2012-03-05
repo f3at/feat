@@ -24,18 +24,18 @@ from twisted.python import failure
 
 from feat.common import time
 from feat.common.text_helper import format_block
-
+from feat.agents.application import feat
 from feat.test.integration import common
 from feat.agents.base import agent, descriptor, replay, alert
 from feat.agents.alert import alert_agent
 
 
-@descriptor.register('alert_test_agent')
+@feat.register_descriptor('alert_test_agent')
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register('alert_test_agent')
+@feat.register_agent('alert_test_agent')
 class Agent(agent.BaseAgent, alert.AgentMixin):
     pass
 

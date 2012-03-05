@@ -27,14 +27,15 @@ from feat.agencies.common import StateMachineMixin
 from feat.agents.base import agent, descriptor, replay
 from feat.common import serialization, defer, fiber
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 
-@descriptor.register("replay_test_agent")
+@feat.register_descriptor("replay_test_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("replay_test_agent")
+@feat.register_agent("replay_test_agent")
 class Agent(agent.BaseAgent):
 
     @replay.mutable

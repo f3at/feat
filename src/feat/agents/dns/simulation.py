@@ -22,12 +22,12 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
-from feat.common import serialization
+from feat.agents.application import feat
 
 from feat.agents.dns.interface import *
 
 
-@serialization.register
+@feat.register_restorator
 class Labour(labour.BaseLabour):
 
     classProvides(IDNSServerLabourFactory)

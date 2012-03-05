@@ -21,8 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agencies import periodic
-from feat.agents.base import message
+from feat.agencies import periodic, message
 from feat.agents.monitor import pacemaker
 from feat.common import journal, log, defer, time
 

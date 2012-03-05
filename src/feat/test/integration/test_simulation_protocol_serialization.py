@@ -25,20 +25,21 @@ from twisted.python import failure
 from feat.test import common as test_common
 from feat.test.integration import common
 
-from feat.agents.base import agent, descriptor, replay, message
-from feat.agents.base import requester, replier
+from feat.agencies import message
+from feat.agents.base import agent, descriptor, replay, requester, replier
 from feat.common import fiber
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 from feat.interface.recipient import *
 
 
-@descriptor.register("protoser_test_agent")
+@feat.register_descriptor("protoser_test_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("protoser_test_agent")
+@feat.register_agent("protoser_test_agent")
 class Agent(agent.BaseAgent):
 
     @replay.mutable

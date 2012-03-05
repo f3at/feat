@@ -19,15 +19,17 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-from featchat import everything
-
 from feat.test.integration import common
 from feat.common import defer, text_helper, first
 from feat.agents.common import host, rpc
 from feat.agents.base import agent
 
 from feat.interface.agent import Address
+
+from featchat.application import featchat
+
+
+featchat.load()
 
 
 class DummyRoomAgent(agent.BaseAgent):
@@ -46,12 +48,13 @@ class DummyRoomAgent(agent.BaseAgent):
 class ApiTest(common.SimulationTest):
 
     def setUp(self):
-        self.override_agent('room_agent', DummyRoomAgent)
+        self.override_agent('room_agent', DummyRoomAgent, application=featchat)
         return common.SimulationTest.setUp(self)
 
     @defer.inlineCallbacks
     def prolog(self):
-        hostdef = host.HostDef(categories=dict(address=Address.fixed))
+        hostdef = host.HostDef(categories=dict(address=Address.fixed),
+                               ports_ranges=dict(dns=(8000, 8000)))
         self.set_local('hostdef', hostdef)
 
         setup = text_helper.format_block("""

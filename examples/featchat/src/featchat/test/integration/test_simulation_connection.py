@@ -2,8 +2,12 @@ from feat.test.integration import common
 from feat.common import defer, text_helper
 from feat.agents.base import resource
 
-from featchat import everything
+from featchat.application import featchat
+
 from featchat.agents.connection.interface import IChatServerFactory
+
+
+featchat.load()
 
 
 class ConnectionSimulation(common.SimulationTest):
@@ -54,7 +58,8 @@ class ConnectionSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def _spawn_connection_agent(self):
-        desc = everything.connection.Descriptor(
+        from featchat.agents.common import connection
+        desc = connection.Descriptor(
             name='chatroom',
             shard='some shard',
             resources=dict(chat=resource.AllocatedRange([1000])),

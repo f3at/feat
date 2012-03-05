@@ -21,8 +21,10 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agents.base import replay, manager, recipient, message, protocols
+from feat.agents.base import replay, manager, protocols
+from feat.agencies import recipient, message
 from feat.common import reflect, serialization, fiber, error_handler
+from feat.agents.application import feat
 
 from feat.interface.contractor import *
 from feat.interface.contracts import *
@@ -34,7 +36,7 @@ class MetaContractor(type(replay.Replayable)):
 
     def __init__(cls, name, bases, dct):
         cls.type_name = reflect.canonical_name(cls)
-        serialization.register(cls)
+        cls.application.register_restorator(cls)
         super(MetaContractor, cls).__init__(name, bases, dct)
 
 
@@ -53,6 +55,8 @@ class BaseContractor(protocols.BaseInterested):
     implements(IAgentContractor)
 
     initiator = message.Announcement
+
+    application = feat
 
     protocol_type = "Contract"
     protocol_id = None
@@ -162,7 +166,7 @@ class NestingContractor(BaseContractor):
         state.medium.handover(bid)
 
 
-@serialization.register
+@feat.register_restorator
 class NestedManagerFactory(serialization.Serializable):
 
     implements(manager.IManagerFactory)
@@ -195,7 +199,7 @@ class NestedManagerFactory(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@feat.register_restorator
 class NestedManager(manager.BaseManager):
 
     @replay.journaled
@@ -236,7 +240,7 @@ class NestedManager(manager.BaseManager):
         state.medium.elect(bid)
 
 
-@serialization.register
+@feat.register_restorator
 class Service(serialization.Serializable):
     implements(IContractorFactory)
 

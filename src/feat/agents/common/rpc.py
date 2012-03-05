@@ -23,7 +23,9 @@ from zope.interface import Interface, implements
 
 from feat.common import (annotate, decorator, fiber, defer, container,
                          error_handler, serialization, )
-from feat.agents.base import replay, message, requester, replier
+from feat.agents.base import replay, requester, replier
+from feat.agencies import message
+from feat.agents.application import feat
 
 
 class IRPCClient(Interface):
@@ -101,7 +103,7 @@ class AgentMixin(object):
         cls._published[fun_id] = function
 
 
-@serialization.register
+@feat.register_restorator
 class RPCRequesterFactory(serialization.Serializable):
     implements(requester.IRequesterFactory)
 

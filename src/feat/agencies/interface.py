@@ -254,8 +254,6 @@ class IDatabaseClient(Interface):
     def get_document(document_id):
         '''
         Download the document from the database and instantiate it.
-        The document should have the 'document_type' basing on which we decide
-        which subclass of L{feat.agents.document.Document} to instantiate.
 
         @param document_id: The id of the document in the database.
         @returns: The Deffered called with the instance representing downloaded

@@ -19,27 +19,33 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+from zope.interface import implements
 
-'''
-This is empty module which is supposed to import all the modules which declare
-agents, descriptors, things which needs to be declared.
-'''
+from feat.common import formatable
+from feat.common.serialization.json import VERSION_ATOM
 
-from feat.agents.host import host_agent
-from feat.agents.shard import shard_agent
-from feat.agents.raage import raage_agent
-from feat.agents.dns import dns_agent, api
-from feat.agents.monitor import monitor_agent
-from feat.agents.alert import alert_agent
-from feat.agents.export import export_agent
-from feat.agents.migration import migration_agent
-from feat.agents.common import host, shard, raage, dns, monitor, export
+from feat.interface.agent import IDocument, IVersionedDocument
 
-# Internal to register serialization adapters
-from feat.common.serialization import adapters
+field = formatable.field
 
-# Internal imports for agency
-from feat.agencies import contracts, requests, tasks, notifications
 
-# Imports for gateway
-from feat.gateway import models, dummies
+class Document(formatable.Formatable):
+
+    implements(IDocument)
+
+    field('doc_id', None, '_id')
+    field('rev', None, '_rev')
+
+
+class VersionedDocument(Document):
+
+    implements(IVersionedDocument)
+
+    version = 1
+
+    def snapshot(self):
+        snapshot = Document.snapshot(self)
+        snapshot[str(VERSION_ATOM)] = type(self).version
+        return snapshot

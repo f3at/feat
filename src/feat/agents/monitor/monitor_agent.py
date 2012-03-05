@@ -26,12 +26,15 @@ import operator
 
 from zope.interface import implements
 
-from feat.agents.base import agent, partners, document, replay
+from feat.agents.base import agent, partners, replay
 from feat.agents.base import dependency, problem, task, contractor, requester
 from feat.agents.base import dbtools, sender
 from feat.agents.common import host, rpc, shard, monitor, export, start_agent
 from feat.agents.monitor import intensive_care, clerk, simulation
+from feat.agencies import document
 from feat.common import fiber, serialization, defer, time, manhole, text_helper
+from feat.agents.application import feat
+from feat import applications
 
 from feat.agents.monitor.interface import *
 from feat.interface.agency import *
@@ -42,7 +45,7 @@ from feat.interface.recipient import *
 DEFAULT_NEIGHBOURS_CHECK_PERIOD = 120
 
 
-@serialization.register
+@feat.register_restorator
 class MonitoredPartner(agent.BasePartner):
 
     instance_id = 0
@@ -95,19 +98,19 @@ class MonitoredPartner(agent.BasePartner):
         return self
 
 
-@serialization.register
+@feat.register_restorator
 class MonitorPartner(monitor.PartnerMixin, MonitoredPartner):
 
     type_name = 'monitor->monitor'
 
 
-@serialization.register
+@feat.register_restorator
 class ForeignShardPartner(MonitoredPartner):
 
     type_name = 'monitor->foreign_shard'
 
 
-@serialization.register
+@feat.register_restorator
 class ShardPartner(MonitoredPartner):
 
     type_name = 'monitor->shard'
@@ -117,7 +120,7 @@ class ShardPartner(MonitoredPartner):
                         shard_recip=self.recipient)
 
 
-@serialization.register
+@feat.register_restorator
 class HostPartner(MonitoredPartner, agent.HostPartner):
 
     type_name = 'monitor->host'
@@ -138,10 +141,10 @@ class Partners(agent.Partners):
     partners.has_many('hosts', 'host_agent', HostPartner)
 
 
-@document.register
+@feat.register_restorator
 class MonitorAgentConfiguration(document.Document):
 
-    document_type = 'monitor_agent_conf'
+    type_name = 'monitor_agent_conf'
     document.field('doc_id', u'monitor_agent_conf', '_id')
     document.field('heartbeat_period', DEFAULT_HEARTBEAT_PERIOD)
     document.field('heartbeat_death_skips', DEFAULT_DEATH_SKIPS)
@@ -154,13 +157,13 @@ class MonitorAgentConfiguration(document.Document):
     document.field('neighbours_check_period', DEFAULT_NEIGHBOURS_CHECK_PERIOD)
 
 
-dbtools.initial_data(MonitorAgentConfiguration)
+feat.initial_data(MonitorAgentConfiguration)
 
 
 Descriptor = monitor.Descriptor
 
 
-@agent.register('monitor_agent')
+@feat.register_agent('monitor_agent')
 class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
                    host.SpecialHostPartnerMixin):
 
@@ -490,7 +493,7 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         state.intensive_care.remove_patient(partner.recipient)
 
 
-@serialization.register
+@feat.register_restorator
 class AlreadySolvedDeath(problem.BaseProblem):
 
     def __init__(self, agent, solution):
@@ -504,7 +507,7 @@ class AlreadySolvedDeath(problem.BaseProblem):
         return self.agent.call_remote(recp, 'restart_handeled', solution)
 
 
-@serialization.register
+@feat.register_restorator
 class DeadAgent(serialization.Serializable):
     implements(problem.IProblemFactory)
 
@@ -731,7 +734,7 @@ class HandleDeath(task.BaseTask):
         shard or take over (monitoring agent).
         '''
         self.info('Restarting of %r in the same shard failed.',
-                  state.descriptor.document_type)
+                  state.descriptor.type_name)
         if self._cmp_strategy(RestartStrategy.local):
             self.info('Giving up, just sending buried notifications.')
             f = self._send_buried_notifications()
@@ -770,7 +773,7 @@ class HandleDeath(task.BaseTask):
         fail.trap(ProtocolFailed)
         msg = ("Chaos monkey won this time! GloballyStartAgent task returned"
                " failure. Just sending buried notifications for %r." %
-               state.descriptor.document_type)
+               state.descriptor.type_name)
         exp = RestartFailed(msg)
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self._send_buried_notifications)
@@ -841,7 +844,7 @@ class HandleDeath(task.BaseTask):
 
     @replay.mutable
     def _determine_factory(self, state):
-        state.factory = agent.registry_lookup(state.descriptor.document_type)
+        state.factory = applications.lookup_agent(state.descriptor.type_name)
 
     @replay.immutable
     def _cmp_strategy(self, state, strategy):

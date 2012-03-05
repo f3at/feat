@@ -22,7 +22,8 @@
 
 from twisted.internet import defer
 
-from feat.agents.base import recipient, requester, problem
+from feat.agencies import recipient
+from feat.agents.base import requester, problem
 from feat.agents.host import host_agent
 from feat.agents.common import host as chost
 from feat.agents.common import shard as cshard

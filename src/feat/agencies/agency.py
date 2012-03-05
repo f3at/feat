@@ -28,7 +28,6 @@ import uuid
 import weakref
 import warnings
 import socket
-import types
 
 # Import external project modules
 from twisted.python.failure import Failure
@@ -36,12 +35,19 @@ from zope.interface import implements
 
 # Import feat modules
 from feat.agencies import common, dependency, retrying, periodic, messaging
-from feat.agents.base import recipient, replay, descriptor
-from feat.agents.base.agent import registry_lookup
-from feat.agents.common import host
+from feat.agencies import recipient
+from feat.agents.base import replay
+from feat import applications
+
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
                          first, error, enum)
+
+# Internal to register serialization adapters
+from feat.common.serialization import adapters
+
+# Internal imports for agency
+from feat.agencies import contracts, requests, tasks, notifications
 
 # Import interfaces
 from interface import (AgencyRoles, IAgencyAgentInternal,
@@ -53,6 +59,7 @@ from interface import (AgencyRoles, IAgencyAgentInternal,
 from feat.interface.recipient import IRecipient
 from feat.interface.agency import IAgency, ExecMode
 from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
+from feat.interface.agent import IDocument
 from feat.interface.generic import ITimeProvider
 from feat.interface.journal import IRecorderNode, IJournalKeeper, IRecorder
 from feat.interface.protocols import (IInterest, ProtocolFailed,
@@ -95,7 +102,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._instance_id = descriptor.instance_id + 1
 
         self.log_name = descriptor.doc_id
-        self.log_category = descriptor.document_type
+        self.log_category = descriptor.type_name
 
         self.agent = factory(self)
         self.log('Instantiated the %r instance', self.agent)
@@ -185,7 +192,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @manhole.expose()
     def get_agent_type(self):
-        return self._descriptor.document_type
+        return self._descriptor.type_name
 
     def snapshot_agent(self):
         '''Gives snapshot of everything related to the agent'''
@@ -1141,19 +1148,14 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         Sets the hostdef param which will get passed to the Host Agent which
         the agency starts if it becomes the master.
         '''
-        if not isinstance(hostdef,
-                          (host.HostDef, unicode, str, types.NoneType)):
-            raise AttributeError("Expected attribute 1 to be a HostDef or "
-                                 "a document id got %r instead." %
-                                 (hostdef, ))
         if self._hostdef is not None:
             self.info("Overwriting previous hostdef, which was %r",
                       self._hostdef)
         self._hostdef = hostdef
 
-    @manhole.expose()
-    def start_agent(self, descriptor, **kwargs):
-        factory = IAgentFactory(registry_lookup(descriptor.document_type))
+    def start_agent_locally(self, descriptor, **kwargs):
+        factory = IAgentFactory(
+            applications.lookup_agent(descriptor.type_name))
         self.log('I will start: %r agent. Kwargs: %r', factory, kwargs)
         medium = self.agency_agent_factory(self, factory, descriptor)
         self.register_agent(medium)
@@ -1162,6 +1164,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
         d.addCallback(defer.override_result, medium)
         return d
+
+    @manhole.expose()
+    def start_agent(self, descriptor, **kwargs):
+        return self.start_agent_locally(descriptor, **kwargs)
 
     @manhole.expose()
     def get_hostname(self):
@@ -1314,7 +1320,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def find_agent(self, desc):
         '''Gives medium class of the agent if the agency hosts it.'''
         agent_id = (desc.doc_id
-                    if isinstance(desc, descriptor.Descriptor)
+                    if IDocument.providedBy(desc)
                     else desc)
         self.log("I'm trying to find the agent with id: %s", agent_id)
         result = first(x for x in self._agents
@@ -1478,7 +1484,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
         def handle_error_on_get(fail, connection, doc_id):
             fail.trap(NotFoundError)
-            desc = host.Descriptor(shard=u'lobby', doc_id=doc_id)
+            factory = serialization.lookup('host_agent')
+            desc = factory(shard=u'lobby', doc_id=doc_id)
             self.info("Host Agent descriptor not found in database, "
                       "creating a brand new instance.")
             return connection.save_document(desc)
@@ -1514,7 +1521,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _get_host_medium(self):
         return first((x for x in self._agents
-                      if x.get_descriptor().document_type == 'host_agent'))
+                      if x.get_descriptor().type_name == 'host_agent'))
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")

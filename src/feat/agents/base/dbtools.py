@@ -19,45 +19,24 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import copy
 import optparse
 
 from twisted.internet import reactor
 
-from feat.agents.base import document, view
+from feat.agents.base import view
 from feat.agencies.net import options, database
 from feat.agencies.interface import ConflictError
 from feat.common import log, defer, error
+from feat.agents.application import feat
+from feat import applications
 
 
-_documents = []
-
-
-def reset_documents(documents):
-    global _documents
-
-    _documents = documents
+def reset_documents(snapshot):
+    applications.get_initial_data_registry().reset(snapshot)
 
 
 def get_current_initials():
-    global _documents
-    return copy.deepcopy(_documents)
-
-
-def initial_data(doc):
-    global _documents
-
-    if callable(doc) and issubclass(doc, document.Document):
-        doc = doc()
-    if not isinstance(doc, document.Document):
-        raise AttributeError(
-            'First argument needs to be an instance or class of something '
-            'inheriting from feat.agents.base.document.Document!')
-    if doc.doc_id:
-        for x in _documents:
-            if x.doc_id == doc.doc_id:
-                _documents.remove(x)
-    _documents.append(doc)
+    return applications.get_initial_data_registry().get_snapshot()
 
 
 def create_connection(host, port, name):
@@ -67,9 +46,8 @@ def create_connection(host, port, name):
 
 @defer.inlineCallbacks
 def push_initial_data(connection, overwrite=False):
-    global _documents
-
-    for doc in _documents:
+    documents = applications.get_initial_data_registry().itervalues()
+    for doc in documents:
         try:
             yield connection.save_document(doc)
         except ConflictError:
@@ -96,6 +74,12 @@ def _delete_old(connection, doc_id):
     yield connection.delete_document(old)
 
 
+def load_application(option, opt_str, value, parser):
+    splited = value.split('.')
+    module, name = '.'.join(splited[:-1]), splited[-1]
+    applications.load(module, name)
+
+
 def parse_options():
     parser = optparse.OptionParser()
     options.add_general_options(parser)
@@ -107,6 +91,11 @@ def parse_options():
     parser.add_option('-m', '--migration', dest='migration', default=False,
                       help='Run migration script.',
                       action="store_true")
+    parser.add_option('-a', '--application', nargs=1,
+                      callback=load_application, type="string",
+                      help='Load application by canonical name.',
+                      action="callback")
+
 
     opts, args = parser.parse_args()
     opts.db_host = opts.db_host or options.DEFAULT_DB_HOST
@@ -130,7 +119,9 @@ def script():
     with dbscript() as (d, opts):
 
         def body(connection):
-            log.info('script', "I will push %d documents.", len(_documents))
+            documents = applications.get_initial_data_registry().itervalues()
+            log.info('script', "I will push %d documents.",
+                     len(list(documents)))
             d = create_db(connection)
             d.addCallback(defer.drop_param, push_initial_data, connection,
                           opts.force)
@@ -176,7 +167,7 @@ class dbscript(object):
         reactor.run()
 
 
-@view.register
+@feat.register_view
 class VersionedDocuments(view.BaseView):
 
     name = 'versioned_documents'

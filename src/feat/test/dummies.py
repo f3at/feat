@@ -20,12 +20,10 @@
 
 # Headers in this file shall remain intact.
 from zope.interface import implements
-from twisted.python import components
 
-from feat.common import defer, time, log, journal, fiber
-from feat.agents.base import descriptor, requester, replier, replay, message,\
-                             cache
-from feat.agencies import protocols, common
+from feat.common import defer, time, log, journal, fiber, adapter
+from feat.agents.base import descriptor, requester, replier, replay, cache
+from feat.agencies import protocols, common, message
 from feat.agencies.emu import database
 
 from feat.agencies.interface import IAgencyInterestInternalFactory
@@ -197,12 +195,9 @@ class DummyProtocol(object):
         return self.deferred
 
 
+@adapter.register(IInterest, IAgencyInterestInternalFactory)
 class DummyAgencyInterest(protocols.DialogInterest):
     pass
-
-
-components.registerAdapter(DummyAgencyInterest, IInterest,
-                           IAgencyInterestInternalFactory)
 
 
 class DummyInterest(object):

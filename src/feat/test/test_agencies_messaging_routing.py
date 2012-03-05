@@ -6,7 +6,7 @@ from feat.common import log, time
 from feat.test import common
 
 from feat.agencies.messaging import routing
-from feat.agents.base import message, recipient
+from feat.agencies import message, recipient
 
 from feat.interface.generic import ITimeProvider
 

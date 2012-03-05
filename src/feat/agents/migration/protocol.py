@@ -19,10 +19,10 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.python import failure
-
-from feat.agents.base import requester, replier, replay, message
-from feat.common import formatable, fiber, error_handler, serialization
+from feat.agents.base import requester, replier, replay
+from feat.agencies import message
+from feat.common import formatable, fiber, error_handler
+from feat.agents.application import feat
 
 
 class BaseCommand(formatable.Formatable):
@@ -39,7 +39,7 @@ class BaseResponse(formatable.Formatable):
     formatable.field('success', True)
 
 
-@serialization.register
+@feat.register_restorator
 class FailResponse(BaseResponse):
 
     formatable.field('success', False)

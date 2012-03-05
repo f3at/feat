@@ -28,13 +28,16 @@ from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.common import text_helper, defer, reflect, error, log
+from feat.common.serialization import base
 from feat.process import couchdb, rabbitmq
 from feat.process.base import DependencyError
 from feat.simulation import driver
 from feat.agencies import replay
 from feat.agencies.messaging import tunneling
 from feat.agencies.net import database
-from feat.agents.base import dbtools, registry
+from feat.agents.base import dbtools
+from feat.agents.application import feat
+from feat import applications
 from feat.gateway.resources import Context
 from feat.web import document, http
 
@@ -228,26 +231,28 @@ def format_journal(journal, prefix=""):
 
 class OverrideConfigMixin(object):
 
-    def override_agent(self, agent_type, factory):
-        if not hasattr(self, 'overriden_agents'):
-            self.overriden_agents = dict()
+    def override_agent(self, agent_type, factory, application=feat):
+        r = applications.get_agent_registry()
+        if not hasattr(self, 'snapshot_agents'):
+            self.snapshot_agents = r.get_snapshot()
+            self.snapshot_restorators = base.get_registry().get_snapshot()
 
-        old = registry.registry_lookup(agent_type)
-        self.overriden_agents[agent_type] = old
-        registry.override(agent_type, factory)
+        application.register_agent(agent_type)(factory)
 
     def revert_overrides_agents(self):
-        if not hasattr(self, 'overriden_agents'):
+        if not hasattr(self, 'snapshot_agents'):
             return
         else:
-            for agent_type, factory in self.overriden_agents.iteritems():
-                if factory:
-                    registry.override(agent_type, factory)
+            r = applications.get_agent_registry()
+            r.reset(self.snapshot_agents)
+            base.get_registry().reset(self.snapshot_restorators)
+            del(self.snapshot_agents)
+            del(self.snapshot_restorators)
 
     def override_config(self, agent_type, config):
         if not hasattr(self, 'overriden_configs'):
             self.overriden_configs = dict()
-        factory = registry.registry_lookup(agent_type)
+        factory = applications.lookup_agent(agent_type)
         self.overriden_configs[agent_type] = factory.configuration_doc_id
         factory.configuration_doc_id = config.doc_id
 
@@ -255,7 +260,7 @@ class OverrideConfigMixin(object):
         if not hasattr(self, 'overriden_configs'):
             return
         for key, value in self.overriden_configs.iteritems():
-            factory = registry.registry_lookup(key)
+            factory = applications.lookup_agent(key)
             factory.configuration_doc_id = value
 
     def tearDown(self):

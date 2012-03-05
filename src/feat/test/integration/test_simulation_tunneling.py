@@ -19,12 +19,14 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import agent, descriptor, replay, recipient
+from feat.agents.base import agent, descriptor, replay
 from feat.agents.base import collector, poster, dbtools
-from feat.agents.base import contractor, manager, message
+from feat.agents.base import contractor, manager
 from feat.agents.shard import shard_agent
+from feat.agencies import recipient, message
 from feat.common import defer
 from feat.common.text_helper import format_block
+from feat.agents.application import feat
 
 from feat.test.integration import common
 
@@ -32,12 +34,12 @@ from feat.interface.protocols import InterestType
 from feat.interface.recipient import IRecipient
 
 
-@descriptor.register("test_agent")
+@feat.register_descriptor("test_agent")
 class TestDescriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("test_agent")
+@feat.register_agent("test_agent")
 class TestAgent(agent.BaseAgent):
 
     @replay.mutable
@@ -245,7 +247,7 @@ class TunnellingTest(common.SimulationTest):
     def setUp(self):
         config = shard_agent.ShardAgentConfiguration(doc_id = 'test-config',
                                                      hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
         return common.SimulationTest.setUp(self)
 

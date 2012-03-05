@@ -27,11 +27,12 @@ import re
 from zope.interface import implements
 
 from feat.agents.base import replay, agent, dependency, contractor, collector
-from feat.agents.base import descriptor, document, dbtools, message, view
-from feat.agents.base import cache
+from feat.agents.base import descriptor, dbtools, view, cache
 from feat.agents.common import export
 from feat.agents.dns import production, simulation
-from feat.common import fiber, manhole, formatable, serialization
+from feat.agencies import message, document
+from feat.common import fiber, manhole, formatable
+from feat.agents.application import feat
 
 from feat.agents.dns.interface import (IDNSServerLabourFactory, RecordA,
                                        RecordCNAME, RecordType)
@@ -45,7 +46,7 @@ DEFAULT_AA_TTL = 300
 DEFAULT_NS_TTL = 300
 
 
-@serialization.register
+@feat.register_restorator
 class NotifyConfiguration(formatable.Formatable):
 
     # SOA zone configuration
@@ -57,10 +58,10 @@ class NotifyConfiguration(formatable.Formatable):
     formatable.field('slaves', [(u'127.0.0.1', 53)])
 
 
-@document.register
+@feat.register_restorator
 class DNSAgentConfiguration(document.Document):
 
-    document_type = 'dns_agent_conf'
+    type_name = 'dns_agent_conf'
     document.field('doc_id', u'dns_agent_conf', '_id')
     document.field('ns_ttl', DEFAULT_NS_TTL)
     document.field('aa_ttl', DEFAULT_AA_TTL)
@@ -69,10 +70,10 @@ class DNSAgentConfiguration(document.Document):
     document.field('notify', NotifyConfiguration())
 
 
-dbtools.initial_data(DNSAgentConfiguration)
+feat.initial_data(DNSAgentConfiguration)
 
 
-@descriptor.register("dns_agent")
+@feat.register_descriptor("dns_agent")
 class Descriptor(descriptor.Descriptor):
 
     descriptor.field('ns', None)
@@ -84,10 +85,10 @@ class Descriptor(descriptor.Descriptor):
     descriptor.field('pending_updates', list())
 
 
-@document.register
+@feat.register_restorator
 class DnsName(document.Document):
 
-    document_type = 'dns_name'
+    type_name = 'dns_name'
 
     # dns zone this name belongs to
     document.field('zone', None)
@@ -109,8 +110,8 @@ class DnsName(document.Document):
         return unicode(match.group(1))
 
 
-@serialization.register
-@view.register
+@feat.register_restorator
+@feat.register_view
 class DnsView(view.FormatableView):
 
     name = 'dns'
@@ -128,7 +129,7 @@ class DnsView(view.FormatableView):
     formatable.field('doc_id', None)
 
 
-@agent.register('dns_agent')
+@feat.register_agent('dns_agent')
 class DNSAgent(agent.BaseAgent):
 
     implements(cache.IDocumentChangeListener)

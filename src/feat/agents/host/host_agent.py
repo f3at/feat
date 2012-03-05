@@ -23,21 +23,24 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import operator
 
-from feat.agents.base import (agent, contractor, recipient, message,
+from feat.agents.base import (agent, contractor,
                               replay, descriptor, replier,
-                              partners, resource, document, notifier,
+                              partners, resource, notifier,
                               problem, task, requester, alert)
 from feat.agents.common import host, rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
-from feat.common import fiber, manhole, serialization, defer, error
+from feat.agencies import recipient, message, document
+from feat.common import fiber, manhole, defer, error
+from feat import applications
 
 from feat.agencies.interface import NotFoundError
 from feat.interface.protocols import InterestType
-from feat.interface.agent import CategoryError
+from feat.interface.agent import CategoryError, IDescriptor
+from feat.agents.application import feat
 
 
-@serialization.register
+@feat.register_restorator
 class HostedPartner(agent.BasePartner):
     '''
     This class is for agents we are partners with only because we started them.
@@ -51,7 +54,7 @@ class HostedPartner(agent.BasePartner):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
 
 
-@serialization.register
+@feat.register_restorator
 class ShardPartner(agent.BasePartner):
 
     type_name = 'host->shard'
@@ -105,7 +108,7 @@ class Partners(agent.Partners):
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
 
-@agent.register('host_agent')
+@feat.register_agent('host_agent')
 class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
                 alert.AgentMixin):
 
@@ -262,8 +265,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
         it's identifier, it which case it should be created and saved
         with default values.
         """
-        if not isinstance(desc, descriptor.Descriptor):
-            factory = descriptor.lookup(desc)
+        if not IDescriptor.providedBy(desc):
+            factory = applications.lookup_descriptor(desc)
             if factory is None:
                 msg = ('No descriptor factory found for agent %r' % desc)
                 raise error.FeatError(msg)
@@ -421,7 +424,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
 
     @replay.immutable
     def check_requirements(self, state, doc):
-        agnt = agent.registry_lookup(doc.document_type)
+        agnt = applications.lookup_agent(doc.type_name)
         ret = check_categories(self, agnt.categories)
         if not ret:
             msg = "Categoryies doesn't match"
@@ -439,7 +442,8 @@ class StartAgent(task.BaseTask):
     def initiate(self, state, doc_id, allocation_id, kwargs=dict()):
         if isinstance(doc_id, descriptor.Descriptor):
             doc_id = doc_id.doc_id
-        assert isinstance(doc_id, (str, unicode, ))
+        assert isinstance(doc_id, (str, unicode, )), \
+               "doc_id is %r" % (doc_id, )
 
         state.doc_id = doc_id
         state.descriptor = None
@@ -509,10 +513,10 @@ class StartAgent(task.BaseTask):
 
     @replay.immutable
     def _get_factory(self, state):
-        return agent.registry_lookup(state.descriptor.document_type)
+        return applications.lookup_agent(state.descriptor.type_name)
 
 
-@serialization.register
+@feat.register_restorator
 class MissingShard(problem.BaseProblem):
 
     problem_id = 'missing-shard'
@@ -528,7 +532,7 @@ class MissingShard(problem.BaseProblem):
         return self.agent.start_own_shard(own_address.route)
 
 
-@serialization.register
+@feat.register_restorator
 class RestartShard(problem.BaseProblem):
 
     problem_id = 'restart-shard'
@@ -713,7 +717,7 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.entry_point
     def announced(self, state, announce):
         state.descriptor = announce.payload['descriptor']
-        state.factory = agent.registry_lookup(state.descriptor.document_type)
+        state.factory = applications.lookup_agent(state.descriptor.type_name)
         state.keep_allocated = False
 
         if state.agent.is_migrating():

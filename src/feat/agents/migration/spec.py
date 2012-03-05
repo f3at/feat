@@ -20,8 +20,9 @@
 
 # Headers in this file shall remain intact.
 from feat.agents.migration import protocol
-from feat.common import serialization, formatable
+from feat.common import formatable
 from feat.agents.base import view
+from feat.agents.application import feat
 
 
 ###### METHODS CALLED BY MIGRATION AGENT ON EXPORT AGENT #######
@@ -30,14 +31,14 @@ from feat.agents.base import view
 ### handshake ###
 
 
-@serialization.register
+@feat.register_restorator
 class HandshakeResponse(protocol.BaseResponse):
 
     formatable.field('name', None)
     formatable.field('version', None)
 
 
-@serialization.register
+@feat.register_restorator
 class Handshake(protocol.BaseCommand):
 
     response_factory = HandshakeResponse
@@ -48,15 +49,15 @@ class Handshake(protocol.BaseCommand):
 ### get_shard_structure ###
 
 
-@serialization.register
+@feat.register_restorator
 class GetShardStructureResponse(protocol.BaseResponse):
 
     # ShardStructure entries
     formatable.field('shards', list())
 
 
-@view.register
-@serialization.register
+@feat.register_view
+@feat.register_restorator
 class ShardStructure(view.FormatableView):
     # NOTE FOR LATER: after versioned formatables are done this class should
     # inherit from sth like FormatableVersionedView
@@ -76,7 +77,7 @@ class ShardStructure(view.FormatableView):
     view.field('hosts', list())
 
 
-@serialization.register
+@feat.register_restorator
 class GetShardStructure(protocol.BaseCommand):
 
     response_factory = GetShardStructureResponse
@@ -94,12 +95,12 @@ class _MigrationResponse(protocol.BaseResponse):
     formatable.field('completed', False)
 
 
-@serialization.register
+@feat.register_restorator
 class PrepareMigrationResponse(_MigrationResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class PrepareMigration(protocol.BaseCommand):
 
     response_factory = PrepareMigrationResponse
@@ -112,12 +113,12 @@ class PrepareMigration(protocol.BaseCommand):
 ### join migrations ###
 
 
-@serialization.register
+@feat.register_restorator
 class JoinMigrationsResponse(_MigrationResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class JoinMigrations(protocol.BaseCommand):
 
     response_factory = JoinMigrationsResponse
@@ -131,13 +132,13 @@ class JoinMigrations(protocol.BaseCommand):
 ### show_migration ##
 
 
-@serialization.register
+@feat.register_restorator
 class ShowMigrationResponse(protocol.BaseResponse):
 
     formatable.field('text', '')
 
 
-@serialization.register
+@feat.register_restorator
 class ShowMigration(protocol.BaseCommand):
 
     response_factory = ShowMigrationResponse
@@ -148,12 +149,12 @@ class ShowMigration(protocol.BaseCommand):
 ### apply_next_step ###
 
 
-@serialization.register
+@feat.register_restorator
 class ApplyNextMigrationStepResponse(_MigrationResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class ApplyNextMigrationStep(protocol.BaseCommand):
 
     response_factory = ApplyNextMigrationStepResponse
@@ -164,12 +165,12 @@ class ApplyNextMigrationStep(protocol.BaseCommand):
 ### apply_migration_step ###
 
 
-@serialization.register
+@feat.register_restorator
 class ApplyMigrationStepResponse(_MigrationResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class ApplyMigrationStep(protocol.BaseCommand):
 
     response_factory = ApplyMigrationStepResponse
@@ -181,12 +182,12 @@ class ApplyMigrationStep(protocol.BaseCommand):
 ### forget_migration ###
 
 
-@serialization.register
+@feat.register_restorator
 class ForgetMigrationResponse(protocol.BaseResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class ForgetMigration(protocol.BaseCommand):
 
     response_factory = ForgetMigrationResponse
@@ -199,12 +200,12 @@ class ForgetMigration(protocol.BaseCommand):
 ### handle_import ###
 
 
-@serialization.register
+@feat.register_restorator
 class HandleImportResponse(protocol.BaseResponse):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class HandleImport(protocol.BaseCommand):
 
     response_factory = HandleImportResponse

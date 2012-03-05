@@ -20,7 +20,8 @@
 
 # Headers in this file shall remain intact.
 from feat.test import common
-from feat.agents.base import partners, recipient
+from feat.agents.base import partners
+from feat.agencies import recipient
 
 
 class FirstPartner(partners.BasePartner):

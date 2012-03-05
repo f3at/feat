@@ -29,6 +29,7 @@ from zope.interface import implements
 from feat.agents.base import replay
 from feat.agencies import common, protocols
 from feat.common import log, enum, defer, time, serialization, error_handler
+from feat.common import adapter
 
 from feat.agencies.interface import *
 from feat.interface.serialization import *
@@ -201,6 +202,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
         return defer.succeed(self)
 
 
+@adapter.register(ITaskFactory, IAgencyInitiatorFactory)
 class AgencyTaskFactory(protocols.BaseInitiatorFactory):
     type_name = 'task-medium-factory'
     protocol_factory = AgencyTask
@@ -209,8 +211,3 @@ class AgencyTaskFactory(protocols.BaseInitiatorFactory):
         # Dropping recipients
         return self.protocol_factory(agency_agent, self._factory,
                                      *args, **kwargs)
-
-
-components.registerAdapter(AgencyTaskFactory,
-                           ITaskFactory,
-                           IAgencyInitiatorFactory)

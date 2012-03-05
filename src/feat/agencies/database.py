@@ -29,12 +29,13 @@ from zope.interface import implements
 
 from feat.common import log, defer, time
 from feat.common.serialization import json
-from feat.agents.base import document
+from feat.agencies import document
 
 from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
                                      IRevisionStore)
 from feat.interface.generic import ITimeProvider
 from feat.interface.view import IViewFactory
+from feat.interface.agent import IDocument
 
 
 class ViewFilter(object):
@@ -218,7 +219,8 @@ class Connection(log.Logger, log.LogProxy):
         return d
 
     def reload_document(self, doc):
-        assert isinstance(doc, document.Document)
+        assert IDocument.providedBy(doc), \
+               "Incorrect type: %r, expected IDocument" % (type(doc), )
         return self.get_document(doc.doc_id)
 
     def delete_document(self, doc):

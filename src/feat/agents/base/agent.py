@@ -25,19 +25,15 @@ import types
 
 from zope.interface import implements
 
-from feat.common import (log, decorator, serialization, fiber,
-                         manhole, mro, )
+from feat.common import log, decorator, fiber, manhole, mro
 from feat.interface import generic, agent, protocols
-from feat.agencies import retrying
-from feat.agents.base import (recipient, replay, requester, alert,
+from feat.agencies import retrying, recipient
+from feat.agents.base import (replay, requester, alert,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor, rpc, export
+from feat.agents.application import feat
 
 from feat.interface.agent import AgencyAgentState
-
-# import this here to stay compatibile with code using
-# f.a.b.agent.register as class decorator
-from feat.agents.base.registry import registry_lookup, register
 
 
 @decorator.simple_function
@@ -54,18 +50,18 @@ def update_descriptor(function):
     return decorated
 
 
-@serialization.register
+@feat.register_restorator
 class BasePartner(partners.BasePartner):
     pass
 
 
-@serialization.register
+@feat.register_restorator
 class MonitorPartner(monitor.PartnerMixin, BasePartner):
 
     type_name = "agent->monitor"
 
 
-@serialization.register
+@feat.register_restorator
 class HostPartner(BasePartner):
 
     type_name = "agent->host"
@@ -106,6 +102,8 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     implements(agent.IAgent, generic.ITimeProvider)
 
     partners_class = Partners
+
+    application = feat
 
     standalone = False
 
@@ -243,7 +241,7 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     @replay.immutable
     def get_agent_type(self, state):
-        return state.medium.get_descriptor().document_type
+        return state.medium.get_descriptor().type_name
 
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')

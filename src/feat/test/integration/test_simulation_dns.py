@@ -31,18 +31,19 @@ from feat.agents.dns.dns_agent import DnsName
 
 from feat.agencies.interface import NotFoundError
 from feat.models import reference, response
+from feat.agents.application import feat
 
 from feat.common import defer
 
 from feat.interface.agent import Address
 
 
-@descriptor.register("dns_test_agent")
+@feat.register_descriptor("dns_test_agent")
 class Descriptor(descriptor.Descriptor):
     pass
 
 
-@agent.register("dns_test_agent")
+@feat.register_agent("dns_test_agent")
 class Agent(agent.BaseAgent):
 
     @replay.mutable

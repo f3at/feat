@@ -23,14 +23,16 @@ from feat.test.integration import common
 from feat.common import defer, text_helper, first, fiber
 from feat.agents.export import export_agent
 from feat.agents.shard import shard_agent
-from feat.agents.base import dbtools, descriptor, replay, agent, recipient
+from feat.agents.base import dbtools, descriptor, replay, agent
+from feat.agencies import recipient
 from feat.agents.common import export, start_agent, host
+from feat.agents.application import feat
 
 # this import is here to get the
 from feat.test.integration.test_simulation_export import TestAgent
 
 
-@agent.register('test_exportable_agent')
+@feat.register_agent('test_exportable_agent')
 class ExportableAgent(TestAgent):
 
     migratability = export.Migratability.exportable
@@ -48,17 +50,17 @@ class ExportableAgent(TestAgent):
         return f
 
 
-@descriptor.register('test_exportable_agent')
+@feat.register_descriptor('test_exportable_agent')
 class D1(descriptor.Descriptor):
     pass
 
 
-@descriptor.register('test_child_agent')
+@feat.register_descriptor('test_child_agent')
 class D2(descriptor.Descriptor):
     pass
 
 
-@agent.register('test_child_agent')
+@feat.register_agent('test_child_agent')
 class ChildAgent(TestAgent):
 
     migratability = export.Migratability.shutdown
@@ -72,13 +74,13 @@ class TestMigration(common.SimulationTest):
             doc_id = 'test-export-config',
             sitename = 'testing_site',
             notification_period = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('export_agent', config)
 
         config = shard_agent.ShardAgentConfiguration(
             doc_id = 'test-shard-config',
             hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
 
         return common.SimulationTest.setUp(self)
@@ -187,13 +189,13 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
             doc_id = 'test-export-config',
             sitename = 'testing_site',
             notification_period = 1)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('export_agent', config)
 
         config = shard_agent.ShardAgentConfiguration(
             doc_id = 'test-shard-config',
             hosts_per_shard = 2)
-        dbtools.initial_data(config)
+        feat.initial_data(config)
         self.override_config('shard_agent', config)
 
         return common.MultiClusterSimulation.setUp(self)

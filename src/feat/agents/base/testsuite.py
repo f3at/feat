@@ -30,7 +30,7 @@ from twisted.trial.unittest import FailTest
 from feat.agencies import replay, agency, contracts, requests
 from feat.common import serialization, guard, journal, reflect, fiber
 from feat.agents.base import resource, agent, partners
-from feat.agents.base.message import BaseMessage
+from feat.agencies.message import BaseMessage
 from feat.test import common, factories
 
 from feat.interface.journal import *

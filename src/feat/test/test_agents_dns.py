@@ -24,7 +24,8 @@ import socket
 from twisted.internet import defer
 from twisted.names import client, dns
 
-from feat.agents.base import resource, message
+from feat.agents.base import resource
+from feat.agencies import message
 from feat.agents.dns import dns_agent, production
 from feat.common import log, guard
 from feat.test.dummies import DummyMedium, DummyCache

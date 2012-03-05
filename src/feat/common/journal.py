@@ -25,14 +25,19 @@ from twisted.internet import defer
 from twisted.python import failure
 from zope.interface import implements
 
-from feat.interface.fiber import *
-from feat.interface.journal import *
-from feat.interface.serialization import *
+from feat.common import decorator, fiber, error, registry
+from feat.common import annotate, reflect, serialization
 from feat.common.serialization.base import MetaSerializable
 from feat.common.annotate import MetaAnnotable
 
-from feat.common import decorator, fiber, error
-from feat.common import annotate, reflect, serialization
+from feat.interface.fiber import IFiber
+from feat.interface.journal import JournalMode, IJournalReplayEntry
+from feat.interface.journal import IRecorder, SideEffectResultError
+from feat.interface.journal import IRecorderNode, IJournalKeeper
+from feat.interface.journal import ReentrantCallError, RecordingResultError
+from feat.interface.journal import IJournalEntry, ReplayError, IEffectHandler
+from feat.interface.journal import IJournalSideEffect
+
 
 RECORDING_TAG = "__RECORDING__"
 RECMODE_TAG = "__RECMODE__"
@@ -45,14 +50,14 @@ def resolve_function(fun_id, function):
 
     if function is None:
         # Retrieve the function from the registry
-        function = _registry.get(fun_id)
+        function = _registry.lookup(fun_id)
         if function is None:
             raise AttributeError("No registered function found with "
                                  "identifier '%s'." % (fun_id, ))
 
     if fun_id is None:
         # Retrieve the identifier from the registry
-        fun_id = _reverse.get(function)
+        fun_id = _reverse.lookup(function)
         if fun_id is None:
             raise AttributeError("Function not register as recorded %r"
                                  % (function, ))
@@ -263,7 +268,7 @@ class Recorder(RecorderNode, annotate.Annotable):
 
     implements(IRecorder)
 
-    _registry = None
+    application = None
 
     @classmethod
     def _register_recorded_call(cls, function, custom_id=None,
@@ -278,13 +283,15 @@ class Recorder(RecorderNode, annotate.Annotable):
             parts = [class_canonical_name, function.__name__]
             fun_id = ".".join(parts)
 
-        if fun_id in _registry and _registry[fun_id] != function:
-            raise RuntimeError("Failed to register function %r with name '%s' "
-                               "it is already used by function %r"
-                               % (function, fun_id, _registry[fun_id]))
+        # FIXME: Uncomment the code below after implementing proper cleanup
+        # during module reloading
+        # if fun_id in _registry and _registry[fun_id] != function:
+        #     raise RuntimeError("Failed to register function %r with name
+        #                        "'%s' it is already used by function %r"
+        #                        % (function, fun_id, _registry[fun_id]))
 
-        _registry[fun_id] = function
-        _reverse[function] = fun_id
+        _registry.register(function, key=fun_id, application=cls.application)
+        _reverse.register(fun_id, key=function, application=cls.application)
 
     def __init__(self, parent):
         RecorderNode.__init__(self, parent)
@@ -684,7 +691,13 @@ class StupidJournalKeeper(RecorderRoot):
                                   function_id, *args, **kwargs)
 
 
+class Registry(registry.BaseRegistry):
+
+    allow_blank_application = True
+    verify_interface = None
+
+
 ### Private Stuff ###
 
-_registry = {} # {FUNCTION_ID: FUNCTION}
-_reverse = {} # {FUNCTION: FUNCTION_ID}
+_registry = Registry() # {FUNCTION_ID: FUNCTION}
+_reverse = Registry()  # {FUNCTION: FUNCTION_ID}

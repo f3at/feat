@@ -24,6 +24,7 @@ import copy
 from feat.agents.base import task, replay, agent
 from feat.agents.common import raage, host
 from feat.common import fiber
+from feat import applications
 
 
 class GloballyStartAgent(task.BaseTask):
@@ -47,7 +48,7 @@ class GloballyStartAgent(task.BaseTask):
         state.descriptor = desc
         state.max_retries = kwargs.pop('_max_retries', 3)
         state.keywords = kwargs
-        state.factory = agent.registry_lookup(state.descriptor.document_type)
+        state.factory = applications.lookup_agent(state.descriptor.type_name)
         # we are setting shard=None here first, because of the logic in
         # Host Agent which prevents it from changing the shard field if it
         # has been set to sth meaningfull (not in [None, 'lobby'])

@@ -4,9 +4,8 @@ from zope.interface import implements
 
 from feat.common import log, defer, first, container, time, error
 from feat.agencies.messaging import routing
-from feat.agencies import common
-from feat.agents.base.message import BaseMessage
-from feat.agents.base import recipient
+from feat.agencies import common, recipient
+from feat.agencies.message import BaseMessage
 
 from feat.agencies.messaging.interface import (IChannel, ISink, IBackend,
                                                IChannelBinding)
@@ -163,8 +162,8 @@ class Channel(log.Logger):
             if interest and interest.schedule_message(msg):
                 return True
 
-        self.warning("Couldn't find appropriate protocol for message: "
-                     "%s", msg.get_msg_class())
+        self.debug("Couldn't find appropriate protocol for message: "
+                   "%s", msg.get_msg_class())
         return False
 
     ### ITimeProvider ###
