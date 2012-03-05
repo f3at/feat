@@ -32,13 +32,9 @@ from feat.agencies import bootstrap
 from feat.agencies.net import options as options_module
 
 
-def setup_log(debug):
-    log.FluLogKeeper.init()
-    if debug:
-        log.FluLogKeeper.set_debug(debug)
-
 def start(args, logging=True):
-        bootstrap.bootstrap(args=args[:-1], logging=logging)
+    bootstrap.bootstrap(args=args[:-1], logging=logging)
+
 
 def stop(options, sig=signal.SIGUSR1):
     # It will still not work if the option is set from environment
@@ -79,11 +75,11 @@ restart restarts feat gently, so agents can restart on the same host.
         start(args)
         return
 
+    log.init()
     options, new_args = parser.parse_args()
 
-    # stop cannot work without logging setup, and start by default sets up
-    # logging again and fails
-    setup_log(options.debug)
+    if options.debug:
+        log.FluLogKeeper.set_debug(options.debug)
 
     if command == 'stop':
         stop(options, signal.SIGUSR1)
@@ -103,10 +99,8 @@ restart restarts feat gently, so agents can restart on the same host.
     sys.exit(1)
 
 
-
 if __name__ == '__main__':
     try:
         main(sys.argv[1:])
     except KeyboardInterrupt:
         pass
-
