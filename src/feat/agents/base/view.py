@@ -29,7 +29,7 @@ from feat.agencies import document
 from feat import applications
 
 from feat.interface.view import IViewFactory
-
+from feat.agents.application import feat
 
 field = formatable.field
 
@@ -103,6 +103,7 @@ class FormatableView(BaseView, formatable.Formatable):
             return cls(**value)
 
 
+@feat.register_restorator
 class DesignDocument(document.Document):
 
     type_name = "design"
