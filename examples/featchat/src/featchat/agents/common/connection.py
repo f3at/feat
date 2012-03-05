@@ -19,11 +19,12 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
 from feat.agents.base import descriptor
 
+from featchat.application import featchat
 
-@descriptor.register('connection_agent')
+
+@featchat.register_descriptor('connection_agent')
 class Descriptor(descriptor.Descriptor):
 
     # The name of the room.

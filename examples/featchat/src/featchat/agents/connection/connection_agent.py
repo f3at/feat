@@ -23,9 +23,9 @@ import uuid
 
 from zope.interface import implements
 
-from feat.agents.base import agent, partners, replay, document, dbtools
-from feat.agents.base import resource, message, contractor, dependency
-from feat.agents.base import poster, collector, recipient
+from feat.agencies import document, recipient, message
+from feat.agents.base import agent, partners, replay, poster, collector
+from feat.agents.base import resource, contractor, dependency
 from feat.agents.common import rpc, monitor
 from feat.common import serialization, container
 
@@ -35,9 +35,10 @@ from feat.interface.collector import ICollectorFactory
 from feat.interface.poster import IPosterFactory
 
 from featchat.agents.connection import server
+from featchat.application import featchat
 
 
-@serialization.register
+@featchat.register_restorator
 class RoomPartner(agent.BasePartner):
 
     def on_goodbye(self, agent):
@@ -49,7 +50,7 @@ class Partners(agent.Partners):
     partners.has_one('room', 'room_agent', RoomPartner)
 
 
-@agent.register('connection_agent')
+@featchat.register_agent('connection_agent')
 class ConnectionAgent(agent.BaseAgent, resource.AgentMixin):
     implements(server.IConnectionAgent)
 
@@ -199,6 +200,8 @@ class InspectAndTerminate(contractor.BaseContractor):
 
     protocol_id = 'inspect-room'
 
+    application = featchat
+
     @replay.mutable
     def announced(self, state, announcement):
         bid = message.Bid(payload=state.agent.get_list())
@@ -217,6 +220,8 @@ class JoinContractor(contractor.BaseContractor):
     '''
 
     protocol_id = 'join-room'
+
+    application = featchat
 
     @replay.journaled
     def announced(self, state, announce):
@@ -250,18 +255,20 @@ class JoinContractor(contractor.BaseContractor):
         state.medium.finalize(report)
 
 
-@document.register
+@featchat.register_restorator
 class ConnectionAgentConfiguration(document.Document):
 
-    document_type = 'connection_agent_conf'
+    type_name = 'connection_agent_conf'
     document.field('doc_id', u'connection_agent_conf', '_id')
     document.field('connections_limit', 10)
     document.field('authorization_timeout', 10)
 
-dbtools.initial_data(ConnectionAgentConfiguration)
+featchat.initial_data(ConnectionAgentConfiguration)
 
 
 class RoomPoster(poster.BasePoster):
+
+    application = featchat
 
     @replay.mutable
     def initiate(self, state):
@@ -275,7 +282,7 @@ class RoomPoster(poster.BasePoster):
         return resp
 
 
-@serialization.register
+@featchat.register_restorator
 class RoomPosterFactory(serialization.Serializable):
     '''
     The point of defining this class here (and RoomCollectorFactory below)
@@ -306,6 +313,8 @@ class RoomCollector(collector.BaseCollector):
     the notification comes in the notified() method is called.
     '''
 
+    application = featchat
+
     @replay.mutable
     def initiate(self, state):
         state.own_key = state.agent.get_own_address().key
@@ -317,7 +326,7 @@ class RoomCollector(collector.BaseCollector):
                                   notification.payload['body'])
 
 
-@serialization.register
+@featchat.register_restorator
 class RoomCollectorFactory(serialization.Serializable):
     '''See doc for RoomPosterFactory for explanation.'''
 

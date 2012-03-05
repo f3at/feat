@@ -19,11 +19,13 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from featchat import everything
 from feat.test.integration import common
 from feat.common import defer, text_helper, first
-from feat.agents.base import dbtools
 from feat.agents.common import host
+from featchat.application import featchat
+
+
+featchat.load()
 
 
 @common.attr(timescale=0.1)
@@ -34,10 +36,11 @@ class RoomSimulation(common.SimulationTest):
         # we do this here only to demonstrate this is possibility
         # keep in mind that it needs to be done before the setUp of
         # SimulationTest, which creates the simulation driver.
-        config = everything.connection_agent.ConnectionAgentConfiguration(
+        from featchat.agents.connection import connection_agent
+        config = connection_agent.ConnectionAgentConfiguration(
             doc_id = 'test-connection-config',
             connections_limit = 2)
-        dbtools.initial_data(config)
+        featchat.initial_data(config)
         self.override_config('connection_agent', config)
 
         return common.SimulationTest.setUp(self)

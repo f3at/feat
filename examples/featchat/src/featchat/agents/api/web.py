@@ -24,14 +24,16 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements, classProvides
 
-from featchat.agents.api.interface import IServer, IServerFactory, IWebAgent
-
 from feat.agents.base import replay
 from feat.common import serialization, log
 from feat.web import webserver, http
 
+from featchat.application import featchat
 
-@serialization.register
+from featchat.agents.api.interface import IServer, IServerFactory, IWebAgent
+
+
+@featchat.register_restorator
 class ServerWrapper(serialization.Serializable):
 
     implements(IServer)
@@ -65,7 +67,7 @@ class ServerWrapper(serialization.Serializable):
         return False
 
 
-@serialization.register
+@featchat.register_restorator
 class ServerDummy(serialization.Serializable):
 
     implements(IServer)

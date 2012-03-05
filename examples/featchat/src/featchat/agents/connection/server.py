@@ -26,12 +26,14 @@ from twisted.protocols import basic
 
 from feat.common import serialization, defer, time, log
 from feat.agents.base import replay
+
+from featchat.application import featchat
+
 from featchat.agents.connection.interface import (IChatServer,
                                                   IChatServerFactory,
                                                   IConnectionAgent)
 
-
-@serialization.register
+@featchat.register_restorator
 class DummyServer(serialization.Serializable):
     classProvides(IChatServerFactory)
     implements(IChatServer)
@@ -80,7 +82,7 @@ class DummyServer(serialization.Serializable):
         return not self.__eq__(other)
 
 
-@serialization.register
+@featchat.register_restorator
 class ChatServer(serialization.Serializable, log.Logger, log.LogProxy):
     classProvides(IChatServerFactory)
     implements(IChatServer, IConnectionAgent)

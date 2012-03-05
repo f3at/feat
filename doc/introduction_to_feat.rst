@@ -992,7 +992,7 @@ using the *env* utilities: ::
 
 Now we are ready to push the data: ::
 
-    feat-dbload -i featchat.everything
+    feat-dbload -a featchat.application.featchat
 
 After running this command on couchdb console you should see a
 bunch of requests. You can now navigate to
@@ -1278,8 +1278,8 @@ Getting list of rooms (using views)
 ```````````````````````````````````
 Every chat room in our system is represented by a Room Agent managing it. So the list of rooms is actually the list of Room Agents. This fact is used by *get\_room\_list()* method of the Api Agent. It queries the view defined in the same module. Let's take a look in details at the view definition: ::
 
-  @view.register # registers the view to be included
-                 # in the design document
+  @featchat.register_view # registers the view to be included
+                          # in the design document
   class Rooms(view.FormatableView):
 
       name = 'rooms'   # name attribute is required
@@ -1308,7 +1308,7 @@ Every chat room in our system is represented by a Room Agent managing it. So the
 The consequence of running this code is defining the view named
 *rooms*. You can see it's definition viewing the design document in
 Phuton interface. The id of the design document is
-*\_design/feat*.
+*\_design/featchat*.
 
 Spend a moment for reading the comments in code above. Important
 point to remember is that feat defines it's views in python instead
@@ -1346,7 +1346,7 @@ the violent one we use *on\_killed()*.
 Simulation tests for Api Agent [#]_.
 ````````````````````````````````````
 
-.. [#] Test case can be found in feat.test.integration.test\_simulation.web module.
+.. [#] Test case can be found in featchat.test.integration.test\_simulation.web module.
 
 The test case performs some requests against the api agent to validate
 it. It's important to note here, that this test case runs a
@@ -1360,7 +1360,7 @@ As API Agent spawns the Room Agents and we want to test only API
 Agent here, we override the entry for RA in the tests *setUp()*. It
 is done with the following line: ::
 
-  self.override_agent('room_agent', DummyRoomAgent)
+  self.override_agent('room_agent', DummyRoomAgent, application=featchat)
 
 It tells the simulation driver to use for this test the
 DummyRoomAgent as a factory for room\_agent instead of the original
@@ -1381,17 +1381,19 @@ Defining custom partners
 ````````````````````````
 You can find a following snippet in the code of RA. ::
 
-    @serialization.register
+    @featchat.register_restorator
     class ConnectionPartner(agent.BasePartner):
         pass
 
     class Partners(agent.Partners):
 
+    	 application = featchat
+
          partners.has_many('connections', 'connection_agent',
                            ConnectionPartner)
 
 
-    @agent.register('room_agent')
+    @featchat_register.agent('room_agent')
     class RoomAgent(agent.BaseAgent):
 
         partners_class = Partners
@@ -1506,10 +1508,10 @@ override the configuration document of the agent for the purpose of
 this test. Here we change the limit of connections just to
 demonstrate the technique: ::
 
-  config =  everything.connection_agent.ConnectionAgentConfiguration(
+  config =  connection_agent.ConnectionAgentConfiguration(
 	            doc_id = 'test-connection-config',
 	            connections_limit = 2)
-  dbtools.initial_data(config)
+  featchat.initial_data(config)
   self.override_config('connection_agent', config)
 
 Also in *prolog()* of the test we construct the host definition
@@ -1658,19 +1660,33 @@ Project configuration
 =====================
 Once we have the feat package configured we can add the project which will run on top of it. The *featchat* application can suit as an example here. We create a RPM package for it, analogically to feat. This packages installs the *featchat* python module under /usr/local path. Apart from this it only installs its configuration file: */etc/feat/featchat.ini*. This file will be changing between nodes, it decides what agents are run during the cluster initialization. To include it add the following line to *feat.ini*: ::
 
-  config-file: /etc/feat/featchat.ini
+  [include]
+  featchat: /etc/feat/featchat.ini
 
 The *featchat.ini* will look somewhat like this: ::
 
-    [Feat]
+    [application:featchat]
     # load the featchat package
-    import: featchat.everything
-    # start some agents, this line will differ
-    # on cluster nodes
-    agent: dns_agent alert_agent api_agent
+    import: featchat.application
+    name: featchat
+
+    # start some agents on startup
+    # this line will differ between cluster nodes
+
+    [agent:dns]
+    agent_type: dns_agent
+
+    [agent:alert]
+    agent_type: alert_agent
+
+    [agent:api]
+    agent_type: api_agent
+
+    [host]
     # define custom resource necessary to
     # run Connection Agent
-    host-ports-ranges: chat:10000:10010
+    ports: chat:10000:10010
+
 
 ----------------------------------
 Debugging problems, using feattool

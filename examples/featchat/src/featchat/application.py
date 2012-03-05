@@ -20,7 +20,21 @@
 
 # Headers in this file shall remain intact.
 
-from featchat.agents.common import api, room, connection
-from featchat.agents.api import api_agent
-from featchat.agents.room import room_agent
-from featchat.agents.connection import connection_agent
+from feat import applications
+
+
+class Featchat(applications.Application):
+
+    name = 'featchat'
+    version = 1
+    module_prefixes = ['featchat']
+    loadlist = [
+        'featchat.agents.common.api',
+        'featchat.agents.common.room',
+        'featchat.agents.common.connection',
+        'featchat.agents.api.api_agent',
+        'featchat.agents.room.room_agent',
+        'featchat.agents.connection.connection_agent']
+
+
+featchat = Featchat()

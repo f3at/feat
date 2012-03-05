@@ -21,8 +21,10 @@
 # Headers in this file shall remain intact.
 from feat.agents.base import descriptor
 
+from featchat.application import featchat
 
-@descriptor.register('api_agent')
+
+@featchat.register_descriptor('api_agent')
 class Descriptor(descriptor.Descriptor):
 
     descriptor.field('ip', None)

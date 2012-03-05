@@ -19,8 +19,9 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.common import defer
 from feat.agents.base import descriptor
+
+from featchat.application import featchat
 
 
 def get_room_list(agent, recp):
@@ -31,7 +32,7 @@ def get_join_url(agent, recp):
     return agent.call_remote(recp, 'generate_join_url')
 
 
-@descriptor.register('room_agent')
+@featchat.register_descriptor('room_agent')
 class Descriptor(descriptor.Descriptor):
 
     descriptor.field('name', None)
