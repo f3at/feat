@@ -28,6 +28,7 @@ from twisted.trial.unittest import FailTest, SkipTest
 
 from feat.test import common
 from feat.common import text_helper, defer, reflect, error, log
+from feat.common.serialization import base
 from feat.process import couchdb, rabbitmq
 from feat.process.base import DependencyError
 from feat.simulation import driver
@@ -230,23 +231,23 @@ def format_journal(journal, prefix=""):
 
 class OverrideConfigMixin(object):
 
-    def override_agent(self, agent_type, factory):
-        if not hasattr(self, 'overriden_agents'):
-            self.overriden_agents = dict()
+    def override_agent(self, agent_type, factory, application=feat):
+        r = applications.get_agent_registry()
+        if not hasattr(self, 'snapshot_agents'):
+            self.snapshot_agents = r.get_snapshot()
+            self.snapshot_restorators = base.get_registry().get_snapshot()
 
-        old = applications.lookup_agent(agent_type)
-        self.overriden_agents[agent_type] = old
-        applications.get_agent_registry().register(factory, key=agent_type,
-                                               application=feat)
+        application.register_agent(agent_type)(factory)
 
     def revert_overrides_agents(self):
-        if not hasattr(self, 'overriden_agents'):
+        if not hasattr(self, 'snapshot_agents'):
             return
         else:
-            for agent_type, factory in self.overriden_agents.iteritems():
-                if factory:
-                    applications.get_agent_registry().register(
-                        factory, key=agent_type, application=feat)
+            r = applications.get_agent_registry()
+            r.reset(self.snapshot_agents)
+            base.get_registry().reset(self.snapshot_restorators)
+            del(self.snapshot_agents)
+            del(self.snapshot_restorators)
 
     def override_config(self, agent_type, config):
         if not hasattr(self, 'overriden_configs'):
