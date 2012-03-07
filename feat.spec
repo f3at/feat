@@ -2,9 +2,9 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.16
-%define unmangled_version 0.16
-%define build_rev 3
+%define version 0.17.0
+%define unmangled_version 0.17.0
+%define build_rev 1
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -163,6 +163,10 @@ fi
 
 
 %changelog
+* Wed Mar 07 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.17.0-1
+- reset for semantic versioning
+
 * Wed Feb 29 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.16-2
 - Create directories for sockets and locks
