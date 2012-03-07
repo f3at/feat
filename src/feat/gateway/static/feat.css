@@ -131,6 +131,9 @@ actions .name {
 span.inplace {
     cursor: pointer;
     color: green !important;
+    min-width: 30px;
+    min-height: 16px;
+    display: inline-block;
 }
 
 .submit-cancel-container {
