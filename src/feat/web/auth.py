@@ -19,6 +19,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
+import base64
 import weakref
 
 from zope.interface import Interface, Attribute, implements
@@ -142,7 +144,9 @@ class BasicHTTPCredentials(object):
     @property
     def header_value(self):
         creds = "%s:%s" % (self._username, self._password)
-        return "Basic %s" % creds.encode("base64")
+        # see http://twistedmatrix.com/trac/ticket/2980 for why not to use
+        # str.encode("base.64")
+        return "Basic %s" % base64.b64encode(creds)
 
     @property
     def username(self):
