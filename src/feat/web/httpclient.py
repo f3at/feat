@@ -94,12 +94,14 @@ class Protocol(http.BaseProtocol):
 
         seq = []
         for line in lines:
+            line = line.encode('utf-8')
             self.log("<<< %s", line)
             seq.append(line)
             seq.append("\r\n")
         seq.append("\r\n")
 
         if body:
+            body = body.encode('utf-8')
             seq.append(body)
 
         d = defer.Deferred()
