@@ -154,7 +154,7 @@ fi
 
 %{_datadir}/python-feat/*
 
-%attr(775,root,feat) %{_sysconfdir}/feat
+%attr(755,root,feat) %{_sysconfdir}/feat
 %attr(775,root,feat) %{_localstatedir}/lib/feat
 %attr(775,root,feat) %{_localstatedir}/lock/feat
 %attr(775,root,feat) %{_localstatedir}/log/feat
@@ -165,6 +165,7 @@ fi
 %changelog
 * Tue Mar 13 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.18.0-0
+- feat does not need to write in /etc/feat
 
 * Wed Feb 29 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.16-2
