@@ -231,6 +231,8 @@ class RabbitMQ(ConnectionManager, log.Logger, log.LogProxy):
     def _configure(self, host, port):
         self._host = host
         self._port = port
+        if hasattr(self, '_connector'):
+            self._connector.disconnect()
         self._connector = reactor.connectTCP(self._host, self._port,
                                              self._factory)
         self.log('AMQP connector created. Host: %s, Port: %s',

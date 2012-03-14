@@ -225,8 +225,6 @@ class RabbitSpecific(object):
         number_of_reconnections = 5
         mock = self.setup_receiver()
 
-        yield self.process.rabbitmqctl_dump('list_bindings')
-
         for index in range(1, number_of_reconnections + 1):
             d = wait_for_msgs()
             yield send_to_neighbour(index)
@@ -238,13 +236,8 @@ class RabbitSpecific(object):
             yield common.delay(None, 0.1)
             self.assertCalled(mock, 'on_disconnect', times=index)
             self.assertCalled(mock, 'on_connect', times=index-1)
-            yield self.process.rabbitmqctl_dump(
-                'list_queues name messages '
-                'messages_ready consumers')
 
             yield d
-            yield self.process.rabbitmqctl_dump(
-                'list_queues name messages')
             asserts(index)
 
     @attr(number_of_agents=0)
@@ -339,8 +332,8 @@ class ConnectionProblemsTest(common.IntegrationTest):
 
         port = self.process.get_config()['port']
         #noone is listening at this address
-        self.messaging = net.RabbitMQ('not.existing.host.com',
-                                      port, timeout=0.1)
+        self.messaging = net.RabbitMQ('127.0.0.1',
+                                      port + 1, timeout=0.1)
 
         connect_d = self.messaging.connect()
         self.assertFailure(connect_d, defer.TimeoutError)
