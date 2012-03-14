@@ -169,8 +169,8 @@ class DummyDNSMedium(DummyMedium):
     def get_configuration(self):
         return dns_agent.DNSAgentConfiguration(suffix='lan')
 
-    def descriptor_class(self):
-        desc = dns_agent.Descriptor()
+    def descriptor_class(self, **kwargs):
+        desc = dns_agent.Descriptor(**kwargs)
         desc.resources = {'dns': resource.AllocatedRange([53])}
         return desc
 

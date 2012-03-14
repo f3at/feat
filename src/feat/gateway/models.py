@@ -27,7 +27,7 @@ from feat.agencies import journaler
 from feat.agencies.net import agency as net_agency, broker
 from feat.agents.base import resource
 
-from feat.common import defer, reflect, error
+from feat.common import defer, reflect, error, first
 from feat.models import model, value, reference, response
 from feat.models import effect, call, getter, action
 from feat.gateway.application import featmodels
@@ -37,6 +37,8 @@ from feat.agencies.interface import AgencyRoles
 from feat.agents.monitor.interface import MonitorState, LocationState
 from feat.agents.monitor.interface import PatientState
 from feat.interface.agent import AgencyAgentState, IAgent, IMonitorAgent
+from feat.interface.agent import IAlertAgent
+from feat.interface.alert import Severity
 from feat.models.interface import IModel, IReference, ActionCategories
 from feat.models.interface import Unauthorized
 
@@ -873,3 +875,140 @@ class MonitoredAgent(model.Model):
 
     model.meta("html-order", "type, state, recipient, heartbeats")
     model.item_meta("recipient", "html-render", "array, 1")
+
+
+
+### Models for alert agent ###
+
+
+ALERT_TABLE_ORDER=('array-columns, Service name, Hostname, Agent id, '
+                   'Count, Last status, Severity')
+
+
+class RescanShardAction(action.Action):
+    action.label('Trigger rescaning the shard')
+    action.category(ActionCategories.command)
+    action.result(value.Response())
+    action.effect(call.source_call('rescan_shard'))
+    action.effect(response.done("Done"))
+
+
+@featmodels.register_model
+@featmodels.register_adapter(IAlertAgent, IModel)
+class AlertAgent(Agent):
+    model.identity("feat.agent.alert")
+
+    model.child('services',
+                view=call.source_call("get_alerts"),
+                model="feat.agent.alert.services",
+                label='Services', desc='Services known to this agent')
+    model.item_meta('services', 'html-render', 'array, 4')
+    model.item_meta('services', "html-render", ALERT_TABLE_ORDER)
+
+    model.attribute('nagios_service.cfg', value.Binary('text/ascii'),
+                    call.source_call('generate_nagios_service_cfg'))
+
+    model.action('rescan', RescanShardAction)
+
+
+@featmodels.register_model
+class AlertServices(model.Collection):
+    model.identity("feat.agent.alert.services")
+
+    model.child_names(call.model_call('get_names'))
+    model.child_view(getter.model_get('get_for_host'))
+    model.child_model("feat.agent.alert.services.<hostname>")
+    model.meta('html-render', 'array, 3')
+    model.meta("html-render", ALERT_TABLE_ORDER)
+
+    def get_names(self):
+        return set([x.hostname for x in self.view])
+
+    def get_for_host(self, hostname):
+        return [x for x in self.view if x.hostname == hostname]
+
+
+@featmodels.register_model
+class AlertAgentsOnHost(model.Collection):
+    model.identity("feat.agent.alert.services.<hostname>")
+
+    model.child_names(call.model_call('get_names'))
+    model.child_view(getter.model_get('getter'))
+    model.child_model("feat.agent.alert.services.<hostname>.<agent_id>")
+    model.meta('html-render', 'array, 3')
+    model.meta("html-render", ALERT_TABLE_ORDER)
+
+    def get_names(self):
+        return set([x.agent_id for x in self.view])
+
+    def getter(self, agent_id):
+        return [x for x in self.view if x.agent_id == agent_id]
+
+
+@featmodels.register_model
+class AlertServicesOfAgent(model.Collection):
+    model.identity("feat.agent.alert.services.<hostname>.<agent_id>")
+
+    model.child_names(call.model_call('get_names'))
+    model.child_source(getter.model_get('getter'))
+    model.child_view(effect.context_value('source'))
+    model.child_model(
+        "feat.agent.alert.services.<hostname>.<agent_id>.service")
+    model.meta('html-render', 'array, 3')
+    model.meta("html-render", ALERT_TABLE_ORDER)
+
+    def get_names(self):
+        return set([x.name for x in self.view])
+
+    def getter(self, name):
+        return first(x for x in self.view if x.name == name)
+
+
+class _AlertAction(action.Action):
+    action.result(value.Response())
+    action.effect(call.action_call('call_agent'))
+    action.effect(response.done("Done"))
+
+    def call_agent(self):
+        raise NotImplementedError("override me")
+
+
+class RaiseAlert(_AlertAction):
+    action.label("Simulate raising this alert")
+
+    def call_agent(self):
+        return self.model.view.alert_raised(self.model.source)
+
+
+class ResolveAlert(_AlertAction):
+    action.label("Simulate resolving this alert")
+
+    def call_agent(self):
+        return self.model.view.alert_resolved(self.model.source)
+
+
+@featmodels.register_model
+class AlertService(model.Model):
+    model.identity("feat.agent.alert.services.<hostname>.<agent_id>.service")
+    model.attribute('count', value.Integer(),
+                    getter.source_attr('received_count'),
+                    label='Count')
+    model.attribute('name', value.String(),
+                    getter.source_attr('name'),
+                    label="Service name")
+    model.attribute('agent_id', value.String(),
+                    getter.source_attr('agent_id'),
+                    label='Agent id')
+    model.attribute('severity', value.Enum(Severity),
+                    getter.source_attr('severity'),
+                    label='Severity')
+    model.attribute('hostname', value.String(),
+                    getter.source_attr('hostname'),
+                    label='Hostname')
+    model.attribute('status_info', value.String(default=''),
+                    getter.source_attr('status_info'),
+                    label='Last status')
+    model.item_meta("name", "html-link", "owner")
+
+    model.action('raise', RaiseAlert)
+    model.action('resolve', ResolveAlert)

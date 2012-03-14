@@ -218,6 +218,11 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return desc.doc_id
 
     @replay.immutable
+    def get_hostname(self, state):
+        '''Returns a hostname the agent is running on'''
+        return state.medium.get_hostname()
+
+    @replay.immutable
     def get_instance_id(self, state):
         """Returns the agent instance identifier.
         Changes when the agent is restarted.

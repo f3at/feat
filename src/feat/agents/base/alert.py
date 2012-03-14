@@ -21,58 +21,114 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from feat.common import enum
-from feat.agents.base import replay, poster
-from feat.agencies import message, recipient
-from feat.interface.protocols import *
+from zope.interface import implements
+
+from feat.agents.base import replay, poster, contractor
+from feat.agencies import recipient, message
+from feat.common import serialization, annotate, container, formatable
+from feat.agents.application import feat
+
+from feat.interface.alert import IAlertFactory, Severity, IAlert
+from feat.interface.protocols import InterestType
 
 
-class Severity(enum.Enum):
+def may_raise(factory):
+    annotate.injectClassCallback("alert", 3, "_register_alert_factory",
+                                 factory)
 
-    low, medium, high, recover = range(4)
+
+@feat.register_restorator
+class AlertingAgentEntry(formatable.Formatable):
+
+    formatable.field('hostname', None)
+    formatable.field('agent_id', None)
+    formatable.field('alerts', []) #[IAlertFactory]
+
+
+class AlertsDiscoveryContractor(contractor.BaseContractor):
+
+    protocol_id = 'discover-alerts'
+    interest_type = InterestType.public
+
+    @replay.journaled
+    def announced(self, state, announcement):
+        payload = AlertingAgentEntry(
+            hostname=state.agent.get_hostname(),
+            agent_id=state.agent.get_agent_id(),
+            alerts=type(state.agent)._alert_factories.values())
+        state.medium.bid(message.Bid(payload=payload))
+
+
+class MetaAlert(type(serialization.Serializable)):
+    implements(IAlertFactory)
+
+
+class BaseAlert(serialization.Serializable):
+    __metaclass__ = MetaAlert
+
+    implements(IAlert)
+
+    name = None
+    severity = None
+
+    def __init__(self, hostname, agent_id, status_info=None):
+        self.name = type(self).name
+        self.severity = type(self).severity
+        self.hostname = hostname
+        self.agent_id = agent_id
+        self.status_info = status_info
+
+        assert self.name is not None, \
+               "Class %r should have name attribute set" % (type(self), )
+        assert isinstance(self.severity, Severity), \
+               "Class %r should have severity attribute set" % (type(self), )
 
 
 class AgentMixin(object):
 
+    _alert_factories = container.MroDict("_mro_alert_factories")
+
+    ### anotations ###
+
+    @classmethod
+    def _register_alert_factory(cls, factory):
+        f = IAlertFactory(factory)
+        cls._alert_factories[f.name] = f
+
+    ### public ###
+
     @replay.mutable
     def initiate(self, state):
-        state.alerter = self._new_alert(self)
-
-    def _new_alert(self, agent):
-        recp = recipient.Broadcast(AlertPoster.protocol_id, 'lobby')
-        return agent.initiate_protocol(AlertPoster, recp)
-
-    @replay.mutable
-    def raise_alert(self, state, alert_msg, severity):
-        state.alerter.post_alert(alert_msg, severity)
+        state.medium.register_interest(AlertsDiscoveryContractor)
+        recp = recipient.Broadcast(AlertPoster.protocol_id,
+                                   self.get_shard_id())
+        state.alerter = self.initiate_protocol(AlertPoster, recp)
 
     @replay.mutable
-    def resolve_alert(self, state, alert_msg, severity):
-        state.alerter.post_resolve_alert(alert_msg, severity)
+    def raise_alert(self, state, service_name, status_info=None):
+        alert = self._generate_alert(service_name, status_info)
+        state.alerter.notify('raised', alert)
+
+    @replay.mutable
+    def resolve_alert(self, state, service_name, status_info=None):
+        alert = self._generate_alert(service_name, status_info)
+        state.alerter.notify('resolved', alert)
+
+    ### private ###
+
+    @replay.immutable
+    def _generate_alert(self, state, service_name, status_info):
+        alert_factory = type(self)._alert_factories.get(service_name, None)
+        assert alert_factory is not None, \
+               "Unknown service name %r" % (service_name, )
+        return alert_factory(hostname=state.medium.get_hostname(),
+                             status_info=status_info,
+                             agent_id=self.get_agent_id())
 
 
 class AlertPoster(poster.BasePoster):
 
     protocol_id = 'alert'
 
-    @replay.side_effect
-    def post_alert(self, alert_msg, severity):
-        self.notify("add_alert", alert_msg, severity)
-
-    @replay.side_effect
-    def post_resolve_alert(self, alert_msg, severity):
-        self.notify("resolve_alert", alert_msg, severity)
-
-    def notify(self, *args, **kwargs):
-        self._build_alert(self._pack_payload(*args, **kwargs))
-
-    ### Private methods ###
-
-    def _pack_payload(self, action, alert_msg, severity):
-        return action, (alert_msg, severity)
-
-    @replay.immutable
-    def _build_alert(self, state, payload):
-        msg = message.Notification()
-        msg.payload = payload
-        return state.medium.post(msg)
+    def pack_payload(self, action, alert):
+        return action, alert

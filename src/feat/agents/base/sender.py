@@ -99,8 +99,8 @@ class NotificationSender(task.StealthPeriodicTask):
     def has_empty_outbox(self, state):
         desc = state.agent.get_descriptor()
         if desc.pending_notifications:
-            self.log('Pending notifications are: %r',
-                     desc.pending_notifications)
+            self.debug('Pending notifications keys are: %r',
+                       desc.pending_notifications.keys())
             return False
         return True
 

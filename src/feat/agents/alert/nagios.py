@@ -19,45 +19,69 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import commands
+import os
 
 from zope.interface import implements, classProvides
 
-from feat.agents.base import replay, alert
+from feat.process import base
+from feat.agents.base import alert
 from feat.common import log, serialization
 
-from feat.agents.alert.interface import *
+from feat.agents.alert.interface import \
+     INagiosSenderLabourFactory, IAlertSenderLabour
 from feat.agents.application import feat
 
 
-CODES = {alert.Severity.recover: 0,
-         alert.Severity.low: 1,
-         alert.Severity.medium: 1,
-         alert.Severity.high: 2}
+CODES = {alert.Severity.warn: 1,
+         alert.Severity.critical: 2}
 
 
 @feat.register_restorator
-class Labour(log.Logger, serialization.Serializable):
+class Labour(log.Logger, log.LogProxy, serialization.Serializable):
 
     classProvides(INagiosSenderLabourFactory)
     implements(IAlertSenderLabour)
 
-    @replay.side_effect
-    def send(self, config, msg_body, severity):
-        config = config.nagios_config
-        self.log('I am about to send an alert to nagios')
+    def __init__(self, patron, config):
+        log.LogProxy.__init__(self, patron)
+        log.Logger.__init__(self, patron)
+        self._config = config
 
-        return_code = CODES.get(severity, 1)
+    def send(self, alerts):
+        if not self._config.enabled:
+            return
+        p = SendNSCA(self, self._config, alerts)
+        return p.restart()
 
-        cmd = "%s -H %s -c %s -d ';'" % (config.send_nsca,
-                                         config.monitor,
-                                         config.config_file)
 
-        msg = "'%s;%s;%s;%s\n'" % (config.host, config.svc_descr,
-                                   return_code, msg_body)
+class SendNSCA(base.Base):
 
-        cmd = 'echo -e  %s | %s' % (msg, cmd)
-        self.log('Send alert to nagios: %s' % cmd)
-        status, output = commands.getstatusoutput(cmd)
-        if status != 0:
-            self.warning('Got error: %d (%s)', status, output)
+    def initiate(self, config, alerts):
+        self.command = config.send_nsca
+        self.args = ['-H', config.monitor, '-c', config.config_file,
+                     '-d', ';']
+        self.env = os.environ
+
+        self._sent = False
+        lines = []
+        for alert in alerts:
+            if alert.received_count == 0:
+                code = 0
+            else:
+                code = CODES[alert.severity]
+            service_description = "%s-%s" % (alert.agent_id, alert.name)
+            status = alert.status_info or 'None specified'
+            msg = ("%s;%s;%s;%s\n" % (alert.hostname, service_description,
+                                      code, status))
+            lines.append(msg)
+        self._body = "".join(lines)
+        self._body = self._body.encode('utf-8')
+
+    def started_test(self):
+        # Process should deamonize itself.
+        if not self._sent:
+            self._sent = True
+            self.log("I'm writing to send_nscs process:\n %r", self._body)
+            self._control.transport.write(self._body)
+
+        return True

@@ -23,6 +23,7 @@ from twisted.python import failure
 
 from feat.agencies import retrying
 from feat.agents.base import replay, task, partners, descriptor, dependency
+from feat.agents.base import alert
 from feat.agents.common import rpc
 from feat.common import fiber, formatable
 from feat.agents.application import feat
@@ -33,7 +34,7 @@ from feat.agents.monitor.interface import RestartFailed, MonitoringFailed
 from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
 from feat.agents.monitor.pacemaker import Pacemaker, FakePacemaker
 
-from feat.interface.agency import *
+from feat.interface.agency import ExecMode
 
 
 __all__ = ['notify_restart_complete',
@@ -95,6 +96,12 @@ class PartnerMixin(object):
         return agent.start_heartbeat(self.recipient, doc.heartbeat_period)
 
 
+@feat.register_restorator
+class MonitorMissing(alert.BaseAlert):
+    name = 'monitoring'
+    severity = alert.Severity.warn
+
+
 class AgentMixin(object):
 
     restart_strategy = RestartStrategy.buryme
@@ -104,6 +111,8 @@ class AgentMixin(object):
     dependency.register(IPacemakerFactory, FakePacemaker, ExecMode.simulation)
 
     need_local_monitoring = True
+
+    alert.may_raise(MonitorMissing)
 
     @replay.immutable
     def startup_monitoring(self, state):
@@ -135,7 +144,7 @@ class AgentMixin(object):
         if self.need_local_monitoring:
             Factory = retrying.RetryingProtocolFactory
             factory = Factory(SetupMonitoringTask, max_delay=60, busy=False,
-                              alert_after=5)
+                              alert_after=5, alert_service='monitoring')
             self.initiate_protocol(factory)
 
     def query_monitoring_info(self, recipient):
@@ -173,6 +182,8 @@ class SetupMonitoringTask(task.BaseTask):
         f = fiber.Fiber(state.medium.get_canceller())
         f.add_callback(discover, shard)
         f.add_callback(self._start_monitoring)
+        f.add_callback(fiber.drop_param,
+                       state.agent.resolve_alert, 'monitoring')
         return f.succeed(state.agent)
 
     @replay.journaled

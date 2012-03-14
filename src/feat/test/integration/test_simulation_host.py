@@ -72,7 +72,7 @@ class HostAgentTests(common.SimulationTest):
         self.assertEqual(agent.get_ip(), expected_ip)
 
 
-@common.attr(timescale=0.05)
+@common.attr(timescale=0.1)
 class HostAgentRestartTest(common.SimulationTest):
 
     NUM_PORTS = 999
@@ -83,9 +83,9 @@ class HostAgentRestartTest(common.SimulationTest):
         agency = spawn_agency()
         agent = agency.get_host_agent()
         medium = find_agent(agent)
-        wait_for_idle()
         """)
         yield self.process(setup)
+        yield self.wait_for_idle(10)
 
     @defer.inlineCallbacks
     def testKillHost(self):
@@ -93,8 +93,16 @@ class HostAgentRestartTest(common.SimulationTest):
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(1, self.count_agents('raage_agent'))
         self.assertEqual(1, self.count_agents('monitor_agent'))
+
+        yield self.wait_for_idle(10)
         medium = self.get_local('medium')
         desc = medium.get_descriptor()
+
+        @defer.inlineCallbacks
+        def has_monitor():
+            p = yield medium.agent.query_partners('monitors')
+            defer.returnValue(len(p) > 0)
+        yield self.wait_for(has_monitor, 10)
         yield medium.terminate_hard()
         self.assertEqual(0, self.count_agents('host_agent'))
         agency = self.get_local('agency')
@@ -236,11 +244,6 @@ class HostAgentCheckTest(common.SimulationTest):
         self.set_local("hostdef", hostdef)
 
         return self.process(setup)
-
-    def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        # host, shard, raage, monitor, condition-agent
-        self.assertEqual(5, len(agents))
 
     @defer.inlineCallbacks
     def testCheckRequeriments(self):

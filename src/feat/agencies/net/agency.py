@@ -26,7 +26,6 @@ import sys
 
 from twisted.internet import reactor
 
-from feat.agents.base.alert import Severity
 from feat.agencies import agency, journaler, recipient
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
@@ -809,12 +808,9 @@ class Agency(agency.Agency):
     def _on_journal_writer_switch(self, current_index):
         if current_index == 0:
             method = self.resolve_alert
-            severity = Severity.recover
         else:
             method = self.raise_alert
-            severity = Severity.medium
-        alert_text = "primary journaler"
-        method(alert_text, severity)
+        method("primary journaler")
 
     def _cancel_snapshoter(self):
         if self._snapshot_task is not None and self._snapshot_task.active():

@@ -29,7 +29,7 @@ from feat.agencies.emu import database
 from feat.agencies.interface import IAgencyInterestInternalFactory
 from feat.agencies.interface import NotFoundError
 from feat.interface.protocols import IInterest, InterestType
-from feat.interface.agent import IAgencyAgent
+from feat.interface.agent import IAgencyAgent, AgencyAgentState
 from feat.interface.agency import ExecMode
 
 
@@ -57,7 +57,7 @@ class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         return self.now
 
     def call_next(self, call, *args, **kwargs):
-        time.call_later(0, fiber.maybe_fiber, call, *args, **kwargs)
+        self.call_later(0, call, *args, **kwargs)
 
     def call_later(self, time, fun, *args, **kwargs):
         payload = (time, fun, args, kwargs)
@@ -82,11 +82,12 @@ class DummyAgent(DummyBase):
 
     def __init__(self, logger, db=None):
         DummyBase.__init__(self, logger)
-        self.descriptor = self.descriptor_class()
+        self.descriptor = self.descriptor_class(shard='test_shard')
         self.protocols = list()
 
         # db connection
         self._db = db and db or database.Database().get_connection()
+        self._db.save_document(self.descriptor)
 
         self.notifications = list()
 
@@ -160,10 +161,12 @@ class DummyMediumBase(DummyAgent):
         return ExecMode.test
 
     def get_configuration(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 class DummyMedium(DummyMediumBase):
+
+    state = AgencyAgentState.ready
 
     def leave_shard(self, shard):
         pass
@@ -178,6 +181,9 @@ class DummyMedium(DummyMediumBase):
         res = common.Observer(_method, *args, **kwargs)
         self.call_next(res.initiate)
         return res
+
+    def get_hostname(self):
+        return 'test.feat.lan'
 
 
 class DummyProtocol(object):
@@ -270,3 +276,49 @@ class DummyCache():
         if not doc_id in self.documents:
             raise NotFoundError()
         return self.documents[doc_id]
+
+
+class DummyPosterMedium(DummyMediumBase):
+
+    def __init__(self):
+        self.messages = list()
+
+    def post(self, msg):
+        self.messages.append(msg)
+
+
+
+class DummyContractorMedium(
+    journal.DummyRecorderNode, log.LogProxy, log.Logger):
+
+    def __init__(self):
+        journal.DummyRecorderNode.__init__(self)
+        log.LogProxy.__init__(self, log.get_default())
+        log.Logger.__init__(self, self)
+        self.bid_sent = None
+        self.handover_sent = None
+        self.refusal_sent = None
+        self.defect_sent = None
+        self.report_sent = None
+        self.updated_address = None
+
+    def bid(self, bid):
+        self.bid_sent = bid
+
+    def handover(self, bid):
+        self.handover_sent = bid
+
+    def refuse(self, refusal):
+        self.refusal_sent = refusal
+
+    def defect(self, cancellation):
+        self.defect_sent = cancellation
+
+    def finalize(self, report):
+        self.report_sent = report
+
+    def update_manager_address(self, recipient):
+        self.updated_address = recipient
+
+
+

@@ -101,11 +101,6 @@ class RemotePremodifyTest(common.SimulationTest, Common):
         medium = yield self.driver.find_agent(self.get_local('req_desc'))
         self.req_agent = medium.get_agent()
 
-    @common.attr(jourfile='jorunal.sqlite3', timescale=1)
-    def testValidateProlog(self):
-        agents = [x for x in self.driver.iter_agents()]
-        self.assertEqual(5, len(agents))
-
     @defer.inlineCallbacks
     def testHostPremodify(self):
         allocation = yield self.host_agent.allocate_resource(a=1)

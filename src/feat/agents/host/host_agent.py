@@ -108,13 +108,20 @@ class Partners(agent.Partners):
     partners.has_one('shard', 'shard_agent', ShardPartner)
 
 
+@feat.register_restorator
+class PrimaryJournalerAlert(alert.BaseAlert):
+    name = 'primary journaler'
+    severity = alert.Severity.warn
+
+
 @feat.register_agent('host_agent')
-class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
-                alert.AgentMixin):
+class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     partners_class = Partners
 
     migratability = export.Migratability.host
+
+    alert.may_raise(PrimaryJournalerAlert)
 
     @replay.mutable
     def initiate(self, state, hostdef=None):

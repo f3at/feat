@@ -21,16 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import Interface
 
-__all__ = ["IEmailSenderLabourFactory", "INagiosSenderLabourFactory",
-           "IAlertSenderLabour"]
-
-
-class IEmailSenderLabourFactory(Interface):
-
-    def __call__(config):
-        '''
-        @returns: L{IAlertSenderLabour}
-        '''
+__all__ = ["INagiosSenderLabourFactory", "IAlertSenderLabour"]
 
 
 class INagiosSenderLabourFactory(Interface):
@@ -43,7 +34,7 @@ class INagiosSenderLabourFactory(Interface):
 
 class IAlertSenderLabour(Interface):
 
-    def send(config, msg, severity):
+    def send(alerts):
         '''
-        Sends an alert
+        Sends the alerts notifications
         '''

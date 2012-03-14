@@ -23,13 +23,13 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import operator
 
-from feat.agents.base import (agent, contractor, manager,
-                              replay, partners, resource, dbtools,
-                              task, poster, notifier)
+from feat.agents.base import agent, contractor, manager, poster, notifier
+from feat.agents.base import replay, partners, resource, task
 from feat.agencies import message, recipient, document
 from feat.agents.common import rpc, raage, host, monitor, export
 from feat.common import fiber, manhole, enum
 from feat.agents.application import feat
+from feat import applications
 
 from feat.interface.protocols import ProtocolFailed
 
@@ -88,19 +88,13 @@ class StructuralPartner(agent.BasePartner):
     managed by Shard Agent.
     '''
 
+    agent_type = None
+
     @classmethod
     def discover(cls, agent):
         '''
         Should return a fiber which results in a list of agents of this type
         available in the shard.
-        '''
-        raise NotImplementedError('Should be overloaded')
-
-    @classmethod
-    def prepare_descriptor(cls, agent):
-        '''
-        Should return a fiber which results in a saved descriptor in the
-        database.
         '''
         raise NotImplementedError('Should be overloaded')
 
@@ -111,31 +105,35 @@ class StructuralPartner(agent.BasePartner):
 @feat.register_restorator
 class RaagePartner(StructuralPartner):
 
+    agent_type = 'raage_agent'
     type_name = 'shard->raage'
 
     @classmethod
     def discover(cls, agent):
         return raage.discover(agent)
 
+
+@feat.register_restorator
+class AlertPartner(StructuralPartner):
+
+    type_name = 'shard->alert'
+    agent_type = 'alert_agent'
+
     @classmethod
-    def prepare_descriptor(cls, agent):
-        desc = raage.Descriptor()
-        return agent.save_document(desc)
+    def discover(cls, agent):
+        return agent.discover_service('alert',
+                                      timeout=1, shard=agent.get_shard_id())
 
 
 @feat.register_restorator
 class MonitorPartner(monitor.PartnerMixin, StructuralPartner):
 
+    agent_type = 'monitor_agent'
     type_name = 'shard->monitor'
 
     @classmethod
     def discover(cls, agent):
         return monitor.discover(agent)
-
-    @classmethod
-    def prepare_descriptor(cls, agent):
-        desc = monitor.Descriptor()
-        return agent.save_document(desc)
 
 
 class Partners(agent.Partners):
@@ -144,8 +142,9 @@ class Partners(agent.Partners):
     partners.has_many('neighbours', 'shard_agent', ShardPartner)
     partners.has_one('raage', 'raage_agent', RaagePartner)
     partners.has_one('monitor', 'monitor_agent', MonitorPartner)
+    partners.has_one('alert', 'alert_agent', AlertPartner)
 
-    shard_structure = ['raage_agent', 'monitor_agent']
+    shard_structure = ['raage_agent', 'monitor_agent', 'alert_agent']
 
 
 class ShardAgentRole(enum.Enum):
@@ -915,7 +914,8 @@ class StartPartner(AbstractStartPartner):
     def initiate(self, state, factory):
         self._init(factory)
 
-        f = factory.prepare_descriptor(state.agent)
+        desc_factory = applications.lookup_descriptor(factory.agent_type)
+        f = state.agent.save_document(desc_factory())
         f.add_callback(self._store_descriptor)
         f.add_callback(fiber.drop_param, self._try_next)
         return f

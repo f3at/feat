@@ -116,13 +116,14 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
 
         desc = yield self.doc_factory(descriptor.Descriptor)
         self.agent = yield self.agency.start_agent(desc)
+
         self.assertEqual(1, self.agent.get_descriptor().instance_id)
 
         self.endpoint, self.queue = self.setup_endpoint()
 
     def testJoinShard(self):
         messaging = self.agent._messaging
-        self.assertEqual(1, len(messaging.get_bindings('lobby')))
+        self.assertTrue(len(messaging.get_bindings('lobby')) > 1)
 
         self.agent.leave_shard('lobby')
         self.assertEqual(0, len(messaging.get_bindings('lobby')))
@@ -130,14 +131,15 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     @defer.inlineCallbacks
     def testSwitchingShardRebinding(self):
         messaging = self.agent._messaging
+        initial = len(messaging.get_bindings('lobby'))
         interest = DummyInterest()
         self.agent.register_interest(interest)
-        self.assertEqual(2, len(messaging.get_bindings('lobby')))
+        self.assertEqual(initial + 1, len(messaging.get_bindings('lobby')))
         yield self.agent.leave_shard('lobby')
         self.assertEqual(0, len(messaging.get_bindings('lobby')))
 
         yield self.agent.join_shard('new shard')
-        self.assertEqual(2,
+        self.assertEqual(initial + 1,
                          len(messaging.get_bindings('new shard')))
         self.assertEqual(0, len(messaging.get_bindings('lobby')))
 

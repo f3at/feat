@@ -21,18 +21,22 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+from zope.interface import implements
 
-from feat.common import manhole, text_helper, serialization, formatable
-from feat.agents.base import (agent, replay, descriptor, alert, collector,
-                              dbtools, dependency, )
-from feat.agencies import document
-from feat.agents.common import export
-from feat.interface.protocols import *
-from feat.interface.agency import *
+from feat.common import formatable, text_helper, fiber
+from feat.agents.base import agent, replay, descriptor, collector
+from feat.agents.base import dependency, manager
 
-from feat.agents.alert import mail, nagios, simulation
-from feat.agents.alert.interface import *
+from feat.agencies import document, recipient, message
+from feat.agents.common import export, monitor
+from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat
+
+from feat.interface.protocols import InterestType
+from feat.interface.agency import ExecMode
+from feat.interface.alert import IAlert
+from feat.interface.agent import IAlertAgent
+from feat.agents.alert.interface import INagiosSenderLabourFactory
 
 
 @feat.register_descriptor("alert_agent")
@@ -41,29 +45,12 @@ class Descriptor(descriptor.Descriptor):
 
 
 @feat.register_restorator
-class AlertSenderConfiguration(formatable.Formatable):
+class AlertNagiosConfiguration(formatable.Formatable):
 
     formatable.field('enabled', True)
-
-
-@feat.register_restorator
-class AlertMailConfiguration(AlertSenderConfiguration):
-
-    formatable.field('fromaddr', u'feat.alert.agent@gmail.com')
-    formatable.field('toaddrs', u'feat.alert.agent@gmail.com')
-    formatable.field('username', u'feat.alert.agent@gmail.com')
-    formatable.field('password', u'flUm0tI0n')
-    formatable.field('SMTP', u'smtp.gmail.com:587')
-
-
-@feat.register_restorator
-class AlertNagiosConfiguration(AlertSenderConfiguration):
-
-    formatable.field('monitor', u'monitor01.bcn.fluendo.net')
+    formatable.field('monitor', u'')#u'monitor01.bcn.fluendo.net')
     formatable.field('config_file', u'/etc/nagios/send_nsca.cfg')
     formatable.field('send_nsca', u'/usr/sbin/send_nsca')
-    formatable.field('svc_descr', u'FLTSERVICE')
-    formatable.field('host', u'flt1.livetranscoding.net')
 
 
 @feat.register_restorator
@@ -71,21 +58,30 @@ class AlertAgentConfiguration(document.Document):
 
     type_name = 'alert_agent_conf'
     document.field('doc_id', u'alert_agent_conf', '_id')
-    document.field('mail_config', AlertMailConfiguration())
     document.field('nagios_config', AlertNagiosConfiguration())
 
 feat.initial_data(AlertAgentConfiguration)
 
 
-@feat.register_agent('alert_agent')
-class AlertAgent(agent.BaseAgent, alert.AgentMixin):
+@feat.register_restorator
+class ReceivedAlerts(formatable.Formatable):
 
-    dependency.register(IEmailSenderLabourFactory,
-                        mail.Labour, ExecMode.production)
-    dependency.register(IEmailSenderLabourFactory,
-                        simulation.MailLabour, ExecMode.test)
-    dependency.register(IEmailSenderLabourFactory,
-                        simulation.MailLabour, ExecMode.simulation)
+    formatable.field('received_count', 0)
+    formatable.field('name', None)
+    formatable.field('agent_id', None)
+    formatable.field('severity', None)
+    formatable.field('hostname', None)
+    formatable.field('status_info', None)
+
+
+@feat.register_agent('alert_agent')
+class AlertAgent(agent.BaseAgent):
+
+    implements(IAlertAgent)
+
+    restart_strategy = monitor.RestartStrategy.local
+
+    migratability = export.Migratability.locally
 
     dependency.register(INagiosSenderLabourFactory,
                         nagios.Labour, ExecMode.production)
@@ -94,70 +90,143 @@ class AlertAgent(agent.BaseAgent, alert.AgentMixin):
     dependency.register(INagiosSenderLabourFactory,
                         simulation.NagiosLabour, ExecMode.simulation)
 
-    migratability = export.Migratability.globally
-
     @replay.mutable
-    def initiate(self, state, blackbox=None):
-        interest = state.medium.register_interest(AlertsCollector)
-        interest.bind_to_lobby()
-        state.notifiers = []
+    def initiate(self, state):
+        state.medium.register_interest(AlertsCollector)
+
         config = state.medium.get_configuration()
-        if config.mail_config.enabled:
-            labour = self.dependency(IEmailSenderLabourFactory, self)
-            state.notifiers.append(labour)
-        if config.nagios_config.enabled:
-            labour = self.dependency(INagiosSenderLabourFactory, self)
-            state.notifiers.append(labour)
-        state.alerts = blackbox or dict()
+        state.nagios = self.dependency(INagiosSenderLabourFactory, self,
+                                       config.nagios_config)
+        # (hostname, agent_id, service_name) -> ReceivedAlerts
+        state.alerts = dict()
+
+    def startup(self):
+        self.startup_monitoring()
+
+    ### public ###
 
     @replay.journaled
-    def get_migration_state(self, state):
-        '''
-        This is called before we get terminated during migration.
-        '''
-        return state.alerts
+    def rescan_shard(self, state):
+        recp = recipient.Broadcast(AlertsDiscoveryManager.protocol_id,
+                                   self.get_shard_id())
+        prot = state.medium.initiate_protocol(AlertsDiscoveryManager, recp)
+        f = prot.notify_finish()
+        f.add_errback(self._expire_handler) # defined in base class
+        f.add_callback(self._parse_discovery_response)
+        return f
 
-    @replay.mutable
-    def append_alert(self, state, alert_msg, severity):
-        self.log("Received Alert: %s" % alert_msg)
-        alert = state.alerts.get(alert_msg, None)
-        if alert and severity == alert:
-            self.log('Alert (%s) already sent, discarting it', alert_msg)
-            return
-        elif alert and severity == alert:
-            self.log('Increased alert severity to %s', severity.name)
-        state.alerts[alert_msg] = severity
-        self.notify_alert(alert_msg, severity)
-
-    @manhole.expose()
-    @replay.mutable
-    def remove_alert(self, state, alert_msg, severity):
-        ralert = state.alerts.pop(alert_msg, None)
-        if ralert:
-            self.notify_alert(alert_msg, alert.Severity.recover)
-
-    @replay.immutable
-    def notify_alert(self, state, alert_msg, severity):
-        for labour in state.notifiers:
-            labour.send(state.medium.get_configuration(),
-                        alert_msg, severity)
+    ### IAlertAgent (used by model) ###
 
     @replay.immutable
     def get_alerts(self, state):
-        return state.alerts
+        return state.alerts.values()
 
     @replay.immutable
-    def get_alert(self, state, alert_id):
-        return state.alerts.get(alert_id)
+    def get_raised_alerts(self, state):
+        return [x for x in state.alerts.itervalues()
+                if x.received_count > 0]
 
-    @manhole.expose()
     @replay.immutable
-    def list_alerts(self, state):
-        t = text_helper.Table(fields=("Severity", "Alert", ),
-                lengths=(10, 70 ))
+    def generate_nagios_service_cfg(self, state):
+        res = text_helper.format_block("""
+        define service{
+            name                    passive-service
+            use                     generic-service
+            check_freshness         1
+            passive_checks_enabled  1
+            active_checks_enabled   0
+            is_volatile             0
+            flap_detection_enabled  0
+            notification_options    w,u,c,s
+            freshness_threshold     57600     ;12hr
+        }
+        """)
+        for service in state.alerts.itervalues():
+            res += text_helper.format_block("""
+            define service {
+                use                    passive-service
+                check_command          check_dummy!3!"No Data Received"
+                host_name              %(hostname)s
+                service_description    %(agent_id)s-%(name)s
+            }
+            """) % dict(hostname=service.hostname,
+                        agent_id=service.agent_id,
+                        name=service.name)
 
-        return t.render((state.alerts[alert].name, alert, )\
-                        for alert in state.alerts)
+        return res
+
+    ### receiving alert notifications ###
+
+    @replay.mutable
+    def alert_raised(self, state, alert):
+        r = self._find_entry(alert)
+        should_notify = (r.received_count == 0)
+        r.received_count += 1
+        r.status_info = alert.status_info
+        if should_notify:
+            return fiber.wrap_defer(state.nagios.send, state.alerts.values())
+
+    @replay.mutable
+    def alert_resolved(self, state, alert):
+        r = self._find_entry(alert)
+        should_notify = (r.received_count > 0)
+        r.received_count = 0
+        r.status_info = alert.status_info
+        if should_notify:
+            return fiber.wrap_defer(state.nagios.send, state.alerts.values())
+
+    ### private ###
+
+    @replay.mutable
+    def _find_entry(self, state, alert):
+        key = (alert.hostname, alert.agent_id, alert.name)
+        if key not in state.alerts:
+            state.alerts[key] = ReceivedAlerts(
+                name=alert.name,
+                agent_id=alert.agent_id,
+                severity=alert.severity,
+                hostname=alert.hostname)
+            self.info("Received alert for service we don't know, triggering "
+                      "shard rescan. Service: %r", key)
+            self.call_next(self.rescan_shard)
+        return state.alerts[key]
+
+    @replay.mutable
+    def _parse_discovery_response(self, state, response):
+        old_keys = state.alerts.keys()
+        for agent in response:
+            for alert in agent.alerts:
+                key = (agent.hostname, agent.agent_id, alert.name)
+                if key in old_keys:
+                    old_keys.remove(key)
+                    continue
+                state.alerts[key] = ReceivedAlerts(
+                    name=alert.name,
+                    agent_id=agent.agent_id,
+                    severity=alert.severity,
+                    hostname=agent.hostname)
+        for key in old_keys:
+            del(state.alerts[key])
+
+
+class AlertsDiscoveryManager(manager.BaseManager):
+
+    protocol_id = 'discover-alerts'
+    announce_timeout = 2
+
+    @replay.journaled
+    def initiate(self, state):
+        state.providers = list()
+        state.medium.announce(message.Announcement())
+
+    @replay.mutable
+    def bid(self, state, bid):
+        state.providers.append(bid.payload)
+        state.medium.reject(bid, message.Rejection())
+
+    @replay.immutable
+    def expired(self, state):
+        return state.providers
 
 
 class AlertsCollector(collector.BaseCollector):
@@ -165,18 +234,14 @@ class AlertsCollector(collector.BaseCollector):
     protocol_id = 'alert'
     interest_type = InterestType.public
 
-    def notified(self, msg):
-        action, args = msg.payload
-        handler = getattr(self, "action_" + action, None)
+    @replay.immutable
+    def notified(self, state, msg):
+        action, alert = msg.payload
+        handler = getattr(state.agent, "alert_" + action, None)
         if not handler:
-            self.warning("Unknown action: %s", action)
-            return
-        return handler(*args)
-
-    @replay.immutable
-    def action_add_alert(self, state, alert_msg, severity):
-        state.agent.append_alert(alert_msg, severity)
-
-    @replay.immutable
-    def action_resolve_alert(self, state, alert_msg, severity):
-        state.agent.remove_alert(alert_msg, severity)
+            raise ValueError("Received malformed alert notifications. Action "
+                             "is: %s." % (action, ))
+        if not IAlert.providedBy(alert):
+            raise TypeError("Received malformed alert notifications. "
+                            "%r didn't provide IAlert" % (alert, ))
+        return handler(alert)

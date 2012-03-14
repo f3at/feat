@@ -44,11 +44,13 @@ class DummyAgent(object):
         self.descriptor_type = "dummy-agent"
         self.alert_actions = list()
 
-    def raise_alert(self, msg, severity):
-        self.alert_actions.append(('raise', msg, severity))
+    def raise_alert(self, service):
+        assert service == 'test', service
+        self.alert_actions.append('raise')
 
-    def resolve_alert(self, msg, severity):
-        self.alert_actions.append(('resolve', msg, severity))
+    def resolve_alert(self, service):
+        assert service == 'test', service
+        self.alert_actions.append('resolve')
 
 
 class CallLaterMixin(object):
@@ -207,9 +209,9 @@ class TestRetryingProtocol(common.TestCase):
         yield instance.notify_finish()
         self.assertEqual(3, self.medium.number_called)
         self.assertEqual(3, len(self.medium.agent.alert_actions))
-        self.assertEqual('raise', self.medium.agent.alert_actions[0][0])
-        self.assertEqual('raise', self.medium.agent.alert_actions[1][0])
-        self.assertEqual('resolve', self.medium.agent.alert_actions[2][0])
+        self.assertEqual('raise', self.medium.agent.alert_actions[0])
+        self.assertEqual('raise', self.medium.agent.alert_actions[1])
+        self.assertEqual('resolve', self.medium.agent.alert_actions[2])
 
     @defer.inlineCallbacks
     def testMaximumNumberOfRetries(self):
@@ -231,10 +233,15 @@ class TestRetryingProtocol(common.TestCase):
 
     def _start_instance(self, max_retries, initial_delay, max_delay,
                         alert_after=None):
+        if alert_after is not None:
+            alert_service = 'test'
+        else:
+            alert_service = None
+
         instance = retrying.RetryingProtocol(
             self.medium, DummyInitiator, max_retries=max_retries,
             initial_delay=initial_delay, max_delay=max_delay,
-            alert_after=alert_after)
+            alert_after=alert_after, alert_service=alert_service)
         return instance.initiate()
 
 

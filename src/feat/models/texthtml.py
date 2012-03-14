@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import log, defer, first
+from feat.common import log, defer, first, error
 from feat.models import reference
 from feat.web import document
 from feat.web.markup import html
@@ -295,7 +295,9 @@ class ModelWriter(log.Logger):
         value = ""
         get_action = yield model.fetch_action('get')
         if get_action is not None:
-            value = yield get_action.perform()
+            d = get_action.perform()
+            d.addErrback(self._get_action_errback, model, context)
+            value = yield d
             if get_action.result_info.value_type is ValueTypes.binary:
                 value = "%d bytes" % len(value)
             if supercontext and "owner" in links:
@@ -304,6 +306,13 @@ class ModelWriter(log.Logger):
 
         defer.returnValue(
             html.tags.span(_class=" ".join(classes), **extra)(value))
+
+    def _get_action_errback(self, fail, model, context):
+        error.handle_failure(
+            'texthtml', fail,
+            'Failed fetching value for model %r, context path is: %r',
+            model, context.names)
+        return fail
 
     @defer.inlineCallbacks
     def _render_array(self, model, limit, context):

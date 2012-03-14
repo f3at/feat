@@ -23,19 +23,10 @@ from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, labour
 
-from feat.agents.alert.interface import *
+from feat.agents.alert.interface import \
+     INagiosSenderLabourFactory, IAlertSenderLabour
+from feat.common import log
 from feat.agents.application import feat
-
-
-@feat.register_restorator
-class MailLabour(labour.BaseLabour):
-
-    classProvides(IEmailSenderLabourFactory)
-    implements(IAlertSenderLabour)
-
-    @replay.side_effect
-    def send(self, config, msg, severity):
-        """Nothing"""
 
 
 @feat.register_restorator
@@ -44,6 +35,9 @@ class NagiosLabour(labour.BaseLabour):
     classProvides(INagiosSenderLabourFactory)
     implements(IAlertSenderLabour)
 
-    @replay.side_effect
-    def send(self, config, msg, severity):
+    def __init__(self, patron, config):
+        log.Logger.__init__(self, patron)
+        self._config = config
+
+    def send(self, alerts):
         """Nothing"""

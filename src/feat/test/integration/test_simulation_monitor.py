@@ -104,7 +104,7 @@ class SingleHostMonitorSimulation(common.SimulationTest):
         self.req_agent.start_monitoring()
         yield self.wait_for_idle(20)
         partners = self.monitor_agent.get_descriptor().partners
-        self.assertEqual(4, len(partners)) # host, shard, raag, dummy
+        self.assertEqual(5, len(partners)) # host, shard, raag, dummy, alert
 
 
 @feat.register_descriptor('random-agent')
@@ -369,6 +369,7 @@ class MonitoringMonitor(common.SimulationTest):
 
         yield list(self.driver.iter_agents('shard_agent'))[1].terminate_hard()
         yield list(self.driver.iter_agents('raage_agent'))[1].terminate_hard()
+        yield list(self.driver.iter_agents('alert_agent'))[1].terminate_hard()
 
         yield self.monitors[0].handle_agent_death(
             recipient.IRecipient(self.monitor_mediums[1]))
@@ -405,6 +406,7 @@ class MonitoringMonitor(common.SimulationTest):
         yield self.host_mediums[2].terminate_hard()
         yield list(self.driver.iter_agents('shard_agent'))[1].terminate_hard()
         yield list(self.driver.iter_agents('raage_agent'))[1].terminate_hard()
+        yield list(self.driver.iter_agents('alert_agent'))[1].terminate_hard()
 
         yield self.monitors[0].handle_agent_death(
             recipient.IRecipient(self.monitor_mediums[1]))
@@ -997,9 +999,9 @@ class TestRealMonitoring(common.SimulationTest):
         yield self.wait_monitored(sa, ma, 10)
         yield self.wait_monitored(ra, ma, 10)
 
-        self.assertEqual(self.count_partners(ma), 3)
+        self.assertEqual(self.count_partners(ma), 4)
 
-        self.check_status(ma, 3)
+        self.check_status(ma, 4)
 
         # Starting "bury me" agents
 
@@ -1031,16 +1033,16 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.make_partners(a1, a2)
 
-        self.assertEqual(self.count_partners(ma), 6)
-        self.check_status(ma, 6)
+        self.assertEqual(self.count_partners(ma), 7)
+        self.check_status(ma, 7)
 
         # wait more than 3 heart beats, everything should be fine
 
         yield common.delay(None, 10)
         yield self.wait(20, ma)
 
-        self.assertEqual(self.count_partners(ma), 6)
-        self.check_status(ma, 6)
+        self.assertEqual(self.count_partners(ma), 7)
+        self.check_status(ma, 7)
 
         # Kill the one with partnership
 
@@ -1048,16 +1050,16 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma), 6)
-        self.check_status(ma, 6)
+        self.assertEqual(self.count_partners(ma), 7)
+        self.check_status(ma, 7)
 
         # Waiting more than 3 hard beats, death should be detected
 
         yield common.delay(None, 10)
         yield self.wait(20, ma)
 
-        self.assertEqual(self.count_partners(ma), 5)
-        self.check_status(ma, 5)
+        self.assertEqual(self.count_partners(ma), 6)
+        self.check_status(ma, 6)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate", "buried")
@@ -1074,8 +1076,8 @@ class TestRealMonitoring(common.SimulationTest):
         yield common.delay(None, 10)
         yield self.wait(20, ma)
 
-        self.assertEqual(self.count_partners(ma), 4)
-        self.check_status(ma, 4)
+        self.assertEqual(self.count_partners(ma), 5)
+        self.check_status(ma, 5)
 
         self.check_no_call(a3, a2)
 
@@ -1119,10 +1121,10 @@ class TestRealMonitoring(common.SimulationTest):
         yield self.wait_monitored(ra2, ma2, 10)
 
         # Monitor agents are monitoring each-others
-        self.assertEqual(self.count_partners(ma1), 4)
-        self.assertEqual(self.count_partners(ma2), 4)
-        self.check_status(ma1, 4)
-        self.check_status(ma2, 4)
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 5)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 5)
 
         # Starting "local" agents
 
@@ -1155,19 +1157,19 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.make_partners(a1, a2)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # wait a full three heart beats and half, everything should be fine
 
         yield common.delay(None, 10)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Kill the one with partnership
 
@@ -1175,10 +1177,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Waiting more than 3 hard beats
         # death should be detected and agent restarted
@@ -1196,10 +1198,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.wait_monitored(a1b, ma1, 10)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate", "died", "restarted")
@@ -1213,10 +1215,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Waiting more than 3 hard beats
         # death should be detected and agent restarted
@@ -1236,10 +1238,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.wait_monitored(a3b, ma2, 10)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate", "died", "restarted")
@@ -1287,10 +1289,10 @@ class TestRealMonitoring(common.SimulationTest):
         yield self.wait_monitored(ra2, ma2, 10)
 
         # Monitor agents are monitoring each-others
-        self.assertEqual(self.count_partners(ma1), 4)
-        self.assertEqual(self.count_partners(ma2), 4)
-        self.check_status(ma1, 4)
-        self.check_status(ma2, 4)
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 5)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 5)
 
         # Starting "local" agents
 
@@ -1323,19 +1325,19 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.make_partners(a1, a2)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # wait a full three heart beats and half, everything should be fine
 
         yield common.delay(None, 10)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Kill the one with partnership alongside the host and monitor
 
@@ -1345,10 +1347,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Waiting more than 3 hard beats
         # death should be detected and agent restarted
@@ -1375,10 +1377,11 @@ class TestRealMonitoring(common.SimulationTest):
         self.assertEqual(1, self.count_agents('raage_agent'))
         self.assertEqual(1, self.count_agents('shard_agent'))
         self.assertEqual(1, self.count_agents('host_agent'))
+        self.assertEqual(1, self.count_agents('alert_agent'))
 
         a1 = a1b
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma2, 7)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate", "died", "restarted")
@@ -1392,8 +1395,8 @@ class TestRealMonitoring(common.SimulationTest):
 
         # Nothing yet changed
 
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma2, 7)
 
         # Waiting more than 3 hard beats
         # death should be detected and agent restarted
@@ -1414,8 +1417,8 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.wait_monitored(a3b, ma2, 10)
 
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma2, 7)
 
         self.check_no_call(a1, a3)
         self.check_no_call(a2, a3)
@@ -1460,10 +1463,10 @@ class TestRealMonitoring(common.SimulationTest):
         yield self.wait_monitored(ra2, ma2, 10)
 
         # Monitor agents are monitoring each-others
-        self.assertEqual(self.count_partners(ma1), 4)
-        self.assertEqual(self.count_partners(ma2), 4)
-        self.check_status(ma1, 4)
-        self.check_status(ma2, 4)
+        self.assertEqual(self.count_partners(ma1), 5)
+        self.assertEqual(self.count_partners(ma2), 5)
+        self.check_status(ma1, 5)
+        self.check_status(ma2, 5)
 
         # Starting "local" agents
 
@@ -1496,19 +1499,19 @@ class TestRealMonitoring(common.SimulationTest):
 
         yield self.make_partners(a1, a2)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # wait a full three heart beats and half, everything should be fine
 
         yield common.delay(None, 10)
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         # Kill a monitor
 
@@ -1532,10 +1535,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         ma1 = ma1b
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate")
@@ -1573,8 +1576,8 @@ class TestRealMonitoring(common.SimulationTest):
         ma1 = ma1b
 
         # Agent 1 death not detected yet
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
 
         # But dead indeed
         self.assertEqual(self.count_agents("test_local_agent"), 2)
@@ -1597,10 +1600,10 @@ class TestRealMonitoring(common.SimulationTest):
 
         a1 = a1b
 
-        self.assertEqual(self.count_partners(ma1), 5)
-        self.assertEqual(self.count_partners(ma2), 6)
-        self.check_status(ma1, 5)
-        self.check_status(ma2, 6)
+        self.assertEqual(self.count_partners(ma1), 6)
+        self.assertEqual(self.count_partners(ma2), 7)
+        self.check_status(ma1, 6)
+        self.check_status(ma2, 7)
 
         self.check_calls(a1, a2, "initiate")
         self.check_calls(a2, a1, "initiate", "died", "restarted")

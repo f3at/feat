@@ -514,3 +514,23 @@ class IMonitorAgent(IAgent):
     '''Point of defining this interface is to be have a interface type to
     adapt agent class to IModel without the instance checks. Without this
     adaptation will not work after reloading the feat module.'''
+
+
+
+class IAlertAgent(IAgent):
+    '''Point of defining this interface is to be have a interface type to
+    adapt agent class to IModel without the instance checks. Without this
+    adaptation will not work after reloading the feat module.'''
+
+
+    def get_alerts():
+        '''Returns list of ReceivedAlerts representing all the services
+        known to this agent'''
+
+    def get_raised_alerts():
+        '''Returns a list of ReceivedAlerts instances for the services which
+        raised the alarm.'''
+
+    def generate_nagios_service_cfg():
+        '''Returns a body of the configuraton file for the services currently
+        monitored by the agent.'''

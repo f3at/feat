@@ -162,7 +162,7 @@ class TestMigration(common.SimulationTest):
         migration = yield self.migration.prepare_shard_migration(to_migrate)
         real_migration = self.export._get_migration(migration.ident)
 
-        self.assertEqual(4, len(real_migration.get_steps()))
+        self.assertEqual(5, len(real_migration.get_steps()))
 
         yield self.migration.apply_migration(migration)
         yield self.wait_for_idle(10)
@@ -171,6 +171,7 @@ class TestMigration(common.SimulationTest):
         self.assertEqual(2, self.count_agents('test_child_agent'))
         self.assertEqual(3, self.count_agents('host_agent'))
         self.assertEqual(2, self.count_agents('shard_agent'))
+        self.assertEqual(2, self.count_agents('alert_agent'))
         self.assertEqual(2, self.count_agents('raage_agent'))
         self.assertEqual(2, self.count_agents('monitor_agent'))
 
@@ -325,7 +326,7 @@ class TestMigrationBetweenClusters(common.MultiClusterSimulation):
         d = self.migration.apply_migration(migration)
 
         def condition():
-            return len(self.alert.get_alerts()) > 0
+            return len(self.alert.get_raised_alerts()) > 0
 
         # now we will retry 3 times to find allocation before giving up
         yield self.wait_for(condition, 200)

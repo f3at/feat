@@ -35,10 +35,18 @@ from feat.common import (fiber, serialization, formatable, manhole,
 from feat.agents.migration import protocol, spec
 
 
+class SpawningAlert(alert.BaseAlert):
+
+    name = 'spawning'
+    severity = alert.Severity.critical
+
+
 @feat.register_agent('migration_agent')
-class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
+class MigrationAgent(agent.BaseAgent, notifier.AgentMixin):
 
     migratability = export.Migratability.not_migratable
+
+    alert.may_raise(SpawningAlert)
 
     @replay.mutable
     def initiate(self, state):
@@ -232,7 +240,7 @@ class MigrationAgent(agent.BaseAgent, alert.AgentMixin, notifier.AgentMixin):
 
         def handle_failure(fail, entry):
             msg = ("Failed to start agent, import entry: %r" % entry)
-            self.raise_alert(msg, alert.Severity.high)
+            self.raise_alert('spawning', msg)
 
         if state.spawn_running:
             return

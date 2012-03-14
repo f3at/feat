@@ -1372,13 +1372,11 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._flush_pending_host_agent_calls()
         return d
 
-    def raise_alert(self, msg, severity):
-        msg = "%s: %s" % (self.get_hostname(), msg)
-        return self.host_agent_call('raise_alert', msg, severity)
+    def raise_alert(self, service, status_info=None):
+        return self.host_agent_call('raise_alert', service, status_info)
 
-    def resolve_alert(self, msg, severity):
-        msg = "%s: %s" % (self.get_hostname(), msg)
-        return self.host_agent_call('resolve_alert', msg, severity)
+    def resolve_alert(self, service, status_info=None):
+        return self.host_agent_call('resolve_alert', service, status_info)
 
     @manhole.expose()
     def spawn_agent(self, desc, **kwargs):

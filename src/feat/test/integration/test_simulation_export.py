@@ -177,7 +177,7 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(recp)
         self.assertIsInstance(migration, export_agent.Migration)
         self.assertTrue(migration.is_completable())
-        self.assertEqual(4, len(migration.get_steps()))
+        self.assertEqual(5, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host1)
         for agent in agents:
             self.assertTrue(agent.is_migrating())
@@ -236,10 +236,10 @@ class ExportTest(common.SimulationTest, Common):
         migration = yield self.export_agent.prepare_migration(
             recp, host_cmd='special command')
 
-        # first 3 steps involving migration of the structural agents
-        for expected in range(2, -1, -1):
+        # first 4 steps involving migration of the structural agents
+        for expected in range(3, -1, -1):
             migration = yield self.export_agent.apply_next_step(migration)
-            self.assertTrue(migration.get_steps()[2-expected].applied)
+            self.assertTrue(migration.get_steps()[3-expected].applied)
             yield self.wait_for_idle(10)
             hosted_recp = yield self.host1.get_hosted_recipients()
             num = len(hosted_recp)
@@ -265,44 +265,6 @@ class ExportTest(common.SimulationTest, Common):
         shard = yield self._get_agent('shard_agent')
         self.assertEqual(3, len(shard.query_partners('hosts')))
         self.assertEqual(3, len(list(self.driver.iter_agencies())))
-
-    @defer.inlineCallbacks
-    def testMigrateOutAlert(self):
-        '''
-        This test checks the "globally" strategy and also that the alerts
-        stored in state survive the migration.
-        '''
-
-        def get_alert_agent():
-            return self._get_agent('alert_agent')
-
-        # first register an alert
-        alert_agent = yield get_alert_agent()
-        yield alert_agent.append_alert(
-            'We run out of cofee!', alert.Severity.high)
-        alerts = yield alert_agent.get_alerts()
-        self.assertEqual(1, len(alerts))
-
-        # prepare migration for host 2
-        recp = self.host2.get_own_address()
-        migration = yield self.export_agent.prepare_migration(recp)
-        self.assertFalse(migration.is_completable())
-        self.assertEqual(1, len(migration.get_steps()))
-        yield self.export_agent.lock_host(recp)
-
-        migration = yield self.export_agent.apply_migration_step(migration, 0)
-        yield self.wait_for(self.export_agent.has_empty_outbox, 10)
-        yield self.wait_for_idle(10)
-        self.assertTrue(migration.get_steps()[0].applied)
-
-        alert_agent = yield get_alert_agent()
-        hosts = alert_agent.query_partners('hosts')
-        self.assertEqual(1, len(hosts))
-        self.assertNotEqual(hosts[0].recipient, recp)
-
-        alerts = yield alert_agent.get_alerts()
-        self.assertEqual(1, len(alerts))
-        yield self.export_agent.unlock_host(recp)
 
     @defer.inlineCallbacks
     def testExportingAgent(self):
