@@ -187,8 +187,8 @@ class AlertAgent(agent.BaseAgent):
                 severity=alert.severity,
                 hostname=alert.hostname)
             self.info("Received alert for service we don't know, triggering "
-                      "shard rescan. Service: %r", key)
-            self.call_next(self.rescan_shard)
+                      "shard rescan in 1 sec. Service: %r", key)
+            self.call_later(1, self.rescan_shard)
         return state.alerts[key]
 
     @replay.mutable

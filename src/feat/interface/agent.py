@@ -516,12 +516,10 @@ class IMonitorAgent(IAgent):
     adaptation will not work after reloading the feat module.'''
 
 
-
 class IAlertAgent(IAgent):
     '''Point of defining this interface is to be have a interface type to
     adapt agent class to IModel without the instance checks. Without this
     adaptation will not work after reloading the feat module.'''
-
 
     def get_alerts():
         '''Returns list of ReceivedAlerts representing all the services

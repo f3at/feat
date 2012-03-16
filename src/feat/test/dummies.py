@@ -57,7 +57,7 @@ class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
         return self.now
 
     def call_next(self, call, *args, **kwargs):
-        self.call_later(0, call, *args, **kwargs)
+        time.call_later(0, fiber.maybe_fiber, call, *args, **kwargs)
 
     def call_later(self, time, fun, *args, **kwargs):
         payload = (time, fun, args, kwargs)
@@ -287,7 +287,6 @@ class DummyPosterMedium(DummyMediumBase):
         self.messages.append(msg)
 
 
-
 class DummyContractorMedium(
     journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
@@ -319,6 +318,3 @@ class DummyContractorMedium(
 
     def update_manager_address(self, recipient):
         self.updated_address = recipient
-
-
-

@@ -10,7 +10,6 @@ from feat.models import response
 from feat.interface.protocols import ProtocolFailed
 
 
-
 class Alert1(alert.BaseAlert):
     name = 'service1'
     severity = alert.Severity.warn
