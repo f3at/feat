@@ -38,8 +38,6 @@ def init(path=None):
     keeper. Initialize the flulog and append it to the tee.'''
     default = get_default()
     if default is not None:
-        warning('log-init', 'It appears that logging has already been '
-                'initialized. The default keeper is %r', default)
         return default
     tee = LogTee()
     set_default(tee)

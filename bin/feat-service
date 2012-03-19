@@ -32,8 +32,8 @@ from feat.agencies import bootstrap
 from feat.agencies.net import options as options_module
 
 
-def start(args, logging=True):
-    bootstrap.bootstrap(args=args[:-1], logging=logging)
+def start(args):
+    bootstrap.bootstrap(args=args[:-1])
 
 
 def stop(options, sig=signal.SIGUSR1):
@@ -87,7 +87,7 @@ restart restarts feat gently, so agents can restart on the same host.
 
     if command == 'restart':
         stop(options, signal.SIGUSR2)
-        start(args, logging=False)
+        start(args)
         return
 
     if command == 'status':
