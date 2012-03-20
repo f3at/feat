@@ -2,6 +2,8 @@ graft tools
 graft doc
 graft conf
 graft examples
+graft gateway
+graft init.d
 
 include README
 include RELEASE
@@ -19,7 +21,7 @@ include src/feat/extern/log/ChangeLog
 include src/feat/extern/log/README
 
 recursive-include src/feat *.py
-recursive-include src/feat/gateway/static *.css *.js *.gif *.png
+exclude src/feat/configure/uninstalled.py
 
 recursive-exclude doc *.pyc
 recursive-exclude examples *.pyc

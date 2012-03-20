@@ -20,13 +20,12 @@
 
 # Headers in this file shall remain intact.
 import optparse
-import tempfile
 import os
 import sys
 
 from feat.common import reflect
 from feat.agencies.net import configfile
-
+from feat.configure import configure
 from feat.agencies.net.broker import DEFAULT_SOCKET_PATH
 from feat.agencies.net.database import DEFAULT_DB_HOST, DEFAULT_DB_PORT
 from feat.agencies.net.database import DEFAULT_DB_NAME
@@ -36,29 +35,30 @@ DEFAULT_MSG_PORT = 5672
 DEFAULT_MSG_USER = "guest"
 DEFAULT_MSG_PASSWORD = "guest"
 
-DEFAULT_JOURFILE = 'sqlite:///var/log/feat/journal.sqlite3'
+DEFAULT_JOURFILE = "sqlite://" +\
+                   os.path.join(configure.logdir, "journal.sqlite3")
 
 DEFAULT_GW_PORT = 5500
-DEFAULT_GW_P12_FILE = "/etc/feat/gateway.p12"
+DEFAULT_GW_P12_FILE = os.path.join(configure.confdir, "gateway.p12")
 DEFAULT_ALLOW_TCP_GATEWAY = False
 
 DEFAULT_TUNNEL_PORT = 5400
-DEFAULT_TUNNEL_P12_FILE = "/etc/feat/tunneling.p12"
+DEFAULT_TUNNEL_P12_FILE = os.path.join(configure.confdir, "tunneling.p12")
 
 # Only for command-line options
-DEFAULT_MH_PUBKEY = "public.key"
-DEFAULT_MH_PRIVKEY = "private.key"
-DEFAULT_MH_AUTH = "authorized_keys"
-DEFAULT_MH_PORT = 6000
+DEFAULT_MH_PUBKEY = os.path.join(configure.confdir, "public.key")
+DEFAULT_MH_PRIVKEY = os.path.join(configure.confdir, "private.key")
+DEFAULT_MH_AUTH = os.path.join(configure.confdir, "authorized_keys")
+DEFAULT_MH_PORT = 2222
 
 DEFAULT_ENABLE_SPAWNING_SLAVE = True
-DEFAULT_RUNDIR = "/var/run/feat"
-DEFAULT_LOGDIR = "/var/log/feat"
+DEFAULT_RUNDIR = configure.rundir
+DEFAULT_LOGDIR = configure.logdir
 DEFAULT_DAEMONIZE = False
 
 MASTER_LOG_LINK = "feat.master.log"
 
-DEFAULT_LOCK_PATH = os.path.join(tempfile.gettempdir(), 'feat.agency.lock')
+DEFAULT_LOCK_PATH = os.path.join(configure.lockdir, 'feat.lock')
 
 
 def add_options(parser):
@@ -110,9 +110,9 @@ def add_agency_options(parser):
                       action="store", dest="agency_logdir",
                       help=("agent log directory (default: %s)" %
                             DEFAULT_LOGDIR))
-    group.add_option('-D', '--daemonize',
-                     action="store_true", dest="agency_daemonize",
-                     help="run in background as a daemon")
+    group.add_option('--no-daemonize',
+                     action="store_false", dest="agency_daemonize",
+                     help="Don't daemonize the process", default=True)
     group.add_option('--force-host-restart',
                      action="store_true", dest="force_host_restart",
                      help=("cleanup first after an host agent and the "
@@ -135,8 +135,8 @@ def add_agency_options(parser):
                       default=None)
     group.add_option('--lock-path',
                       action="store", dest="lock_path",
-                      help="path for the inter agencies lock (default: "
-                           "$TEMPDIR/feat.lock)", default=DEFAULT_LOCK_PATH)
+                      help="path for the inter agencies lock (default: %s)" %
+                           (DEFAULT_LOCK_PATH, ))
     group.add_option('--hostname',
                       action="store", dest="agency_hostname",
                       help="overrides the host name used by the agency")

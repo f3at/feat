@@ -110,8 +110,9 @@ class FullIntegrationTest(IntegrationTest):
         tee = log.get_default()
         tee.add_keeper('buffer', log.LogBuffer(limit=10000))
 
-        self.tempdir = os.path.curdir
-        self.socket_path = os.path.join(os.path.curdir, 'feat-test.socket')
+        self.tempdir = os.path.abspath(os.path.curdir)
+        self.socket_path = os.path.abspath(
+            os.path.join(os.path.curdir, 'feat-test.socket'))
 
         bin_dir = os.path.abspath(os.path.join(
             os.path.curdir, '..', '..', 'bin'))
@@ -137,7 +138,8 @@ class FullIntegrationTest(IntegrationTest):
             self.msg_port = self.msg_process.get_free_port()
 
         self.jourfile = "%s.sqlite3" % (self._testMethodName, )
-        self.pid_path = os.path.join(os.path.curdir, 'feat.pid')
+        self.pid_path = os.path.abspath(
+            os.path.join(os.path.curdir, 'feat.pid'))
 
     @defer.inlineCallbacks
     def tearDown(self):

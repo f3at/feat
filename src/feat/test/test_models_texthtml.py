@@ -7,9 +7,9 @@ from zope.interface import implements
 from twisted.trial.unittest import SkipTest
 
 from feat.common import defer, adapter
+from feat.configure import configure
 from feat.test import common
 from feat.models import texthtml, model, action, value, call, getter, setter
-from feat import gateway
 from feat.web import document, http
 
 from feat.models.interface import IModel, IContext, ActionCategories
@@ -96,7 +96,7 @@ class ModelWriterTest(common.TestCase):
             with open(filename, 'w') as f:
                 print >> f, self.document.get_data()
 
-            static = os.path.join(gateway.__path__[0], 'static')
+            static = os.path.join(configure.gatewaydir, 'static')
             dest = os.path.join(os.path.curdir, 'static')
             if not os.path.exists(dest):
                 shutil.copytree(static, dest)

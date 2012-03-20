@@ -212,7 +212,6 @@ class StandaloneAgent(agent.BaseAgent):
         args = ['-i', 'feat.test.integration.test_agencies_net_agency',
                 '-L', os.path.curdir,
                 '-R', os.path.curdir,
-                '-D',
                 '-X',
                 '--agent-id', agent_id]
         if s_kwargs:
@@ -530,8 +529,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
                 '--journal', "sqlite://%s" % (self.jourfile, ),
                 '--rundir', os.path.abspath(os.path.curdir),
                 '--logdir', os.path.abspath(os.path.curdir),
-                '--socket-path', self.socket_path,
-                '-D']
+                '--socket-path', self.socket_path]
         python_path = ":".join(sys.path)
         env = dict(PYTHONPATH=python_path,
                    FEAT_DEBUG=log.FluLogKeeper.get_debug(),

@@ -40,6 +40,7 @@ from feat.test.integration.common import FullIntegrationTest
 class OptParseMock(object):
     agency_lock_path = ""
     agency_socket_path = ""
+    agency_rundir = ""
 
 
 @common.attr('slow', timeout=40)
@@ -61,6 +62,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         options.agency_lock_path = self.lock_path
         options.agency_socket_path = self.socket_path
         options.agency_journal = ["sqlite://%s" % (self.jourfile, )]
+        options.agency_rundir = os.path.abspath(os.path.curdir)
         self.agency = standalone_agency.Agency(options)
 
         yield self.spawn_agency()
@@ -144,8 +146,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
                 '--logdir', os.path.abspath(os.path.curdir),
                 '--journal', "sqlite://%s" % (self.jourfile, ),
                 '--socket-path', self.socket_path,
-                '--lock-path', self.lock_path,
-                '-D']
+                '--lock-path', self.lock_path]
         python_path = ":".join(sys.path)
         env = dict(PYTHONPATH=python_path,
                    FEAT_DEBUG=log.FluLogKeeper.get_debug(),

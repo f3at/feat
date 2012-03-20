@@ -1,0 +1,171 @@
+#!/usr/bin/python
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+
+# F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
+# Copyright (C) 2010,2011 Flumotion Services, S.A.
+# All rights reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# See "LICENSE.GPL" in the source distribution for more information.
+
+# Headers in this file shall remain intact.
+import commands
+import glob
+import os
+import sys
+import time
+
+from feat.common import run, signal, text_helper, log
+from feat.configure import configure
+
+
+def start(args):
+    debug = os.environ.get("FEAT_DEBUG", "3")
+    feat = os.path.join(configure.bindir, 'feat')
+    confile = os.path.join(configure.confdir, 'feat.ini')
+    cmd = "%s -C %s -d %s" % (feat, confile, debug)
+    localfile = os.path.join(configure.confdir, 'local.ini')
+    if os.path.exists(localfile):
+        # add local.ini if it exists
+        cmd += " -C " + localfile
+    cmd = " ".join([cmd] + args)
+
+    stdout("Starting feat ")
+    status, output = commands.getstatusoutput(cmd)
+    if status != 0:
+        print >> sys.stderr, ("Running command:\n %s\n failed with the "
+                              "exit code %d." % (cmd, status))
+        print >> sys.stderr, "The command output:\n\n", output
+        sys.exit(status)
+
+    _pidfile_wait(exists=True, timeout=20)
+    return
+
+
+def stop(sig=signal.SIGUSR1):
+    stdout("Stopping feat ")
+    rundir = configure.rundir
+    pid = run.get_pid(rundir)
+    if pid is None:
+        print >> sys.stderr, "PID file not found!"
+        sys.exit(1)
+    if not run.signal_pid(pid, sig):
+        print >> sys.stderr, "Process with PID %d not found!" % (pid, )
+        sys.exit(1)
+    _pidfile_wait(exists=False, timeout=10)
+    return
+
+
+def main(args):
+    usage = text_helper.format_block("""
+    Usage: feat {start|stop|shutdown|restart|status|clean} [extra_options]
+
+    Commands:
+    * start - Start the service
+    * stop - Stop the service violently, the agents will be migrated to
+             different hosts once the monitor agent running on the other
+             machine figures out they are gone.
+    * shutdown - Stop service in a gentle way, cleaning up the agents data.
+    * restart - Stop service gently and start it back.
+    * status - Checks if the service is running.
+    * clean - Cleans the log and rundir.
+    """)
+
+    try:
+        command = args.pop(0)
+    except IndexError:
+        print usage
+        sys.exit(1)
+
+    if command == 'start':
+        rundir = configure.rundir
+        pid = run.get_pid(rundir)
+        if pid:
+            print >> sys.stderr, "Feat seems to be running with pid", pid
+            print >> sys.stderr, "Consider removing the pidfile."
+            sys.exit(1)
+        start(args)
+        return
+
+    if command == 'stop':
+        stop(signal.SIGUSR1)
+        return
+
+    if command == 'shutdown':
+        stop(signal.SIGUSR2)
+        return
+
+    if command == 'restart':
+        stop(signal.SIGUSR2)
+        start(args)
+        return
+
+    if command == 'status':
+        run.status(processName='', rundir=configure.rundir)
+        return
+
+    if command == 'clean':
+        to_delete = []
+        to_delete.extend(glob.glob(os.path.join(configure.rundir, "*.log")))
+        to_delete.extend(glob.glob(os.path.join(configure.rundir, "*.sqlite3")))
+        to_delete.extend(glob.glob(os.path.join(configure.logdir, "*.log")))
+        to_delete.extend(glob.glob(os.path.join(configure.logdir, "*.sqlite3")))
+        for name in set(to_delete):
+            print "Deleting ", name
+            try:
+                os.unlink(name)
+            except OSError:
+                pass
+        return
+
+    stderr("No such command, %s" % (command, ))
+    stderr(usage)
+    sys.exit(1)
+
+
+def stdout(msg):
+    sys.stdout.write(msg)
+    sys.stdout.flush()
+
+
+def stderr(msg):
+    sys.stderr.write(msg)
+    sys.stderr.flush()
+
+
+def _pidfile_wait(exists, timeout):
+    elapsed = 0
+    while _pidfile_exist() is not exists:
+        time.sleep(0.1)
+        elapsed += 0.1
+        stdout('.')
+        if elapsed > timeout:
+            stderr("Timeout waiting.")
+            sys.exit(1)
+    stdout("done.\n")
+
+
+def _pidfile_exist():
+    return not not run.get_pid(configure.rundir)
+
+
+if __name__ == '__main__':
+    # initializing log is necessary for methods defined
+    # in feat.common.run module
+    keeper = log.VoidLogKeeper()
+    log.set_default(keeper)
+    main(sys.argv[1:])
