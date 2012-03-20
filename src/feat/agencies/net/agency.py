@@ -30,6 +30,7 @@ from feat.agencies import agency, journaler, recipient
 from feat.agencies.net import ssh, broker, database, options
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
+from feat.configure import configure
 from feat import applications
 from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
@@ -190,19 +191,13 @@ class Agency(agency.Agency):
                  tunneling_port=options.DEFAULT_TUNNEL_PORT,
                  tunneling_p12=options.DEFAULT_TUNNEL_P12_FILE,
                  enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
-                 rundir=None,
-                 logdir=None,
+                 rundir=options.DEFAULT_RUNDIR,
+                 logdir=options.DEFAULT_LOGDIR,
                  daemonize=options.DEFAULT_DAEMONIZE,
                  hostname=None,
                  domainname=None):
 
         agency.Agency.__init__(self)
-
-        curdir = os.path.abspath(os.curdir)
-        if rundir is None:
-            rundir = options.DEFAULT_RUNDIR if daemonize else curdir
-        if logdir is None:
-            logdir = options.DEFAULT_LOGDIR if daemonize else curdir
 
         self._init_config(msg_host=msg_host,
                           msg_port=msg_port,
@@ -350,11 +345,11 @@ class Agency(agency.Agency):
 
     def _link_log_file(self, filename):
         if not self.config['agency']['daemonize']:
+            # if haven't demonized the log is just at the users console
             return
 
         logfile, _ = log.FluLogKeeper.get_filenames()
-        basedir = os.path.dirname(logfile)
-        linkname = os.path.join(basedir, filename)
+        linkname = os.path.join(self.config['agency']['logdir'], filename)
         try:
             os.unlink(linkname)
         except OSError:
@@ -868,8 +863,7 @@ class Agency(agency.Agency):
             path = os.environ.get("PATH", "")
             feat_debug = self.get_logging_filter()
 
-            command = 'feat'
-            args.append('-D')
+            command = os.path.join(configure.bindir, 'feat')
             env = dict(PYTHONPATH=python_path,
                        FEAT_DEBUG=feat_debug,
                        PATH=path)

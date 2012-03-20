@@ -19,8 +19,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-import os
 import socket
 
 from twisted.internet import error as terror
@@ -51,7 +49,8 @@ class Gateway(log.LogProxy, log.Logger):
         self._root = root
         self._label = label
         if not static_path:
-            static_path = os.path.join(os.path.dirname(__file__), "static")
+            from feat.configure import configure
+            static_path = configure.gatewaydir
         self._static_path = static_path
 
         tmp_range = port_range
@@ -115,7 +114,7 @@ class Gateway(log.LogProxy, log.Logger):
                 self.log("Port %d not available for %sgateway", port, log_tag)
                 continue
 
-        raise NoPortAvailableError("No port available for %sgateway", log_tag)
+        raise NoPortAvailableError("No port available for %sgateway" % log_tag)
 
     def _build_resource(self, port):
         return resources.Root(self._host, port,

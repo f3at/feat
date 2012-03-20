@@ -34,8 +34,9 @@ from feat.agencies import common
 
 from feat.interface.agent import AgencyAgentState
 from feat.agencies.agency import AgencyAgent
+from feat.configure import configure
 
-DEFAULT_SOCKET_PATH = "/tmp/feat-master.socket"
+DEFAULT_SOCKET_PATH = os.path.join(configure.socketdir, 'feat-master.socket')
 
 
 class TypedReference(object):
@@ -225,9 +226,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
             return self._connect_as_slave()
 
     def _handle_critical_error(self, fail):
-        self.error("I'm killing the process, goodbye!")
         error.handle_failure(self, fail, 'Critical error occured.')
-        self.agency.shutdown(stop_process=True)
 
     def _connect_as_slave(self):
         cb = defer.Deferred()

@@ -48,7 +48,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/feat
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
 install -m 755 \
-        conf/redhat/feat \
+        init.d/feat \
         $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 install -m 640 \
         conf/redhat/feat.sysconfig \
@@ -60,8 +60,6 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/lock/feat
 install -d $RPM_BUILD_ROOT%{_localstatedir}/log/feat
 install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 
-# Creates feat user home directory
-install -d $RPM_BUILD_ROOT%{_localstatedir}/cache/feat
 
 # Install default configuration file
 install -m 644  conf/feat.ini $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
@@ -75,6 +73,16 @@ install -m 755 -d %{_sharedir}/tools
 install -m 755 -d %{_sharedir}/tools/PKI
 install -m 755 -d %{_sharedir}/tools/PKI/bin
 install -m 755 -d %{_sharedir}/tools/PKI/template
+install -m 755 -d %{_sharedir}/gateway
+install -m 755 -d %{_sharedir}/gateway/static
+install -m 755 -d %{_sharedir}/gateway/static/images
+install -m 755 -d %{_sharedir}/gateway/static/script
+install -m 644 -t %{_sharedir}/gateway \
+    gateway/static/feat.css \
+    gateway/static/facebox.css
+install -m 644 -t %{_sharedir}/gateway/static/images gateway/static/images/*
+install -m 644 -t %{_sharedir}/gateway/static/script gateway/static/script/*
+
 install -m 644 -t %{_sharedir}/conf \
   conf/authorized_keys \
   conf/dummy.p12 \
@@ -110,12 +118,7 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %pre
-/usr/sbin/useradd -s /sbin/nologin \
-        -r -d %{_localstatedir}/cache/feat -M \
-        feat > /dev/null 2> /dev/null || :
-/usr/sbin/usermod -d %{_localstatedir}/cache/feat \
-        feat > /dev/null 2> /dev/null || :
-
+/usr/sbin/useradd -s /sbin/nologin -r -M feat > /dev/null 2> /dev/null || :
 
 %preun
 # if removal and not upgrade, stop the processes and clean up
@@ -124,10 +127,6 @@ then
   /sbin/service feat stop > /dev/null
 
   rm -rf %{_localstatedir}/run/feat*
-
-  # clean out the cache/home dir too, without deleting it or the user
-  rm -rf %{_localstatedir}/cache/feat/*
-  rm -rf %{_localstatedir}/cache/feat/.[^.]*
 
   /sbin/chkconfig --del feat
 fi
@@ -150,7 +149,6 @@ fi
 %{_bindir}/feat-couchpy
 %{_bindir}/feat-dbload
 %{_bindir}/feat-locate
-%{_bindir}/feat-service
 
 %{_datadir}/python-feat/*
 
@@ -159,7 +157,6 @@ fi
 %attr(775,root,feat) %{_localstatedir}/lock/feat
 %attr(775,root,feat) %{_localstatedir}/log/feat
 %attr(775,root,feat) %{_localstatedir}/run/feat
-%attr(770,feat,feat) %{_localstatedir}/cache/feat
 
 
 %changelog
