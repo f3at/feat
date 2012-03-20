@@ -262,6 +262,8 @@ class Connection(log.LogProxy, log.Logger):
 
         self._protocol = None
         self._pending = 0
+        self.debug('Connection to %s:%d using %s',
+            self._host, self._port, self._http_scheme.name)
 
     ### public ###
 
