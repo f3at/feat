@@ -72,8 +72,7 @@ setup(name = NAME,
       scripts = ['bin/feat',
                  'bin/feat-couchpy',
                  'bin/feat-dbload',
-                 'bin/feat-locate',
-                 'bin/feat-service'],
+                 'bin/feat-locate']
       keywords = KEYWORDS,
       classifiers = CLASSIFIERS
 )

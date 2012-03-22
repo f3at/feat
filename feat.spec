@@ -147,7 +147,6 @@ fi
 %{_bindir}/feat-couchpy
 %{_bindir}/feat-dbload
 %{_bindir}/feat-locate
-%{_bindir}/feat-service
 
 %{_datadir}/python-feat/*
 
