@@ -77,7 +77,9 @@ install -m 755 -d %{_sharedir}/gateway
 install -m 755 -d %{_sharedir}/gateway/static
 install -m 755 -d %{_sharedir}/gateway/static/images
 install -m 755 -d %{_sharedir}/gateway/static/script
-install -m 644 -t %{_sharedir}/gateway gateway/static/*
+install -m 644 -t %{_sharedir}/gateway \
+    gateway/static/feat.css \
+    gateway/static/facebox.css
 install -m 644 -t %{_sharedir}/gateway/static/images gateway/static/images/*
 install -m 644 -t %{_sharedir}/gateway/static/script gateway/static/script/*
 
