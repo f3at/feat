@@ -285,7 +285,11 @@ class Agency(agency.Agency):
         self._ssh.start_listening()
         self._journaler.set_connection_strings(
             self.config['agency']['journal'])
-        self._start_master_gateway()
+        try:
+            self._start_master_gateway()
+        except Exception as e:
+            error.handle_exception(
+                self, e, "Failed setting up gateway, it will stay disabled.")
 
         self._redirect_text_log()
         self._create_pid_file()
