@@ -20,10 +20,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-import os
-import subprocess
-
 from setuptools import setup, find_packages
 
 
@@ -66,13 +62,12 @@ setup(name = NAME,
       setup_requires = SETUP_REQUIRES,
       install_requires = INSTALL_REQUIRES,
       requires = REQUIRES,
-      package_dir = {'':'src'},
+      package_dir = {'': 'src'},
       packages = find_packages('src'),
       include_package_data = True,
       scripts = ['bin/feat',
                  'bin/feat-couchpy',
                  'bin/feat-dbload',
-                 'bin/feat-locate']
+                 'bin/feat-locate'],
       keywords = KEYWORDS,
-      classifiers = CLASSIFIERS
-)
+      classifiers = CLASSIFIERS)
