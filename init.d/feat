@@ -25,12 +25,15 @@
 # Headers in this file shall remain intact.
 import commands
 import glob
+import optparse
 import os
 import sys
 import time
 
 from feat.common import run, signal, text_helper, log
 from feat.configure import configure
+
+from feat.agencies.net import options, config, configfile
 
 
 def start(args):
@@ -83,6 +86,7 @@ def main(args):
     * restart - Stop service gently and start it back.
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
+    * hostcleanup - Cleans up descriptors of the agents running on the host.
     """)
 
     try:
@@ -119,17 +123,43 @@ def main(args):
         return
 
     if command == 'clean':
+        c = _parse_config()
         to_delete = []
-        to_delete.extend(glob.glob(os.path.join(configure.rundir, "*.log")))
-        to_delete.extend(glob.glob(os.path.join(configure.rundir, "*.sqlite3")))
-        to_delete.extend(glob.glob(os.path.join(configure.logdir, "*.log")))
-        to_delete.extend(glob.glob(os.path.join(configure.logdir, "*.sqlite3")))
+        to_delete.extend(glob.glob(os.path.join(c.agency.rundir, "*.log")))
+        to_delete.extend(glob.glob(os.path.join(c.agency.rundir, "*.sqlite3")))
+        to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.log")))
+        to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.sqlite3")))
         for name in set(to_delete):
             print "Deleting ", name
             try:
                 os.unlink(name)
             except OSError:
                 pass
+        return
+
+    if command == 'hostcleanup':
+        from feat import applications
+
+        c = _parse_config()
+
+        # parse extra options
+        parser = optparse.OptionParser()
+        parser.add_option('--hostname',
+                          help=('specify the hostname for which for perform '
+                                'the cleanup'),
+                          action='store', default=c.agency.hostname,
+                          type="str", metavar="HOSTNAME", dest='hostname')
+
+        opts, _ = parser.parse_args(args)
+
+        applications.load('feat.agents.application', 'feat')
+        from feat.utils import host_restart
+        from feat.agents.base import dbtools
+
+        log.FluLogKeeper.init()
+        log.set_default(log.FluLogKeeper())
+        with dbtools.dbscript(c.db) as d:
+            d.addCallback(host_restart.do_cleanup, opts.hostname)
         return
 
     stderr("No such command, %s" % (command, ))
@@ -145,6 +175,23 @@ def stdout(msg):
 def stderr(msg):
     sys.stderr.write(msg)
     sys.stderr.flush()
+
+
+def _parse_config():
+    parser = optparse.OptionParser()
+    options.add_options(parser)
+    opts, args = parser.parse_args([])
+    feat_ini = os.path.join(configure.confdir, 'feat.ini')
+    local_ini = os.path.join(configure.confdir, 'local.ini')
+    with open(feat_ini, 'r') as f:
+        configfile.parse_file(parser, f)
+    if os.path.exists(local_ini):
+        with open(local_ini, 'r') as f:
+            configfile.parse_file(parser, f)
+
+    c = config.Config()
+    c.load(os.environ, opts)
+    return c
 
 
 def _pidfile_wait(exists, timeout):

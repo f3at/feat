@@ -24,7 +24,7 @@ import optparse
 from twisted.internet import reactor
 
 from feat.agents.base import view
-from feat.agencies.net import options, database
+from feat.agencies.net import options, database, config
 from feat.agencies.interface import ConflictError
 from feat.common import log, defer, error
 from feat.agents.application import feat
@@ -80,24 +80,25 @@ def load_application(option, opt_str, value, parser):
     applications.load(module, name)
 
 
-def parse_options():
-    parser = optparse.OptionParser()
-    options.add_general_options(parser)
-    options.add_db_options(parser)
-    parser.add_option('-f', '--force', dest='force', default=False,
-                      help=('Overwrite documents which are '
-                            'already in the database.'),
-                      action="store_true")
-    parser.add_option('-m', '--migration', dest='migration', default=False,
-                      help='Run migration script.',
-                      action="store_true")
-    parser.add_option('-a', '--application', nargs=1,
-                      callback=load_application, type="string",
-                      help='Load application by canonical name.',
-                      action="callback")
+def parse_options(parser=None, args=None):
+    if parser is None:
+        parser = optparse.OptionParser()
+        options.add_general_options(parser)
+        options.add_db_options(parser)
+        parser.add_option('-f', '--force', dest='force', default=False,
+                          help=('Overwrite documents which are '
+                                'already in the database.'),
+                          action="store_true")
+        parser.add_option('-m', '--migration', dest='migration', default=False,
+                          help='Run migration script.',
+                          action="store_true")
+        parser.add_option('-a', '--application', nargs=1,
+                          callback=load_application, type="string",
+                          help='Load application by canonical name.',
+                          action="callback")
 
 
-    opts, args = parser.parse_args()
+    opts, args = parser.parse_args(args)
     opts.db_host = opts.db_host or options.DEFAULT_DB_HOST
     opts.db_port = opts.db_port or options.DEFAULT_DB_PORT
     opts.db_name = opts.db_name or options.DEFAULT_DB_NAME
@@ -116,7 +117,13 @@ def create_db(connection):
 
 
 def script():
-    with dbscript() as (d, opts):
+    log.init()
+    log.FluLogKeeper.set_debug('5')
+
+    opts, args = parse_options()
+    c = config.DbConfig(host=opts.db_host, port=opts.db_port,
+                        name=opts.db_name)
+    with dbscript(c) as d:
 
         def body(connection):
             documents = applications.get_initial_data_registry().itervalues()
@@ -148,18 +155,19 @@ def migration_script(connection):
 
 class dbscript(object):
 
-    def __enter__(self):
-        log.init()
-        log.FluLogKeeper.set_debug('5')
+    def __init__(self, dbconfig):
+        assert isinstance(dbconfig, config.DbConfig), str(type(dbconfig))
+        self.config = dbconfig
 
-        opts, args = parse_options()
+    def __enter__(self):
         self.connection = create_connection(
-            opts.db_host, opts.db_port, opts.db_name)
+            self.config.host, self.config.port, self.config.name)
 
         log.info('script', "Using host: %s, port: %s, db_name; %s",
-                 opts.db_host, opts.db_port, opts.db_name)
+                 self.config.host, self.config.port, self.config.name)
+
         self._deferred = defer.Deferred()
-        return self._deferred, opts
+        return self._deferred
 
     def __exit__(self, type, value, traceback):
         self._deferred.addBoth(defer.drop_param, reactor.stop)
