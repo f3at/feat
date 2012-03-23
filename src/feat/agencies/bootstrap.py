@@ -25,7 +25,7 @@ import optparse
 import sys
 
 from feat.agencies.net import agency as net_agency, standalone
-from feat.agencies.net import database, options
+from feat.agencies.net import database, options, config as config_module
 from feat.agencies.net.options import OptionError
 
 from feat.common import log, run, defer
@@ -134,9 +134,8 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
                 # lazy import not to load descriptor before feat is loaded
                 from feat.utils import host_restart
 
-                dbc = agency.config['db']
-                db = database.Database(
-                    dbc['host'], int(dbc['port']), dbc['name'])
+                dbc = agency.config.db
+                db = database.Database(dbc.host, int(dbc.port), dbc.name)
                 connection = db.get_connection()
                 d.addCallback(defer.drop_param, host_restart.do_cleanup,
                               connection, agency._get_host_agent_id())
@@ -230,5 +229,6 @@ class _Bootstrap(object):
             cls = standalone.Agency
         else:
             cls = net_agency.Agency
-        a = cls.from_config(os.environ, self.opts)
-        return a
+        config = config_module.Config()
+        config.load(os.environ, self.opts)
+        return cls(config)

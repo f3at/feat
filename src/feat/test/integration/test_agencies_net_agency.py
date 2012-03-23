@@ -22,7 +22,6 @@
 import socket
 import sys
 import os
-import optparse
 import operator
 import re
 
@@ -33,9 +32,8 @@ from feat.test import common
 from feat.test.integration.common import FullIntegrationTest, ModelTestMixin
 from feat.process import standalone
 from feat.agencies import agency as base_agency
-from feat.agencies.messaging import rabbitmq
-from feat.agencies.net import agency, broker
-from feat.agencies.net import options as options_module
+from feat.agencies.net import agency, broker, config
+
 from feat.agents.base import agent, descriptor, partners, replay
 from feat.common import serialization, fiber, log, first, run, defer
 from feat.utils import host_restart
@@ -43,147 +41,6 @@ from feat.agents.application import feat
 
 from feat.interface.agent import AgencyAgentState
 from feat.agencies.interface import NotFoundError
-
-
-class OptParseMock(object):
-    msg_port = '1999'
-    manhole_public_key = 'file2'
-    agent_name = 'name'
-
-
-class UnitTestCase(common.TestCase):
-
-    def setUp(self):
-        common.TestCase.setUp(self)
-        self.agency = agency.Agency()
-
-    def testOtherEnvironmentVariables(self):
-        # this test checks the problem we had after indroducing other
-        # environment variable starting with FEAT_ is fixed
-        env = {
-            'FEAT_TEST_PG_NAME': 'feat_test',
-            }
-        self.agency._init_config()
-        self.agency._load_config(env) #no exception
-
-    def testLoadConfig(self):
-        env = {
-            'FEAT_AGENT_ID': '"agent_id"',
-            'FEAT_AGENT_ARGS': '"agent_args"',
-            'FEAT_AGENT_KWARGS': '"agent_kwargs"',
-            'FEAT_MSG_PORT': '2000',
-            'FEAT_MANHOLE_PUBLIC_KEY': '"file"',
-            'FEAT_AGENCY_JOURNAL':
-            '["postgres://localhost/feat", "sqlite://journaler.sqlite3"]'}
-        self.agency._init_config()
-        # Test extra configuration values
-        self.agency.config["agent"] = {"id": None,
-                                       "args": None,
-                                       "kwargs": None}
-        self.agency._load_config(env)
-        self.assertTrue('agent' in self.agency.config)
-        self.assertEqual('agent_id', self.agency.config['agent']['id'])
-        self.assertEqual('agent_args', self.agency.config['agent']['args'])
-        self.assertEqual('agent_kwargs', self.agency.config['agent']['kwargs'])
-        self.assertTrue('msg' in self.agency.config)
-        self.assertEqual(2000, self.agency.config['msg']['port'])
-        self.assertTrue('manhole' in self.agency.config)
-        self.assertEqual('file', self.agency.config['manhole']['public_key'])
-        self.assertFalse('name' in self.agency.config['agent'])
-        self.assertTrue('agency' in self.agency.config)
-        self.assertTrue('journal' in self.agency.config['agency'])
-        j = self.agency.config['agency']['journal']
-        self.assertIsInstance(j, list)
-        self.assertEqual('postgres://localhost/feat', j[0])
-        self.assertEqual('sqlite://journaler.sqlite3', j[1])
-
-        #Overwrite some configuration values
-        self.agency._load_config(env, OptParseMock())
-        self.assertEqual('1999', self.agency.config['msg']['port'])
-        self.assertEqual('file2', self.agency.config['manhole']['public_key'])
-        self.assertFalse('name' in self.agency.config['agent'])
-
-    def testConfigWithStringBoolean(self):
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'true'}
-        self.agency._init_config()
-        self.agency._load_config(env)
-        self.assertTrue(self.agency.config['agency']['force_host_restart'])
-
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'false'}
-        self.agency._load_config(env)
-        self.assertEqual(False,
-            self.agency.config['agency']['force_host_restart'])
-
-    def testConfigWithStringNone(self):
-        env = {'FEAT_AGENCY_FORCE_HOST_RESTART': 'null'}
-        self.agency._load_config(env)
-        self.assertIs(None, self.agency.config['agency']['force_host_restart'])
-
-    def testInitiateMessaging(self):
-        self.agency._init_config()
-        self.agency._load_config({})
-        self.failUnlessRaises(TypeError,
-                              self.agency._initiate_messaging,
-                              self.agency.config['msg'])
-
-        env = {'FEAT_MSG_PORT': '2000'}
-        self.agency._load_config(env)
-        client = self.agency._initiate_messaging(self.agency.config['msg'])
-        self.assertIsInstance(client, rabbitmq.Client)
-
-    def testStoreConfig(self):
-        self.agency.config = dict()
-        self.agency.config['msg'] = dict(port=3000, host='localhost')
-        self.agency.config['manhole'] = dict(public_key='file')
-        self.agency.config['agency'] = dict(
-            journal=['postgres://localhost/feat',
-                     'sqlite://journaler.sqlite3'])
-        env = dict()
-        self.agency._store_config(env)
-        self.assertEqual('"localhost"', env['FEAT_MSG_HOST'])
-        self.assertEqual('3000', env['FEAT_MSG_PORT'])
-        self.assertEqual('"file"', env['FEAT_MANHOLE_PUBLIC_KEY'])
-        exp = '["postgres://localhost/feat", "sqlite://journaler.sqlite3"]'
-        self.assertEqual(exp, env['FEAT_AGENCY_JOURNAL'])
-
-    def testDefaultConfig(self):
-        parser = optparse.OptionParser()
-        options_module.add_options(parser)
-        options = parser.get_default_values()
-        self.assertTrue(hasattr(options, 'msg_host'))
-        self.assertTrue(hasattr(options, 'msg_port'))
-        self.assertTrue(hasattr(options, 'msg_user'))
-        self.assertTrue(hasattr(options, 'msg_password'))
-        self.assertTrue(hasattr(options, 'db_host'))
-        self.assertTrue(hasattr(options, 'db_port'))
-        self.assertTrue(hasattr(options, 'db_name'))
-        self.assertTrue(hasattr(options, 'manhole_public_key'))
-        self.assertTrue(hasattr(options, 'manhole_private_key'))
-        self.assertTrue(hasattr(options, 'manhole_authorized_keys'))
-        self.assertTrue(hasattr(options, 'manhole_port'))
-        a = agency.Agency.from_config(dict())
-        self.assertEqual(a.config['msg']['host'],
-                         options_module.DEFAULT_MSG_HOST)
-        self.assertEqual(a.config['msg']['port'],
-                         options_module.DEFAULT_MSG_PORT)
-        self.assertEqual(a.config['msg']['user'],
-                         options_module.DEFAULT_MSG_USER)
-        self.assertEqual(a.config['msg']['password'],
-                         options_module.DEFAULT_MSG_PASSWORD)
-        self.assertEqual(a.config['db']['host'],
-                         options_module.DEFAULT_DB_HOST)
-        self.assertEqual(a.config['db']['port'],
-                         options_module.DEFAULT_DB_PORT)
-        self.assertEqual(a.config['db']['name'],
-                         options_module.DEFAULT_DB_NAME)
-        self.assertEqual(a.config['manhole']['public_key'],
-                         options_module.DEFAULT_MH_PUBKEY)
-        self.assertEqual(a.config['manhole']['private_key'],
-                         options_module.DEFAULT_MH_PRIVKEY)
-        self.assertEqual(a.config['manhole']['authorized_keys'],
-                         options_module.DEFAULT_MH_AUTH)
-        self.assertEqual(a.config['manhole']['port'],
-                         options_module.DEFAULT_MH_PORT)
 
 
 class StandalonePartners(partners.Partners):
@@ -299,12 +156,17 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
         yield FullIntegrationTest.setUp(self)
 
         journal_connstr = "sqlite://%s" % (self.jourfile, )
-        self.agency = agency.Agency(
-            msg_host=self.msg_host, msg_port=self.msg_port,
-            db_host=self.db_host, db_port=self.db_port, db_name=self.db_name,
-            agency_journal=[journal_connstr], rundir=self.tempdir,
-            logdir=self.tempdir,
-            socket_path=self.socket_path)
+        c = config.Config(
+            msg=config.MsgConfig(host=self.msg_host, port=self.msg_port),
+            db=config.DbConfig(host=self.db_host, port=self.db_port,
+                               name=self.db_name),
+            agency=config.AgencyConfig(
+                journal=[journal_connstr],
+                rundir=self.tempdir,
+                logdir=self.tempdir,
+                socket_path=self.socket_path))
+        c.load(dict())
+        self.agency = agency.Agency(c)
 
     @common.attr(skip="find_agent is broken")
     @defer.inlineCallbacks
@@ -437,7 +299,7 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
     @defer.inlineCallbacks
     def testBackupAgency(self):
         pid_path = os.path.join(os.path.curdir, 'feat.pid')
-        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+        hostname = self.agency.get_hostname()
 
         yield self.spawn_agency()
         yield self.wait_for_pid(pid_path)

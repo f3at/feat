@@ -28,7 +28,7 @@ import signal
 from twisted.python import failure
 from twisted.internet import defer
 
-from feat.agencies.net import standalone as standalone_agency
+from feat.agencies.net import standalone as standalone_agency, config
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.interface import NotFoundError
 from feat.common import log, run, fcntl
@@ -63,7 +63,9 @@ class FullIntegrationTestCase(FullIntegrationTest):
         options.agency_socket_path = self.socket_path
         options.agency_journal = ["sqlite://%s" % (self.jourfile, )]
         options.agency_rundir = os.path.abspath(os.path.curdir)
-        self.agency = standalone_agency.Agency(options)
+        c = config.Config()
+        c.load(dict(), options)
+        self.agency = standalone_agency.Agency(c)
 
         yield self.spawn_agency()
         yield self.wait_for_pid(self.pid_path)
@@ -78,7 +80,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
                            errbackArgs=(NotFoundError, ))
             return d
 
-        hostname = unicode(socket.gethostbyaddr(socket.gethostname())[0])
+        hostname = self.agency.get_hostname()
         yield self.wait_for(host_descriptor, 5)
 
     @defer.inlineCallbacks

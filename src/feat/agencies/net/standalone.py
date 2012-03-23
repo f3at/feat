@@ -44,12 +44,8 @@ class Agency(agency.Agency):
     startup_factory = Startup
     shutdown_factory = Shutdown
 
-    def __init__(self, options=None):
-        agency.Agency.__init__(self)
-        # Add standalone-specific values
-        self.config["agent"] = {"kwargs": None}
-        # Load configuration from environment and options
-        self._load_config(os.environ, options)
+    def __init__(self, config):
+        agency.Agency.__init__(self, config)
 
         self._starting_master = False
         self._release_lock_cl = None
@@ -99,7 +95,7 @@ class Agency(agency.Agency):
 
     def _acquire_lock(self):
         if not self._lock_file:
-            self._lock_file = open(self.config['agency']['lock_path'], 'rb+')
+            self._lock_file = open(self.config.agency.lock_path, 'rb+')
         self.debug("Trying to take a lock on %s to start the master agency",
                    self._lock_file.name)
 

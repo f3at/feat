@@ -20,21 +20,19 @@
 
 # Headers in this file shall remain intact.
 import os
-import re
-import socket
 import sys
 
 from twisted.internet import reactor
 
 from feat.agencies import agency, journaler, recipient
-from feat.agencies.net import ssh, broker, database, options
+from feat.agencies.net import ssh, broker, database, options, config
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
 from feat.configure import configure
 from feat import applications
 from feat.common import log, defer, time, error, run, signal
 from feat.common import manhole, text_helper
-from feat.common.serialization import json
+
 from feat.process import standalone
 from feat.process.base import ProcessState
 from feat.gateway import gateway
@@ -60,12 +58,12 @@ class Startup(agency.Startup):
 
     def stage_configure(self):
         self.c = self.friend.config
-        if self.c['agency']['daemonize']:
-            os.chdir(self.c['agency']['rundir'])
+        if self.c.agency.daemonize:
+            os.chdir(self.c.agency.rundir)
 
-        dbc = self.c['db']
-        self._db = database.Database(dbc['host'],
-                                     int(dbc['port']), dbc['name'])
+        dbc = self.c.db
+        assert isinstance(dbc, config.DbConfig), str(type(dbc))
+        self._db = database.Database(dbc.host, int(dbc.port), dbc.name)
         self._journaler = journaler.Journaler(
             on_rotate_cb=self.friend._force_snapshot_agents,
             on_switch_writer_cb=self.friend._on_journal_writer_switch,
@@ -89,17 +87,18 @@ class Startup(agency.Startup):
         reactor.addSystemEventTrigger('before', 'shutdown',
                                       self.friend.on_killed)
 
-        mc = self.c['manhole']
-        ssh_port = int(mc["port"]) if mc["port"] is not None else None
+        mc = self.c.manhole
+        assert isinstance(mc, config.ManholeConfig), str(type(mc))
+        ssh_port = int(mc.port) if mc.port is not None else None
 
         self.friend._ssh = ssh.ListeningPort(self.friend,
                                       ssh.commands_factory(self.friend),
-                                      public_key=mc["public_key"],
-                                      private_key=mc["private_key"],
-                                      authorized_keys=mc["authorized_keys"],
+                                      public_key=mc.public_key,
+                                      private_key=mc.private_key,
+                                      authorized_keys=mc.authorized_keys,
                                       port=ssh_port)
 
-        socket_path = self.c['agency']['socket_path']
+        socket_path = self.c.agency.socket_path
         self.friend._broker = self.friend.broker_factory(self.friend,
                 socket_path, on_master_cb=self.friend.on_become_master,
                 on_slave_cb=self.friend.on_become_slave,
@@ -163,67 +162,10 @@ class Agency(agency.Agency):
 
     start_host_agent = True
 
-    @classmethod
-    def from_config(cls, env, options=None):
-        agency = cls()
-        agency._load_config(env, options)
-        return agency
-
-    def __init__(self,
-                 msg_host=options.DEFAULT_MSG_HOST,
-                 msg_port=options.DEFAULT_MSG_PORT,
-                 msg_user=options.DEFAULT_MSG_USER,
-                 msg_password=options.DEFAULT_MSG_PASSWORD,
-                 db_host=options.DEFAULT_DB_HOST,
-                 db_port=options.DEFAULT_DB_PORT,
-                 db_name=options.DEFAULT_DB_NAME,
-                 public_key=options.DEFAULT_MH_PUBKEY,
-                 private_key=options.DEFAULT_MH_PRIVKEY,
-                 authorized_keys=options.DEFAULT_MH_AUTH,
-                 manhole_port=options.DEFAULT_MH_PORT,
-                 agency_journal=[options.DEFAULT_JOURFILE],
-                 socket_path=options.DEFAULT_SOCKET_PATH,
-                 lock_path=options.DEFAULT_LOCK_PATH,
-                 gateway_port=options.DEFAULT_GW_PORT,
-                 gateway_p12=options.DEFAULT_GW_P12_FILE,
-                 allow_tcp_gateway=options.DEFAULT_ALLOW_TCP_GATEWAY,
-                 tunneling_host=None,
-                 tunneling_port=options.DEFAULT_TUNNEL_PORT,
-                 tunneling_p12=options.DEFAULT_TUNNEL_P12_FILE,
-                 enable_spawning_slave=options.DEFAULT_ENABLE_SPAWNING_SLAVE,
-                 rundir=options.DEFAULT_RUNDIR,
-                 logdir=options.DEFAULT_LOGDIR,
-                 daemonize=options.DEFAULT_DAEMONIZE,
-                 hostname=None,
-                 domainname=None):
-
+    def __init__(self, config):
         agency.Agency.__init__(self)
-
-        self._init_config(msg_host=msg_host,
-                          msg_port=msg_port,
-                          msg_password=msg_password,
-                          msg_user=msg_user,
-                          db_host=db_host,
-                          db_port=db_port,
-                          db_name=db_name,
-                          public_key=public_key,
-                          private_key=private_key,
-                          authorized_keys=authorized_keys,
-                          manhole_port=manhole_port,
-                          agency_journal=agency_journal,
-                          socket_path=socket_path,
-                          lock_path=lock_path,
-                          gateway_port=gateway_port,
-                          gateway_p12=gateway_p12,
-                          allow_tcp_gateway=allow_tcp_gateway,
-                          tunneling_port=tunneling_port,
-                          tunneling_p12=tunneling_p12,
-                          enable_spawning_slave=enable_spawning_slave,
-                          rundir=rundir,
-                          logdir=logdir,
-                          daemonize=daemonize,
-                          hostname=hostname,
-                          domainname=domainname)
+        self.config = config
+        self._hostname = unicode(self.config.agency.hostname)
 
         self._ssh = None
         self._broker = None
@@ -254,7 +196,7 @@ class Agency(agency.Agency):
             if not agency_id:
                 return None
             return (self.get_hostname(),
-                    self.config["gateway"]["port"],
+                    self.config.gateway.port,
                     self.agency_id, is_remote)
 
         if self._broker.is_master():
@@ -284,7 +226,7 @@ class Agency(agency.Agency):
     def on_become_master(self):
         self._ssh.start_listening()
         self._journaler.set_connection_strings(
-            self.config['agency']['journal'])
+            self.config.agency.journal)
         try:
             self._start_master_gateway()
         except Exception as e:
@@ -299,8 +241,8 @@ class Agency(agency.Agency):
         signal.signal(signal.SIGUSR2, self._sigusr2_handler)
 
         backends = []
-        backends.append(self._initiate_messaging(self.config['msg']))
-        backends.append(self._initiate_tunneling(self.config['tunnel']))
+        backends.append(self._initiate_messaging(self.config.msg))
+        backends.append(self._initiate_tunneling(self.config.tunnel))
         backends.append(unix.Master(self._broker))
         backends = filter(None, backends)
 
@@ -309,7 +251,7 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param,
                           self._messaging.add_backend, backend)
 
-        if (self.config['agency']['enable_spawning_slave']
+        if (self.config.agency.enable_spawning_slave
             and sys.platform != "win32"):
             d.addCallback(defer.drop_param, self._spawn_backup_agency)
 
@@ -340,20 +282,20 @@ class Agency(agency.Agency):
         return False
 
     def _redirect_text_log(self):
-        if self.config['agency']['daemonize']:
+        if self.config.agency.daemonize:
             log_id = str(self.agency_id)
 
             logname = "%s.%s.log" % ('feat', log_id, )
-            logfile = os.path.join(self.config['agency']['logdir'], logname)
+            logfile = os.path.join(self.config.agency.logdir, logname)
             log.FluLogKeeper.move_files(logfile, logfile)
 
     def _link_log_file(self, filename):
-        if not self.config['agency']['daemonize']:
+        if not self.config.agency.daemonize:
             # if haven't demonized the log is just at the users console
             return
 
         logfile, _ = log.FluLogKeeper.get_filenames()
-        linkname = os.path.join(self.config['agency']['logdir'], filename)
+        linkname = os.path.join(self.config.agency.logdir, filename)
         try:
             os.unlink(linkname)
         except OSError:
@@ -388,7 +330,7 @@ class Agency(agency.Agency):
 
         if pre_state == BrokerRole.master:
             d.addCallback(defer.drop_param, run.delete_pidfile,
-                          self.config['agency']['rundir'], force=True)
+                          self.config.agency.rundir, force=True)
         return d
 
     def remote_get_journaler(self):
@@ -488,7 +430,7 @@ class Agency(agency.Agency):
             raise NotImplementedError("Standalone agent are not supported "
                                       "on win32 platform")
         cmd, cmd_args, env = factory.get_cmd_line(descriptor, **kwargs)
-        self._store_config(env)
+        self.config.store(env)
         recp = recipient.Agent(descriptor.doc_id, descriptor.shard)
 
         d = self._broker.wait_event(recp.key, 'started')
@@ -522,7 +464,7 @@ class Agency(agency.Agency):
             from feat.utils import locate
             db = self._database.get_connection()
             host = yield locate.locate(db, agent_id)
-            port = self.config["gateway"]["port"]
+            port = self.config.gateway.port
             if host is None:
                 defer.returnValue(None)
             else:
@@ -591,151 +533,13 @@ class Agency(agency.Agency):
         '''Give the reference to the nth slave agency.'''
         return self._broker.slaves[slave_id].reference
 
-    # Config manipulation (standalone agencies receive the configuration
-    # in the environment).
-
-    def _init_config(self,
-                     msg_host=None,
-                     msg_port=None,
-                     msg_user=None,
-                     msg_password=None,
-                     db_host=None,
-                     db_port=None,
-                     db_name=None,
-                     public_key=None,
-                     private_key=None,
-                     authorized_keys=None,
-                     manhole_port=None,
-                     agency_journal=None,
-                     socket_path=None,
-                     lock_path=None,
-                     gateway_port=None,
-                     gateway_p12=None,
-                     allow_tcp_gateway=None,
-                     tunneling_host=None,
-                     tunneling_port=None,
-                     tunneling_p12=None,
-                     enable_spawning_slave=None,
-                     rundir=None,
-                     logdir=None,
-                     daemonize=None,
-                     hostname=None,
-                     domainname=None):
-
-        msg_conf = dict(host=msg_host,
-                        port=msg_port,
-                        user=msg_user,
-                        password=msg_password)
-
-        db_conf = dict(host=db_host,
-                       port=db_port,
-                       name=db_name)
-
-        manhole_conf = dict(public_key=public_key,
-                            private_key=private_key,
-                            authorized_keys=authorized_keys,
-                            port=manhole_port)
-
-        for path in [socket_path, lock_path]:
-            if path and not os.path.isabs(path):
-                path = os.path.join(rundir, path)
-
-        agency_conf = dict(journal=agency_journal,
-                           socket_path=socket_path,
-                           lock_path=lock_path,
-                           rundir=rundir,
-                           logdir=logdir,
-                           enable_spawning_slave=enable_spawning_slave,
-                           daemonize=daemonize,
-                           hostname=hostname,
-                           domainname=domainname)
-        gateway_conf = dict(port=gateway_port,
-                            p12=gateway_p12,
-                            allow_tcp=allow_tcp_gateway)
-
-        if tunneling_host is None:
-            tunneling_host = self.get_hostname()
-
-        tunnel_conf = dict(host=tunneling_host,
-                           port=tunneling_port,
-                           p12=tunneling_p12)
-
-        self.config = dict()
-        self.config['msg'] = msg_conf
-        self.config['db'] = db_conf
-        self.config['manhole'] = manhole_conf
-        self.config['agency'] = agency_conf
-        self.config['gateway'] = gateway_conf
-        self.config['tunnel'] = tunnel_conf
-
-    def _store_config(self, env):
-        '''
-        Stores agency config into environment to be read by the
-        standalone agency.'''
-        serializer = json.Serializer(force_unicode=True)
-        for key in self.config:
-            for kkey in self.config[key]:
-                var_name = "FEAT_%s_%s" % (key.upper(), kkey.upper(), )
-                env[var_name] = serializer.convert(self.config[key][kkey])
-
-    def _load_config(self, env, options=None):
-        '''
-        Loads config from environment.
-        Environment values can be overridden by specified options.
-        '''
-        # First load from env
-        matcher = re.compile('\AFEAT_([^_]+)_(.+)\Z')
-        for key in env:
-            res = matcher.search(key)
-            if res:
-                c_key = res.group(1).lower()
-                c_kkey = res.group(2).lower()
-                if c_key not in self.config:
-                    continue
-                try:
-                    value = json.unserialize(env[key])
-                except ValueError:
-                    self.error("Environment variable does not unserialize"
-                               "to json. Variable: %s, Value: %s",
-                               key, env[key])
-                else:
-                    self.log("Setting %s.%s to %r", c_key, c_kkey, value)
-                    self.config[c_key][c_kkey] = value
-
-        #Then override with options
-        if options:
-            for group_key, conf_group in self.config.items():
-                for conf_key in conf_group:
-                    attr = "%s_%s" % (group_key, conf_key)
-                    if hasattr(options, attr):
-                        new_value = getattr(options, attr)
-                        old_value = conf_group[conf_key]
-                        if new_value is not None and (old_value != new_value):
-                            if old_value is None:
-                                self.log("Setting %s.%s to %r",
-                                         group_key, conf_key, new_value)
-                            else:
-                                self.log("Overriding %s.%s to %r",
-                                         group_key, conf_key, new_value)
-                            conf_group[conf_key] = new_value
-
-        #override the agency hostname if specified
-        hostname = self.config['agency']['hostname']
-        domainname = self.config['agency']['domainname']
-        if hostname is None:
-            hostname = socket.gethostname()
-        if domainname is not None:
-            hostname = ".".join([hostname, domainname])
-        else:
-            hostname = socket.getfqdn(hostname)
-        self._hostname = unicode(hostname)
-
-    def _initiate_messaging(self, config):
+    def _initiate_messaging(self, mconfig):
+        assert isinstance(mconfig, config.MsgConfig), str(type(mconfig))
         try:
-            host = config['host']
-            port = int(config['port'])
-            username = config['user']
-            password = config['password']
+            host = mconfig.host
+            port = int(mconfig.port)
+            username = mconfig.user
+            password = mconfig.password
 
             self.info("Setting up messaging using %s@%s:%d", username,
                       host, port)
@@ -749,11 +553,12 @@ class Agency(agency.Agency):
             # For now we do not support not having messaging backend
             raise
 
-    def _initiate_tunneling(self, config):
+    def _initiate_tunneling(self, tconfig):
+        assert isinstance(tconfig, config.TunnelConfig), str(type(tconfig))
         try:
-            host = config["host"]
-            port = int(config["port"])
-            p12 = config["p12"]
+            host = tconfig.host
+            port = int(tconfig.port)
+            p12 = config.p12
             port_range = range(port, port + TUNNELING_PORT_COUNT)
 
             self.info("Setting up tunneling on %s ports %d-%d "
@@ -816,11 +621,12 @@ class Agency(agency.Agency):
             self._snapshot_task.cancel()
         self._snapshot_task = None
 
-    def _create_gateway(self, config):
+    def _create_gateway(self, gconfig):
+        assert isinstance(gconfig, config.GatewayConfig), str(type(gconfig))
         try:
-            port = int(config["port"])
-            p12 = config["p12"]
-            allow_tcp = config["allow_tcp"]
+            port = int(gconfig.port)
+            p12 = gconfig.p12
+            allow_tcp = gconfig.allow_tcp
             range = (port, port + GATEWAY_PORT_COUNT)
 
             if not os.path.exists(p12):
@@ -844,17 +650,17 @@ class Agency(agency.Agency):
             error.handle_exception(self, e, "Failed to setup gateway")
 
     def _start_slave_gateway(self):
-        self._gateway = self._create_gateway(self.config["gateway"])
+        self._gateway = self._create_gateway(self.config.gateway)
         if self._gateway:
             self._gateway.initiate_slave()
 
     def _start_master_gateway(self):
-        self._gateway = self._create_gateway(self.config["gateway"])
+        self._gateway = self._create_gateway(self.config.gateway)
         if self._gateway:
             self._gateway.initiate_master()
 
     def _create_pid_file(self):
-        rundir = self.config['agency']['rundir']
+        rundir = self.config.agency.rundir
         pid_file = run.acquire_pidfile(rundir)
 
         path = run.write_pidfile(rundir, file=pid_file)
@@ -878,7 +684,7 @@ class Agency(agency.Agency):
 
         self.log("Spawning %s agency", desc)
         cmd, cmd_args, env = get_cmd_line()
-        self._store_config(env)
+        self.config.store(env)
 
         p = standalone.Process(self, cmd, cmd_args, env)
         return p.restart()
