@@ -96,7 +96,7 @@ class ModelWriterTest(common.TestCase):
             with open(filename, 'w') as f:
                 print >> f, self.document.get_data()
 
-            static = os.path.join(configure.gatewaydir, 'static')
+            static = os.path.join(configure.gatewaydir)
             dest = os.path.join(os.path.curdir, 'static')
             if not os.path.exists(dest):
                 shutil.copytree(static, dest)
