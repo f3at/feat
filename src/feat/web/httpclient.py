@@ -262,6 +262,10 @@ class Connection(log.LogProxy, log.Logger):
 
         self._protocol = None
         self._pending = 0
+        self.log_name = '%s:%d (%s)' % (
+            self._host, self._port, self._http_scheme.name)
+        self.debug('Connection to %s:%d using %s',
+            self._host, self._port, self._http_scheme.name)
 
     ### public ###
 
@@ -269,6 +273,9 @@ class Connection(log.LogProxy, log.Logger):
         return self._protocol is None or self._protocol.is_idle()
 
     def request(self, method, location, headers=None, body=None):
+        self.debug('%s-ing on %s', method.name, location)
+        self.log('Headers: %r', headers)
+        self.log('Body: %r', body)
         if self._protocol is None:
             d = self._connect()
             d.addCallback(self._on_connected)

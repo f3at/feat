@@ -301,9 +301,8 @@ class PaisleyUnserializer(Unserializer):
     def _adapt_snapshot(self, restorator, snapshot):
         if IVersionAdapter.providedBy(restorator):
             target_ver = getattr(restorator, 'version', None)
-            source_ver = snapshot.pop(VERSION_ATOM, None)
-            if target_ver is not None and source_ver is not None and \
-               target_ver != source_ver:
+            source_ver = snapshot.pop(VERSION_ATOM, 1)
+            if target_ver is not None and target_ver != source_ver:
                 adapter = IVersionAdapter(restorator)
                 snapshot = adapter.adapt_version(
                     snapshot, source_ver, target_ver)
