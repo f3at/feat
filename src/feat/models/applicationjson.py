@@ -33,7 +33,7 @@ from feat.models.interface import IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
 from feat.models.interface import IEncodingInfo, ValueTypes
-from feat.models.interface import ErrorTypes, Unauthorized
+from feat.models.interface import Unauthorized
 
 MIME_TYPE = "application/json"
 
@@ -261,8 +261,21 @@ def render_compact_items(items, context, result):
     return result.wait()
 
 
+def _parse_meta(meta_items):
+    return [i.strip() for i in meta_items.value.split(",")]
+
+
+def render_inline(meta):
+    if not IMetadata.providedBy(meta):
+        return []
+    parsed = [_parse_meta(i) for i in meta.get_meta('json')]
+    return ['render-inline'] in parsed
+
+
 def render_compact_submodel(submodel, item, context):
-    if not IAttribute.providedBy(submodel):
+    if render_inline(item):
+        pass
+    elif not IAttribute.providedBy(submodel):
         if item.reference is not None:
             return item.reference.resolve(context)
     else:

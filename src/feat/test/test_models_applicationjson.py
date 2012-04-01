@@ -175,6 +175,8 @@ class RootModelTest(model.Model):
                     getter=effect.local_ref("test"))
 
     model.child("structs", model="test.structs")
+    model.child("inline", model="test.inline")
+    model.item_meta('inline', 'json', 'render-inline')
     model.child("refs", model="test.refs")
 
     model.delete("del", label="DEL LABEL", desc="DEL DESC")
@@ -192,6 +194,16 @@ class RootModelTest(model.Model):
         self.tata = 42
         self.titi = True
         self.tutu = DummyEnum.b
+
+
+@register
+class InlineModel(model.Model):
+    model.identity('test.inline')
+    model.attribute("spam", value.Integer(),
+                    getter.model_getattr())
+
+    def init(self):
+        self.spam = 44
 
 
 @register
@@ -292,6 +304,9 @@ class TestApplicationJSON(common.TestCase):
                           u"readable": True,
                           u"info": {u"type": u"reference"}},
                 u"structs": {u"href": u"root/structs"},
+                u'inline': {u'href': u'root/inline',
+                            u'metadata': [{u'name': u'json',
+                                           u'value': u'render-inline'}]},
                 u"refs": {u"href": u"root/refs"}},
                u"actions":
                {u"del": {u"label": u"DEL LABEL",
@@ -632,6 +647,7 @@ class TestApplicationJSON(common.TestCase):
                               u"toto": u"spam",
                               u"titi": True,
                               u"tutu": u"B!",
+                              u"inline": {u"spam": 44},
                               u"tete": u"root/test/tete"})
         item = yield rm.fetch_item("toto")
         toto = yield item.fetch()
