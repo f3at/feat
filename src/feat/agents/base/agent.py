@@ -169,7 +169,7 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def on_agent_configuration_change(self, state, config):
         return self.call_mro_ex('on_configuration_change',
                                 dict(config=config),
-                                raise_on_unconsumed=True)
+                                raise_on_unconsumed=False)
 
     ### Methods called as a result of agency calls ###
 
