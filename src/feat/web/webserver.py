@@ -425,6 +425,7 @@ class Server(log.LogProxy, log.Logger):
                  security_policy=None, server_identity=None,
                  default_authenticator=None, default_authorizer=None,
                  log_keeper=None):
+        self.log_name = ":%s" % (port, )
         log.Logger.__init__(self, self)
         log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
         log.LogProxy.__init__(self, log_keeper)
@@ -539,8 +540,9 @@ class Server(log.LogProxy, log.Logger):
     ### private ###
 
     def _process_request(self, priv_request):
-        self.log("%s on %s from %s:%s", priv_request.method, priv_request.uri,
-                 priv_request.client.host, priv_request.client.port)
+        self.debug("%s on %s from %s:%s",
+                   priv_request.method, priv_request.uri,
+                   priv_request.client.host, priv_request.client.port)
 
         peer_info = self._policy.get_peer_info(priv_request.channel.transport)
 
