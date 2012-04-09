@@ -405,8 +405,8 @@ class ModelResource(BaseResource):
                 return self.render_model(self.model, request,
                                          response, context)
 
-            request.log("Performing action %r on %s model %r",
-                        action_name, self.model.identity, self.model.name)
+            request.debug("Performing action %r on %s model %r",
+                          action_name, self.model.identity, self.model.name)
             d = action.perform()
             d.addCallback(got_data, action)
             d.addErrback(self.filter_errors)
@@ -418,6 +418,8 @@ class ModelResource(BaseResource):
         return d
 
     def render_model(self, model, request, response, context):
+        request.debug("Rendering model, identity: %s name: %r",
+                      model.identity, model.name)
         if IAttribute.providedBy(model):
             return self.render_attribute(model, request, response, context)
 
@@ -510,7 +512,7 @@ class ActionResource(BaseResource):
             or self._action.category not in categories):
             raise http.NotAllowedError(allowed_methods=list(self._methods))
 
-        request.log("Performing action %r on %s model %r with parameters %r",
+        request.debug("Performing action %r on %s model %r with parameters %r",
                     self._action.name, self._context.models[-1].identity,
                     self._context.models[-1].name, params)
         d = self._action.perform(**params)
