@@ -41,7 +41,7 @@ from feat import applications
 
 from feat.common import (log, defer, fiber, serialization, journal, time,
                          manhole, error_handler, text_helper, container,
-                         first, error, enum)
+                         first, error, enum, activity)
 
 # Internal to register serialization adapters
 from feat.common.serialization import adapters
@@ -64,6 +64,7 @@ from feat.interface.generic import ITimeProvider
 from feat.interface.journal import IRecorderNode, IJournalKeeper, IRecorder
 from feat.interface.protocols import (IInterest, ProtocolFailed,
                                       IInitiatorFactory, )
+from feat.interface.activity import IActivityComponent
 from feat.interface.serialization import ISerializable, IExternalizer
 
 
@@ -77,7 +78,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                   common.StateMachineMixin):
 
     implements(IAgencyAgent, IAgencyAgentInternal, ITimeProvider,
-               IRecorderNode, IJournalKeeper, ISerializable)
+               IRecorderNode, IJournalKeeper, ISerializable,
+               IActivityComponent)
 
     type_name = "agent-medium" # this is used by ISerializable
 
@@ -88,8 +90,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def __init__(self, agency, factory, descriptor):
         log.LogProxy.__init__(self, agency)
         log.Logger.__init__(self, self)
-        common.StateMachineMixin.__init__(self,
-                AgencyAgentState.not_initiated)
+        common.StateMachineMixin.__init__(self, AgencyAgentState.not_initiated)
 
         self.journal_keeper = self
         self.agency = IAgency(agency)
@@ -105,6 +106,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.log_category = descriptor.type_name
 
         self.agent = factory(self)
+        self.activity = activity.ActivityManager(self.agent.__class__.__name__)
         self.log('Instantiated the %r instance', self.agent)
 
         self._protocols = {} # {puid: IAgencyProtocolInternal}
@@ -634,33 +636,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def has_all_long_running_protocols_idle(self):
         return all(i.is_idle() for i in self._long_running_protocols)
-
-    @manhole.expose()
-    def show_activity(self):
-        if self.is_idle():
-            return None
-        resp = "\n%r id: %r\n state: %r" % \
-               (self.agent.__class__.__name__, self.get_descriptor().doc_id,
-                self._get_machine_state().name)
-        if not self.has_empty_protocols():
-            resp += '\nprotocols: \n'
-            t = text_helper.Table(fields=["Class"], lengths = [60])
-            resp += t.render((i.get_agent_side().__class__.__name__, ) \
-                             for i in self._protocols.itervalues())
-        if self.has_busy_calls():
-            resp += "\nbusy calls: \n"
-            t = text_helper.Table(fields=["Call"], lengths = [60])
-            resp += t.render((str(call), ) \
-                             for busy, call in self._delayed_calls.itervalues()
-                             if busy and call.active())
-
-        if not self.has_all_interests_idle():
-            resp += "\nInterests not idle: \n"
-            t = text_helper.Table(fields=["Factory"], lengths = [60])
-            resp += t.render((str(call.agent_factory), ) \
-                             for call in self._iter_interests())
-        resp += "#" * 60
-        return resp
 
     def on_disconnect(self):
         if self._cmp_state(AgencyAgentState.ready):

@@ -196,11 +196,6 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
             check = lambda: self.is_agency_idle(agency)
             yield self.wait_for(check, timeout, freq)
         except unittest.FailTest:
-            for agent in agency.get_agents():
-                activity = agent.show_activity()
-                if activity is None:
-                    continue
-                self.info(activity)
             raise
 
     def cb_after(self, arg, obj, method):

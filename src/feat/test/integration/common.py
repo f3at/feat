@@ -371,11 +371,6 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
         try:
             yield self.wait_for(self.driver.is_idle, timeout, freq)
         except FailTest:
-            for agent in self.driver.iter_agents():
-                activity = agent.show_activity()
-                if activity is None:
-                    continue
-                self.info(activity)
             raise
 
     def count_agents(self, agent_type=None):
@@ -445,13 +440,6 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
         try:
             yield self.wait_for(all_idle, timeout, freq)
         except FailTest:
-            for driver, index in zip(self.drivers, range(len(self.drivers))):
-                self.info("Inspecting driver #%d", index)
-                for agent in driver.iter_agents():
-                    activity = agent.show_activity()
-                    if activity is None:
-                        continue
-                    self.info(activity)
             raise
 
     def process(self, driver, script):
