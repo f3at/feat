@@ -36,6 +36,19 @@ from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
 from feat.interface.generic import ITimeProvider
 from feat.interface.view import IViewFactory
 from feat.interface.agent import IDocument
+from feat.interface.activity import IActivityComponent
+
+
+class ConnectionActivityManager(activity.DummyActivityManager):
+
+    def __init__(self, connection):
+        activity.DummyActivityManager.__init__(self, u"Database channel")
+        self._connection = connection
+
+    def terminate(self):
+        self._connection.disconnect()
+        self.terminated = True
+        return defer.succeed(None)
 
 
 class ViewFilter(object):
@@ -170,7 +183,8 @@ class ChangeListener(log.Logger):
 class Connection(log.Logger, log.LogProxy):
     '''API for agency to call against the database.'''
 
-    implements(IDatabaseClient, ITimeProvider, IRevisionStore)
+    implements(IDatabaseClient, ITimeProvider, IRevisionStore,
+               IActivityComponent)
 
     def __init__(self, database):
         log.Logger.__init__(self, database)
@@ -189,6 +203,8 @@ class Connection(log.Logger, log.LogProxy):
         # received after the expiration time due to reconnection
         # killing agents.
         self._known_revisions = {} # {DOC_ID: (REV_INDEX, REV_HASH)}
+
+        self.activity = ConnectionActivityManager(self)
 
     ### IRevisionStore ###
 

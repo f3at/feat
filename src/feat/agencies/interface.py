@@ -30,7 +30,7 @@ __all__ = ("AgencyRoles",
            "IAgencyProtocolInternal", "IAgencyListenerInternal",
            "IAgencyAgentInternal",
            "IAgencyInitiatorFactory", "IAgencyInterestFactory",
-           "IAgencyInterestInternalFactory", "ILongRunningProtocol",
+           "IAgencyInterestInternalFactory",
            "IAgencyInterestInternal", "IAgencyInterestedFactory",
            "IDatabaseClient",
            "DatabaseError", "ConflictError", "NotFoundError",
@@ -184,19 +184,6 @@ class IAgencyInterestedFactory(Interface):
     def __call__(agency_agent, message):
         '''Creates a new agency interested
         for the specified agent-side factory.'''
-
-
-class ILongRunningProtocol(Interface):
-    '''Long running protocol that could be cancelled.'''
-
-    def is_idle():
-        '''Returns if the protocol is idle.'''
-
-    def cancel():
-        '''Cancel the protocol.'''
-
-    def notify_finish():
-        '''Returns a deferred fired when the protocol finishes.'''
 
 
 class IFirstMessage(Interface):

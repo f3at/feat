@@ -265,3 +265,42 @@ class ActivityManager(object):
 
     def _is_idle_without_children(self):
         return all(not x.busy for x in self.iterownactivity())
+
+
+class DummyActivityManager(object):
+    """
+    This is a dummy implementation used to glue the activity manager
+    functionality with simple 'leaf instances' which only needs to terminate
+    with its parent.
+    """
+
+    implements(IActivityManager)
+
+    def __init__(self, desc):
+        self.description = desc
+        self.terminated = False
+        self.idle = True
+
+    def track(self, activity, description=None):
+        raise NotImplementedError("This method is not implemented")
+
+    def wait_for_idle(self):
+        return defer.succeed(None)
+
+    def register_child(self, child):
+        raise NotImplementedError("This method is not implemented")
+
+    def terminate(self):
+        raise NotImplementedError("This method is not implemented")
+
+    def iteractivity(self):
+        return iter([])
+
+    def iterownactivity(self):
+        return iter([])
+
+    def iterchildred(self):
+        return iter([])
+
+    def get(self, uid):
+        return None

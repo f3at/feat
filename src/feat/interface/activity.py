@@ -48,7 +48,7 @@ class IActivityManager(Interface):
         @rtype: C{Deferred}
         """
 
-    def register_child(child, description=None):
+    def register_child(child):
         """
         Adds a activity child. Activity of children makes the parent not idle.
         @param description: optional description to override

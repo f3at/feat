@@ -30,12 +30,14 @@ from feat.common import log, time, serialization, adapter
 from feat.agents.base import replay
 from feat.agencies import common, protocols, message
 
-from interface import *
-from feat.interface.serialization import *
-from feat.interface.requests import *
-from feat.interface.requester import *
-from feat.interface.replier import *
-from feat.interface.recipient import *
+from interface import IAgencyProtocolInternal, IAgencyListenerInternal
+from interface import IAgencyInitiatorFactory, IAgencyInterestInternalFactory
+from interface import IAgencyInterestedFactory
+from feat.interface.serialization import ISerializable
+from feat.interface.requests import RequestState
+from feat.interface.requester import IAgencyRequester, IRequesterFactory
+from feat.interface.replier import IAgencyReplier, IReplierFactory
+from feat.interface.recipient import IRecipients
 
 
 class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,

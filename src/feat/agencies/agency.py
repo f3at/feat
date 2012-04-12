@@ -54,8 +54,8 @@ from interface import (AgencyRoles, IAgencyAgentInternal,
                        IFirstMessage, IAgencyInterestInternalFactory,
                        IAgencyProtocolInternal,
                        IAgencyInitiatorFactory, NotFoundError, ConflictError,
-                       IDbConnectionFactory, IJournaler,
-                       ILongRunningProtocol, )
+                       IDbConnectionFactory, IJournaler)
+
 from feat.interface.recipient import IRecipient
 from feat.interface.agency import IAgency, ExecMode
 from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
@@ -83,8 +83,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     type_name = "agent-medium" # this is used by ISerializable
 
-    _error_handler = error_handler
-
     journal_parent = None
 
     def __init__(self, agency, factory, descriptor):
@@ -111,7 +109,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         self._protocols = {} # {puid: IAgencyProtocolInternal}
         self._interests = {} # {protocol_type: {protocol_id: IInterest}}
-        self._long_running_protocols = [] # Long running protocols
 
         self._notifier = defer.Notifier()
 
@@ -121,7 +118,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         self._updating = False
         self._update_queue = []
-        self._delayed_calls = container.ExpDict(self)
+
         # Terminating flag, used to not to run
         # termination procedure more than once
         self._terminating = False
@@ -140,9 +137,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.Deferred()
         d.addCallback(defer.drop_param,
                       self.agency._messaging.get_connection, self)
+        d.addCallback(defer.keep_param, self.activity.register_child)
         d.addCallback(setter, "_messaging")
         d.addCallback(defer.drop_param,
                       self.agency._database.get_connection)
+        d.addCallback(defer.keep_param, self.activity.register_child)
         d.addCallback(setter, '_database')
         d.addCallback(defer.drop_param,
                       self._reload_descriptor)
@@ -344,6 +343,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             return False
         interest_factory = IAgencyInterestInternalFactory(agent_factory)
         interest = interest_factory(self, *args, **kwargs)
+        self.activity.register_child(interest)
         self._interests[p_type][p_id] = interest
         self.debug('Registered interest in %s.%s protocol', p_type, p_id)
         return interest
@@ -358,9 +358,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
             self.error('Requested to revoke interest we are not interested in'
                        ' %s.%s', p_type, p_id)
             return False
-        self._interests[p_type][p_id].revoke()
+        interest = self._interests[p_type][p_id]
+        interest.revoke()
+        d = IActivityManager(interest).terminate()
+        self.activity.track(d, "Terminating interest %r" % (agent_factory, ))
         del(self._interests[p_type][p_id])
-
         return True
 
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
@@ -467,25 +469,15 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @replay.named_side_effect('AgencyAgency.call_later_ex')
     def call_later_ex(self, time_left, method,
                       args=None, kwargs=None, busy=True):
-        args = args or []
-        kwargs = kwargs or {}
-        call = time.callLater(time_left, self._call, method,
-                              *args, **kwargs)
-        call_id = str(uuid.uuid1())
-        self._store_delayed_call(call_id, call, busy)
-        return call_id
+        call = activity.CallLater(time_left, method, args=args, kwargs=kwargs,
+                                  busy=busy)
+        return self.activity.track(call)
 
     @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
     def cancel_delayed_call(self, call_id):
-        try:
-            _busy, call = self._delayed_calls.remove(call_id)
-        except KeyError:
-            self.log('Tried to cancel nonexisting call id: %r', call_id)
-            return
-
-        if not call.active():
-            return
-        call.cancel()
+        call = self.activity.get(call_id)
+        if call:
+            call.cancel()
 
     @replay.named_side_effect("AgencyAgent.is_connected")
     def is_connected(self):
@@ -599,43 +591,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### Protected Methods ###
 
-    def wait_for_protocols_finish(self):
-        '''Used by tests.'''
-
-        def wait_for_protocol(protocol):
-            d = protocol.notify_finish()
-            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
-            return d
-
-        a = [interest.wait_finished() for interest in self._iter_interests()]
-        b = [wait_for_protocol(l) for l in self._protocols.itervalues()]
-        return defer.DeferredList(a + b)
-
     def is_idle(self):
-        return (self.is_ready()
-                and self.has_empty_protocols()
-                and self.has_all_interests_idle()
-                and not self.has_busy_calls()
-                and self.has_all_long_running_protocols_idle())
+        return self.is_ready() and self.activity.idle
 
     def is_ready(self):
         return self._cmp_state(AgencyAgentState.ready)
-
-    def has_empty_protocols(self):
-        return (len([l for l in self._protocols.itervalues()
-                     if not l.is_idle()]) == 0)
-
-    def has_busy_calls(self):
-        for busy, call in self._delayed_calls.itervalues():
-            if busy and call.active():
-                return True
-        return False
-
-    def has_all_interests_idle(self):
-        return all(i.is_idle() for i in self._iter_interests())
-
-    def has_all_long_running_protocols_idle(self):
-        return all(i.is_idle() for i in self._long_running_protocols)
 
     def on_disconnect(self):
         if self._cmp_state(AgencyAgentState.ready):
@@ -667,10 +627,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         factory = IInitiatorFactory(factory)
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, *args, **kwargs)
-        if ILongRunningProtocol.providedBy(medium):
-            self._long_running_protocols.append(medium)
-            cb = lambda _: self._long_running_protocols.remove(medium)
-            medium.notify_finish().addBoth(cb)
+        self.activity.register_child(medium)
         return medium.initiate()
 
     def _subscribe_for_descriptor_changes(self):
@@ -696,7 +653,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = self._database.get_document(doc_id)
         d.addCallback(defer.keep_param, setter, '_configuration')
         d.addCallback(defer.inject_param, 1,
-                      self._call, self.agent.on_agent_configuration_change)
+                      self.agent.on_agent_configuration_change)
         return d
 
     def _reload_descriptor(self):
@@ -795,56 +752,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         [self.revoke_interest(i.agent_factory)
          for i in list(self._iter_interests())]
 
-        d = defer.succeed(None)
-
-        # Cancel all long running protocols
-        d.addBoth(defer.drop_param, self._cancel_long_running_protocols)
-        d.addErrback(self._handle_failure)
-        # Cancel all delayed calls
-        d.addBoth(defer.drop_param, self._cancel_all_delayed_calls)
-        d.addErrback(self._handle_failure)
-        # Kill all protocols
-        d.addBoth(self._kill_all_protocols)
-        d.addErrback(self._handle_failure)
-        # Again, just in case
-        d.addBoth(defer.drop_param, self._cancel_all_delayed_calls)
-        d.addErrback(self._handle_failure)
-        # Run code specific to the given shutdown
-        d.addBoth(defer.drop_param, body)
-        d.addErrback(self._handle_failure)
+        d = body()
+        d.addErrback(defer.inject_param, 1, error.handle_failure, self,
+                     "Failure calling termination procedure body.")
+        d.addBoth(defer.drop_param, self.activity.terminate)
         # Tell the agency we are no more
         d.addBoth(defer.drop_param, self._unregister_from_agency)
-        d.addErrback(self._handle_failure)
-        if self._messaging:
-            # Close the messaging connection
-            d.addBoth(defer.drop_param, self._messaging.release)
-            d.addErrback(self._handle_failure)
-        else:
-            d.addCallback(defer.drop_param, self.warning,
-                          "Agent doesn't have _messaging reference.")
-        if self._database:
-            # Close the database connection
-            d.addBoth(defer.drop_param, self._database.disconnect)
-            d.addErrback(self._handle_failure)
-        else:
-            d.addCallback(defer.drop_param, self.warning,
-                          "Agent doesn't have _database reference.")
         d.addBoth(defer.drop_param,
                   self._set_state, AgencyAgentState.terminated)
-        d.addErrback(self._handle_failure)
+        d.addErrback(defer.inject_param, 1, handle_failure, self,
+                     "Failure during termination")
         return d
-
-    def _handle_failure(self, failure):
-        error.handle_failure(self, failure, "Failure during termination")
 
     def _unregister_from_agency(self):
         self.agency.journal_agent_deleted(self._descriptor.doc_id,
                                           self._instance_id)
         self.agency.unregister_agent(self)
-
-    def _cancel_long_running_protocols(self):
-        return defer.DeferredList([defer.maybeDeferred(x.cancel)
-                                   for x in self._long_running_protocols])
 
     def _terminate(self):
         '''Shutdown agent gently removing the descriptor and
@@ -864,29 +787,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _run_and_wait(self, _, method, *args, **kwargs):
         '''
-        Run a agent-side method and wait for all the protocols
-        to finish processing.
+        Run a agent-side method and wait for all the activity to finish.
         '''
         d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addBoth(defer.drop_param, self.wait_for_protocols_finish)
+        d.addBoth(defer.drop_param, self.activity.wait_for_idle)
         return d
 
     def _iter_interests(self):
         return (interest
                 for interests in self._interests.itervalues()
                 for interest in interests.itervalues())
-
-    def _kill_all_protocols(self, *_):
-
-        def expire_one(prot):
-            d = defer.succeed(None)
-            d.addCallback(defer.drop_param, prot.cleanup)
-            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
-            return d
-
-        d = defer.DeferredList([expire_one(x)
-                                for x in self._protocols.values()])
-        return d
 
     def _call_initiate(self, **kwargs):
         self._set_state(AgencyAgentState.initiating)
@@ -900,46 +810,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d = defer.succeed(None)
         if call_startup:
             d.addCallback(defer.drop_param, self.agent.startup_agent)
-        d.addCallback(fiber.drop_param, self._become_ready)
-        d.addErrback(self._startup_error)
+        d.addCallback(fiber.drop_param, self._set_state,
+                      AgencyAgentState.ready)
         return d
-
-    def _become_ready(self):
-        self._set_state(AgencyAgentState.ready)
 
     def _startup_error(self, fail):
-        self._error_handler(fail)
-        self.error("Agent raised an error while starting up. "
-                   "He will be punished by terminating. Medium state while "
-                   "that happend: %r", self._get_machine_state())
+        error.handle_failure(
+            self, fail,
+            "Agent raised an error while starting up. "
+            "He will be punished by terminating. Medium state while "
+            "that happend: %r", self._get_machine_state())
         self.terminate()
-
-    def _store_delayed_call(self, call_id, call, busy):
-        if call.active():
-            self._delayed_calls.set(call_id, (busy, call), call.getTime() + 1)
-
-    def _cancel_all_delayed_calls(self):
-        for call_id, (_busy, call) in self._delayed_calls.iteritems():
-            self.log('Canceling delayed call with id %r (active: %s)',
-                     call_id, call.active())
-            if call.active():
-                call.cancel()
-        self._delayed_calls.clear()
-
-    def _call(self, method, *args, **kwargs):
-
-        def raise_on_fiber(res):
-            if isinstance(res, fiber.Fiber):
-                raise RuntimeError("We are not expecting method %r to "
-                                   "return a Fiber, which it did!" % method)
-            return res
-
-        self.log('Calling method %r, with args: %r, kwargs: %r', method,
-                 args, kwargs)
-        d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addCallback(raise_on_fiber)
-        d.addErrback(self._error_handler)
-        return d
 
 
 class ShutdownStage(enum.Enum):

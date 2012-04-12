@@ -12,11 +12,24 @@ from feat.agencies.messaging.interface import (IChannel, ISink, IBackend,
 from feat.interface.recipient import RecipientType
 from feat.agencies.interface import IDialogMessage, IFirstMessage
 from feat.interface.generic import ITimeProvider
+from feat.interface.activity import IActivityComponent
+
+
+class ChannelActivityManager(activity.DummyActivityManager):
+
+    def __init__(self, channel):
+        activity.DummyActivityManager.__init__(self, u"Messaging channel")
+        self._channel = channel
+
+    def terminate(self):
+        self._channel.release()
+        self.terminated = True
+        return defer.succeed(None)
 
 
 class Channel(log.Logger):
 
-    implements(IChannel, ISink, ITimeProvider)
+    implements(IChannel, ISink, ITimeProvider, IActivityComponent)
 
     support_broadcast = True
 
@@ -33,6 +46,8 @@ class Channel(log.Logger):
 
         # message_id -> True
         self._message_ids = container.ExpDict(self)
+
+        self.activity = ChannelActivityManager()
 
     def initiate(self):
         return defer.succeed(self)

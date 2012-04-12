@@ -30,10 +30,12 @@ from twisted.python import failure
 
 from feat.common import log, defer, fiber, observer, time, enum
 from feat.common import serialization, error_handler, mro, error, first
+from feat.common import activity
 from feat.agents.base import replay
 
 from feat.interface.protocols import ProtocolFailed, ProtocolExpired
 from feat.interface.serialization import IRestorator
+from feat.interface.activity import IActivityComponent
 
 
 class Statistics(object):
@@ -217,6 +219,8 @@ class StateCanceller(object):
 class AgencyMiddleMixin(object):
     '''Responsible for formating messages, calling methods etc'''
 
+    implements(IActivityComponent)
+
     guid = None
 
     protocol_id = None
@@ -228,6 +232,8 @@ class AgencyMiddleMixin(object):
         self.guid = str(uuid.uuid1())
         self._set_remote_id(remote_id)
         self._set_protocol_id(protocol_id)
+
+        self.activity = activity.ActivityManager(type(self).__name__)
 
     def is_idle(self):
         return False
@@ -265,6 +271,7 @@ class AgencyMiddleMixin(object):
         '''Call the method, wrap it in Deferred and bind error handler'''
         d = defer.maybeDeferred(method, *args, **kwargs)
         d.addErrback(self._error_handler)
+        self.acticity.track(d, repr(method))
         return d
 
     def _error_handler(self, f):

@@ -23,10 +23,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.python import components
 from zope.interface import implements
 
-from feat.common import log, defer, error_handler, adapter
+from feat.common import log, defer, error_handler, adapter, activity, error
 from feat.agencies import common, protocols
 from feat.agents.base import replay
 
@@ -35,11 +34,24 @@ from interface import (IAgencyProtocolInternal, IAgencyInitiatorFactory,
 from feat.interface.serialization import ISerializable
 from feat.interface.collector import IAgencyCollector, ICollectorFactory
 from feat.interface.poster import IAgencyPoster, IPosterFactory
+from feat.interface.activity import IActivityComponent
+
+
+class PosterActivityManager(activity.DummyActivityManager):
+
+    def __init__(self, poster):
+        activity.DummyActivityManager.__init__(
+            self, u"Poster %r" % (poster.factory.__name__, ))
+        self._poster = poster
+
+    def terminate(self):
+        # FIXME: Consider journaling here protocol_deleted
+        pass
 
 
 class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
 
-    implements(IAgencyPoster, ISerializable)
+    implements(IAgencyPoster, ISerializable, IActivityComponent)
 
     type_name = "poster-medium"
 
@@ -54,6 +66,8 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
         self.args = args
         self.kwargs = kwargs
         self.protocol_id = None
+
+        self.activity = PosterActivityManager(self)
 
     def initiate(self):
         self.agent.journal_protocol_created(self.factory, self,
@@ -108,7 +122,8 @@ class AgencyPosterFactory(protocols.BaseInitiatorFactory):
 
 class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
 
-    implements(IAgencyCollector, ISerializable, IAgencyProtocolInternal)
+    implements(IAgencyCollector, ISerializable, IAgencyProtocolInternal,
+               IActivityComponent)
 
     type_name = "collector-medium"
 
@@ -124,6 +139,9 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
 
         self.collector = None
         self.guid = str(uuid.uuid1())
+
+        self.activity = activity.ActivityManager(
+            "Collector %s" % (self.factory.__name__, ))
 
     def initiate(self):
         self.agent.journal_protocol_created(self.factory, self,
@@ -152,7 +170,7 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
         return self.collector
 
     def is_idle(self):
-        return self
+        return self.activity.idle
 
     def notify_finish(self):
         return defer.succeed(None)
@@ -167,7 +185,9 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
         d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addErrback(lambda f: error_handler(self, f))
+        d.addErrback(defer.inject_param, 1, error.handle_failure, self,
+                     "Failed calling agent collector.")
+        self.activity.track(d, method.__name__)
         return d
 
 
