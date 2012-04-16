@@ -265,17 +265,27 @@ def _parse_meta(meta_items):
     return [i.strip() for i in meta_items.value.split(",")]
 
 
-def render_inline(meta):
+def get_parsed_meta(meta):
     if not IMetadata.providedBy(meta):
         return []
     parsed = [_parse_meta(i) for i in meta.get_meta('json')]
+    return parsed
+
+
+def render_inline(meta):
+    parsed = get_parsed_meta(meta)
     return ['render-inline'] in parsed
+
+
+def prevent_inline(meta):
+    parsed = get_parsed_meta(meta)
+    return ['prevent-inline'] in parsed
 
 
 def render_compact_submodel(submodel, item, context):
     if render_inline(item):
         pass
-    elif not IAttribute.providedBy(submodel):
+    elif not IAttribute.providedBy(submodel) or prevent_inline(item):
         if item.reference is not None:
             return item.reference.resolve(context)
     else:
