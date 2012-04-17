@@ -2,22 +2,44 @@ from zope.interface import implements
 
 from feat.common import log, defer, first, error
 from feat.models import reference
-from feat.web import document
+from feat.web import document, http
 from feat.web.markup import html
 
 from feat.models.interface import ActionCategories, ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
 from feat.models.interface import IValueOptions, IErrorPayload
-from feat.models.interface import Unauthorized
+from feat.models.interface import Unauthorized, IContext
 
 
 MIME_TYPE = "text/html"
+
+
+class RelativeContext(object):
+    '''This context is used for rendering error pages and detachted models.
+    It may happend that gateway does not provide the context for the request,
+    than all the urls are rendered relative.'''
+
+    implements(IContext)
+
+    def __init__(self):
+        self.names = tuple()
+        self.models = tuple()
+        self.remaining = tuple()
+        self.arguments = dict()
+
+    def make_action_address(self, action):
+        raise NotImplementedError("This page has an action link? Really? Why?")
+
+    def make_model_address(self, location):
+        return '/' + http.tuple2path(location)
 
 
 class BaseLayout(html.Document):
 
     def __init__(self, title, context):
         html.Document.__init__(self, html.StrictPolicy(), title)
+        if context is None:
+            context = RelativeContext()
         self._link_static_files(context)
 
     def _link_static_files(self, context):
