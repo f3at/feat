@@ -19,9 +19,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import sys
-import os
-
 from zope.interface import implements
 from twisted.web import error as web_error
 from twisted.internet import error
@@ -32,11 +29,11 @@ from feat.agencies.database import Connection, ChangeListener
 from feat.common import log, defer, time
 from feat.agencies import common
 
-from feat.agencies.interface import *
-from feat.interface.view import *
+from feat.agencies.interface import IDatabaseDriver, IDbConnectionFactory
+from feat.agencies.interface import NotFoundError, NotConnectedError
+from feat.agencies.interface import ConflictError
+from feat.interface.view import IViewFactory
 
-
-from feat import extern
 from paisley.changes import ChangeNotifier
 from paisley.client import CouchDB
 
@@ -95,8 +92,8 @@ class Notifier(object):
             for line in change['changes']:
                 # The changes are analized when there is not http request
                 # pending. Otherwise it can result in race condition problem.
-                self._db.semaphore.run(self._filter.notified,
-                                       doc_id, line['rev'], deleted)
+                self._db.process_notifications(
+                    self._filter, doc_id, line['rev'], deleted)
         else:
             self.info('Bizare notification received from CouchDB: %r', change)
 
@@ -115,7 +112,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
 
-        self.semaphore = defer.DeferredSemaphore(1)
         self.paisley = None
         self.db_name = None
         self.host = None
@@ -125,6 +121,16 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
         self.retry = 0
         self.reconnector = None
+
+        # doc_id -> list of tuples (Filter, rev, deleted)
+        # The list is added when we start modifying the document,
+        # all the notificactions received in the meantime will be
+        # stored in this hash, until change is done, this solves
+        # the problem with caused by change notification received
+        # before the http request modifying the document is finished
+        self._pending_notifications = dict()
+        # doc_id -> C{int} number of locks
+        self._document_locks = dict()
 
         self._configure(host, port, db_name)
 
@@ -148,12 +154,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                                   self.db_name, doc_id)
 
     def save_doc(self, doc, doc_id=None):
-        return self._paisley_call(doc_id, self.paisley.saveDoc,
-                                  self.db_name, doc, doc_id)
+        return self._lock_document(doc_id, self._paisley_call,
+                                   doc_id, self.paisley.saveDoc,
+                                   self.db_name, doc, doc_id)
 
     def delete_doc(self, doc_id, revision):
-        return self._paisley_call(doc_id, self.paisley.deleteDoc,
-                                  self.db_name, doc_id, revision)
+        return self._lock_document(doc_id, self._paisley_call,
+                                   doc_id, self.paisley.deleteDoc,
+                                   self.db_name, doc_id, revision)
 
     def create_db(self):
         return self._paisley_call(self.db_name, self.paisley.createDB,
@@ -211,13 +219,60 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self.reconnect()
             return self._setup_notifiers()
 
+    ### used by Notifier ###
+
+    def process_notifications(self, filter, doc_id, rev, deleted):
+        if doc_id not in self._pending_notifications:
+            filter.notified(doc_id, rev, deleted)
+        else:
+            self._pending_notifications[doc_id].append((filter, rev, deleted))
+
     ### private
+
+    def _lock_document(self, doc_id, method, *args):
+        lock_value = self._document_locks.get(doc_id, 0) + 1
+        self._document_locks[doc_id] = lock_value
+
+        if lock_value == 1:
+            assert doc_id not in self._pending_notifications, \
+                   "lock_value == 1 and _pending_notifications has a entry"\
+                   ". Something is leaking."
+            self._pending_notifications[doc_id] = list()
+
+        d = method(*args)
+        d.addBoth(defer.bridge_param, self._unlock_document, doc_id)
+        return d
+
+    def _unlock_document(self, doc_id):
+        lock_value = self._document_locks.get(doc_id, None)
+        assert lock_value is not None, \
+               "_unlock_document() called, but counter is not there!"
+        lock_value -= 1
+
+        if lock_value == 0:
+            del(self._document_locks[doc_id])
+            notifications = self._pending_notifications.pop(doc_id, None)
+            assert notifications is not None, \
+                   "Lock value reached 0 but there is no pending_notifications"
+            for filter, rev, deleted in notifications:
+                filter.notified(doc_id, rev, deleted)
+        else:
+            self._document_locks[doc_id] = lock_value
+
+    def _paisley_call(self, tag, method, *args, **kwargs):
+        d = method(*args, **kwargs)
+        d.addCallback(defer.bridge_param, self._on_connected)
+        d.addErrback(self._error_handler, tag)
+        return d
 
     def _configure(self, host, port, name):
         self._cancel_reconnector()
         self.host, self.port = host, port
         self.paisley = CouchDB(host, port)
         self.db_name = name
+
+        self._pending_notifications.clear()
+        self._document_locks.clear()
 
         [notifier.reconfigure() for notifier in self.notifiers.values()]
         self.reconnect()
@@ -252,15 +307,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                 self.reconnector.cancel()
             self.reconnector = None
             self.retry = 0
-
-    def _paisley_call(self, tag, method, *args, **kwargs):
-        # It is necessarry to acquire the lock to perform the http request
-        # because we need to be sure that we are not in the middle of sth
-        # while analizing the change notification
-        d = self.semaphore.run(method, *args, **kwargs)
-        d.addCallback(defer.bridge_param, self._on_connected)
-        d.addErrback(self._error_handler, tag)
-        return d
 
     def _error_handler(self, failure, tag=None):
         exception = failure.value
