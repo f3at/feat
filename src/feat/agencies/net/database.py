@@ -142,6 +142,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
               time.left(self.reconnector.getTime())
         return "CouchDB", self.is_connected(), self.host, self.port, eta
 
+    def show_document_locks(self):
+        return dict(self._document_locks), dict(self._pending_notifications)
+
     ### IDbConnectionFactory
 
     def get_connection(self):
