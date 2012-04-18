@@ -490,6 +490,11 @@ class Agency(agency.Agency):
         iterator = (x.show_connection_status() for x in connections)
         return t.render(iterator)
 
+    @manhole.expose()
+    def show_locked_db_documents(self):
+        return ("_document_locks: %r\n_pending_notifications: %r" %
+                (self._database.show_document_locks()))
+
     ### Manhole inspection methods ###
 
     @manhole.expose()
