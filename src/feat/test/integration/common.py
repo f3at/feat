@@ -42,7 +42,7 @@ from feat.gateway.resources import Context
 from feat.web import document, http
 
 from feat.agencies.interface import NotFoundError
-from feat.models.interface import IModel, ActionCategories
+from feat.models.interface import IModel, ActionCategories, Unauthorized
 
 attr = common.attr
 delay = common.delay
@@ -499,7 +499,10 @@ class ModelTestMixin(object):
 
         items = yield model.fetch_items()
         for item in items:
-            submodel = yield item.fetch()
+            try:
+                submodel = yield item.fetch()
+            except Unauthorized as e:
+                continue
             if IModel.providedBy(submodel):
                 subcontext = context.descend(submodel)
                 yield self._model_tree_iteration(submodel, visited, subcontext)
