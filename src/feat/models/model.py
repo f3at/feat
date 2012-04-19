@@ -549,6 +549,7 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         """Do not keep any reference to its parent,
         this way it can be garbage-collected."""
 
+
         def got_view(view):
             if view is None:
                 return None

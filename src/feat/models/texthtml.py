@@ -217,8 +217,6 @@ class ModelWriter(log.Logger):
     @defer.inlineCallbacks
     def _render_actions(self, model, markup, context):
         actions = yield model.fetch_actions()
-        actions = [x for x in actions
-                   if x.category != ActionCategories.retrieve]
         for action in list(actions):
             enabled = yield action.fetch_enabled()
             if not enabled:
@@ -231,9 +229,12 @@ class ModelWriter(log.Logger):
             markup.span(_class='name')(action.label or action.name).close()
             if action.desc:
                 markup.span(_class='desc')(action.desc).close()
-            self._render_action_form(action, markup, context)
+            if action.category != ActionCategories.retrieve:
+                self._render_action_form(action, markup, context)
+            else:
+                url = action.reference.resolve(context)
+                markup.a(_class="get_action", href=url)("GET").close()
             li.close()
-            actions
         ul.close()
         markup.hr()
 
@@ -287,8 +288,8 @@ class ModelWriter(log.Logger):
             fieldset.close()
         else:
             msg = ("ValueType %s is not supported by HTML writer" %
-                   (v_t.__name__))
-            markup.span(_class='type_not_supported')(msg)
+                   (v_t.name))
+            markup.span(_class='type_not_supported')(msg).close()
         if param.desc:
             markup.span(_class='desc')(param.desc).close()
         if not param.is_required:

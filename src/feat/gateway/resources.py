@@ -503,6 +503,22 @@ class ActionResource(BaseResource):
         def got_data(data):
             response.set_header("Cache-Control", "no-cache")
             response.set_header("connection", "close")
+
+            if IEncodingInfo.providedBy(self._action.result_info):
+                enc_info = IEncodingInfo(self._action.result_info)
+                mime_type = enc_info.mime_type
+                encoding = enc_info.encoding
+
+                if mime_type:
+                    request.debug("Changing mime_type to %r", mime_type)
+                    response.set_mime_type(mime_type)
+                if encoding:
+                    request.debug("Changing encoding to %r", encoding)
+                    response.set_encoding(encoding)
+
+                response.set_length(len(data))
+                return response.write(data)
+
             #FIXME: passing query arguments without validation is not safe
             return response.write_object(data, context=self._context,
                                          **request.arguments)
