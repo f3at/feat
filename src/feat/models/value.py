@@ -383,7 +383,7 @@ class Value(BaseValue):
 
     def publish(self, value):
         value = BaseValue.validate(self, value)
-        if self._options_only and not self.has_option(value):
+        if self._options_only and not self._has_option(value):
             raise ValueError("Value not allowed: %r" % (value, ))
         return value
 
@@ -436,7 +436,8 @@ class Value(BaseValue):
         options_only = self._options_only
         self._options_only = False
         try:
-            option = ValueOption(self._validate_option(value), label)
+            self._validate_option(value)
+            option = ValueOption(value, label)
             self._options.append(option)
         finally:
             self._options_only = options_only

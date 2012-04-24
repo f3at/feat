@@ -306,7 +306,7 @@ class TestModelsValue(common.TestCase):
         self.assertTrue(isinstance(v.get_option("beans").value, unicode))
         self.assertEqual(v.get_option(u"bacon").value, u"bacon")
         self.assertEqual(v.get_option(u"bacon").label, u"Bacon")
-        self.assertTrue(isinstance(v.get_option(u"bacon").value, unicode))
+        self.assertTrue(isinstance(v.get_option(u"bacon").value, str))
         self.assertEqual(v.get_option("foo"), None)
         self.assertEqual([o.value for o in v.iter_options()],
                          [u"egg", u"bacon", u"spam", u"beans"])
