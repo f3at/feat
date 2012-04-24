@@ -74,12 +74,18 @@ class Formatable(serialization.Serializable, annotate.Annotable):
         return "<%s %r>" % (type(self).__name__, self.snapshot(), )
 
     def _set_fields(self, dictionary):
-        for key in dictionary:
+        properties = dict()
+        for key in dictionary.keys():
             find = [x for x in self._fields if x.name == key]
             if len(find) != 1:
-                raise AttributeError(
-                    "Class %r doesn't have the %r attribute." %\
-                    (type(self), key, ))
+                p = getattr(type(self), key, None)
+                if isinstance(p, property):
+                    # store property setters for later
+                    properties[key] = dictionary.pop(key)
+                else:
+                    raise AttributeError(
+                        "Class %r doesn't have the %r attribute." %\
+                        (type(self), key, ))
 
         for field in self._fields:
             # lazy coping of default value, don't touch!
@@ -88,6 +94,11 @@ class Formatable(serialization.Serializable, annotate.Annotable):
             else:
                 value = copy.copy(field.default)
             setattr(self, field.name, value)
+
+        # finally process the property setters
+        for key, value in properties.iteritems():
+            setattr(self, key, value)
+
 
     def __eq__(self, other):
         if type(self) != type(other):

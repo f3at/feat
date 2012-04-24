@@ -37,6 +37,24 @@ class Child(Base):
     formatable.field('field3', None)
 
 
+@serialization.register
+class PropertyTest(formatable.Formatable):
+
+    formatable.field('array', list())
+
+    @property
+    def element(self):
+        return self.array and self.array[-1]
+
+    @element.setter
+    def element(self, value):
+        self.array.append(value)
+
+    @property
+    def readonly(self):
+        return 'readonly'
+
+
 class TestFormatable(common.TestCase):
 
     def setUp(self):
@@ -87,3 +105,10 @@ class TestFormatable(common.TestCase):
         base = Base(field1=0, field2=[])
         self.assertEqual(0, base.field1)
         self.assertEqual([], base.field2)
+
+    def testPropertySetters(self):
+        a = PropertyTest(element=2)
+        self.assertEqual([2], a.array)
+        self.assertEqual(2, a.element)
+
+        self.assertRaises(AttributeError, PropertyTest, readonly=2)
