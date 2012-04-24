@@ -55,23 +55,24 @@ def push_initial_data(connection, overwrite=False):
                 log.error('script', 'Document with id %s already exists!',
                           doc.doc_id)
             else:
-                yield _delete_old(connection, doc.doc_id)
-                yield connection.save_document(doc)
+
+                yield _update_old(connection, doc)
 
     design_docs = view.generate_design_docs()
     for design_doc in design_docs:
         try:
             yield connection.save_document(design_doc)
         except ConflictError:
-            yield _delete_old(connection, design_doc.doc_id)
-            yield connection.save_document(design_doc)
+            yield _update_old(connection, design_doc)
 
 
 @defer.inlineCallbacks
-def _delete_old(connection, doc_id):
-    log.info('script', 'Deleting old version of the document, id: %s', doc_id)
+def _update_old(connection, doc):
+    doc_id = doc.doc_id
+    log.info('script', 'Updating old version of the document, id: %s', doc_id)
     old = yield connection.get_document(doc_id)
-    yield connection.delete_document(old)
+    doc.rev = old.rev
+    yield connection.save_document(doc)
 
 
 def load_application(option, opt_str, value, parser):
