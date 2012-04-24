@@ -2,9 +2,9 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.18.2
-%define unmangled_version 0.18.2
-%define build_rev 1
+%define version 0.19.0
+%define unmangled_version 0.19.0
+%define build_rev 0.1
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -85,9 +85,9 @@ install -m 644 -t %{_sharedir}/gateway/static/script gateway/static/script/*
 
 install -m 644 -t %{_sharedir}/conf \
   conf/authorized_keys \
-  conf/dummy.p12 \
-  conf/dummy_private_key.pem \
-  conf/dummy_public_cert.pem \
+  conf/client.p12 \
+  conf/client_private_key.pem \
+  conf/client_public_cert.pem \
   conf/feat.ini \
   conf/gateway.p12 \
   conf/gateway_ca.pem \
@@ -103,10 +103,8 @@ install -m 644 -t %{_sharedir}/tools \
   tools/pep8.py \
   tools/show-coverage.py \
   tools/start_couch.sh \
-  tools/start_feat.sh \
   tools/start_rabbitctl.sh \
   tools/start_rabbit.sh \
-  tools/stop_feat.sh \
   tools/web.py
 install -m 644 -t %{_sharedir}/tools/PKI tools/PKI/feat.conf
 install -m 644 -t %{_sharedir}/tools/PKI/bin tools/PKI/bin/*
