@@ -55,7 +55,7 @@ def start(args):
         print >> sys.stderr, "The command output:\n\n", output
         sys.exit(status)
 
-    _pidfile_wait(exists=True, timeout=20)
+    _pidfile_wait(exists=True, timeout=5)
     return
 
 
@@ -196,12 +196,15 @@ def _parse_config():
 
 def _pidfile_wait(exists, timeout):
     elapsed = 0
+    seconds = 0
     while _pidfile_exist() is not exists:
         time.sleep(0.1)
         elapsed += 0.1
-        stdout('.')
+        if int(elapsed) > seconds:
+            stdout('.')
+            seconds = int(elapsed)
         if elapsed > timeout:
-            stderr("Timeout waiting.")
+            stderr("Timeout waiting.\n")
             sys.exit(1)
     stdout("done.\n")
 
