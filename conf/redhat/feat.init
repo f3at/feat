@@ -12,7 +12,6 @@
 PROG="feat-service"
 SERVICE="feat"
 USER="feat"
-CONF="/etc/feat/feat.ini"
 SYSCONFIG="/etc/sysconfig/feat"
 
 export FEAT_DEBUG="*:3"
@@ -25,21 +24,18 @@ RETVAL=0
 
 start() {
     echo -n $"Starting $SERVICE: "
-    $PROG start 2> /dev/null
+    $PROG start > /dev/null 2>&1 && success || failure $"$PROG start"
     RETVAL=$?
-    let $RETVAL && echo "failed..." || echo "done!"
+    echo
+    return $RETVAL
 }
 
 stop() {
     echo -n $"Stopping $SERVICE: "
-    $PROG -C $CONF stop
+    $PROG stop > /dev/null 2>&1 && success || failure $"$PROG stop"
     RETVAL=$?
-    let $RETVAL && echo "failed..." || echo "done!"
-}
-
-status() {
-    $PROG -C $CONF status
-    RETVAL=$?
+    echo
+    return $RETVAL
 }
 
 case "$1" in
@@ -49,13 +45,8 @@ case "$1" in
   stop)
         stop
         ;;
-  shutdown|restart|clean|hostcleanup)
-	# fixme: feat-service restart should just spawn off a new feat instead
-        # of being it itself; right now it does not finish, so we need daemon
-        $PROG -C $CONF $1
-        ;;
-  status)
-        status
+  shutdown|status|restart|clean|hostcleanup)
+        $PROG $1
         ;;
   *)
         echo $"Usage: $0 {start|stop|shutdown|restart|status|clean|hostcleanup}"
