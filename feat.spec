@@ -48,8 +48,8 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/feat
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
 install -m 755 \
-        init.d/feat \
-        $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
+        conf/redhat/feat.init \
+        $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d/feat
 install -m 640 \
         conf/redhat/feat.sysconfig \
         $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/feat
@@ -144,6 +144,7 @@ fi
 
 %{python_sitelib}/*
 %{_bindir}/feat
+%{_bindir}/feat-service
 %{_bindir}/feat-couchpy
 %{_bindir}/feat-dbload
 %{_bindir}/feat-locate
