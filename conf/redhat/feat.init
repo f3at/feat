@@ -22,17 +22,12 @@ fi
 
 RETVAL=0
 
-start() {
-    echo -n $"Starting $SERVICE: "
-    $PROG start > /dev/null 2>&1 && success || failure $"$PROG start"
-    RETVAL=$?
-    echo
-    return $RETVAL
-}
+doit() {
+    ACTION=$1
+    VERB=$2
 
-stop() {
-    echo -n $"Stopping $SERVICE: "
-    $PROG stop > /dev/null 2>&1 && success || failure $"$PROG stop"
+    echo -n $"$VERB $SERVICE: "
+    $PROG $ACTION > /dev/null 2>&1 && success || failure $"$PROG $ACTION"
     RETVAL=$?
     echo
     return $RETVAL
@@ -40,12 +35,18 @@ stop() {
 
 case "$1" in
   start)
-        start
+    	doit start Starting
         ;;
   stop)
-        stop
+	doit stop Stopping
         ;;
-  shutdown|status|restart|clean|hostcleanup)
+  restart)
+	doit restart Restarting
+        ;;
+  shutdown)
+	doit shutdown "Shutting down"
+        ;;
+  status|clean|hostcleanup)
         $PROG $1
         ;;
   *)
