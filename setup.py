@@ -34,9 +34,9 @@ DOWNLOAD_URL = ('https://github.com/downloads/f3at/feat/%s-%s.tar.gz'
                 % (NAME, VERSION)),
 LICENSE = "GPL"
 PLATFORMS = ['any']
-REQUIRES = ['twisted', 'twisted.web', 'paisley', 'json']
+REQUIRES = ['twisted', 'twisted.web', 'json']
 SETUP_REQUIRES = ['setuptools>=0.6c9']
-INSTALL_REQUIRES = ['Twisted>=10.1', 'paisley>=0.3.1-feat.1']
+INSTALL_REQUIRES = ['Twisted>=10.1']
 KEYWORDS = ['twisted', 'agent', 'framework']
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',

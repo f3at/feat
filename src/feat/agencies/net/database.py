@@ -19,6 +19,10 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
+import os
+import sys
+
 from zope.interface import implements
 from twisted.web import error as web_error
 from twisted.internet import error
@@ -33,6 +37,10 @@ from feat.agencies.interface import IDatabaseDriver, IDbConnectionFactory
 from feat.agencies.interface import NotFoundError, NotConnectedError
 from feat.agencies.interface import ConflictError
 from feat.interface.view import IViewFactory
+
+from feat import extern
+# Add feat/extern/paisley to the load path
+sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
 
 from paisley.changes import ChangeNotifier
 from paisley.client import CouchDB

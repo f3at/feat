@@ -23,7 +23,6 @@ BuildRequires:  python-setuptools >= 0.6c9
 
 Requires:       python-twisted-core
 Requires:       python-twisted-web
-Requires:       python-paisley >= 0.3.1-feat.1
 
 Provides:       %{name}
 

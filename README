@@ -1,15 +1,5 @@
 FEAT => F3AT => Flumotion Asynchronous Autonomous Agent Toolkit
 
-=== Dependencies ===
-
-Paisley (FEAT fork)::
-
-    git clone --recursive git@github.com:f3at/paisley.git
-    cd paisley
-    python setup.py build
-    sudo python setup.py install
-
-
 === Repository ===
 
 Get the code::
