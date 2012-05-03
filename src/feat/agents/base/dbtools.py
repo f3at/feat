@@ -70,8 +70,8 @@ def push_initial_data(connection, overwrite=False):
 def _update_old(connection, doc):
     doc_id = doc.doc_id
     log.info('script', 'Updating old version of the document, id: %s', doc_id)
-    old = yield connection.get_document(doc_id)
-    doc.rev = old.rev
+    rev = yield connection.get_revision(doc_id)
+    doc.rev = rev
     yield connection.save_document(doc)
 
 

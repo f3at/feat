@@ -218,6 +218,11 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(self._notice_doc_revision)
         return d
 
+    def get_revision(self, doc_id):
+        d = self._database.open_doc(doc_id)
+        d.addCallback(lambda doc: doc['_rev'])
+        return d
+
     def reload_document(self, doc):
         assert IDocument.providedBy(doc), \
                "Incorrect type: %r, expected IDocument" % (type(doc), )

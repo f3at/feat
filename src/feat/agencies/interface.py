@@ -260,6 +260,14 @@ class IDatabaseClient(Interface):
                   document.
         '''
 
+    def get_revision(document_id):
+        '''
+        Get the document revision without parsing it.
+        @param document_id: The id of the document in the database.
+        @rtype: Deferred
+        @callback: revision
+        '''
+
     def reload_document(document):
         '''
         Fetch the latest revision of the document and update it.
