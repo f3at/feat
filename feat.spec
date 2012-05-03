@@ -23,6 +23,7 @@ BuildRequires:  python-setuptools >= 0.6c9
 
 Requires:       python-twisted-core
 Requires:       python-twisted-web
+Requires:       nsca-client
 
 Provides:       %{name}
 
