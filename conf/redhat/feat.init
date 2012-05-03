@@ -1,0 +1,65 @@
+#!/bin/bash
+#
+# Startup script for FEAT
+#
+# feat: Flumotion Asynchronous Autonomous Agent Toolkit
+#
+# chkconfig: - 80 20
+#
+# source function library
+. /etc/rc.d/init.d/functions
+
+PROG="feat-service"
+SERVICE="feat"
+USER="feat"
+CONF="/etc/feat/feat.ini"
+SYSCONFIG="/etc/sysconfig/feat"
+
+export FEAT_DEBUG="*:3"
+
+if [ -f "$SYSCONFIG" ]; then
+    source "$SYSCONFIG"
+fi
+
+RETVAL=0
+
+start() {
+    echo -n $"Starting $SERVICE: "
+    $PROG start 2> /dev/null
+    RETVAL=$?
+    let $RETVAL && echo "failed..." || echo "done!"
+}
+
+stop() {
+    echo -n $"Stopping $SERVICE: "
+    $PROG -C $CONF stop
+    RETVAL=$?
+    let $RETVAL && echo "failed..." || echo "done!"
+}
+
+status() {
+    $PROG -C $CONF status
+    RETVAL=$?
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  shutdown|restart|clean|hostcleanup)
+	# fixme: feat-service restart should just spawn off a new feat instead
+        # of being it itself; right now it does not finish, so we need daemon
+        $PROG -C $CONF $1
+        ;;
+  status)
+        status
+        ;;
+  *)
+        echo $"Usage: $0 {start|stop|shutdown|restart|status|clean|hostcleanup}"
+        exit 1
+esac
+
+exit $RETVAL
