@@ -25,24 +25,31 @@ from _noarch_run import *
 
 DEFAULT_RUN_DIR = "/tmp"
 
+def _describe(processName, processType):
+    if not processName:
+        return processType
+    if not processType:
+        return processName
+    return "%s %s" % (processType, processName)
 
 def status(processName, rundir=DEFAULT_RUN_DIR, process_type=PROCESS_TYPE):
     pid = get_pid(rundir, process_type, processName)
     if not pid:
-        print "%s %s not running" % (process_type, processName)
+        print "%s is not running" % _describe(process_type, processName)
         return
     if check_pid_running(pid):
-        print "%s %s is running with pid %d" % (process_type,
-                                                processName, pid)
+        print "%s is running with pid %d" % (
+            _describe(process_type, processName), pid)
     else:
-        print "%s %s dead (stale pid %d)" % (process_type, processName, pid)
+        print "%s is dead (stale pid %d)" % (
+            _describe(process_type, processName), pid)
         sys.exit(3)
 
 
 def stop(processName, rundir='/tmp', process_type=PROCESS_TYPE):
     pid = get_pid(rundir, process_type, processName)
     if not pid:
-        print "%s %s not running" % (process_type, processName)
+        print "%s is not running" % _describe(process_type, processName)
         return
     startClock = time.clock()
     termClock = startClock + 20
@@ -66,7 +73,8 @@ def stop(processName, rundir='/tmp', process_type=PROCESS_TYPE):
             log.warning("run", "Process with pid %d has not responded to "
                         "KILL for %d seconds, stopping", pid, 10)
             return 1
-    print "%s %s with pid %d stopped" % (process_type, processName, pid)
+    print "%s with pid %d stopped" % (
+            _describe(process_type, processName), pid)
     return 0
 
 
