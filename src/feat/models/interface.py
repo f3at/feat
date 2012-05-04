@@ -39,7 +39,7 @@ __all__ = ["ResponseTypes", "ActionCategories",
            "IModelItem", "IModelAction", "IActionParam",
            "IValueInfo", "IValueCollection", "IValueList", "IValueRange",
            "IEncodingInfo", "IValueOptions", "IValueOption",
-           "IActionPayload", "IErrorPayload"]
+           "IActionPayload", "IErrorPayload", "IQueryModel"]
 
 
 class ResponseTypes(enum.Enum):
@@ -681,20 +681,6 @@ class IModel(Interface):
                                iterating over items.
         """
 
-    def query_items(**kwargs):
-        """
-        #FIXME: Not fully defined yet.
-        @return: a deferred fired with a subset of the model's items
-                 filtered following the specified parameters.
-        @rtype: defer.Deferred
-        @callback: list of IModelItem
-        @errback TransientError: if items couldn't be fetched for unexpected
-                                 reasons, but it could be retried later.
-        @errback Unauthorized: if the the caller is not authorized
-                               to perform the query.
-        @errback NotAvailable: if the model source is not available.
-        """
-
     def provides_action(name):
         """
         @param name: the name of an action.
@@ -776,6 +762,22 @@ class IModel(Interface):
                                to retrieve the model's action.
         @errback NotAvailable: if the model source is not available.
         '''
+
+
+class IQueryModel(IModel):
+
+    def query_items(**kwargs):
+        """
+        @return: a deferred fired with a subset of the model's items
+                 filtered following the specified parameters.
+        @rtype: defer.Deferred
+        @callback: IModel with the items of result of the query
+        @errback TransientError: if items couldn't be fetched for unexpected
+                                 reasons, but it could be retried later.
+        @errback Unauthorized: if the the caller is not authorized
+                               to perform the query.
+        @errback NotAvailable: if the model source is not available.
+        """
 
 
 class IAttribute(IModel, IValueInfo):

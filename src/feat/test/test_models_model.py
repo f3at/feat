@@ -26,7 +26,7 @@ from zope.interface import implements
 
 from feat.common import defer, adapter
 from feat.models import interface, model, action, value
-from feat.models import call, getter, setter
+from feat.models import call, getter, setter, effect
 from feat.web import http
 
 from feat.test import common
@@ -529,8 +529,6 @@ class TestModelsModel(common.TestCase):
             model = yield item.browse()
             self.assertTrue(interface.IModel.providedBy(model))
 
-        yield self.asyncErrback(interface.NotSupported, m.query_items)
-
     @defer.inlineCallbacks
     def testModelAttribute(self):
         s = DummySource()
@@ -775,8 +773,6 @@ class TestModelsModel(common.TestCase):
 
         yield self.asyncEqual(0, mdl.count_items())
         yield self.asyncEqual(False, mdl.provides_item("spam"))
-        yield self.asyncErrback(interface.NotSupported,
-                                mdl.query_items)
 
         src.items[u"source1"] = object()
         src.items[u"source2"] = object()
@@ -879,3 +875,103 @@ class TestModelsModel(common.TestCase):
         self.assertTrue(value2.source is src.items[u"value2"])
 
         yield self.asyncEqual(None, mdl.fetch_item("spam"))
+
+
+#### Test QueryCollection ###
+
+
+class AnyValue(value.Value):
+
+    def validate(self, v):
+        return v
+
+    def publish(self, v):
+        return v
+
+
+class DummyModel(model.Model):
+    model.identity('test.int')
+
+    model.attribute('source', AnyValue(),
+                    effect.context_value('source'))
+    model.attribute('view', AnyValue(),
+                    effect.context_value('view'))
+
+
+class QueryCollectionSource(model.QueryCollection):
+    '''Model representing infinite collection of integers'''
+    model.identity('test.query_collection')
+
+    @staticmethod
+    def query(value, context):
+        query = context['query']
+        assert context['source'] == 'source', repr(context)
+        assert context['view'] == 'view', repr(context)
+
+        result = range(query['offset'],
+                       query['offset'] + query.get('limit', 10))
+        # [('int', int)]
+        return defer.succeed(list((str(x), x) for x in result))
+
+    model.query_item_source(query)
+    model.child_model(DummyModel)
+    model.child_source(effect.context_value('key'))
+    model.child_count(call.model_call('counter'))
+
+    model.meta('some meta', 'value')
+    model.child_meta('child meta', 'value')
+
+    def counter(self):
+        return 10000
+
+
+class TestQueryCollection(common.TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.TestCase.setUp(self)
+        self.model = QueryCollectionSource('source')
+        yield self.model.initiate(view='view')
+
+    def testFetchingAll(self):
+        d = self.model.fetch_items()
+        self.assertFailure(d, interface.NotSupported)
+        return d
+
+    @defer.inlineCallbacks
+    def testFetchItem(self):
+        i = yield self.model.fetch_item('2')
+        sub = yield i.fetch()
+        self.assertIsInstance(sub, DummyModel)
+
+    def testCountingItems(self):
+        self.asyncEqual(10000, self.model.count_items())
+
+    def testImplementsRightInterface(self):
+        self.assertTrue(interface.IQueryModel.providedBy(self.model))
+
+    @defer.inlineCallbacks
+    def testQuerying(self):
+        qset = yield self.model.query_items(limit=20, offset=3)
+        self.assertIsInstance(qset, model._QuerySetCollection)
+        items = yield qset.fetch_items()
+        self.assertEqual(20, len(items))
+        count = yield qset.count_items()
+        self.assertEqual(20, count)
+
+        meta = list(items[0].iter_meta())[0]
+        self.assertEqual('child meta', meta.name)
+        self.assertEqual('value', meta.value)
+
+        fetched = yield items[0].fetch()
+        self.assertIsInstance(fetched, DummyModel)
+        v = yield fetched.fetch_item('source')
+        v = yield v.fetch()
+        yield self.asyncEqual(3, v.perform_action('get'))
+
+        v = yield fetched.fetch_item('view')
+        v = yield v.fetch()
+        yield self.asyncEqual('view', v.perform_action('get'))
+
+        # check that metadata was copied
+        self.assertEqual(list(self.model.iter_meta()), list(qset.iter_meta()))
