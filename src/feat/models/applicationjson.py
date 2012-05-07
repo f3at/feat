@@ -33,7 +33,7 @@ from feat.models.interface import IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
 from feat.models.interface import IEncodingInfo, ValueTypes
-from feat.models.interface import Unauthorized
+from feat.models.interface import Unauthorized, IQueryModel
 
 MIME_TYPE = "application/json"
 
@@ -325,6 +325,19 @@ def write_model(doc, obj, *args, **kwargs):
     return d.addCallback(render_json, doc)
 
 
+def write_query_model(doc, obj, *args, **kwargs):
+    context = kwargs.pop("context", None)
+    verbose = kwargs.pop("format", False) == 'verbose'
+    d = obj.query_items(**kwargs)
+
+    params = dict(context=context)
+    if verbose:
+        params['format'] = 'verbose'
+    d.addCallback(defer.inject_param, 1, write_model, doc,
+                  **params)
+    return d
+
+
 def write_reference(doc, obj, *args, **kwargs):
     context = kwargs["context"]
     result = obj.resolve(context)
@@ -377,6 +390,7 @@ document.register_writer(write_reference, MIME_TYPE, IReference)
 # document.register_writer(write_serializable, MIME_TYPE,
 #                          serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)
+document.register_writer(write_query_model, MIME_TYPE, IQueryModel)
 
 document.register_reader(read_action, MIME_TYPE, IActionPayload)
 

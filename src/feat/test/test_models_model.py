@@ -886,7 +886,7 @@ class AnyValue(value.Value):
         return v
 
     def publish(self, v):
-        return v
+        return unicode(v)
 
 
 class DummyModel(model.Model):
@@ -946,6 +946,7 @@ class TestQueryCollection(common.TestCase):
 
     def testCountingItems(self):
         self.asyncEqual(10000, self.model.count_items())
+        self.asyncEqual(10000, self.model.perform_action('count'))
 
     def testImplementsRightInterface(self):
         self.assertTrue(interface.IQueryModel.providedBy(self.model))
@@ -967,7 +968,7 @@ class TestQueryCollection(common.TestCase):
         self.assertIsInstance(fetched, DummyModel)
         v = yield fetched.fetch_item('source')
         v = yield v.fetch()
-        yield self.asyncEqual(3, v.perform_action('get'))
+        yield self.asyncEqual('3', v.perform_action('get'))
 
         v = yield fetched.fetch_item('view')
         v = yield v.fetch()

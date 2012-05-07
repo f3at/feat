@@ -25,7 +25,7 @@ import types
 from zope.interface import implements
 
 from feat.common import annotate, container, mro, defer, error, registry, first
-from feat.models import utils, value
+from feat.models import utils, value, getter, call
 from feat.models import meta as models_meta
 from feat.models import reference as models_reference
 from feat.models import action as models_action
@@ -364,6 +364,41 @@ def _annotate(name, *args, **kwargs):
     method_name = "annotate_" + name
     annotate.injectClassCallback(name, 4, method_name, *args, **kwargs)
 
+
+
+### private ###
+
+
+def _validate_flag(value):
+    return bool(value)
+
+
+def _validate_str(value):
+    return unicode(value)
+
+
+def _validate_optstr(value):
+    return unicode(value) if value is not None else None
+
+
+def _validate_model_factory(factory):
+    if (factory is None
+        or isinstance(factory, str)
+        or IModelFactory.providedBy(factory)):
+        return factory
+    if callable(factory):
+        return staticmethod(factory)
+    return IModelFactory(factory)
+
+
+def _validate_action_factory(factory):
+    return IActionFactory(factory)
+
+
+def _validate_effect(effect):
+    if isinstance(effect, types.FunctionType):
+        return staticmethod(effect)
+    return effect
 
 
 ### Registry ###
@@ -1457,6 +1492,11 @@ class QueryItemsMixin(DynamicItemsMixin):
             return self._notsup("querying items")
         context = self.make_context(key=self.name)
         context['query'] = kwargs
+        if 'limit' not in context['query']:
+            context['query']['limit'] = 10
+        if 'offset' not in context['query']:
+            context['query']['offset'] = 0
+
         d = self._query_items(None, context)
         d.addCallback(create_model)
         d.addErrback(log_error)
@@ -1577,10 +1617,10 @@ class _QuerySetCollection(_DynCollection):
         msg = ("Query method should the list of 2 element tuples "
                "(key, value), got %r instead")
         if not isinstance(items, (list, tuple)):
-            raise ValueError(msg % (children, ))
+            raise ValueError(msg % (items, ))
         for el in items:
             if not isinstance(el, (list, tuple)) and len(el) == 2:
-                raise ValueError(msg % (children, ))
+                raise ValueError(msg % (items, ))
 
         self._items = items
         super(_DynCollection, self).__init__(source)
@@ -1597,6 +1637,17 @@ class _QuerySetCollection(_DynCollection):
         return defer.succeed(value)
 
 
+class CountCollection(models_action.Action):
+
+    models_action.label("Get length of collection")
+    models_action.category(ActionCategories.retrieve)
+    models_action.enabled(getter.model_attr('_item_counter'))
+    models_action.is_idempotent()
+
+    models_action.effect(call.model_call('count_items'))
+    models_action.result(value.Integer())
+
+
 class QueryCollection(AbstractModel, StaticActionsMixin, QueryItemsMixin):
     """
     A model with a static list of actions and a dynamic set of sub-models.
@@ -1607,6 +1658,8 @@ class QueryCollection(AbstractModel, StaticActionsMixin, QueryItemsMixin):
 
     __metaclass__ = MetaQuerySetCollection
     __slots__ = ()
+
+    action('count', CountCollection)
 
 
 class DynamicModelItem(BaseModelItem):
@@ -1677,38 +1730,3 @@ class DynamicModelItem(BaseModelItem):
             return None
         self._child = model
         return self
-
-
-### private ###
-
-
-def _validate_flag(value):
-    return bool(value)
-
-
-def _validate_str(value):
-    return unicode(value)
-
-
-def _validate_optstr(value):
-    return unicode(value) if value is not None else None
-
-
-def _validate_model_factory(factory):
-    if (factory is None
-        or isinstance(factory, str)
-        or IModelFactory.providedBy(factory)):
-        return factory
-    if callable(factory):
-        return staticmethod(factory)
-    return IModelFactory(factory)
-
-
-def _validate_action_factory(factory):
-    return IActionFactory(factory)
-
-
-def _validate_effect(effect):
-    if isinstance(effect, types.FunctionType):
-        return staticmethod(effect)
-    return effect

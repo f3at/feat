@@ -10,10 +10,41 @@ from feat.common import defer, adapter
 from feat.configure import configure
 from feat.test import common
 from feat.models import texthtml, model, action, value, call, getter, setter
+from feat.models import effect
 from feat.web import document, http
 
 from feat.models.interface import IModel, IContext, ActionCategories
 from feat.models.interface import Unauthorized
+
+
+class DummyModel(model.Model):
+    model.identity('test.int')
+    model.attribute('value', value.Integer(),
+                    effect.context_value('view'))
+
+
+class QueryCollection(model.QueryCollection):
+    '''Model representing infinite collection of integers'''
+    model.identity('test.query_collection')
+
+    @staticmethod
+    def query(value, context):
+        query = context['query']
+        offset = query.get('offset', 0)
+        limit = query.get('limit', 10)
+
+        result = range(offset, offset + limit)
+        # [('int', int)]
+        return defer.succeed(list((str(x), x) for x in result))
+
+    model.query_item_view(query)
+    model.child_model(DummyModel)
+    model.child_view(effect.context_value('key'))
+    model.meta('html-render', 'array, 1')
+    model.child_count(call.model_call('count'))
+
+    def count(self):
+        return 100
 
 
 class TestContext(object):
@@ -54,6 +85,12 @@ class ModelWriterTest(common.TestCase):
         self.args = list()
 
         self.kwargs = dict(context=TestContext())
+
+    def testQueryModel(self):
+        self.writer = texthtml.QueryModelWriter(self)
+        self.model = QueryCollection('source')
+        self.kwargs['limit'] = 10
+        self.kwargs['offset'] = 32
 
     def testRenderingArray(self):
         r = Node()

@@ -766,10 +766,13 @@ class IModel(Interface):
 
 class IQueryModel(IModel):
 
-    def query_items(**kwargs):
+    def query_items(limit=10, offset=0, **kwargs):
         """
         @return: a deferred fired with a subset of the model's items
                  filtered following the specified parameters.
+        @param limit: C{int} how many items to fetch
+        @param offset: C{int} offset of the query
+
         @rtype: defer.Deferred
         @callback: IModel with the items of result of the query
         @errback TransientError: if items couldn't be fetched for unexpected
