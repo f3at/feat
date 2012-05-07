@@ -131,7 +131,6 @@ class TestModelsProperty(common.TestCase):
         yield self.asyncEqual(0, attr.count_items())
         yield self.asyncIterEqual([], attr.fetch_items())
         yield self.asyncEqual(None, attr.fetch_item("spam"))
-        yield self.asyncErrback(interface.NotSupported, attr.query_items)
         yield self.asyncEqual(2, attr.count_actions())
         actions = yield attr.fetch_actions()
         self.assertEqual(set([a.name for a in actions]),
@@ -295,7 +294,6 @@ class TestModelsProperty(common.TestCase):
         yield self.asyncEqual(0, attr.count_items())
         yield self.asyncIterEqual([], attr.fetch_items())
         yield self.asyncEqual(None, attr.fetch_item("spam"))
-        yield self.asyncErrback(interface.NotSupported, attr.query_items)
         yield self.asyncEqual(1, attr.count_actions())
         actions = yield attr.fetch_actions()
         self.assertEqual(set([a.name for a in actions]), set([u"get"]))

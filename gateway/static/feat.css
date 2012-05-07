@@ -152,3 +152,10 @@ span.inplace {
     min-width: 60px;
     color: orange;
 }
+
+/* Pagination of query collection */
+
+div.pagination span,
+div.pagination a {
+    margin: 0 2px;
+}

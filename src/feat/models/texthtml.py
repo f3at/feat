@@ -7,7 +7,7 @@ from feat.web.markup import html
 
 from feat.models.interface import ActionCategories, ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
-from feat.models.interface import IValueOptions, IErrorPayload
+from feat.models.interface import IValueOptions, IErrorPayload, IQueryModel
 from feat.models.interface import Unauthorized, IContext
 
 
@@ -212,7 +212,6 @@ class ModelWriter(log.Logger):
                         markup.div(_class='array')(array).close()
                 li.close()
             ul.close()
-        markup.hr()
 
     @defer.inlineCallbacks
     def _render_actions(self, model, markup, context):
@@ -223,6 +222,7 @@ class ModelWriter(log.Logger):
                 actions.remove(action)
         if not actions:
             return
+        markup.hr()
         ul = markup.ul(_class="actions")
         for action in actions:
             li = markup.li()
@@ -236,7 +236,6 @@ class ModelWriter(log.Logger):
                 markup.a(_class="get_action", href=url)("GET").close()
             li.close()
         ul.close()
-        markup.hr()
 
     def _render_action_form(self, action, markup, context):
         method = context.get_action_method(action).name
@@ -422,6 +421,58 @@ class ModelWriter(log.Logger):
                 result.append(current)
 
 
+class QueryModelWriter(ModelWriter):
+
+    @defer.inlineCallbacks
+    def write(self, doc, model, *args, **kwargs):
+        self.log("Rendering html doc for a model: %r", model.identity)
+        context = kwargs.pop('context', None)
+
+        limit = kwargs.get('limit', None)
+        offset = kwargs.get('offset', None)
+
+        # fetch count if available
+        count_action = yield model.fetch_action('count')
+        enabled = yield count_action.fetch_enabled()
+        if enabled:
+            total = yield model.perform_action('count')
+        else:
+            total = None
+
+        querymodel = yield model.query_items(**kwargs)
+
+        title = model.label or model.name
+        markup = ModelLayout(title, model, context)
+
+        yield self._render_items(querymodel, markup, context)
+        count = yield querymodel.count_items()
+        yield self._render_pagination(markup, context, count, offset, total,
+                                      limit)
+        yield self._render_actions(model, markup, context)
+
+        yield markup.render(doc)
+
+    def _render_pagination(self, markup, context, count, offset, total, limit):
+        total_show = total or "unknown"
+        end = offset + count
+        div = markup.div(_class='pagination')
+        markup.span()(
+            'Showing %s-%s out of %s' % (offset, end, total_show, )).close()
+        if offset > 0:
+            markup.a(href=self._url(context, max(offset - limit, 0), limit))(
+                "Previous").close()
+        if total is None or total > end:
+            markup.a(href=self._url(context, offset + count, limit))(
+                "Next").close()
+        div.close()
+
+    def _url(self, context, offset, limit):
+        r = reference.Relative()
+        res = r.resolve(context)
+        res += "?offset=%s&limit=%s" % (offset, limit)
+        return res
+
+
 class ErrorWriter(log.Logger):
     implements(document.IWriter)
 
@@ -456,5 +507,6 @@ class ErrorWriter(log.Logger):
 model_writer = ModelWriter()
 error_writer = ErrorWriter()
 
+document.register_writer(QueryModelWriter(), MIME_TYPE, IQueryModel)
 document.register_writer(model_writer, MIME_TYPE, IModel)
 document.register_writer(error_writer, MIME_TYPE, IErrorPayload)
