@@ -99,7 +99,6 @@ class Formatable(serialization.Serializable, annotate.Annotable):
         for key, value in properties.iteritems():
             setattr(self, key, value)
 
-
     def __eq__(self, other):
         if type(self) != type(other):
             return NotImplemented

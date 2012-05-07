@@ -25,12 +25,14 @@ from _noarch_run import *
 
 DEFAULT_RUN_DIR = "/tmp"
 
+
 def _describe(processName, processType):
     if not processName:
         return processType
     if not processType:
         return processName
     return "%s %s" % (processType, processName)
+
 
 def status(processName, rundir=DEFAULT_RUN_DIR, process_type=PROCESS_TYPE):
     pid = get_pid(rundir, process_type, processName)
