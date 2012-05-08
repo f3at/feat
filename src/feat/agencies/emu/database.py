@@ -160,12 +160,30 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         d.addCallback(self._flatten, **options)
         if use_reduce:
             d.addCallback(self._perform_reduce, factory, group=group)
+        d.addCallback(self._apply_slice, **options)
         return d
 
     def disconnect(self):
         pass
 
     ### private
+
+    def _apply_slice(self, rows, **slice_options):
+        skip = slice_options.get('skip', 0)
+        limit = slice_options.get('limit', None)
+        descend = slice_options.get('descending', False)
+
+        if skip > 0 or limit is not None:
+            if limit is None:
+                index = slice(skip, -1)
+            else:
+                index = slice(skip, skip + limit)
+            rows = rows[index]
+
+        if descend:
+            rows.reverse()
+
+        return rows
 
     def _matches_filter(self, tup, **filter_options):
         if 'key' in filter_options:
