@@ -542,7 +542,7 @@ class Integer(Value):
         Accepts: int, long, str, unicode
         Returns: int, long
         """
-        if isinstance(value, (str, unicode)):
+        if isinstance(value, (str, unicode, float)):
             value = int(value)
         value = super(Integer, self).validate(value)
         if not isinstance(value, (int, long)):
@@ -555,6 +555,8 @@ class Integer(Value):
         Returns: int, long
         """
         value = super(Integer, self).publish(value)
+        if isinstance(value, float):
+            value = int(value)
         if not isinstance(value, (int, long)):
             raise ValueError("Not an integer: %r" % (value, ))
         return value
