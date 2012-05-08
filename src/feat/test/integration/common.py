@@ -43,6 +43,7 @@ from feat.web import document, http
 
 from feat.agencies.interface import NotFoundError
 from feat.models.interface import IModel, ActionCategories, Unauthorized
+from feat.models.interface import IQueryModel
 
 attr = common.attr
 delay = common.delay
@@ -497,11 +498,15 @@ class ModelTestMixin(object):
         visited.append(model)
         yield self._validate_model(model, context)
 
-        items = yield model.fetch_items()
+        if IQueryModel.providedBy(model):
+            querymodel = yield model.query_items(offset=0, limit=10)
+            items = yield querymodel.fetch_items()
+        else:
+            items = yield model.fetch_items()
         for item in items:
             try:
                 submodel = yield item.fetch()
-            except Unauthorized as e:
+            except Unauthorized:
                 continue
             if IModel.providedBy(submodel):
                 subcontext = context.descend(submodel)
@@ -528,6 +533,11 @@ class ModelTestMixin(object):
                           "as it's category is: %s", action.name,
                           action.label, action.category)
                 continue
+            enabled = yield action.fetch_enabled()
+            if not enabled:
+                self.info("Not validating disabled action name: %s, "
+                          "label: %s,", action.name, action.label)
+                continue
             d = action.perform()
             d.addErrback(self._action_errback, action, model)
 
@@ -543,7 +553,7 @@ class ModelTestMixin(object):
         self.fail("Failed writing model, look at logs.")
 
     def _action_errback(self, fail, action, model):
-        error.handle_failure(
+        error.handle_failure(self, fail,
             "Failed running action name: %s on model: %r",
             action.name, model)
         self.fail("Calling action %s on model %s failed, look at logs." %

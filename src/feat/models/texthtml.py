@@ -428,8 +428,8 @@ class QueryModelWriter(ModelWriter):
         self.log("Rendering html doc for a model: %r", model.identity)
         context = kwargs.pop('context', None)
 
-        limit = kwargs.get('limit', None)
-        offset = kwargs.get('offset', None)
+        limit = kwargs.get('limit', 10)
+        offset = kwargs.get('offset', 0)
 
         # fetch count if available
         count_action = yield model.fetch_action('count')
