@@ -254,13 +254,9 @@ class TestModelsProperty(common.TestCase):
         yield self.asyncErrback(interface.InvalidParameters,
                                 attr.update_value, None)
         yield self.asyncErrback(interface.InvalidParameters,
-                                attr.update_value, 5.8)
-        yield self.asyncErrback(interface.InvalidParameters,
                                 attr.update_value, "XXX")
         yield self.asyncErrback(interface.InvalidParameters,
                                 action_set.perform, None)
-        yield self.asyncErrback(interface.InvalidParameters,
-                                action_set.perform, 5.8)
         yield self.asyncErrback(interface.InvalidParameters,
                                 action_set.perform, "XXX")
         yield self.asyncErrback(interface.MissingParameters,

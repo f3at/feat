@@ -55,6 +55,7 @@ class TestContext(object):
         self.names = names or (("host", 80), )
         self.models = models or (None, )
         self.remaining = ()
+        self.arguments = dict()
 
     def get_action_method(self, action):
         return http.Methods.GET

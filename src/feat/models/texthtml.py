@@ -429,7 +429,9 @@ class QueryModelWriter(ModelWriter):
         context = kwargs.pop('context', None)
 
         limit = kwargs.get('limit', 10)
+        limit = int(limit)
         offset = kwargs.get('offset', 0)
+        offset = int(offset)
 
         # fetch count if available
         count_action = yield model.fetch_action('count')
@@ -468,9 +470,9 @@ class QueryModelWriter(ModelWriter):
 
     def _url(self, context, offset, limit):
         r = reference.Relative()
-        res = r.resolve(context)
-        res += "?offset=%s&limit=%s" % (offset, limit)
-        return res
+        context.arguments['offset'] = [offset]
+        context.arguments['limit'] = [limit]
+        return r.resolve(context)
 
 
 class ErrorWriter(log.Logger):

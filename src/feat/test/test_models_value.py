@@ -369,7 +369,6 @@ class TestModelsValue(common.TestCase):
         self.assertEqual(v.validate(u"-12345678901234567890"),
                          -12345678901234567890)
         self.assertRaises(ValueError, v.validate, None)
-        self.assertRaises(ValueError, v.validate, 1.5)
         self.assertRaises(ValueError, v.validate, "spam")
 
         self.assertEqual(v.publish(0), 0)
@@ -380,7 +379,7 @@ class TestModelsValue(common.TestCase):
         self.assertEqual(v.publish(-12345678901234567890),
                          -12345678901234567890)
         self.assertRaises(ValueError, v.publish, "42")
-        self.assertRaises(ValueError, v.publish, 3.14)
+        self.assertEqual(v.publish(3.14), 3)
 
         self.assertEqual(v.as_string(0), u"0")
         self.assertTrue(isinstance(v.as_string(0), unicode))
@@ -391,7 +390,6 @@ class TestModelsValue(common.TestCase):
         self.assertEqual(v.as_string(-12345678901234567890),
                          "-12345678901234567890")
         self.assertRaises(ValueError, v.as_string, "42")
-        self.assertRaises(ValueError, v.as_string, 3.14)
 
         v = value.Integer(default=88)
         self.assertTrue(v.use_default)

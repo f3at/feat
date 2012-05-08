@@ -215,11 +215,17 @@ class BaseResource(webserver.BaseResource):
             response.set_status(payload.status_code)
 
         context = self.make_context(request)
-        #FIXME: passing query arguments without validation is not safe
-        d = response.write_object(payload, context=context,
-                                  **request.arguments)
+
+        arguments = _validate_arguments(request.arguments)
+        d = response.write_object(payload, context=context, **arguments)
         d.addErrback(nice_error_failed)
         return d
+
+
+def _validate_arguments(arguments):
+    # request parsers gives us correct dictionary key->[values],
+    # which is compliant with www-urlencoding, although not very usefull
+    return dict((k, v[0]) for k, v in arguments.iteritems())
 
 
 class ModelResource(BaseResource):
@@ -397,8 +403,8 @@ class ModelResource(BaseResource):
                                           context, action.result_info)
 
             #FIXME: passing query arguments without validation is not safe
-            return response.write_object(data, context=context,
-                                         **request.arguments)
+            arguments = _validate_arguments(request.arguments)
+            return response.write_object(data, context=context, **arguments)
 
         def got_action(action):
             if action is None:
@@ -423,9 +429,8 @@ class ModelResource(BaseResource):
         if IAttribute.providedBy(model):
             return self.render_attribute(model, request, response, context)
 
-        #FIXME: passing query arguments without validation is not safe
-        d = response.write_object(self.model, context=context,
-                                  **request.arguments)
+        arguments = _validate_arguments(request.arguments)
+        d = response.write_object(self.model, context=context, **arguments)
         d.addErrback(self.filter_errors)
         return d
 
@@ -438,8 +443,8 @@ class ModelResource(BaseResource):
                 return d
 
         #FIXME: passing query arguments without validation is not safe
-        d = response.write_object(attr, context=context,
-                                  **request.arguments)
+        arguments = _validate_arguments(request.arguments)
+        d = response.write_object(attr, context=context, **arguments)
         d.addErrback(self.filter_errors)
         return d
 

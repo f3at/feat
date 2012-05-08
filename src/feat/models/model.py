@@ -1494,8 +1494,13 @@ class QueryItemsMixin(DynamicItemsMixin):
         context['query'] = kwargs
         if 'limit' not in context['query']:
             context['query']['limit'] = 10
+        else:
+            context['query']['limit'] = int(context['query']['limit'])
+
         if 'offset' not in context['query']:
             context['query']['offset'] = 0
+        else:
+            context['query']['offset'] = int(context['query']['offset'])
 
         d = self._query_items(None, context)
         d.addCallback(create_model)
