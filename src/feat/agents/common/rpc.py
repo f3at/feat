@@ -82,7 +82,7 @@ class AgentMixin(object):
         f = fiber.Fiber()
         f.add_callback(self.initiate_protocol,
                        recipient, fun_id, *args, **kwargs)
-        f.add_callback(RPCRequester.notify_finish)
+        f.add_callback(fiber.call_param, 'notify_finish')
         return f.succeed(RPCRequesterFactory(timeout))
 
     ### IRPCServer Methods ###

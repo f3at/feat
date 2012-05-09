@@ -19,32 +19,3 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-from feat import applications
-
-
-class Feat(applications.Application):
-
-    name = 'feat'
-    version = 1
-    module_prefixes = ['feat.agents']
-    loadlist = [
-        'feat.agents.host.host_agent',
-        'feat.agents.shard.shard_agent',
-        'feat.agents.raage.raage_agent',
-        'feat.agents.dns.dns_agent',
-        'feat.agents.monitor.monitor_agent',
-        'feat.agents.alert.alert_agent',
-        'feat.agents.export.export_agent',
-        'feat.agents.migration.migration_agent',
-        'feat.agents.nagios.nagios_agent',
-        'feat.agents.common.host',
-        'feat.agents.common.shard',
-        'feat.agents.common.raage',
-        'feat.agents.common.dns',
-        'feat.agents.common.monitor',
-        'feat.agents.common.nagios',
-        'feat.agents.common.export']
-
-
-feat = Feat()
