@@ -28,7 +28,7 @@ from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager
 
 from feat.agencies import document, recipient, message
-from feat.agents.common import export, monitor
+from feat.agents.common import export, monitor, nagios as cnagios, rpc
 from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat
 
@@ -100,6 +100,8 @@ class AlertAgent(agent.BaseAgent):
         # (hostname, agent_id, service_name) -> ReceivedAlerts
         state.alerts = dict()
 
+        state.config_notifier = cnagios.create_poster(self)
+
     def startup(self):
         self.startup_monitoring()
 
@@ -113,6 +115,18 @@ class AlertAgent(agent.BaseAgent):
         f = prot.notify_finish()
         f.add_errback(self._expire_handler) # defined in base class
         f.add_callback(self._parse_discovery_response)
+        f.add_callback(self._notify_change_config)
+        return f
+
+    @rpc.publish
+    @replay.immutable
+    def push_notifications(self, state):
+        '''
+        Triggered by nagios_agent after he has restarted the nagios in order
+        to get the fresh notifications there.'''
+
+        f = fiber.wrap_defer(state.nagios.send, state.alerts.values())
+        f.add_callback(fiber.override_result, None)
         return f
 
     ### IAlertAgent (used by model) ###
@@ -177,6 +191,11 @@ class AlertAgent(agent.BaseAgent):
 
     ### private ###
 
+    @replay.immutable
+    def _notify_change_config(self, state, changed):
+        if changed:
+            state.config_notifier.notify(self.generate_nagios_service_cfg())
+
     @replay.mutable
     def _find_entry(self, state, alert):
         key = (alert.hostname, alert.agent_id, alert.name)
@@ -193,6 +212,7 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def _parse_discovery_response(self, state, response):
+        changed = False
         old_keys = state.alerts.keys()
         for agent in response:
             for alert in agent.alerts:
@@ -200,13 +220,16 @@ class AlertAgent(agent.BaseAgent):
                 if key in old_keys:
                     old_keys.remove(key)
                     continue
+                changed = True
                 state.alerts[key] = ReceivedAlerts(
                     name=alert.name,
                     agent_id=agent.agent_id,
                     severity=alert.severity,
                     hostname=agent.hostname)
         for key in old_keys:
+            changed = True
             del(state.alerts[key])
+        return changed
 
 
 class AlertsDiscoveryManager(manager.BaseManager):
