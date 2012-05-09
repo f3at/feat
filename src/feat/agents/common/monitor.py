@@ -182,8 +182,12 @@ class SetupMonitoringTask(task.BaseTask):
         f = fiber.Fiber(state.medium.get_canceller())
         f.add_callback(discover, shard)
         f.add_callback(self._start_monitoring)
+
+        resolve_status = ("%s is partner with the MA" %
+                          (state.agent.descriptor_type, ))
         f.add_callback(fiber.drop_param,
-                       state.agent.resolve_alert, 'monitoring')
+                       state.agent.resolve_alert, 'monitoring',
+                       resolve_status)
         return f.succeed(state.agent)
 
     @replay.journaled
