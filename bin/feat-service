@@ -23,6 +23,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
+
 import commands
 import glob
 import optparse
@@ -51,9 +53,10 @@ def start(args):
     status, output = commands.getstatusoutput(cmd)
     if status != 0:
         print >> sys.stderr, ("Running command:\n %s\n failed with the "
-                              "exit code %d." % (cmd, status))
+                              "status code %d." % (cmd, status))
         print >> sys.stderr, "The command output:\n\n", output
-        sys.exit(status)
+        if os.WIFEXITED(status):
+            sys.exit(os.WEXITSTATUS(status))
 
     _pidfile_wait(exists=True, timeout=5)
     return
