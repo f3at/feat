@@ -99,7 +99,7 @@ class ControlProtocol(protocol.ProcessProtocol, log.Logger):
 
     def _check_for_ready(self):
         if not self.ready and self.success_test():
-            self.debug("Process %s started successfuly", self.name)
+            self.debug("Process %s started successfully", self.name)
             self.log("Process %s stdout so far:\n%s",
                      self.name, self.out_buffer)
             self.ready_cb(self.out_buffer)
