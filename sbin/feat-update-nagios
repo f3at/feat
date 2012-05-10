@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# first argument is the path to the config file to install
+DIR=/etc/nagios/feat
+
+mkdir -p $DIR
+cp $1 $DIR
+chown nagios:nagios /etc/nagios/feat/*
+service nagios checkconfig && service nagios restart
