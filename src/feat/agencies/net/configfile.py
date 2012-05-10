@@ -30,7 +30,7 @@ def append_agent(parser, agent_type,
                  desc_keywords=dict(), initiate_keywords=dict()):
     desc_factory = serialization.lookup(agent_type)
     if not desc_factory:
-        raise ConfigParser.Error("Uknown agent_type: %s" % (agent_type, ))
+        raise ConfigParser.Error("Unknown agent_type: %s" % (agent_type, ))
     desc = desc_factory(**desc_keywords)
     parser.values.agents.append((desc, initiate_keywords))
 
