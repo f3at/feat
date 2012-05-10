@@ -1,6 +1,7 @@
 graft tools
 graft doc
 graft conf
+graft etc
 graft examples
 graft gateway
 graft init.d
@@ -19,6 +20,8 @@ include src/feat/test/data/*.p12
 
 include src/feat/extern/log/ChangeLog
 include src/feat/extern/log/README
+
+include sbin/feat-update-nagios
 
 recursive-include src/feat *.py
 exclude src/feat/configure/uninstalled.py

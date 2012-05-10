@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.19.0
 %define unmangled_version 0.19.0
-%define build_rev 0.3
+%define build_rev 0.4
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -44,6 +44,12 @@ rm -rf $RPM_BUILD_ROOT
 # Create config directory
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/feat
 
+# Install sbin scripts
+install -m 755 -d $RPM_BUILD_ROOT%{_sbindir}
+install -m 755 \
+        sbin/feat-update-nagios \
+        $RPM_BUILD_ROOT%{_sbindir}/feat-update-nagios
+
 # Setup service script
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d
 install -d $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
@@ -62,7 +68,11 @@ install -d $RPM_BUILD_ROOT%{_localstatedir}/run/feat
 
 
 # Install default configuration file
-install -m 644  conf/feat.ini $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
+install -m 644 conf/feat.ini $RPM_BUILD_ROOT%{_sysconfdir}/feat/feat.ini
+
+# Install sudoers config
+install -m 755 -d $RPM_BUILD_ROOT%{_sysconfdir}/sudoers.d
+install -m 440 etc/sudoers.d/feat $RPM_BUILD_ROOT%{_sysconfdir}/sudoers.d/feat
 
 # Install share files
 %define _sharedir $RPM_BUILD_ROOT%{_datadir}/python-feat
@@ -135,10 +145,10 @@ fi
 
 %doc README RELEASE LICENSE.GPL doc examples
 
-%config(noreplace) %{_sysconfdir}/feat/feat.ini
+%attr(664,root,feat) %config(noreplace) %{_sysconfdir}/feat/feat.ini
 %config(noreplace) %{_sysconfdir}/sysconfig/feat
-%attr(775, root, feat) %{_sysconfdir}/feat
-%attr(664, root, feat) %{_sysconfdir}/feat/feat.ini
+%attr(775,root,feat) %{_sysconfdir}/feat
+%attr(440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/feat
 
 %{_sysconfdir}/rc.d/init.d/feat
 
@@ -148,6 +158,8 @@ fi
 %{_bindir}/feat-couchpy
 %{_bindir}/feat-dbload
 %{_bindir}/feat-locate
+
+%{_sbindir}/feat-update-nagios
 
 %{_datadir}/python-feat/*
 
@@ -159,6 +171,12 @@ fi
 
 
 %changelog
+* Thu May 10 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.19.0-1
+- add sudoers.d configuration
+- add feat-update-nagios
+- new release
+
 * Sat Apr 07 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.18.1-1
 - new release
