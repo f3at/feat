@@ -25,7 +25,7 @@ from twisted.internet import error as terror
 
 from feat.common import log, defer
 from feat.gateway import resources
-from feat.web import security, webserver
+from feat.web import security, webserver, http
 
 # Import supported formats
 from feat.models import applicationjson
@@ -91,6 +91,13 @@ class Gateway(log.LogProxy, log.Logger):
     @property
     def port(self):
         return self._server and self._server.port
+
+    @property
+    def base_url(self):
+        if self._server:
+            return http.compose(scheme=self._server.scheme,
+                                path='/', port=self.port,
+                                host = self._host)
 
     ### private ###
 

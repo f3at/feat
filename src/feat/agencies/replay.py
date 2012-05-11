@@ -878,6 +878,10 @@ class AgencyAgent(BaseReplayDummy):
     def wait_for_state(self, state):
         pass
 
+    @replay.named_side_effect('AgencyAgent.get_base_gateway_url')
+    def get_base_gateway_url(self):
+        pass
+
     ### ITimeProvider Methods ###
 
     @replay.named_side_effect('AgencyAgent.get_time')

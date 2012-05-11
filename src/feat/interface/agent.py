@@ -378,6 +378,11 @@ class IAgencyAgent(Interface):
         @rtype: fiber.ICancellable
         '''
 
+    def get_base_gateway_url():
+        '''
+        @return: C{ctr} base url of gateway to access.
+        '''
+
 
 class IAgent(Interface):
     '''
