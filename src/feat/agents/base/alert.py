@@ -55,7 +55,7 @@ class AlertsDiscoveryContractor(contractor.BaseContractor):
         payload = AlertingAgentEntry(
             hostname=state.agent.get_hostname(),
             agent_id=state.agent.get_agent_id(),
-            alerts=type(state.agent)._alert_factories.values())
+            alerts=state.agent.get_alert_factories().values())
         state.medium.bid(message.Bid(payload=payload))
 
 
@@ -84,6 +84,31 @@ class BaseAlert(serialization.Serializable):
                "Class %r should have severity attribute set" % (type(self), )
 
 
+@feat.register_restorator
+class DynamicAlert(formatable.Formatable):
+
+    implements(IAlert, IAlertFactory)
+
+    formatable.field('name', None)
+    formatable.field('severity', None)
+    formatable.field('hostname', None)
+    formatable.field('status_info', None)
+    formatable.field('agent_id', None)
+
+    def __call__(self, hostname, agent_id, status_info):
+        assert self.name is not None, \
+               "DynamicAlert %r should have name attribute set" % (self, )
+        assert isinstance(self.severity, Severity), \
+               "DynamicAlert %r should have severity attribute set" % (self, )
+
+        return type(self)(
+            name=self.name,
+            severity=self.severity,
+            hostname=hostname,
+            agent_id=agent_id,
+            status_info=status_info)
+
+
 class AgentMixin(object):
 
     _alert_factories = container.MroDict("_mro_alert_factories")
@@ -103,6 +128,8 @@ class AgentMixin(object):
         recp = recipient.Broadcast(AlertPoster.protocol_id,
                                    self.get_shard_id())
         state.alerter = self.initiate_protocol(AlertPoster, recp)
+        # service_name -> IAlertFactory
+        state.alert_factories = dict(type(self)._alert_factories)
 
     @replay.mutable
     def raise_alert(self, state, service_name, status_info=None):
@@ -114,16 +141,27 @@ class AgentMixin(object):
         alert = self._generate_alert(service_name, status_info)
         state.alerter.notify('resolved', alert)
 
+    @replay.mutable
+    def may_raise_alert(self, state, factory):
+        f = IAlertFactory(factory)
+        state.alert_factories[factory.name] = f
+
     ### private ###
 
     @replay.immutable
     def _generate_alert(self, state, service_name, status_info):
-        alert_factory = type(self)._alert_factories.get(service_name, None)
+        alert_factory = state.alert_factories.get(service_name, None)
         assert alert_factory is not None, \
                "Unknown service name %r" % (service_name, )
         return alert_factory(hostname=state.medium.get_hostname(),
                              status_info=status_info,
                              agent_id=self.get_agent_id())
+
+    ### used by discovery contractor ###
+
+    @replay.immutable
+    def get_alert_factories(self, state):
+        return state.alert_factories
 
 
 class AlertPoster(poster.BasePoster):

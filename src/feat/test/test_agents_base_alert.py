@@ -29,6 +29,14 @@ class DummyAgent(replay.Replayable, alert.AgentMixin):
     def get_hostname(self):
         return 'test.feat.lan'
 
+    def get_shard_id(self):
+        return 'shard'
+
+    def initiate_protocol(self, factory, *args, **kwargs):
+        assert factory is alert.AlertPoster, repr(factory)
+        poster = dummies.DummyPosterMedium()
+        return factory(self, poster)
+
 
 class TestCase(common.TestCase):
 
@@ -38,10 +46,8 @@ class TestCase(common.TestCase):
         self.medium = dummies.DummyMedium(self)
         self.agent = DummyAgent(self.medium)
         self.medium.agent = self.agent
-        self.state = self.agent._get_state()
-        self.poster = dummies.DummyPosterMedium()
-        self.state.alerter = alert.AlertPoster(
-            self.agent, self.poster)
+        yield self.agent.initiate()
+        self.poster = self.agent._get_state().alerter._get_state().medium
 
     def testRaisingAndAlert(self):
         self.agent.raise_alert('service1', 'it hurts!')
@@ -78,14 +84,15 @@ class TestContractor(common.TestCase):
         self.agent = DummyAgent(self.medium)
         self.medium.agent = self.agent
         self.state = self.agent._get_state()
+        self.state.alert_factories = dict()
         self.contractor_medium = dummies.DummyContractorMedium()
         self.contractor = alert.AlertsDiscoveryContractor(
             self.agent, self.contractor_medium)
 
     @defer.inlineCallbacks
     def testDiscovery(self):
-        self.agent._register_alert_factory(Alert1)
-        self.agent._register_alert_factory(Alert2)
+        self.agent.may_raise_alert(Alert1)
+        self.agent.may_raise_alert(Alert2)
 
         announcement = message.Announcement()
         yield self.contractor.announced(announcement)

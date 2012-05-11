@@ -12,7 +12,7 @@ class IAlertFactory(Interface):
     name = Attribute('C{str} unique name of the service')
     severity = Attribute('L{Severity}')
 
-    def __call__(hostname, status_info):
+    def __call__(hostname, agent_id, status_info):
         '''Construct IAlert'''
 
 
