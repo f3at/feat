@@ -183,7 +183,7 @@ class SetupMonitoringTask(task.BaseTask):
         f.add_callback(discover, shard)
         f.add_callback(self._start_monitoring)
 
-        resolve_status = ("%s is partner with the MA" %
+        resolve_status = ("%s is partnered with the MA" %
                           (state.agent.descriptor_type, ))
         f.add_callback(fiber.drop_param,
                        state.agent.resolve_alert, 'monitoring',

@@ -886,7 +886,7 @@ ALERT_TABLE_ORDER=('array-columns, Service name, Hostname, Agent id, '
 
 
 class RescanShardAction(action.Action):
-    action.label('Trigger rescaning the shard')
+    action.label('Trigger rescanning the shard')
     action.category(ActionCategories.command)
     action.result(value.Response())
     action.effect(call.source_call('rescan_shard'))
