@@ -1,1 +1,7 @@
+# On Red Hat, requiretty is the default
+# We want this update to be run from feat, without a tty though, so
+# we disable it only for feat
+
+Defaults:feat !requiretty
+
 feat ALL=NOPASSWD: /usr/sbin/feat-update-nagios *
