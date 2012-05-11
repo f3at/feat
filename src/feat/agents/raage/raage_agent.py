@@ -58,9 +58,6 @@ class ResourcesAllocationAgent(agent.BaseAgent):
             contractor.Service(AllocationContractor))
         state.medium.register_interest(AllocationContractor)
 
-    def startup(self):
-        self.startup_monitoring()
-
     @replay.immutable
     def get_list_of_hosts_in_shard(self, state):
         return shard.get_host_list(self)

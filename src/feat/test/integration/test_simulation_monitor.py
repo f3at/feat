@@ -41,11 +41,7 @@ from feat.agents.monitor import monitor_agent
 
 @feat.register_agent('dummy_monitor_agent')
 class DummyMonitorAgent(agent.BaseAgent):
-
-    @replay.mutable
-    def start_monitoring(self, state):
-        self.startup_monitoring()
-
+    pass
 
 @feat.register_descriptor('dummy_monitor_agent')
 class DummyMonitorDescriptor(descriptor.Descriptor):
@@ -54,9 +50,7 @@ class DummyMonitorDescriptor(descriptor.Descriptor):
 
 @feat.register_agent('dummy_monitored_agent')
 class DummyMonitoredAgent(agent.BaseAgent):
-
-    def startup(self):
-        self.startup_monitoring()
+    pass
 
 
 @feat.register_descriptor('dummy_monitored_agent')
@@ -101,7 +95,6 @@ class SingleHostMonitorSimulation(common.SimulationTest):
 
     @defer.inlineCallbacks
     def testPartnerMonitor(self):
-        self.req_agent.start_monitoring()
         yield self.wait_for_idle(20)
         partners = self.monitor_agent.get_descriptor().partners
         self.assertEqual(5, len(partners)) # host, shard, raag, dummy, alert
@@ -142,7 +135,7 @@ class BadHandler(partners.BasePartner):
             return partners.ResponsabilityAccepted(expiration_time=time + 2)
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
     default_handler = BadHandler
 
@@ -768,9 +761,6 @@ class DummyAgent(agent.BaseAgent):
     @replay.mutable
     def initiate(self, state):
         state.calls = {}
-
-    def startup(self):
-        self.startup_monitoring()
 
     @replay.mutable
     def add_call(self, state, recipient, name):

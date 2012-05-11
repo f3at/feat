@@ -644,6 +644,9 @@ class StubAgent(object):
 @feat.register_agent('descriptor')
 class DummyAgent(agent.BaseAgent, Mock):
 
+    # We don't want a SetupMonitoring task in all the tests
+    need_local_monitoring = False
+
     def __init__(self, medium):
         agent.BaseAgent.__init__(self, medium)
         Mock.__init__(self)

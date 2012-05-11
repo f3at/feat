@@ -102,9 +102,6 @@ class AlertAgent(agent.BaseAgent):
 
         state.config_notifier = cnagios.create_poster(self)
 
-    def startup(self):
-        self.startup_monitoring()
-
     ### public ###
 
     @replay.journaled

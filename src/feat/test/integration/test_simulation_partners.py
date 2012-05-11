@@ -78,7 +78,7 @@ class ResponsablePartner(partners.BasePartner):
         pass
 
 
-class Partners(partners.Partners):
+class Partners(agent.Partners):
 
     default_role = 'default_role'
 

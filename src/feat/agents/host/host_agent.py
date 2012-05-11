@@ -146,7 +146,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         f = fiber.succeed()
         if state.partners.shard is None:
             f.add_callback(fiber.drop_param, self.start_join_shard_manager)
-        f.add_callback(fiber.drop_param, self.startup_monitoring)
 
         # this agent is restarted by the agency not the monitor agent
         # for this reason we need to mind the restarted notifications

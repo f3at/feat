@@ -19,7 +19,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import socket
 import sys
 import os
 import operator
@@ -34,7 +33,7 @@ from feat.process import standalone
 from feat.agencies import agency as base_agency
 from feat.agencies.net import agency, broker, config
 
-from feat.agents.base import agent, descriptor, partners, replay
+from feat.agents.base import agent, descriptor, replay
 from feat.common import serialization, fiber, log, first, run, defer
 from feat.utils import host_restart
 from feat.agents.application import feat
@@ -43,7 +42,7 @@ from feat.interface.agent import AgencyAgentState
 from feat.agencies.interface import NotFoundError
 
 
-class StandalonePartners(partners.Partners):
+class StandalonePartners(agent.Partners):
 
     default_role = u'standalone'
 
@@ -54,6 +53,9 @@ class StandaloneAgent(agent.BaseAgent):
     partners_class = StandalonePartners
 
     standalone = True
+
+    # we are not testing monitoring here
+    need_local_monitoring = False
 
     @staticmethod
     def get_cmd_line(desc, **kwargs):
