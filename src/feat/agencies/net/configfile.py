@@ -10,8 +10,20 @@ from feat.common import serialization
 def parse_file(parser, fp):
     cfg = ConfigParser.RawConfigParser()
     cfg.readfp(fp)
-    # we to handle application:* sections before agent:* ones
-    sections = sorted(cfg.sections(), reverse=True)
+
+    def ordering(section):
+        if _is_static_section(section):
+            return 1
+        elif section.startswith('application:'):
+            return 2
+        elif section.startswith('agent:'):
+            return 3
+        elif section == "include":
+            return 4
+        else:
+            return 0
+
+    sections = sorted(cfg.sections(), key=ordering)
     for section in sections:
         if _is_static_section(section):
             _parse_static_section(cfg, parser, section)
