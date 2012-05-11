@@ -27,7 +27,7 @@ doit() {
     VERB=$2
 
     echo -n $"$VERB $SERVICE: "
-    $PROG $ACTION > /dev/null 2>&1 && success || failure $"$PROG $ACTION"
+    su "$USER" -s /bin/bash -c "$PROG $ACTION > /dev/null 2>&1" && success || failure $"$PROG $ACTION"
     RETVAL=$?
     echo
     return $RETVAL
@@ -35,7 +35,7 @@ doit() {
 
 case "$1" in
   start)
-    	doit start Starting
+        doit start Starting
         ;;
   stop)
 	doit stop Stopping
@@ -47,7 +47,7 @@ case "$1" in
 	doit shutdown "Shutting down"
         ;;
   status|clean|hostcleanup)
-        $PROG $1
+        su "$USER" -s /bin/bash -c "$PROG $1"
         ;;
   *)
         echo $"Usage: $0 {start|stop|shutdown|restart|status|clean|hostcleanup}"
