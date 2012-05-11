@@ -24,18 +24,21 @@ class NagiosAgentTest(common.TestCase):
         target = os.path.abspath(target)
         self.addCleanup(os.unlink, target)
 
-        yield self.agent.initiate(update_command='cp %%(path)s %s' % (target, ))
+        yield self.agent.initiate(
+            update_command='cp %%(path)s %s' % (target, ))
 
 
         recp = recipient.Agent('key', 'shard')
         body = 'file body'
 
         d = self.agent.config_changed(recp, body)
+
         def check():
             return len(self.medium.protocols) > 0
         yield self.wait_for(check, 5)
         self.assertEqual(recp, self.medium.protocols[0].args[0])
-        self.assertEqual('push_notifications', self.medium.protocols[0].args[1])
+        self.assertEqual('push_notifications',
+                         self.medium.protocols[0].args[1])
         self.assertIsInstance(self.medium.protocols[0].factory,
                               rpc.RPCRequesterFactory)
 
