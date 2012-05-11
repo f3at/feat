@@ -43,6 +43,20 @@ class AgencyConfig(formatable.Formatable):
     formatable.field('hostname', None)
     formatable.field('domainname', None)
 
+    @property
+    def full_hostname(self):
+        if not hasattr(self, '_full_hostname'):
+            if self.hostname is None:
+                self._full_hostname = socket.gethostname()
+            else:
+                self._full_hostname = self.hostname
+            if self.domainname is not None:
+                self._full_hostname = ".".join(
+                    [self._full_hostname, self.domainname])
+            else:
+                self._full_hostname = socket.getfqdn(self._full_hostname)
+        return self._full_hostname
+
 
 class GatewayConfig(formatable.Formatable):
 
@@ -118,18 +132,9 @@ class Config(formatable.Formatable, log.Logger):
                                          new_value)
                             setattr(conf_group, group_field.name, new_value)
 
-        #override the agency hostname if specified
-        if self.agency.hostname is None:
-            self.agency.hostname = socket.gethostname()
-        if self.agency.domainname is not None:
-            self.agency.hostname = ".".join(
-                [self.agency.hostname, self.agency.domainname])
-        else:
-            self.agency.hostname = socket.getfqdn(self.agency.hostname)
-
         #set default for tunnel host
         if self.tunnel.host is None:
-            self.tunnel.host = self.agency.hostname
+            self.tunnel.host = self.agency.full_hostname
 
         _absolutize_path(self.agency, 'socket_path', self.agency.rundir)
         _absolutize_path(self.agency, 'lock_path', self.agency.rundir)

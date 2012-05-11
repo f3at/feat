@@ -165,7 +165,7 @@ class Agency(agency.Agency):
     def __init__(self, config):
         agency.Agency.__init__(self)
         self.config = config
-        self._hostname = unicode(self.config.agency.hostname)
+        self._hostname = unicode(self.config.agency.full_hostname)
 
         self._ssh = None
         self._broker = None
