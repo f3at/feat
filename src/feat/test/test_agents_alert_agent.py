@@ -72,6 +72,7 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
     @defer.inlineCallbacks
     def testScanningShard(self):
+        self.medium.reset()
         model = models.AlertAgent(self.agent)
         d = model.perform_action('rescan')
         self.assertEqual(1, len(self.medium.protocols))

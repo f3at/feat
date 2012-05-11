@@ -200,6 +200,11 @@ class DummyProtocol(object):
     def get_def(self):
         return self.deferred
 
+    ### used if it's a Poster ###
+
+    def notify(self, *args, **kwargs):
+        pass
+
 
 @adapter.register(IInterest, IAgencyInterestInternalFactory)
 class DummyAgencyInterest(protocols.DialogInterest):

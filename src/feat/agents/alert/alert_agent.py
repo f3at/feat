@@ -174,20 +174,22 @@ class AlertAgent(agent.BaseAgent):
     @replay.mutable
     def alert_raised(self, state, alert):
         r = self._find_entry(alert)
-        should_notify = (r.received_count == 0)
+        should_notify = (r.received_count == 0 or
+                         r.status_info != alert.status_info)
         r.received_count += 1
         r.status_info = alert.status_info
         if should_notify:
-            return fiber.wrap_defer(state.nagios.send, state.alerts.values())
+            return fiber.wrap_defer(state.nagios.send, [r])
 
     @replay.mutable
     def alert_resolved(self, state, alert):
         r = self._find_entry(alert)
-        should_notify = (r.received_count > 0)
+        should_notify = (r.received_count > 0 or
+                         r.status_info != alert.status_info)
         r.received_count = 0
         r.status_info = alert.status_info
         if should_notify:
-            return fiber.wrap_defer(state.nagios.send, state.alerts.values())
+            return fiber.wrap_defer(state.nagios.send, [r])
 
     ### private ###
 
