@@ -33,9 +33,6 @@ class NagiosAgent(agent.BaseAgent):
         state.update_command = update_command or desc.update_command
         return self._save_config()
 
-    def startup(self):
-        self.startup_monitoring()
-
     @replay.journaled
     def config_changed(self, state, origin, body):
         filename = 'nagios_%s.cfg' % (origin.key, )

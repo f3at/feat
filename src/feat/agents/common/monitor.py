@@ -115,7 +115,7 @@ class AgentMixin(object):
     alert.may_raise(MonitorMissing)
 
     @replay.immutable
-    def startup_monitoring(self, state):
+    def startup(self, state):
         if not state.partners.monitors:
             self.lookup_monitor()
 

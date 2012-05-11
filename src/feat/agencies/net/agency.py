@@ -563,7 +563,7 @@ class Agency(agency.Agency):
         try:
             host = tconfig.host
             port = int(tconfig.port)
-            p12 = config.p12
+            p12 = tconfig.p12
             port_range = range(port, port + TUNNELING_PORT_COUNT)
 
             self.info("Setting up tunneling on %s ports %d-%d "

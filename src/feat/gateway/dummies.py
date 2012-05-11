@@ -48,14 +48,10 @@ class DummyStandalone(agent.BaseAgent):
         env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
         return command, args, env
 
-    def startup(self):
-        self.startup_monitoring()
-
 
 class DummyAgent(agent.BaseAgent):
 
-    def startup(self):
-        self.startup_monitoring()
+    pass
 
 
 @featmodels.register_descriptor('dummy_buryme_standalone')

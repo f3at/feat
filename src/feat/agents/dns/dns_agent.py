@@ -188,7 +188,6 @@ class DNSAgent(agent.BaseAgent):
 
     @replay.journaled
     def startup(self, state):
-        self.startup_monitoring()
         if not state.labour.startup(state.port):
             raise RuntimeError(
                 "Network error: port %d is not available." % state.port)

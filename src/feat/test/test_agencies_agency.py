@@ -48,6 +48,8 @@ class DummyException(Exception):
 @feat.register_agent('startup-test')
 class DummyAgent(agent.BaseAgent, common.Mock):
 
+    need_local_monitoring = False
+
     def __init__(self, medium):
         agent.BaseAgent.__init__(self, medium)
         common.Mock.__init__(self)
