@@ -15,6 +15,7 @@ echo "
 [couchdb]
 database_dir = $COUCHDBDIR/db
 view_index_dir = $COUCHDBDIR/db
+uri_file = $COUCHDBDIR/couch.uri
 
 [query_servers]
 python = ${_my_path}/../bin/feat-couchpy
