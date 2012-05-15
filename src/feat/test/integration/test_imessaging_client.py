@@ -22,6 +22,7 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
+import time
 
 from twisted.internet import reactor
 from twisted.trial.unittest import SkipTest
@@ -48,7 +49,8 @@ def m(payload):
     Wraps the payload into BaseMessage.
     '''
     m_id = str(uuid.uuid1())
-    return message.BaseMessage(payload=payload, message_id=m_id)
+    return message.BaseMessage(payload=payload, message_id=m_id,
+                               expiration_time=time.time() + 5)
 
 
 def unwrap(msg):
