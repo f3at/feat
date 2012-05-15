@@ -28,6 +28,8 @@ from feat.agencies import agency, journaler, recipient
 from feat.agencies.net import ssh, broker, database, options, config
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
+from feat.agents.base import replay
+
 from feat.configure import configure
 from feat import applications
 from feat.common import log, defer, time, error, run, signal
@@ -52,6 +54,10 @@ class AgencyAgent(agency.AgencyAgent):
     @manhole.expose()
     def get_gateway_port(self):
         return self.agency.gateway_port
+
+    @replay.named_side_effect('AgencyAgent.get_base_gateway_url')
+    def get_base_gateway_url(self):
+        return self.agency.gateway_base_url
 
 
 class Startup(agency.Startup):
@@ -165,7 +171,7 @@ class Agency(agency.Agency):
     def __init__(self, config):
         agency.Agency.__init__(self)
         self.config = config
-        self._hostname = unicode(self.config.agency.hostname)
+        self._hostname = unicode(self.config.agency.full_hostname)
 
         self._ssh = None
         self._broker = None
@@ -506,6 +512,13 @@ class Agency(agency.Agency):
         return self.agency_id
 
     gateway_port = property(get_gateway_port)
+
+    @property
+    def gateway_base_url(self):
+        if not self._gateway:
+            raise error.FeatError(
+                "How is it possible we don't have a gateway?")
+        return self._gateway.base_url
 
     @manhole.expose()
     def find_agent_locally(self, agent_id):

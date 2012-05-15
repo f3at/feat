@@ -27,6 +27,9 @@ class DummyMedium(dummies.DummyMedium):
             nagios_config=alert_agent.AlertNagiosConfiguration(
                 enabled=False))
 
+    def get_base_gateway_url(self):
+        return 'http://localhost/'
+
 
 class TestAgent(common.TestCase, ModelTestMixin):
 

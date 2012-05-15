@@ -489,6 +489,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def is_connected(self):
         return self.agency.is_connected()
 
+    @replay.named_side_effect('AgencyAgent.get_base_gateway_url')
+    def get_base_gateway_url(self):
+        return ''
+
     #StateMachineMixin
 
     @replay.named_side_effect('AgencyAgent.get_machine_state')

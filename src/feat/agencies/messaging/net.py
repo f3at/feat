@@ -21,7 +21,6 @@
 # Headers in this file shall remain intact.
 import operator
 import os
-import warnings
 
 from feat.extern.txamqp import spec
 from feat.extern.txamqp.client import TwistedDelegate, Closed
@@ -264,6 +263,7 @@ class ProcessingCall(object):
     def perform(self):
         d = defer.maybeDeferred(self.method, *self.args, **self.kwargs)
         d.addCallback(defer.keep_param, self.callback.callback)
+        d.addErrback(defer.keep_param, self.callback.errback)
         return d
 
 
@@ -285,6 +285,17 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self._is_processing = False
         self._processing_chain = []
         self._seen_messages = container.ExpDict(self)
+        # holds list of messages to send in case we are disconnected
+        self._to_send = container.ExpQueue(self, max_size=50)
+        self._notifier = defer.Notifier()
+
+        # RabbitMQ behaviour for creating/deleting bindings has a following
+        # issue: if you call create binding two times, and than delete ones
+        # there will be no binding. This is a problem for us if two agents
+        # create the same binding (public interest) and than one of them
+        # deletes is. We need to count the number of creates/deletes to delete
+        # the binding only when there is no more agents using it
+        self._bindings_count = dict()
 
         self.serializer = banana.Serializer()
         self.unserializer = banana.Unserializer()
@@ -313,7 +324,17 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return self.configure_queue(queue)
 
     def publish(self, key, shard, message):
-        return self._call_on_channel(self._publish, key, shard, message)
+        if self._cmp_state(ChannelState.recording):
+            if message.expiration_time is None:
+                self.warning("Ignoring attempt to send a message without the "
+                             "expiration time on disconnected channel. "
+                             "protocol_id: %s, recipient: %r",
+                             message.protocol_id, message.recipient)
+                return defer.succeed(None)
+            self._to_send.add((key, shard, message), message.expiration_time)
+            return self._notifier.wait('flushed')
+        else:
+            return self._publish(key, shard, message)
 
     def disconnect(self):
         return self._call_on_channel(self._disconnect,
@@ -414,6 +435,10 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         exchange_type = 'direct' if key is not None else 'fanout'
         self.log('Creating binding exchange=%s, exchange_type=%s, key=%s, '
                  'queue=%s', exchange, exchange_type, key, queue)
+        binding_key = (exchange, key)
+        count = self._bindings_count.pop(binding_key, 0)
+        self._bindings_count[binding_key] = count + 1
+
         d = self._define_exchange(exchange, exchange_type)
         d.addCallback(defer.drop_param, self.channel.queue_bind,
                       exchange=exchange, routing_key=key,
@@ -421,10 +446,19 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         return d
 
     def _delete_binding(self, exchange, key, queue):
-        self.log('Deleting binding exchange=%s, key=%s, queue=%s',
-                 exchange, key, queue)
-        return self.channel.queue_unbind(exchange=exchange, routing_key=key,
-                                         queue=queue)
+        binding_key = (exchange, key)
+        count = self._bindings_count.pop(binding_key, 0)
+        if count == 1:
+            self.log('Deleting binding exchange=%s, key=%s, queue=%s',
+                     exchange, key, queue)
+            return self.channel.queue_unbind(
+                exchange=exchange, routing_key=key, queue=queue)
+        else:
+            self.log('Not deleting binding exchange=%s, key=%s, queue=%s '
+                     'as it is still used %d times', exchange, key, queue,
+                     count)
+            self._bindings_count[binding_key] = count - 1
+            return defer.succeed(None)
 
     def _ack(self, message):
         d = defer.succeed(None)
@@ -469,6 +503,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             return
 
         if len(self._processing_chain) == 0:
+            self._notifier.callback('processing_chain_empty', None)
             return
 
         call = self._processing_chain.pop(0)
@@ -494,6 +529,15 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self.log("Removing stale processing chain entries.")
         self._processing_chain = [x for x in self._processing_chain
                                   if x.remember_between_connections]
+
+    def _flush_pending_messages(self):
+        calls = [self._publish(key, shard, message)
+                 for key, shard, message in self._to_send]
+        self._to_send.clear()
+        d = defer.DeferredList(calls, consumeErrors=True)
+        d.addBoth(defer.bridge_param, self._notifier.callback,
+                  'flushed', None)
+        return d
 
     ### Private methods managing setup and resetup ###
 
@@ -556,6 +600,9 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             return d
 
         self._cleanup_processing_chain()
+
+        d2 = self._notifier.wait('processing_chain_empty')
+        d2.addCallback(defer.drop_param, self._flush_pending_messages)
 
         defers = [configure(queue) for queue in self._queues]
         d = defer.DeferredList(defers, consumeErrors=True)

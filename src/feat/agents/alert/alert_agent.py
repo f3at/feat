@@ -139,6 +139,7 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.immutable
     def generate_nagios_service_cfg(self, state):
+        gateway_url = state.medium.get_base_gateway_url()
         res = text_helper.format_block("""
         define service{
             name                    passive-service
@@ -159,10 +160,12 @@ class AlertAgent(agent.BaseAgent):
                 check_command          check_dummy!3!"No Data Received"
                 host_name              %(hostname)s
                 service_description    %(agent_id)s-%(name)s
+                action_url             %(gateway_url)sagents/%(agent_id)s
             }
             """) % dict(hostname=service.hostname,
                         agent_id=service.agent_id,
-                        name=service.name)
+                        name=service.name,
+                        gateway_url=gateway_url)
 
         return res
 

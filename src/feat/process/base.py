@@ -137,16 +137,20 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
                                         self.on_ready, self.command)
         args = [self.command] + self.args
         self.info("Running command:  %s", self.command)
-        self.debug("With arguments:   %s",
-                   " ".join("'%s'" % (a, ) for a in args))
-        self.log("With environment: %s",
-                 " ".join("%s='%s'" % (n, v)
-                          for n, v in self.env.iteritems()))
+        self.debug("With arguments:   %s", self._format_log_command())
+        self.log("With environment: %s", self._format_log_env())
         self._process = reactor.spawnProcess(
             self._control, self.command,
             args=args, env=self.env)
 
         return self.wait_for_state(ProcessState.started)
+
+    def _format_log_command(self):
+        args = [self.command] + self.args
+        return " ".join("'%s'" % (a, ) for a in args)
+
+    def _format_log_env(self):
+        return " ".join("%s='%s'" % (n, v) for n, v in self.env.iteritems())
 
     def terminate(self):
         if self._cmp_state(ProcessState.initiated):
@@ -165,8 +169,11 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
         pass
 
     def on_failed(self, exception):
-        self.error("Process %s ended with %d status. Its stderr buffer: %s",
-                   self.command, exception.status, self._control.err_buffer)
+        self.error("Process %s ended with %d status. \nSTDERR: \n%s\n"
+                   "STDOUT:\n%s\nCOMMAND: %s\nENV: %s",
+                   self.command, exception.status, self._control.err_buffer,
+                   self._control.out_buffer, self._format_log_command(),
+                   self._format_log_env())
 
     def on_process_exited(self, exception):
         mapping = {

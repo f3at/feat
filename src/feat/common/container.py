@@ -361,26 +361,26 @@ class ExpDict(ExpBase):
     __slots__ = ("_time", "_items", "_max_size", "_last_pack")
 
     def __init__(self, time_provider, max_size=None):
-        '''Create an expiration dictionary.
+        """Create an expiration dictionary.
         @param time_provider: who provide the time
         @type time_provider: L{ITimeProvider}
         @param max_size: maximum size before forced packing
-        @type max_size: int'''
+        @type max_size: int"""
         self._time = ITimeProvider(time_provider)
         self._items = {} # {KEY: ExpItem(TIME, VALUE)}
         self._max_size = max_size or self.DEFAULT_MAX_SIZE
         self._last_pack = 0
 
     def clear(self):
-        '''Removes all items from the dictionary.'''
+        """Removes all items from the dictionary."""
         self._items.clear()
 
     def pack(self):
-        '''Packs the dictionary by removing all expired items.'''
+        """Packs the dictionary by removing all expired items."""
         self._pack(self._time.get_time())
 
     def set(self, key, value=None, expiration=None, relative=False):
-        '''Adds an entry to the dictionary with specified expiration and value.
+        """Adds an entry to the dictionary with specified expiration and value.
         @param key: unique key of the entry, used to remove or test ownership
         @type key: any immutable
         @param value: black box associated with the key
@@ -390,7 +390,7 @@ class ExpDict(ExpBase):
         @param relative: if the specified expiration time is relative
                          to EPOC UTC or from now.
         @type relative: bool
-        @return: nothing'''
+        @return: nothing"""
         self._lazy_pack()
         if expiration is not None:
             now = self._time.get_time()
@@ -401,11 +401,11 @@ class ExpDict(ExpBase):
         self._items[key] = ExpItem(expiration, value)
 
     def remove(self, key):
-        '''Removes the dictionary entry with with specified key .
+        """Removes the dictionary entry with with specified key .
         @param key: unique key of the entry, used to remove or test ownership
         @type key: any immutable
         @return: item value
-        @rtype: any python structure or L{ISerializable}'''
+        @rtype: any python structure or L{ISerializable}"""
         self._lazy_pack()
         now = self._time.get_time()
         if self._items:
@@ -415,11 +415,11 @@ class ExpDict(ExpBase):
         raise KeyError(key)
 
     def pop(self, key, *default):
-        '''Pops and returns the dictionary entry with with specified key.
+        """Pops and returns the dictionary entry with with specified key.
         @param key: unique key of the entry, used to remove or test ownership
         @type key: any immutable
         @return: value
-        @rtype: any python structure or L{ISerializable}'''
+        @rtype: any python structure or L{ISerializable}"""
         self._lazy_pack()
         now = self._time.get_time()
         if self._items:
@@ -435,13 +435,13 @@ class ExpDict(ExpBase):
                     raise
 
     def get(self, key, default=None):
-        '''Retrieve value from the entry with specified key.
+        """Retrieve value from the entry with specified key.
         @param key: unique key of the entry, used to remove or test ownership
         @type key: any immutable
         @param default: value returned if no entry is found with specified key
         @type default: any python structure or L{ISerializable}
         @return: entry value or default value
-        @rtype: any python structure or L{ISerializable}'''
+        @rtype: any python structure or L{ISerializable}"""
         item = self._get_item(key)
         return default if item is None else item.value
 
@@ -452,7 +452,7 @@ class ExpDict(ExpBase):
         return item.exp
 
     def iterkeys(self):
-        '''Returns an iterator over the dictionary keys.'''
+        """Returns an iterator over the dictionary keys."""
         self._lazy_pack()
         now = self._time.get_time()
         for key, item in self._items.iteritems():
@@ -461,7 +461,7 @@ class ExpDict(ExpBase):
                 now = self._time.get_time()
 
     def itervalues(self):
-        '''Returns an iterator over the dictionary values.'''
+        """Returns an iterator over the dictionary values."""
         self._lazy_pack()
         now = self._time.get_time()
         for item in self._items.itervalues():
@@ -476,7 +476,7 @@ class ExpDict(ExpBase):
         return list(self.iterkeys())
 
     def iteritems(self):
-        '''Returns an iterator over tuples (key, value).'''
+        """Returns an iterator over tuples (key, value)."""
         self._lazy_pack()
         now = self._time.get_time()
         for key, item in self._items.iteritems():
@@ -485,7 +485,7 @@ class ExpDict(ExpBase):
                 now = self._time.get_time()
 
     def size(self):
-        '''Returns the current size counting expired elements.'''
+        """Returns the current size counting expired elements."""
         return len(self._items)
 
     def __setitem__(self, key, value):
@@ -594,26 +594,26 @@ class ExpQueue(ExpBase):
     __slots__ = ("_time", "_heap", "_max_size", "_last_pack")
 
     def __init__(self, time_provider, max_size=None):
-        '''Create an expiration queue.
+        """Create an expiration queue.
         @param time_provider: who provide the time
         @type time_provider: L{ITimeProvider}
         @param max_size: maximum size before forced packing
-        @type max_size: int'''
+        @type max_size: int"""
         self._time = ITimeProvider(time_provider)
         self._heap = []
         self._max_size = max_size or self.DEFAULT_MAX_SIZE
         self._last_pack = 0
 
     def pack(self):
-        '''Packs the set by removing all expired items.'''
+        """Packs the set by removing all expired items."""
         self._pack(self._time.get_time())
 
     def clear(self):
-        '''Removes all the values from the queue.'''
+        """Removes all the values from the queue."""
         self._heap = []
 
     def add(self, value, expiration=None, relative=False):
-        '''Adds an entry to the queue with specified expiration and value.
+        """Adds an entry to the queue with specified expiration and value.
         @param value: black box associated with the key
         @type value: any python structure or L{ISerializable}
         @param expiration: the time at which the entry will expire.
@@ -621,7 +621,7 @@ class ExpQueue(ExpBase):
         @param relative: if the specified expiration time is relative
                          to EPOC UTC or from now.
         @type relative: bool
-        @return: nothing'''
+        @return: nothing"""
         self._lazy_pack()
         now = self._time.get_time()
         if expiration is not None:
@@ -633,9 +633,9 @@ class ExpQueue(ExpBase):
         heapq.heappush(self._heap, ExpItem(expiration, value))
 
     def pop(self):
-        '''Pops and returns the value with the smaller expiration.
+        """Pops and returns the value with the smaller expiration.
         @returns: value
-        @rtype: any python structure or L{ISerializable}'''
+        @rtype: any python structure or L{ISerializable}"""
         self._lazy_pack()
         now = self._time.get_time()
         while True:
@@ -647,11 +647,11 @@ class ExpQueue(ExpBase):
                 raise Empty(), None, sys.exc_info()[2]
 
     def size(self):
-        '''Returns the current size counting expired values.'''
+        """Returns the current size counting expired values."""
         return len(self._heap)
 
     def __iter__(self):
-        '''Returns an iterator over queue's values.'''
+        """Returns an iterator over queue's values."""
         self._lazy_pack()
         now = self._time.get_time()
         for item in iter(self._heap):
@@ -715,13 +715,13 @@ class ExpQueue(ExpBase):
 
 
 class ExpItem(object):
-    '''
+    """
     Encapsulate an item with expiration.
     It compares with other ExpItem using expiration time
     up to a resolution of a millisecond.
     In other words, if ExpItem have an expiration difference
     of less than a millisecond they will be evaluated equal.
-    '''
+    """
 
     __slots__ = ("exp", "value")
 

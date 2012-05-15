@@ -629,6 +629,7 @@ class HandleDeath(task.BaseTask):
     @replay.mutable
     def _set_restart_flag(self, state):
         state.descriptor.under_restart = True
+        state.so_took_responsability = False
         f = state.agent.save_document(state.descriptor)
         f.add_callback(self._store_descriptor)
         return f
@@ -637,7 +638,7 @@ class HandleDeath(task.BaseTask):
     def _send_died_notifications(self, state):
         self.log("Sending 'died' notifications to the partners, which are: %r",
                  state.descriptor.partners)
-        state.so_took_reponsability = False
+
         fibers = list()
         for partner, brothers in self._iter_categorized_partners():
             f = requester.notify_died(
@@ -684,11 +685,11 @@ class HandleDeath(task.BaseTask):
 
     @replay.mutable
     def _on_died_response_handler(self, state, response):
-        if state.so_took_reponsability:
+        if state.so_took_responsability:
             self.log('Someone already took responsability, ignoring.')
             return
         if isinstance(response, partners.ResponsabilityAccepted):
-            state.so_took_reponsability = True
+            state.so_took_responsability = True
             time_left = self._time_left(response.expiration_time)
             state.timeout_call_id = state.agent.call_later(
                 time_left, self._timeout_waiting_for_restart)
@@ -706,7 +707,7 @@ class HandleDeath(task.BaseTask):
         If yes, setup expiration call and wait for report.
         If no, initiate doing it on our own.
         '''
-        if not state.so_took_reponsability:
+        if not state.so_took_responsability:
             self.debug('Noone took responsability, I will try to restart '
                        '%r agent myself', state.factory.descriptor_type)
             return self._restart_yourself()
