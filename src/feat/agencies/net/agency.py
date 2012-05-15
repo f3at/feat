@@ -229,7 +229,16 @@ class Agency(agency.Agency):
 
         return defer.succeed(None)
 
+    def _start_manhole(self):
+        from twisted.manhole import telnet
+        factory = telnet.ShellFactory()
+        factory.username = 'username'
+        factory.password = 'password'
+        factory.namespace['agency'] = self
+        self._manhole = reactor.listenTCP(6001, factory)
+
     def on_become_master(self):
+        self._start_manhole()
         self._ssh.start_listening()
         self._journaler.set_connection_strings(
             self.config.agency.journal)
