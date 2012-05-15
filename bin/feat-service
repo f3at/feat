@@ -147,7 +147,7 @@ def main(args):
         parser.add_option('--hostname',
                           help=('specify the hostname for which for perform '
                                 'the cleanup'),
-                          action='store', default=c.agency.hostname,
+                          action='store', default=c.agency.full_hostname,
                           type="str", metavar="HOSTNAME", dest='hostname')
 
         opts, _ = parser.parse_args(args)
