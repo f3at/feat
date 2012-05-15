@@ -15,13 +15,14 @@ echo "
 [couchdb]
 database_dir = $COUCHDBDIR/db
 view_index_dir = $COUCHDBDIR/db
+uri_file = $COUCHDBDIR/couch.uri
 
 [query_servers]
 python = ${_my_path}/../bin/feat-couchpy
 
 [httpd]
 bind_address = ${HOST:-127.0.0.1}
-port = ${PORT:-5984}
+port = ${PORT:-5985}
 
 [log]
 file = $COUCHDBDIR/couchdb.log

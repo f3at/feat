@@ -47,7 +47,7 @@ from paisley.client import CouchDB
 
 
 DEFAULT_DB_HOST = "localhost"
-DEFAULT_DB_PORT = 5984
+DEFAULT_DB_PORT = 5985
 DEFAULT_DB_NAME = "feat"
 
 
