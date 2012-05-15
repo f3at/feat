@@ -43,6 +43,7 @@ from feat.agents.monitor import monitor_agent
 class DummyMonitorAgent(agent.BaseAgent):
     pass
 
+
 @feat.register_descriptor('dummy_monitor_agent')
 class DummyMonitorDescriptor(descriptor.Descriptor):
     pass
