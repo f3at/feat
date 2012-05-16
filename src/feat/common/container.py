@@ -351,7 +351,7 @@ class ExpDict(ExpBase):
              - Comparison operations are very expensive.
     """
 
-    DEFAULT_MAX_SIZE = 1000
+    DEFAULT_MAX_SIZE = 100
 
     type_name = "xdict"
 
@@ -584,7 +584,7 @@ class ExpQueue(ExpBase):
              - Comparison operations are very expensive.
     """
 
-    DEFAULT_MAX_SIZE = 1000
+    DEFAULT_MAX_SIZE = 100
 
     type_name = "xqueue"
 
