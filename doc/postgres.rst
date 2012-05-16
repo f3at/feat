@@ -11,7 +11,7 @@ Creating the database and user
 
 Creating *feat* user. ::
 
-   sudo -u postgres createuser -l feat -R -l -d -s
+   sudo -u postgres createuser feat --no-createrole --login --createdb --superuser
 
 Setting the password. ::
 
