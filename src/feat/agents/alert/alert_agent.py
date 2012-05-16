@@ -105,13 +105,15 @@ class AlertAgent(agent.BaseAgent):
     ### public ###
 
     @replay.journaled
-    def rescan_shard(self, state):
+    def rescan_shard(self, state, force_update_notification=False):
         recp = recipient.Broadcast(AlertsDiscoveryManager.protocol_id,
                                    self.get_shard_id())
         prot = state.medium.initiate_protocol(AlertsDiscoveryManager, recp)
         f = prot.notify_finish()
         f.add_errback(self._expire_handler) # defined in base class
         f.add_callback(self._parse_discovery_response)
+        if force_update_notification:
+            f.add_callback(fiber.override_result, True)
         f.add_callback(self._notify_change_config)
         return f
 
@@ -209,7 +211,8 @@ class AlertAgent(agent.BaseAgent):
                 hostname=alert.hostname)
             self.info("Received alert for service we don't know, triggering "
                       "shard rescan in 1 sec. Service: %r", key)
-            self.call_later(1, self.rescan_shard)
+            self.call_later(1, self.rescan_shard,
+                            force_update_notification=True)
         return state.alerts[key]
 
     @replay.mutable
