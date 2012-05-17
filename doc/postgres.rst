@@ -52,7 +52,7 @@ The files available:
 
 - help_global.pgsql test helper, only needed to run tests,
 
-- test_schame.pgsql test case.
+- test_schema.pgsql test case.
 
 
 Rotating the database
@@ -71,6 +71,6 @@ Allowing network access
 You need to edit the */var/lib/pgsql/data/pg_hba.conf* file. The example config for devcluster goes as follows: ::
 
   # allow access from the office
-  host 	feat        feat        172.17.5.1/8	      md5
+  host	feat        feat        172.17.5.1/8	      md5
   # allow access from inside the cluster
-  host 	feat        feat        192.168.65.61/8	      md5
+  host	feat        feat        192.168.65.61/8	      md5
