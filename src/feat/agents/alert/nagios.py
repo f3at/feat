@@ -57,6 +57,7 @@ class Labour(log.Logger, log.LogProxy, serialization.Serializable):
 class SendNSCA(base.Base):
 
     def initiate(self, config, alerts):
+        self.debug('initiate send_nsca')
         self.command = config.send_nsca
         self.args = ['-H', config.monitor, '-c', config.config_file,
                      '-d', ';']
@@ -76,12 +77,13 @@ class SendNSCA(base.Base):
             lines.append(msg)
         self._body = "".join(lines)
         self._body = self._body.encode('utf-8')
+        self.debug('generated body for %d alerts', len(alerts))
 
     def started_test(self):
-        # Process should deamonize itself.
+        # Process should daemonize itself.
         if not self._sent:
             self._sent = True
-            self.log("I'm writing to send_nscs process:\n %r", self._body)
+            self.debug("stdin for send_nsca process:\n %r", self._body)
             self._control.transport.write(self._body)
 
         return True
