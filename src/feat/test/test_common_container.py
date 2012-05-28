@@ -357,10 +357,11 @@ class TestExpDict(common.TestCase):
         serialize = pytree.serialize
         unserialize = pytree.unserialize
         Ins = pytree.Instance
+        size = ExpDict.DEFAULT_MAX_SIZE
 
         d = ExpDict(t)
         self.assertEqual(serialize(d),
-                         Ins("xdict", (Ins("dummy-time-provider", 0), 1000,
+                         Ins("xdict", (Ins("dummy-time-provider", 0), size,
                              {})))
         self.assertEqual(d, unserialize(serialize(d)))
         d["foo"] = 1
@@ -369,7 +370,7 @@ class TestExpDict(common.TestCase):
         d.set("bacon", 4, 8.0012)
         self.assertEqual(d, unserialize(serialize(d)))
         self.assertEqual(serialize(d),
-                         Ins("xdict", (Ins("dummy-time-provider", 0), 1000,
+                         Ins("xdict", (Ins("dummy-time-provider", 0), size,
                                        {"foo": (None, 1),
                                         "bar": (5000, 2),
                                         "spam": (8001, 3),
