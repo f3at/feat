@@ -85,5 +85,6 @@ class SendNSCA(base.Base):
             self._sent = True
             self.debug("stdin for send_nsca process:\n %r", self._body)
             self._control.transport.write(self._body)
+            self._control.transport.closeStdin()
 
         return True
