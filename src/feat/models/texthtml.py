@@ -49,8 +49,8 @@ class BaseLayout(html.Document):
             self.head.content.append(
                 html.tags.link(type='text/css', rel='stylesheet', href=url)())
 
-        scripts = [('http://ajax.googleapis.com/ajax/libs/'
-                   'jquery/1.6/jquery.min.js'),
+        scripts = [self._local_url(context, 'static', 'script',
+                                   'jquery.min.js'),
                    self._local_url(context, 'static', 'script', 'json2.js'),
                    self._local_url(context, 'static', 'script', 'feat.js'),
                    self._local_url(context, 'static', 'script', 'form.js'),
