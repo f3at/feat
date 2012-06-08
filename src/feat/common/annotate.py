@@ -50,16 +50,17 @@ class MetaAnnotable(type):
 
         pending_annotations = list()
         # Class Annotations
+
         for k in klasses:
             if k.__dict__.get(_ANNOTATIONS_PROCESSED, False):
                 continue
             is_annotable = issubclass(type(k), MetaAnnotable)
-            annotations = k.__dict__.get(_CLASS_ANNOTATIONS_ATTR, None)
-            if annotations is not None:
+            annotations = k.__dict__.get(_CLASS_ANNOTATIONS_ATTR, list())
+            if annotations or pending_annotations:
                 if is_annotable:
                     to_process = pending_annotations + annotations
                     for name, methodName, args, kwargs in to_process:
-                        method = getattr(k, methodName, None)
+                        method = getattr(cls, methodName, None)
                         if method is None:
                             raise AnnotationError(
                                 "Bad annotation %s set on class "
