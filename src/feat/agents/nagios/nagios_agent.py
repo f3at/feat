@@ -46,7 +46,7 @@ class NagiosAgent(agent.BaseAgent):
         else:
             command = state.update_command % dict(path=path)
             parts = command.split(' ')
-            p = standalone.Process(self, parts[0], parts[1:], os.environ)
+            p = standalone.Process(self, parts[0], parts[1:], self._environ())
             f.add_callback(fiber.drop_param, p.restart)
             f.add_callback(fiber.drop_param, p.wait_for_state,
                            ProcessState.finished, ProcessState.failed)
@@ -56,6 +56,10 @@ class NagiosAgent(agent.BaseAgent):
         return f
 
     ### private ###
+
+    @replay.side_effect
+    def _environ(self):
+        return os.environ
 
     @agent.update_descriptor
     def _save_config(self, state, desc):
