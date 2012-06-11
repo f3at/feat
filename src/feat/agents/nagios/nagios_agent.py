@@ -110,4 +110,4 @@ class UpdateNagios(task.BaseTask):
 
     @replay.side_effect
     def _environ(self):
-        return os.environ
+        return dict(os.environ)
