@@ -7,6 +7,7 @@ from feat.test import common, dummies
 from feat.agents.nagios import nagios_agent
 from feat.agencies import recipient
 from feat.agents.common import rpc
+from feat.agents.base import singleton
 
 
 class NagiosAgentTest(common.TestCase):
@@ -17,34 +18,44 @@ class NagiosAgentTest(common.TestCase):
 
         self.medium = dummies.DummyMedium(self)
         self.agent = nagios_agent.NagiosAgent(self.medium)
+        # this defines state.singleton_tasks
+        yield singleton.AgentMixin.initiate(self.agent)
 
     @defer.inlineCallbacks
-    def testReceiveNewConfig(self):
+    def testUpdateConfig(self):
         target = tempfile.mktemp('_nagios.cfg')
         target = os.path.abspath(target)
         self.addCleanup(os.unlink, target)
 
-        yield self.agent.initiate(
-            update_command='cp %%(path)s %s' % (target, ))
-
+        update_command = 'cp %%(path)s %s' % (target, )
+        yield self.agent.initiate(update_command=update_command)
 
         recp = recipient.Agent('key', 'shard')
         body = 'file body'
+        self.agent._get_state().nagios_configs['key'] = body
+        # simulate receiving the config, the update task should be triggered
+        yield self.agent.config_changed(recp, body)
+        self.assertEqual(['update-nagios'],
+                         [x.factory.protocol_id for x in self.medium.protocols])
+        self.medium.reset()
 
-        d = self.agent.config_changed(recp, body)
+        # now run the task itself
+        task = nagios_agent.UpdateNagios(self.agent, self.medium)
+        d = task.initiate(recp, update_command)
 
         def check():
-            return len(self.medium.protocols) > 0
-        yield self.wait_for(check, 5)
-        self.assertEqual(recp, self.medium.protocols[0].args[0])
+            return len(self.medium.protocols) == 1
+        yield self.wait_for(check, 5, freq=0.05)
+        self.assertEqual(recp, self.medium.protocols[-1].args[0])
         self.assertEqual('push_notifications',
-                         self.medium.protocols[0].args[1])
-        self.assertIsInstance(self.medium.protocols[0].factory,
+                         self.medium.protocols[-1].args[1])
+        self.assertIsInstance(self.medium.protocols[-1].factory,
                               rpc.RPCRequesterFactory)
 
-        self.medium.protocols[0].deferred.callback(None)
+        self.medium.protocols[-1].deferred.callback(None)
 
         yield d
         self.assertTrue(os.path.exists(target))
         with open(target) as f:
             self.assertEqual(body, f.read())
+        self.medium.reset()

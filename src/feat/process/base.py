@@ -143,7 +143,8 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
             self._control, self.command,
             args=args, env=self.env)
 
-        return self.wait_for_state(ProcessState.started)
+        return self.wait_for_state(
+            ProcessState.failed, ProcessState.finished, ProcessState.started)
 
     def _format_log_command(self):
         args = [self.command] + self.args
