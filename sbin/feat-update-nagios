@@ -7,6 +7,6 @@ mkdir -p $DIR
 # FIXME: for now we delete all of them, because feat restarts
 #        trigger new docid's for alert agent, hence new filenames
 rm -f $DIR/*.cfg
-cp $1 $DIR
+cp $1 $DIR || exit 1
 chown nagios:nagios /etc/nagios/feat/*
 service nagios checkconfig && service nagios restart
