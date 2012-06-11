@@ -44,13 +44,30 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
-@feat.register_restorator
-class AlertNagiosConfiguration(formatable.Formatable):
+header = text_helper.format_block("""
+define service{
+    name                    passive-service
+    use                     generic-service
+    check_freshness         1
+    passive_checks_enabled  1
+    active_checks_enabled   0
+    is_volatile             0
+    flap_detection_enabled  0
+    notification_options    w,u,c,s
+    freshness_threshold     57600     ;12hr
+}
+""")
 
-    formatable.field('enabled', True)
-    formatable.field('monitor', u'')#u'monitor01.bcn.fluendo.net')
-    formatable.field('config_file', u'/etc/nagios/send_nsca.cfg')
-    formatable.field('send_nsca', u'/usr/sbin/send_nsca')
+
+service_template = text_helper.format_block("""
+define service {
+    use                    passive-service
+    check_command          check_dummy!3!"No Data Received"
+    host_name              %(hostname)s
+    service_description    %(agent_id)s-%(name)s
+    action_url             %(gateway_url)sagents/%(agent_id)s
+}
+""")
 
 
 @feat.register_restorator
@@ -58,7 +75,13 @@ class AlertAgentConfiguration(document.Document):
 
     type_name = 'alert_agent_conf'
     document.field('doc_id', u'alert_agent_conf', '_id')
-    document.field('nagios_config', AlertNagiosConfiguration())
+    document.field('enabled', True)
+    document.field('monitor', u'')#u'monitor01.bcn.fluendo.net')
+    document.field('config_file', u'/etc/nagios/send_nsca.cfg')
+    document.field('send_nsca', u'/usr/sbin/send_nsca')
+    document.field('config_header', unicode(header))
+    document.field('service_template', unicode(service_template))
+
 
 feat.initial_data(AlertAgentConfiguration)
 
@@ -96,11 +119,15 @@ class AlertAgent(agent.BaseAgent):
 
         config = state.medium.get_configuration()
         state.nagios = self.dependency(INagiosSenderLabourFactory, self,
-                                       config.nagios_config)
+                                       config)
         # (hostname, agent_id, service_name) -> ReceivedAlerts
         state.alerts = dict()
 
         state.config_notifier = cnagios.create_poster(self)
+
+    @replay.journaled
+    def on_configuration_change(self, state, config):
+        self._notify_change_config(changed=True)
 
     ### public ###
 
@@ -141,35 +168,16 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.immutable
     def generate_nagios_service_cfg(self, state):
+        c = state.medium.get_configuration()
         gateway_url = state.medium.get_base_gateway_url()
-        res = text_helper.format_block("""
-        define service{
-            name                    passive-service
-            use                     generic-service
-            check_freshness         1
-            passive_checks_enabled  1
-            active_checks_enabled   0
-            is_volatile             0
-            flap_detection_enabled  0
-            notification_options    w,u,c,s
-            freshness_threshold     57600     ;12hr
-        }
-        """)
+        res = c.config_header
         for service in state.alerts.itervalues():
-            res += text_helper.format_block("""
-            define service {
-                use                    passive-service
-                check_command          check_dummy!3!"No Data Received"
-                host_name              %(hostname)s
-                service_description    %(agent_id)s-%(name)s
-                action_url             %(gateway_url)sagents/%(agent_id)s
-            }
-            """) % dict(hostname=service.hostname,
-                        agent_id=service.agent_id,
-                        name=service.name,
-                        gateway_url=gateway_url)
-
-        return res
+            params = dict(hostname=service.hostname,
+                          agent_id=service.agent_id,
+                          name=service.name,
+                          gateway_url=gateway_url)
+            res += c.service_template % params
+        return res.encode('utf8')
 
     ### receiving alert notifications ###
 
