@@ -466,6 +466,8 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
     @replay.mutable
     def add_monitored(self, state, partner):
         #FIXME: Add location query
+        if state.intensive_care.has_patient(partner.recipient):
+            return
         config = state.medium.get_configuration()
         period = config.heartbeat_period
         dying_skips = config.heartbeat_dying_skips
@@ -484,9 +486,7 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
         if old_recipient and state.intensive_care.has_patient(old_recipient):
             state.intensive_care.remove_patient(old_recipient)
 
-        if not state.intensive_care.has_patient(partner.recipient):
-            self.add_monitored(partner)
-            return
+        self.add_monitored(partner)
 
     @replay.mutable
     def remove_monitored(self, state, partner):
