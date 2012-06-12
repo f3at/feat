@@ -540,10 +540,6 @@ class Server(log.LogProxy, log.Logger):
     ### private ###
 
     def _process_request(self, priv_request):
-        self.debug("%s on %s from %s:%s",
-                   priv_request.method, priv_request.uri,
-                   priv_request.client.host, priv_request.client.port)
-
         peer_info = self._policy.get_peer_info(priv_request.channel.transport)
 
         request = None
@@ -993,6 +989,10 @@ class Request(log.Logger, log.LogProxy):
         self._secured = server.is_secured
         self._peer_info = peer_info
 
+        self.log_name = "%s on %s" % (priv_request.method, priv_request.uri)
+        self.debug("Parsing request from %s:%s", priv_request.client.host,
+                   priv_request.client.port)
+
         content_type = self.get_header("content-type")
         mime_type, encoding = http.parse_content_type(content_type)
         language = self.get_header("content-language") or http.DEFAULT_LANGUAGE
@@ -1196,7 +1196,11 @@ class Request(log.Logger, log.LogProxy):
 
     def read(self, size=-1, decode=True):
         data = self._ref.content.read(size)
-        return self._decode(data) if decode else data
+        res = self._decode(data) if decode else data
+        limit = 1000
+        limited = res if len(res) < limit else res[0:limit] + "..."
+        self.debug("Read request body: %r", limited)
+        return res
 
     def readline(self, size=-1, decode=True):
         data = self._ref.content.readline(size)
@@ -1323,6 +1327,7 @@ class Response(log.Logger):
             self.write(data)
 
     def set_status(self, code, message=None):
+        self._request.debug("Setting response code: %s", code)
         self._check_header_not_sent()
         self._request._ref.setResponseCode(int(code))
 
@@ -1507,6 +1512,7 @@ class Response(log.Logger):
             self._objects = []
 
     def _finish(self):
+        self._request.debug("Finishing the request.")
         try:
             if self._cache is not None:
                 data = self._cache.getvalue()
