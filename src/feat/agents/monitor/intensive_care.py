@@ -92,8 +92,9 @@ class IntensiveCare(labour.BaseLabour):
         self._doctor = IDoctor(doctor)
         self._patients = {} # {AGENT_ID: Patient}
         self._control_period = control_period or DEFAULT_CONTROL_PERIOD
-        self._next_check = None
         self._task = None
+        self._last_check_epoch = None
+        self._skip_checks = None
 
     ### Public Methods ###
 
@@ -162,6 +163,22 @@ class IntensiveCare(labour.BaseLabour):
 
     def check_patients(self):
         ref_time = self.patron.get_time()
+
+        # Detect wakeup from the suspend
+        if (self._last_check_epoch is not None and
+            ref_time - self._last_check_epoch > 2 * self._control_period):
+            # when this happens skip checking patient state for 3 runs
+            self.info("Detected monitor wakeup, I will skip next 3 checks")
+            self._skip_checks = 3
+
+        self._last_check_epoch = ref_time
+
+        if self._skip_checks:
+            self._skip_checks -= 1
+            self.debug("Skipping check of intensive care, %d left to skip",
+                       self._skip_checks)
+            return
+
         for patient in self._patients.itervalues():
             recipient = patient.recipient
             agent_id = recipient.key
