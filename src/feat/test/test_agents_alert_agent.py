@@ -23,9 +23,7 @@ class Alert2(alert.BaseAlert):
 class DummyMedium(dummies.DummyMedium):
 
     def get_configuration(self):
-        return alert_agent.AlertAgentConfiguration(
-            nagios_config=alert_agent.AlertNagiosConfiguration(
-                enabled=False))
+        return alert_agent.AlertAgentConfiguration(enabled=False)
 
     def get_base_gateway_url(self):
         return 'http://localhost/'
