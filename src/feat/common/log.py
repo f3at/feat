@@ -251,11 +251,30 @@ class LogBuffer(object):
             self._buffer.append(data)
 
 
+class PythonLogKeeper(object):
+    '''
+    Class outputing everything to a logger from logging python stdlib
+    '''
+    implements(ILogKeeper)
+
+    def __init__(self, logger):
+        self._logger = logger
+
+    def do_log(self, level, object, category, format, args,
+               depth=1, file_path=None, line_num=None):
+        if level == LogLevel.log:
+            # logger from logging module has only 4 levels
+            # also, it produces to much of noise
+            return
+        method = getattr(self._logger, level.name)
+        method(format, *args)
+
+
 class VoidLogKeeper(object):
 
     implements(ILogKeeper)
 
-    def do_log(self, *args):
+    def do_log(self, *args, **kwargs):
         pass
 
 
