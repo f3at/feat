@@ -25,6 +25,7 @@
 # Headers in this file shall remain intact.
 import commands
 import glob
+import logging
 import optparse
 import os
 import sys
@@ -47,30 +48,28 @@ def start(args):
         cmd += " -C " + localfile
     cmd = " ".join([cmd] + args)
 
-    stdout("Starting feat ")
+    logger.debug("Starting feat ")
     status, output = commands.getstatusoutput(cmd)
     if status != 0:
-        print >> sys.stderr, ("Running command:\n %s\n failed with the "
-                              "exit code %d." % (cmd, status))
-        print >> sys.stderr, "The command output:\n\n", output
-        sys.exit(status)
+        logger.error("Running command:\n %s\n failed with the "
+                  "exit code %d.", cmd, status)
+        logger.error("The command output:\n%s", output)
+        return status
 
-    _pidfile_wait(exists=True, timeout=5)
-    return
+    return _pidfile_wait(exists=True, timeout=5)
 
 
 def stop(sig=signal.SIGUSR1):
-    stdout("Stopping feat ")
+    logger.debug("Stopping feat ")
     rundir = configure.rundir
     pid = run.get_pid(rundir)
     if pid is None:
-        print >> sys.stderr, "PID file not found!"
-        sys.exit(1)
+        logger.error("PID file not found!")
+        return 1
     if not run.signal_pid(pid, sig):
-        print >> sys.stderr, "Process with PID %d not found!" % (pid, )
-        sys.exit(1)
-    _pidfile_wait(exists=False, timeout=10)
-    return
+        logger.error("Process with PID %d not found!", pid)
+        return 1
+    return _pidfile_wait(exists=False, timeout=10)
 
 
 def main(args):
@@ -99,28 +98,25 @@ def main(args):
         rundir = configure.rundir
         pid = run.get_pid(rundir)
         if pid:
-            print >> sys.stderr, "Feat seems to be running with pid", pid
-            print >> sys.stderr, "Consider removing the pidfile."
+            logger.error("Not starting feat because it seems to be running"
+                         " with pid: %s. "
+                         "Consider removing the pidfile", pid)
             sys.exit(1)
-        start(args)
-        return
+        sys.exit(start(args))
 
     if command == 'stop':
-        stop(signal.SIGUSR1)
-        return
+        sys.exit(stop(signal.SIGUSR1))
 
     if command == 'shutdown':
-        stop(signal.SIGUSR2)
-        return
+        sys.exit(stop(signal.SIGUSR2))
 
     if command == 'restart':
-        stop(signal.SIGUSR2)
-        start(args)
-        return
+        stop(signal.SIGUSR2) # ignore the result of stop
+        sys.exit(start(args))
 
     if command == 'status':
         run.status(processName='', rundir=configure.rundir)
-        return
+        sys.exit(0)
 
     if command == 'clean':
         c = _parse_config()
@@ -130,7 +126,7 @@ def main(args):
         to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.log")))
         to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.sqlite3")))
         for name in set(to_delete):
-            print "Deleting ", name
+            logger.debug("Deleting %s", name)
             try:
                 os.unlink(name)
             except OSError:
@@ -152,29 +148,18 @@ def main(args):
 
         opts, _ = parser.parse_args(args)
 
+        logger.info("Performing host cleanup for host %s", opts.hostname)
         applications.load('feat.agents.application', 'feat')
         from feat.utils import host_restart
         from feat.agents.base import dbtools
 
-        log.FluLogKeeper.init()
-        log.set_default(log.FluLogKeeper())
         with dbtools.dbscript(c.db) as d:
             d.addCallback(host_restart.do_cleanup, opts.hostname)
         return
 
-    stderr("No such command, %s" % (command, ))
-    stderr(usage)
+    logger.error("No such command, %s", command)
+    print >> sys.stderr, usage
     sys.exit(1)
-
-
-def stdout(msg):
-    sys.stdout.write(msg)
-    sys.stdout.flush()
-
-
-def stderr(msg):
-    sys.stderr.write(msg)
-    sys.stderr.flush()
 
 
 def _parse_config():
@@ -201,21 +186,47 @@ def _pidfile_wait(exists, timeout):
         time.sleep(0.1)
         elapsed += 0.1
         if int(elapsed) > seconds:
-            stdout('.')
             seconds = int(elapsed)
         if elapsed > timeout:
-            stderr("Timeout waiting.\n")
-            sys.exit(1)
-    stdout("done.\n")
+            verb = 'appear' if exists else 'dissapear'
+            logger.error("Timeout waiting for the pidfile to %s.\n", verb)
+            return 1
+    return 0
 
 
 def _pidfile_exist():
     return not not run.get_pid(configure.rundir)
 
 
-if __name__ == '__main__':
-    # initializing log is necessary for methods defined
+def _prepare_logging():
+    # prepare logger
+    logger = logging.getLogger('feat-service')
+    logger.setLevel(logging.DEBUG)
+
+    # log to file
+    path = os.path.join(configure.logdir, 'feat-service.log')
+    handler = logging.FileHandler(path)
+    handler.setFormatter(logging.Formatter(
+        '[%(asctime)s] [%(levelname)s] %(message)s'))
+    logger.addHandler(handler)
+    # log to sys.stderr
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(handler)
+
+    # initializing feat log is necessary for methods defined
     # in feat.common.run module
     keeper = log.VoidLogKeeper()
+    # #line below allows keeping feat logger output
+    # keeper = log.PythonLogKeeper(logger)
     log.set_default(keeper)
-    main(sys.argv[1:])
+    return logger
+
+logger = _prepare_logging()
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except Exception:
+        logger.error("Fatal error running feat-service", exc_info=True)
