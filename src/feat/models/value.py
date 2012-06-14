@@ -679,6 +679,7 @@ class Structure(Value):
         validated = {}
         errors = {}
         for param_name, param_value in value.iteritems():
+            param_name = str(param_name)
             info = param_index[param_name].value_info
             try:
                 valval = IValidator(info).validate(param_value)
@@ -693,7 +694,7 @@ class Structure(Value):
             if not param.is_required:
                 info = param.value_info
                 if param.name not in validated and info.use_default:
-                    validated[param.name] = info.default
+                    validated[str(param.name)] = info.default
 
         return validated
 
