@@ -33,6 +33,8 @@ from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
+from twisted.names.client import getResolver
+
 from feat import applications
 
 
@@ -219,6 +221,11 @@ class _Bootstrap(object):
             buff = tee.get_keeper('buffer')
             flulog = tee.get_keeper('flulog')
             buff.dump(flulog)
+        # use the resolver from twisted.names instead of the default
+        # the reason for this is that ThreadedResolver behaves strangely
+        # after the reconnection - raises the DNSLookupError for names
+        # which have been resolved while there was no connection
+        reactor.resolver = getResolver()
         reactor.run()
 
     def _parse_opts(self):
