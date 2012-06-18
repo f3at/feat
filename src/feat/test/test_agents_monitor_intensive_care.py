@@ -252,8 +252,9 @@ class TestIntensiveCare(common.TestCase):
         self.assertEqual(patron.resurrecteds, [])
 
         # Both skip 1.5 heart beats
-        patron.now += 8
-        patron.do_calls()
+        for x in range(4):
+            patron.now += 2
+            patron.do_calls()
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(len(patron.dyings), 2)
@@ -267,8 +268,9 @@ class TestIntensiveCare(common.TestCase):
         hb1 = message.Notification(payload=("agent1", 0, 1))
         patron.protocol.notified(hb1)
 
-        patron.now += 6
-        patron.do_calls()
+        for x in range(3):
+            patron.now += 2
+            patron.do_calls()
 
         self.assertEqual(patron.deads, [])
         self.assertEqual(patron.dyings, [])
@@ -278,8 +280,9 @@ class TestIntensiveCare(common.TestCase):
         patron.reset()
 
         # One died
-        patron.now += 8
-        patron.do_calls()
+        for x in range(4):
+            patron.now += 2
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 1)
         self.assertEqual(len(patron.dyings), 1)
@@ -293,8 +296,9 @@ class TestIntensiveCare(common.TestCase):
         hb1 = message.Notification(payload=("agent1", 0, 2))
         patron.protocol.notified(hb1)
 
-        patron.now += 5
-        patron.do_calls()
+        for x in range(2):
+            patron.now += 2.5
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
@@ -307,8 +311,9 @@ class TestIntensiveCare(common.TestCase):
         hb1 = message.Notification(payload=("agent1", 0, 3))
         patron.protocol.notified(hb1)
 
-        patron.now += 5
-        patron.do_calls()
+        for x in range(2):
+            patron.now += 2.5
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
@@ -318,8 +323,9 @@ class TestIntensiveCare(common.TestCase):
         hb1 = message.Notification(payload=("agent1", 0, 4))
         patron.protocol.notified(hb1)
 
-        patron.now += 5
-        patron.do_calls()
+        for x in range(2):
+            patron.now += 2.5
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
@@ -331,8 +337,9 @@ class TestIntensiveCare(common.TestCase):
         hb2 = message.Notification(payload=("agent2", 0, 1))
         patron.protocol.notified(hb2)
 
-        patron.now += 5
-        patron.do_calls()
+        for x in range(2):
+            patron.now += 2.5
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 0)
         self.assertEqual(len(patron.dyings), 0)
@@ -366,8 +373,9 @@ class TestIntensiveCare(common.TestCase):
 
         patron.reset()
 
-        patron.now += 7
-        patron.do_calls()
+        for x in range(4):
+            patron.now += 2
+            patron.do_calls()
 
         self.assertEqual(len(patron.deads), 1)
         self.assertEqual(len(patron.dyings), 0)
