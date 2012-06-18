@@ -25,7 +25,7 @@ from zope.interface import implements
 
 from feat.common import formatable, text_helper, fiber
 from feat.agents.base import agent, replay, descriptor, collector
-from feat.agents.base import dependency, manager
+from feat.agents.base import dependency, manager, task
 
 from feat.agencies import document, recipient, message
 from feat.agents.common import export, monitor, nagios as cnagios, rpc
@@ -124,6 +124,7 @@ class AlertAgent(agent.BaseAgent):
         state.alerts = dict()
 
         state.config_notifier = cnagios.create_poster(self)
+        state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
 
     @replay.journaled
     def on_configuration_change(self, state, config):
@@ -149,8 +150,10 @@ class AlertAgent(agent.BaseAgent):
     def push_notifications(self, state):
         '''
         Triggered by nagios_agent after he has restarted the nagios in order
-        to get the fresh notifications there.'''
-
+        to get the fresh notifications there.
+        This method is also run once an hour by recurring task, so that
+        nagios wouldnt ever have to run check_dummy check.'''
+        self.debug("Pushing all notifications to nagios.")
         f = fiber.wrap_defer(state.nagios.send, state.alerts.values())
         f.add_callback(fiber.override_result, None)
         return f
@@ -281,3 +284,10 @@ class AlertsCollector(collector.BaseCollector):
             raise TypeError("Received malformed alert notifications. "
                             "%r didn't provide IAlert" % (alert, ))
         return handler(alert)
+
+
+class PushNagiosStatus(task.StealthPeriodicTask):
+
+    @replay.immutable
+    def run(self, state):
+        state.agent.push_notifications()
