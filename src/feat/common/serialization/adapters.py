@@ -20,6 +20,7 @@
 
 # Headers in this file shall remain intact.
 from twisted.python.failure import Failure
+from twisted.names import dns
 from zope.interface import implements, classProvides
 
 from feat.common import serialization, adapter, error
@@ -152,3 +153,23 @@ class FailureAdapter(Failure, BaseAdapter, base.Serializable):
     def __ne__(self, other):
         eq = self.__eq__(other)
         return not eq if eq is not NotImplemented else eq
+
+
+@adapter.register(dns.Message, ISerializable)
+@serialization.register
+class MessageAdapter(BaseAdapter, base.Serializable):
+
+    classProvides(IRestorator)
+    implements(ISerializable)
+
+    def __init__(self, msg):
+        self._msg = msg
+
+    def snapshot(self):
+        return self._msg.toStr()
+
+    @classmethod
+    def restore(cls, snapshot):
+        result = dns.Message()
+        result.fromStr(snapshot)
+        return result
