@@ -146,7 +146,7 @@ class AlertAgent(agent.BaseAgent):
         return f
 
     @rpc.publish
-    @replay.immutable
+    @replay.journaled
     def push_notifications(self, state):
         '''
         Triggered by nagios_agent after he has restarted the nagios in order
