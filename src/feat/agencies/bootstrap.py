@@ -28,12 +28,11 @@ from feat.agencies.net import agency as net_agency, standalone
 from feat.agencies.net import database, options, config as config_module
 from feat.agencies.net.options import OptionError
 
-from feat.common import log, run, defer
+from feat.common import log, run, defer, resolver
 from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
 from twisted.internet import reactor
-from twisted.names.client import getResolver
 
 from feat import applications
 
@@ -225,7 +224,7 @@ class _Bootstrap(object):
         # the reason for this is that ThreadedResolver behaves strangely
         # after the reconnection - raises the DNSLookupError for names
         # which have been resolved while there was no connection
-        reactor.resolver = getResolver()
+        resolver.installResolver(reactor)
         reactor.run()
 
     def _parse_opts(self):
