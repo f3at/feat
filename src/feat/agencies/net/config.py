@@ -1,10 +1,31 @@
+import optparse
 import os
 import re
 import socket
 
 from feat.common import formatable, log
 from feat.common.serialization import json
-from feat.agencies.net import options
+from feat.agencies.net import options, configfile
+
+from feat.configure import configure
+
+
+def parse_service_config():
+    parser = optparse.OptionParser()
+    options.add_options(parser)
+    opts, args = parser.parse_args([])
+    feat_ini = os.path.join(configure.confdir, 'feat.ini')
+    local_ini = os.path.join(configure.confdir, 'local.ini')
+    with open(feat_ini, 'r') as f:
+        configfile.parse_file(parser, f)
+    if os.path.exists(local_ini):
+        with open(local_ini, 'r') as f:
+            configfile.parse_file(parser, f)
+
+    c = Config()
+    c.load(os.environ, opts)
+    return c
+
 
 
 class MsgConfig(formatable.Formatable):

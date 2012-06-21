@@ -34,7 +34,7 @@ import time
 from feat.common import run, signal, text_helper, log
 from feat.configure import configure
 
-from feat.agencies.net import options, config, configfile
+from feat.agencies.net import config
 
 
 def start(args):
@@ -119,7 +119,7 @@ def main(args):
         sys.exit(0)
 
     if command == 'clean':
-        c = _parse_config()
+        c = config.parse_service_config()
         to_delete = []
         to_delete.extend(glob.glob(os.path.join(c.agency.rundir, "*.log")))
         to_delete.extend(glob.glob(os.path.join(c.agency.rundir, "*.sqlite3")))
@@ -136,7 +136,7 @@ def main(args):
     if command == 'hostcleanup':
         from feat import applications
 
-        c = _parse_config()
+        c = config.parse_service_config()
 
         # parse extra options
         parser = optparse.OptionParser()
@@ -166,23 +166,6 @@ def main(args):
     logger.error("No such command, %s", command)
     print >> sys.stderr, usage
     sys.exit(1)
-
-
-def _parse_config():
-    parser = optparse.OptionParser()
-    options.add_options(parser)
-    opts, args = parser.parse_args([])
-    feat_ini = os.path.join(configure.confdir, 'feat.ini')
-    local_ini = os.path.join(configure.confdir, 'local.ini')
-    with open(feat_ini, 'r') as f:
-        configfile.parse_file(parser, f)
-    if os.path.exists(local_ini):
-        with open(local_ini, 'r') as f:
-            configfile.parse_file(parser, f)
-
-    c = config.Config()
-    c.load(os.environ, opts)
-    return c
 
 
 def _pidfile_wait(exists, timeout):
