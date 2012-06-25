@@ -235,7 +235,7 @@ class IWebResponse(Interface):
         the payload should not contain ';' character.
 
         expire should be None or a datetime.datetime instance.
-        max_age should be None or a datetime.timedelta instance.
+        max_age should be None or a or int (number of seconds)
         """
 
     def prepare():
@@ -1381,8 +1381,6 @@ class Response(log.Logger):
         if expires:
             utctimestamp = time.mktime(expires.utctimetuple())
             expires = http.compose_datetime(utctimestamp)
-        if max_age:
-            max_age = max_age.days * 24 * 60 * 60 + max_age.seconds
         self._request._ref.addCookie(name, payload,
                                      expires=expires,
                                      domain=domain,
