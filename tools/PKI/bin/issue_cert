@@ -46,7 +46,7 @@ case "x$CERT_TYPE" in
         check_arg "Name not specified" "$NAME"
         check_arg "eMail not specified" "$EMAIL"
         REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$COMMON_NAME/emailAddress=$EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
-        echo "Generating client $NAME credencials..."
+        echo "Generating client $NAME credentials..."
         ;;
 
     xssl_server )
@@ -55,7 +55,7 @@ case "x$CERT_TYPE" in
         HOSTNAME="$1"
         check_arg "Hostname not specified" "$HOSTNAME"
         REQ_SUBJ="/O=$SUBJ_O1/O=$SUBJ_O2/OU=$SUBJ_OU/CN=$HOSTNAME/emailAddress=$EMAIL/L=$SUBJ_L/ST=$SUBJ_ST/C=$SUBJ_C"
-        echo "Generating server $HOSTNAME credencials..."
+        echo "Generating server $HOSTNAME credentials..."
         ;;
 
     * ) usage "Invalid certificate type. Supported types: ssl_server, ssl_client";;
