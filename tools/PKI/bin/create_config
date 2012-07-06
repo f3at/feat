@@ -21,6 +21,10 @@ if __name__ == '__main__':
         print 'Please specify a config file.'
         sys.exit(1)
 
+    if not os.path.exists(config):
+        print 'Config file %s does not exist' % config
+        sys.exit(1)
+
     cp = ConfigParser.SafeConfigParser()
     cp.read(config)
 
