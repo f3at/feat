@@ -125,6 +125,18 @@ def main(args):
         to_delete.extend(glob.glob(os.path.join(c.agency.rundir, "*.sqlite3")))
         to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.log")))
         to_delete.extend(glob.glob(os.path.join(c.agency.logdir, "*.sqlite3")))
+
+        # cleanup also the stale pidfile
+        pid = run.get_pid(configure.rundir)
+        if pid:
+            if not run.check_pid_running(pid):
+                logger.debug("Cleaning up stale pidfile.")
+                to_delete.append(
+                    run.get_pidpath(configure.rundir, run.PROCESS_TYPE))
+            else:
+                logger.debug("Not cleaning up pidfile because process is "
+                             "running with pid: %s", pid)
+
         for name in set(to_delete):
             logger.debug("Deleting %s", name)
             try:
