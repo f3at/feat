@@ -29,9 +29,11 @@ import types
 from zope.interface import Interface
 from zope.interface.interface import InterfaceClass
 
-from feat.common import reflect, serialization
+from feat.common import reflect, serialization, formatable
 from feat.common.serialization import base, json
 from feat.interface.serialization import *
+from feat.test import common
+
 
 from . import common_serialization
 
@@ -49,6 +51,81 @@ def dummy_function():
 
 class DummyInterface(Interface):
     pass
+
+
+### dummy classes to test migration of data during unserialization ###
+
+class Dummy(formatable.VersionedFormatable):
+
+    type_name = 'dummy'
+    version = 2
+
+    formatable.field("field", None)
+    formatable.field("nested", None)
+
+    @staticmethod
+    def upgrade_to_2(snapshot):
+        snapshot['field'] = 'migrated'
+        return snapshot
+
+
+class PaisleyUnserializerTest(common.TestCase):
+
+    def setUp(self):
+        self.registry = base.Registry()
+        self.registry.register(Dummy)
+        self.unserializer = json.PaisleyUnserializer(registry=self.registry)
+
+    def testSimpleMigrate(self):
+        data = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 1}
+        unserialized = self.unserializer.convert(data)
+        self.assertIsInstance(unserialized, Dummy)
+        self.assertTrue(unserialized.has_migrated)
+        self.assertEqual('migrated', unserialized.field)
+
+    def testDoesntMigrateIsUnnecessary(self):
+        data = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 2}
+        unserialized = self.unserializer.convert(data)
+        self.assertIsInstance(unserialized, Dummy)
+        self.assertFalse(unserialized.has_migrated)
+        self.assertEqual('not migrated', unserialized.field)
+
+    def testNestedObject(self):
+        nested = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 1}
+        data = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 2,
+                'nested': nested}
+        unserialized = self.unserializer.convert(data)
+        self.assertIsInstance(unserialized, Dummy)
+        self.assertIsInstance(unserialized.nested, Dummy)
+        self.assertTrue(unserialized.has_migrated)
+        self.assertTrue(unserialized.nested.has_migrated)
+        self.assertEqual('not migrated', unserialized.field)
+        self.assertEqual('migrated', unserialized.nested.field)
+
+    def testNestedObjectInAList(self):
+        nested = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 1}
+        data = {'.type': 'dummy',
+                'field': 'not migrated',
+                '.version': 2,
+                'nested': [1, nested]}
+        unserialized = self.unserializer.convert(data)
+        self.assertIsInstance(unserialized, Dummy)
+        self.assertIsInstance(unserialized.nested, list)
+        self.assertIsInstance(unserialized.nested[1], Dummy)
+        self.assertEqual('not migrated', unserialized.field)
+        self.assertEqual('migrated', unserialized.nested[1].field)
+        self.assertTrue(unserialized.has_migrated)
+        self.assertTrue(unserialized.nested[1].has_migrated)
 
 
 class JSONConvertersTest(common_serialization.ConverterTest):
