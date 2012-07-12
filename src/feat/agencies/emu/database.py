@@ -73,6 +73,15 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
     ### IDatabaseDriver
 
+    def create_db(self):
+        raise NotImplementedError("Not implemented in emu")
+
+    def delete_db(self):
+        raise NotImplementedError("Not implemented in emu")
+
+    def replicate(self, source, target, **options):
+        raise NotImplementedError("Not implemented in emu")
+
     def save_doc(self, doc, doc_id=None):
         '''Imitate sending HTTP request to CouchDB server'''
 
