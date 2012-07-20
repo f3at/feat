@@ -1,8 +1,9 @@
 #!/bin/bash
 
-ROOT=$(cd $(dirname $0); cd ..; pwd)
+SRCDIR=$(cd $(dirname $0); cd ..; pwd)
+BUILDDIR=`pwd`
 USAGE="$0 CA_NAME"
-source "$ROOT/bin/generic.env"
+source "$SRCDIR/bin/generic.env"
 
 ISSUING_CA_NAME="$1"
 
@@ -13,9 +14,9 @@ ISSUING_CA_CAP_NAME=$(echo $ISSUING_CA_NAME | sed -e 's/^./\U&\E/g')
 echo "Creating $ISSUING_CA_CAP_NAME CA..."
 
 echo " * Setting up directory structure..."
-source "$ROOT/bin/ca.env" create "$ISSUING_CA_NAME"
+source "$SRCDIR/bin/ca.env" create "$ISSUING_CA_NAME"
 
-source "$ROOT/bin/ca.env" use root
+source "$SRCDIR/bin/ca.env" use root
 
 ISSUING_CA_PRIV_KEY="$PRIV_DIR/${ISSUING_CA_NAME}_ca_private_key.pem"
 ISSUING_CA_PUB_REQ="$REQ_DIR/${ISSUING_CA_NAME}_ca_public_key_req.pem"
@@ -51,7 +52,7 @@ pki_openssl x509 \
   "Failed to convert CA certificate to DER format"
 
 echo " * Setting up files..."
-source "$ROOT/bin/ca.env" use "$ISSUING_CA_NAME"
+source "$SRCDIR/bin/ca.env" use "$ISSUING_CA_NAME"
 
 pki_mkfile "$SERIAL_FILE"
 SERIAL=$(python -c "import random; print '%016X' % random.getrandbits(8*8)")

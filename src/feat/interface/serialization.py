@@ -154,6 +154,13 @@ class IVersionAdapter(Interface):
     def adapt_version(snapshot, source_ver, target_ver):
         """Adapt a snapshot from a version to another."""
 
+    def set_migrated():
+        """Called by unserializer to inform the object that it's snanshot
+        has been migrated"""
+
+    has_migrated = Attribute('C{bool} flag saying that the object has been'
+                             ' migrated')
+
 
 class IExternal(Interface):
     '''Used by some converter to represent an external reference.'''

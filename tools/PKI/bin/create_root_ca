@@ -1,13 +1,14 @@
 #!/bin/bash
 
-ROOT=$(cd $(dirname $0); cd ..; pwd)
+SRCDIR=$(cd $(dirname $0); cd ..; pwd)
+BUILDDIR=`pwd`
 USAGE="$0"
-source "$ROOT/bin/generic.env"
+source "$SRCDIR/bin/generic.env"
 
 echo "Creating Root CA..."
 
 echo " * Setting up directory structure..."
-source "$ROOT/bin/ca.env" create root
+source "$SRCDIR/bin/ca.env" create root
 
 ROOT_CA_PUB_REQ="$CA_DIR/root_ca_public_key_req.pem"
 ROOT_CA_EXP_DAYS=5840 # 16 years

@@ -156,6 +156,13 @@ class VersionAdapter(object):
 
         return snapshot
 
+    def set_migrated(self):
+        self._migrated = True
+
+    @property
+    def has_migrated(self):
+        return hasattr(self, '_migrated') and self._migrated
+
 
 class MetaSnapshotable(MetaVersionAdapter):
 
@@ -861,6 +868,11 @@ class Unserializer(object):
             unpacked = self.unpack_data(converted)
             # Continue unpacking level by level
             self.finish_unpacking()
+            # Inform object that it has migrated if this is a case
+            if (IVersionAdapter.providedBy(unpacked) and
+                self._migrated):
+                unpacked.set_migrated()
+
             # Should be finished by now
             return unpacked
         finally:
@@ -879,6 +891,8 @@ class Unserializer(object):
         self._pending = [] # Pendings unpacking
         self._instances = [] # [(RESTORATOR, INSTANCE, SNAPSHOT, REFID)]
         self._delayed = 0 # If we are in a delayable unpacking
+        # If some snapshot has been migrated between versions
+        self._migrated = False
 
     def unpack_data(self, data):
         return self._unpack_data(data, None, None)
@@ -910,8 +924,13 @@ class Unserializer(object):
         for restorator, instance, snapshot, _refid in self._instances:
             if restorator is not None:
                 # delayed mutable instances
+                old_snapshot = copy.copy(snapshot)
                 snapshot = self._adapt_snapshot(restorator, snapshot)
                 instance.recover(snapshot)
+                if old_snapshot != snapshot:
+                    self._migrated = True
+                    if IVersionAdapter.providedBy(instance):
+                        instance.set_migrated()
 
         # Calls the instances post restoration callback in reversed order
         # in an intent to reduce the possibilities of instances relying
@@ -959,9 +978,16 @@ class Unserializer(object):
         if instance is None:
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
+            old_snapshot = copy.copy(snapshot)
             snapshot = self._adapt_snapshot(restorator, snapshot)
             instance = restorator.restore(snapshot)
             self._instances.append((None, instance, None, refid))
+
+            if old_snapshot != snapshot:
+                self._migrated = True
+                if IVersionAdapter.providedBy(instance):
+                    instance.set_migrated()
+
             return instance
 
         # Delay the instance restoration for later to handle circular refs
@@ -1178,9 +1204,8 @@ class Unserializer(object):
             #TODO: If external adapter is needed change this to a cast
             if IVersionAdapter.providedBy(restorator):
                 adapter = IVersionAdapter(restorator)
-                snapshot = adapter.adapt_version(snapshot,
-                                                 self._source_ver,
-                                                 self._target_ver)
+                snapshot = adapter.adapt_version(
+                    snapshot, self._source_ver, self._target_ver)
         return snapshot
 
 

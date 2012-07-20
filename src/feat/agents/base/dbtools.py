@@ -143,13 +143,19 @@ def script():
 @defer.inlineCallbacks
 def migration_script(connection):
     log.info("script", "Running the migration script.")
-    to_migrate = yield connection.query_view(VersionedDocuments)
+    to_migrate = yield connection.query_view(AllDocumentIDs)
     log.info("script", "%d documents will be updated.", len(to_migrate))
     for doc_id in to_migrate:
         try:
             doc = yield connection.get_document(doc_id)
             # unserializing the document promotes it to new version
-            yield connection.save_document(doc)
+            if doc.has_migrated:
+                log.debug('script', "Updating document of the type %s",
+                          doc.type_name)
+                yield connection.save_document(doc)
+            else:
+                log.debug('script', "Document of the type %s didn't change "
+                          "during migration", doc.type_name)
         except Exception, e:
             error.handle_exception(None, e, "Failed saving migrated document")
 
@@ -177,10 +183,9 @@ class dbscript(object):
 
 
 @feat.register_view
-class VersionedDocuments(view.BaseView):
+class AllDocumentIDs(view.BaseView):
 
-    name = 'versioned_documents'
+    name = 'all_documents'
 
     def map(doc):
-        if '.version' in doc:
-            yield None, doc.get('_id')
+        yield None, doc.get('_id')

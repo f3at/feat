@@ -7,11 +7,22 @@ import sys
 import glob
 import ConfigParser
 
+"""
+This script generates SSL config files based on the [config] section
+in the given config file.
+
+All generated files will be under config/ in the current directory.
+"""
+
 if __name__ == '__main__':
     try:
         config = sys.argv[1]
     except IndexError:
         print 'Please specify a config file.'
+        sys.exit(1)
+
+    if not os.path.exists(config):
+        print 'Config file %s does not exist' % config
         sys.exit(1)
 
     cp = ConfigParser.SafeConfigParser()
@@ -23,7 +34,7 @@ if __name__ == '__main__':
     for path in glob.glob(templatedir):
         contents = open(path).read()
 
-        outdir = os.path.join(os.path.dirname(__file__), '..', 'config')
+        outdir = 'config'
         try:
             os.makedirs(outdir)
         except:
