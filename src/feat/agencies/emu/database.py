@@ -163,12 +163,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         factory = IViewFactory(factory)
         use_reduce = factory.use_reduce and options.get('reduce', True)
         group = options.pop('group', False)
+        group_level = options.pop('group_level', None)
         iterator = (self._perform_map(doc, factory)
                     for doc in self._iterdocs())
         d = defer.succeed(iterator)
         d.addCallback(self._flatten, **options)
         if use_reduce:
-            d.addCallback(self._perform_reduce, factory, group=group)
+            d.addCallback(self._perform_reduce, factory, group=group,
+                          group_level=group_level)
         d.addCallback(self._apply_slice, **options)
         return d
 
@@ -226,20 +228,27 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         self._set_cache(doc['_id'], factory.name, res)
         return res
 
-    def _perform_reduce(self, map_results, factory, group=False):
+    def _perform_reduce(self, map_results, factory, group=False,
+                        group_level=None):
         '''
         map_results here is a list of tuples (key, value)
         '''
-        if not group:
+        def get_group_key(key, group, group_level):
+            if group:
+                return key
+            return key[0:group_level]
+
+        if not group and group_level is None:
             keys = map(operator.itemgetter(0), map_results)
             values = map(operator.itemgetter(1), map_results)
             return self._reduce_values(factory, None, keys, values)
         else:
             groups = dict()
             for key, value in map_results:
-                if key not in groups:
-                    groups[key] = list()
-                groups[key].append((key, value))
+                group_key = get_group_key(key, group, group_level)
+                if group_key not in groups:
+                    groups[group_key] = list()
+                groups[group_key].append((key, value))
             resp = list()
             for group_key, results in groups.iteritems():
                 keys = map(operator.itemgetter(0), results)

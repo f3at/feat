@@ -106,10 +106,24 @@ class CountingView(view.BaseView):
     reduce = "_count"
 
 
-class GroupCountingView(CountingView):
+class GroupCountingView(view.BaseView):
+
+    name = 'group_counting_view'
+    use_reduce = True
+
+    def map(doc):
+        if doc['.type'] == 'dummy':
+            field = doc.get('field', None)
+            value = doc.get('value', None)
+            key = (field, value)
+            yield key, 1
+
+    reduce = "_count"
 
     @classmethod
     def parse(cls, key, value, reduced):
+        if key:
+            key = tuple(key)
         return key, value
 
 
@@ -160,7 +174,7 @@ class TestCase(object):
         docs = [
             DummyDocument(field=u'key1', value=1),
             DummyDocument(field=u'key2', value=1),
-            DummyDocument(field=u'key1', value=1)]
+            DummyDocument(field=u'key1', value=2)]
         for doc in docs:
             yield self.connection.save_document(doc)
 
@@ -169,10 +183,20 @@ class TestCase(object):
 
         res = yield self.connection.query_view(GroupCountingView, group=True)
         dres = dict(res)
-        self.assertIn('key1', dres)
-        self.assertIn('key2', dres)
-        self.assertEqual(dres['key1'], 2)
-        self.assertEqual(dres['key2'], 1)
+        self.assertIn(('key1', 1), dres)
+        self.assertIn(('key1', 2), dres)
+        self.assertIn(('key2', 1), dres)
+        self.assertEqual(dres[('key1', 1)], 1)
+        self.assertEqual(dres[('key1', 2)], 1)
+        self.assertEqual(dres[('key2', 1)], 1)
+
+        res = yield self.connection.query_view(GroupCountingView,
+                                               group_level=1)
+        dres = dict(res)
+        self.assertIn(('key1', ), dres)
+        self.assertIn(('key2', ), dres)
+        self.assertEqual(dres[('key1', )], 2)
+        self.assertEqual(dres[('key2', )], 1)
 
     @defer.inlineCallbacks
     def testSavingDeletedDoc(self):
