@@ -185,6 +185,24 @@ class DummyMedium(DummyMediumBase):
     def get_hostname(self):
         return 'test.feat.lan'
 
+    # FIXME: methods below are overriden because of messed up dummy class
+    # inheritance. This class inherits from DummyAgents which would return
+    # fibers instead of deferreds.
+
+    def get_document(self, doc_id):
+        return self._db.get_document(doc_id)
+
+    def save_document(self, document):
+        return self._db.save_document(document)
+
+    def delete_document(self, document):
+        return self._db.delete_document(document)
+
+    def query_view(self, factory, **kwargs):
+        return self._db.query_view(factory, **kwargs)
+
+    ### endof FIXME ###
+
 
 class DummyProtocol(object):
 
