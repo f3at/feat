@@ -328,6 +328,16 @@ class IDatabaseDriver(Interface):
         Request creating the database.
         '''
 
+    def delete_db():
+        '''
+        Request deleting the database.
+        '''
+
+    def replicate(source, target, **options):
+        '''
+        Request replication of the database.
+        '''
+
     def save_doc(doc, doc_id=None):
         '''
         Create new or update existing document.

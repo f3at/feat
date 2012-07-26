@@ -178,6 +178,17 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         return self._paisley_call(self.db_name, self.paisley.createDB,
                                   self.db_name)
 
+    def delete_db(self):
+        return self._paisley_call(self.db_name, self.paisley.deleteDB,
+                                  self.db_name)
+
+    def replicate(self, source, target, **options):
+        uri = '/_replicate'
+        body = dict(source=source, target=target)
+        body.update(options)
+        return self._paisley_call(self.db_name, self.paisley.post,
+                                  uri, body, 'replicate')
+
     def disconnect(self):
         self._cancel_reconnector()
 

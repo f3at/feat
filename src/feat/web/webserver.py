@@ -235,7 +235,7 @@ class IWebResponse(Interface):
         the payload should not contain ';' character.
 
         expire should be None or a datetime.datetime instance.
-        max_age should be None or a datetime.timedelta instance.
+        max_age should be None or a or int (number of seconds)
         """
 
     def prepare():
@@ -466,6 +466,10 @@ class Server(log.LogProxy, log.Logger):
             self._listener = None
             return d
         return defer.succeed(self)
+
+    @property
+    def host(self):
+        return self._listener and self._listener.getHost().host
 
     @property
     def port(self):
@@ -989,7 +993,12 @@ class Request(log.Logger, log.LogProxy):
         self._secured = server.is_secured
         self._peer_info = peer_info
 
-        self.log_name = "%s on %s" % (priv_request.method, priv_request.uri)
+        self.log_name = ("%s on %s://%s:%s%s" %
+                         (priv_request.method,
+                          self._server.scheme.name,
+                          self._server.host,
+                          self._server.port,
+                          priv_request.uri))
         self.debug("Parsing request from %s:%s", priv_request.client.host,
                    priv_request.client.port)
 
@@ -1381,8 +1390,6 @@ class Response(log.Logger):
         if expires:
             utctimestamp = time.mktime(expires.utctimetuple())
             expires = http.compose_datetime(utctimestamp)
-        if max_age:
-            max_age = max_age.days * 24 * 60 * 60 + max_age.seconds
         self._request._ref.addCookie(name, payload,
                                      expires=expires,
                                      domain=domain,

@@ -533,6 +533,20 @@ class ActionResource(BaseResource):
             or self._action.category not in categories):
             raise http.NotAllowedError(allowed_methods=list(self._methods))
 
+        # in case of ActionCategory.retrieve action, the action parameters
+        # are in the query string, here we parse it
+        request.debug("%r", self._action.category)
+        if self._action.category == ActionCategories.retrieve:
+            params = dict()
+            request.debug("%r", self._action.parameters)
+            request.debug("%r", request.arguments)
+            for param in self._action.parameters:
+                if param.name in request.arguments:
+                    if param.value_info.value_type == ValueTypes.collection:
+                        params[param.name] = request.arguments[param.name]
+                    else:
+                        params[param.name] = request.arguments[param.name][0]
+
         request.debug("Performing action %r on %s model %r with parameters %r",
                     self._action.name, self._context.models[-1].identity,
                     self._context.models[-1].name, params)
