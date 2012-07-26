@@ -2,8 +2,8 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.19.2
-%define unmangled_version 0.19.2
+%define version 0.19.3
+%define unmangled_version 0.19.3
 %define build_rev 1
 
 Name:           python-feat
@@ -171,6 +171,10 @@ fi
 
 
 %changelog
+* Thu Jul 26 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.19.3-1
+- new release
+
 * Thu Jun 28 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.19.2-1
 - new release
