@@ -1021,8 +1021,9 @@ class TestWebServer(common.TestCase):
         registry.register_writer(_write_lower, TEXT_LOWER, IC)
         registry.register_writer(_write_negotiable, TEXT_PLAIN, IN)
 
-        # Creating servier
+        # Creating server
         self.server = webserver.Server(0, root, registry=registry)
+        self.server._scheme = http.Schemes.HTTP
 
         # Enabling mime types
         self.server.enable_mime_type(TEXT_PLAIN, 0.8)
