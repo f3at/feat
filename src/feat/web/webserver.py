@@ -996,8 +996,8 @@ class Request(log.Logger, log.LogProxy):
         self.log_name = ("%s on %s://%s:%s%s" %
                          (priv_request.method,
                           self._server.scheme.name,
-                          self._server.host,
-                          self._server.port,
+                          priv_request.host.host,
+                          priv_request.host.port,
                           priv_request.uri))
         self.debug("Parsing request from %s:%s", priv_request.client.host,
                    priv_request.client.port)
