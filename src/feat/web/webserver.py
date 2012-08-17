@@ -961,7 +961,9 @@ class Server(log.LogProxy, log.Logger):
 
             if response.can_update_headers:
                 response.set_header("content-type", "text/plain")
-                response.write("Error: %s" % failure.getErrorMessage())
+                msg = failure.getErrorMessage()
+                if msg:
+                    response.write(msg)
 
             if failure.check(http.HTTPError):
                 return self._terminate(request, response,
