@@ -1,7 +1,6 @@
 # coding: utf-8
 from twisted.python import log, failure
 from twisted.internet import defer, protocol, reactor, error
-from twisted.internet.task import LoopingCall
 from twisted.protocols import basic
 from feat.extern.txamqp import spec
 from feat.extern.txamqp.codec import Codec, EOF
@@ -260,16 +259,17 @@ class AMQClient(FrameReceiver):
         if self.heartbeatInterval > 0:
             self.checkHB = reactor.callLater(self.heartbeatInterval *
                           self.MAX_UNSEEN_HEARTBEAT, self.checkHeartbeat)
-            self.sendHB = LoopingCall(self.sendHeartbeat)
+            self.sendHB = None
             d = self.started.wait()
             d.addCallback(lambda _: self.reschedule_sendHB())
             d.addCallback(lambda _: self.reschedule_checkHB())
 
     def reschedule_sendHB(self):
         if self.heartbeatInterval > 0:
-            if self.sendHB.running:
-                self.sendHB.stop()
-            self.sendHB.start(self.heartbeatInterval, now=False)
+            if self.sendHB and self.sendHB.active():
+                self.sendHB.cancel()
+            self.sendHB = reactor.callLater(self.heartbeatInterval,
+                                            self.sendHeartbeat)
 
     def reschedule_checkHB(self):
         if self.checkHB.active():
@@ -383,6 +383,7 @@ class AMQClient(FrameReceiver):
     def sendHeartbeat(self):
         self.sendFrame(Frame(0, Heartbeat()))
         self.lastHBSent = time()
+        self.reschedule_sendHB()
 
     def checkHeartbeat(self):
         if self.checkHB.active():
@@ -391,8 +392,8 @@ class AMQClient(FrameReceiver):
 
     def connectionLost(self, reason):
         if self.heartbeatInterval > 0:
-            if self.sendHB.running:
-                self.sendHB.stop()
+            if self.sendHB.active():
+                self.sendHB.cancel()
             if self.checkHB.active():
                 self.checkHB.cancel()
         self.close(reason)
