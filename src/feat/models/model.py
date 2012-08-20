@@ -1486,7 +1486,7 @@ class QueryItemsMixin(DynamicItemsMixin):
             error.handle_failure(
                 None, failure, "Error creating query set model, identity: %s "
                 "name %s", self.identity, self.name)
-            return None
+            return failure
 
         if self._query_items is None:
             return self._notsup("querying items")
