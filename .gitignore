@@ -8,5 +8,6 @@ src/feat-saved-coverage.pickle
 src/test.log
 src/master.log
 src/standalone.log
+log/*
 *.pyc
 feat.egg-info/
