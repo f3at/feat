@@ -25,9 +25,9 @@ from feat.common import first, defer
 from feat.test.integration import common
 from feat.common.text_helper import format_block
 from feat.agents.base import descriptor, agent, replay
-from feat.agencies import document
+from feat.database import document
 
-from feat.agencies.interface import ConflictError
+from feat.database.interface import ConflictError
 from feat.agents.application import feat
 
 

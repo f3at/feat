@@ -20,7 +20,7 @@
 
 # Headers in this file shall remain intact.
 from feat.agents.base import agent, descriptor, replay
-from feat.agents.base import collector, poster, dbtools
+from feat.agents.base import collector, poster
 from feat.agents.base import contractor, manager
 from feat.agents.shard import shard_agent
 from feat.agencies import recipient, message

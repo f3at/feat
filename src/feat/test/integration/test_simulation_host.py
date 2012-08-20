@@ -26,7 +26,7 @@ from twisted.internet import defer
 from feat.test.integration import common
 
 from feat.agents.base import agent, descriptor, replay, resource
-from feat.agencies import document
+from feat.database import document
 from feat.agents.common import host
 from feat.common.text_helper import format_block
 from feat.common import first

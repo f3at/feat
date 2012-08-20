@@ -30,7 +30,7 @@ from twisted.internet import defer
 
 from feat.agencies.net import standalone as standalone_agency, config
 from feat.agencies.net.broker import BrokerRole
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.common import log, run, fcntl
 from feat.process import standalone
 from feat.test import common

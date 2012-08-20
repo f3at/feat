@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from feat.agents.migration import protocol
 from feat.common import formatable
-from feat.agents.base import view
+from feat.database import view
 from feat.agents.application import feat
 
 

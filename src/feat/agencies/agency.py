@@ -53,13 +53,13 @@ from feat.agencies import contracts, requests, tasks, notifications
 from interface import (AgencyRoles, IAgencyAgentInternal,
                        IFirstMessage, IAgencyInterestInternalFactory,
                        IAgencyProtocolInternal,
-                       IAgencyInitiatorFactory, NotFoundError, ConflictError,
-                       IDbConnectionFactory, IJournaler,
+                       IAgencyInitiatorFactory, IJournaler,
                        ILongRunningProtocol, )
 from feat.interface.recipient import IRecipient
 from feat.interface.agency import IAgency, ExecMode
 from feat.interface.agent import IAgencyAgent, IAgentFactory, AgencyAgentState
-from feat.interface.agent import IDocument
+from feat.database.interface import IDocument, NotFoundError, ConflictError
+from feat.database.interface import IDbConnectionFactory
 from feat.interface.generic import ITimeProvider
 from feat.interface.journal import IRecorderNode, IJournalKeeper, IRecorder
 from feat.interface.protocols import (IInterest, ProtocolFailed,

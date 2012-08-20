@@ -27,9 +27,10 @@ from feat.test.dummies import DummyMedium, DummyAgent
 from feat.common import defer, fiber
 from feat.agents.base import sender, descriptor
 from feat.agencies import recipient
-from feat.agencies.interface import NotFoundError
+
 from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
+from feat.database.interface import NotFoundError
 
 
 class DummyMonitorAgent(DummyAgent):

@@ -25,7 +25,8 @@ import operator
 
 from feat.agents.base import agent, contractor, manager, poster, notifier
 from feat.agents.base import replay, partners, resource, task
-from feat.agencies import message, recipient, document
+from feat.agencies import message, recipient
+from feat.database import document
 from feat.agents.common import rpc, raage, host, monitor, export
 from feat.common import fiber, manhole, enum
 from feat.agents.application import feat

@@ -29,13 +29,11 @@ from zope.interface import implements
 
 from feat.common import log, defer, time
 from feat.common.serialization import json
-from feat.agencies import document
+from feat.database import document
 
-from feat.agencies.interface import (IDatabaseClient, IDatabaseDriver,
-                                     IRevisionStore)
+from feat.database.interface import IDatabaseClient, IDatabaseDriver
+from feat.database.interface import IRevisionStore, IDocument, IViewFactory
 from feat.interface.generic import ITimeProvider
-from feat.interface.view import IViewFactory
-from feat.interface.agent import IDocument
 
 
 class ViewFilter(object):

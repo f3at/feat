@@ -23,7 +23,7 @@ from feat.test.integration import common
 from feat.common import defer, text_helper, first
 from feat.agents.export import export_agent
 from feat.agents.shard import shard_agent
-from feat.agents.base import agent, descriptor, replay, alert, dbtools
+from feat.agents.base import agent, descriptor, replay, alert
 from feat.agents.common import export
 from feat.agencies import recipient
 from feat.agents.application import feat
@@ -53,8 +53,6 @@ class TestAgent(agent.BaseAgent):
     def get_migration_partners(self, state):
         partners = state.partners.query_with_role('all', 'link')
         return recipient.IRecipients(partners)
-        for partner in partners:
-            entry.add_dependency(partner.recipient.key)
 
 
 @feat.register_agent('test_worker_agent')

@@ -26,7 +26,7 @@ from zope.interface import implements
 from feat.common import formatable
 from feat.common.serialization.json import VERSION_ATOM
 
-from feat.interface.agent import IDocument, IVersionedDocument
+from feat.database.interface import IDocument, IVersionedDocument
 
 field = formatable.field
 

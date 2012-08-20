@@ -25,9 +25,10 @@ import sys
 from twisted.internet import reactor
 
 from feat.agencies import agency, journaler, recipient
-from feat.agencies.net import ssh, broker, database, options, config
+from feat.agencies.net import ssh, broker, options, config
 from feat.agencies.net.broker import BrokerRole
 from feat.agencies.messaging import net, tunneling, rabbitmq, unix
+from feat.database import driver
 from feat.agents.base import replay
 
 from feat.configure import configure
@@ -69,7 +70,7 @@ class Startup(agency.Startup):
 
         dbc = self.c.db
         assert isinstance(dbc, config.DbConfig), str(type(dbc))
-        self._db = database.Database(dbc.host, int(dbc.port), dbc.name)
+        self._db = driver.Database(dbc.host, int(dbc.port), dbc.name)
         self._journaler = journaler.Journaler(
             on_rotate_cb=self.friend._force_snapshot_agents,
             on_switch_writer_cb=self.friend._on_journal_writer_switch,

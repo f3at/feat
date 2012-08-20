@@ -23,8 +23,8 @@ import json
 
 from twisted.internet import defer
 
-from feat.agencies.emu import database
-from feat.agencies.interface import ConflictError, NotFoundError
+from feat.database import emu
+from feat.database.interface import ConflictError, NotFoundError
 
 from . import common
 
@@ -32,7 +32,7 @@ from . import common
 class TestDatabase(common.TestCase):
 
     def setUp(self):
-        self.database = database.Database()
+        self.database = emu.Database()
 
     @defer.inlineCallbacks
     def testSaveUnsavedDocument(self):
@@ -128,7 +128,7 @@ class TestDatabaseIntegration(common.TestCase):
     timeout = 3
 
     def setUp(self):
-        self.database = database.Database()
+        self.database = emu.Database()
 
     @defer.inlineCallbacks
     def testDeletingAndUpdating(self):

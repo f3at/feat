@@ -24,10 +24,9 @@ import uuid
 import copy
 import sys
 
-import feat
-from feat.agents.base import (agent, replay, manager, contractor,
-                              task, dbtools, sender, )
-from feat.agencies import message, document
+from feat.agents.base import agent, replay, manager, contractor, task, sender
+from feat.agencies import message
+from feat.database import document
 from feat.agents.common import (rpc, export, host, start_agent, )
 from feat.common import (formatable, serialization, log, fiber,
                          text_helper, manhole, first, )

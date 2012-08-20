@@ -27,16 +27,17 @@ import re
 from zope.interface import implements
 
 from feat.agents.base import replay, agent, dependency, contractor, collector
-from feat.agents.base import descriptor, dbtools, view, cache
+from feat.agents.base import descriptor, cache
+from feat.database import view, document
 from feat.agents.common import export
 from feat.agents.dns import production, simulation
-from feat.agencies import message, document
+from feat.agencies import message
 from feat.common import fiber, manhole, formatable
 from feat.agents.application import feat
 
 from feat.agents.dns.interface import (IDNSServerLabourFactory, RecordA,
                                        RecordCNAME, RecordType)
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.interface.agency import ExecMode
 from feat.interface.agent import Address
 from feat.interface.protocols import InterestType

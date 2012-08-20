@@ -24,8 +24,9 @@ import os
 import optparse
 import sys
 
+from feat.database import driver
 from feat.agencies.net import agency as net_agency, standalone
-from feat.agencies.net import database, options, config as config_module
+from feat.agencies.net import options, config as config_module
 from feat.agencies.net.options import OptionError
 
 from feat.common import log, run, defer, resolver
@@ -136,7 +137,7 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
                 from feat.utils import host_restart
 
                 dbc = agency.config.db
-                db = database.Database(dbc.host, int(dbc.port), dbc.name)
+                db = driver.Database(dbc.host, int(dbc.port), dbc.name)
                 connection = db.get_connection()
                 d.addCallback(defer.drop_param, host_restart.do_cleanup,
                               connection, agency._get_host_agent_id())

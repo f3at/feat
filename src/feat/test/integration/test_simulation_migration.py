@@ -23,7 +23,7 @@ from feat.test.integration import common
 from feat.common import defer, text_helper, first, fiber
 from feat.agents.export import export_agent
 from feat.agents.shard import shard_agent
-from feat.agents.base import dbtools, descriptor, replay, agent
+from feat.agents.base import descriptor, replay
 from feat.agencies import recipient
 from feat.agents.common import export, start_agent, host
 from feat.agents.application import feat

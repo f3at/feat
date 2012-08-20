@@ -24,10 +24,11 @@ from feat.agents.base import task, replay, requester
 from feat.common import defer, fiber, formatable
 from feat.agents.application import feat
 
-from feat.agents.monitor.interface import *
-from feat.interface.protocols import *
-from feat.interface.recipient import *
-from feat.agencies.interface import *
+from feat.agents.monitor.interface import IClerk, DEFAULT_NOTIFICATION_PERIOD
+from feat.agents.monitor.interface import PatientState
+from feat.interface.protocols import ProtocolFailed
+from feat.interface.recipient import IRecipient
+from feat.database.interface import NotFoundError
 
 
 class AgentMixin(object):

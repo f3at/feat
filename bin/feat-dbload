@@ -21,8 +21,8 @@
 
 # Headers in this file shall remain intact.
 
-from feat.agents.base import dbtools
+from feat.database import tools
 
 
 if __name__ == '__main__':
-    dbtools.script()
+    tools.script()

@@ -28,6 +28,7 @@ from feat.agents.application import feat
 from feat.agents.monitor.interface import *
 from feat.interface.protocols import *
 from feat.interface.recipient import *
+from feat.database.interface import *
 
 
 class Location(object):

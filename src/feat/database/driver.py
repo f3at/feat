@@ -29,14 +29,13 @@ from twisted.internet import error
 from twisted.web._newclient import ResponseDone
 from twisted.python import failure
 
-from feat.agencies.database import Connection, ChangeListener
+from feat.database.client import Connection, ChangeListener
 from feat.common import log, defer, time
 from feat.agencies import common
 
-from feat.agencies.interface import IDatabaseDriver, IDbConnectionFactory
-from feat.agencies.interface import NotFoundError, NotConnectedError
-from feat.agencies.interface import ConflictError
-from feat.interface.view import IViewFactory
+from feat.database.interface import IDatabaseDriver, IDbConnectionFactory
+from feat.database.interface import NotFoundError, NotConnectedError
+from feat.database.interface import ConflictError, IViewFactory
 
 from feat import extern
 # Add feat/extern/paisley to the load path

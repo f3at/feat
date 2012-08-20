@@ -27,8 +27,8 @@ from feat.common import reflect
 from feat.agencies.net import configfile
 from feat.configure import configure
 from feat.agencies.net.broker import DEFAULT_SOCKET_PATH
-from feat.agencies.net.database import DEFAULT_DB_HOST, DEFAULT_DB_PORT
-from feat.agencies.net.database import DEFAULT_DB_NAME
+from feat.database.driver import DEFAULT_DB_HOST, DEFAULT_DB_PORT
+from feat.database.driver import DEFAULT_DB_NAME
 
 DEFAULT_MSG_HOST = "localhost"
 DEFAULT_MSG_PORT = 5672

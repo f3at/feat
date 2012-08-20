@@ -22,9 +22,9 @@
 from feat.common import defer, log, first
 from feat.agents.base import descriptor
 from feat.agents.common import host
-from feat.agents.base import dbtools
+from feat.database import tools
 
-from feat.agencies.interface import IDatabaseClient, NotFoundError
+from feat.database.interface import IDatabaseClient, NotFoundError
 
 
 @defer.inlineCallbacks
@@ -54,7 +54,7 @@ def locate(connection, agent_id):
 
 
 def script():
-    with dbtools.dbscript() as (d, args):
+    with tools.dbscript() as (d, args):
 
         @defer.inlineCallbacks
         def body(connection):

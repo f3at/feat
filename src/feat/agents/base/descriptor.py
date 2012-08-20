@@ -28,7 +28,8 @@ from feat.common import fiber, first, serialization
 from feat.agents.base import resource
 from feat.agents.application import feat
 from feat import applications
-from feat.agencies import recipient, document
+from feat.agencies import recipient
+from feat.database import document
 
 from feat.interface.recipient import IRecipient, IRecipients
 from feat.interface.agent import IDescriptor

@@ -24,7 +24,7 @@
 from feat.common import defer, serialization
 from feat.interface.agent import AgencyAgentState
 from feat.agents.base import descriptor, agent
-from feat.agencies import document
+from feat.database import document
 from feat.test import common
 from feat.agents.application import feat
 

@@ -1,7 +1,7 @@
 from feat.agents.common import host
 from feat.common import defer, first, log
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 
 
 @defer.inlineCallbacks

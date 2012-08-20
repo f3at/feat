@@ -39,7 +39,7 @@ from feat.utils import host_restart
 from feat.agents.application import feat
 
 from feat.interface.agent import AgencyAgentState
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 
 
 class StandalonePartners(agent.Partners):

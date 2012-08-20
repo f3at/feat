@@ -1,6 +1,6 @@
 import socket
 
-from feat.agents.base import view
+from feat.database import view
 from feat.agents.common import start_agent
 from feat.common import defer, first
 

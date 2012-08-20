@@ -25,13 +25,12 @@ import uuid
 
 from zope.interface import implements
 
-from feat.agencies.emu import database
-from feat.agencies import document
-from feat.agents.base import cache, view, descriptor
+from feat.database import emu as database, document, view
+from feat.agents.base import cache, descriptor
 from feat.common import journal, defer, log, fiber, time, serialization
 from feat.test import common
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 
 
 class Descriptor(descriptor.Descriptor):

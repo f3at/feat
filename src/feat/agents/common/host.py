@@ -20,7 +20,8 @@
 
 # Headers in this file shall remain intact.
 from feat.agents.base import requester, replay, manager, descriptor
-from feat.agencies import message, document
+from feat.agencies import message
+from feat.database import  document
 from feat.common import fiber
 from feat.interface.agent import Access, Address, Storage
 from feat.interface.recipient import IRecipient

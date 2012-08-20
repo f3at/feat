@@ -27,14 +27,12 @@ from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 try:
-    from feat.agencies.net import database
+    from feat.database import driver
 except ImportError as e:
     database = None
     import_error = e
 
-from feat.agencies.emu import database as emu_database
-from feat.agents.base import view
-from feat.agencies import document
+from feat.database import emu, view, document
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization
@@ -43,7 +41,8 @@ from feat.agencies.common import ConnectionState
 from . import common
 from feat.test.common import attr, Mock
 
-from feat.agencies.interface import *
+from feat.database.interface import ConflictError, NotFoundError
+from feat.database.interface import NotConnectedError
 
 
 @serialization.register
@@ -249,7 +248,7 @@ class TestCase(object):
         self.assertEqual([2], resp)
 
         # save second document
-        doc2 = yield self.connection.save_document(DummyDocument(value=3))
+        yield self.connection.save_document(DummyDocument(value=3))
 
         # check SummingView without reduce
         resp = yield self.connection.query_view(SummingView, reduce=False)
@@ -536,7 +535,7 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
 
     def setUp(self):
         common.IntegrationTest.setUp(self)
-        self.database = emu_database.Database()
+        self.database = emu.Database()
         self.connection = self.database.get_connection()
 
 
@@ -551,7 +550,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
     @defer.inlineCallbacks
     def setUp(self):
         yield common.IntegrationTest.setUp(self)
-        if database is None:
+        if driver is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)
 
@@ -564,7 +563,7 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
 
         config = self.process.get_config()
         host, port = config['host'], config['port']
-        self.database = database.Database(host, port, 'test')
+        self.database = driver.Database(host, port, 'test')
         self.connection = self.database.get_connection()
         yield self.connection.create_database()
 

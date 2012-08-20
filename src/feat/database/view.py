@@ -25,10 +25,10 @@ import inspect
 from zope.interface import directlyProvides
 
 from feat.common import formatable, annotate
-from feat.agencies import document
+from feat.database import document
 from feat import applications
 
-from feat.interface.view import IViewFactory
+from feat.database.interface import IViewFactory
 from feat.agents.application import feat
 
 field = formatable.field

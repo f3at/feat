@@ -28,12 +28,12 @@ import uuid
 from twisted.python import failure
 from zope.interface import Interface, implements
 
-from feat.agents.base import replay, notifier, view
+from feat.agents.base import replay, notifier
+from feat.database import view
 from feat.common import log, fiber, defer
 from feat.agents.application import feat
 
-from feat.agencies.interface import NotFoundError, ConflictError
-from feat.interface.view import IViewFactory
+from feat.database.interface import NotFoundError, ConflictError, IViewFactory
 
 
 class IDocumentChangeListener(Interface):

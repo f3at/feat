@@ -29,7 +29,7 @@ from feat.agents.common import dns, host
 from feat.agents.dns import api, dns_agent
 from feat.agents.dns.dns_agent import DnsName
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.models import reference, response
 from feat.agents.application import feat
 

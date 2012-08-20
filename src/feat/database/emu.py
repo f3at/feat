@@ -30,12 +30,12 @@ from twisted.internet import defer
 from zope.interface import implements
 
 from feat.common import log
-from feat.agencies.database import Connection, ChangeListener
+from feat.database.client import Connection, ChangeListener
 from feat.agencies import common
 
-from feat.agencies.interface import IDbConnectionFactory, IDatabaseDriver
-from feat.agencies.interface import ConflictError, NotFoundError
-from feat.interface.view import IViewFactory
+from feat.database.interface import IDbConnectionFactory, IDatabaseDriver
+from feat.database.interface import ConflictError, NotFoundError
+from feat.database.interface import IViewFactory
 
 
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener,

@@ -168,10 +168,10 @@ def main(args):
         logger.info("Performing host cleanup for host %s", opts.hostname)
         applications.load('feat.agents.application', 'feat')
         from feat.utils import host_restart
-        from feat.agents.base import dbtools
+        from feat.database import tools
 
         c.db.name = opts.dbname
-        with dbtools.dbscript(c.db) as d:
+        with tools.dbscript(c.db) as d:
             d.addCallback(host_restart.do_cleanup, opts.hostname)
         return
 

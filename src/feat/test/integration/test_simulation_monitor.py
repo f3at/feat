@@ -23,8 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 
-from feat.agents.base import descriptor, agent, partners, replay
-from feat.agents.base import resource
+from feat.agents.base import descriptor, agent, partners, replay, resource
 from feat.agents.common import monitor, start_agent, host
 from feat.agencies import recipient
 from feat.common import first, serialization, defer

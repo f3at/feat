@@ -19,8 +19,8 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from feat.agents.base import agent, view, descriptor, replay
-from feat.agencies import document
+from feat.agents.base import agent, descriptor, replay
+from feat.database import view, document
 from feat.test.integration import common
 from feat.common.text_helper import format_block
 from feat.common import defer, serialization

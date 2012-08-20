@@ -24,10 +24,10 @@ from zope.interface import implements
 from feat.common import defer, time, log, journal, fiber, adapter
 from feat.agents.base import descriptor, requester, replier, replay, cache
 from feat.agencies import protocols, common, message
-from feat.agencies.emu import database
+from feat.database import emu as database
 
 from feat.agencies.interface import IAgencyInterestInternalFactory
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.interface.protocols import IInterest, InterestType
 from feat.interface.agent import IAgencyAgent, AgencyAgentState
 from feat.interface.agency import ExecMode

@@ -21,8 +21,7 @@
 # Headers in this file shall remain intact.
 from twisted.internet import defer
 
-from feat.agents.base import dbtools
-from feat.agencies import document
+from feat.database import tools, document
 from feat.test import common
 from feat.test.integration.common import SimulationTest
 from feat.common import serialization
@@ -74,12 +73,12 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
     def testMigrating(self):
         serialization.register(VersionedTest1)
         feat.initial_data(VersionedTest1)
-        yield dbtools.push_initial_data(self.connection)
+        yield tools.push_initial_data(self.connection)
         doc = yield self.connection.get_document('testdoc')
         self.assertEqual('default', doc.field1)
 
         serialization.register(VersionedTest2)
-        yield dbtools.migration_script(self.connection)
+        yield tools.migration_script(self.connection)
 
         doc = yield self.connection.get_document('testdoc')
         self.assertEqual('default upgraded', doc.field1)
@@ -90,7 +89,7 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         feat.initial_data(
             SomeDocument(doc_id=u'special_id', field1=u'special'))
 
-        yield dbtools.push_initial_data(self.connection)
+        yield tools.push_initial_data(self.connection)
         # 3 = 2 (registered documents) + 1 (design document)
         self.assertEqual(3, len(self.db._documents))
         special = yield self.connection.get_document('special_id')
@@ -103,12 +102,12 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         self.assertEqual('default', normal.field1)
 
     def testRevertingDocuments(self):
-        old = dbtools.get_current_initials()
+        old = tools.get_current_initials()
         feat.initial_data(SomeDocument)
-        current = dbtools.get_current_initials()
+        current = tools.get_current_initials()
         self.assertEqual(len(old) + 1, len(current))
-        dbtools.reset_documents(old)
-        current = dbtools.get_current_initials()
+        tools.reset_documents(old)
+        current = tools.get_current_initials()
         self.assertEqual(len(old), len(current))
 
 
@@ -124,5 +123,5 @@ class IntegrationWithSimulation(SimulationTest):
     @defer.inlineCallbacks
     def tearDown(self):
         yield SimulationTest.tearDown(self)
-        current = dbtools.get_current_initials()
+        current = tools.get_current_initials()
         self.assertFalse(isinstance(current[-1], SomeDocument))

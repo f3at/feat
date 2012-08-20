@@ -27,7 +27,8 @@ from feat.common import formatable, text_helper, fiber
 from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager, task
 
-from feat.agencies import document, recipient, message
+from feat.agencies import recipient, message
+from feat.database import document
 from feat.agents.common import export, monitor, nagios as cnagios, rpc
 from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat

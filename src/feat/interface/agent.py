@@ -22,9 +22,11 @@
 from zope.interface import Interface, Attribute
 from feat.common import enum
 
+from feat.database.interface import IDocument
+
 __all__ = ["IAgentFactory", "IAgencyAgent", "IAgencyAgent", "IAgent",
            "AgencyAgentState", "Access", "Address", "Storage",
-           "CategoryError", "IDocument"]
+           "CategoryError"]
 
 
 class CategoryError(RuntimeError):
@@ -432,19 +434,6 @@ class IAgent(Interface):
         Called when both connections to messaging and database are restored.
         Calls on_reconnect() methods from MRO  in reverse-mro order.
         '''
-
-
-class IDocument(Interface):
-    '''Interface implemented by objects stored in database.'''
-
-    type_name = Attribute('type identifying the document')
-    doc_id = Attribute('id of the docuemnt')
-    rev = Attribute('revision of the document')
-
-
-class IVersionedDocument(IDocument):
-
-    version = Attribute('C{int} current version')
 
 
 class IDescriptor(IDocument):

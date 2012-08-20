@@ -22,24 +22,32 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
-import operator
 
 from zope.interface import implements
 
 from feat.agents.base import agent, partners, replay
 from feat.agents.base import dependency, problem, task, contractor, requester
-from feat.agents.base import dbtools, sender
+from feat.agents.base import sender
 from feat.agents.common import host, rpc, shard, monitor, export, start_agent
 from feat.agents.monitor import intensive_care, clerk, simulation
-from feat.agencies import document
+from feat.database import document
 from feat.common import fiber, serialization, defer, time, manhole, text_helper
 from feat.agents.application import feat
 from feat import applications
 
-from feat.agents.monitor.interface import *
-from feat.interface.agency import *
-from feat.interface.protocols import *
-from feat.interface.recipient import *
+from feat.agents.monitor.interface import DEFAULT_HEARTBEAT_PERIOD
+from feat.agents.monitor.interface import DEFAULT_DEATH_SKIPS
+from feat.agents.monitor.interface import DEFAULT_CONTROL_PERIOD
+from feat.agents.monitor.interface import DEFAULT_NOTIFICATION_PERIOD
+from feat.agents.monitor.interface import DEFAULT_HOST_QUARANTINE_LENGTH
+from feat.agents.monitor.interface import DEFAULT_DYING_SKIPS
+from feat.agents.monitor.interface import DEFAULT_SELF_QUARANTINE_LENGTH
+from feat.agents.monitor.interface import IAssistant, ICoroner, RestartStrategy
+from feat.agents.monitor.interface import IIntensiveCareFactory, IClerkFactory
+from feat.agents.monitor.interface import RestartFailed
+from feat.interface.agency import ExecMode
+from feat.interface.protocols import ProtocolFailed
+from feat.interface.recipient import IRecipient
 
 
 DEFAULT_NEIGHBOURS_CHECK_PERIOD = 120

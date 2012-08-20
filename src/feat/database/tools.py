@@ -23,9 +23,9 @@ import optparse
 
 from twisted.internet import reactor
 
-from feat.agents.base import view
-from feat.agencies.net import options, database, config
-from feat.agencies.interface import ConflictError
+from feat.database import view, driver
+from feat.agencies.net import options, config
+from feat.database.interface import ConflictError
 from feat.common import log, defer, error
 from feat.agents.application import feat
 from feat import applications
@@ -40,7 +40,7 @@ def get_current_initials():
 
 
 def create_connection(host, port, name):
-    db = database.Database(host, port, name)
+    db = driver.Database(host, port, name)
     return db.get_connection()
 
 

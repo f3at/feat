@@ -25,16 +25,15 @@ import StringIO
 import uuid
 
 from feat.common import log, manhole, defer, reflect, time
-from feat.agencies import journaler, document
-from feat.agencies.emu import database
+from feat.agencies import journaler
+from feat.database import document, emu as database, tools
 from feat.agencies.messaging import emu, rabbitmq, tunneling
 from feat.test import factories
-from feat.agents.base import dbtools
 from feat.agents.shard import shard_agent
 from feat.simulation import agency
 
-from feat.interface.agency import *
-from feat.interface.recipient import *
+from feat.interface.agency import ExecMode
+from feat.interface.recipient import IRecipient
 
 
 class Commands(manhole.Manhole):
@@ -241,7 +240,7 @@ class Driver(log.Logger, log.LogProxy, Commands):
 
     def initiate(self):
         self._database_connection = self._database.get_connection()
-        d1 = dbtools.push_initial_data(self._database_connection)
+        d1 = tools.push_initial_data(self._database_connection)
         d2 = self._jourwriter.initiate()
         self._journaler.configure_with(self._jourwriter)
         return defer.DeferredList([d1, d2])

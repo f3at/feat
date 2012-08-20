@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from feat.test.integration import common
 from feat.agents.base import agent, descriptor, replay
-from feat.agencies import document
+from feat.database import document
 from feat.common import defer, text_helper, serialization
 from feat.agents.application import feat
 

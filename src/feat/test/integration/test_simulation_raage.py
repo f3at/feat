@@ -26,7 +26,6 @@ from twisted.internet import defer
 from feat.common import first
 from feat.test.integration import common
 from feat.common.text_helper import format_block
-from feat.agents.base import dbtools
 from feat.agencies import recipient
 from feat.agents.common import host, raage
 from feat.interface.agent import Access, Address, Storage

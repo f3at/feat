@@ -34,14 +34,14 @@ from feat.process.base import DependencyError
 from feat.simulation import driver
 from feat.agencies import replay
 from feat.agencies.messaging import tunneling
-from feat.agencies.net import database
-from feat.agents.base import dbtools
+from feat.database import driver as database, tools
+
 from feat.agents.application import feat
 from feat import applications
 from feat.gateway.resources import Context
 from feat.web import document, http
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.models.interface import IModel, ActionCategories, Unauthorized
 from feat.models.interface import IQueryModel
 
@@ -93,8 +93,12 @@ class FullIntegrationTest(IntegrationTest):
         db_host, db_port, db_name = c['host'], c['port'], 'test'
         db = database.Database(db_host, db_port, db_name)
         self.db = db.get_connection()
-        yield dbtools.create_db(self.db)
-        yield dbtools.push_initial_data(self.db)
+        yield tools.create_db(self.db)
+        # disable nagios integration for the purpose of this test
+        from feat.agents.alert import alert_agent
+        alert_config = alert_agent.AlertAgentConfiguration(enabled=False)
+        feat.initial_data(alert_config)
+        yield tools.push_initial_data(self.db)
         defer.returnValue((db_host, db_port, db_name, ))
 
     @defer.inlineCallbacks
@@ -281,8 +285,8 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
 
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
-        initial_documents = dbtools.get_current_initials()
-        self.addCleanup(dbtools.reset_documents, initial_documents)
+        initial_documents = tools.get_current_initials()
+        self.addCleanup(tools.reset_documents, initial_documents)
 
     def assert_not_skipped(self):
         if self.skip_coverage and sys.gettrace():
@@ -397,9 +401,9 @@ class MultiClusterSimulation(common.TestCase, OverrideConfigMixin):
 
     def __init__(self, *args, **kwargs):
         common.TestCase.__init__(self, *args, **kwargs)
-        initial_documents = dbtools.get_current_initials()
+        initial_documents = tools.get_current_initials()
 
-        self.addCleanup(dbtools.reset_documents, initial_documents)
+        self.addCleanup(tools.reset_documents, initial_documents)
 
     def assert_not_skipped(self):
         if self.skip_coverage and sys.gettrace():

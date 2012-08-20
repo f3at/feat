@@ -5,8 +5,8 @@ from zope.interface import adapter, interface, declarations, implements
 from feat.common import serialization, reflect, log, registry, error
 from feat.models import model
 
-from feat.interface.agent import IAgentFactory, IDocument, IDescriptor
-from feat.interface.view import IViewFactory
+from feat.interface.agent import IAgentFactory, IDescriptor
+from feat.database.interface import IViewFactory, IDocument
 from feat.interface.application import IApplication
 
 

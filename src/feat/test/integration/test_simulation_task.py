@@ -26,7 +26,7 @@ from feat.common.text_helper import format_block
 from feat.test.integration import common
 from feat.agents.base import (agent, descriptor, partners,
                               task, replay, notifier, )
-from feat.agencies import document
+from feat.database import document
 from feat.agents.application import feat
 
 

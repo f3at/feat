@@ -30,11 +30,12 @@ from feat.agents.base import (agent, contractor,
 from feat.agents.common import host, rpc, monitor, export
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
-from feat.agencies import recipient, message, document
+from feat.agencies import recipient, message
+from feat.database import document
 from feat.common import fiber, manhole, defer, error
 from feat import applications
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.interface.protocols import InterestType
 from feat.interface.agent import CategoryError, IDescriptor
 from feat.agents.application import feat

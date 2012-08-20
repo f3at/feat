@@ -32,7 +32,7 @@ from feat.agents.base import descriptor, requester, replier, replay
 from feat.agencies import message
 from feat.interface.agency import ExecMode
 
-from feat.agencies.interface import NotFoundError
+from feat.database.interface import NotFoundError
 from feat.interface.requests import RequestState
 from feat.interface.protocols import ProtocolFailed, IInterest, InterestType
 

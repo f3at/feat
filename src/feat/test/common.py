@@ -30,7 +30,7 @@ from twisted.python import failure
 from twisted.trial import unittest, util
 from twisted.scripts import trial
 
-from feat.agencies.emu import database
+from feat.database import emu as database
 from feat.agencies import agency, messaging, journaler, message, recipient
 from feat.agencies.messaging import emu, rabbitmq
 from feat.agents.base import agent

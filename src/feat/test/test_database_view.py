@@ -20,7 +20,7 @@
 
 # Headers in this file shall remain intact.
 from feat.test import common
-from feat.agents.base import view
+from feat.database import view
 from feat.common import text_helper
 
 
