@@ -85,7 +85,6 @@ class FullIntegrationTestCase(FullIntegrationTest):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.wait_for(self.agency.is_idle, 20)
         yield self.agency.shutdown(stop_process=False)
         yield FullIntegrationTest.tearDown(self)
         pid = run.get_pid(os.path.curdir)
@@ -105,6 +104,7 @@ class FullIntegrationTestCase(FullIntegrationTest):
         yield self.wait_for_master_back()
         # we should have a pid now
         yield self.wait_for_pid(self.pid_path)
+        yield self.wait_for(self.agency.is_idle, 20)
 
     @defer.inlineCallbacks
     def testLockAlreadyTaken(self):

@@ -403,7 +403,6 @@ class IntegrationTestCase(FullIntegrationTest, ModelTestMixin):
 
     @defer.inlineCallbacks
     def tearDown(self):
-        yield self.wait_for(self.agency.is_idle, 20)
         if self.shutdown:
             yield self.agency.full_shutdown()
         yield FullIntegrationTest.tearDown(self)
