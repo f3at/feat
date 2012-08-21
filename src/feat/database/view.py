@@ -34,6 +34,9 @@ from feat.agents.application import feat
 field = formatable.field
 
 
+QUERY_METHODS = ['map', 'reduce', 'filter']
+
+
 class BaseView(annotate.Annotable):
 
     name = None
@@ -42,7 +45,7 @@ class BaseView(annotate.Annotable):
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
-        for method_name in 'map', 'reduce', 'filter':
+        for method_name in QUERY_METHODS:
             method = dct.get(method_name, None)
             if callable(method):
                 setattr(cls, method_name, cls._querymethod(method))
@@ -51,6 +54,15 @@ class BaseView(annotate.Annotable):
     @classmethod
     def parse(cls, key, value, reduced):
         return value
+
+    ### annotations ###
+
+    @classmethod
+    def attach_constant(cls, method, constant, value):
+        if method.__name__ not in QUERY_METHODS:
+            raise AttributeError("%s not in %r" % (method.__name__,
+                                                   QUERY_METHODS))
+        method.source += "\n%s = %r" % (constant, value)
 
     ### private ###
 
@@ -71,6 +83,11 @@ class BaseView(annotate.Annotable):
         setattr(func, 'source', source)
         res = staticmethod(func)
         return res
+
+
+def attach_constant(method, constant, value):
+    annotate.injectClassCallback('attach_constant', 3, 'attach_constant',
+                                 method, constant, value)
 
 
 class FormatableView(BaseView, formatable.Formatable):

@@ -58,7 +58,7 @@ def run(input=sys.stdin, output=sys.stdout):
     def add_fun(string):
         string = BOM_UTF8 + string.encode('utf-8')
         try:
-            function = _compile(string, "map_compilation_error")
+            function = _compile(string, "map_compilation_error", "map")
         except CompileError as e:
             return e.args[0]
         functions.append(function)
@@ -81,7 +81,7 @@ def run(input=sys.stdin, output=sys.stdout):
         args = cmd[1]
 
         try:
-            function = _compile(code, "reduce_compilation_error")
+            function = _compile(code, "reduce_compilation_error", "reduce")
         except CompileError as e:
             return e.args[0]
 
@@ -108,15 +108,18 @@ def run(input=sys.stdin, output=sys.stdout):
 
     def ddoc_new(name, doc):
         env = dict()
-        supported_keys = ['filters']
+        # key in design doc -> expected function name
+        method_mapping = dict(filters='filter')
         for key, section in doc.iteritems():
-            if key not in supported_keys:
+            if key not in method_mapping:
                 continue
             env[key] = dict()
             id_error = "%s_compilation_error" % (key)
             for f_name, func_str in section.iteritems():
                 try:
-                    env[key][f_name] = _compile(func_str, id_error)
+                    expected_name = method_mapping[key]
+                    env[key][f_name] = _compile(func_str, id_error,
+                                                expected_name)
                 except CompileError as e:
                     return e.args[0]
         environments[name] = env
@@ -151,7 +154,7 @@ def run(input=sys.stdin, output=sys.stdout):
 
         return [True, results]
 
-    def _compile(func_str, error_id):
+    def _compile(func_str, error_id, f_name):
         globals_ = {}
 
         try:
@@ -164,13 +167,16 @@ def run(input=sys.stdin, output=sys.stdout):
                 'reason': e.args[0]}})
         err = {'error': {
             'id': error_id,
-            'reason': 'string must eval to a function '
-                      '(ex: "def(doc, request): return True")'}}
-        if len(globals_) != 1:
+            'reason': ('string must eval to a function named %(f_name)s '
+                       '(ex: "def %(f_name)s(doc, request): return True")' %
+                       dict(f_name=f_name))}}
+        if f_name not in globals_:
             raise CompileError(err)
-        function = globals_.values()[0]
+        function = globals_.pop(f_name)
         if type(function) is not FunctionType:
             raise CompileError(err)
+        # merge in remaining globals so that they are available in the function
+        function.func_globals.update(globals_)
         return function
 
 

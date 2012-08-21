@@ -21,7 +21,6 @@
 # Headers in this file shall remain intact.
 from feat.test import common
 from feat.database import view
-from feat.common import text_helper
 
 
 class SomeView(view.BaseView):
@@ -48,8 +47,12 @@ class FilterView(view.BaseView):
 
     name = 'some_filter'
 
+    SOME_ARRAY = [1, 2, 3, 'string']
+
     def filter(doc, request):
         return True
+
+    view.attach_constant(filter, 'SOME_ARRAY', SOME_ARRAY)
 
 
 class TestDesignDocument(common.TestCase):
@@ -73,5 +76,6 @@ class TestDesignDocument(common.TestCase):
 
         self.assertEquals(1, len(doc.filters))
         self.assertIn('some_filter', doc.filters)
-        expected = "def filter(doc, request):\n    return True"
+        expected = ("def filter(doc, request):\n    return True\n"
+                    "SOME_ARRAY = [1, 2, 3, 'string']")
         self.assertEqual(expected, doc.filters['some_filter'])

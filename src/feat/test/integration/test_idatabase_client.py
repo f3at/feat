@@ -72,6 +72,8 @@ class FilteringView(view.BaseView):
                doc['field'] == request['query']['field']
 
 
+VALUE_FIELD = 'value'
+
 class SummingView(view.FormatableView):
 
     name = 'some_view'
@@ -83,8 +85,10 @@ class SummingView(view.FormatableView):
     def map(doc):
         if doc['.type'] == 'dummy':
             field = doc.get('field', None)
-            yield field, {"value": doc.get('value', None),
+            yield field, {"value": doc.get(VALUE_FIELD, None),
                           "field": field}
+
+    view.attach_constant(map, 'VALUE_FIELD', VALUE_FIELD)
 
     def reduce(keys, values):
         value = 0
