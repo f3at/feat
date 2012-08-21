@@ -58,7 +58,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     type_name = 'task-medium'
 
-    _error_handler = error_handler
+    error_state = TaskState.error # used by AgencyMiddleMixin
 
     def __init__(self, agency_agent, factory, *args, **kwargs):
         log.Logger.__init__(self, agency_agent)
@@ -99,10 +99,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
         if self.task.timeout:
             timeout = time.future(self.task.timeout)
-            error = self._create_expired_error("Timeout exceeded waiting "
-                                               "for task.initate()")
-            self._expire_at(timeout, TaskState.expired,
-                            self._expired, failure.Failure(error))
+            d = self._setup_expiration_call(
+                timeout, TaskState.expired, self._expired)
 
         self.call_next(self._initiate, *self.args, **self.kwargs)
 
@@ -147,7 +145,8 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def fail(self, fail):
         if isinstance(fail, Exception):
             fail = failure.Failure(fail)
-        self._error(fail)
+        self._set_state(self.error_state)
+        self._terminate(fail)
 
     @replay.named_side_effect('AgencyTask.finished')
     def finished(self):
@@ -171,23 +170,21 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     ### Private Methods ###
 
     def _initiate(self, *args, **kwargs):
-        d = defer.maybeDeferred(self.task.initiate, *args, **kwargs)
-        d.addCallbacks(self._completed, self._error)
+        d = self._call(self.task.initiate, *args, **kwargs)
+        d.addCallback(self._completed)
         return d
 
     def _completed(self, arg):
-        if arg != NOT_DONE_YET or not self._cmp_state(TaskState.performing):
+        if arg != NOT_DONE_YET and self._cmp_state(TaskState.performing):
             self._set_state(TaskState.completed)
             time.callLater(0, self._terminate, arg)
 
-    def _error(self, arg):
-        self._error_handler(arg)
-        self._set_state(TaskState.error)
-        time.callLater(0, self._terminate, arg)
-
-    def _expired(self, arg):
+    def _expired(self):
+        error = self._create_expired_error("Timeout exceeded waiting "
+                                           "for task.initate()")
         self._set_state(TaskState.expired)
-        d = defer.maybeDeferred(self.task.expired)
+        d = self._call(self.task.expired)
+        d.addCallback(defer.drop_param, self._terminate, error)
         return d
 
     def _terminate(self, result):

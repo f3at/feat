@@ -228,6 +228,7 @@ class AgencyMiddleMixin(object):
         self.guid = str(uuid.uuid1())
         self._set_remote_id(remote_id)
         self._set_protocol_id(protocol_id)
+        self._deferred = None
 
     def is_idle(self):
         return False
@@ -263,19 +264,27 @@ class AgencyMiddleMixin(object):
 
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
-        d = defer.maybeDeferred(method, *args, **kwargs)
+        if self._deferred:
+            self._deferred.cancel()
+        self._deferred = d = defer.maybeDeferred(method, *args, **kwargs)
         d.addErrback(self._error_handler)
         return d
 
     def _error_handler(self, f):
-        if f.check(FiberCancelled):
-            self._terminate(ProtocolFailed("Fiber was cancelled because "
-                        "the state of the medium changed. This happens "
-                        "when constructing a fiber with a canceller."))
-
-        error_handler(self, f)
-        self._set_state(self.error_state)
-        self._terminate(f)
+        # FIXME: This has been commented out, because I have a feeling that
+        # this code cannot be accessed.
+        # if f.check(FiberCancelled):
+        #     self._terminate(ProtocolFailed("Fiber was cancelled because "
+        #                 "the state of the medium changed. This happens "
+        #                 "when constructing a fiber with a canceller."))
+        if f.check(defer.CancelledError):
+            # this is what happens when the call is cancelled by the
+            # _call() method, just swallow it
+            pass
+        else:
+            error_handler(self, f)
+            self._set_state(self.error_state)
+            self._terminate(f)
 
 
 class ExpirationCallsMixin(object):
@@ -312,9 +321,8 @@ class ExpirationCallsMixin(object):
             if state:
                 self._set_state(state)
             self.log('Calling method: %r with args: %r', method, args)
-            d = defer.maybeDeferred(method, *args, **kwargs)
-            d.addErrback(self._error_handler)
-            d.addCallback(callback.callback)
+            d = self._call(method, *args, **kwargs)
+            d.chainDeferred(callback)
 
         result = defer.Deferred()
         self._expiration_call = time.callLater(
