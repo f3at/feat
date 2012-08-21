@@ -22,14 +22,15 @@
 # Headers in this file shall remain intact.
 
 try:
-    from feat.extern.couchdb import view
+    from feat.database.couchdb import view
 except ImportError:
     import sys
     import os
 
+    # this is to work smothly in dev environment without having to run env
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
     sys.path.insert(0, path)
-    from feat.extern.couchdb import view
+    from feat.database.couchdb import view
 
 
 if __name__ == '__main__':
