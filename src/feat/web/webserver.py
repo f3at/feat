@@ -32,7 +32,6 @@ from twisted.web import server, resource
 
 from feat.common import log, defer, error, decorator
 from feat.web import http, compat, document, auth, security
-from feat.interface.security import IPeerInfo
 
 
 ### Errors ###
@@ -963,7 +962,7 @@ class Server(log.LogProxy, log.Logger):
                 response.set_header("content-type", "text/plain")
                 msg = failure.getErrorMessage()
                 if msg:
-                    response.write(msg)
+                    response.write("Error: %s\n" % (msg, ))
 
             if failure.check(http.HTTPError):
                 return self._terminate(request, response,
