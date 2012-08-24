@@ -157,6 +157,7 @@ class ModelWriter(log.Logger):
         if IAttribute.providedBy(model):
             attr = self._format_attribute(model, context)
             markup.content.content.append(attr)
+            yield self._render_actions(model, markup, context, skip=['get'])
         else:
             yield self._render_items(model, markup, context)
             yield self._render_actions(model, markup, context)
@@ -214,12 +215,13 @@ class ModelWriter(log.Logger):
             ul.close()
 
     @defer.inlineCallbacks
-    def _render_actions(self, model, markup, context):
+    def _render_actions(self, model, markup, context, skip=[]):
         actions = yield model.fetch_actions()
         for action in list(actions):
             enabled = yield action.fetch_enabled()
-            if not enabled:
+            if not enabled or action.name in skip:
                 actions.remove(action)
+
         if not actions:
             return
         markup.hr()
