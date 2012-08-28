@@ -131,3 +131,12 @@ def context_value(name):
         return context[name]
 
     return context_value
+
+
+def static_value(value):
+    '''Return an effect giving always the same value.'''
+
+    def static_value(_value, _context):
+        return defer.succeed(value)
+
+    return static_value
