@@ -2,8 +2,8 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.20.0
-%define unmangled_version 0.20.0
+%define version 0.21.0
+%define unmangled_version 0.21.0
 %define build_rev 1
 
 Name:           python-feat
