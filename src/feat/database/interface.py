@@ -71,6 +71,13 @@ class IDbConnectionFactory(Interface):
         '''
 
 
+class DataNotAvailable(DatabaseError):
+    '''
+    Raised by get_body() call of attachment when the local data is not
+    available.
+    '''
+
+
 class IDatabaseClient(Interface):
 
     def save_document(document):
@@ -226,8 +233,67 @@ class IDocument(Interface):
     '''Interface implemented by objects stored in database.'''
 
     type_name = Attribute('type identifying the document')
-    doc_id = Attribute('id of the docuemnt')
+    doc_id = Attribute('id of the document')
     rev = Attribute('revision of the document')
+    # name -> IAttachment
+    attachments = Attribute('C{dict} of attachments')
+
+    def create_attachment(name, body, content_type='text/plain'):
+        '''
+        Create an attachment to be saved along with the document.
+        Creating an attachments with a already taken name will overwrite it.
+
+        @rtype: L{IAttachment}
+        '''
+
+
+class IAttachment(Interface):
+
+    name = Attribute('C{str} name of attachment')
+
+
+class IAttachmentPrivate(IAttachment):
+
+    saved = Attribute('C{bool} flag saying if this attachment is already '
+                      'save to the database')
+    content_type = Attribute('C{str} content-type')
+    length = Attribute('C{int} length')
+    has_body = Attribute('C{bool} flag saying that the content is no '
+                         'available in memory and need to be downloaded')
+
+    def get_body():
+        '''
+        @rtype: C{unicode}
+        @raises: L{DataNotAvailable}
+        '''
+
+    def to_public():
+        '''
+        Convert attachment to public interface which can be refrenced
+        from inside of document body.
+        @rtype: L{IAttachment}
+        '''
+
+    def set_body(body):
+        '''
+        Stores in memory the body of the attachment.
+        '''
+
+    def set_saved():
+        '''
+        Marks as saved
+        '''
+
+
+class IDocumentPrivate(Interface):
+    '''
+    Api used on document objects by database client.
+    '''
+
+    def get_attachments(self):
+        '''
+        @rtype: C{dict} of name -> IAttachmentPrivate
+        '''
 
 
 class IVersionedDocument(IDocument):

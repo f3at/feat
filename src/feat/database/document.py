@@ -21,22 +21,166 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-from zope.interface import implements
+from zope.interface import implements, classProvides
 
-from feat.common import formatable
+from feat.common import formatable, serialization
 from feat.common.serialization.json import VERSION_ATOM
 
 from feat.database.interface import IDocument, IVersionedDocument
+from feat.database.interface import IDocumentPrivate, IAttachment
+from feat.database.interface import IAttachmentPrivate, DataNotAvailable
+from feat.interface.serialization import ISerializable, IRestorator
+
 
 field = formatable.field
 
 
 class Document(formatable.Formatable):
 
-    implements(IDocument)
+    implements(IDocument, IDocumentPrivate)
+
+    ### IDocument ###
 
     field('doc_id', None, '_id')
     field('rev', None, '_rev')
+
+    @property
+    def attachments(self):
+        self._init_attachments()
+        return self._public_attachments
+
+    def create_attachment(self, name, body, content_type):
+        self._init_attachments()
+        priv = _Attachment(name, body, content_type)
+        pub = priv.to_public()
+        self._attachments[name] = priv
+        self._public_attachments[name] = pub
+        return pub
+
+    ### IDocumentPrivate ###
+
+    def get_attachments(self):
+        self._init_attachments()
+        return self._attachments
+
+    ### ISerializable ###
+
+    def recover(self, snapshot):
+        if '_attachments' in snapshot:
+            self._init_attachments()
+            for name, payload in snapshot.pop('_attachments').iteritems():
+                s = dict(payload)
+                s.update(name=name)
+                a = _Attachment.restore(s)
+                self._attachments[name] = a
+                self._public_attachments[name] = a.to_public()
+        return formatable.Formatable.recover(self, snapshot)
+
+    def snapshot(self):
+        res = formatable.Formatable.snapshot(self)
+        if hasattr(self, '_attachments'):
+            res['_attachments'] = dict()
+            for name, attachment in self._attachments.iteritems():
+                if not attachment.saved:
+                    continue
+                res['_attachments'][name] = attachment.snapshot()
+        return res
+
+    ### private ###
+
+    def _init_attachments(self):
+        if not hasattr(self, '_attachments'):
+            self._attachments = dict()
+            self._public_attachments = dict(
+                (k, v.to_public())
+                for k, v in self._attachments.iteritems())
+
+
+@serialization.register
+class Attachment(serialization.Serializable):
+
+    implements(IAttachment)
+
+    type_name = 'attachment'
+
+    def __init__(self, name):
+        self.name = unicode(name)
+
+
+class _Attachment(object):
+
+    implements(ISerializable, IAttachmentPrivate)
+    classProvides(IRestorator)
+
+    def __init__(self, name, body, content_type):
+        self._name = name
+        self._body = body
+        self._content_type = content_type
+        self._saved = False
+        self._length = None
+
+    ### IAttachmentPrivate ###
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def saved(self):
+        return self._saved
+
+    @property
+    def length(self):
+        if self.has_body:
+            return len(self._body)
+        else:
+            return self._length
+
+    @property
+    def content_type(self):
+        return self._content_type
+
+    @property
+    def has_body(self):
+        return self._body is not None
+
+    def get_body(self):
+        if not self.has_body:
+            raise DataNotAvailable(self.name)
+
+    def to_public(self):
+        return Attachment(self.name)
+
+    def set_body(self, body):
+        self._body = body
+
+    def set_saved(self):
+        self._saved = True
+
+    ### ISerializable ###
+
+    def snapshot(self):
+        return dict(stub=True, content_type=unicode(self.content_type),
+                    length=self.length)
+
+    def recover(self, snapshot):
+        self._name = snapshot['name']
+        self._body = None
+        self._content_type = snapshot['content_type']
+        self._saved = True
+        self._length = snapshot['length']
+        return self
+
+    def restored(self):
+        pass
+
+    ### IRestorator ###
+
+    @classmethod
+    def restore(cls, snapshot):
+        res = cls.__new__(cls)
+        res.recover(snapshot)
+        return res
 
 
 class VersionedDocument(Document):
