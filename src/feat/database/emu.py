@@ -35,7 +35,7 @@ from feat.agencies import common
 
 from feat.database.interface import IDbConnectionFactory, IDatabaseDriver
 from feat.database.interface import ConflictError, NotFoundError
-from feat.database.interface import IViewFactory
+from feat.database.interface import IViewFactory, IAttachmentPrivate
 
 
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
@@ -57,6 +57,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
         # id -> document
         self._documents = {}
+        # id -> name -> body
+        self._attachments = {}
         # id -> view_name -> (key, value)
         self._view_cache = {}
 
@@ -98,6 +100,22 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             self.increase_stat('save_doc')
 
             self._documents[doc['_id']] = doc
+            if doc['_id'] not in self._attachments:
+                self._attachments[doc['_id']] = dict()
+            attachments = doc.get('_attachments', dict())
+            for name in attachments:
+                if name not in self._attachments['_id']:
+                    raise ValueError("Document id %s body has attachment "
+                                     "named %s "
+                                     "but it is not in our cache " %
+                                     (doc['_id'], name))
+            for name in self._attachments[doc['_id']].keys():
+                if name not in attachments:
+                    del self._attachments[doc['_id']][name]
+                    self.log('Deleted attachment %s of the doc: %s because '
+                             'its not in the _attachments key' %
+                             (name, doc['_id']))
+
             self._expire_cache(doc['_id'])
 
             r = Response(ok=True, id=doc['_id'], rev=doc['_rev'])
@@ -152,6 +170,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                     continue
                 del(doc[key])
             self.log('Marking document %r as deleted', doc_id)
+            del self._attachments[doc['_id']]
             self._analize_changes(doc)
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
         except (ConflictError, NotFoundError, ) as e:
@@ -176,6 +195,29 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
     def disconnect(self):
         pass
+
+    def save_attachment(self, doc_id, revision, attachment):
+        attachment = IAttachmentPrivate(attachment)
+        doc = self._documents.get(doc_id)
+        if not doc:
+            return defer.fail(NotFoundError(doc_id))
+        if '_attachments' not in doc:
+            doc['_attachments'] = dict()
+        doc['_attachments'][attachment.name] = dict(
+            stub=True,
+            content_type=attachment.content_type,
+            length=attachment.length)
+        self._attachments[doc['_id']][attachment.name] = attachment.get_body()
+        self._set_id_and_revision(doc, doc_id)
+        r = Response(ok=True, id=doc['_id'], rev=doc['_rev'])
+        return defer.succeed(r)
+
+    def get_attachment(self, doc_id, name):
+        if doc_id not in self._attachments:
+            return defer.fail(NotFoundError(doc_id))
+        if name not in self._attachments[doc_id]:
+            return defer.fail(NotFoundError('%s/%s' % (doc_id, name)))
+        return defer.succeed(self._attachments[doc_id][name])
 
     ### private
 
@@ -236,6 +278,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         '''
         map_results here is a list of tuples (key, value)
         '''
+
         def get_group_key(key, group, group_level):
             if group:
                 return key

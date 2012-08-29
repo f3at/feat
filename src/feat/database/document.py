@@ -28,6 +28,7 @@ from feat.common.serialization.json import VERSION_ATOM
 
 from feat.database.interface import IDocument, IVersionedDocument
 from feat.database.interface import IDocumentPrivate, IAttachment
+from feat.database.interface import NotFoundError
 from feat.database.interface import IAttachmentPrivate, DataNotAvailable
 from feat.interface.serialization import ISerializable, IRestorator
 
@@ -56,6 +57,13 @@ class Document(formatable.Formatable):
         self._attachments[name] = priv
         self._public_attachments[name] = pub
         return pub
+
+    def delete_attachment(self, name):
+        self._init_attachments()
+        if name not in self._attachments:
+            raise NotFoundError("Uknown attachment %s" % (name, ))
+        del self._attachments[name]
+        del self._public_attachments[name]
 
     ### IDocumentPrivate ###
 
@@ -147,6 +155,7 @@ class _Attachment(object):
     def get_body(self):
         if not self.has_body:
             raise DataNotAvailable(self.name)
+        return self._body
 
     def to_public(self):
         return Attachment(self.name)

@@ -104,6 +104,16 @@ class IDatabaseClient(Interface):
                   document.
         '''
 
+    def get_attachment_body(doc, attachment):
+        '''
+        Gets the attachment body.
+        @param doc: document to get the attachment
+        @param attachment: L{IAttachment}
+        @rtype: Deferred
+        @callback: C{unicode} attachment body
+        @errback: L{NotFoundError}
+        '''
+
     def get_revision(document_id):
         '''
         Get the document revision without parsing it.
@@ -228,6 +238,24 @@ class IDatabaseDriver(Interface):
         Query the view. See L{IDatabaseClient.query_view}.
         '''
 
+    def save_attachment(doc_id, revision, attachment):
+        '''
+        Saves the attachment to the database.
+        @param doc_id: _id of the document to attach
+        @param revision: revision of the document
+        @attachment: L{IAttachmentPrivate}
+        '''
+
+    def get_attachment(doc_id, name):
+        '''
+        Gets the attachment body.
+        @param doc_id: id of the document
+        @param name: name of the attachment
+        @rtype: Deferred
+        @callback: C{unicode} attachment body
+        @errback: L{NotFoundError}
+        '''
+
 
 class IDocument(Interface):
     '''Interface implemented by objects stored in database.'''
@@ -244,6 +272,12 @@ class IDocument(Interface):
         Creating an attachments with a already taken name will overwrite it.
 
         @rtype: L{IAttachment}
+        '''
+
+    def delete_attachment(name):
+        '''
+        Removes the attachments by name. The document still needs to be saved.
+        @raises: L{NotFoundError} for unknown name
         '''
 
 

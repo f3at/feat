@@ -19,7 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
+import urllib
 import os
 import sys
 
@@ -36,6 +36,7 @@ from feat.agencies import common
 from feat.database.interface import IDatabaseDriver, IDbConnectionFactory
 from feat.database.interface import NotFoundError, NotConnectedError
 from feat.database.interface import ConflictError, IViewFactory
+from feat.database.interface import IAttachmentPrivate
 
 from feat import extern
 # Add feat/extern/paisley to the load path
@@ -204,6 +205,29 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         d.addCallback(self._parse_view_result)
         return d
 
+    def save_attachment(self, doc_id, revision, attachment):
+        attachment = IAttachmentPrivate(attachment)
+        uri = ('/%s/%s/%s?rev=%s' %
+               (self.db_name, urllib.quote(doc_id.encode('utf-8')),
+                urllib.quote(attachment.name), revision.encode('utf-8')))
+        headers = {'Content-Type': [attachment.content_type]}
+        d = self._lock_document(doc_id, self._paisley_call, doc_id,
+                                self.paisley.put, uri,
+                                attachment.get_body(),
+                                headers=headers)
+        d.addCallback(self.paisley.parseResult)
+        return d
+
+    def get_attachment(self, doc_id, name):
+        uri = ('/%s/%s/%s' %
+               (self.db_name, urllib.quote(doc_id.encode('utf-8')),
+                urllib.quote(name)))
+        headers = {'Accept': ['*/*']}
+        return self._paisley_call(doc_id, self.paisley.get,
+                                  uri, headers=headers)
+
+    ### public ###
+
     def reconnect(self):
         # ping database to figure trigger changing state to connected
         self.retry += 1
@@ -250,7 +274,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     ### private
 
-    def _lock_document(self, doc_id, method, *args):
+    def _lock_document(self, doc_id, method, *args, **kwargs):
         lock_value = self._document_locks.get(doc_id, 0) + 1
         self._document_locks[doc_id] = lock_value
 
@@ -260,7 +284,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                    ". Something is leaking."
             self._pending_notifications[doc_id] = list()
 
-        d = method(*args)
+        d = method(*args, **kwargs)
         d.addBoth(defer.bridge_param, self._unlock_document, doc_id)
         return d
 

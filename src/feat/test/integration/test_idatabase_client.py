@@ -74,6 +74,7 @@ class FilteringView(view.BaseView):
 
 VALUE_FIELD = 'value'
 
+
 class SummingView(view.FormatableView):
 
     name = 'some_view'
@@ -131,6 +132,37 @@ class GroupCountingView(view.BaseView):
 
 
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testAttachments(self):
+        doc = DummyDocument()
+        # first just create an attachment
+        at = doc.create_attachment('attachment', 'This is attached data',
+                                   'text/plain')
+        doc = yield self.connection.save_document(doc)
+
+        self.assertEqual(1, len(doc.attachments))
+        self.assertIn('attachment', doc.attachments)
+
+        # we do have a data in cache, getting it from there
+        body = yield self.connection.get_attachment_body(doc, at)
+        self.assertEquals('This is attached data', body)
+
+        # reload the doc and refecth the data
+        doc = yield self.connection.reload_document(doc)
+        body = yield self.connection.get_attachment_body(doc, at)
+        self.assertEquals('This is attached data', body)
+
+        # test deleting the uknown attachment
+        self.assertRaises(NotFoundError, doc.delete_attachment, 'unknown')
+        doc.delete_attachment('attachment')
+        doc = yield self.connection.save_document(doc)
+        self.assertEquals({}, doc.attachments)
+
+        # getting unknown (already deleted) attachment
+        d = self.connection.get_attachment_body(doc, at)
+        self.assertFailure(d, NotFoundError)
+        yield d
 
     @defer.inlineCallbacks
     def testQueryingWithRanges(self):
