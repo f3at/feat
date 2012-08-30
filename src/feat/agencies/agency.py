@@ -434,6 +434,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def query_view(self, factory, **options):
         return self._database.query_view(factory, **options)
 
+    @serialization.freeze_tag('AgencyAgency.get_attachment_body')
+    def get_attachment_body(self, document, attachment):
+        return self._database.get_attachment_body(document, attachment)
+
     @manhole.expose()
     @serialization.freeze_tag('AgencyAgency.terminate')
     def terminate(self):

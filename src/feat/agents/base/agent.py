@@ -440,6 +440,11 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return fiber.wrap_defer(state.medium.query_view, factory, **options)
 
     @replay.immutable
+    def get_attachment_body(self, state, document, attachment):
+        return fiber.wrap_defer(state.medium.get_attachment_body,
+                                document, attachment)
+
+    @replay.immutable
     def save_document(self, state, doc):
         return fiber.wrap_defer(state.medium.save_document, doc)
 
