@@ -137,7 +137,7 @@ class TestCase(object):
     def testAttachments(self):
         doc = DummyDocument(doc_id=u'some_doc')
         # first just create an attachment
-        at = doc.create_attachment('attachment', 'This is attached data',
+        at = doc.create_attachment('attachment', u'This is attached data',
                                    'text/plain')
         doc = yield self.connection.save_document(doc)
 

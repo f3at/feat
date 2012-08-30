@@ -211,10 +211,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                (self.db_name, urllib.quote(doc_id.encode('utf-8')),
                 urllib.quote(attachment.name), revision.encode('utf-8')))
         headers = {'Content-Type': [attachment.content_type]}
+        body = attachment.get_body()
+        body = body.encode('utf-8')
         d = self._lock_document(doc_id, self._paisley_call, doc_id,
                                 self.paisley.put, uri,
-                                attachment.get_body(),
-                                headers=headers)
+                                body, headers=headers)
         d.addCallback(self.paisley.parseResult)
         return d
 
