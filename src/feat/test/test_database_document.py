@@ -19,7 +19,7 @@ class DocumentSerializationTest(common.TestCase):
         self.unserializer = json.PaisleyUnserializer()
 
     def testDocumentWithAttachment(self):
-        d = TestDocument()
+        d = TestDocument(doc_id='some_doc')
         a = d.create_attachment('attachment', 'test attachment', 'text/plain')
         self.assertIsInstance(a, document.Attachment)
 
@@ -40,11 +40,13 @@ class DocumentSerializationTest(common.TestCase):
         # test referencing
         d.field = a
         serialized = self.serialize(d)
-        self.assertEquals({'.type': 'attachment', 'name': 'attachment'},
+        self.assertEquals({'.type': 'attachment', 'name': 'attachment',
+                           'doc_id': 'some_doc'},
                           serialized['field'])
 
     def testLoadingDocumentWithAttachment(self):
-        to_load = {'.type': 'test_doc',
+        to_load = {'_id': 'some_doc',
+                   '.type': 'test_doc',
                    'field': 500,
                    '_attachments': {
                        'attachment': {
@@ -53,6 +55,7 @@ class DocumentSerializationTest(common.TestCase):
                            'content_type': 'text/plain'}}}
         doc = self.unserialize(to_load)
         self.assertIsInstance(doc, TestDocument)
+        self.assertEquals('some_doc', doc.doc_id)
         self.assertEquals(500, doc.field)
         self.assertEquals(1, len(doc.attachments))
         self.assertEquals('attachment', doc.attachments.values()[0].name)

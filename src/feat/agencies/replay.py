@@ -846,7 +846,7 @@ class AgencyAgent(BaseReplayDummy):
         raise RuntimeError('This should never be called!')
 
     @serialization.freeze_tag('AgencyAgency.get_attachment_body')
-    def get_attachment_body(self, document, attachment):
+    def get_attachment_body(self, attachment):
         raise RuntimeError('This should never be called!')
 
     @serialization.freeze_tag('AgencyAgency.get_document')

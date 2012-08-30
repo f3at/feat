@@ -364,7 +364,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             elif status == 404:
                 raise NotFoundError("%s%s" % (prefix, msg))
             else:
-                self.info(exception.response)
+                self.error('%s%s' % (prefix, exception.response))
                 raise NotImplementedError(
                     'Behaviour for response code %d not defined yet, FIXME!' %
                     status)

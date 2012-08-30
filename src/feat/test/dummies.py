@@ -132,9 +132,8 @@ class DummyAgent(DummyBase):
     def query_view(self, factory, **kwargs):
         return fiber.wrap_defer(self._db.query_view, factory, **kwargs)
 
-    def get_attachment_body(self, document, attachment):
-        return fiber.wrap_defer(self._database.get_attachment,
-                                document, attachment)
+    def get_attachment_body(self, attachment):
+        return fiber.wrap_defer(self._database.get_attachment, attachment)
 
     ### IDocumentChangeListner ###
 
@@ -196,8 +195,8 @@ class DummyMedium(DummyMediumBase):
     def get_document(self, doc_id):
         return self._db.get_document(doc_id)
 
-    def get_attachment_body(self, document, attachment):
-        return self._database.get_attachment(document, attachment)
+    def get_attachment_body(self, attachment):
+        return self._database.get_attachment(attachment)
 
     def save_document(self, document):
         return self._db.save_document(document)

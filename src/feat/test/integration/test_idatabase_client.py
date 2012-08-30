@@ -135,7 +135,7 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testAttachments(self):
-        doc = DummyDocument()
+        doc = DummyDocument(doc_id=u'some_doc')
         # first just create an attachment
         at = doc.create_attachment('attachment', 'This is attached data',
                                    'text/plain')
@@ -145,12 +145,12 @@ class TestCase(object):
         self.assertIn('attachment', doc.attachments)
 
         # we do have a data in cache, getting it from there
-        body = yield self.connection.get_attachment_body(doc, at)
+        body = yield self.connection.get_attachment_body(at)
         self.assertEquals('This is attached data', body)
 
         # reload the doc and refecth the data
         doc = yield self.connection.reload_document(doc)
-        body = yield self.connection.get_attachment_body(doc, at)
+        body = yield self.connection.get_attachment_body(at)
         self.assertEquals('This is attached data', body)
 
         # test deleting the uknown attachment
@@ -160,7 +160,7 @@ class TestCase(object):
         self.assertEquals({}, doc.attachments)
 
         # getting unknown (already deleted) attachment
-        d = self.connection.get_attachment_body(doc, at)
+        d = self.connection.get_attachment_body(at)
         self.assertFailure(d, NotFoundError)
         yield d
 

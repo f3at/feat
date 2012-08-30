@@ -104,10 +104,9 @@ class IDatabaseClient(Interface):
                   document.
         '''
 
-    def get_attachment_body(doc, attachment):
+    def get_attachment_body(attachment):
         '''
         Gets the attachment body.
-        @param doc: document to get the attachment
         @param attachment: L{IAttachment}
         @rtype: Deferred
         @callback: C{unicode} attachment body
@@ -283,6 +282,7 @@ class IDocument(Interface):
 
 class IAttachment(Interface):
 
+    doc_id = Attribute('C{str} id of the document its attachted to')
     name = Attribute('C{str} name of attachment')
 
 

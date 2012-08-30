@@ -52,7 +52,7 @@ class Document(formatable.Formatable):
 
     def create_attachment(self, name, body, content_type):
         self._init_attachments()
-        priv = _Attachment(name, body, content_type)
+        priv = _Attachment(self.doc_id, name, body, content_type)
         pub = priv.to_public()
         self._attachments[name] = priv
         self._public_attachments[name] = pub
@@ -78,7 +78,7 @@ class Document(formatable.Formatable):
             self._init_attachments()
             for name, payload in snapshot.pop('_attachments').iteritems():
                 s = dict(payload)
-                s.update(name=name)
+                s.update(name=name, doc_id=snapshot.get('_id'))
                 a = _Attachment.restore(s)
                 self._attachments[name] = a
                 self._public_attachments[name] = a.to_public()
@@ -111,7 +111,13 @@ class Attachment(serialization.Serializable):
 
     type_name = 'attachment'
 
-    def __init__(self, name):
+    def __init__(self, doc_id, name):
+        if doc_id is None:
+            raise ValueError("Attachments should be created on already saved "
+                             "document. Overwise we cannot know their _id. "
+                             "If you really need this, set the doc_id of the "
+                             "document by hand first.")
+        self.doc_id = unicode(doc_id)
         self.name = unicode(name)
 
 
@@ -120,12 +126,13 @@ class _Attachment(object):
     implements(ISerializable, IAttachmentPrivate)
     classProvides(IRestorator)
 
-    def __init__(self, name, body, content_type):
+    def __init__(self, doc_id, name, body, content_type):
         self._name = name
         self._body = body
         self._content_type = content_type
         self._saved = False
         self._length = None
+        self._doc_id = doc_id
 
     ### IAttachmentPrivate ###
 
@@ -158,7 +165,7 @@ class _Attachment(object):
         return self._body
 
     def to_public(self):
-        return Attachment(self.name)
+        return Attachment(self._doc_id, self.name)
 
     def set_body(self, body):
         self._body = body
@@ -178,6 +185,7 @@ class _Attachment(object):
         self._content_type = snapshot['content_type']
         self._saved = True
         self._length = snapshot['length']
+        self._doc_id = snapshot['doc_id']
         return self
 
     def restored(self):

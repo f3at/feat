@@ -33,8 +33,6 @@ from feat.database import document
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
-from feat.database.interface import IDocumentPrivate, IAttachment
-from feat.database.interface import NotFoundError, DataNotAvailable
 from feat.interface.generic import ITimeProvider
 
 
@@ -222,20 +220,9 @@ class Connection(log.Logger, log.LogProxy):
                 attachment.set_saved()
         defer.returnValue(doc)
 
-    def get_attachment_body(self, doc, attachment):
-        doc = IDocumentPrivate(doc)
-        attachment = IAttachment(attachment)
-        priv = doc.get_attachments().get(attachment.name)
-        if not priv:
-            return defer.fail(
-                NotFoundError('Document_id: %s attachment: %s' %
-                              (doc.doc_id, attachment.name)))
-        try:
-            return defer.succeed(priv.get_body())
-        except DataNotAvailable:
-            d = self._database.get_attachment(doc.doc_id, attachment.name)
-            d.addCallback(defer.keep_param, priv.set_body)
-            return d
+    def get_attachment_body(self, attachment):
+        d = self._database.get_attachment(attachment.doc_id, attachment.name)
+        return d
 
     def get_document(self, doc_id):
         d = self._database.open_doc(doc_id)
