@@ -153,6 +153,13 @@ class TestCase(object):
         body = yield self.connection.get_attachment_body(at)
         self.assertEquals('This is attached data', body)
 
+        # updating document in a differnt way, check that attachment is still
+        # there
+        doc.field = 5555555
+        doc = yield self.connection.save_document(doc)
+        doc = yield self.connection.reload_document(doc)
+        self.assertEquals(1, len(doc.attachments))
+
         # test deleting the uknown attachment
         self.assertRaises(NotFoundError, doc.delete_attachment, 'unknown')
         doc.delete_attachment('attachment')
