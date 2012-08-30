@@ -104,7 +104,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 self._attachments[doc['_id']] = dict()
             attachments = doc.get('_attachments', dict())
             for name in attachments:
-                if name not in self._attachments['_id']:
+                if name not in self._attachments[doc['_id']]:
                     raise ValueError("Document id %s body has attachment "
                                      "named %s "
                                      "but it is not in our cache " %
