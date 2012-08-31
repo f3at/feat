@@ -245,6 +245,13 @@ def view_aterator(connection, callback, view, view_keys=dict(),
                   len(records), view.name)
         skip += len(records)
         for record in records:
-            yield callback(connection, record, *args, **kwargs)
+            try:
+                yield callback(connection, record, *args, **kwargs)
+            except Exception as e:
+                error.handle_exception(
+                    'view_aterator', e,
+                    "Callback %s failed its iteration on a row %r",
+                    callback.__name__, record)
+
         if not records:
             break
