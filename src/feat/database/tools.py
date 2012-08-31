@@ -189,3 +189,62 @@ class AllDocumentIDs(view.BaseView):
 
     def map(doc):
         yield None, doc.get('_id')
+
+
+def standalone(script, options=[]):
+
+    def define_options(extra_options):
+        c = config.parse_service_config()
+
+        parser = optparse.OptionParser()
+        parser.add_option('--dbhost', '-H', action='store', dest='hostname',
+                          type='str', help='hostname of the database',
+                          default=c.db.host)
+        parser.add_option('--dbname', '-n', action='store', dest='dbname',
+                          type='str', help='name of database to use',
+                          default=c.db.name)
+        parser.add_option('--dbport', '-P', action='store', dest='dbport',
+                          type='str', help='port of database to use',
+                          default=c.db.port)
+
+        for option in extra_options:
+            parser.add_option(option)
+        return parser
+
+    def _error_handler(fail):
+        error.handle_failure('script', "Finished with exception: ", fail)
+
+    log.FluLogKeeper.init()
+    log.FluLogKeeper.set_debug('4')
+
+    parser = define_options(options)
+    opts, args = parser.parse_args()
+
+    db = config.parse_service_config().db
+    db.host, db.port, db.name = opts.hostname, opts.dbport, opts.dbname
+
+    with dbscript(db) as d:
+        d.addCallback(script, opts)
+        d.addErrback(_error_handler)
+
+
+@defer.inlineCallbacks
+def view_aterator(connection, callback, view, view_keys=dict(),
+                  args=tuple(), kwargs=dict(), per_page=15):
+    '''
+    Asynchronous iterator for the view. Downloads a view in pages
+    and calls the callback for each row.
+    This helps avoid transfering data in huge datachunks.
+    '''
+    skip = 0
+    while True:
+        keys = dict(view_keys)
+        keys.update(dict(skip=skip, limit=per_page))
+        records = yield connection.query_view(view, **keys)
+        log.debug('view_aterator', "Fetched %d records of the view: %s",
+                  len(records), view.name)
+        skip += len(records)
+        for record in records:
+            yield callback(connection, record, *args, **kwargs)
+        if not records:
+            break
