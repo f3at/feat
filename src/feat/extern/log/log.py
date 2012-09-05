@@ -350,8 +350,9 @@ def doLog(level, object, category, format, args, where=-1,
             # loggers there before
             try:
                 handler(level, object, category, filePath, line, message)
-            except TypeError:
-                raise SystemError("handler %r raised a TypeError" % handler)
+            except TypeError, e:
+                raise SystemError("handler %r raised a TypeError: %s" % (
+                    handler, getExceptionMessage(e)))
 
         return ret
 
