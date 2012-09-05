@@ -335,10 +335,10 @@ class FluLogKeeper(object):
     ### ILogger Methods ###
 
     def do_log(self, level, object, category, format, args,
-               depth=-1, file_path=None, line_num=None):
+               depth=1, file_path=None, line_num=None):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
-                     where=depth, filePath=file_path, line=line_num)
+                     where=-depth, filePath=file_path, line=line_num)
 
 
 _default_keeper = None
