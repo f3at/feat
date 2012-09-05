@@ -63,8 +63,6 @@ class TestBaseMarkup(common.TestCase):
                               '&lt;&gt;&amp;\'"</a>',
                               e.as_string())
 
-    @common.attr(skip=("trial do not like deferred without handled errbacks\n"
-                       "even when it is the expected behaviour."))
     @defer.inlineCallbacks
     def testForwardedAsyncErrors(self):
 
@@ -95,6 +93,9 @@ class TestBaseMarkup(common.TestCase):
         yield self.asyncErrback(KeyError, e.__getitem__, "attr")
         yield self.asyncErrback(ValueError, e.content.__getitem__, 0)
         yield self.asyncErrback(KeyError, e.as_string)
+
+        self.assertFailure(fa, KeyError)
+        self.assertFailure(fv, ValueError)
 
     @defer.inlineCallbacks
     def testResolvedAsyncErrors(self):
