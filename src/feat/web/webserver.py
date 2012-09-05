@@ -50,6 +50,20 @@ class AlreadyPreparedError(WebError):
 ### Interfaces ###
 
 
+class IWebStatistics(Interface):
+    '''
+    Implemented by log writer for the webserver.
+    '''
+
+    def request_finished(request, response):
+        '''
+        Called when processing of the request is finished.
+
+        @param request: L{IWebRequest}
+        @param response: L{IWebResponse}
+        '''
+
+
 class IWebResource(Interface):
 
     authenticator = Attribute("None or IAuthenticator")
@@ -122,6 +136,7 @@ class IWebRequest(Interface):
     accepted_languages = Attribute("")
     length = Attribute("")
     context = Attribute("")
+    received = Attribute("C{float} epoch time this request was parsed")
 
     def get_header(key):
         """Returns a request header."""
@@ -423,7 +438,7 @@ class Server(log.LogProxy, log.Logger):
     def __init__(self, port, root_resource, registry=None,
                  security_policy=None, server_identity=None,
                  default_authenticator=None, default_authorizer=None,
-                 log_keeper=None):
+                 log_keeper=None, web_statistics=None):
         self.log_name = ":%s" % (port, )
         log.Logger.__init__(self, self)
         log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
@@ -436,6 +451,7 @@ class Server(log.LogProxy, log.Logger):
         self._identity = server_identity
         self._authenticator = default_authenticator
         self._authorizer = default_authorizer
+        self.statistics = web_statistics and IWebStatistics(web_statistics)
 
         self._scheme = None
         self._mime_types = {}
@@ -1000,6 +1016,7 @@ class Request(log.Logger, log.LogProxy):
                           priv_request.host.host,
                           priv_request.host.port,
                           priv_request.uri))
+        self.received = time.time()
         self.debug("Parsing request from %s:%s", priv_request.client.host,
                    priv_request.client.port)
 
@@ -1538,6 +1555,9 @@ class Response(log.Logger):
         except Exception, e:
             msg = "Exception during response finalization"
             error.handle_exception(self, e, msg)
+        finally:
+            if self._server.statistics:
+                self._server.statistics.request_finished(self._request, self)
 
     ### private ###
 
