@@ -86,7 +86,7 @@ class Protocol(http.BaseProtocol):
             # without typecast to str, in case of unicode input
             # the server just breaks connection with me
             # TODO: think if it cannot be fixed better
-            body = str(body)
+            body = body.encode('utf-8')
             headers["content-length"] = len(body)
         lines = []
         http.compose_request(method, location, protocol, buffer=lines)
@@ -101,7 +101,6 @@ class Protocol(http.BaseProtocol):
         seq.append("\r\n")
 
         if body:
-            body = body.encode('utf-8')
             seq.append(body)
 
         d = defer.Deferred()
