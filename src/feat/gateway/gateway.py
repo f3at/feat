@@ -113,7 +113,7 @@ class Gateway(log.LogProxy, log.Logger):
                 server = webserver.Server(port, self._build_resource(port),
                                           security_policy=self._security,
                                           log_keeper=self,
-                                          statistics=self._statistics)
+                                          web_statistics=self._statistics)
                 self._initiate_server(server)
                 self._server = server
                 self.info("%sgateway started on %s:%d".capitalize(),
