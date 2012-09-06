@@ -1049,6 +1049,7 @@ class TestWebServer(common.TestCase):
                   'sc-status sc-comment cs-uri-stem cs-uri-query '
                   'sc(Content-Type) cs(Accept)')
         elf = webserver.ELFLog(path, format)
+        elf.init()
         self.addCleanup(elf.cleanup)
         self.server.statistics = elf
 

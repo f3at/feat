@@ -57,6 +57,11 @@ class IWebStatistics(Interface):
     Implemented by log writer for the webserver.
     '''
 
+    def init():
+        '''
+        Called during webserver initialization.
+        '''
+
     def request_finished(request, response):
         '''
         Called when processing of the request is finished.
@@ -503,10 +508,11 @@ class ELFLog(object):
                                   for x in self._template_parts)
         self._template += "\n"
 
+    ### IWebStatistics ###
+
+    def init(self):
         signal.signal(signal.SIGHUP, self._sighup_handler)
         self._reopen_output_file()
-
-    ### IWebStatistics ###
 
     def request_finished(self, request, response):
         data = dict((name, handler(request, response))
@@ -639,6 +645,9 @@ class Server(log.LogProxy, log.Logger):
             listener = reactor.listenTCP(self._port, site)
             self._scheme = http.Schemes.HTTP
         self._listener = listener
+        if self.statistics:
+            self.statistics.init()
+
         return defer.succeed(self)
 
     def cleanup(self):
