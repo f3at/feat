@@ -598,7 +598,7 @@ class ELFLog(object):
         else:
             self._output = open(self._path, 'w')
             dt_format = " ".join([self._dateformat, self._timeformat])
-            self._output.write("Version: 1.0\nDate: %s\nFields: %s\n" %
+            self._output.write("#Version: 1.0\n#Date: %s\n#Fields: %s\n" %
                                (time.strftime(dt_format), self._format))
             self._output.flush()
 

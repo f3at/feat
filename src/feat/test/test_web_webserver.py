@@ -1056,9 +1056,9 @@ class TestWebServer(common.TestCase):
         # the file should have been created from __init__()
         self.assertTrue(os.path.exists(path))
         content = open(path).read()
-        self.assertIn('Version: 1.0', content)
-        self.assertIn('Date', content)
-        self.assertIn('Fields: %s' % (format, ), content)
+        self.assertIn('#Version: 1.0', content)
+        self.assertIn('#Date', content)
+        self.assertIn('#Fields: %s' % (format, ), content)
 
         yield self.check_async('/?name=2', 404, 'ERROR')
 
