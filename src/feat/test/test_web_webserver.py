@@ -22,8 +22,8 @@
 
 # See "LICENSE.GPL" in the source distribution for more information.
 # Headers in this file shall remain intact.
-
-import functools
+import os
+import tempfile
 import types
 
 from feat.test import common
@@ -33,10 +33,10 @@ from zope.interface import Interface, implements
 from StringIO import StringIO
 
 from twisted.internet import address
-from twisted.python.failure import Failure
 from twisted.web.server import NOT_DONE_YET
+from twisted.web.http import Headers
 
-from feat.common import log, defer, time
+from feat.common import defer
 from feat.web import http, document, webserver, compat, auth
 
 
@@ -260,11 +260,11 @@ class DummyPrivateRequest(object):
         self.clientproto = "HTTP/1.0"
         self.path = uri
         self.uri = uri
-        self.client = address.IPv4Address("TCP", "localhost", 12345)
-        self.host = address.IPv4Address("TCP", "localhost", 12345)
+        self.client = address.IPv4Address("TCP", "127.0.0.1", 12345)
+        self.host = address.IPv4Address("TCP", "127.0.0.2", 12345)
         self.content = StringIO()
         self.request_headers = {}
-        self.response_headers = {}
+        self.responseHeaders = Headers()
         self._finished = defer.Deferred()
         self.channel = DummyPrivateChannel()
 
@@ -278,7 +278,17 @@ class DummyPrivateRequest(object):
         return self.request_headers.get(name.lower(), None)
 
     def setHeader(self, name, value):
-        self.response_headers[name.lower()] = value
+        self.responseHeaders.setRawHeaders(name, [value])
+
+    @property
+    def response_headers(self):
+        return dict((k.lower(), v[0])
+                    for k, v in self.responseHeaders.getAllRawHeaders())
+
+    @response_headers.setter
+    def flush_response_headers(self, value):
+        assert value == dict(), repr(value)
+        self.responseHeaders = Headers()
 
     def write(self, data):
         self.content.write(data)
@@ -1029,6 +1039,52 @@ class TestWebServer(common.TestCase):
         self.server.enable_mime_type(TEXT_PLAIN, 0.8)
         self.server.enable_mime_type(TEXT_UPPER, 0.5)
         self.server.enable_mime_type(TEXT_LOWER, 0.1)
+
+    @defer.inlineCallbacks
+    def testElfLog(self):
+        path = tempfile.mktemp()
+        self.addCleanup(os.unlink, path)
+
+        format = ('time date cs-method cs-uri bytes time-taken c-ip s-ip '
+                  'sc-status sc-comment cs-uri-stem cs-uri-query '
+                  'sc(Content-Type) cs(Accept)')
+        elf = webserver.ELFLog(path, format)
+        self.addCleanup(elf.cleanup)
+        self.server.statistics = elf
+
+        # the file should have been created from __init__()
+        self.assertTrue(os.path.exists(path))
+        content = open(path).read()
+        self.assertIn('Version: 1.0', content)
+        self.assertIn('Date', content)
+        self.assertIn('Fields: %s' % (format, ), content)
+
+        yield self.check_async('/?name=2', 404, 'ERROR')
+
+        content = open(path).read()
+        last_line = content.split("\n")[-2]
+        parts = last_line.split(' ')
+        self.assertEquals('GET', parts[2])
+        self.assertEquals('/?name=2', parts[3])
+        self.assertEquals('5', parts[4])
+        self.assertEquals('127.0.0.1', parts[6])
+        self.assertEquals('127.0.0.2', parts[7])
+        self.assertEquals('404', parts[8])
+        self.assertEquals('NOT_FOUND', parts[9])
+        self.assertEquals('/', parts[10])
+        self.assertEquals('?name=2', parts[11])
+        self.assertEquals('"text/plain"', parts[12])
+        self.assertEquals('"*"', parts[13])
+
+        # now simulate rotating
+        os.unlink(path)
+        elf._reopen_output_file()
+
+        self.assertTrue(os.path.exists(path))
+        content = open(path).read()
+        self.assertIn('Version: 1.0', content)
+        self.assertIn('Date', content)
+        self.assertIn('Fields: %s' % (format, ), content)
 
 
 def _write_upper(doc, obj):

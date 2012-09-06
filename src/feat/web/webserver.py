@@ -21,6 +21,8 @@
 # Headers in this file shall remain intact.
 
 from cStringIO import StringIO
+import os
+import re
 import sys
 import time
 
@@ -30,7 +32,7 @@ from twisted.internet import reactor
 from twisted.python.failure import Failure
 from twisted.web import server, resource
 
-from feat.common import log, defer, error, decorator
+from feat.common import log, defer, error, decorator, signal
 from feat.web import http, compat, document, auth, security
 
 
@@ -61,6 +63,12 @@ class IWebStatistics(Interface):
 
         @param request: L{IWebRequest}
         @param response: L{IWebResponse}
+        '''
+
+    def cleanup():
+        '''
+        Called when the webserver is shuting down.
+        You should close all the filedescriptors, release signals, etc.
         '''
 
 
@@ -186,6 +194,8 @@ class IWebResponse(Interface):
     language = Attribute("")
     caching_policy = Attribute("")
     expiration_policy = Attribute("")
+    finished = Attribute("C{float} epoch time web the response was finished")
+    bytes = Attribute("C{int} number of bytes transfered")
 
     # Flags
     can_update_headers = Attribute("")
@@ -211,6 +221,9 @@ class IWebResponse(Interface):
     def set_header(key, value):
         """Sets a response header,
         fail if the headers were already sent."""
+
+    def get_header(key):
+        """Returns a value of previously set header."""
 
     def set_encoding(encoding):
         """Sets the response encoding,
@@ -431,6 +444,159 @@ class BasicResource(BaseResource):
             return self._children[next], remaining[1:]
 
 
+class ELFLog(object):
+    '''
+    Formats the extended log.
+
+    @param path: where to store the file
+    @param format: list of fields separated with spaces,
+                   the supported values are:
+                   - time
+                   - date
+                   - cs-method
+                   - cs-uri
+                   - bytes
+                   - time-taken
+                   - c-ip
+                   - s-ip
+                   - sc-status status code
+                   - sc-comment comment returned with the status code
+                   - cs-uri-stem
+                   - cs-uri-query
+                   - sc-comment
+                   - sc(NAME) response header NAME value
+                   - cs(NAME) request header NAME value
+    @param dateformat: use it to override the date format used
+    @param timeformat: use it to override the time format used
+    '''
+
+    implements(IWebStatistics)
+
+    def __init__(self, path, format, dateformat="%d-%m-%Y",
+                 timeformat="%H:%M:%S"):
+        self._path = path
+        self._format = format
+        self._timeformat = timeformat
+        self._dateformat = dateformat
+        # field -> handler
+        self._template_parts = list()
+
+        # build the mapping of the handlers to call on each part,
+        # validate the input format
+        extracter = re.compile('^(sc|cs)\(([a-z\-]+)\)$', re.I)
+        for field in format.split(" "):
+            search = extracter.search(field)
+            if search:
+                handler_name = '_extract_%s' % (search.group(1), )
+                handler = getattr(self, handler_name, None)
+                if not callable(handler):
+                    raise ValueError("Invalid field '%s'" % (field, ))
+                handler = handler(search.group(2))
+            else:
+                handler_name = '_get_%s' % (field.replace('-', '_'), )
+                handler = getattr(self, handler_name, None)
+            if not callable(handler):
+                raise ValueError("Invalid field '%s'" % (field, ))
+            self._template_parts.append((field, handler))
+
+        self._template = " ".join("%%(%s)s" % (x[0], )
+                                  for x in self._template_parts)
+        self._template += "\n"
+
+        signal.signal(signal.SIGHUP, self._sighup_handler)
+        self._reopen_output_file()
+
+    ### IWebStatistics ###
+
+    def request_finished(self, request, response):
+        data = dict((name, handler(request, response))
+                    for name, handler in self._template_parts)
+        self._output.write(self._template % data)
+        self._output.flush()
+
+    def cleanup(self):
+        signal.unregister(signal.SIGHUP, self._sighup_handler)
+        self._output.close()
+
+    ### extracting data ###
+
+    def _extract_cs(self, name):
+
+        def _extract_cs(request, response):
+            return '"%s"' % (request.get_header(name) or '', )
+
+        return _extract_cs
+
+    def _extract_sc(self, name):
+
+        def _extract_sc(request, response):
+            return '"%s"' % (response.get_header(name) or '', )
+
+        return _extract_sc
+
+    def _get_time(self, request, response):
+        return time.strftime(self._timeformat,
+                             time.localtime(request.received))
+
+    def _get_date(self, request, response):
+        return time.strftime(self._dateformat,
+                             time.localtime(request.received))
+
+    def _get_cs_method(self, request, response):
+        return str(request.method.name)
+
+    def _get_cs_uri(self, request, response):
+        r = self._get_cs_uri_stem(request, response)
+        query = self._get_cs_uri_query(request, response)
+        if query:
+            r += query
+        return r
+
+    def _get_cs_uri_stem(self, request, response):
+        return request.path.split('?')[0]
+
+    def _get_cs_uri_query(self, request, response):
+        if request.arguments:
+            return "?" + http.compose_qs(request.arguments)
+        else:
+            return ""
+
+    def _get_bytes(self, request, response):
+        return response.bytes
+
+    def _get_time_taken(self, request, response):
+        delta = response.finished - request.received
+        idelta = int(delta)
+        return "%s:%s:%1.2f" % (idelta / 3600, idelta /60, delta % 60)
+
+    def _get_c_ip(self, request, response):
+        return request.peer.host
+
+    def _get_s_ip(self, request, response):
+        return request._ref.host.host
+
+    def _get_sc_status(self, request, response):
+        return int(response.status)
+
+    def _get_sc_comment(self, request, response):
+        return str(http.Status[self._get_sc_status(request, response)].name)
+
+    ### private ###
+
+    def _sighup_handler(self, signum, frame):
+        self._reopen_output_file()
+
+    def _reopen_output_file(self):
+        if os.path.exists(self._path):
+            self._output = open(self._path, 'a')
+        else:
+            self._output = open(self._path, 'w')
+            dt_format = " ".join([self._dateformat, self._timeformat])
+            self._output.write("Version: 1.0\nDate: %s\nFields: %s\n" %
+                               (time.strftime(dt_format), self._format))
+            self._output.flush()
+
+
 class Server(log.LogProxy, log.Logger):
 
     log_category = 'web'
@@ -480,6 +646,8 @@ class Server(log.LogProxy, log.Logger):
             d = self._listener.stopListening()
             self._listener = None
             return d
+        if self.statistics:
+            self.statistics.cleanup()
         return defer.succeed(self)
 
     @property
@@ -1299,6 +1467,8 @@ class Response(log.Logger):
 
         self._writing = False
         self._objects = []
+        self._finished = None
+        self._bytes = 0
 
     ### IWebResponse ###
 
@@ -1347,6 +1517,14 @@ class Response(log.Logger):
     def is_prepared(self):
         return self._prepared
 
+    @property
+    def finished(self):
+        return self._finished
+
+    @property
+    def bytes(self):
+        return self._bytes
+
     def do_not_cache(self):
         data = self._cache and self._cache.getvalue()
         self._cache = None
@@ -1364,6 +1542,12 @@ class Response(log.Logger):
     def set_header(self, key, value):
         self._check_header_not_sent()
         self._set_header(key, value)
+
+    def get_header(self, key):
+        headers = self._request._ref.responseHeaders.getRawHeaders(key)
+        if headers and isinstance(headers, list):
+            return headers[-1].decode(http.HEADER_ENCODING)
+        return headers[-1]
 
     def set_encoding(self, encoding):
         self._check_header_not_sent()
@@ -1501,6 +1685,7 @@ class Response(log.Logger):
     ### document.IWritableDocument ###
 
     def write(self, data):
+        self._bytes += len(data)
         self.prepare()
         data = self._encode(data)
         if self._cache:
@@ -1511,6 +1696,7 @@ class Response(log.Logger):
     def writelines(self, sequence):
         self.prepare()
         lines = [self._encode(l) for l in sequence]
+        self._bytes += sum(len(l) for l in lines)
         if self._cache is not None:
             self._cache.writelines(lines)
         else:
@@ -1538,6 +1724,7 @@ class Response(log.Logger):
 
     def _finish(self):
         self._request.debug("Finishing the request.")
+        self._finished = time.time()
         try:
             if self._cache is not None:
                 data = self._cache.getvalue()
