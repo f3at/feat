@@ -233,10 +233,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         # ping database to figure trigger changing state to connected
         self.retry += 1
         wait = min(2**(self.retry - 1), 300)
-        self.debug('CouchDB refused connection for %d time. '
-                   'This indicates misconfiguration or temporary '
-                   'network problem. Will try to reconnect in %d seconds.',
-                   self.retry, wait)
+        if self.retry > 1:
+            self.debug('CouchDB refused connection for %d time. '
+                       'This indicates misconfiguration or temporary '
+                       'network problem. Will try to reconnect in %d seconds.',
+                       self.retry, wait)
         if self.reconnector is None or not self.reconnector.active():
             d = defer.Deferred()
             d.addCallback(defer.drop_param, self._paisley_call,

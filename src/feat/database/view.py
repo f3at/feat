@@ -64,6 +64,14 @@ class BaseView(annotate.Annotable):
                                                    QUERY_METHODS))
         method.source += "\n%s = %r" % (constant, value)
 
+    @classmethod
+    def attach_method(cls, query_method, method):
+        if query_method.__name__ not in QUERY_METHODS:
+            raise AttributeError("%s not in %r" % (query_method.__name__,
+                                                   QUERY_METHODS))
+        source_lines, _ = inspect.getsourcelines(method)
+        method.source += "\n%s"
+
     ### private ###
 
     @classmethod
