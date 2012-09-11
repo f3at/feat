@@ -47,6 +47,8 @@ class BaseView(annotate.Annotable):
     def __class__init__(cls, name, bases, dct):
         for method_name in QUERY_METHODS:
             method = dct.get(method_name, None)
+            if not method:
+                method = getattr(cls, method_name, None)
             if callable(method):
                 setattr(cls, method_name, cls._querymethod(method))
         directlyProvides(cls, IViewFactory)
@@ -63,7 +65,7 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (method.__name__,
                                                    QUERY_METHODS))
         method.source += "\n%s = %r" % (constant, value)
-        method.func_globals.update(dict(constant=value))
+        method.func_globals.update({constant: value})
 
     @classmethod
     def attach_method(cls, query_method, method):
@@ -81,8 +83,17 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (query_method.__name__,
                                                    QUERY_METHODS))
         query_method.source += "\n%s" % (code, )
-        globals_ = {}
         exec code in {}, query_method.func_globals
+
+    @classmethod
+    def get_code(cls, name):
+        if name not in QUERY_METHODS:
+            raise AttributeError("%s not in %r" % (name, QUERY_METHODS))
+        method = getattr(cls, name)
+        if isinstance(method, (str, unicode, )):
+            return unicode(method)
+        else:
+            return unicode(method.source)
 
     ### private ###
 
@@ -178,13 +189,9 @@ class DesignDocument(document.Document):
             instance = get_instance(view.design_doc_id)
             entry = dict()
             if hasattr(view, 'map'):
-                entry['map'] = unicode(view.map.source)
+                entry['map'] = view.get_code('map')
                 if view.use_reduce:
-                    if isinstance(view.reduce, (str, unicode, )):
-                        red = unicode(view.reduce)
-                    else:
-                        red = unicode(view.reduce.source)
-                    entry['reduce'] = red
+                    entry['reduce'] = view.get_code('reduce')
                 instance.views[view.name] = entry
 
             if hasattr(view, 'filter'):

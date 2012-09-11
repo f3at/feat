@@ -1,11 +1,104 @@
 import sys
 
-from zope.interface import Interface, implements, Attribute
+from zope.interface import Interface, implements, directlyProvides
 
-from feat.common import serialization, enum, first, defer
+from feat.common import serialization, enum, first, defer, annotate
 from feat.database import view
 
 from feat.database.interface import IViewFactory
+
+
+# define contants at module level to fool pyflakes
+DOCUMENT_TYPES = None
+HANDLERS = None
+
+
+class IQueryViewFactory(IViewFactory):
+
+    def has_field(name):
+        '''
+        @returns: C{bool} if this name is part of the view
+        '''
+
+
+class QueryViewMeta(type(view.BaseView)):
+
+    def __init__(cls, name, bases, dct):
+        directlyProvides(IQueryViewFactory)
+        cls.HANDLERS = dict()
+        cls.DOCUMENT_TYPES = list()
+        cls._attached = False
+        super(QueryViewMeta, cls).__init__(name, bases, dct)
+
+
+class QueryView(view.BaseView):
+
+    __metaclass__ = QueryViewMeta
+
+    ### IViewFactory ###
+
+    def map(doc):
+        if doc['.type'] not in DOCUMENT_TYPES:
+            return
+        for field, handler in HANDLERS.iteritems():
+            for value in handler(doc):
+                yield (field, value), doc['_id']
+
+    def filter(doc, request):
+        return doc.get('.type') in DOCUMENT_TYPES
+
+    @classmethod
+    def parse(key, value, reduced):
+        if isinstance(value, dict) and '.type' in dict:
+            unserializer = serialization.json.PaisleyUnserializer()
+            unserializer.convert(value)
+        else:
+            return value
+
+    @classmethod
+    def get_code(cls, name):
+        # we cannot use normal mechanism for attaching code to query methods,
+        # because we want to build a complex object out of it, so we need to
+        # inject it after all the annotations have been processed
+        if not cls._attached:
+            cls._attached = True
+            names = {}
+            for field, handler in cls.HANDLERS.iteritems():
+                cls.attach_method(cls.map, handler)
+                names[field] = handler.__name__
+            code = ", ".join(["'%s': %s" % (k, v)
+                              for k, v in names.iteritems()])
+            cls.attach_code(cls.map, "HANDLERS = {%s}" % code)
+            cls.attach_constant(
+                cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
+            cls.attach_constant(
+                cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
+
+        return super(QueryView, cls).get_code(name)
+
+    ### IQueryViewFactory ###
+
+    @classmethod
+    def has_field(cls, name):
+        return name in cls.HANDLERS
+
+    ### annotatations ###
+
+    @classmethod
+    def _annotate_field(cls, name, handler):
+        assert not cls._attached, ("Weird, we tried to annotate after getting"
+                                   " code, uhm?")
+        cls.HANDLERS[name] = handler
+
+
+def field(name, extract):
+    annotate.injectClassCallback('query field', 3, '_annotate_field',
+                                 name, extract)
+
+
+def document_types(types):
+    annotate.injectAttribute(
+        'query document types', 3, 'DOCUMENT_TYPES', types)
 
 
 class IPlanBuilder(Interface):
@@ -14,11 +107,6 @@ class IPlanBuilder(Interface):
         '''
         Returns a list of tuples: (field, operator, value)
         '''
-
-
-class IQueryViewFactory(IViewFactory):
-
-    fields = Attribute('C{list} of unicode names of fields of the query')
 
 
 class Evaluator(enum.Enum):
@@ -83,7 +171,7 @@ class Query(serialization.Serializable):
                     raise ValueError("Element at index %d should be a Query or"
                                      " condition, %r given" % (index, part))
                 for query in part.get_basic_queries():
-                    if query[0] not in factory.fields:
+                    if not factory.has_field(query[0]):
                         raise ValueError("Unknown query field: '%s'" %
                                          (query[0], ))
                 self.parts.append(part)

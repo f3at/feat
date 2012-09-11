@@ -394,3 +394,8 @@ class IViewFactory(Interface):
                         views which works both ways.
         @return: Any instance.
         '''
+
+    def get_code(name):
+        '''
+        Gets the source code of the query method.
+        '''

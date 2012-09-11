@@ -10,6 +10,10 @@ class DummyView(object):
 
     fields = ['field1', 'field2', 'field3']
 
+    @classmethod
+    def has_field(cls, name):
+        return name in cls.fields
+
 
 class DummyCache(object):
 
@@ -26,7 +30,8 @@ class DummyCache(object):
         try:
             return defer.succeed(self.stubs[subquery])
         except KeyError:
-            raise AssertionError('%r not in %r' % (subquery, self.stubs.keys()))
+            raise AssertionError('%r not in %r' %
+                                 (subquery, self.stubs.keys()))
 
 
 class DummyConnection(object):
@@ -49,7 +54,6 @@ class TestWithDummyCache(common.TestCase):
 
     def setUp(self):
         E = query.Evaluator
-        C = query.Condition
         self.cache = DummyCache({
             ('field1', E.equals, 1): ['id1'],
             ('field1', E.equals, 2): ['id2'],
@@ -66,7 +70,6 @@ class TestWithDummyCache(common.TestCase):
         E = query.Evaluator
         C = query.Condition
         O = query.Operator
-        Q = query.Query
         D = query.Direction
 
         yield self._test(['id1'], C('field1', E.equals, 1))
@@ -96,7 +99,6 @@ class TestWithDummyCache(common.TestCase):
         yield self._test([], C('field1', E.equals, 2), O.AND, subquery)
         yield self._test(['id2', 'id1'], C('field1', E.equals, 2),
                          O.OR, subquery)
-
 
     @defer.inlineCallbacks
     def _test(self, result, *parts, **kwargs):
@@ -146,3 +148,64 @@ class TestQueryObject(common.TestCase):
         self.assertRaises(ValueError, query.Query, DummyView,
                           query.Condition('unknownfield',
                                           query.Evaluator.equals, 1))
+
+
+class QueryView(query.QueryView):
+    name = 'dummy'
+
+    query.document_types(['type1', 'type2'])
+
+    def extract_name(doc):
+        yield doc.get('name')
+
+    def extract_position(doc):
+        pos = doc.get('pos', None)
+        if pos is not None:
+            yield pos
+
+    query.field('name', extract_name)
+    query.field('position', extract_position)
+
+
+class TestQueryView(common.TestCase):
+
+    def testMap(self):
+        code = QueryView.get_code('map')
+        self.assertIn("DOCUMENT_TYPES = ['type1', 'type2']", code)
+        self.assertIn("HANDLERS = {'position': extract_position, "
+                      "'name': extract_name}", code)
+        self.assertIn("def extract_position(doc)", code)
+
+        # check that we can get the code multiple times
+        code2 = QueryView.get_code('map')
+        self.assertEquals(code, code2)
+
+        # now check that map function works (the globals have been injected)
+        r = list(QueryView.map({'_id': 'id1', '.type': 'type1',
+                                'name': 'John', 'pos': 3}))
+        self.assertEqual(2, len(r))
+        self.assertIn((('position', 3), 'id1'), r)
+        self.assertIn((('name', 'John'), 'id1'), r)
+
+        # name is always emited
+        r = list(QueryView.map({'_id': 'id1', '.type': 'type2'}))
+        self.assertEqual(1, len(r))
+        self.assertIn((('name', None), 'id1'), r)
+
+        # type3 is not supported by this view
+        r = list(QueryView.map(
+            {'_id': 'id1', '.type': 'type3', 'name': 'John'}))
+        self.assertEqual(0, len(r))
+
+    def testFilter(self):
+        code = QueryView.get_code('filter')
+        self.assertIn("DOCUMENT_TYPES = ['type1', 'type2']", code)
+
+        r = QueryView.filter(
+            {'_id': 'id1', '.type': 'type3', 'name': 'John'}, None)
+        self.assertIs(False, r)
+
+        r = QueryView.filter(
+            {'_id': 'id1', '.type': 'type1', 'name': 'John'}, None)
+        self.assertIs(True, r)
+
