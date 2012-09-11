@@ -63,6 +63,7 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (method.__name__,
                                                    QUERY_METHODS))
         method.source += "\n%s = %r" % (constant, value)
+        method.func_globals.update(dict(constant=value))
 
     @classmethod
     def attach_method(cls, query_method, method):
@@ -72,6 +73,7 @@ class BaseView(annotate.Annotable):
         source_lines, _ = inspect.getsourcelines(method)
         source = "\n".join([x[:-1] for x in source_lines])
         query_method.source += "\n%s" % (source, )
+        query_method.func_globals.update({method.__name__: method})
 
     @classmethod
     def attach_code(cls, query_method, code):
@@ -79,6 +81,8 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (query_method.__name__,
                                                    QUERY_METHODS))
         query_method.source += "\n%s" % (code, )
+        globals_ = {}
+        exec code in {}, query_method.func_globals
 
     ### private ###
 

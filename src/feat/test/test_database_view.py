@@ -54,7 +54,7 @@ class FilterView(view.BaseView):
     SOME_ARRAY = [1, 2, 3, 'string']
 
     def filter(doc, request):
-        return extract_something(doc)
+        return METHOD[0](doc)
 
     view.attach_constant(filter, 'SOME_ARRAY', SOME_ARRAY)
     view.attach_method(filter, extract_something)
@@ -83,9 +83,12 @@ class TestDesignDocument(common.TestCase):
         self.assertEquals(1, len(doc.filters))
         self.assertIn('some_filter', doc.filters)
         expected = ("def filter(doc, request):\n"
-                    "    return extract_something(doc)\n"
+                    "    return METHOD[0](doc)\n"
                     "SOME_ARRAY = [1, 2, 3, 'string']\n"
                     "def extract_something(doc):\n"
                     "    return True\n"
                     "METHOD = [ extract_something ]")
         self.assertEqual(expected, doc.filters['some_filter'])
+
+    def testRunCustomMap(self):
+        self.assertEquals(True, FilterView.filter({}, None))
