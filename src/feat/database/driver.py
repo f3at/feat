@@ -227,6 +227,30 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         return self._paisley_call(doc_id, self.paisley.get,
                                   uri, headers=headers)
 
+    def get_update_seq(self):
+        d = self._paisley_call('update_seq', self.paisley.infoDB, self.db_name)
+        d.addCallback(lambda x: x['update_seq'])
+        return d
+
+    def get_changes(self, filter_, limit=None, since=0):
+        params = dict(since=since)
+        if limit is not None:
+            params['limit'] = limit
+        if filter_ is not None:
+            params['filter'] = str('%s/%s' % (filter_.view.design_doc_id,
+                                              filter_.view.name))
+        url = str('/%s/_changes?%s' % (self.db_name, urllib.urlencode(params)))
+        d = self._paisley_call('get_changes', self.paisley.get, url)
+        d.addCallback(self.paisley.parseResult)
+        return d
+
+    def bulk_get(self, doc_ids):
+        body = dict(keys=doc_ids)
+        url = '%s/_all_docs?include=docs=true'
+        d = self._paisley_call('bulk_get', self.paisley.post, url,body)
+        d.addCallback(self.paisley.parseResult)
+        return d
+
     ### public ###
 
     def reconnect(self):

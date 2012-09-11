@@ -23,7 +23,6 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import operator
 
-from twisted.internet import defer
 from twisted.trial.unittest import SkipTest
 
 try:
@@ -35,7 +34,7 @@ except ImportError as e:
 from feat.database import emu, view, document
 from feat.process import couchdb
 from feat.process.base import DependencyError
-from feat.common import serialization
+from feat.common import serialization, defer
 from feat.agencies.common import ConnectionState
 
 from . import common
@@ -68,8 +67,11 @@ class FilteringView(view.BaseView):
     name = 'filter_view'
 
     def filter(doc, request):
-        return doc.get('.type', None) == 'view-dummy' and\
-               doc['field'] == request['query']['field']
+        check_request = (not request.get('query') and
+                         request['query'].get('field') is not None)
+        return (doc.get('.type', None) == 'view-dummy' and
+                (not check_request or
+                 doc['field'] == request['query']['field']))
 
 
 VALUE_FIELD = 'value'
@@ -501,6 +503,51 @@ class TestCase(object):
         self.assertEqual(doc_id, my_doc2.doc_id)
 
         yield other_connection.disconnect()
+
+    @defer.inlineCallbacks
+    def testGettingChangesAndSequence(self):
+        views = (FilteringView, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        start_seq = yield self.connection.get_update_seq()
+        self.assertIsInstance(start_seq, int)
+
+        doc = yield self.connection.save_document(
+            ViewDocument(field=u'value2'))
+        seq = yield self.connection.get_update_seq()
+        self.assertIsInstance(seq, int)
+        self.assertEqual(start_seq + 1, seq)
+
+        # now get the changes
+        changes = yield self.connection.get_changes(since=start_seq)
+        self.assertIsInstance(changes, dict)
+        self.assertIn('results', changes)
+        self.assertIn('last_seq', changes)
+        self.assertEqual(seq, changes['last_seq'])
+        res = changes['results']
+        self.assertIsInstance(res, list)
+        self.assertEqual(1, len(res))
+        self.assertEqual(res[0]['id'], doc.doc_id)
+        self.assertEqual(res[0]['changes'][0]['rev'], doc.rev)
+
+        # create doc of different type
+
+        doc2 = yield self.connection.save_document(
+            DummyDocument(field=u'value2'))
+        changes = yield self.connection.get_changes(since=start_seq)
+        self.assertEquals(2, len(changes['results']))
+
+        changes = yield self.connection.get_changes(since=seq)
+        self.assertEquals(1, len(changes['results']))
+        self.assertEqual(changes['results'][0]['id'], doc2.doc_id)
+
+        changes = yield self.connection.get_changes(FilteringView)
+        self.assertEquals(1, len(changes['results']))
+        self.assertEqual(changes['results'][0]['id'], doc.doc_id)
+
+
+
 
     ### methods specific for testing the notification callbacks
 

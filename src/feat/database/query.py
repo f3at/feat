@@ -21,6 +21,21 @@ class IQueryViewFactory(IViewFactory):
         '''
 
 
+class IQueryCache(Interface):
+
+    def empty():
+        '''
+        Should release all cached data.
+        '''
+
+    def query(connection, factory, subquery):
+        '''
+        @param connection: L{IDatabaseClient}
+        @param factory: L{IQueryViewFactory}
+        @param subquery: C{tuple} (field_name, Evaluator, value)
+        '''
+
+
 class QueryViewMeta(type(view.BaseView)):
 
     def __init__(cls, name, bases, dct):
@@ -250,15 +265,12 @@ def count(connection, query):
 
 @defer.inlineCallbacks
 def _get_query_response(connection, query):
-    info = yield connection.info()
-    update_seq = info['update_seq']
-
     cache = connection.get_query_cache()
     responses = dict()
     for subquery in query.get_basic_queries():
         # subquery -> list of doc ids
         responses[subquery] = yield cache.query(
-            connection, query.factory, subquery, update_seq)
+            connection, query.factory, subquery)
     defer.returnValue((_calculate_query_response(responses, query), responses))
 
 

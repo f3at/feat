@@ -29,10 +29,11 @@ from zope.interface import implements
 
 from feat.common import log, defer, time
 from feat.common.serialization import json
-from feat.database import document
+from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
+from feat.database.interface import NotFoundError
 from feat.interface.generic import ITimeProvider
 
 
@@ -274,8 +275,57 @@ class Connection(log.Logger, log.LogProxy):
         return d
 
     def disconnect(self):
+        if hasattr(self, '_query_cache'):
+            self._query_cache.empty()
         for l_id in self._listeners.keys():
             self._cancel_listener(l_id)
+
+    def get_update_seq(self):
+        return self._database.get_update_seq()
+
+    def get_changes(self, filter_=None, limit=None, since=0):
+        if IViewFactory.providedBy(filter_):
+            filter_ = ViewFilter(filter_, params=dict())
+        elif filter_ is not None:
+            raise ValueError("%r should provide IViewFacory" % (filter_, ))
+        return self._database.get_changes(filter_, limit, since)
+
+    def bulk_get(self, doc_ids, consume_errors=True):
+
+        def parse_bulk_response(resp):
+            assert isinstance(resp, dict), repr(resp)
+            assert 'rows' in resp, repr(resp)
+
+            result = list()
+            for doc_id, row in zip(doc_ids, resp['rows']):
+                if 'error' in row or 'deleted' in row['value']:
+                    if not consume_errors:
+                        result.append(NotFoundError(doc_id))
+                    else:
+                        self.debug("Bulk get parser consumed error row: %r",
+                                   row)
+                else:
+                    result.append(self._unserializer.convert(row['doc']))
+            return result
+
+
+        d = self._database.bulk_get(doc_ids)
+        d.addCallback(parse_bulk_response)
+        return d
+
+    def get_query_cache(self, create=True):
+        '''Called by methods inside feat.database.query module to obtain
+        the query cache.
+        @param create: C{bool} if True cache will be initialized if it doesnt
+                       exist yet, returns None otherwise
+        '''
+
+        if not hasattr(self, '_query_cache'):
+            if create:
+                self._query_cache = query.Cache()
+            else:
+                return None
+        return self._query_cache
 
     ### private
 

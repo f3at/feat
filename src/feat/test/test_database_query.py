@@ -20,12 +20,11 @@ class DummyCache(object):
     def __init__(self, stubs):
         self.stubs = stubs
 
-    def query(self, connection, factory, subquery, update_seq):
+    def query(self, connection, factory, subquery):
         assert isinstance(connection, DummyConnection), repr(connection)
         assert factory is DummyView, repr(factory)
         assert isinstance(subquery, tuple), repr(subquery)
         assert len(subquery) == 3, repr(subquery)
-        assert update_seq == 0, repr(update_seq)
 
         try:
             return defer.succeed(self.stubs[subquery])
@@ -42,8 +41,8 @@ class DummyConnection(object):
     def get_query_cache(self):
         return self.cache
 
-    def info(self):
-        return defer.succeed(dict(update_seq=0))
+    def get_update_seq(self):
+        return defer.succeed(0)
 
     def bulk_get(self, doc_ids):
         assert isinstance(doc_ids, list), repr(doc_ids)

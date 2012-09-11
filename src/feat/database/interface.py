@@ -255,6 +255,42 @@ class IDatabaseDriver(Interface):
         @errback: L{NotFoundError}
         '''
 
+    def get_update_seq():
+        '''
+        @rtype: Deferred
+        @callback: C{int} databse sequence number
+        '''
+
+    def get_changes(filter, limit, since):
+        '''
+        Returns information about the changes done to the database since
+        the specified revision.
+        @param filter: IViewFactory or None
+        @param limit: optionally limit the data
+        @param since: update_seq of database to start changes
+        @rtype: Deferred
+        @callback: C{dict} of the following form
+           {"results":[
+               {"seq":1,"id":"test",
+                "changes":[{"rev":"1-aaa8e2a031bca334f50b48b6682fb486"}]}],
+            "last_seq":1}
+        '''
+
+    def bulk_get(doc_ids):
+        '''
+        Like get_document() but returns multiple documents in a single request.
+        @param doc_ids: C{list} of doc_ids to fetch
+        @rtype: Deferred
+        @callback: list of documents
+        '''
+
+    def get_query_cache(self, create=True):
+        '''Called by methods inside feat.database.query module to obtain
+        the query cache.
+        @param create: C{bool} if True cache will be initialized if it doesnt
+                       exist yet, returns None otherwise
+        '''
+
 
 class IDocument(Interface):
     '''Interface implemented by objects stored in database.'''

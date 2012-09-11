@@ -68,6 +68,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         # simulations
         self._doc_type_counters = dict()
 
+        # list of all old revisions
+        self._changes = list()
+
     ### IDbConnectionFactory
 
     def get_connection(self):
@@ -162,7 +165,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 raise ConflictError("Document update conflict.")
             if doc.get('_deleted', None):
                 raise NotFoundError('%s deleted' % doc_id)
-            doc['_rev'] = self._generate_rev(doc)
             doc['_deleted'] = True
             self._expire_cache(doc['_id'])
             for key in doc.keys():
@@ -171,6 +173,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 del(doc[key])
             self.log('Marking document %r as deleted', doc_id)
             del self._attachments[doc['_id']]
+            self._update_rev(doc)
             self._analize_changes(doc)
             d.callback(Response(ok=True, id=doc_id, rev=doc['_rev']))
         except (ConflictError, NotFoundError, ) as e:
@@ -218,6 +221,35 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         if name not in self._attachments[doc_id]:
             return defer.fail(NotFoundError('%s/%s' % (doc_id, name)))
         return defer.succeed(self._attachments[doc_id][name])
+
+    def get_update_seq(self):
+        return defer.succeed(len(self._changes))
+
+    def get_changes(self, filter_, limit=None, since=0):
+        results = list()
+        for seq in range(since, len(self._changes)):
+            doc = self._changes[seq]
+            if filter_ and not filter_.match(doc):
+                continue
+            results.append(
+                dict(seq=seq, id=doc['_id'], changes=[{'rev': doc['_rev']}]))
+        result = dict(results=results, last_seq=len(self._changes))
+        return defer.succeed(result)
+
+    def bulk_get(self, doc_ids):
+        result = list()
+        for doc_id in doc_ids:
+            self.increase_stat('open_doc')
+            try:
+                doc = self._get_doc(doc_id)
+                doc = copy.deepcopy(doc)
+                value = dict(rev=doc['_rev'])
+                if doc.get('_deleted', None):
+                    value['deleted'] = True
+                result.append({'_id': doc['_id'], 'value': value, 'doc': doc})
+            except NotFoundError:
+                result.append(dict(error="not_found"))
+        return defer.succeed(result)
 
     ### private
 
@@ -346,8 +378,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                         or old_doc['_rev'] != doc['_rev']):
                         raise ConflictError('Document update conflict.')
 
-        doc['_rev'] = self._generate_rev(doc)
         doc['_id'] = doc_id
+        self._update_rev(doc)
 
         return doc
 
@@ -368,7 +400,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         else:
             return unicode(uuid.uuid1())
 
-    def _generate_rev(self, doc):
+    def _update_rev(self, doc):
         cur_rev = doc.get('_rev', None)
         if not cur_rev:
             counter = 1
@@ -376,7 +408,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             counter, _ = cur_rev.split('-')
             counter = int(counter) + 1
         rand = unicode(uuid.uuid1()).replace('-', '')
-        return unicode("%d-%s" % (counter, rand))
+        doc['_rev'] = unicode("%d-%s" % (counter, rand))
+        self._changes.append(copy.deepcopy(doc))
 
 
 class Response(dict):
