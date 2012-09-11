@@ -70,7 +70,15 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (query_method.__name__,
                                                    QUERY_METHODS))
         source_lines, _ = inspect.getsourcelines(method)
-        method.source += "\n%s"
+        source = "\n".join([x[:-1] for x in source_lines])
+        query_method.source += "\n%s" % (source, )
+
+    @classmethod
+    def attach_code(cls, query_method, code):
+        if query_method.__name__ not in QUERY_METHODS:
+            raise AttributeError("%s not in %r" % (query_method.__name__,
+                                                   QUERY_METHODS))
+        query_method.source += "\n%s" % (code, )
 
     ### private ###
 
@@ -96,6 +104,16 @@ class BaseView(annotate.Annotable):
 def attach_constant(method, constant, value):
     annotate.injectClassCallback('attach_constant', 3, 'attach_constant',
                                  method, constant, value)
+
+
+def attach_method(query_method, method):
+    annotate.injectClassCallback('attach_method', 3, 'attach_method',
+                                 query_method, method)
+
+
+def attach_code(query_method, code):
+    annotate.injectClassCallback('attach_code', 3, 'attach_code',
+                                 query_method, code)
 
 
 class FormatableView(BaseView, formatable.Formatable):

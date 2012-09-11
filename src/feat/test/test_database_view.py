@@ -43,6 +43,10 @@ class ReducingView(view.BaseView):
         return len(values)
 
 
+def extract_something(doc):
+    return True
+
+
 class FilterView(view.BaseView):
 
     name = 'some_filter'
@@ -50,9 +54,11 @@ class FilterView(view.BaseView):
     SOME_ARRAY = [1, 2, 3, 'string']
 
     def filter(doc, request):
-        return True
+        return extract_something(doc)
 
     view.attach_constant(filter, 'SOME_ARRAY', SOME_ARRAY)
+    view.attach_method(filter, extract_something)
+    view.attach_code(filter, "METHOD = [ extract_something ]")
 
 
 class TestDesignDocument(common.TestCase):
@@ -76,6 +82,10 @@ class TestDesignDocument(common.TestCase):
 
         self.assertEquals(1, len(doc.filters))
         self.assertIn('some_filter', doc.filters)
-        expected = ("def filter(doc, request):\n    return True\n"
-                    "SOME_ARRAY = [1, 2, 3, 'string']")
+        expected = ("def filter(doc, request):\n"
+                    "    return extract_something(doc)\n"
+                    "SOME_ARRAY = [1, 2, 3, 'string']\n"
+                    "def extract_something(doc):\n"
+                    "    return True\n"
+                    "METHOD = [ extract_something ]")
         self.assertEqual(expected, doc.filters['some_filter'])
