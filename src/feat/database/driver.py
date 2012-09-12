@@ -43,7 +43,7 @@ from feat import extern
 sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
 
 from paisley.changes import ChangeNotifier
-from paisley.client import CouchDB
+from paisley.client import CouchDB, json as pjson
 
 
 DEFAULT_DB_HOST = "localhost"
@@ -246,8 +246,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def bulk_get(self, doc_ids):
         body = dict(keys=doc_ids)
-        url = '%s/_all_docs?include=docs=true'
-        d = self._paisley_call('bulk_get', self.paisley.post, url,body)
+        url = '/%s/_all_docs?include_docs=true' % (self.db_name, )
+        d = self._paisley_call('bulk_get', self.paisley.post,
+                               url, pjson.dumps(body))
         d.addCallback(self.paisley.parseResult)
         return d
 

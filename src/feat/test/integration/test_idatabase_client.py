@@ -546,8 +546,37 @@ class TestCase(object):
         self.assertEquals(1, len(changes['results']))
         self.assertEqual(changes['results'][0]['id'], doc.doc_id)
 
+    @defer.inlineCallbacks
+    def testBulkGet(self):
+        docs = []
+        for x in range(3):
+            doc = yield self.connection.save_document(DummyDocument())
+            docs.append(doc)
 
+        # check successful get
+        doc_ids = [x.doc_id for x in docs]
+        gets = yield self.connection.bulk_get(doc_ids)
+        self.assertEqual(docs, gets)
 
+        # prepend nonexisting docs
+        gets = yield self.connection.bulk_get(['notexistant'] + doc_ids,
+                                              consume_errors=False)
+        self.assertEqual(docs, gets[1:])
+        self.assertIsInstance(gets[0], NotFoundError)
+
+        # consuming errors is a default
+        gets = yield self.connection.bulk_get(['notexistant'] + doc_ids)
+        self.assertEqual(docs, gets)
+
+        # now delete one doc, it should work as if it has never been there
+        yield self.connection.delete_document(docs[0])
+
+        gets = yield self.connection.bulk_get(doc_ids)
+        self.assertEquals(docs[1:], gets)
+
+        gets = yield self.connection.bulk_get(doc_ids, consume_errors=False)
+        self.assertEquals(docs[1:], gets[1:])
+        self.assertIsInstance(gets[0], NotFoundError)
 
     ### methods specific for testing the notification callbacks
 

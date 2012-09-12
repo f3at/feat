@@ -249,7 +249,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 result.append({'_id': doc['_id'], 'value': value, 'doc': doc})
             except NotFoundError:
                 result.append(dict(error="not_found"))
-        return defer.succeed(result)
+        return defer.succeed(dict(rows=result))
 
     ### private
 
