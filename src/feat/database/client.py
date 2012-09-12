@@ -322,7 +322,7 @@ class Connection(log.Logger, log.LogProxy):
 
         if not hasattr(self, '_query_cache'):
             if create:
-                self._query_cache = query.Cache()
+                self._query_cache = query.Cache(self)
             else:
                 return None
         return self._query_cache

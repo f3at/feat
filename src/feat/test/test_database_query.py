@@ -1,3 +1,5 @@
+import uuid
+
 from zope.interface import classProvides
 
 from feat.common import defer
@@ -7,6 +9,8 @@ from feat.test import common
 
 class DummyView(object):
     classProvides(query.IQueryViewFactory)
+
+    name = 'dummy'
 
     fields = ['field1', 'field2', 'field3']
 
@@ -164,6 +168,31 @@ class QueryView(query.QueryView):
 
     query.field('name', extract_name)
     query.field('position', extract_position)
+
+
+class TestQueryCache(common.TestCase):
+    '''
+    This test uses private methods of query.Cache(), beware!
+    '''
+
+    def testReleaseCache(self):
+        s = lambda : str(uuid.uuid1()).replase('-', '')
+        cache = query.Cache(self)
+
+        for seq_num in range(0, 10):
+            cache._cache_response(
+                [s for x in range(10000)], DummyView,
+                ('field' + str(seq_num), query.Evaluator.none, None), seq_num)
+
+        for expected_release in range(0, 10):
+            size = cache.get_cache_size()
+            cache.CACHE_LIMIT = size - 1
+            cache._check_size_limit()
+            self.assertTrue(size > cache.get_cache_size())
+            expected_present = range(expected_release + 1, 10)
+            for entry in cache._cache[DummyView.name].itervalues():
+                expected_present.remove(entry.seq_num)
+            self.assertEqual([], expected_present)
 
 
 class TestQueryView(common.TestCase):

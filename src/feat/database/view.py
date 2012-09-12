@@ -72,8 +72,7 @@ class BaseView(annotate.Annotable):
         if query_method.__name__ not in QUERY_METHODS:
             raise AttributeError("%s not in %r" % (query_method.__name__,
                                                    QUERY_METHODS))
-        source_lines, _ = inspect.getsourcelines(method)
-        source = "\n".join([x[:-1] for x in source_lines])
+        source = cls._get_normalized_source(method)
         query_method.source += "\n%s" % (source, )
         query_method.func_globals.update({method.__name__: method})
 
@@ -98,7 +97,7 @@ class BaseView(annotate.Annotable):
     ### private ###
 
     @classmethod
-    def _querymethod(cls, func):
+    def _get_normalized_source(cls, func):
         source_lines, _ = inspect.getsourcelines(func)
         decorator_line = re.compile('\A\s*@')
         leading_whitespace = re.compile('\A\s*')
@@ -110,7 +109,11 @@ class BaseView(annotate.Annotable):
             source_lines = [x[count:-1] for x in source_lines
                             if x and len(x) >= count]
 
-        source = '\n'.join(source_lines)
+        return '\n'.join(source_lines)
+
+    @classmethod
+    def _querymethod(cls, func):
+        source = cls._get_normalized_source(func)
         setattr(func, 'source', source)
         res = staticmethod(func)
         return res

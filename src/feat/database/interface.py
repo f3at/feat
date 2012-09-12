@@ -28,7 +28,8 @@ from zope.interface import Interface, Attribute
 __all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
            "NotFoundError", "NotConnectedError", "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
-           "IVersionedDocument", "IRevisionStore", "IViewFactory")
+           "IVersionedDocument", "IRevisionStore", "IViewFactory",
+           "IPlanBuilder", "IQueryCache", "IQueryViewFactory")
 
 
 class DatabaseError(Exception):
@@ -434,4 +435,35 @@ class IViewFactory(Interface):
     def get_code(name):
         '''
         Gets the source code of the query method.
+        '''
+
+
+class IQueryViewFactory(IViewFactory):
+
+    def has_field(name):
+        '''
+        @returns: C{bool} if this name is part of the view
+        '''
+
+
+class IQueryCache(Interface):
+
+    def empty():
+        '''
+        Should release all cached data.
+        '''
+
+    def query(connection, factory, subquery):
+        '''
+        @param connection: L{IDatabaseClient}
+        @param factory: L{IQueryViewFactory}
+        @param subquery: C{tuple} (field_name, Evaluator, value)
+        '''
+
+
+class IPlanBuilder(Interface):
+
+    def get_basic_queries():
+        '''
+        Returns a list of tuples: (field, operator, value)
         '''

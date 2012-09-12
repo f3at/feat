@@ -1,11 +1,13 @@
+import operator
 import sys
 
-from zope.interface import Interface, implements, directlyProvides
+from zope.interface import implements
 
-from feat.common import serialization, enum, first, defer, annotate
+from feat.common import serialization, enum, first, defer, annotate, log
 from feat.database import view
 
-from feat.database.interface import IViewFactory
+from feat.database.interface import IQueryViewFactory
+from feat.database.interface import IPlanBuilder, IQueryCache
 
 
 # define contants at module level to fool pyflakes
@@ -13,33 +15,141 @@ DOCUMENT_TYPES = None
 HANDLERS = None
 
 
-class IQueryViewFactory(IViewFactory):
+class CacheEntry(object):
 
-    def has_field(name):
-        '''
-        @returns: C{bool} if this name is part of the view
-        '''
+    def __init__(self, seq_num, entries):
+        self.seq_num = seq_num
+        self.entries = entries
+        self.size = sys.getsizeof(entries)
 
 
-class IQueryCache(Interface):
+class Cache(log.Logger):
 
-    def empty():
-        '''
-        Should release all cached data.
-        '''
+    implements(IQueryCache)
 
-    def query(connection, factory, subquery):
-        '''
-        @param connection: L{IDatabaseClient}
-        @param factory: L{IQueryViewFactory}
-        @param subquery: C{tuple} (field_name, Evaluator, value)
-        '''
+    CACHE_LIMIT = 1024 * 1024 * 20 # 20 MB of memory max
+
+    def __init__(self, logger):
+        log.Logger.__init__(self, logger)
+        # name -> query -> CacheEntry
+        self._cache = dict()
+        self._last_seq_seen = 0
+
+    ### IQueryCache ###
+
+    def empty(self):
+        self.debug("Emptying query cache.")
+        self._cache.clear()
+
+    def query(self, connection, factory, subquery):
+        self.debug("query() called for %s view and subquery %r", factory.name,
+                   subquery)
+        d = connection.get_update_seq()
+        d.addCallback(defer.inject_param, 3,
+            self._got_seq_num, connection, factory, subquery)
+        return d
+
+    ### public ###
+
+    def get_cache_size(self):
+        size = 0
+        for name, subcache in self._cache.iteritems():
+            for query, entry in subcache.iteritems():
+                size += entry.size
+        return size
+
+    ### private, continuations of query process ###
+
+    def _got_seq_num(self, connection, factory, subquery, seq_num):
+        if factory.name in self._cache:
+            entry = self._cache[factory.name].get(subquery)
+            if not entry:
+                return self._fetch_subquery(
+                    connection, factory, subquery, seq_num)
+            elif entry.seq_num == seq_num:
+                self.debug("Query served from the cache hit")
+                return entry.entries
+            else:
+                d = connection.get_changes(factory, limit=1, since=seq_num)
+                d.addCallback(defer.inject_param, 4,
+                              self._analyze_changes,
+                              connection, factory, subquery, entry)
+                return d
+        else:
+            return self._fetch_subquery(connection, factory, subquery, seq_num)
+
+    def _fetch_subquery(self, connection, factory, subquery, seq_num):
+        keys = self._generate_keys(*subquery)
+        self.log("Will query view %s, with keys %r, as a result of"
+                 " subquery: %r", factory.name, keys, subquery)
+        d = connection.query_view(factory, **keys)
+        d.addCallback(defer.keep_param,
+                      self._cache_response, factory, subquery, seq_num)
+        return d
+
+    def _cache_response(self, entries, factory, subquery, seq_num):
+        self.log("Caching response for %r at seq_num: %d", subquery, seq_num)
+        if factory.name not in self._cache:
+            self._cache[factory.name] = dict()
+        self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
+        self._check_size_limit()
+
+    def _analyze_changes(self, connection, factory, subquery, entry, changes):
+        seq_num = changes['last_seq']
+        if changes['results']:
+            self.debug("View %s has changed, expiring cache.", factory.name)
+            if factory.name in self._cache: # this is not to fail on
+                                            # concurrent checks expiring cache
+                self._cache[factory.name].clear()
+            d = self._fetch_subquery(connection, factory, subquery)
+            d.addCallback(defer.keep_param,
+                          self._cache_response, factory, subquery, seq_num)
+            return d
+        else:
+            self.debug("View %s has not changed, marking cached fragments as "
+                       "fresh.", factory.name)
+            for entry in self._cache.get(factory.name, list()):
+                entry.seq_num = seq_num
+            return entry.entries
+
+    def _generate_keys(self, field, evaluator, value):
+        if evaluator == Evaluator.equals:
+            return dict(key=(field, value))
+        if evaluator == Evaluator.le:
+            return dict(startkey=(field, ), endkey=(field, value))
+        if evaluator == Evaluator.ge:
+            return dict(startkey=(field, value), endkey=(field, {}))
+        if evaluator == Evaluator.between:
+            return dict(startkey=(field, value[0]), endkey=(field, value[1]))
+        if evaluator == Evaluator.inside:
+            return dict(keys=[(field, x) for x in value])
+        if evaluator == Evaluator.none:
+            return dict(startkey=(field, ), endkey=(field, {}))
+
+    ### private, check that the cache is not too big ###
+
+    def _check_size_limit(self):
+        size = self.get_cache_size()
+        if size > self.CACHE_LIMIT:
+            self._cleanup_old_cache(size - self.CACHE_LIMIT)
+
+    def _cleanup_old_cache(self, to_release):
+        entries = [(x.seq_num, x.size, name, subquery)
+                   for name, subcache in self._cache.iteritems()
+                   for subquery, x in subcache.iteritems()]
+        entries.sort(key=operator.itemgetter(0))
+        released = 0
+        while released < to_release:
+            entry = entries.pop(0)
+            released += entry[1]
+            del self._cache[entry[2]][entry[3]]
 
 
 class QueryViewMeta(type(view.BaseView)):
 
+    implements(IQueryViewFactory)
+
     def __init__(cls, name, bases, dct):
-        directlyProvides(IQueryViewFactory)
         cls.HANDLERS = dict()
         cls.DOCUMENT_TYPES = list()
         cls._attached = False
@@ -63,12 +173,8 @@ class QueryView(view.BaseView):
         return doc.get('.type') in DOCUMENT_TYPES
 
     @classmethod
-    def parse(key, value, reduced):
-        if isinstance(value, dict) and '.type' in dict:
-            unserializer = serialization.json.PaisleyUnserializer()
-            unserializer.convert(value)
-        else:
-            return value
+    def parse(cls, key, value, reduced):
+        return value
 
     @classmethod
     def get_code(cls, name):
@@ -114,14 +220,6 @@ def field(name, extract):
 def document_types(types):
     annotate.injectAttribute(
         'query document types', 3, 'DOCUMENT_TYPES', types)
-
-
-class IPlanBuilder(Interface):
-
-    def get_basic_queries():
-        '''
-        Returns a list of tuples: (field, operator, value)
-        '''
 
 
 class Evaluator(enum.Enum):
@@ -244,13 +342,17 @@ class Query(serialization.Serializable):
 
 
 @defer.inlineCallbacks
-def select(connection, query):
+def select(connection, query, skip=0, limit=None):
     temp, responses = yield _get_query_response(connection, query)
     if query.sorting:
         temp = sorted(temp, key=_generate_sort_key(responses, query.sorting))
     else:
         temp = list(temp)
-    fetched = yield connection.bulk_get(temp)
+    if limit is not None:
+        stop = skip + limit
+    else:
+        stop = None
+    fetched = yield connection.bulk_get(temp[slice(skip, stop)])
     defer.returnValue(fetched)
 
 
@@ -318,18 +420,3 @@ def _generate_sort_key(responses, sorting):
         return tuple(positions)
 
     return sort_key
-
-
-def _generate_keys(field, evaluator, value):
-    if evaluator == Evaluator.equals:
-        return dict(key=(field, value))
-    if evaluator == Evaluator.le:
-        return dict(endkey=(field, value))
-    if evaluator == Evaluator.ge:
-        return dict(startkey=(field, value))
-    if evaluator == Evaluator.between:
-        return dict(startkey=(field, value[0]), endkey=(field, value[1]))
-    if evaluator == Evaluator.inside:
-        return dict(keys=[(field, x) for x in value])
-    if evaluator == Evaluator.none:
-        return dict(startkey=(field, ), endkey=(field, {}))

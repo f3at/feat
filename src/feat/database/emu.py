@@ -194,6 +194,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             d.addCallback(self._perform_reduce, factory, group=group,
                           group_level=group_level)
         d.addCallback(self._apply_slice, **options)
+        d.addCallback(self._sort_by_key)
         return d
 
     def disconnect(self):
@@ -269,6 +270,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             rows.reverse()
 
         return rows
+
+    def _sort_by_key(self, rows):
+        return sorted(rows, key=operator.itemgetter(0))
 
     def _matches_filter(self, tup, **filter_options):
         if 'key' in filter_options:

@@ -31,7 +31,7 @@ except ImportError as e:
     database = None
     import_error = e
 
-from feat.database import emu, view, document
+from feat.database import emu, view, document, query
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization, defer
@@ -578,6 +578,55 @@ class TestCase(object):
         self.assertEquals(docs[1:], gets[1:])
         self.assertIsInstance(gets[0], NotFoundError)
 
+    @defer.inlineCallbacks
+    def testUsingQueryView(self):
+        views = (QueryView, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        for x in range(20):
+            if x % 2 == 0:
+                field3 = u"A"
+            else:
+                field3 = u"B"
+            yield self.connection.save_document(
+                QueryDoc(field1=x, field2=x % 10, field3=field3))
+
+        C = query.Condition
+        E = query.Evaluator
+        O = query.Operator
+        Q = query.Query
+        D = query.Direction
+
+        c1 = C('field1', E.le, 9)
+        c2 = C('field2', E.ge, 5)
+        c3 = C('field3', E.equals, 'B')
+        c4 = C('field1', E.between, (5, 14))
+
+        yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], c1)
+        yield self._query_test([5, 6, 7, 8, 9], c1, O.AND, c2)
+        yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                                15, 16, 17, 18, 19], c1, O.OR, c2)
+        yield self._query_test([5, 6, 7, 8, 9], c4, O.AND, c2)
+
+        yield self._query_test([1, 3, 5, 7, 9, 11, 13, 15, 17, 19], c3,
+                               sorting=[('field1', D.ASC)])
+        q = Q(QueryView, c3)
+        yield self._query_test([1, 3, 5, 7, 9], q, O.AND, c1,
+                               sorting=[('field1', D.ASC)])
+        yield self._query_test([13, 11, 9, 7, 5], q, O.AND, c4,
+                               sorting=[('field1', D.DESC)])
+        yield self._query_test([5, 7, 9], c1, O.AND, c4, O.AND, q)
+
+    @defer.inlineCallbacks
+    def _query_test(self, result, *parts, **kwargs):
+        q = query.Query(QueryView, *parts, sorting=kwargs.pop('sorting', None))
+        res = yield query.select(self.connection, q)
+        self.assertEquals(result, [x.field1 for x in res])
+        count = yield query.count(self.connection, q)
+        self.assertEquals(len(result), count)
+
+
     ### methods specific for testing the notification callbacks
 
     def change_cb(self, doc, rev, deleted, own_change):
@@ -589,6 +638,34 @@ class TestCase(object):
             return len(self.changes) == expected
 
         return check
+
+
+@serialization.register
+class QueryDoc(document.Document):
+    type_name = 'query'
+
+    document.field('field1', None)
+    document.field('field2', None)
+    document.field('field3', None)
+
+
+class QueryView(query.QueryView):
+
+    name = 'query_view'
+
+    def extract_field1(doc):
+        yield doc.get('field1')
+
+    def extract_field2(doc):
+        yield doc.get('field2')
+
+    def extract_field3(doc):
+        yield doc.get('field3')
+
+    query.field('field1', extract_field1)
+    query.field('field2', extract_field2)
+    query.field('field3', extract_field3)
+    query.document_types(['query'])
 
 
 class CallbacksReceiver(Mock):
