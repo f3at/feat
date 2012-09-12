@@ -161,13 +161,13 @@ class QueryView(query.QueryView):
     def extract_name(doc):
         yield doc.get('name')
 
+    @query.field('position')
     def extract_position(doc):
         pos = doc.get('pos', None)
         if pos is not None:
             yield pos
 
     query.field('name', extract_name)
-    query.field('position', extract_position)
 
 
 class TestQueryCache(common.TestCase):

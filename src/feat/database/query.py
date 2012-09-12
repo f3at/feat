@@ -212,9 +212,19 @@ class QueryView(view.BaseView):
         cls.HANDLERS[name] = handler
 
 
-def field(name, extract):
-    annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                 name, extract)
+def field(name, extract=None):
+    if callable(extract):
+        annotate.injectClassCallback('query field', 3, '_annotate_field',
+                                     name, extract)
+    else:
+        # used as decorator
+
+        def field(extract):
+            annotate.injectClassCallback('query field', 3, '_annotate_field',
+                                         name, extract)
+            return extract
+
+        return field
 
 
 def document_types(types):
