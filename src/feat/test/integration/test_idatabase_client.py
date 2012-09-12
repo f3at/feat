@@ -67,7 +67,7 @@ class FilteringView(view.BaseView):
     name = 'filter_view'
 
     def filter(doc, request):
-        check_request = (not request.get('query') and
+        check_request = (request.get('query') and
                          request['query'].get('field') is not None)
         return (doc.get('.type', None) == 'view-dummy' and
                 (not check_request or
