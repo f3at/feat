@@ -303,6 +303,13 @@ class IAgencyAgent(Interface):
         @return: C{list} of the results.
         '''
 
+    def get_database():
+        '''
+        Returns the IDatabaseClient instance connected to the same database
+        as the agent. Use it to gain direct access to all connection methods
+        without the necessity to go through multiple level of delegation.
+        '''
+
     def terminate():
         '''
         Performs all the necessary steps to end the life of the agent in a

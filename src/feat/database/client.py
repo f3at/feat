@@ -27,14 +27,14 @@ import urllib
 from twisted.internet import reactor
 from zope.interface import implements
 
-from feat.common import log, defer, time
-from feat.common.serialization import json
+from feat.common import log, defer, time, journal, serialization
 from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
 from feat.database.interface import NotFoundError
 from feat.interface.generic import ITimeProvider
+from feat.interface.serialization import ISerializable
 
 
 class ViewFilter(object):
@@ -169,14 +169,16 @@ class ChangeListener(log.Logger):
 class Connection(log.Logger, log.LogProxy):
     '''API for agency to call against the database.'''
 
-    implements(IDatabaseClient, ITimeProvider, IRevisionStore)
+    type_name = 'db-connection'
+
+    implements(IDatabaseClient, ITimeProvider, IRevisionStore, ISerializable)
 
     def __init__(self, database):
         log.Logger.__init__(self, database)
         log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
-        self._serializer = json.Serializer()
-        self._unserializer = json.PaisleyUnserializer()
+        self._serializer = serialization.json.Serializer()
+        self._unserializer = serialization.json.PaisleyUnserializer()
 
         # listner_id -> doc_ids
         self._listeners = dict()
@@ -202,9 +204,11 @@ class Connection(log.Logger, log.LogProxy):
 
     ### IDatabaseClient ###
 
+    @serialization.freeze_tag('IDatabaseClient.create_database')
     def create_database(self):
         return self._database.create_db()
 
+    @serialization.freeze_tag('IDatabaseClient.save_document')
     @defer.inlineCallbacks
     def save_document(self, doc):
         doc = IDocument(doc)
@@ -221,32 +225,39 @@ class Connection(log.Logger, log.LogProxy):
                 attachment.set_saved()
         defer.returnValue(doc)
 
+    @serialization.freeze_tag('IDatabaseClient.get_attachment_body')
     def get_attachment_body(self, attachment):
         d = self._database.get_attachment(attachment.doc_id, attachment.name)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.get_document')
     def get_document(self, doc_id):
         d = self._database.open_doc(doc_id)
         d.addCallback(self._unserializer.convert)
         d.addCallback(self._notice_doc_revision)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.get_revision')
     def get_revision(self, doc_id):
+        # FIXME: this could be done by lightweight HEAD request
         d = self._database.open_doc(doc_id)
         d.addCallback(lambda doc: doc['_rev'])
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.reload_database')
     def reload_document(self, doc):
         assert IDocument.providedBy(doc), \
                "Incorrect type: %r, expected IDocument" % (type(doc), )
         return self.get_document(doc.doc_id)
 
+    @serialization.freeze_tag('IDatabaseClient.delete_document')
     def delete_document(self, doc):
         assert isinstance(doc, document.Document), type(doc)
         d = self._database.delete_doc(doc.doc_id, doc.rev)
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.changes_listener')
     def changes_listener(self, filter_, callback, **kwargs):
         assert callable(callback)
 
@@ -260,6 +271,8 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(set_listener_id, filter_)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.cancel_listener')
+    @journal.named_side_effect('IDatabaseClient.cancel_listener')
     def cancel_listener(self, filter_):
         for l_id, listener_filter in self._listeners.items():
             if ((IViewFactory.providedBy(listener_filter) and
@@ -268,21 +281,26 @@ class Connection(log.Logger, log.LogProxy):
                  (filter_ in listener_filter))):
                 self._cancel_listener(l_id)
 
+    @serialization.freeze_tag('IDatabaseClient.query_view')
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
         d = self._database.query_view(factory, **options)
         d.addCallback(self._parse_view_results, factory, options)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.disconnect')
+    @journal.named_side_effect('IDatabaseClient.disconnect')
     def disconnect(self):
         if hasattr(self, '_query_cache'):
             self._query_cache.empty()
         for l_id in self._listeners.keys():
             self._cancel_listener(l_id)
 
+    @serialization.freeze_tag('IDatabaseClient.get_update_seq')
     def get_update_seq(self):
         return self._database.get_update_seq()
 
+    @serialization.freeze_tag('IDatabaseClient.get_changes')
     def get_changes(self, filter_=None, limit=None, since=0):
         if IViewFactory.providedBy(filter_):
             filter_ = ViewFilter(filter_, params=dict())
@@ -290,6 +308,7 @@ class Connection(log.Logger, log.LogProxy):
             raise ValueError("%r should provide IViewFacory" % (filter_, ))
         return self._database.get_changes(filter_, limit, since)
 
+    @serialization.freeze_tag('IDatabaseClient.bulk_get')
     def bulk_get(self, doc_ids, consume_errors=True):
 
         def parse_bulk_response(resp):
@@ -313,6 +332,8 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(parse_bulk_response)
         return d
 
+    ### public method used by query mechanism ###
+
     def get_query_cache(self, create=True):
         '''Called by methods inside feat.database.query module to obtain
         the query cache.
@@ -326,6 +347,11 @@ class Connection(log.Logger, log.LogProxy):
             else:
                 return None
         return self._query_cache
+
+    ### ISerializable Methods ###
+
+    def snapshot(self):
+        return None
 
     ### private
 

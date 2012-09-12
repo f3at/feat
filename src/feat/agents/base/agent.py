@@ -467,6 +467,10 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return f
 
     @replay.immutable
+    def get_database(self, state):
+        return state.medium.get_database()
+
+    @replay.immutable
     def call_next(self, state, method, *args, **kwargs):
         return state.medium.call_next(method, *args, **kwargs)
 

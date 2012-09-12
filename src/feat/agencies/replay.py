@@ -43,6 +43,7 @@ from feat.interface.serialization import (IExternalizer, ISerializable,
 from feat.interface.task import IAgencyTask
 from feat.interface.collector import IAgencyCollector
 from feat.interface.poster import IAgencyPoster
+from feat.database.interface import IDatabaseClient
 
 
 def side_effect_as_string(*args):
@@ -348,6 +349,7 @@ class Replay(log.LogProxy, log.Logger):
         self.agent_type = None
         self.agent_id = agent_id
         Factory(self, 'agent-medium', AgencyAgent)
+        Factory(self, 'db-connection', Connection)
         Factory(self, 'replier-medium', AgencyReplier)
         Factory(self, 'requester-medium', AgencyRequester)
         Factory(self, 'contractor-medium', AgencyContractor)
@@ -694,6 +696,73 @@ class AgencyInterest(log.Logger):
         pass
 
 
+class Connection(BaseReplayDummy):
+
+    type_name = "db-connection"
+
+    implements(IDatabaseClient, ISerializable)
+
+    ### IDatabaceClient ###
+
+    @serialization.freeze_tag('IDatabaseClient.create_database')
+    def create_database(self):
+        raise RuntimeError('create_database() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.save_document')
+    def save_document(self, doc):
+        raise RuntimeError('save_document() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.get_attachment_body')
+    def get_attachment_body(self, attachment):
+        raise RuntimeError('get_attachment_body() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.get_document')
+    def get_document(self, doc_id):
+        raise RuntimeError('get_document() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.get_revision')
+    def get_revision(self, doc_id):
+        raise RuntimeError('get_revision() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.reload_database')
+    def reload_document(self, doc):
+        raise RuntimeError('reload_document() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.delete_document')
+    def delete_document(self, doc):
+        raise RuntimeError('delete_document() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.changes_listener')
+    def changes_listener(self, filter_, callback, **kwargs):
+        raise RuntimeError('changes_listener()should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.cancel_listener')
+    @replay.named_side_effect('IDatabaseClient.cancel_listener')
+    def cancel_listener(self, filter_):
+        pass
+
+    @serialization.freeze_tag('IDatabaseClient.query_view')
+    def query_view(self, factory, **options):
+        raise RuntimeError('This should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.disconnect')
+    @replay.named_side_effect('IDatabaseClient.disconnect')
+    def disconnect(self):
+        pass
+
+    @serialization.freeze_tag('IDatabaseClient.get_update_seq')
+    def get_update_seq(self):
+        raise RuntimeError('get_update_seq() never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.get_changes')
+    def get_changes(self, filter_=None, limit=None, since=0):
+        raise RuntimeError('get_changes() should never be called!')
+
+    @serialization.freeze_tag('IDatabaseClient.bulk_get')
+    def bulk_get(self, doc_ids, consume_errors=True):
+        raise RuntimeError('bulk_get() should never be called!')
+
+
 class AgencyAgent(BaseReplayDummy):
 
     type_name = "agent-medium"
@@ -851,6 +920,11 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgency.get_document')
     def get_document(self, document_id):
+        raise RuntimeError('This should never be called!')
+
+    @serialization.freeze_tag('AgencyAgent.get_database')
+    @replay.named_side_effect('AgencyAgent.get_database')
+    def get_database(self):
         raise RuntimeError('This should never be called!')
 
     @replay.named_side_effect('AgencyAgency.call_next')
