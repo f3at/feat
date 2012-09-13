@@ -128,7 +128,7 @@ def context_value(name):
     with specified name."""
 
     def context_value(_value, context, **_params):
-        return context[name]
+        return defer.succeed(context[name])
 
     return context_value
 
