@@ -727,6 +727,22 @@ class Structure(Value):
 field = action.param
 
 
+class MetaCollection(type(Value)):
+
+    @staticmethod
+    def new(name, allowed_types=[], min_size=None, max_size=None,
+            is_ordered=True):
+        cls = MetaCollection(name, (Collection, ), {})
+        for value_info in allowed_types:
+            cls.annotate_allows(value_info)
+        cls.annotate_is_ordered(is_ordered)
+        if min_size is not None:
+            cls.annotate_min_size(min_size)
+        if max_size is not None:
+            cls.annotate_max_size(max_size)
+        return cls
+
+
 class Collection(Value):
 
     implements(IValueCollection)
@@ -809,7 +825,7 @@ class Collection(Value):
                 try:
                     result.append(getattr(allowed, method_name)(v))
                     break
-                except ValueError:
+                except (ValueError, InvalidParameters), e:
                     continue
             else:
                 raise ValueError(value)
