@@ -252,15 +252,21 @@ class Condition(serialization.Serializable):
 
     type_name = 'condition'
 
-    def __init__(self, field, oper, value):
+    def __init__(self, field, evaluator, value):
+        if not isinstance(evaluator, Evaluator):
+            raise ValueError("%r is not an Evaluator" % (evaluator, ))
+
         self.field = field
-        self.operator = oper
+        self.evaluator = evaluator
         self.value = value
 
     ### IPlanBuilder ###
 
     def get_basic_queries(self):
-        return [(self.field, self.operator, self.value)]
+        return [(self.field, self.evaluator, self.value)]
+
+    def __str__(self):
+        return "%s %s %s" % (self.field, self.evaluator.name, self.value)
 
 
 class Operator(enum.Enum):
@@ -305,7 +311,14 @@ class Query(serialization.Serializable):
                                      "Operator, %r given" % (index, part))
                 self.operators.append(part)
 
-        self.sorting = kwargs.pop('sorting', None)
+        sorting = kwargs.pop('sorting', None)
+        self.set_sorting(sorting)
+
+        if kwargs:
+            raise ValueError('Uknown keywords: %s' % (kwargs.keys(), ))
+
+    def set_sorting(self, sorting):
+        self.sorting = sorting
         bad_sorting = ("Sorting should be a list of tuples: (field, direction)"
                        ", %r given" % (self.sorting, ))
         if self.sorting is None:
@@ -322,9 +335,6 @@ class Query(serialization.Serializable):
                 raise ValueError(bad_sorting)
             if not isinstance(part[1], Direction):
                 raise ValueError(bad_sorting)
-
-        if kwargs:
-            raise ValueError('Uknown keywords: %s' % (kwargs.keys(), ))
 
     ### IPlanBuilder ###
 
@@ -349,6 +359,14 @@ class Query(serialization.Serializable):
                 resp.append(x)
 
         return resp
+
+    def __str__(self):
+        ops = [x.name for x in self.operators]
+        body = " ".join(str(x) for x in
+            filter(None,
+                   [x for sublist in map(None, self.parts, ops)
+                    for x in sublist]))
+        return "(%s)" % (body, )
 
 
 @defer.inlineCallbacks
