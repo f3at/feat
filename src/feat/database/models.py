@@ -33,6 +33,7 @@ class QueryView(model.Collection):
     _view = None
 
     model.child_meta('json', 'render-inline')
+    model.meta('json', 'render-as-list')
 
     def init(self):
         if not callable(type(self)._connection_getter):

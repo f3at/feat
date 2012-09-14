@@ -277,6 +277,11 @@ def render_inline(meta):
     return ['render-inline'] in parsed
 
 
+def render_as_list(meta):
+    parsed = get_parsed_meta(meta)
+    return ['render-as-list'] in parsed
+
+
 def prevent_inline(meta):
     parsed = get_parsed_meta(meta)
     return ['prevent-inline'] in parsed
@@ -316,9 +321,12 @@ def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
 
     verbose = "format" in kwargs and "verbose" in kwargs["format"]
+    as_list = render_as_list(obj)
 
     if verbose:
         d = render_verbose(obj, context)
+    elif as_list:
+        d = render_model_as_list(obj, context)
     else:
         d = render_compact_model(obj, context)
 
@@ -335,6 +343,27 @@ def write_query_model(doc, obj, *args, **kwargs):
         params['format'] = 'verbose'
     d.addCallback(defer.inject_param, 1, write_model, doc,
                   **params)
+    return d
+
+
+def render_model_as_list(obj, context):
+
+    def got_items(items):
+        defers = list()
+        for item in items:
+            args = (item, context)
+            d = item.fetch()
+            d.addCallbacks(render_compact_submodel, filter_model_errors,
+                           callbackArgs=args, errbackArgs=args)
+            defers.append(d)
+        return defer.DeferredList(defers, consumeErrors=True)
+
+    def get_results(results):
+        return [x[1] for x in results]
+
+    d = obj.fetch_items()
+    d.addCallback(got_items)
+    d.addCallback(get_results)
     return d
 
 

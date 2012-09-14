@@ -127,6 +127,20 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         yield self._asserts_on_select([12, 10, 8], res)
 
     @defer.inlineCallbacks
+    def testJsonSerialization(self):
+        q = []
+        res = yield self.model.perform_action('select', query=q)
+        j = yield self.model_as_json(res)
+        field1s = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+        self.assertIsInstance(j, list)
+        self.assertEqual(len(field1s), len(j))
+        for row in j:
+            self.assertIn('field1', row)
+            self.assertIn('field2', row)
+            self.assertIn('field3', row)
+            self.assertEqual(field1s.pop(0), row['field1'])
+
+    @defer.inlineCallbacks
     def testNotAllowedField(self):
         q = [{'field': 'field1', 'evaluator': 'le', 'value': '10'},
              'AND',
@@ -165,14 +179,14 @@ class TestValues(common.TestCase):
             'OR',
             {'field': 'field2', 'evaluator': 'inside', 'value': [1, 2, 3]}])
         self.assertIsInstance(v, query.Query)
-        exp = ('(field1 equals spam OR field2 inside [1, 2, 3])')
+        exp = ('(field1 equals spam OR field2 inside (1, 2, 3))')
         self.assertEquals(exp, query_value.publish(v))
 
         v = query_value.validate([
             {'field': 'field1', 'evaluator': 'equals', 'value': 'spam'},
             'OR',
             {'field': 'field2', 'evaluator': 'between', 'value': [1, 2]}])
-        exp = '(field1 equals spam OR field2 between [1, 2])'
+        exp = '(field1 equals spam OR field2 between (1, 2))'
         self.assertEquals(exp, query_value.publish(v))
 
         wrong = [

@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import json
 import sys
 import os
 
@@ -40,6 +41,8 @@ from feat.agents.application import feat
 from feat import applications
 from feat.gateway.resources import Context
 from feat.web import document, http
+
+from feat.test.test_models_applicationjson import DummyContext
 
 from feat.database.interface import NotFoundError
 from feat.models.interface import IModel, ActionCategories, Unauthorized
@@ -568,3 +571,11 @@ class ModelTestMixin(object):
         d.addCallback(defer.call_param, 'fetch')
         d.addCallback(defer.call_param, 'perform_action', 'get')
         return d
+
+    @defer.inlineCallbacks
+    def model_as_json(self, model):
+        doc = document.WritableDocument("application/json",
+                                        encoding='utf-8')
+        ctx = DummyContext(("ROOT", ), ("root", ))
+        yield document.write(doc, model, context=ctx, format="compact")
+        defer.returnValue(json.loads(doc.get_data()))
