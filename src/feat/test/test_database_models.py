@@ -4,6 +4,8 @@ from feat.common import serialization, defer
 from feat.database import models, query, document, emu, view
 from feat.models import model, effect, call, getter, value
 
+from feat.models.interface import InvalidParameters
+
 
 @serialization.register
 class QueryDoc(document.Document):
@@ -48,6 +50,8 @@ class QueryModel(models.QueryView):
         QueryView, ['field1', 'field2'],
         call.model_call('get_static_conditions'))
     model.child_source(getter.model_get('get_doc'))
+    models.query_target('source')
+
 
     def get_static_conditions(self):
         return [query.Condition('field3', query.Evaluator.equals, 'A')]
@@ -79,9 +83,68 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         yield self.model.initiate()
 
     @defer.inlineCallbacks
-    def testQuery(self):
-        yield
+    def testQuerySimple(self):
+        q = [{'field': 'field1', 'evaluator': 'equals', 'value': 2}]
+        res = yield self.model.perform_action('select', query=q)
+        yield self._asserts_on_select([2], res)
+        count = yield self.model.perform_action('count', query=q)
+        self.assertEquals(1, count)
 
+        q = [{'field': 'field1', 'evaluator': 'le', 'value': 10}]
+        res = yield self.model.perform_action('select', query=q)
+        yield self._asserts_on_select([0, 2, 4, 6, 8, 10], res)
+        count = yield self.model.perform_action('count', query=q)
+        self.assertEquals(6, count)
+
+        q = [{'field': 'field1', 'evaluator': 'between', 'value': (5, 15)},
+             'AND',
+             {'field': 'field2', 'evaluator': 'le', 'value': 4}]
+        res = yield self.model.perform_action('select', query=q)
+        yield self._asserts_on_select([10, 12, 14], res)
+        count = yield self.model.perform_action('count', query=q)
+        self.assertEquals(3, count)
+
+        res = yield self.model.perform_action('select', query=q,
+                                              sorting=[('field1', 'DESC')])
+        yield self._asserts_on_select([14, 12, 10], res)
+
+    @defer.inlineCallbacks
+    def testPagination(self):
+        q = []
+        res = yield self.model.perform_action('select', query=q)
+        yield self._asserts_on_select([0, 2, 4, 6, 8, 10, 12, 14, 16, 18], res)
+        count = yield self.model.perform_action('count', query=q)
+        self.assertEquals(10, count)
+
+        res = yield self.model.perform_action('select', query=q, limit=3)
+        yield self._asserts_on_select([0, 2, 4], res)
+        res = yield self.model.perform_action('select', query=q, limit=3,
+                                              skip=3)
+        yield self._asserts_on_select([6, 8, 10], res)
+
+        res = yield self.model.perform_action(
+            'select', query=q, limit=3, skip=3, sorting=[('field1', 'DESC')])
+        yield self._asserts_on_select([12, 10, 8], res)
+
+    @defer.inlineCallbacks
+    def testNotAllowedField(self):
+        q = [{'field': 'field1', 'evaluator': 'le', 'value': '10'},
+             'AND',
+             {'field': 'field3', 'evaluator': 'equals', 'value': 'B'}]
+        d = self.model.perform_action('select', query=q)
+        self.assertFailure(d, InvalidParameters)
+        yield d
+
+
+    @defer.inlineCallbacks
+    def _asserts_on_select(self, expected, res):
+        items = yield res.fetch_items()
+        field1s = []
+        for item in items:
+            s = yield item.fetch()
+            field1 = yield self.modelattr(s, 'field1')
+            field1s.append(field1)
+        self.assertEqual(expected, field1s)
 
 
 class TestValues(common.TestCase):

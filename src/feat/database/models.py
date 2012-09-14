@@ -14,13 +14,23 @@ def db_connection(effect):
                                  effect)
 
 
-def view_factory(factory, allowed_fields=[], static_conditions=[]):
+def query_target(target):
+    annotate.injectClassCallback("query_target", 3, "annotate_query_target",
+                                 target)
+
+
+def view_factory(factory, allowed_fields=[], static_conditions=None):
     annotate.injectClassCallback(
         "view_factory", 3, "annotate_view_factory",
-        factory, allowed_fields=[], static_conditions=[])
+        factory, allowed_fields=allowed_fields,
+        static_conditions=static_conditions)
 
 
 class QueryView(model.Collection):
+
+    _query_target = None
+    _connection_getter = None
+    _view = None
 
     model.child_meta('json', 'render-inline')
 
@@ -31,6 +41,10 @@ class QueryView(model.Collection):
         if type(self)._view is None:
             raise ValueError("This model needs to be annotated with "
                              "view_factory(IQueryViewFactory)")
+
+        if type(self)._query_target is None:
+            raise ValueError("This model needs to be annotated with "
+                             "query_target(source|view)")
 
         context = IContextMaker(self).make_context()
         d = self._connection_getter(None, context)
@@ -44,36 +58,30 @@ class QueryView(model.Collection):
 
     ### action body implementation ###
 
-    def get_static_conditions(value, context):
-
-        def build_query(static_conditions, q):
-            subquery = query.Query(cls.factory, *static_conditions)
-            return query.Query(cls.factory, q, query.Operator.AND, subquery)
-
-        cls = type(context['model'])
-        if cls._static_conditions:
-            d = cls._static_conditions(None, context)
-            d.addCallback(build_query, value)
-            return d
-        return defer.succeed(value)
-
-    def do_select(self, query, skip, sorting=None, limit=None):
+    def do_select(self, value, skip, sorting=None, limit=None):
         if sorting:
-            query.set_sorting(sorting)
-        return query.select(self.connection, query, skip, limit)
+            value.set_sorting(sorting)
+        return query.select(self.connection, value, skip, limit)
 
     def render_select_response(self, value):
         if not hasattr(self, '_query_set_factory'):
             factory = model.MetaQuerySetCollection.new(type(self))
             self._query_set_factory = factory
-        result = self._query_set_factory(self.source, value)
+        items = [(x.doc_id, x) for x in value]
+        result = self._query_set_factory(self.source, items)
         return result.initiate(view=self.view, officer=self.officer,
                                aspect=self.aspect)
 
-    def do_count(self, query):
-        return query.count(self.connection, query)
+    def do_count(self, value):
+        return query.count(self.connection, value)
 
     ### annotations ###
+
+    @classmethod
+    def annotate_query_target(cls, target):
+        if target not in ['view', 'source']:
+            raise ValueError('%s should be view or source' % (target, ))
+        cls._query_target = target
 
     @classmethod
     def annotate_db_connection(cls, effect):
@@ -87,7 +95,7 @@ class QueryView(model.Collection):
                                   model._validate_effect(static_conditions))
 
         for x in allowed_fields:
-            if not cls.view.has_field(x):
+            if not cls._view.has_field(x):
                 raise ValueError("%r doesn't define a field: '%s'" % (x, ))
         cls._allowed_fields = allowed_fields
 
@@ -97,13 +105,29 @@ class QueryView(model.Collection):
         name = utils.mk_class_name(cls._view.name, "Sorting")
         SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
         name = utils.mk_class_name(cls._view.name, "Result")
-        result_info = value.MetaCollection.new(name, [value.Model()])()
+        result_info = value.Model()
+
+        def get_static_conditions(value, context, *args, **kwargs):
+
+            def build_query(static_conditions, factory, q):
+                subquery = query.Query(factory, *static_conditions)
+                return query.Query(factory, q, query.Operator.AND, subquery)
+
+            cls = type(context['model'])
+            if cls._static_conditions:
+                d = cls._static_conditions(None, context)
+                d.addCallback(build_query, cls._view, kwargs['query'])
+                return d
+            return defer.succeed(value)
 
         SelectAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Select"),
             ActionCategories.retrieve,
             is_idempotent=False, result_info=result_info,
-            effects=[call.model_perform('do_select')],
+            effects=[
+                get_static_conditions,
+                call.model_perform('do_select'),
+                call.model_filter('render_select_response')],
             params=[action.Param('query', QueryValue()),
                     action.Param('sorting', SortingValue(), is_required=False),
                     action.Param('skip', value.Integer(0), is_required=False),
@@ -114,7 +138,9 @@ class QueryView(model.Collection):
         CountAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Count"),
             ActionCategories.retrieve,
-            effects=[call.model_perform('do_count')],
+            effects=[
+                get_static_conditions,
+                call.model_perform('do_count')],
             result_info=value.Integer(),
             params=[action.Param('query', QueryValue())])
         cls.annotate_action(u"count", CountAction)
@@ -126,10 +152,18 @@ class RangeType(value.Collection):
     value.min_size(2)
     value.allows(value.Integer())
 
+    def validate(self, v):
+        v = super(RangeType, self).validate(v)
+        return tuple(v)
+
 
 class FreeList(value.Collection):
     value.allows(value.Integer())
     value.allows(value.String())
+
+    def validate(self, v):
+        v = super(FreeList, self).validate(v)
+        return tuple(v)
 
 
 class MetaSortingValue(type(value.Collection)):
@@ -166,7 +200,9 @@ class MetaQueryValue(type(value.Collection)):
 
     @staticmethod
     def new(name, factory, allowed_fields):
-        cls = MetaQueryValue(name, (QueryValue, ), {'factory': factory})
+        cls = MetaQueryValue(name, (QueryValue, ),
+                             {'factory': factory,
+                              'allowed_fields': allowed_fields})
         # this is to make conditions with numbers work
         name = name + 'I'
         cls.annotate_allows(
@@ -203,6 +239,12 @@ class QueryValue(value.Collection):
         v = value.Collection.validate(self, v)
 
         cls = type(self)
+        if not v:
+            # this is to allow querying with empty query
+            v = [query.Condition(cls.allowed_fields[0],
+                                 query.Evaluator.none,
+                                 None)]
+
         q = query.Query(cls.factory, *v)
         return q
 

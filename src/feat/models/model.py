@@ -1619,12 +1619,12 @@ class MetaQuerySetCollection(MetaCollection):
 class _QuerySetCollection(_DynCollection):
 
     def __init__(self, source, items):
-        msg = ("Query method should the list of 2 element tuples "
+        msg = ("Query method argument #1 should be a list of 2 element tuples "
                "(key, value), got %r instead")
         if not isinstance(items, (list, tuple)):
             raise ValueError(msg % (items, ))
         for el in items:
-            if not isinstance(el, (list, tuple)) and len(el) == 2:
+            if not isinstance(el, (list, tuple)) or not len(el) == 2:
                 raise ValueError(msg % (items, ))
 
         self._items = items

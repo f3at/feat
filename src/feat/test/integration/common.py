@@ -562,3 +562,9 @@ class ModelTestMixin(object):
             action.name, model)
         self.fail("Calling action %s on model %s failed, look at logs." %
                   (action.name, model.identity, ))
+
+    def modelattr(self, model, attr):
+        d = model.fetch_item(attr)
+        d.addCallback(defer.call_param, 'fetch')
+        d.addCallback(defer.call_param, 'perform_action', 'get')
+        return d
