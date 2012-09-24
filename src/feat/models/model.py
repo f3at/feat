@@ -31,7 +31,7 @@ from feat.models import reference as models_reference
 from feat.models import action as models_action
 
 from feat.models.interface import ActionCategories, ModelError, NotSupported
-from feat.models.interface import IOfficer, Unauthorized
+from feat.models.interface import IOfficer, Unauthorized, ActionFailed
 from feat.models.interface import IModel, IModelItem, IQueryModel
 from feat.models.interface import IActionFactory, IModelFactory
 from feat.models.interface import IAspect, IReference, IContextMaker
@@ -631,7 +631,15 @@ class AbstractModel(models_meta.Metadata, mro.DeferredMroMixin):
         return init(view)
 
     def perform_action(self, name, **kwargs):
+
+        def check_for_none(action):
+            if not action:
+                raise ActionFailed("Model %r doesn't have action named %r"
+                                   % (self, name))
+            return action
+
         d = self.fetch_action(name)
+        d.addCallback(check_for_none)
         d.addCallback(defer.call_param, 'perform', **kwargs)
         return d
 
