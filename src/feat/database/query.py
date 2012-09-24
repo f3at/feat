@@ -66,7 +66,8 @@ class Cache(log.Logger):
                 self.debug("Query served from the cache hit")
                 return entry.entries
             else:
-                d = connection.get_changes(factory, limit=1, since=seq_num)
+                d = connection.get_changes(factory, limit=1,
+                                           since=entry.seq_num)
                 d.addCallback(defer.inject_param, 4,
                               self._analyze_changes,
                               connection, factory, subquery, entry)
@@ -97,7 +98,7 @@ class Cache(log.Logger):
             if factory.name in self._cache: # this is not to fail on
                                             # concurrent checks expiring cache
                 self._cache[factory.name].clear()
-            d = self._fetch_subquery(connection, factory, subquery)
+            d = self._fetch_subquery(connection, factory, subquery, seq_num)
             d.addCallback(defer.keep_param,
                           self._cache_response, factory, subquery, seq_num)
             return d
