@@ -98,6 +98,9 @@ class DummyAgent(DummyBase):
         self.protocols = list()
         DummyBase.reset(self)
 
+    def get_database(self):
+        return self._db
+
     def initiate_protocol(self, factory, *args, **kwargs):
         instance = DummyProtocol(factory, args, kwargs)
         self.protocols.append(instance)
