@@ -122,10 +122,10 @@ class BasicHTTPCredentials(object):
         if method != "basic":
             #FIXME: Better handling of invalid authentication method.
             #       Maybe returning again a 401, but with witch realm name ?
-            raise http.InternalServerError("Invalid Authentication Method '%s'"
-                                           % method)
+            raise http.BadRequestError("Invalid Authentication Method '%s'"
+                                       % method)
         if len(parts) < 2:
-            raise http.InternalServerError("Invalid Authentication Data")
+            raise http.BadRequestError("Invalid Authentication Data")
         decoded = parts[1].strip().decode("base64")
         username, password = decoded.split(':', 1)
         return cls(username, password)
