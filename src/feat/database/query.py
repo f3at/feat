@@ -10,10 +10,6 @@ from feat.database.interface import IQueryViewFactory
 from feat.database.interface import IPlanBuilder, IQueryCache
 
 
-# define contants at module level to fool pyflakes
-DOCUMENT_TYPES = None
-HANDLERS = None
-
 
 class CacheEntry(object):
 
@@ -150,10 +146,42 @@ class QueryViewMeta(type(view.BaseView)):
     implements(IQueryViewFactory)
 
     def __init__(cls, name, bases, dct):
-        cls.HANDLERS = dict()
-        cls.DOCUMENT_TYPES = list()
-        cls._attached = False
+        cls.HANDLERS = HANDLERS = dict()
+        cls.DOCUMENT_TYPES = DOCUMENT_TYPES = list()
+
+        # map() and filter() function have to be generated separetely for
+        # each subclass, because they will have different constants attached
+        # in func_globals
+
+        def map(doc):
+            if doc['.type'] not in DOCUMENT_TYPES:
+                return
+            for field, handler in HANDLERS.iteritems():
+                for value in handler(doc):
+                    yield (field, value), doc['_id']
+        cls.map = cls._querymethod(map)
+
+        def filter(doc, request):
+            return doc.get('.type') in DOCUMENT_TYPES
+        cls.filter = cls._querymethod(filter)
+
+        # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
+
+        # we cannot use normal mechanism for attaching code to query methods,
+        # because we want to build a complex object out of it, so we need to
+        # inject it after all the annotations have been processed
+        names = {}
+        for field, handler in cls.HANDLERS.iteritems():
+            cls.attach_method(cls.map, handler)
+            names[field] = handler.__name__
+        code = ", ".join(["'%s': %s" % (k, v)
+                          for k, v in names.iteritems()])
+        cls.attach_code(cls.map, "HANDLERS = {%s}" % code)
+        cls.attach_constant(
+            cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
+        cls.attach_constant(
+            cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
 
 
 class QueryView(view.BaseView):
@@ -162,40 +190,9 @@ class QueryView(view.BaseView):
 
     ### IViewFactory ###
 
-    def map(doc):
-        if doc['.type'] not in DOCUMENT_TYPES:
-            return
-        for field, handler in HANDLERS.iteritems():
-            for value in handler(doc):
-                yield (field, value), doc['_id']
-
-    def filter(doc, request):
-        return doc.get('.type') in DOCUMENT_TYPES
-
     @classmethod
     def parse(cls, key, value, reduced):
         return value
-
-    @classmethod
-    def get_code(cls, name):
-        # we cannot use normal mechanism for attaching code to query methods,
-        # because we want to build a complex object out of it, so we need to
-        # inject it after all the annotations have been processed
-        if not cls._attached:
-            cls._attached = True
-            names = {}
-            for field, handler in cls.HANDLERS.iteritems():
-                cls.attach_method(cls.map, handler)
-                names[field] = handler.__name__
-            code = ", ".join(["'%s': %s" % (k, v)
-                              for k, v in names.iteritems()])
-            cls.attach_code(cls.map, "HANDLERS = {%s}" % code)
-            cls.attach_constant(
-                cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
-            cls.attach_constant(
-                cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
-
-        return super(QueryView, cls).get_code(name)
 
     ### IQueryViewFactory ###
 
@@ -207,9 +204,11 @@ class QueryView(view.BaseView):
 
     @classmethod
     def _annotate_field(cls, name, handler):
-        assert not cls._attached, ("Weird, we tried to annotate after getting"
-                                   " code, uhm?")
         cls.HANDLERS[name] = handler
+
+    @classmethod
+    def _annotate_document_types(cls, types):
+        cls.DOCUMENT_TYPES.extend(types)
 
 
 def field(name, extract=None):
@@ -228,8 +227,8 @@ def field(name, extract=None):
 
 
 def document_types(types):
-    annotate.injectAttribute(
-        'query document types', 3, 'DOCUMENT_TYPES', types)
+    annotate.injectClassCallback(
+        'document_types', 3, '_annotate_document_types', types)
 
 
 class Evaluator(enum.Enum):
