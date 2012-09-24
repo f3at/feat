@@ -46,7 +46,7 @@ from feat.test.test_models_applicationjson import DummyContext
 
 from feat.database.interface import NotFoundError
 from feat.models.interface import IModel, ActionCategories, Unauthorized
-from feat.models.interface import IQueryModel
+from feat.models.interface import IQueryModel, NotSupported
 
 attr = common.attr
 delay = common.delay
@@ -509,7 +509,12 @@ class ModelTestMixin(object):
             querymodel = yield model.query_items(offset=0, limit=10)
             items = yield querymodel.fetch_items()
         else:
-            items = yield model.fetch_items()
+            try:
+                items = yield model.fetch_items()
+            except NotSupported:
+                self.info('Not iteration further down the model %r because '
+                          'it doesnt support fetching items', model)
+                return
         for item in items:
             try:
                 submodel = yield item.fetch()
@@ -545,6 +550,12 @@ class ModelTestMixin(object):
                 self.info("Not validating disabled action name: %s, "
                           "label: %s,", action.name, action.label)
                 continue
+            if action.parameters:
+                self.info("Not validating action name: %s, because it requires"
+                          " passing parameters: %r", action.name,
+                          [x.name for x in action.parameters])
+                continue
+
             d = action.perform()
             d.addErrback(self._action_errback, action, model)
 
@@ -553,6 +564,9 @@ class ModelTestMixin(object):
                       action.name, result)
 
     def _writing_errback(self, fail, mime_type, model):
+        if fail.check(NotSupported):
+            self.info("Model %r doesn't support fetching items", model)
+            return
         error.handle_failure(
             self, fail,
             "Failed writing the model for the mime type: %r, \n"
