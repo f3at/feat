@@ -105,7 +105,6 @@ class QueryView(model.Collection):
         QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields)
         name = utils.mk_class_name(cls._view.name, "Sorting")
         SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
-        name = utils.mk_class_name(cls._view.name, "Result")
         result_info = value.Model()
 
         def get_static_conditions(value, context, *args, **kwargs):
