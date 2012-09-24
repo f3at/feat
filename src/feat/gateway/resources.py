@@ -480,6 +480,7 @@ class ActionResource(BaseResource):
                          http.Methods.POST:
                          ((True, False), (ActionCategories.create,
                                           ActionCategories.update,
+                                          ActionCategories.retrieve,
                                           ActionCategories.command))}
 
     def __init__(self, action, context):

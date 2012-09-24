@@ -142,6 +142,7 @@ class QueryView(model.Collection):
                 get_static_conditions,
                 call.model_perform('do_count')],
             result_info=value.Integer(),
+            is_idempotent=False,
             params=[action.Param('query', QueryValue())])
         cls.annotate_action(u"count", CountAction)
 
