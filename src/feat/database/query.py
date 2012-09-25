@@ -162,7 +162,7 @@ class QueryViewMeta(type(view.BaseView)):
                 return
             for field, handler in HANDLERS.iteritems():
                 for value in handler(doc):
-                    yield (field, value), doc['_id']
+                    yield (field, value), None
         cls.map = cls._querymethod(map)
 
         def filter(doc, request):
@@ -195,8 +195,8 @@ class QueryView(view.BaseView):
     ### IViewFactory ###
 
     @classmethod
-    def parse(cls, key, value, reduced):
-        return value
+    def parse_view_result(cls, rows, reduced, include_docs):
+        return [x[2] for x in rows]
 
     ### IQueryViewFactory ###
 

@@ -212,13 +212,13 @@ class TestQueryView(common.TestCase):
         r = list(QueryView.map({'_id': 'id1', '.type': 'type1',
                                 'name': 'John', 'pos': 3}))
         self.assertEqual(2, len(r))
-        self.assertIn((('position', 3), 'id1'), r)
-        self.assertIn((('name', 'John'), 'id1'), r)
+        self.assertIn((('position', 3), None), r)
+        self.assertIn((('name', 'John'), None), r)
 
         # name is always emited
         r = list(QueryView.map({'_id': 'id1', '.type': 'type2'}))
         self.assertEqual(1, len(r))
-        self.assertIn((('name', None), 'id1'), r)
+        self.assertIn((('name', None), None), r)
 
         # type3 is not supported by this view
         r = list(QueryView.map(
