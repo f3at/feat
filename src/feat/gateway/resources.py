@@ -537,7 +537,8 @@ class ActionResource(BaseResource):
         # in case of ActionCategory.retrieve action, the action parameters
         # are in the query string, here we parse it
         request.debug("%r", self._action.category)
-        if self._action.category == ActionCategories.retrieve:
+        if (self._action.category == ActionCategories.retrieve and
+            self._action.is_idempotent):
             params = dict()
             request.debug("%r", self._action.parameters)
             request.debug("%r", request.arguments)

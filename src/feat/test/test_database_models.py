@@ -52,7 +52,6 @@ class QueryModel(models.QueryView):
     model.child_source(getter.model_get('get_doc'))
     models.query_target('source')
 
-
     def get_static_conditions(self):
         return [query.Condition('field3', query.Evaluator.equals, 'A')]
 
@@ -149,7 +148,6 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         self.assertFailure(d, InvalidParameters)
         yield d
 
-
     @defer.inlineCallbacks
     def _asserts_on_select(self, expected, res):
         items = yield res.fetch_items()
@@ -193,6 +191,21 @@ class TestValues(common.TestCase):
             {'field': 'field1', 'evaluator': 'equals', 'value': 'spam'},
             {'field': 'field2', 'evaluator': 'between', 'value': [1, 2]}]
         self.assertRaises(ValueError, query_value.validate, wrong)
+
+    def testStringInteger(self):
+        QueryValue = models.MetaQueryValue.new(
+            'Test', QueryView, ['field1', 'field2'])
+        query_value = QueryValue()
+
+        v = query_value.validate([
+            {'field': 'field1', 'evaluator': 'equals', 'value': '1234'}])
+        self.assertIsInstance(v, query.Query)
+        self.assertEquals('1234', v.parts[0].value)
+
+        v = query_value.validate([
+            {'field': 'field1', 'evaluator': 'equals', 'value': 1234}])
+        self.assertIsInstance(v, query.Query)
+        self.assertEquals(1234, v.parts[0].value)
 
     def testValidateSorting(self):
         SortingValue = models.MetaSortingValue.new(

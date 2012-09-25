@@ -63,7 +63,8 @@ class Cache(log.Logger):
                 return self._fetch_subquery(
                     connection, factory, subquery, seq_num)
             elif entry.seq_num == seq_num:
-                self.debug("Query served from the cache hit")
+                self.debug("Query served from the cache hit, %d rows",
+                           len(entry.entries))
                 return entry.entries
             else:
                 d = connection.get_changes(factory, limit=1,
@@ -85,7 +86,8 @@ class Cache(log.Logger):
         return d
 
     def _cache_response(self, entries, factory, subquery, seq_num):
-        self.log("Caching response for %r at seq_num: %d", subquery, seq_num)
+        self.debug("Caching response for %r at seq_num: %d, %d rows",
+                   subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
         self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
@@ -104,7 +106,7 @@ class Cache(log.Logger):
             return d
         else:
             self.debug("View %s has not changed, marking cached fragments as "
-                       "fresh.", factory.name)
+                       "fresh. %d rows", factory.name, len(entry.entries))
             if factory.name in self._cache:
                 for entry in self._cache[factory.name].itervalues():
                     entry.seq_num = seq_num

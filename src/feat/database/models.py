@@ -204,19 +204,19 @@ class MetaQueryValue(type(value.Collection)):
         cls = MetaQueryValue(name, (QueryValue, ),
                              {'factory': factory,
                               'allowed_fields': allowed_fields})
-        # this is to make conditions with numbers work
-        name = name + 'I'
-        cls.annotate_allows(
-            MetaConditionValue.new(
-                name, allowed_fields, ['equals', 'le', 'ge'],
-                value.Integer())())
-
         # this is to make conditions with strings work
         name = name + 'S'
         cls.annotate_allows(
             MetaConditionValue.new(
                 name, allowed_fields, ['equals', 'le', 'ge'],
                 value.String())())
+
+        # this is to make conditions with numbers work
+        name = name + 'I'
+        cls.annotate_allows(
+            MetaConditionValue.new(
+                name, allowed_fields, ['equals', 'le', 'ge'],
+                value.Integer())())
 
         # this is for between evaluator
         name = name + 'R'
