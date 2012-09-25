@@ -423,13 +423,18 @@ class IViewFactory(Interface):
         @return: Flag saying if this document matched the filter.
         '''
 
-    def parse(key, value, reduced):
+    def parse_view_result(rows, reduced, include_docs):
         '''
-        Map the (key, value) pair to the python object of our choice.
+        @param rows: list of tuples of length 2, 3, or 4 depending on how
+                     the view was queryied.
         @param reduced: Flag telling if we are parsing the map function
-                        result or the reduced data. Usefull for creating
-                        views which works both ways.
-        @return: Any instance.
+                        result or the reduced data. If True, the rows is a list
+                        of tuples of (key, value), if False see below
+        @param include_docs: Flag saying if the view have been queried with
+                             include_docs. If True the tuples are of the form
+                             (key, value, id, doc), if False: (key, value, id);
+                             applied reduced=False
+        @return: list of any instances.
         '''
 
     def get_code(name):

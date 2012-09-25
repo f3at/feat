@@ -354,7 +354,16 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         assert "rows" in resp
 
         for row in resp["rows"]:
-            yield row["key"], row["value"]
+            if "id" in row:
+                if "doc" in row:
+                    # querying with include_docs=True
+                    yield row["key"], row["value"], row["id"], row["doc"]
+                else:
+                    # querying without reduce
+                    yield row["key"], row["value"], row["id"]
+            else:
+                # querying with reduce
+                yield row["key"], row["value"]
 
     def _setup_notifiers(self):
         defers = list()

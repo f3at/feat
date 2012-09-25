@@ -186,6 +186,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         use_reduce = factory.use_reduce and options.get('reduce', True)
         group = options.pop('group', False)
         group_level = options.pop('group_level', None)
+        include_docs = options.pop('include_docs', False)
+
+        if use_reduce and include_docs:
+            raise ValueError("Query parameter 'include_docs' is invalid for "
+                             "reduce views.")
+
         iterator = (self._perform_map(doc, factory)
                     for doc in self._iterdocs())
         d = defer.succeed(iterator)
@@ -193,6 +199,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         if use_reduce:
             d.addCallback(self._perform_reduce, factory, group=group,
                           group_level=group_level)
+        if include_docs:
+            d.addCallback(self._include_docs)
         d.addCallback(self._apply_slice, **options)
         d.addCallback(self._sort_by_key)
         return d
@@ -254,6 +262,29 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
     ### private
 
+    def _include_docs(self, rows):
+        '''rows here are tuples (key, value, id), returns a list of tuples
+        (key, value, id, doc)'''
+        resp = list()
+        for row in rows:
+            if isinstance(row[1], dict) and '_id' in row[1]:
+                d_id = row[1]['_id']
+            else:
+                d_id = row[2]
+            try:
+                doc = self._get_doc(d_id)
+                doc = copy.deepcopy(doc)
+                if doc.get('_deleted', None):
+                    raise NotFoundError('%s deleted' % d_id)
+            except NotFoundError:
+                # FIXME: this just returns None instead of dict if the
+                # document is not there/was deleted.
+                # I'm not sure if this is how couchdb would behave
+                # check it!
+                doc = None
+            resp.append(row + (doc, ))
+        return resp
+
     def _apply_slice(self, rows, **slice_options):
         skip = slice_options.get('skip', 0)
         limit = slice_options.get('limit', None)
@@ -305,14 +336,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         cached = self._get_cache(doc['_id'], factory.name)
         if cached:
             return cached
-        res = list(factory.map(doc))
+        res = list(x + (doc['_id'], ) for x in factory.map(doc))
         self._set_cache(doc['_id'], factory.name, res)
         return res
 
     def _perform_reduce(self, map_results, factory, group=False,
                         group_level=None):
         '''
-        map_results here is a list of tuples (key, value)
+        map_results here is a list of tuples (key, value, id)
         '''
 
         def get_group_key(key, group, group_level):
@@ -326,7 +357,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             return self._reduce_values(factory, None, keys, values)
         else:
             groups = dict()
-            for key, value in map_results:
+            for row in map_results:
+                key, value = row[:2]
                 group_key = get_group_key(key, group, group_level)
                 if group_key not in groups:
                     groups[group_key] = list()

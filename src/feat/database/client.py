@@ -365,11 +365,14 @@ class Connection(log.Logger, log.LogProxy):
 
     def _parse_view_results(self, rows, factory, options):
         '''
-        rows here should be a list of tuples (key, value)
-        rendered by the view
+        rows here should be a list of tuples:
+        - (key, value) for reduce views
+        - (key, value, id) for nonreduce views without include docs
+        - (key, value, id, doc) for nonreduce with with include docs
         '''
         reduced = factory.use_reduce and options.get('reduce', True)
-        return map(lambda row: factory.parse(row[0], row[1], reduced), rows)
+        include_docs = options.get('include_docs', False)
+        return factory.parse_view_result(rows, reduced, include_docs)
 
     def _update_id_and_rev(self, resp, doc):
         doc.doc_id = unicode(resp.get('id', None))

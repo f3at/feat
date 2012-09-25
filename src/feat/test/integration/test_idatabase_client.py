@@ -77,6 +77,24 @@ class FilteringView(view.BaseView):
 VALUE_FIELD = 'value'
 
 
+class IncludeDocsView(view.BaseView):
+
+    name = 'include_docs'
+
+    def map(doc):
+        if doc.get('.type') == 'dummy':
+            yield doc.get('field'), None
+
+    @classmethod
+    def parse_view_result(cls, rows, reduced, include_docs):
+        if not include_docs:
+            # return list of ids
+            return [x[2] for x in rows]
+        else:
+            unserializer = serialization.json.PaisleyUnserializer()
+            return [unserializer.convert(x[3]) for x in rows]
+
+
 class SummingView(view.FormatableView):
 
     name = 'some_view'
@@ -134,6 +152,24 @@ class GroupCountingView(view.BaseView):
 
 
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testIncludeDocs(self):
+        views = (IncludeDocsView, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        doc = DummyDocument(field=u'some_doc')
+        doc = yield self.connection.save_document(doc)
+
+        res = yield self.connection.query_view(IncludeDocsView)
+        self.assertEquals(1, len(res))
+        self.assertEquals(doc.doc_id, res[0])
+
+        res = yield self.connection.query_view(IncludeDocsView,
+                                               include_docs=True)
+        self.assertEquals(1, len(res))
+        self.assertEquals(doc, res[0])
 
     @defer.inlineCallbacks
     def testAttachments(self):

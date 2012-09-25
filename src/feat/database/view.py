@@ -24,7 +24,7 @@ import inspect
 
 from zope.interface import directlyProvides
 
-from feat.common import formatable, annotate
+from feat.common import formatable, annotate, serialization
 from feat.database import document
 from feat import applications
 
@@ -52,6 +52,15 @@ class BaseView(annotate.Annotable):
             if callable(method):
                 setattr(cls, method_name, cls._querymethod(method))
         directlyProvides(cls, IViewFactory)
+
+    @classmethod
+    def parse_view_result(cls, rows, reduced, include_docs):
+        if not include_docs:
+            # return list of ids
+            return [cls.parse(x[0], x[1], reduced) for x in rows]
+        else:
+            unserializer = serialization.json.PaisleyUnserializer()
+            return [unserializer.convert(x[3]) for x in rows]
 
     @classmethod
     def parse(cls, key, value, reduced):
