@@ -28,7 +28,8 @@ class Migration(object):
             keys = dict(key=name, include_docs=True)
             yield tools.view_aterator(connection, self._handler,
                                       tools.DocumentByType, keys,
-                                      args=(name, callback))
+                                      args=(name, callback),
+                                      consume_errors=False)
 
     def _handler(self, connection, unparsed, name, callback):
         if callable(callback):

@@ -120,7 +120,7 @@ def create_db(connection):
 
 def script():
     log.init()
-    log.FluLogKeeper.set_debug('5')
+    log.FluLogKeeper.set_debug('4')
 
     opts, args = parse_options()
     c = config.DbConfig(host=opts.db_host, port=opts.db_port,
@@ -149,7 +149,7 @@ def migration_script(connection):
         version_doc = yield connection.query_view(ApplicationVersions, **keys)
         if not version_doc:
             to_run = application.get_migrations()
-            version_doc = ApplicationVersion(name=application.name)
+            version_doc = ApplicationVersion(name=unicode(application.name))
         else:
             to_run = [(version, migration)
                       for version, migration in application.get_migrations()
@@ -162,6 +162,8 @@ def migration_script(connection):
         try:
             for version, migration in to_run:
                 yield migration.run(connection._database)
+                if isinstance(version, str):
+                    version = unicode(version)
                 version_doc.version = version
                 yield connection.save_document(version_doc)
                 log.info("script", "Successfully applied migration %r",
@@ -280,7 +282,8 @@ def standalone(script, options=[]):
 
 @defer.inlineCallbacks
 def view_aterator(connection, callback, view, view_keys=dict(),
-                  args=tuple(), kwargs=dict(), per_page=15):
+                  args=tuple(), kwargs=dict(), per_page=15,
+                  consume_errors=True):
     '''
     Asynchronous iterator for the view. Downloads a view in pages
     and calls the callback for each row.
@@ -302,6 +305,8 @@ def view_aterator(connection, callback, view, view_keys=dict(),
                     'view_aterator', e,
                     "Callback %s failed its iteration on a row %r",
                     callback.__name__, record)
+                if not consume_errors:
+                    raise e
 
         if not records:
             break
