@@ -50,7 +50,7 @@ class Document(formatable.Formatable):
         self._init_attachments()
         return self._public_attachments
 
-    def create_attachment(self, name, body, content_type):
+    def create_attachment(self, name, body, content_type='text/plain'):
         self._init_attachments()
         priv = _Attachment(self.doc_id, name, body, content_type)
         pub = priv.to_public()

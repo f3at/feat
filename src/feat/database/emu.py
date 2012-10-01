@@ -26,10 +26,9 @@ import uuid
 import json
 import operator
 
-from twisted.internet import defer
 from zope.interface import implements
 
-from feat.common import log
+from feat.common import log, defer
 from feat.database.client import Connection, ChangeListener
 from feat.agencies import common
 

@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from twisted.internet import defer
 
-from feat.database import tools, document
+from feat.database import tools, document, migration
 from feat.test import common
 from feat.test.integration.common import SimulationTest
 from feat.common import serialization
@@ -68,6 +68,46 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         snapshot = r.get_snapshot()
         self.addCleanup(r.reset, snapshot)
         r.reset([])
+
+    @defer.inlineCallbacks
+    def testComplexMigration(self):
+        mig = migration.Migration()
+
+        self.run = False
+
+        def handler(connection, unparsed):
+            doc = connection._unserializer.convert(unparsed)
+            self.run = True
+            doc.create_attachment('attachment', 'Hi!')
+            return connection.save_document(doc)
+
+        mig.registry.register(VersionedTest2)
+        mig.migrate_type(VersionedTest2, handler)
+        r = applications.get_application_registry()
+        snapshot = r.get_snapshot()
+        self.addCleanup(r.reset, snapshot)
+        r.reset([])
+        app = applications.Application()
+        app.name = u'test'
+        r.register(app)
+        app.register_migration('1.0', mig)
+
+        serialization.register(VersionedTest2)
+        doc = yield self.connection.save_document(VersionedTest2())
+        self.assertEqual('default', doc.field1)
+
+        yield tools.migration_script(self.connection)
+        self.assertTrue(self.run)
+
+        doc = yield self.connection.get_document('testdoc')
+        self.assertEqual('default', doc.field1)
+        self.assertTrue('attachment' in doc.attachments)
+
+        version_doc = yield self.connection.query_view(
+            tools.ApplicationVersions, key='test', include_docs=True)
+        self.assertEquals(1, len(version_doc))
+        self.assertEquals('1.0', version_doc[0].version)
+        self.assertEquals('test', version_doc[0].name)
 
     @defer.inlineCallbacks
     def testMigrating(self):

@@ -173,12 +173,13 @@ class Connection(log.Logger, log.LogProxy):
 
     implements(IDatabaseClient, ITimeProvider, IRevisionStore, ISerializable)
 
-    def __init__(self, database):
+    def __init__(self, database, unserializer=None):
         log.Logger.__init__(self, database)
         log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
         self._serializer = serialization.json.Serializer()
-        self._unserializer = serialization.json.PaisleyUnserializer()
+        self._unserializer = (unserializer or
+                              serialization.json.PaisleyUnserializer())
 
         # listner_id -> doc_ids
         self._listeners = dict()

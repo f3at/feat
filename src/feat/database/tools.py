@@ -23,12 +23,13 @@ import optparse
 
 from twisted.internet import reactor
 
-from feat.database import view, driver
+from feat.database import view, driver, document
 from feat.agencies.net import options, config
-from feat.database.interface import ConflictError
 from feat.common import log, defer, error
 from feat.agents.application import feat
 from feat import applications
+
+from feat.database.interface import ConflictError
 
 
 def reset_documents(snapshot):
@@ -143,21 +144,33 @@ def script():
 @defer.inlineCallbacks
 def migration_script(connection):
     log.info("script", "Running the migration script.")
-    to_migrate = yield connection.query_view(AllDocumentIDs)
-    log.info("script", "%d documents will be updated.", len(to_migrate))
-    for doc_id in to_migrate:
+    for application in applications.get_application_registry().itervalues():
+        keys = ApplicationVersions.key_for(application.name)
+        version_doc = yield connection.query_view(ApplicationVersions, **keys)
+        if not version_doc:
+            to_run = application.get_migrations()
+            version_doc = ApplicationVersion(name=application.name)
+        else:
+            to_run = [(version, migration)
+                      for version, migration in application.get_migrations()
+                      if version > version_doc.version]
+        if not to_run:
+            log.info("script", "There are no migrations for application %s "
+                     "from version %s to %s", application.name,
+                     version_doc.version, application.version)
+            continue
         try:
-            doc = yield connection.get_document(doc_id)
-            # unserializing the document promotes it to new version
-            if doc.has_migrated:
-                log.debug('script', "Updating document of the type %s",
-                          doc.type_name)
-                yield connection.save_document(doc)
-            else:
-                log.debug('script', "Document of the type %s didn't change "
-                          "during migration", doc.type_name)
-        except Exception, e:
-            error.handle_exception(None, e, "Failed saving migrated document")
+            for version, migration in to_run:
+                yield migration.run(connection._database)
+                version_doc.version = version
+                yield connection.save_document(version_doc)
+                log.info("script", "Successfully applied migration %r",
+                         migration)
+
+        except Exception as e:
+            error.handle_exception("script", e, "Failed applying migration %r",
+                                   migration)
+            continue
 
 
 class dbscript(object):
@@ -182,13 +195,50 @@ class dbscript(object):
         reactor.run()
 
 
-@feat.register_view
-class AllDocumentIDs(view.BaseView):
+@feat.register_restorator
+class ApplicationVersion(document.Document):
 
-    name = 'all_documents'
+    type_name = 'application-version'
+
+    document.field("name", None)
+    document.field("version", None)
+
+
+@feat.register_view
+class ApplicationVersions(view.BaseView):
+
+    name = 'application-versions'
 
     def map(doc):
-        yield None, doc.get('_id')
+        if doc['.type'] == 'application-version':
+            yield doc.get('name'), None
+
+    @staticmethod
+    def key_for(name):
+        return dict(key=name, include_docs=True)
+
+
+@feat.register_view
+class DocumentByType(view.BaseView):
+    '''
+    View used by migrations scripts, when querying with include_docs
+    it returns unparsed object to make it easy to do custom manipulations
+    before unserializing.
+    '''
+
+    name = 'by-type'
+
+    def map(doc):
+        yield doc['.type'], None
+
+    @classmethod
+    def parse_view_result(cls, rows, reduced, include_docs):
+        if not include_docs:
+            # return list of types
+            return [x[0] for x in rows]
+        else:
+            # return unparsed docs
+            return [x[3] for x in rows]
 
 
 def standalone(script, options=[]):

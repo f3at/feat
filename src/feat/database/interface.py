@@ -29,7 +29,7 @@ __all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
            "NotFoundError", "NotConnectedError", "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
-           "IPlanBuilder", "IQueryCache", "IQueryViewFactory")
+           "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration")
 
 
 class DatabaseError(Exception):
@@ -471,4 +471,16 @@ class IPlanBuilder(Interface):
     def get_basic_queries():
         '''
         Returns a list of tuples: (field, operator, value)
+        '''
+
+
+class IMigration(Interface):
+    '''
+    Interface implemented by objects which can be registred with
+    application.register_migration.
+    '''
+
+    def run(database):
+        '''
+        @param database: IDatabaseDriver
         '''

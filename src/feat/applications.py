@@ -6,7 +6,7 @@ from feat.common import serialization, reflect, log, registry, error
 from feat.models import model
 
 from feat.interface.agent import IAgentFactory, IDescriptor
-from feat.database.interface import IViewFactory, IDocument
+from feat.database.interface import IViewFactory, IDocument, IMigration
 from feat.interface.application import IApplication
 
 
@@ -74,6 +74,9 @@ class Application(log.Logger):
         self._initial_data = get_initial_data_registry()
         self._adapters = adapter.AdapterRegistry()
         self._models = model.get_registry()
+
+        # (version, IMigration)
+        self._migrations = list()
 
     def load(self):
         self.info("Loading application %s", self.name)
@@ -178,6 +181,13 @@ class Application(log.Logger):
                 "Initial documents should have doc_id fixed (None)")
         self._initial_data.register(doc, application=self)
         return doc
+
+    def register_migration(self, version, migration):
+        migration = IMigration(migration)
+        self._migrations.append((version, migration))
+
+    def get_migrations(self):
+        return list(self._migrations)
 
     ### private ###
 
