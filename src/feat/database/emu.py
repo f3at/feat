@@ -259,7 +259,20 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 result.append(dict(error="not_found"))
         return defer.succeed(dict(rows=result))
 
-    ### private
+    ### public used in tests ###
+
+    def load_fixture(self, body, attachment_bodies={}):
+        '''
+        Loads the document into the database from json string. Fakes the
+        attachments if necessary.'''
+        doc = json.loads(body)
+        self._documents[doc['_id']] = doc
+        self._attachments[doc['_id']] = dict()
+        for name in doc.get('_attachments', list()):
+            attachment_body = attachment_bodies.get(name, 'stub')
+            self._attachments[doc['_id']][name] = attachment_body
+
+    ### private ###
 
     def _include_docs(self, rows):
         '''rows here are tuples (key, value, id), returns a list of tuples
