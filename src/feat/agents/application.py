@@ -26,7 +26,7 @@ from feat import applications
 class Feat(applications.Application):
 
     name = 'feat'
-    version = 1
+    version = '0.23.0'
     module_prefixes = ['feat.agents']
     loadlist = [
         'feat.agents.host.host_agent',

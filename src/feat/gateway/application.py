@@ -26,7 +26,7 @@ from feat import applications
 class FeatModels(applications.Application):
 
     name = 'featmodels'
-    version = 1
+    version = '0.23.0'
     module_prefixes = [
         'feat.gateway.models',
         'feat.gateway.dummies',

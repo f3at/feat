@@ -188,7 +188,7 @@ class Application(model.Model):
 
     model.attribute('name', value.String(), getter.source_attr('name'),
                     label="Name")
-    model.attribute('version', value.Integer(), getter.source_attr('version'),
+    model.attribute('version', value.String(), getter.source_attr('version'),
                     label="Version")
     model.attribute('module', value.String(), getter.source_attr('module'),
                     label="Module", desc="Module the application is defined")
