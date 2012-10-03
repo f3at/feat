@@ -98,6 +98,11 @@ class ContextCache(object):
 
 class BaseContextFactory(object):
 
+    """
+    @type  enforce_cert: C{bool}
+    @ivar  enforce_cert: whether to enforce the use of client certificates
+    """
+
     def __init__(self,
                  key_filename=None,
                  cert_filename=None,
@@ -105,7 +110,7 @@ class BaseContextFactory(object):
                  p12_filename=None,
                  verify_ca_from_p12=False,
                  key_pass=None, p12_pass=None,
-                 enforce_cert=True):
+                 enforce_cert=False):
 
         self._cert_filename = cert_filename
         self._key_filename = key_filename
@@ -129,10 +134,17 @@ class BaseContextFactory(object):
                                   self._verify_ca_from_p12,
                                   self._key_pass, self._p12_pass)
 
+        opts = 0
+
         if self._verify_ca_from_p12 or self._verify_ca_filename is not None:
-            opts = SSL.VERIFY_PEER
-            if self._enforce_cert:
-                opts |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+            log.debug("ssl-context", "getContext: setting VERIFY_PEER")
+            opts |= SSL.VERIFY_PEER
+        if self._enforce_cert:
+            log.debug("ssl-context",
+                "getContext: setting VERIFY_FAIL_IF_NO_PEER_CERT")
+            opts |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+
+        if opts != 0:
             ctx.set_verify(opts, self._verify_callback)
 
         return ctx
@@ -157,7 +169,7 @@ class ServerContextFactory(BaseContextFactory, ssl.ContextFactory):
                  p12_filename=None,
                  verify_ca_from_p12=False,
                  key_pass=None, p12_pass=None,
-                 enforce_cert=True):
+                 enforce_cert=False):
 
 
         if p12_filename is None:

@@ -585,10 +585,12 @@ class Agency(agency.Agency):
                       port_range[-1], p12)
 
             csec = security.ClientContextFactory(p12_filename=p12,
-                                                 verify_ca_from_p12=True)
+                                                 verify_ca_from_p12=True,
+                                                 enforce_cert=True)
             cpol = security.ClientPolicy(csec)
             ssec = security.ServerContextFactory(p12_filename=p12,
-                                                 verify_ca_from_p12=True)
+                                                 verify_ca_from_p12=True,
+                                                 enforce_cert=True)
             spol = security.ServerPolicy(ssec)
             backend = tunneling.Backend(host, port_range,
                                         client_security_policy=cpol,
@@ -658,7 +660,8 @@ class Agency(agency.Agency):
                           range[0], range[-1])
             else:
                 fac = security.ServerContextFactory(p12_filename=p12,
-                                                    verify_ca_from_p12=True)
+                                                    verify_ca_from_p12=True,
+                                                    enforce_cert=True)
                 sec = security.ServerPolicy(fac)
                 self.info("Setting up SSL gateway on ports %d-%d "
                           "using PKCS12 %r", range[0], range[-1], p12)
