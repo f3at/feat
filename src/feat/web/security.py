@@ -116,6 +116,11 @@ class BaseContextFactory(object):
         self._p12_pass = p12_pass
         self._enforce_cert = enforce_cert
 
+        log.debug("ssl-context",
+            "Created BaseContextFactory, p12 %s, verify_ca_from_p12 %r",
+            self._p12_filename,
+            self._verify_ca_from_p12)
+
     def getContext(self):
         ctx = _create_ssl_context(self._key_filename,
                                   self._cert_filename,
@@ -153,6 +158,7 @@ class ServerContextFactory(BaseContextFactory, ssl.ContextFactory):
                  verify_ca_from_p12=False,
                  key_pass=None, p12_pass=None,
                  enforce_cert=True):
+
 
         if p12_filename is None:
             if p12_pass:
@@ -325,6 +331,11 @@ def write_certificates(file_or_filename, *certs):
 ### private ###
 
 
+"""
+@param verify_ca_from_p12: for a server, setting this to true will present
+                           the full CA chain's certificates stored in the .p12
+@type  verify_ca_from_p12: C{bool}
+"""
 def _create_ssl_context(key_filename=None,
                         cert_filename=None,
                         verify_ca_filename=None,
