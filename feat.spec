@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.22.1
 %define unmangled_version 0.22.1
-%define build_rev 1
+%define build_rev 2
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -171,6 +171,10 @@ fi
 
 
 %changelog
+* Fri Oct 05 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.22.1-2
+- fix for enforce_cert not existing for client factory
+
 * Thu Oct 04 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.22.1-1
 - new release, with cacert and client cets handled properly
