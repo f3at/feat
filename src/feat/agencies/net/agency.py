@@ -585,8 +585,7 @@ class Agency(agency.Agency):
                       port_range[-1], p12)
 
             csec = security.ClientContextFactory(p12_filename=p12,
-                                                 verify_ca_from_p12=True,
-                                                 enforce_cert=True)
+                                                 verify_ca_from_p12=True)
             cpol = security.ClientPolicy(csec)
             ssec = security.ServerContextFactory(p12_filename=p12,
                                                  verify_ca_from_p12=True,
