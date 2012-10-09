@@ -252,12 +252,16 @@ def render_compact_model(model, context):
 
 def render_compact_items(items, context, result):
     for item in items:
-        d = item.fetch()
-        args = (item, context)
-        d.addCallbacks(render_compact_submodel, filter_model_errors,
-                       callbackArgs=args, errbackArgs=args)
-
-        result.add(item.name, d)
+        if render_inline(item):
+            d = item.fetch()
+            d.addCallback(render_compact_model, context)
+            result.add(item.name, d)
+        elif iattribute_meta(item) and not prevent_inline(item):
+            d = item.fetch()
+            d.addCallback(render_compact_attribute, item, context)
+            result.add(item.name, d)
+        elif item.reference is not None:
+            result.add(item.name, item.reference.resolve(context))
     return result.wait()
 
 
@@ -270,6 +274,11 @@ def get_parsed_meta(meta):
         return []
     parsed = [_parse_meta(i) for i in meta.get_meta('json')]
     return parsed
+
+
+def iattribute_meta(meta):
+    parsed = get_parsed_meta(meta)
+    return ['attribute'] in parsed
 
 
 def render_inline(meta):
@@ -287,22 +296,15 @@ def prevent_inline(meta):
     return ['prevent-inline'] in parsed
 
 
-def render_compact_submodel(submodel, item, context):
-    if render_inline(item):
-        pass
-    elif not IAttribute.providedBy(submodel) or prevent_inline(item):
+def render_compact_attribute(submodel, item, context):
+    attr = IAttribute(submodel)
+    if attr.value_info.value_type is ValueTypes.binary:
         if item.reference is not None:
             return item.reference.resolve(context)
-    else:
-        attr = IAttribute(submodel)
-        if attr.value_info.value_type is ValueTypes.binary:
-            if item.reference is not None:
-                return item.reference.resolve(context)
-        elif attr.is_readable:
-                d = attr.fetch_value()
-                d.addCallback(render_value, context)
-                return d
-    return render_compact_model(submodel, context)
+    elif attr.is_readable:
+        d = attr.fetch_value()
+        d.addCallback(render_value, context)
+        return d
 
 
 def filter_model_errors(failure, item, context):
@@ -351,10 +353,10 @@ def render_model_as_list(obj, context):
     def got_items(items):
         defers = list()
         for item in items:
-            args = (item, context)
             d = item.fetch()
-            d.addCallbacks(render_compact_submodel, filter_model_errors,
-                           callbackArgs=args, errbackArgs=args)
+            d.addCallbacks(render_compact_model, filter_model_errors,
+                           callbackArgs=(context, ),
+                           errbackArgs=(item, context))
             defers.append(d)
         return defer.DeferredList(defers, consumeErrors=True)
 

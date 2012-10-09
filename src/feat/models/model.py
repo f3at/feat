@@ -840,6 +840,7 @@ class StaticChildrenMixin(object):
         if meta:
             for decl in meta:
                 item.annotate_meta(*decl)
+        item.annotate_meta('json', 'attribute')
         cls._model_items[name] = item
 
     @classmethod
