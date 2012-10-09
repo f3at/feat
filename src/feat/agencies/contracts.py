@@ -175,7 +175,7 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
         self._set_state(ContractState.initiated)
         timeout = time.future(self.manager.initiate_timeout)
         error = self._create_expired_error("Timeout exceeded waiting for "
-                                    "initate() to send the announcement")
+                                    "initiate() to send the announcement")
         self._expire_at(timeout, ContractState.wtf,
                         self._error_handler, failure.Failure(error))
 

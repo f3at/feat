@@ -181,7 +181,7 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
 
     def _expired(self):
         error = self._create_expired_error("Timeout exceeded waiting "
-                                           "for task.initate()")
+                                           "for task.initiate()")
         self._set_state(TaskState.expired)
         d = self._call(self.task.expired)
         d.addCallback(defer.drop_param, self._terminate, error)
