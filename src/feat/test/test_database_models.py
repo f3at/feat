@@ -15,6 +15,10 @@ class QueryDoc(document.Document):
     document.field('field2', None)
     document.field('field3', None)
 
+    @property
+    def field4(self):
+        return u'value'
+
 
 class QueryView(query.QueryView):
 
@@ -42,14 +46,20 @@ class DocumentModel(model.Model):
     model.attribute('field3', value.String(), getter.source_attr('field3'))
 
 
+class DocumentExtended(DocumentModel):
+    model.identity('document-extended')
+    model.attribute('field4', value.String(), getter.source_attr('field4'))
+
+
 class QueryModel(models.QueryView):
     model.identity('test')
-    model.child_model(DocumentModel)
+    model.child_model(DocumentExtended)
+    model.query_model(DocumentModel)
     models.db_connection(effect.context_value('source'))
     models.view_factory(
         QueryView, ['field1', 'field2'],
         call.model_call('get_static_conditions'))
-    model.child_source(getter.model_get('get_doc'))
+    model.child_source(getter.model_get('model_get'))
     models.query_target('source')
 
     def get_static_conditions(self):
@@ -80,6 +90,13 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
                 QueryDoc(field1=x, field2=x % 10, field3=field3))
 
         yield self.model.initiate()
+
+    @defer.inlineCallbacks
+    def testFetchChild(self):
+        submodel = yield self.model_descend(self.model, 'query_1')
+        self.assertIsInstance(submodel, DocumentExtended)
+        v = yield self.modelattr(submodel, 'field4')
+        self.assertEqual('value', v)
 
     @defer.inlineCallbacks
     def testQuerySimple(self):
@@ -154,6 +171,7 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         field1s = []
         for item in items:
             s = yield item.fetch()
+            self.assertIsInstance(s, DocumentModel)
             field1 = yield self.modelattr(s, 'field1')
             field1s.append(field1)
         self.assertEqual(expected, field1s)

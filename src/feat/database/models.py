@@ -29,6 +29,7 @@ def view_factory(factory, allowed_fields=[], static_conditions=None):
 class QueryView(model.Collection):
 
     _query_target = None
+    _query_model = None
     _connection_getter = None
     _view = None
 
@@ -83,6 +84,10 @@ class QueryView(model.Collection):
         if target not in ['view', 'source']:
             raise ValueError('%s should be view or source' % (target, ))
         cls._query_target = target
+
+    @classmethod
+    def annotate_query_model(cls, query_model):
+        cls._query_model = model._validate_model_factory(query_model)
 
     @classmethod
     def annotate_db_connection(cls, effect):

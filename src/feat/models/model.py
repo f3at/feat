@@ -281,6 +281,19 @@ def child_model(model_factory):
     _annotate("child_model", model_factory)
 
 
+def query_model(model):
+    """
+    Annotate the effect used to retrieve the model used as a result of the
+    query. This is ment to provide the lighter view of the model when its
+    retrieved as a list. If this is not specified the child_model is used.
+
+    @param model: the child's model identity, model factory or effect
+                  to get it, or None to use IModel adapter.
+    @type model: str or unicode or callable or IModelFactory or None
+    """
+    _annotate("query_model", model)
+
+
 def child_label(label):
     """
     Annotate child items label.
@@ -1440,6 +1453,7 @@ class QueryItemsMixin(DynamicItemsMixin):
     _item_counter = None
     _query_item = None
     _query_target = None
+    _query_model = None
     __query_set_factory = None
 
     ### IQueryModel ###
@@ -1540,6 +1554,10 @@ class QueryItemsMixin(DynamicItemsMixin):
     def annotate_item_counter(cls, effect):
         cls._item_counter = _validate_effect(effect)
 
+    @classmethod
+    def annotate_query_model(cls, query_model):
+        cls._query_model = _validate_model_factory(query_model)
+
 
 class MetaCollection(type(AbstractModel)):
 
@@ -1615,7 +1633,8 @@ class MetaQuerySetCollection(MetaCollection):
         cls.annotate_child_names(_QuerySetCollection.names)
         cls.annotate_child_label(parent_class._item_label)
         cls.annotate_child_desc(parent_class._item_desc)
-        cls.annotate_child_model(parent_class._item_model)
+        cls.annotate_child_model(parent_class._query_model or
+                                 parent_class._item_model)
         for meta in parent_class._item_meta:
             cls.annotate_child_meta(*meta)
         for name, meta in parent_class._class_meta.iteritems():
