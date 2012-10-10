@@ -373,7 +373,7 @@ class Query(serialization.Serializable):
 
 
 @defer.inlineCallbacks
-def select(connection, query, skip=0, limit=None):
+def select_ids(connection, query, skip=0, limit=None):
     temp, responses = yield _get_query_response(connection, query)
     if query.sorting:
         temp = sorted(temp, key=_generate_sort_key(responses, query.sorting))
@@ -383,8 +383,13 @@ def select(connection, query, skip=0, limit=None):
         stop = skip + limit
     else:
         stop = None
-    fetched = yield connection.bulk_get(temp[slice(skip, stop)])
-    defer.returnValue(fetched)
+    defer.returnValue(temp[slice(skip, stop)])
+
+
+def select(connection, query, skip=0, limit=None):
+    d = select_ids(connection, query, skip, limit)
+    d.addCallback(connection.bulk_get)
+    return d
 
 
 @defer.inlineCallbacks
