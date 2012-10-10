@@ -58,7 +58,8 @@ class QueryModel(models.QueryView):
     models.db_connection(effect.context_value('source'))
     models.view_factory(
         QueryView, ['field1', 'field2'],
-        call.model_call('get_static_conditions'))
+        call.model_call('get_static_conditions'),
+        call.model_filter('fetch_documents'))
     model.child_source(getter.model_get('model_get'))
     models.query_target('source')
 
@@ -67,6 +68,10 @@ class QueryModel(models.QueryView):
 
     def model_get(self, doc_id):
         return self.connection.get_document(doc_id)
+
+    def fetch_documents(self, value):
+        self._fetch_documents_called = True
+        return self.connection.bulk_get(value)
 
 
 class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
@@ -103,6 +108,7 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         q = [{'field': 'field1', 'evaluator': 'equals', 'value': 2}]
         res = yield self.model.perform_action('select', query=q)
         yield self._asserts_on_select([2], res)
+        self.assertTrue(self.model._fetch_documents_called)
         count = yield self.model.perform_action('count', query=q)
         self.assertEquals(1, count)
 

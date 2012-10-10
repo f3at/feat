@@ -2,7 +2,7 @@ from zope.interface import implements
 
 from feat.common import annotate, defer
 from feat.database import query
-from feat.models import model, action, value, utils, call
+from feat.models import model, action, value, utils, call, effect
 
 from feat.database.interface import IQueryViewFactory, IDatabaseClient
 from feat.models.interface import IContextMaker, ActionCategories
@@ -19,11 +19,13 @@ def query_target(target):
                                  target)
 
 
-def view_factory(factory, allowed_fields=[], static_conditions=None):
+def view_factory(factory, allowed_fields=[], static_conditions=None,
+                 fetch_documents=None):
     annotate.injectClassCallback(
         "view_factory", 3, "annotate_view_factory",
         factory, allowed_fields=allowed_fields,
-        static_conditions=static_conditions)
+        static_conditions=static_conditions,
+        fetch_documents=fetch_documents)
 
 
 class QueryView(model.Collection):
@@ -63,7 +65,12 @@ class QueryView(model.Collection):
     def do_select(self, value, skip, sorting=None, limit=None):
         if sorting:
             value.set_sorting(sorting)
-        return query.select(self.connection, value, skip, limit)
+        cls = type(self)
+        if cls._fetch_documents_set:
+            method = query.select_ids
+        else:
+            method = query.select
+        return method(self.connection, value, skip, limit)
 
     def render_select_response(self, value):
         if not hasattr(self, '_query_set_factory'):
@@ -95,10 +102,17 @@ class QueryView(model.Collection):
 
     @classmethod
     def annotate_view_factory(cls, factory, allowed_fields=[],
-                              static_conditions=None):
+                              static_conditions=None,
+                              fetch_documents=None):
         cls._view = IQueryViewFactory(factory)
         cls._static_conditions = (static_conditions and
                                   model._validate_effect(static_conditions))
+        if not fetch_documents:
+            cls._fetch_documents_set = False
+            fetch_documents = effect.identity
+        else:
+            cls._fetch_documents_set = True
+            fetch_documents = fetch_documents
 
         for x in allowed_fields:
             if not cls._view.has_field(x):
@@ -132,6 +146,7 @@ class QueryView(model.Collection):
             effects=[
                 get_static_conditions,
                 call.model_perform('do_select'),
+                fetch_documents,
                 call.model_filter('render_select_response')],
             params=[action.Param('query', QueryValue()),
                     action.Param('sorting', SortingValue(), is_required=False),

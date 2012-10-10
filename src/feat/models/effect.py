@@ -140,3 +140,7 @@ def static_value(value):
         return defer.succeed(value)
 
     return static_value
+
+
+def identity(value, context, *args, **kwargs):
+    return value
