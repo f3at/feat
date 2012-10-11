@@ -321,6 +321,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         if 'key' in filter_options:
             if filter_options['key'] != tup[0]:
                 return False
+        if 'keys' in filter_options:
+            if tup[0] not in filter_options['keys']:
+                return False
         descending = filter_options.get('descending', False)
         if 'startkey' in filter_options:
             if ((not descending and filter_options['startkey'] > tup[0]) or
