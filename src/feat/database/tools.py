@@ -151,6 +151,7 @@ def migration_script(connection):
             to_run = application.get_migrations()
             version_doc = ApplicationVersion(name=unicode(application.name))
         else:
+            version_doc = version_doc[0]
             to_run = [(version, migration)
                       for version, migration in application.get_migrations()
                       if version > version_doc.version]
