@@ -1124,6 +1124,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         #(method_name, args, kwargs)
         self._pending_host_agent_calls = list()
 
+        # static agents, list of tuples (initial_descriptor, kwargs, name)
+        self.static_agents = list()
+
     ### Public Methods ###
 
     def initiate(self, database=None, journaler=None, *backends):
@@ -1176,6 +1179,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         d = self._database.wait_connected()
         d.addCallback(defer.drop_param, medium.initiate, **kwargs)
         d.addCallback(defer.override_result, medium)
+        if descriptor.type_name == 'host_agent':
+            d.addCallback(defer.bridge_result, medium.call_next,
+                          self._on_host_started)
         return d
 
     @manhole.expose()
@@ -1247,6 +1253,12 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def is_idle(self):
         return all([x.is_idle() for x in self._agents]) and\
                self._messaging.is_idle()
+
+    def add_static_agent(self, desc, kwargs, name):
+        self.debug("Configuring agency to start agent %s with descriptor %r "
+                   "Passing %r to his initiate()",
+                   desc.type_name, desc, kwargs)
+        self.static_agents.append((desc, kwargs, name))
 
     ### Journaling Methods ###
 
@@ -1435,9 +1447,13 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         return True
 
     def _on_host_started(self):
+        self.info("Host agent started.")
         medium = self._get_host_medium()
         d = medium.wait_for_state(AgencyAgentState.ready)
         d.addCallback(defer.drop_param, self._flush_pending_host_agent_calls)
+        for desc, kwargs, name in self.static_agents:
+            d.addCallback(defer.drop_param, self.host_agent_call,
+                          'add_static_agent', desc, kwargs, name)
         return d
 
     def _flush_pending_host_agent_calls(self):
@@ -1524,7 +1540,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                        errbackArgs=(conn, doc_id, ))
         d.addCallback(self.start_agent, hostdef=self._hostdef)
         d.addBoth(defer.bridge_param, set_flag, False)
-        d.addCallback(defer.drop_param, self._on_host_started)
         d.addErrback(self._host_restart_failed)
         time.callLater(0, d.callback, None)
 

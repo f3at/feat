@@ -39,12 +39,12 @@ def parse_file(parser, fp):
 
 
 def append_agent(parser, agent_type,
-                 desc_keywords=dict(), initiate_keywords=dict()):
+                 desc_keywords=dict(), initiate_keywords=dict(), name=None):
     desc_factory = serialization.lookup(agent_type)
     if not desc_factory:
         raise ConfigParser.Error("Unknown agent_type: %s" % (agent_type, ))
     desc = desc_factory(**desc_keywords)
-    parser.values.agents.append((desc, initiate_keywords))
+    parser.values.agents.append((desc, initiate_keywords, name))
 
 
 ### private module methods ###
@@ -110,7 +110,8 @@ def _parse_agent_section(cfg, parser, section):
             key = name.split('.')[1]
             initiate_keywords[key] = _unserialize_json_field(
                 section, name, value)
-    append_agent(parser, agent_type, desc_keywords, initiate_keywords)
+    name = section.split(':', 2)[1]
+    append_agent(parser, agent_type, desc_keywords, initiate_keywords, name)
 
 
 def _unserialize_json_field(section, key, value):
