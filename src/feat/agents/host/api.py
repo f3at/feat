@@ -1,12 +1,14 @@
+import copy
+
 from feat.agents.host import host_agent
 from feat.common import first
 from feat.gateway.application import featmodels
 from feat.gateway import models
 
 from feat.models import model, value, call, getter, reference, attribute
-from feat.models import effect
+from feat.models import effect, action, response
 
-from feat.models.interface import IModel
+from feat.models.interface import IModel, InvalidParameters
 
 
 @featmodels.register_model
@@ -33,6 +35,25 @@ class StaticAgents(model.Collection):
         return first(x for x in self.view if name == x.name)
 
 
+class StartStaticAgent(action.Action):
+
+    action.label('Start agent')
+    action.result(value.Response())
+    action.param('force', value.Boolean(False), is_required=False,
+                 label="Start the agent even it is already running")
+    action.effect(call.action_filter('perform'))
+    action.effect(response.done('done'))
+
+    def perform(self, force=False):
+        if self.model.running and not force:
+            raise InvalidParameters(
+                params=dict(force="Agent is already running, you have to use"
+                            " force."))
+        desc = copy.copy(self.model.view.initial_descriptor)
+        return self.model.source.spawn_agent(
+            desc, static_name=self.model.view.name, **self.model.view.kwargs)
+
+
 @featmodels.register_model
 class StaticAgent(model.Model):
     model.identity('feat.host_agent.static_agents.INDEX')
@@ -45,6 +66,7 @@ class StaticAgent(model.Model):
     model.attribute('agent_id', value.String(''),
                     getter.model_attr('agent_id'))
     model.child('agent', source=call.model_call('get_agent_reference'))
+    model.action('start', StartStaticAgent)
 
     def init(self):
         partner = self.source.find_static_partner(self.view.name)
