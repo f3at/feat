@@ -82,7 +82,8 @@ class TestAgent(common.TestCase, ModelTestMixin):
             alert.AlertingAgentEntry(
                 hostname='host1',
                 agent_id='agent1',
-                alerts=[Alert1, Alert2]),
+                alerts=[Alert1, Alert2],
+                statuses=dict(service1=(1, 'bum'))),
             alert.AlertingAgentEntry(
                 hostname='host2',
                 agent_id='agent2',
@@ -94,7 +95,8 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
         self.assertEqual(3, len(self.state.alerts))
 
-        self._assert_service('host1', 'agent1', Alert1)
+        self._assert_service('host1', 'agent1', Alert1, received=1,
+                             status_info="bum")
         self._assert_service('host1', 'agent1', Alert2)
         self._assert_service('host2', 'agent2', Alert1)
         self.medium.reset()
@@ -118,7 +120,8 @@ class TestAgent(common.TestCase, ModelTestMixin):
         yield d
 
         self.assertEqual(4, len(self.state.alerts))
-        self._assert_service('host1', 'agent1', Alert1)
+        self._assert_service('host1', 'agent1', Alert1, received=1,
+                             status_info="bum")
         self._assert_service('host1', 'agent1', Alert2)
         self._assert_service('host3', 'agent3', Alert1)
         self._assert_service('host3', 'agent3', Alert2)

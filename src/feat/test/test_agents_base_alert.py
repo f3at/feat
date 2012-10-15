@@ -48,6 +48,7 @@ class TestCase(common.TestCase):
         self.medium.agent = self.agent
         yield self.agent.initiate()
         self.poster = self.agent._get_state().alerter._get_state().medium
+        self.statuses = self.agent._get_state().alert_statuses
 
     def testRaisingAndAlert(self):
         self.agent.raise_alert('service1', 'it hurts!')
@@ -61,6 +62,7 @@ class TestCase(common.TestCase):
         self.assertEqual('agent1', al.agent_id)
         self.assertEqual(alert.Severity.warn, al.severity)
         self.assertEqual('service1', al.name)
+        self.assertEquals((1, 'it hurts!'), self.statuses['service1'])
 
         self.agent.resolve_alert('service1', 'now better')
         self.assertEqual(2, len(self.poster.messages))
@@ -73,6 +75,7 @@ class TestCase(common.TestCase):
         self.assertEqual('agent1', al.agent_id)
         self.assertEqual(alert.Severity.warn, al.severity)
         self.assertEqual('service1', al.name)
+        self.assertEquals((0, 'now better'), self.statuses['service1'])
 
 
 class TestContractor(common.TestCase):
@@ -85,6 +88,7 @@ class TestContractor(common.TestCase):
         self.medium.agent = self.agent
         self.state = self.agent._get_state()
         self.state.alert_factories = dict()
+        self.state.alert_statuses = dict(service1=(1, "bum"))
         self.contractor_medium = dummies.DummyContractorMedium()
         self.contractor = alert.AlertsDiscoveryContractor(
             self.agent, self.contractor_medium)
@@ -104,3 +108,5 @@ class TestContractor(common.TestCase):
         self.assertEqual(2, len(b.payload.alerts))
         self.assertIn(Alert1, b.payload.alerts)
         self.assertIn(Alert2, b.payload.alerts)
+        self.assertIn("service1", b.payload.statuses)
+        self.assertEqual((1, "bum"), b.payload.statuses["service1"])
