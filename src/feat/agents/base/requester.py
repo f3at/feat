@@ -113,7 +113,7 @@ class Ping(BaseRequester):
 
 class PartnershipProtocol(BaseRequester):
 
-    timeout = 3
+    timeout = 5
     protocol_id = 'partner-notification'
 
     known_types = ['goodbye', 'died', 'restarted', 'buried']
