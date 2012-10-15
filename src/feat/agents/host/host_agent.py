@@ -57,6 +57,16 @@ class HostedPartner(agent.BasePartner):
 
     def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
+        if self.static_name:
+            agent.resolve_alert(self.static_name, "Restarted")
+
+    def on_died(self, agent):
+        if self.static_name:
+            agent.raise_alert(self.static_name, "Agent died")
+
+    def on_buried(self, agent):
+        if self.static_name:
+            agent.raise_alert(self.static_name, "Agent was buried!!")
 
 
 @feat.register_restorator
