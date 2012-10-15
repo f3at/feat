@@ -21,10 +21,11 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
 import operator
 
 from feat.agents.base import (agent, contractor,
-                              replay, descriptor, replier,
+                              replay, replier,
                               partners, resource, notifier,
                               problem, task, requester, alert)
 from feat.agents.common import host, rpc, monitor, export
@@ -32,7 +33,7 @@ from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
 from feat.agencies import recipient, message
 from feat.database import document
-from feat.common import fiber, manhole, defer, error
+from feat.common import fiber, manhole, defer, error, formatable, first
 from feat import applications
 
 from feat.database.interface import NotFoundError
@@ -51,8 +52,23 @@ class HostedPartner(agent.BasePartner):
 
     type_name = 'host->agent'
 
+    def initiate(self, agent, static_name=None):
+        self.static_name = static_name
+        if self.static_name:
+            agent.resolve_alert(self.static_name, "ok")
+
     def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
+        if self.static_name:
+            agent.resolve_alert(self.static_name, "Restarted")
+
+    def on_died(self, agent):
+        if self.static_name:
+            agent.raise_alert(self.static_name, "Agent died")
+
+    def on_buried(self, agent):
+        if self.static_name:
+            agent.raise_alert(self.static_name, "Agent was buried!!")
 
 
 @feat.register_restorator
@@ -115,6 +131,15 @@ class PrimaryJournalerAlert(alert.BaseAlert):
     severity = alert.Severity.warn
 
 
+@feat.register_restorator
+class StaticAgent(formatable.Formatable):
+
+    formatable.field('initial_descriptor', None)
+    formatable.field('kwargs', None)
+    formatable.field('error', None)
+    formatable.field('name', None)
+
+
 @feat.register_agent('host_agent')
 class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
@@ -135,6 +160,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
             problem.SolveProblemInterest(MissingShard))
         state.medium.register_interest(
             problem.SolveProblemInterest(RestartShard))
+
+        state.static_agents = dict()
 
         f = fiber.Fiber()
         f.add_callback(fiber.drop_param, self._load_definition, hostdef)
@@ -245,6 +272,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         f.add_callback(fiber.drop_param, self.update_descriptor,
                        save_change, shard)
         f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
+        f.add_callback(fiber.drop_param, self._fix_alert_poster, shard)
         return f.succeed()
 
     @rpc.publish
@@ -258,14 +286,15 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     @manhole.expose()
     @replay.journaled
-    def start_agent(self, state, doc_id, allocation_id=None, **kwargs):
+    def start_agent(self, state, doc_id, allocation_id=None,
+                    static_name=None, **kwargs):
         task = self.initiate_protocol(StartAgent, doc_id, allocation_id,
-                                      kwargs=kwargs)
+                                      kwargs=kwargs, static_name=static_name)
         return task.notify_finish()
 
     @manhole.expose()
     @replay.journaled
-    def spawn_agent(self, state, desc, **kwargs):
+    def spawn_agent(self, state, desc, static_name=None, **kwargs):
         """
         This method is used by the agency to spawn agents. The desc parameter
         can actually be a descriptor to be save into database, or just
@@ -279,8 +308,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                 raise error.FeatError(msg)
             desc = factory()
         f = self.save_document(desc)
-        f.add_callback(self.start_agent, **kwargs)
-        f.add_errback(self._spawn_agent_failed, desc)
+        f.add_callback(self.start_agent, static_name=static_name, **kwargs)
+        f.add_errback(self._spawn_agent_failed, desc, alert_name=static_name)
         return f
 
     @replay.immutable
@@ -343,7 +372,42 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
     def get_migration_partners(self):
         return self.get_hosted_recipients()
 
+    @replay.mutable
+    def add_static_agent(self, state, desc, kwargs, name):
+        state.static_agents[name] = StaticAgent(initial_descriptor=desc,
+                                                kwargs=kwargs,
+                                                name=name)
+        self.may_raise_alert(alert.DynamicAlert(
+            name=name,
+            severity=alert.Severity.critical))
+        partner = self.find_static_partner(name)
+        if partner is None:
+            self.info("I will start a statically configured agent named: %s",
+                      name)
+            desc = copy.copy(desc)
+            return self.spawn_agent(desc, static_name=unicode(name), **kwargs)
+
+    @replay.immutable
+    def get_static_agents(self, state):
+        return state.static_agents.values()
+
+    @replay.immutable
+    def find_static_partner(self, state, name):
+        desc = self.get_descriptor()
+        return first(x for x in desc.partners
+                     if getattr(x, 'static_name', None) == name)
+
     ### Private Methods ###
+
+    @replay.mutable
+    def _fix_alert_poster(self, state, shard):
+        '''
+        Called after agent has switched a shard. Alert poster needs an update
+        in this case, bacause otherwise its posting to lobby instead of the
+        shard exchange.
+        '''
+        recp = recipient.Broadcast(alert.AlertPoster.protocol_id, shard)
+        state.alerter.update_recipients(recp)
 
     @defer.inlineCallbacks
     @replay.immutable
@@ -421,12 +485,15 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
             state.resources.define(name, resource.Range, first, last)
 
     @replay.journaled
-    def _spawn_agent_failed(self, state, fail, desc):
+    def _spawn_agent_failed(self, state, fail, desc, alert_name=None):
         error.handle_failure(self, fail, "Spawning agent failed! "
                              "I will remove the descriptor.")
+        if alert_name:
+            self.info('raising alert %s', alert_name)
+            self.raise_alert(alert_name, error.get_failure_message(fail))
         f = self.get_document(desc.doc_id)
         f.add_callback(self.delete_document)
-        f.add_callback(fiber.override_result, fail)
+        f.add_both(fiber.override_result, None)
         return f
 
     @replay.immutable
@@ -446,8 +513,9 @@ class StartAgent(task.BaseTask):
     protocol_id = "host_agent.start-agent"
 
     @replay.entry_point
-    def initiate(self, state, doc_id, allocation_id, kwargs=dict()):
-        if isinstance(doc_id, descriptor.Descriptor):
+    def initiate(self, state, doc_id, allocation_id, kwargs=dict(),
+                 static_name=None):
+        if IDescriptor.providedBy(doc_id):
             doc_id = doc_id.doc_id
         assert isinstance(doc_id, (str, unicode, )), \
                "doc_id is %r" % (doc_id, )
@@ -455,6 +523,7 @@ class StartAgent(task.BaseTask):
         state.doc_id = doc_id
         state.descriptor = None
         state.allocation_id = allocation_id
+        state.static_name = static_name
 
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self._fetch_descriptor)
@@ -470,7 +539,7 @@ class StartAgent(task.BaseTask):
     def _establish_partnership(self, state, recp):
         f = state.agent.establish_partnership(
             recp, state.allocation_id, our_role=u'host',
-            allow_double=True)
+            allow_double=True, static_name=state.static_name)
         f.add_callback(fiber.override_result, recp)
         return f
 

@@ -45,6 +45,7 @@ from feat.agents.monitor.interface import DEFAULT_SELF_QUARANTINE_LENGTH
 from feat.agents.monitor.interface import IAssistant, ICoroner, RestartStrategy
 from feat.agents.monitor.interface import IIntensiveCareFactory, IClerkFactory
 from feat.agents.monitor.interface import RestartFailed
+from feat.interface.agent import IMonitorAgent
 from feat.interface.agency import ExecMode
 from feat.interface.protocols import ProtocolFailed
 from feat.interface.recipient import IRecipient
@@ -175,7 +176,8 @@ Descriptor = monitor.Descriptor
 class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
                    host.SpecialHostPartnerMixin):
 
-    implements(shard.IShardNotificationHandler, IAssistant, ICoroner)
+    implements(shard.IShardNotificationHandler, IAssistant, ICoroner,
+               IMonitorAgent)
 
     partners_class = Partners
 

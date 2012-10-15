@@ -30,6 +30,7 @@ class Feat(applications.Application):
     module_prefixes = ['feat.agents']
     loadlist = [
         'feat.agents.host.host_agent',
+        'feat.agents.host.api',
         'feat.agents.shard.shard_agent',
         'feat.agents.raage.raage_agent',
         'feat.agents.dns.dns_agent',

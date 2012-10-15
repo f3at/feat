@@ -243,6 +243,10 @@ class AlertAgent(agent.BaseAgent):
                     agent_id=agent.agent_id,
                     severity=alert.severity,
                     hostname=agent.hostname)
+                status = agent.statuses.get(alert.name)
+                if status:
+                    state.alerts[key].received_count = status[0]
+                    state.alerts[key].status_info = status[1]
         for key in old_keys:
             changed = True
             del(state.alerts[key])

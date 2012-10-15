@@ -168,6 +168,7 @@ class TestConfigFile(common.TestCase):
         self.assertIsInstance(i, dict)
         self.assertIn('slaves', i)
         self.assertEqual([["1.2.3.4", 53], ["5.6.7.8", 1000]], i['slaves'])
+        self.assertEquals('dns_0', v.agents[0][2])
 
     def testUnknownAgentType(self):
         test_config = format_block("""

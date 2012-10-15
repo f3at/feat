@@ -43,6 +43,7 @@ class AlertingAgentEntry(formatable.Formatable):
     formatable.field('hostname', None)
     formatable.field('agent_id', None)
     formatable.field('alerts', []) #[IAlertFactory]
+    formatable.field('statuses', dict()) # name -> (count, info)
 
 
 class AlertsDiscoveryContractor(contractor.BaseContractor):
@@ -55,7 +56,9 @@ class AlertsDiscoveryContractor(contractor.BaseContractor):
         payload = AlertingAgentEntry(
             hostname=state.agent.get_hostname(),
             agent_id=state.agent.get_agent_id(),
-            alerts=state.agent.get_alert_factories().values())
+            alerts=state.agent.get_alert_factories().values(),
+            statuses=state.agent.get_alert_statuses())
+
         state.medium.bid(message.Bid(payload=payload))
 
 
@@ -130,16 +133,24 @@ class AgentMixin(object):
         state.alerter = self.initiate_protocol(AlertPoster, recp)
         # service_name -> IAlertFactory
         state.alert_factories = dict(type(self)._alert_factories)
+        # name -> (count, status_info)
+        state.alert_statuses = dict()
 
     @replay.mutable
     def raise_alert(self, state, service_name, status_info=None):
         alert = self._generate_alert(service_name, status_info)
         state.alerter.notify('raised', alert)
+        if service_name in state.alert_statuses:
+            count = state.alert_statuses[service_name][0] + 1
+        else:
+            count = 1
+        state.alert_statuses[service_name] = (count, status_info)
 
     @replay.mutable
     def resolve_alert(self, state, service_name, status_info=None):
         alert = self._generate_alert(service_name, status_info)
         state.alerter.notify('resolved', alert)
+        state.alert_statuses[service_name] = (0, status_info)
 
     @replay.mutable
     def may_raise_alert(self, state, factory):
@@ -162,6 +173,10 @@ class AgentMixin(object):
     @replay.immutable
     def get_alert_factories(self, state):
         return state.alert_factories
+
+    @replay.immutable
+    def get_alert_statuses(self, state):
+        return state.alert_statuses
 
 
 class AlertPoster(poster.BasePoster):

@@ -173,12 +173,9 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
             agency.set_host_def(hostdef)
 
             d.addCallback(defer.drop_param, agency.initiate)
-            for desc, kwargs in opts.agents:
-                log.debug("feat", ("Starting agent %s with descriptor %r "
-                                   "Passing %r to his initiate()"),
-                          desc.type_name, desc, kwargs)
-                d.addCallback(defer.drop_param, agency.spawn_agent, desc,
-                              **kwargs)
+            for desc, kwargs, name in opts.agents:
+                d.addCallback(defer.drop_param, agency.add_static_agent,
+                              desc, kwargs, name)
         else:
             # standalone specific
             kwargs = opts.standalone_kwargs or dict()
