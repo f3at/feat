@@ -54,6 +54,8 @@ class HostedPartner(agent.BasePartner):
 
     def initiate(self, agent, static_name=None):
         self.static_name = static_name
+        if self.static_name:
+            agent.resolve_alert(self.static_name, "ok")
 
     def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
@@ -270,6 +272,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         f.add_callback(fiber.drop_param, self.update_descriptor,
                        save_change, shard)
         f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
+        f.add_callback(fiber.drop_param, self._fix_alert_poster, shard)
         return f.succeed()
 
     @rpc.publish
@@ -383,8 +386,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                       name)
             desc = copy.copy(desc)
             return self.spawn_agent(desc, static_name=unicode(name), **kwargs)
-        else:
-            self.resolve_alert(name, "ok")
 
     @replay.immutable
     def get_static_agents(self, state):
@@ -397,6 +398,16 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                      if getattr(x, 'static_name', None) == name)
 
     ### Private Methods ###
+
+    @replay.mutable
+    def _fix_alert_poster(self, state, shard):
+        '''
+        Called after agent has switched a shard. Alert poster needs an update
+        in this case, bacause otherwise its posting to lobby instead of the
+        shard exchange.
+        '''
+        recp = recipient.Broadcast(alert.AlertPoster.protocol_id, shard)
+        state.alerter.update_recipients(recp)
 
     @defer.inlineCallbacks
     @replay.immutable

@@ -23,12 +23,11 @@ from zope.interface import implements
 
 from feat.agents.base import replay, protocols
 from feat.agencies import message
-from feat.common import defer, reflect, serialization, fiber
+from feat.common import defer, reflect
 
 from feat.agents.application import feat
 
-from feat.interface.poster import *
-from feat.interface.protocols import *
+from feat.interface.poster import IPosterFactory, IAgentPoster
 
 
 class MetaPoster(type(replay.Replayable)):
@@ -65,6 +64,11 @@ class BasePoster(protocols.BaseInitiator):
         d = defer.maybeDeferred(self.pack_payload, *args, **kwargs)
         d.addCallback(self._build_message)
         return d
+
+    @replay.side_effect
+    @replay.immutable
+    def update_recipients(self, state, recp):
+        state.medium.recipients = recp
 
     ### Private Methods ###
 
