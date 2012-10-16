@@ -241,6 +241,8 @@ def render_compact_model(model, context):
             d.addCallback(render_value, context)
             return d
         return defer.succeed(None)
+    if render_as_list(model):
+        return render_model_as_list(model, context)
 
     result = AsyncDict()
     if model.reference:
@@ -323,12 +325,8 @@ def write_model(doc, obj, *args, **kwargs):
     context = kwargs["context"]
 
     verbose = "format" in kwargs and "verbose" in kwargs["format"]
-    as_list = render_as_list(obj)
-
     if verbose:
         d = render_verbose(obj, context)
-    elif as_list:
-        d = render_model_as_list(obj, context)
     else:
         d = render_compact_model(obj, context)
 
