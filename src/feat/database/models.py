@@ -116,7 +116,7 @@ class QueryView(model.Collection):
 
         for x in allowed_fields:
             if not cls._view.has_field(x):
-                raise ValueError("%r doesn't define a field: '%s'" % (x, ))
+                raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
         cls._allowed_fields = allowed_fields
 
         # define query action
