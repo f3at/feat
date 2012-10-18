@@ -210,7 +210,7 @@ class ApplicationVersion(document.Document):
 @feat.register_view
 class ApplicationVersions(view.BaseView):
 
-    name = 'application-versions'
+    name = 'application_versions'
 
     def map(doc):
         if doc['.type'] == 'application-version':
@@ -229,7 +229,7 @@ class DocumentByType(view.BaseView):
     before unserializing.
     '''
 
-    name = 'by-type'
+    name = 'by_type'
 
     def map(doc):
         yield doc['.type'], None
