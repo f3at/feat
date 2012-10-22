@@ -610,7 +610,8 @@ class Server(log.LogProxy, log.Logger):
     def __init__(self, port, root_resource, registry=None,
                  security_policy=None, server_identity=None,
                  default_authenticator=None, default_authorizer=None,
-                 log_keeper=None, web_statistics=None):
+                 log_keeper=None, web_statistics=None,
+                 interface=''):
         self.log_name = ":%s" % (port, )
         log.Logger.__init__(self, self)
         log_keeper = log_keeper or log.get_default() or log.FluLogKeeper()
@@ -624,6 +625,7 @@ class Server(log.LogProxy, log.Logger):
         self._authenticator = default_authenticator
         self._authorizer = default_authorizer
         self.statistics = web_statistics and IWebStatistics(web_statistics)
+        self._interface = interface
 
         self._scheme = None
         self._mime_types = {}
@@ -637,12 +639,14 @@ class Server(log.LogProxy, log.Logger):
         if self._policy.use_ssl:
             ssl_context_factory = self._policy.get_ssl_context_factory()
             self.info('SSL listening on port %r', self._port)
-            listener = reactor.listenSSL(self._port, site, ssl_context_factory)
+            listener = reactor.listenSSL(self._port, site, ssl_context_factory,
+                                         interface=self._interface)
             self._secured = True
             self._scheme = http.Schemes.HTTPS
         else:
             self.info('TCP listening on port %r', self._port)
-            listener = reactor.listenTCP(self._port, site)
+            listener = reactor.listenTCP(self._port, site,
+                                         interface=self._interface)
             self._scheme = http.Schemes.HTTP
         self._listener = listener
         if self.statistics:

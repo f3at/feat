@@ -42,7 +42,8 @@ class Gateway(log.LogProxy, log.Logger):
 
     def __init__(self, root, port_range=None, hostname=None,
                  static_path=None, security_policy=None,
-                 log_keeper=None, label=None, web_statistics=None):
+                 log_keeper=None, label=None, web_statistics=None,
+                 interface=''):
         log.Logger.__init__(self, self)
         log.LogProxy.__init__(self, log_keeper or log.get_default())
 
@@ -70,6 +71,7 @@ class Gateway(log.LogProxy, log.Logger):
         self._host = hostname or socket.gethostbyaddr(socket.gethostname())[0]
         self._security = security.ensure_policy(security_policy)
         self._server = None
+        self._interface = interface
 
         self._statistics = (web_statistics and
                             webserver.IWebStatistics(web_statistics))
@@ -113,7 +115,8 @@ class Gateway(log.LogProxy, log.Logger):
                 server = webserver.Server(port, self._build_resource(port),
                                           security_policy=self._security,
                                           log_keeper=self,
-                                          web_statistics=self._statistics)
+                                          web_statistics=self._statistics,
+                                          interface=self._interface)
                 self._initiate_server(server)
                 self._server = server
                 self.info("%sgateway started on %s:%d".capitalize(),
