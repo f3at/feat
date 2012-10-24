@@ -137,7 +137,7 @@ class QueryView(model.Collection):
                 d = cls._static_conditions(None, context)
                 d.addCallback(build_query, cls._view, kwargs['query'])
                 return d
-            return defer.succeed(value)
+            return defer.succeed(kwargs['query'])
 
         SelectAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Select"),
