@@ -179,8 +179,8 @@ class RangeType(value.Collection):
 
 
 class FreeList(value.Collection):
-    value.allows(value.Integer())
     value.allows(value.String())
+    value.allows(value.Integer())
 
     def validate(self, v):
         v = super(FreeList, self).validate(v)
