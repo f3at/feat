@@ -30,7 +30,7 @@ from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor
 from twisted.python.failure import Failure
-from twisted.web import server, resource
+from twisted.web import server, resource, http as webhttp
 
 from feat.common import log, defer, error, decorator, signal
 from feat.web import http, compat, document, auth, security
@@ -603,6 +603,78 @@ class ELFLog(object):
             self._output.flush()
 
 
+class HTTPChannel(webhttp.HTTPChannel):
+
+    def connectionMade(self):
+        self.factory.clientConnectionMade(self)
+        webhttp.HTTPChannel.connectionMade(self)
+
+    def connectionLost(self, reason):
+        webhttp.HTTPChannel.connectionLost(self, reason)
+        self.factory.clientConnectionLost(self)
+
+
+class Site(server.Site, log.Logger):
+    '''This site tracks all the connection made, and expose methods to:
+    - close them.
+    - wait for current requests to finish
+    '''
+
+    protocol = HTTPChannel
+
+    def __init__(self, resource, log_keeper=None):
+        server.Site.__init__(self, resource)
+        log.Logger.__init__(self, log_keeper or log.get_default())
+        self.connections = list()
+        self._notifier = defer.Notifier()
+
+    def clientConnectionMade(self, protocol):
+        peer = protocol.transport.getPeer()
+        self.debug("New HTTP connection from %s:%s", peer.host, peer.port)
+        self.connections.append(protocol)
+
+    def clientConnectionLost(self, protocol):
+        self.debug("HTTP connection closed.")
+        self.connections.remove(protocol)
+        if not self.connections:
+            self.debug('Site is idle.')
+            self._notifier.callback('idle', None)
+
+    def cleanup(self):
+        '''
+        Cleans up existing connections giving them time to finish the currect
+        request.
+        '''
+        self.debug("Cleanup called on Site.")
+        if not self.connections:
+            return defer.succeed(None)
+        self.debug("Waiting for all the connections to close.")
+        result = self._notifier.wait('idle')
+        for connection in self.connections:
+            connection.persistent = False
+            if not connection.requests:
+                connection.transport.loseConnection()
+            else:
+                request = connection.requests[0]
+                peer = connection.transport.getPeer()
+                self.debug("Site is still processing a %s request from %s:%s"
+                           " to path: %s. It will be given a time to finish",
+                           request.method, peer.host, peer.port, request.path)
+        return result
+
+    def disconnectAll(self):
+        '''
+        Disconnect all the clients NOW, regardless if they process a request
+        at the moment.
+        '''
+        if not self.connections:
+            return defer.succeed(None)
+        result = self._notifier.wait('idle')
+        for connection in self.connections:
+            connection.transport.loseConnection()
+        return result
+
+
 class Server(log.LogProxy, log.Logger):
 
     log_category = 'web'
@@ -631,11 +703,12 @@ class Server(log.LogProxy, log.Logger):
         self._mime_types = {}
 
         self._listener = None
+        self._site = None
 
     def initiate(self):
         assert self._listener is None
         self.info("Initializing HTTP server...")
-        site = server.Site(RootResourceWrapper(self))
+        self._site = site = Site(RootResourceWrapper(self))
         if self._policy.use_ssl:
             ssl_context_factory = self._policy.get_ssl_context_factory()
             self.info('SSL listening on port %r', self._port)
@@ -655,13 +728,23 @@ class Server(log.LogProxy, log.Logger):
         return defer.succeed(self)
 
     def cleanup(self):
-        if self._listener:
-            d = self._listener.stopListening()
-            self._listener = None
-            return d
         if self.statistics:
             self.statistics.cleanup()
-        return defer.succeed(self)
+        defers = list()
+        if self._listener:
+            d = self._listener.stopListening()
+            defers.append(d)
+            self._listener = None
+        if self._site:
+            d = self._site.cleanup()
+            defers.append(d)
+            self._site = None
+        if defers:
+            d = defer.DeferredList(defers)
+            d.addCallback(defer.override_result, self)
+            return d
+        else:
+            return defer.succeed(self)
 
     @property
     def host(self):
