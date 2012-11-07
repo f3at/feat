@@ -10,7 +10,6 @@ from feat.database.interface import IQueryViewFactory
 from feat.database.interface import IPlanBuilder, IQueryCache
 
 
-
 class CacheEntry(object):
 
     def __init__(self, seq_num, entries):
@@ -108,8 +107,8 @@ class Cache(log.Logger):
             self.debug("View %s has not changed, marking cached fragments as "
                        "fresh. %d rows", factory.name, len(entry.entries))
             if factory.name in self._cache:
-                for entry in self._cache[factory.name].itervalues():
-                    entry.seq_num = seq_num
+                for freshme in self._cache[factory.name].itervalues():
+                    freshme.seq_num = seq_num
             return entry.entries
 
     def _generate_keys(self, field, evaluator, value):
