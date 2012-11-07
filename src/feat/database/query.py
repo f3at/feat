@@ -106,10 +106,11 @@ class Cache(log.Logger):
         else:
             self.debug("View %s has not changed, marking cached fragments as "
                        "fresh. %d rows", factory.name, len(entry.entries))
+            result = entry.entries
             if factory.name in self._cache:
-                for freshme in self._cache[factory.name].itervalues():
-                    freshme.seq_num = seq_num
-            return entry.entries
+                for entry in self._cache[factory.name].itervalues():
+                    entry.seq_num = seq_num
+            return result
 
     def _generate_keys(self, field, evaluator, value):
         if evaluator == Evaluator.equals:
