@@ -156,6 +156,8 @@ class QueryViewMeta(type(view.BaseView)):
         # map() and filter() function have to be generated separetely for
         # each subclass, because they will have different constants attached
         # in func_globals
+        # alrernatively they could be defined inside the subclass of
+        # QueryView
 
         def map(doc):
             if doc['.type'] not in DOCUMENT_TYPES:
@@ -163,11 +165,11 @@ class QueryViewMeta(type(view.BaseView)):
             for field, handler in HANDLERS.iteritems():
                 for value in handler(doc):
                     yield (field, value), None
-        cls.map = cls._querymethod(map)
+        cls.map = cls._querymethod(dct.pop('map', map))
 
         def filter(doc, request):
             return doc.get('.type') in DOCUMENT_TYPES
-        cls.filter = cls._querymethod(filter)
+        cls.filter = cls._querymethod(dct.pop('filter', filter))
 
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
