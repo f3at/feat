@@ -60,7 +60,11 @@ class BaseView(annotate.Annotable):
             return [cls.parse(x[0], x[1], reduced) for x in rows]
         else:
             unserializer = serialization.json.PaisleyUnserializer()
-            return [unserializer.convert(x[3]) for x in rows]
+            resp = list()
+            for x in rows:
+                if len(x) == 4:
+                    resp.append(unserializer.convert(x[3]))
+            return resp
 
     @classmethod
     def parse(cls, key, value, reduced):
