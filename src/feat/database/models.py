@@ -76,13 +76,18 @@ class QueryView(model.Collection):
         if not hasattr(self, '_query_set_factory'):
             factory = model.MetaQuerySetCollection.new(type(self))
             self._query_set_factory = factory
-        items = [(x.doc_id, x) for x in value]
+        items = [(self.get_child_name(x), x) for x in value]
         result = self._query_set_factory(self.source, items)
         return result.initiate(view=self.view, officer=self.officer,
                                aspect=self.aspect)
 
     def do_count(self, value):
         return query.count(self.connection, value)
+
+    def get_child_name(self, child):
+        '''override in subclass if the result of your query is more complex
+        than just a simple documents.'''
+        return child.doc_id
 
     ### annotations ###
 
