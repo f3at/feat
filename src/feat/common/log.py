@@ -169,7 +169,7 @@ class LogProxy(object):
         self._logkeeper = ILogKeeper(logkeeper)
 
     def do_log(self, level, object, category, format, args,
-               depth=1, file_path=None, line_num=None):
+               depth=2, file_path=None, line_num=None):
         self._logkeeper.do_log(level, object, category, format, args,
                depth=depth+1, file_path=file_path, line_num=line_num)
 
@@ -204,7 +204,7 @@ class LogTee(object):
     ### ILogKeeper ###
 
     def do_log(self, level, object, category, format, args,
-               depth=1, file_path=None, line_num=None):
+               depth=2, file_path=None, line_num=None):
         for logkeeper in self._logkeepers.itervalues():
             logkeeper.do_log(
                 level, object, category, format, args,
@@ -335,10 +335,10 @@ class FluLogKeeper(object):
     ### ILogger Methods ###
 
     def do_log(self, level, object, category, format, args,
-               depth=1, file_path=None, line_num=None):
+               depth=2, file_path=None, line_num=None):
         global flulog
         flulog.doLog(int(level), object, category, format, args,
-                     where=-depth, filePath=file_path, line=line_num)
+                     where=-depth-1, filePath=file_path, line=line_num)
 
 
 _default_keeper = None

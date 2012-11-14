@@ -175,5 +175,5 @@ class TestLogging(common.TestCase):
 
         self.assertEqual(keeper.entries,
                          [(LogLevel.log, 'spam', 'dummy', '1', (), 1),
-                          (LogLevel.log, 'spam', 'dummy', '2', (), 2),
-                          (LogLevel.log, 'spam', 'dummy', '3', (), 3)])
+                          (LogLevel.log, 'spam', 'dummy', '2', (), 3),
+                          (LogLevel.log, 'spam', 'dummy', '3', (), 4)])
