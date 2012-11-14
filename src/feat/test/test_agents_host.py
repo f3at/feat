@@ -44,6 +44,14 @@ class DummyHostMedium(DummyMedium):
         return self.hosted
 
 
+class AlerterStub(object):
+
+    recipients = None
+
+    def update_recipients(self, recp):
+        self.recipients = recp
+
+
 class TestDNSAgentLabour(common.TestCase):
 
     @defer.inlineCallbacks
@@ -65,6 +73,8 @@ class TestDNSAgentLabour(common.TestCase):
 
     @defer.inlineCallbacks
     def testSwitchShard(self):
+        stub = AlerterStub()
+        self.host._get_state().alerter = stub
         yield self.host.switch_shard("NewShard")
         desc = self.medium.get_descriptor()
         self.assertEquals(desc.shard, 'NewShard')
@@ -72,6 +82,8 @@ class TestDNSAgentLabour(common.TestCase):
         yield self.host.switch_shard("NewShard")
         desc = self.medium.get_descriptor()
         self.assertEquals(desc.shard, 'NewShard')
+
+        self.assertEqual('NewShard', stub.recipients.route)
 
     @defer.inlineCallbacks
     def testCreatePartner(self):
