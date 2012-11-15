@@ -12,7 +12,7 @@ $.fn.featform = function(options) {
 
 	    $this.data('featform.options', opts);
 	    $this.bind('submit', $.fn.featform._onSubmit);
-	    
+
             var spinner = $.fn.featform._generateSpinner();
 	    $this.data('featform.spinner', spinner);
 	    spinner.insertAfter($this.find('input:submit'));
@@ -38,7 +38,7 @@ $.fn.featform._renderJSONList = function(json) {
 	    if (key == 'href') {
 		value = "<a href='" + value + "'>Follow</a>";
 	    };
-	    
+
 	    html += "<span class='value'>" + value + "</span></li>";
 	});
     html += "</ul>";
@@ -89,7 +89,12 @@ $.fn.featform._onSubmit = function(ev) {
 	spinner.hide();
 	$.fn.featform._reset.call($this);
 	var html = "<H3>Action successful</H3><div class='response'>";
-	html += $.fn.featform._renderJSONList(envelope) + "</div>";
+	if (typeof envelope == "object") {
+	    html += $.fn.featform._renderJSONList(envelope);
+	} else {
+	    html += $.fn.featform._renderJSONList({"Result:": envelope});
+	}
+	html += "</div>";
 	$.facebox(html);
     };
 
@@ -101,7 +106,7 @@ $.fn.featform._onSubmit = function(ev) {
 	};
 	return "Unknown";
     };
-    
+
     var failure = function(envelope) {
 	spinner.hide();
 	if (envelope.error == "invalid_parameters" ||
