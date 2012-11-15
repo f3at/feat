@@ -28,7 +28,6 @@ class Cache(log.Logger):
         log.Logger.__init__(self, logger)
         # name -> query -> CacheEntry
         self._cache = dict()
-        self._last_seq_seen = 0
 
     ### IQueryCache ###
 
@@ -70,7 +69,7 @@ class Cache(log.Logger):
                                            since=entry.seq_num)
                 d.addCallback(defer.inject_param, 4,
                               self._analyze_changes,
-                              connection, factory, subquery, entry)
+                              connection, factory, subquery, entry, seq_num)
                 return d
         else:
             return self._fetch_subquery(connection, factory, subquery, seq_num)
@@ -92,8 +91,8 @@ class Cache(log.Logger):
         self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
         self._check_size_limit()
 
-    def _analyze_changes(self, connection, factory, subquery, entry, changes):
-        seq_num = changes['last_seq']
+    def _analyze_changes(self, connection, factory, subquery, entry, changes,
+                         seq_num):
         if changes['results']:
             self.debug("View %s has changed, expiring cache.", factory.name)
             if factory.name in self._cache: # this is not to fail on
