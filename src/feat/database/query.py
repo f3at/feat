@@ -65,7 +65,7 @@ class Cache(log.Logger):
                            len(entry.entries))
                 return entry.entries
             else:
-                d = connection.get_changes(factory, limit=1,
+                d = connection.get_changes(factory, limit=2,
                                            since=entry.seq_num)
                 d.addCallback(defer.inject_param, 4,
                               self._analyze_changes,
