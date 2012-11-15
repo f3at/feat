@@ -139,6 +139,14 @@ class Protocol(http.BaseProtocol):
         self._response.protocol = protocol
         self._response.status = status
 
+        # HTTP 1.0 doesn't require Content-Length or Transfer-Encoding
+        # response headers. It can simply start printing body after the
+        # headers section and close the connection when it's done.
+        # This requires special decoder which might be overwritten later
+        # if one of the mentioned headers is received.
+        if protocol == http.Protocols.HTTP10:
+            self._setup_identity_decoding(length=None)
+
     def process_length(self, length):
         assert self._response is not None, "No response information"
         self._response.length = length

@@ -478,6 +478,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self.process_body_start()
 
         if self._body_decoder is None:
+            self.debug("No content decoder, returning empty body.")
             self._got_all_content()
             return
 
