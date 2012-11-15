@@ -82,6 +82,6 @@ $(document).ready(function() {
        cancelLink: "Cancel",
        editClass: "editor_field",
        onSubmit: feat.inplace._onSubmit
-    });		    
+    });
 });
 
