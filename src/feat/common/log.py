@@ -341,4 +341,4 @@ class FluLogKeeper(object):
                      where=-depth-1, filePath=file_path, line=line_num)
 
 
-_default_keeper = None
+_default_keeper = VoidLogKeeper()
