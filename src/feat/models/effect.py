@@ -144,3 +144,18 @@ def static_value(value):
 
 def identity(value, context, *args, **kwargs):
     return value
+
+
+def subroutine(*effects):
+    """
+    Creates an effect performing a list of effects. The value passed to each
+    effect is a result of the previous effect.
+    """
+
+    def subroutine(value, context, *args, **kwargs):
+        d = defer.succeed(value)
+        for effect in effects:
+            d.addCallback(effect, context, *args, **kwargs)
+        return d
+
+    return subroutine
