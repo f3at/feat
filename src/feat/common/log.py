@@ -37,7 +37,7 @@ def init(path=None):
     '''Initialize the logging module. Construct the LogTee as the default
     keeper. Initialize the flulog and append it to the tee.'''
     default = get_default()
-    if default is not None:
+    if default is not None and not isinstance(default, VoidLogKeeper):
         return default
     tee = LogTee()
     set_default(tee)
