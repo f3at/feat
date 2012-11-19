@@ -67,6 +67,28 @@ class DocumentSerializationTest(common.TestCase):
         self.assertTrue(priv.saved)
         self.assertTrue(priv.has_body)
 
+    def testUniqieAttachmentNames(self):
+        d = TestDocument(doc_id=u'test')
+        a = d.create_attachment('attachment', '', unique=True)
+        self.assertEqual(a.name, 'attachment')
+
+        a = d.create_attachment('attachment', '', unique=True)
+        self.assertEqual(a.name, 'attachment_1')
+        a = d.create_attachment('attachment', '', unique=True)
+        self.assertEqual(a.name, 'attachment_2')
+
+        a = d.create_attachment('attachment.tar.gz', '', unique=True)
+        self.assertEqual(a.name, 'attachment.tar.gz')
+        a = d.create_attachment('attachment.tar.gz', '', unique=True)
+        self.assertEqual(a.name, 'attachment_1.tar.gz')
+        a = d.create_attachment('attachment.tar.gz', '', unique=True)
+        self.assertEqual(a.name, 'attachment_2.tar.gz')
+
+        a = d.create_attachment('attachment.json', '', unique=True)
+        self.assertEqual(a.name, 'attachment.json')
+        a = d.create_attachment('attachment.json', '', unique=True)
+        self.assertEqual(a.name, 'attachment_1.json')
+
     def serialize(self, w):
         return sjson.loads(self.serializer.convert(w))
 

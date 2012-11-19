@@ -50,8 +50,25 @@ class Document(formatable.Formatable):
         self._init_attachments()
         return self._public_attachments
 
-    def create_attachment(self, name, body, content_type='text/plain'):
+    def create_attachment(self, name, body, content_type='text/plain',
+                          unique=False):
+        '''
+        @param unique: Defines how to behave if the attachment with this name
+                       already exists. If False (default) the attachment is
+                       overwritten. If True the name will be addded a suffix
+                       to make it unique.
+        '''
         self._init_attachments()
+        if unique and name in self._attachments:
+            splitted = name.split('.', 1)
+            tmpl = splitted[0] + '_%d'
+            if len(splitted) == 2:
+                tmpl += "." + splitted[1]
+
+            index = 1
+            while name in self._attachments:
+                name = tmpl % (index, )
+                index += 1
         priv = _Attachment(self.doc_id, name, body, content_type)
         pub = priv.to_public()
         self._attachments[name] = priv
