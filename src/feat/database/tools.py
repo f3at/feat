@@ -267,7 +267,7 @@ def standalone(script, options=[]):
     def _error_handler(fail):
         error.handle_failure('script', fail, "Finished with exception: ")
 
-    log.FluLogKeeper.init()
+    log.init()
     log.FluLogKeeper.set_debug('4')
 
     parser = define_options(options)
