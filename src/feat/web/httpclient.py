@@ -144,8 +144,15 @@ class Protocol(http.BaseProtocol):
         # headers section and close the connection when it's done.
         # This requires special decoder which might be overwritten later
         # if one of the mentioned headers is received.
-        if protocol == http.Protocols.HTTP10:
-            self._setup_identity_decoding(length=None)
+        # Moreover even though HTTP 1.1 defines that either Content-Length
+        # or Transfer-Encoding is required, there are servers out there
+        # which claim to speak HTTP 1.1 really speak HTTP 1.0.
+        # One example I've seen is combination of:
+        # < Server: Microsoft-IIS/6.0
+        # < X-Powered-By: PHP/5.3.8
+        # but its most probably not the only one. Therefore the only way
+        # to support this is to assume content decoder and overwrite it later.
+        self._setup_identity_decoding(length=None)
 
     def process_length(self, length):
         assert self._response is not None, "No response information"
