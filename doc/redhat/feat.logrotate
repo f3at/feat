@@ -1,0 +1,9 @@
+/var/log/feat/*.sqlite3 {
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        /usr/bin/kill -HUP `cat /var/run/feat/feat.pid 2>/dev/null` 2>/dev/null || true
+    endscript
+    rotate 10
+}
