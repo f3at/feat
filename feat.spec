@@ -120,6 +120,9 @@ install -m 644 -t %{_sharedir}/tools/PKI tools/PKI/feat.conf
 install -m 644 -t %{_sharedir}/tools/PKI/bin tools/PKI/bin/*
 install -m 644 -t %{_sharedir}/tools/PKI/template tools/PKI/template/*
 
+# Install the logrotate entry
+%{__install} -m 0644 -D doc/redhat/feat.logrotate \
+    %{buildroot}%{_sysconfdir}/logrotate.d/feat
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -147,6 +150,8 @@ fi
 
 %attr(664,root,feat) %config(noreplace) %{_sysconfdir}/feat/feat.ini
 %config(noreplace) %{_sysconfdir}/sysconfig/feat
+%config(noreplace) %{_sysconfdir}/logrotate.d/feat
+
 %attr(775,root,feat) %{_sysconfdir}/feat
 %attr(440,root,root) %config(noreplace) %{_sysconfdir}/sudoers.d/feat
 
@@ -171,6 +176,9 @@ fi
 
 
 %changelog
+* Tue Dec 04 2012 Thomas Vander Stichele <thomas at apestaart dot org>
+- Add logrotate script
+
 * Tue Nov 20 2012 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.23.4-1
 - new release
