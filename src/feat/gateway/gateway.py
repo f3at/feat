@@ -125,7 +125,7 @@ class Gateway(log.LogProxy, log.Logger):
 
             except terror.CannotListenError:
 
-                self.log("Port %d not available for %sgateway", port, log_tag)
+                self.debug("Port %d not available for %sgateway", port, log_tag)
                 continue
 
         raise NoPortAvailableError("No port available for %sgateway" % log_tag)
