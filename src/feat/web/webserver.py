@@ -1168,6 +1168,14 @@ class Server(log.LogProxy, log.Logger):
 
                 return None
 
+        elif isinstance(exception, http.NotFoundError):
+
+            if response.can_update_headers:
+                response.set_status(http.Status.NOT_FOUND)
+                response.set_mime_type('text/plain')
+                response.write("Page not found")
+                return None
+
         elif isinstance(exception, http.HTTPError):
 
             if response.can_update_headers:
