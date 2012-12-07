@@ -21,6 +21,8 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import os
+import sys
 import types
 
 from zope.interface import implements
@@ -519,3 +521,25 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
                        state.medium.register_interest,
                        replier.ProposalReceiver)
         return f.succeed()
+
+
+class StandalonePartners(Partners):
+
+    default_role = u'standalone'
+
+
+class Standalone(BaseAgent):
+
+    partners_class = StandalonePartners
+
+    standalone = True
+
+    @staticmethod
+    def get_cmd_line(desc):
+        python_path = ":".join(sys.path)
+        path = os.environ.get("PATH", "")
+
+        command = 'feat'
+        args = ['-X', '--agent-id', str(desc.doc_id)]
+        env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
+        return command, args, env
