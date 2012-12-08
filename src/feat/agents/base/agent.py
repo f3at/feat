@@ -29,11 +29,13 @@ from zope.interface import implements
 
 from feat.common import log, decorator, fiber, manhole, mro
 from feat.interface import generic, agent, protocols
+from feat import applications
 from feat.agencies import retrying, recipient
 from feat.agents.base import (replay, requester, alert,
                               replier, partners, dependency, manager, )
 from feat.agents.common import monitor, rpc, export
 from feat.agents.application import feat
+from feat.configure import configure
 
 from feat.interface.agent import AgencyAgentState
 
@@ -539,7 +541,12 @@ class Standalone(BaseAgent):
         python_path = ":".join(sys.path)
         path = os.environ.get("PATH", "")
 
-        command = 'feat'
+        command = os.path.join(configure.bindir, 'feat')
         args = ['-X', '--agent-id', str(desc.doc_id)]
+        agent = applications.lookup_agent(desc.type_name)
+        if agent and agent.application.name != 'feat':
+            app = agent.application
+            args += ['--application', '.'.join([app.module, app.name])]
+
         env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
         return command, args, env

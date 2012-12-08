@@ -24,6 +24,7 @@ import os
 import sys
 
 from feat.common import reflect
+from feat import applications
 from feat.agencies.net import configfile
 from feat.configure import configure
 from feat.agencies.net.broker import DEFAULT_SOCKET_PATH
@@ -79,6 +80,9 @@ def add_general_options(parser):
     parser.add_option('-i', '--import', help='import specified module',
                       action='callback', callback=_load_module,
                       type="str", metavar="MODULE")
+    parser.add_option('--application', help='import an application ',
+                      action='callback', callback=_load_application,
+                      type="str", metavar="APPLICATION")
     parser.add_option('-C', '--config-file', action='callback',
                       help="Config file, the configuration loaded from the \
                       configuration file will overwrite other \
@@ -271,6 +275,22 @@ def _load_module(option, opt, value, parser):
         from feat.common import error
         raise OptionError("Cannot import module %s: %s" % (
             value, error.get_exception_message(e))), None, sys.exc_info()[2]
+
+
+def _load_application(option, opt, value, parser):
+    splitted = value.split('.')
+    if len(splitted) < 2:
+        raise OptionError("Invalid application name to load: %r" % (value, ))
+
+    module = '.'.join(splitted[:-1])
+    name = splitted[-1]
+    try:
+        applications.load(module, name)
+    except ImportError:
+        raise (
+            OptionError(
+                "Loading application %s.%s failed" % (module, name)),
+            None, sys.exc_info()[2])
 
 
 def parse_config_file(option, opt_str, value, parser):
