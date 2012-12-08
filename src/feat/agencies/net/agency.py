@@ -22,7 +22,7 @@
 import os
 import sys
 
-from twisted.internet import reactor
+from twisted.internet import reactor, error as ierror
 
 from feat.agencies import agency, journaler, recipient
 from feat.agencies.net import ssh, broker, options, config
@@ -154,8 +154,17 @@ class Shutdown(agency.Shutdown):
                       ProcessState.finished, ProcessState.failed)
 
         if self.opts.get('stop_process', False):
-            d.addBoth(defer.drop_param, reactor.stop)
+            d.addBoth(defer.drop_param, self._stop_reactor)
         return d
+
+    def _stop_reactor(self):
+        if reactor.running:
+            try:
+                reactor.stop()
+            except ierror.ReactorNotRunning:
+                self.info("Swallowing ReactorNotRunning exception, "
+                          " this is normal for the shutdown "
+                          "triggered by SIGTERM.")
 
 
 class Agency(agency.Agency):
