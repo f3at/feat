@@ -861,6 +861,8 @@ def compose_headers(headers, buffer=None):
     for name, value in headers.iteritems():
         capname = '-'.join([p.capitalize() for p in name.split('-')])
         if is_header_multifield(name):
+            if isinstance(value, str):
+                value = [value]
             buffer.append("%s: %s" % (capname, ", ".join(value)))
         else:
             buffer.append("%s: %s" % (capname, value))
