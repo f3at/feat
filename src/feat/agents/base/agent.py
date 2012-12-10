@@ -548,5 +548,6 @@ class Standalone(BaseAgent):
             app = agent.application
             args += ['--application', '.'.join([app.module, app.name])]
 
-        env = dict(PYTHONPATH=python_path, FEAT_DEBUG='5', PATH=path)
+        env = dict(PYTHONPATH=python_path,
+                   FEAT_DEBUG=log.FluLogKeeper.get_debug(), PATH=path)
         return command, args, env
