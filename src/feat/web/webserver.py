@@ -1518,7 +1518,11 @@ class Request(log.Logger, log.LogProxy):
         header = self.get_header("authorization")
         if header:
             # Only support for basic authentication
-            cred = auth.BasicHTTPCredentials.from_header_value(header)
+            try:
+                cred = auth.BasicHTTPCredentials.from_header_value(header)
+            except Exception as e:
+                self.debug("Invalid authorization header: %r", header)
+                raise http.BadRequestError(cause=e)
             self._credentials = cred
 
     ### private ###
