@@ -355,3 +355,78 @@ class Connection(log.LogProxy, log.Logger):
     def _request_done(self, param):
         self._pending -= 1
         return param
+
+
+class ConnectionPool(Connection):
+    '''
+    I establish and keep a number of persitent connections to a web service
+    speaking HTTT 1.1 protocol.
+    '''
+
+    def __init__(self, host, port=None, protocol=None,
+                 security_policy=None, logger=None,
+                 maximum_connections=10):
+        Connection.__init__(self, host, port, protocol,
+                            security_policy, logger)
+        self._connected = set()
+        self._idle = set()
+        # [Deferred] to be triggered when the protocol connection becomes free
+        self._awaiting_client = list()
+        self._max = maximum_connections
+
+    ### public ###
+
+    def is_idle(self):
+        return all([x.is_idle() for x in self._connected])
+
+    def disconnect(self):
+        [x.cancel() for x in self._awaiting_client]
+        [x.transport.loseConnection() for x in self._connected]
+
+    def request(self, method, location, headers=None, body=None):
+        self.debug('%s-ing on %s', method.name, location)
+        self.log('Headers: %r', headers)
+        self.log('Body: %r', body)
+        try:
+            protocol = self._idle.pop()
+            d = defer.succeed(protocol)
+        except KeyError:
+            d = defer.Deferred()
+            self._awaiting_client.append(d)
+            if len(self._connected) < self._max:
+                self._connect()
+        d.addCallback(self._request, method, location, headers, body)
+        return d
+
+    def onClientConnectionFailed(self, reason):
+        self.info("Failed connecting to %s:%s. Reason: %s",
+                  self._host, self._port, reason)
+
+    def onClientConnectionMade(self, protocol):
+        self._connected.add(protocol)
+        self._return_to_the_pool(protocol)
+        self.debug("Connection made to %s:%s, pool has now %d connections "
+                   "%d of with are idle", self._host, self._port,
+                   len(self._connected), len(self._idle))
+
+    def onClientConnectionLost(self, protocol, reason):
+        if protocol in self._connected:
+            self._connected.remove(protocol)
+        if protocol in self._idle:
+            self._idle.remove(protocol)
+        self.debug("Connection to %s:%s lost, pool has now %d connections "
+                   "%d of with are idle", self._host, self._port,
+                   len(self._connected), len(self._idle))
+
+    def _request(self, protocol, method, location, headers, body):
+        d = Connection._request(
+            self, protocol, method, location, headers, body)
+        d.addBoth(defer.bridge_param, self._return_to_the_pool, protocol)
+        return d
+
+    def _return_to_the_pool(self, protocol):
+        try:
+            d = self._awaiting_client.pop(0)
+            d.callback(protocol)
+        except IndexError:
+            self._idle.add(protocol)
