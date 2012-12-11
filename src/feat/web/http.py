@@ -336,7 +336,6 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
     def lineReceived(self, line):
         self.cancel_timeout("firstline")
         self.reset_timeout("idle")
-
         if self._state == self.STATE_REQLINE:
             # We are waiting for a request line
             self._got_request_line(line)
@@ -371,7 +370,6 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
                 self.process_body_finished()
 
         self._reset()
-
         self.process_cleanup(reason)
 
         self.onConnectionLost(reason)
@@ -401,9 +399,12 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._header_count = 0
         self._length = 0
         self._remaining = 0
+        # flag saying that have been told that Content-Length is 0
+        # thanks to it we don't have to wait for the connection to
+        # close to process it
+        self._no_content_follows = False
+
         self._body_decoder = None
-        self.process_reset()
-        self.debug('Ready for new request')
 
     def _handle_received(self, data):
         self._body_decoder.dataReceived(data)
@@ -482,6 +483,10 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
             self._got_all_content()
             return
 
+        if self._no_content_follows:
+            self._got_all_content()
+            return
+
         self.setRawMode()
 
     def _got_all_content(self, extra=''):
@@ -493,11 +498,13 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self.process_body_finished()
 
         self._reset()
+        self.process_reset()
 
         self.setLineMode(extra)
 
     def _setup_identity_decoding(self, length):
         if length == 0:
+            self._no_content_follows = True
             return
 
         decoder = http._IdentityTransferDecoder(length,

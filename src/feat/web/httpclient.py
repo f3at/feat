@@ -81,6 +81,7 @@ class Protocol(http.BaseProtocol):
 
     def request(self, method, location,
                 protocol=None, headers=None, body=None):
+
         headers = dict(headers) if headers is not None else {}
         if body:
             # without typecast to str, in case of unicode input
@@ -126,6 +127,8 @@ class Protocol(http.BaseProtocol):
 
     def process_reset(self):
         self._response = None
+        self.factory.onConnectionReset(self)
+        self.debug('Ready for new request')
 
     def process_request_line(self, line):
         assert self._response is None, "Already handling response"
@@ -209,8 +212,6 @@ class Factory(ClientFactory):
     def create_protocol(self, *args, **kwargs):
         proto = self.protocol(*args, **kwargs)
         proto.factory = self
-        time.call_next(self._deferred.callback, proto)
-        del self._deferred
         return proto
 
     def clientConnectionFailed(self, connector, reason):
@@ -221,6 +222,8 @@ class Factory(ClientFactory):
         self._cleanup()
 
     def onConnectionMade(self, protocol):
+        time.call_next(self._deferred.callback, protocol)
+        del self._deferred
         if self.owner:
             self.owner.onClientConnectionMade(protocol)
 
@@ -228,6 +231,10 @@ class Factory(ClientFactory):
         if self.owner:
             self.owner.onClientConnectionLost(protocol, reason)
         self._cleanup()
+
+    def onConnectionReset(self, protocol):
+        if self.owner:
+            self.owner.onClientConnectionReset(protocol)
 
     ### private ###
 
@@ -314,6 +321,9 @@ class Connection(log.LogProxy, log.Logger):
     def onClientConnectionMade(self, protocol):
         pass
 
+    def onClientConnectionReset(self, protocol):
+        pass
+
     def onClientConnectionLost(self, protocol, reason):
         self._protocol = None
 
@@ -373,6 +383,7 @@ class ConnectionPool(Connection):
         # [Deferred] to be triggered when the protocol connection becomes free
         self._awaiting_client = list()
         self._max = maximum_connections
+        self._connecting = 0
 
     ### public ###
 
@@ -390,19 +401,24 @@ class ConnectionPool(Connection):
         try:
             protocol = self._idle.pop()
             d = defer.succeed(protocol)
+            self.debug("Reusing existing connection.")
         except KeyError:
             d = defer.Deferred()
             self._awaiting_client.append(d)
-            if len(self._connected) < self._max:
+            if len(self._connected) + self._connecting < self._max:
+                self.debug("Initializing new connection.")
+                self._connecting += 1
                 self._connect()
         d.addCallback(self._request, method, location, headers, body)
         return d
 
     def onClientConnectionFailed(self, reason):
+        self._connecting -= 1
         self.info("Failed connecting to %s:%s. Reason: %s",
                   self._host, self._port, reason)
 
     def onClientConnectionMade(self, protocol):
+        self._connecting -= 1
         self._connected.add(protocol)
         self._return_to_the_pool(protocol)
         self.debug("Connection made to %s:%s, pool has now %d connections "
@@ -417,12 +433,17 @@ class ConnectionPool(Connection):
         self.debug("Connection to %s:%s lost, pool has now %d connections "
                    "%d of with are idle", self._host, self._port,
                    len(self._connected), len(self._idle))
+        possible_to_run = self._max - len(self._connected) - self._connecting
+        if (self._awaiting_client and possible_to_run > 0):
+            to_spawn = min([len(self._awaiting_client), possible_to_run])
+            self.debug("Establishing %d extra connections to handle pending"
+                       " connections", to_spawn)
+            for x in range(to_spawn):
+                self._connecting += 1
+                self._connect()
 
-    def _request(self, protocol, method, location, headers, body):
-        d = Connection._request(
-            self, protocol, method, location, headers, body)
-        d.addBoth(defer.bridge_param, self._return_to_the_pool, protocol)
-        return d
+    def onClientConnectionReset(self, protocol):
+        self._return_to_the_pool(protocol)
 
     def _return_to_the_pool(self, protocol):
         try:
