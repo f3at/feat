@@ -76,12 +76,6 @@ def _update_old(connection, doc):
     yield connection.save_document(doc)
 
 
-def load_application(option, opt_str, value, parser):
-    splited = value.split('.')
-    module, name = '.'.join(splited[:-1]), splited[-1]
-    applications.load(module, name)
-
-
 def parse_options(parser=None, args=None):
     if parser is None:
         parser = optparse.OptionParser()
@@ -94,11 +88,6 @@ def parse_options(parser=None, args=None):
         parser.add_option('-m', '--migration', dest='migration', default=False,
                           help='Run migration script.',
                           action="store_true")
-        parser.add_option('-a', '--application', nargs=1,
-                          callback=load_application, type="string",
-                          help='Load application by canonical name.',
-                          action="callback")
-
 
     opts, args = parser.parse_args(args)
     opts.db_host = opts.db_host or options.DEFAULT_DB_HOST
