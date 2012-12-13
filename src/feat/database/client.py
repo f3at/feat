@@ -32,7 +32,8 @@ from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
-from feat.database.interface import NotFoundError
+from feat.database.interface import NotFoundError, ConflictError
+from feat.database.interface import ResignFromModifying
 from feat.interface.generic import ITimeProvider
 from feat.interface.serialization import ISerializable
 
@@ -238,6 +239,19 @@ class Connection(log.Logger, log.LogProxy):
         d.addCallback(self._notice_doc_revision)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.update_document')
+    def update_document(self, doc, _method, *args, **kwargs):
+        return self.update_document_ex(doc, _method, args, kwargs)
+
+    @serialization.freeze_tag('IDatabaseClient.update_document_ex')
+    def update_document_ex(self, doc, _method, args=tuple(), keywords=dict()):
+        if not IDocument.providedBy(doc):
+            d = self.get_document(doc)
+        else:
+            d = defer.succeed(doc)
+        d.addCallback(self._iterate_on_update, _method, args, keywords)
+        return d
+
     @serialization.freeze_tag('IDatabaseClient.get_revision')
     def get_revision(self, doc_id):
         # FIXME: this could be done by lightweight HEAD request
@@ -386,6 +400,27 @@ class Connection(log.Logger, log.LogProxy):
                  doc.doc_id, doc.rev)
         self._known_revisions[doc.doc_id] = _parse_doc_revision(doc.rev)
         return doc
+
+    ### private parts of update_document subroutine ###
+
+    def _iterate_on_update(self, doc, _method, args, keywords):
+        try:
+            result = _method(doc, *args, **keywords)
+        except ResignFromModifying:
+            return doc
+        if result is None:
+            d = self.delete_document(doc)
+        else:
+            d = self.save_document(result)
+        d.addErrback(self._errback_on_update, doc.doc_id,
+                     _method, args, keywords)
+        return d
+
+    def _errback_on_update(self, fail, doc_id, _method, args, keywords):
+        fail.trap(ConflictError)
+        d = self.get_document(doc_id)
+        d.addCallback(self._iterate_on_update, _method, args, keywords)
+        return d
 
 
 def _parse_doc_revision(rev):

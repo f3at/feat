@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
 import operator
 
 from twisted.trial.unittest import SkipTest
@@ -41,7 +42,7 @@ from . import common
 from feat.test.common import attr, Mock
 
 from feat.database.interface import ConflictError, NotFoundError
-from feat.database.interface import NotConnectedError
+from feat.database.interface import NotConnectedError, ResignFromModifying
 
 
 @serialization.register
@@ -151,7 +152,63 @@ class GroupCountingView(view.BaseView):
         return key, value
 
 
+### used to tests update_document() ###
+
+
+def delete_doc(document):
+    return None
+
+
+def update_dict(document, **keywords):
+    changed = False
+    for key, value in keywords.items():
+        current = getattr(document, key)
+        if current != value:
+            changed = True
+            setattr(document, key, value)
+
+    if changed:
+        return document
+    else:
+        raise ResignFromModifying()
+
+### end ###
+
+
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testDeleteDocumentConcurrently(self):
+        doc = DummyDocument(field=u'some_doc')
+        doc = yield self.connection.save_document(doc)
+        saved = copy.deepcopy(doc)
+        saved.field = u'other field'
+        yield self.connection.save_document(saved)
+
+        result = yield self.connection.update_document(doc, delete_doc)
+        self.assertIsInstance(result, DummyDocument)
+        d = self.connection.get_document(doc.doc_id)
+        self.assertFailure(d, NotFoundError)
+        yield d
+
+    @defer.inlineCallbacks
+    def testUpdateDocumentConcurrently(self):
+        doc = DummyDocument(field=u'some_doc')
+        doc = yield self.connection.save_document(doc)
+        saved = copy.deepcopy(doc)
+        saved.field = u'other field'
+        yield self.connection.save_document(saved)
+
+        result = yield self.connection.update_document(doc, update_dict,
+                                                       field='new value')
+        self.assertIsInstance(result, DummyDocument)
+        self.assertEqual('new value', result.field)
+
+        # now check that it doesn't change if it resigns
+        result2 = yield self.connection.update_document(saved, update_dict,
+                                                       field='new value')
+        self.assertIsInstance(result2, DummyDocument)
+        self.assertEqual(result2, result)
 
     @defer.inlineCallbacks
     def testIncludeDocs(self):

@@ -26,7 +26,8 @@ from zope.interface import Interface, Attribute
 
 
 __all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
-           "NotFoundError", "NotConnectedError", "IDbConnectionFactory",
+           "NotFoundError", "NotConnectedError", "ResignFromModifying",
+           "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
            "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration")
@@ -56,6 +57,16 @@ class NotConnectedError(Exception):
     Raised when we get connection refused trying to perform a request to
     database.
     '''
+
+
+class ResignFromModifying(Exception):
+    """
+    Raised by a callable passed to IDatabaseClient.update_document
+    to indicate that it doesn't want to change the document after all.
+    This might happen for example is call is supposed to set some value
+    inside the document, but this change has been applied by a concurrent
+    connection.
+    """
 
 
 class IDbConnectionFactory(Interface):
@@ -103,6 +114,24 @@ class IDatabaseClient(Interface):
         @param document_id: The id of the document in the database.
         @returns: The Deffered called with the instance representing downloaded
                   document.
+        '''
+
+    def update_document(document_or_id, method, *args, **kwargs):
+        '''
+        Update the document concurrently. This works by trying to update
+        document in a loop and handling the conflicts. The callable is called
+        for the document passed and the result is saved to database.
+        If a conflict should occur, the latest version of the document is
+        fetched and the callable is called again.
+
+        @param method: Method to be called to update the document.
+                       It should take the document instance as the first
+                       parameter. Additionally it may take extra positional
+                       and keyword arguments. To update the document the
+                       callable should return the update document instance.
+                       Returning None leads to deleting the document.
+                       To resign from modifying raise ResignFromModyfing.
+        @callback: Updated document
         '''
 
     def get_attachment_body(attachment):
