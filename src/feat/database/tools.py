@@ -20,6 +20,7 @@
 
 # Headers in this file shall remain intact.
 import optparse
+import re
 
 from twisted.internet import reactor
 
@@ -130,6 +131,14 @@ def script():
         d.addCallback(body)
 
 
+def tupletize_version(version_string):
+    '''
+    Given "1.2.3-6" returns a tuple of (1, 2, 3, 6).
+    This is used for sorting versions.
+    '''
+    return tuple(int(x) for x in re.findall(r'[0-9]+', version_string))
+
+
 @defer.inlineCallbacks
 def migration_script(connection):
     log.info("script", "Running the migration script.")
@@ -141,9 +150,10 @@ def migration_script(connection):
             version_doc = ApplicationVersion(name=unicode(application.name))
         else:
             version_doc = version_doc[0]
+            t = tupletize_version
             to_run = [(version, migration)
                       for version, migration in application.get_migrations()
-                      if version > version_doc.version]
+                      if t(version) > t(version_doc.version)]
         if not to_run:
             log.info("script", "There are no migrations for application %s "
                      "from version %s to %s", application.name,
