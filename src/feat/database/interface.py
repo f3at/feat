@@ -130,7 +130,7 @@ class IDatabaseClient(Interface):
                        and keyword arguments. To update the document the
                        callable should return the update document instance.
                        Returning None leads to deleting the document.
-                       To resign from modifying raise ResignFromModyfing.
+                       To resign from modifying raise ResignFromModifying.
         @callback: Updated document
         '''
 
