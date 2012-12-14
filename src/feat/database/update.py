@@ -33,7 +33,7 @@ def extend_list(document, key, values):
     if not isinstance(llist, list):
         setattr(document, values)
     else:
-        list.extend(values)
+        llist.extend(values)
     return document
 
 
