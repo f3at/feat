@@ -129,6 +129,10 @@ class DummyAgent(DummyBase):
     def save_document(self, document):
         return fiber.wrap_defer(self._db.save_document, document)
 
+    def update_document(self, doc_or_id, *args, **kwargs):
+        return fiber.wrap_defer(self._db.update_document, doc_or_id,
+                                *args, **kwargs)
+
     def delete_document(self, document):
         return fiber.wrap_defer(self._db.delete_document, document)
 
@@ -203,6 +207,9 @@ class DummyMedium(DummyMediumBase):
 
     def save_document(self, document):
         return self._db.save_document(document)
+
+    def update_document(self, doc_or_id, *args, **kwargs):
+        return self._db.update_document(doc_or_id, *args, **kwargs)
 
     def delete_document(self, document):
         return self._db.delete_document(document)

@@ -451,6 +451,11 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def save_document(self, state, doc):
         return fiber.wrap_defer(state.medium.save_document, doc)
 
+    @replay.immutable
+    def update_document(self, state, doc_or_id, *args, **kwargs):
+        db = state.medium.get_database()
+        return fiber.wrap_defer(db.update_document, doc_or_id, *args, **kwargs)
+
     @update_descriptor
     def update_descriptor(self, state, desc, method, *args, **kwargs):
         return method(desc, *args, **kwargs)
