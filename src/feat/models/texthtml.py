@@ -8,7 +8,7 @@ from feat.web.markup import html
 from feat.models.interface import ActionCategories, ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
 from feat.models.interface import IValueOptions, IErrorPayload, IQueryModel
-from feat.models.interface import Unauthorized, IContext
+from feat.models.interface import Unauthorized, IContext, NotSupported
 
 
 MIME_TYPE = "text/html"
@@ -177,8 +177,11 @@ class ModelWriter(log.Logger):
 
     @defer.inlineCallbacks
     def _render_items(self, model, markup, context):
-        items = yield model.fetch_items()
-        if not items:
+        try:
+            items = yield model.fetch_items()
+            if not items:
+                return
+        except NotSupported:
             return
 
         array_deepness = render_array(model)
