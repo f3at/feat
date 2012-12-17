@@ -1,10 +1,13 @@
+import os
 import sys
+import glob
 import ConfigParser
 import StringIO
 
 from feat import applications
 from feat.common.text_helper import format_block
 from feat.common import serialization
+from feat.configure import configure
 
 
 def parse_file(parser, fp):
@@ -129,9 +132,14 @@ def _parse_include_section(cfg, parser, section):
     flt: /etc/feat/flt.ini
     ducksboard: /etc/feat/ducksboard.ini
     '''
-    for _name, filename in cfg.items(section):
-        f = open(filename, 'r')
-        parse_file(parser, f)
+    for _name, pattern in cfg.items(section):
+        if not os.path.isabs(pattern):
+            pattern = os.path.join(configure.confdir, pattern)
+        matches = glob.glob(pattern)
+        matches.sort()
+        for filename in matches:
+            f = open(filename, 'r')
+            parse_file(parser, f)
 
 
 def _is_static_section(section):
