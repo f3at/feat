@@ -83,6 +83,7 @@ class GatewayConfig(formatable.Formatable):
 
     formatable.field('port', options.DEFAULT_GW_PORT)
     formatable.field('p12', options.DEFAULT_GW_P12_FILE)
+    formatable.field('client_p12', None)
     formatable.field('allow_tcp', options.DEFAULT_ALLOW_TCP_GATEWAY)
 
 

@@ -204,6 +204,7 @@ port: manhole
 [gateway]
 port: gateway-port
 p12_path: gateway-p12
+client_p12: gateway-client-p12
 
 [host]:
 document_id: host-def

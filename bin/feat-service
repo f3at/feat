@@ -31,8 +31,9 @@ import os
 import sys
 import time
 
-from feat.common import run, signal, text_helper, log
+from feat.common import run, signal, text_helper, log, defer
 from feat.configure import configure
+from feat.gateway import client as gateway_client
 
 from feat.agencies.net import config
 
@@ -86,6 +87,7 @@ def main(args):
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
     * hostcleanup - Cleans up descriptors of the agents running on the host.
+    * agentrestart - Restarts a statically configured agent.
     """)
 
     try:
@@ -175,9 +177,95 @@ def main(args):
             d.addCallback(host_restart.do_cleanup, opts.hostname)
         return
 
+    if command == 'agentrestart':
+        c = config.parse_service_config()
+        parser = optparse.OptionParser()
+        parser.add_option('-n', '--static-name',
+                          help='Name of static agent to restart',
+                          action='store',
+                          type="str", metavar="NAME", dest='static_name')
+
+        opts, _ = parser.parse_args(args)
+        if not opts.static_name:
+            logger.error("Static name not specified.")
+            sys.exit(1)
+
+        from feat.web import security
+        sp = security.ClientPolicy(
+            security.ClientContextFactory(p12_filename=c.gateway.client_p12))
+        client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
+        sys.exit(_gateway_script(agent_restart, client, opts.static_name, c))
+
+
     logger.error("No such command, %s", command)
     print >> sys.stderr, usage
     sys.exit(1)
+
+
+@defer.inlineCallbacks
+def agent_restart(client, static_name, config):
+    logger.info("I'm about to restart statically configured agent: %s",
+                static_name)
+    hostname = config.agency.full_hostname
+    port = config.gateway.port
+
+    context = dict(hostname=hostname, static_name=static_name)
+    path = '/agents/%(hostname)s/static_agents' % context
+    status, static = yield client.get(hostname, port, path)
+    if static_name not in static:
+        logger.error(
+            "Host agent doesn't know about this static agents. Known names "
+            "are: %s", static.keys())
+        defer.returnValue(1)
+
+    path = '/agents/%(hostname)s/static_agents/%(static_name)s' % context
+    status, info = yield client.get(hostname, port, path)
+    if 'running' not in info:
+        logger.error("Got wrong response from gateway location: %s"
+                     "%r", path, info)
+        defer.returnValue(1)
+
+    if info['running']:
+        agent_id = info['agent_id']
+        logger.info("Agent has ID: %s and will be shut down", agent_id)
+        shutdown = '/agents/%s/_shutdown' % (agent_id, )
+        status, r = yield client.delete(hostname, port, shutdown)
+        if r['type'] != 'deleted':
+            logger.error("Response for shutdown call: %r", r)
+    logger.info('About to start the agent %s.', static_name)
+    status, r = yield client.post(hostname, port, path + '/_start', force=True)
+    if 'key' in r:
+        logger.info("New agent has ID: %r", r['key'])
+        defer.returnValue(0)
+    else:
+        logger.error("Got response starting agent: %r", r)
+        defer.returnValue(1)
+
+
+def _gateway_script(method, client, *args, **kwargs):
+    from twisted.internet import reactor
+    from feat.common import error
+
+    def set_exitcode(res, context):
+        context['exitcode'] = res
+
+    def error_handler(fail):
+        from feat.extern.log import log as xlog
+        xlog.setDebug('4')
+        log.set_default(log.PythonLogKeeper(logger))
+        error.handle_failure(None, fail,
+                             'Agent restart failed with: ')
+        context['exitcode'] = 1
+
+    context = dict()
+    d = defer.Deferred()
+    d.addCallback(method, *args, **kwargs)
+    d.addCallback(set_exitcode, context)
+    d.addErrback(error_handler)
+    d.addBoth(defer.drop_param, reactor.stop)
+    reactor.callWhenRunning(d.callback, client)
+    reactor.run()
+    return context['exitcode']
 
 
 def _pidfile_wait(exists, timeout):

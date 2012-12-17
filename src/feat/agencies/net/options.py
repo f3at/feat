@@ -41,6 +41,7 @@ DEFAULT_JOURFILE = "sqlite://" +\
 
 DEFAULT_GW_PORT = 5500
 DEFAULT_GW_P12_FILE = os.path.join(configure.confdir, "gateway.p12")
+DEFAULT_GW_CLIENT_P12_FILE = os.path.join(configure.confdir, "client.p12")
 DEFAULT_ALLOW_TCP_GATEWAY = False
 
 DEFAULT_TUNNEL_PORT = 5400
@@ -245,6 +246,11 @@ def add_gw_options(parser):
                      dest='gateway_allow_tcp',
                      help=("if no PKCS12 is specified start the gateway "
                            "anyway without SSL."))
+    group.add_option('--gateway-client-p12', action="store",
+                     dest='gateway_client_p12',
+                     default=DEFAULT_GW_CLIENT_P12_FILE,
+                     help=("Client to be used by service script for commands "
+                           "requiring using gateway"))
     parser.add_option_group(group)
 
 
