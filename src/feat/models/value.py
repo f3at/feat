@@ -530,6 +530,33 @@ class String(Value):
         return val
 
 
+class Float(Value):
+
+    value_type(ValueTypes.number)
+
+    def validate(self, value):
+        """
+        Accepts: float, int, long, str, unicode
+        Returns: float
+        """
+        if isinstance(value, (str, unicode, int, long)):
+            value = float(value)
+        value = super(Float, self).validate(value)
+        if not isinstance(value, (float)):
+            raise ValueError("Not an float: %r" % (value, ))
+        return value
+
+    def publish(self, value):
+        """
+        Accepts: float
+        Returns: float
+        """
+        value = super(Float, self).publish(value)
+        if isinstance(value, int):
+            value = float(value)
+        return value
+
+
 class Integer(Value):
     """Definition of an basic integer value."""
 
