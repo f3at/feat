@@ -1626,7 +1626,9 @@ class MetaQuerySetCollection(MetaCollection):
         target = parent_class._query_target
         if target == 'source':
             cls.annotate_child_source(_QuerySetCollection.getter)
+            cls.annotate_child_view(parent_class._fetch_view)
         elif target == 'view':
+            cls.annotate_child_source(parent_class._fetch_source)
             cls.annotate_child_view(_QuerySetCollection.getter)
         else:
             raise AttributeError("Unknown target: %r" % (target, ))
