@@ -25,7 +25,7 @@ from setuptools import setup, find_packages
 
 NAME = 'feat'
 
-VERSION = '0.23.6'
+VERSION = '0.24.0'
 DESCRIPTION = 'Flumotion Asynchronous Autonomous Agent Toolkit'
 LONG_DESC = DESCRIPTION
 AUTHOR = 'Flumotion Developers',
