@@ -234,8 +234,18 @@ class Registry(object):
     reader_wrapper = None
     writer_wrapper = None
 
-    def __init__(self):
-        self._registry = zope_adapter.AdapterRegistry()
+    def __init__(self, base=None):
+        if base is not None and not isinstance(base,
+                                               zope_adapter.AdapterRegistry):
+            raise ValueError(repr(base))
+        if base is not None:
+            bases = (base, )
+        else:
+            bases = tuple()
+        self._registry = zope_adapter.AdapterRegistry(bases)
+
+    def create_subregistry(self):
+        return Registry(self._registry)
 
     def register_writer(self, writer, mime_type, iface):
         writer = IWriter(writer)
@@ -329,6 +339,11 @@ class Registry(object):
 def get_registry():
     global _registry
     return _registry
+
+
+def create_subregistry():
+    global _registry
+    return _registry.create_subregistry()
 
 
 def register_writer(writer, mime_type, iface):
