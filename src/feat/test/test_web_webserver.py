@@ -749,18 +749,18 @@ class TestWebServer(common.TestCase):
         NF = http.Status.NOT_FOUND
         IE = http.Status.INTERNAL_SERVER_ERROR
 
-        yield checker("/ugly", NF, "Page not found")
-        yield checker("/ugly/", NF, "Page not found")
-        yield checker("/good/ugly", NF, "Page not found")
-        yield checker("/good/ugly/", NF, "Page not found")
-        yield checker("/good/unicode/ugly", NF, "Page not found")
-        yield checker("/good/unicode/ugly/", NF, "Page not found")
-        yield checker("/good/objects/ugly", NF, "Page not found")
-        yield checker("/good/objects/ugly/", NF, "Page not found")
+        yield checker("/ugly", NF, "ERROR")
+        yield checker("/ugly/", NF, "ERROR")
+        yield checker("/good/ugly", NF, "ERROR")
+        yield checker("/good/ugly/", NF, "ERROR")
+        yield checker("/good/unicode/ugly", NF, "ERROR")
+        yield checker("/good/unicode/ugly/", NF, "ERROR")
+        yield checker("/good/objects/ugly", NF, "ERROR")
+        yield checker("/good/objects/ugly/", NF, "ERROR")
 
-        yield checker("/bad/locate/not_found/", NF, "Page not found")
-        yield checker("/bad/locate/not_found/dummy", NF, "Page not found")
-        yield checker("/bad/locate/not_found/dummy/", NF, "Page not found")
+        yield checker("/bad/locate/not_found/", NF, "ERROR")
+        yield checker("/bad/locate/not_found/dummy", NF, "ERROR")
+        yield checker("/bad/locate/not_found/dummy/", NF, "ERROR")
 
         yield checker("/bad/locate/overridden/", IE, "OVERRIDDEN")
         yield checker("/bad/locate/overridden/dummy", IE, "OVERRIDDEN")
@@ -798,8 +798,8 @@ class TestWebServer(common.TestCase):
         yield checker("/bad/render", OK, "RENDER")
         yield checker("/bad/render/", OK, "RENDER")
 
-        yield checker("/bad/render/not_found", NF, "Page not found")
-        yield checker("/bad/render/not_found/", NF, "Page not found")
+        yield checker("/bad/render/not_found", NF, "ERROR")
+        yield checker("/bad/render/not_found/", NF, "ERROR")
 
         yield checker("/bad/render/not_allowed/", NA, "ERROR",
                       allowed_methods=("PUT", "DELETE"))
@@ -1060,14 +1060,14 @@ class TestWebServer(common.TestCase):
         self.assertIn('#Date', content)
         self.assertIn('#Fields: %s' % (format, ), content)
 
-        yield self.check_async('/?name=2', 404, 'Page not found')
+        yield self.check_async('/?name=2', 404, 'ERROR')
 
         content = open(path).read()
         last_line = content.split("\n")[-2]
         parts = last_line.split(' ')
         self.assertEquals('GET', parts[2])
         self.assertEquals('/?name=2', parts[3])
-        self.assertEquals(str(len('Page not found')), parts[4])
+        self.assertEquals('5', parts[4])
         self.assertEquals('127.0.0.1', parts[6])
         self.assertEquals('127.0.0.2', parts[7])
         self.assertEquals('404', parts[8])
