@@ -102,8 +102,10 @@ class ErrorTypes(enum.Enum):
      invalid_parameters) = range(6)
 
 
-class ModelError(error.FeatError):
+class ModelError(error.NonCritical):
     """Base exception for model related errors."""
+
+    log_line_template = "%(class_name)s: %(msg)s"
 
 
 class TransientError(ModelError):

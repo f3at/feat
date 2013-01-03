@@ -231,7 +231,8 @@ def handle_failure(source, failure, template, *args, **kwargs):
         category = 'feat'
     if failure.check(NonCritical):
         e = failure.value
-        msg = e.log_line_template % dict(class_name=type(failure.value))
+        msg = (e.log_line_template %
+               dict(class_name=type(failure.value), msg=msg))
         logger.logex(e.log_level, msg, ())
     elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
