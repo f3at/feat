@@ -212,7 +212,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                 urllib.quote(attachment.name), revision.encode('utf-8')))
         headers = {'Content-Type': [attachment.content_type]}
         body = attachment.get_body()
-        body = body.encode('utf-8')
+        if isinstance(body, unicode):
+            body = body.encode('utf-8')
         d = self._lock_document(doc_id, self._paisley_call, doc_id,
                                 self.paisley.put, uri,
                                 body, headers=headers)
