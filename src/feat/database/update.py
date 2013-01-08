@@ -31,9 +31,33 @@ def append_to_list(document, key, value, unique=False):
 def extend_list(document, key, values):
     llist = getattr(document, key)
     if not isinstance(llist, list):
-        setattr(document, values)
+        setattr(document, key, values)
     else:
         llist.extend(values)
+    return document
+
+
+def add_to_set(document, key, value):
+    sset = getattr(document, key)
+    if not isinstance(sset, set):
+        setattr(document, key, set([value]))
+    else:
+        if value in sset:
+            raise ResignFromModifying()
+        else:
+            sset.add(value)
+    return document
+
+
+def remove_from_set(document, key, value):
+    sset = getattr(document, key)
+    if not isinstance(sset, set):
+        raise ResignFromModifying()
+    else:
+        if value not in sset:
+            raise ResignFromModifying()
+        else:
+            sset.remove(value)
     return document
 
 

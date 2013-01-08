@@ -185,8 +185,23 @@ def create(name, *effects, **kwargs):
               effects=effects, label=label, desc=desc)
 
 
-def put():
-    raise NotImplementedError("model.put() is not implemented yet")
+def put(name, *effects, **kwargs):
+    label = kwargs.pop("label", None)
+    desc = kwargs.pop("desc", None)
+    value_info = kwargs.pop("value", None)
+    params = kwargs.pop("params", None)
+    if kwargs:
+        raise TypeError("create() got an unexpected keyword '%s'"
+                        % kwargs.keys()[0])
+    name = _validate_str(name)
+    factory = models_action.MetaAction.new(name,
+                                           category=ActionCategories.update,
+                                           value_info=value_info,
+                                           result_info=value_info,
+                                           is_idempotent=True,
+                                           params=params,
+                                           effects=effects)
+    _annotate("action", name, factory, label=label, desc=desc)
 
 
 def update():

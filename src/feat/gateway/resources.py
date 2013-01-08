@@ -195,8 +195,13 @@ class BaseResource(webserver.BaseResource):
     def render_error(self, request, response, ex):
 
         def nice_error_failed(failure):
-            error.handle_failure(None, failure,
-                                 "Failure during error rendering")
+            if failure.check(http.NotAcceptableError):
+                request.debug("Failed to negotiate a mime type to render the "
+                              "error payload. Accepted mime types: %s. ",
+                              request.accepted_mime_types)
+            else:
+                error.handle_failure(None, failure,
+                                     "Failure during error rendering")
             # Do what we can...
             data = str(payload)
             if response.can_update_headers:

@@ -69,6 +69,22 @@ class TestDocuments(common.TestCase):
     def setUp(self):
         self.registry = document.Registry()
 
+    @defer.inlineCallbacks
+    def testSubregistry(self):
+        registry = self.registry.create_subregistry()
+        self.assertIsInstance(registry, document.Registry)
+
+        registry.register_writer(human_xml_writer, XML_MIME, IHuman)
+        samples = get_samples()
+        doc = document.WritableDocument(XML_MIME, 'utf8')
+        human = samples["human"]["instance"]
+
+        written = yield registry.write(doc, human)
+        doc = document.WritableDocument(XML_MIME, 'utf8')
+        d = self.registry.write(doc, human)
+        self.assertFailure(d, document.NoWriterFoundError)
+        yield d
+
     def testSimpleWriteRead(self):
 
         def write(obj, iface, type, encoding="utf8"):

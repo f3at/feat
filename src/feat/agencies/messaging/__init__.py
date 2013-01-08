@@ -29,12 +29,13 @@ from feat.common import log
 from .messaging import *
 
 
-debug_messages = os.environ.get("FEAT_DEBUG_MESSAGES", "NO").upper() \
-                 in ("YES", "1", "TRUE")
+env_set = os.environ.get("FEAT_DEBUG_MESSAGES", "NO").upper() \
+          in ("YES", "1", "TRUE")
 
 
 def debug_message(prefix, message, postfix=""):
-    if not debug_message:
+    global env_set
+    if not env_set:
         return
     mtype = type(message).__name__
     mid = getattr(message, "message_id", None)

@@ -81,6 +81,7 @@ class Protocol(http.BaseProtocol):
 
     def request(self, method, location,
                 protocol=None, headers=None, body=None):
+        self.cancel_timeout("inactivity")
 
         headers = dict(headers) if headers is not None else {}
         if body:
@@ -127,6 +128,7 @@ class Protocol(http.BaseProtocol):
 
     def process_reset(self):
         self._response = None
+        self.reset_timeout('inactivity')
         self.factory.onConnectionReset(self)
         self.debug('Ready for new request')
 
