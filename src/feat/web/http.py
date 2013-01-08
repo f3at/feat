@@ -246,8 +246,6 @@ class IExpirationPolicy(Interface):
 
 class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 
-    log_category = "http-parser"
-
     max_headers = 20
 
     STATE_REQLINE = 0
@@ -492,7 +490,6 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 
     def _got_all_content(self, extra=''):
         self.debug("All content received")
-
         self.cancel_timeout("idle")
         self.reset_timeout("inactivity")
 

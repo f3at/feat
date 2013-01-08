@@ -2,6 +2,7 @@ from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor
 from twisted.internet.protocol import ClientFactory, Protocol
+from twisted.python import failure
 
 from feat.common import defer, error, log, time
 from feat.web import http, security
@@ -50,23 +51,25 @@ class Response(object):
         self.body = None
 
 
-def delegate(attribute, name):
+class Delegate(object):
 
-    def getter(self):
-        return getattr(self.__dict__[attribute], name)
+    def __init__(self, attr, name):
+        self.attr = attr
+        self.name = name
 
-    def setter(self, value):
-        setattr(self.__dict__[attribute], name, value)
+    def __get__(self, instance, owner):
+        return getattr(instance.__dict__[self.attr], self.name)
 
-    return property(getter, setter)
+    def __set__(self, instance, value):
+        setattr(instance.__dict__[self.attr], self.name, value)
 
 
-class BaseDecoder(Protocol):
+class BaseDecoder(object, Protocol):
 
-    status = delegate('_response', 'status')
-    headers = delegate('_response', 'headers')
-    length = delegate('_response', 'length')
-    body = delegate('_response', 'body')
+    status = Delegate('_response', 'status')
+    headers = Delegate('_response', 'headers')
+    length = Delegate('_response', 'length')
+    body = Delegate('_response', 'body')
 
     def __init__(self):
         self._response = None
@@ -110,8 +113,6 @@ class ResponseDecoder(BaseDecoder):
 
 class Protocol(http.BaseProtocol):
 
-    log_category = "http-client"
-
     owner = None
 
     def __init__(self, log_keeper, owner):
@@ -135,6 +136,7 @@ class Protocol(http.BaseProtocol):
         self._pending_decoders = []
 
         self.debug("HTTP client protocol created")
+        self.in_pool = False
 
     def is_idle(self):
         return http.BaseProtocol.is_idle(self) and not self._requests
@@ -184,7 +186,7 @@ class Protocol(http.BaseProtocol):
 
     def process_cleanup(self, reason):
         for request in self._requests:
-            request.connectionLost(RequestError(reason))
+            request.connectionLost(RequestError(cause=reason))
         self._requests = None
 
     def process_reset(self):
@@ -250,6 +252,10 @@ class Protocol(http.BaseProtocol):
     def process_parse_error(self):
         self._client_error(InvalidResponse())
 
+    def process_error(self, exception):
+        self._response.connectionLost(failure.Failure(exception))
+        self._response = None
+
     ### Private Methods ###
 
     def _client_error(self, exception):
@@ -307,6 +313,8 @@ class Factory(ClientFactory):
 
 class Connection(log.LogProxy, log.Logger):
 
+    log_category = "http-client"
+
     implements(IHTTPClientOwner)
 
     factory = Factory
@@ -355,7 +363,7 @@ class Connection(log.LogProxy, log.Logger):
     def is_idle(self):
         return self._protocol is None or self._protocol.is_idle()
 
-    def request(self, method, location, headers=None, body=None):
+    def request(self, method, location, headers=None, body=None, decoder=None):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
@@ -365,7 +373,7 @@ class Connection(log.LogProxy, log.Logger):
         else:
             d = defer.succeed(self._protocol)
 
-        d.addCallback(self._request, method, location, headers, body)
+        d.addCallback(self._request, method, location, headers, body, decoder)
         return d
 
     def disconnect(self):
@@ -413,14 +421,14 @@ class Connection(log.LogProxy, log.Logger):
         self._protocol = protocol
         return protocol
 
-    def _request(self, protocol, method, location, headers, body):
+    def _request(self, protocol, method, location, headers, body, decoder):
         self._pending += 1
         headers = dict(headers) if headers is not None else {}
         if "host" not in headers:
             headers["host"] = self._host
         d = protocol.request(method, location,
                              self._http_protocol,
-                             headers, body)
+                             headers, body, decoder)
         d.addBoth(self._request_done)
         return d
 
@@ -456,7 +464,8 @@ class ConnectionPool(Connection):
         [x.cancel() for x in self._awaiting_client]
         [x.transport.loseConnection() for x in self._connected]
 
-    def request(self, method, location, headers=None, body=None):
+    def request(self, method, location, headers=None, body=None, decoder=None,
+                outside_of_the_pool=False):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
@@ -467,17 +476,21 @@ class ConnectionPool(Connection):
         except KeyError:
             d = defer.Deferred()
             self._awaiting_client.append(d)
-            if len(self._connected) + self._connecting < self._max:
+            if self._pool_len() < self._max:
                 self.debug("Initializing new connection.")
                 self._connecting += 1
                 self._connect()
-        d.addCallback(self._request, method, location, headers, body)
+        d.addCallback(self._request, method, location, headers, body, decoder,
+                      outside_of_the_pool)
         return d
 
     def onClientConnectionFailed(self, reason):
         self._connecting -= 1
         self.info("Failed connecting to %s:%s. Reason: %s",
                   self._host, self._port, reason)
+        for d in self._awaiting_client:
+            d.errback(reason)
+        del self._awaiting_client[:]
 
     def onClientConnectionMade(self, protocol):
         self._connecting -= 1
@@ -492,10 +505,14 @@ class ConnectionPool(Connection):
             self._connected.remove(protocol)
         if protocol in self._idle:
             self._idle.remove(protocol)
+        pool_len = self._pool_len()
         self.debug("Connection to %s:%s lost, pool has now %d connections "
-                   "%d of with are idle", self._host, self._port,
-                   len(self._connected), len(self._idle))
-        possible_to_run = self._max - len(self._connected) - self._connecting
+                   "%d of with are idle. %d connections are not in the pool",
+                   self._host, self._port, len(self._connected),
+                   len(self._idle),
+                   len(self._connected) - pool_len + self._connecting)
+
+        possible_to_run = self._max - self._pool_len()
         if (self._awaiting_client and possible_to_run > 0):
             to_spawn = min([len(self._awaiting_client), possible_to_run])
             self.debug("Establishing %d extra connections to handle pending"
@@ -506,6 +523,16 @@ class ConnectionPool(Connection):
 
     def onClientConnectionReset(self, protocol):
         self._return_to_the_pool(protocol)
+
+    def _pool_len(self):
+        return (len([x for x in self._connected if x.in_pool]) +
+                self._connecting)
+
+    def _request(self, protocol, method, location, headers, body, decoder,
+                 outside_of_the_pool):
+        protocol.in_pool = not outside_of_the_pool
+        return Connection._request(self, protocol, method, location, headers,
+                                   body, decoder)
 
     def _return_to_the_pool(self, protocol):
         try:
