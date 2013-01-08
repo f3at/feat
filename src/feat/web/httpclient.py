@@ -1,7 +1,7 @@
 from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import ClientFactory, Protocol
 
 from feat.common import defer, error, log, time
 from feat.web import http, security
@@ -50,6 +50,64 @@ class Response(object):
         self.body = None
 
 
+def delegate(attribute, name):
+
+    def getter(self):
+        return getattr(self.__dict__[attribute], name)
+
+    def setter(self, value):
+        setattr(self.__dict__[attribute], name, value)
+
+    return property(getter, setter)
+
+
+class BaseDecoder(Protocol):
+
+    status = delegate('_response', 'status')
+    headers = delegate('_response', 'headers')
+    length = delegate('_response', 'length')
+    body = delegate('_response', 'body')
+
+    def __init__(self):
+        self._response = None
+
+    ### private interface of the decoder ###
+
+    def get_result(self):
+        return self
+
+
+class ResponseDecoder(BaseDecoder):
+
+    def __init__(self):
+        self._deferred = defer.Deferred()
+        BaseDecoder.__init__(self)
+
+    ### IProtocol ###
+
+    def connectionMade(self):
+        self._response = Response()
+
+    def dataReceived(self, data):
+        if self._response.body is None:
+            self._response.body = ''
+        self._response.body += data
+
+    def connectionLost(self, reason=None):
+        if not self._response and not reason:
+            reason = RequestError("Request cancelled before receiving of "
+                                  "the response started")
+        if reason:
+            self._deferred.errback(reason)
+        else:
+            self._deferred.callback(self._response)
+
+    ### private interface of the decoder ###
+
+    def get_result(self):
+        return self._deferred
+
+
 class Protocol(http.BaseProtocol):
 
     log_category = "http-client"
@@ -73,6 +131,8 @@ class Protocol(http.BaseProtocol):
 
         self._response = None
         self._requests = []
+        # queue of Protocol instances which will receive the body
+        self._pending_decoders = []
 
         self.debug("HTTP client protocol created")
 
@@ -80,7 +140,7 @@ class Protocol(http.BaseProtocol):
         return http.BaseProtocol.is_idle(self) and not self._requests
 
     def request(self, method, location,
-                protocol=None, headers=None, body=None):
+                protocol=None, headers=None, body=None, decoder=None):
         self.cancel_timeout("inactivity")
 
         headers = dict(headers) if headers is not None else {}
@@ -105,12 +165,13 @@ class Protocol(http.BaseProtocol):
         if body:
             seq.append(body)
 
-        d = defer.Deferred()
-        self._requests.append(d)
+        if decoder is None:
+            decoder = ResponseDecoder()
+        self._requests.append(decoder)
 
         self.transport.writeSequence(seq)
 
-        return d
+        return decoder.get_result()
 
     ### Overridden Methods ###
 
@@ -122,8 +183,8 @@ class Protocol(http.BaseProtocol):
         self.owner = None
 
     def process_cleanup(self, reason):
-        for d in self._requests:
-            d.errback(RequestError())
+        for request in self._requests:
+            request.connectionLost(RequestError(reason))
         self._requests = None
 
     def process_reset(self):
@@ -140,7 +201,8 @@ class Protocol(http.BaseProtocol):
             self._client_error(error)
             return
         protocol, status = parts
-        self._response = Response()
+        self._response = self._requests.pop(0)
+        self._response.makeConnection(self.transport)
         self._response.protocol = protocol
         self._response.status = status
 
@@ -176,13 +238,11 @@ class Protocol(http.BaseProtocol):
 
     def process_body_data(self, data):
         assert self._response is not None, "No response information"
-        if self._response.body is None:
-            self._response.body = ''
-        self._response.body += data
+        self._response.dataReceived(data)
 
     def process_body_finished(self):
-        d = self._requests.pop(0)
-        d.callback(self._response)
+        self._response.connectionLost()
+        self._response = None
 
     def process_timeout(self):
         self._client_error(RequestTimeout())
@@ -193,9 +253,9 @@ class Protocol(http.BaseProtocol):
     ### Private Methods ###
 
     def _client_error(self, exception):
-        if self._requests:
-            d = self._requests.pop(0)
-            d.errback(exception)
+        if self._response:
+            self._response.connectionLost(exception)
+            self._response = None
         self.transport.loseConnection()
 
 
