@@ -20,6 +20,7 @@
 
 # Headers in this file shall remain intact.
 import optparse
+import os
 import re
 
 from twisted.internet import reactor
@@ -258,6 +259,9 @@ def standalone(script, options=[]):
         parser.add_option('--dbport', '-P', action='store', dest='dbport',
                           type='str', help='port of database to use',
                           default=c.db.port)
+        parser.add_option('--log', action='store', dest='log',
+                          type='str', help='log level to set',
+                          default=os.environ.get('FEAT_DEBUG', '2'))
 
         for option in extra_options:
             parser.add_option(option)
@@ -266,11 +270,10 @@ def standalone(script, options=[]):
     def _error_handler(fail):
         error.handle_failure('script', fail, "Finished with exception: ")
 
-    log.init()
-    log.FluLogKeeper.set_debug('4')
-
     parser = define_options(options)
     opts, args = parser.parse_args()
+    log.init()
+    log.FluLogKeeper.set_debug(opts.log)
 
     db = config.parse_service_config().db
     db.host, db.port, db.name = opts.hostname, opts.dbport, opts.dbname
