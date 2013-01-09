@@ -4,7 +4,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.python import failure
 
-from feat.common import defer, error, log, time
+from feat.common import defer, error, log, time, first
 from feat.web import http, security
 
 
@@ -136,7 +136,6 @@ class Protocol(http.BaseProtocol):
         self._pending_decoders = []
 
         self.debug("HTTP client protocol created")
-        self.in_pool = False
 
     def is_idle(self):
         return http.BaseProtocol.is_idle(self) and not self._requests
@@ -190,10 +189,13 @@ class Protocol(http.BaseProtocol):
         self._requests = None
 
     def process_reset(self):
-        self._response = None
-        self.reset_timeout('inactivity')
-        self.factory.onConnectionReset(self)
-        self.debug('Ready for new request')
+        if not self._requests:
+            self.reset_timeout('inactivity')
+            self.factory.onConnectionReset(self)
+            self.debug('Ready for new request')
+        else:
+            # we are still waiting for the response of the pipelined request
+            pass
 
     def process_request_line(self, line):
         assert self._response is None, "Already handling response"
@@ -437,11 +439,26 @@ class Connection(log.LogProxy, log.Logger):
         return param
 
 
+class PoolProtocol(Protocol):
+
+    def __init__(self, *args, **kwargs):
+        super(PoolProtocol, self).__init__(*args, **kwargs)
+        self.in_pool = False
+        self.can_pipeline = None
+
+
+class PoolFactory(Factory):
+
+    protocol = PoolProtocol
+
+
 class ConnectionPool(Connection):
     '''
     I establish and keep a number of persitent connections to a web service
     speaking HTTT 1.1 protocol.
     '''
+
+    factory = PoolFactory
 
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None,
@@ -465,23 +482,38 @@ class ConnectionPool(Connection):
         [x.transport.loseConnection() for x in self._connected]
 
     def request(self, method, location, headers=None, body=None, decoder=None,
-                outside_of_the_pool=False):
+                outside_of_the_pool=False, dont_pipeline=False):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
+        if headers.get('connection') == 'close':
+            dont_pipeline = True
+        # post requests are not idempotent and should not be pipelined
+        can_pipeline = not dont_pipeline and method != http.Methods.POST
         try:
             protocol = self._idle.pop()
             d = defer.succeed(protocol)
-            self.debug("Reusing existing connection.")
+            self.log("Reusing existing connection.")
         except KeyError:
-            d = defer.Deferred()
-            self._awaiting_client.append(d)
+            protocol = None
+            if can_pipeline:
+                protocol = first(x for x in self._connected
+                                 if x.can_pipeline and x.in_pool)
+            if protocol:
+                d = defer.succeed(protocol)
+            else:
+                d = defer.Deferred()
+                self._awaiting_client.append(d)
+
+            # Regardless if we have pipeline this request or not, check if
+            # we can have more connections, so that the next request can be
+            # handeled by it.
             if self._pool_len() < self._max:
                 self.debug("Initializing new connection.")
                 self._connecting += 1
                 self._connect()
         d.addCallback(self._request, method, location, headers, body, decoder,
-                      outside_of_the_pool)
+                      outside_of_the_pool, can_pipeline)
         return d
 
     def onClientConnectionFailed(self, reason):
@@ -529,8 +561,9 @@ class ConnectionPool(Connection):
                 self._connecting)
 
     def _request(self, protocol, method, location, headers, body, decoder,
-                 outside_of_the_pool):
+                 outside_of_the_pool, can_pipeline):
         protocol.in_pool = not outside_of_the_pool
+        protocol.can_pipeline = can_pipeline
         return Connection._request(self, protocol, method, location, headers,
                                    body, decoder)
 

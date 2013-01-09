@@ -145,7 +145,8 @@ class Notifier(object):
             def request_changes(decoder, query):
                 url = '/%s/_changes?%s' % (self._db.db_name, urlencode(query))
                 return self._db.couchdb.get(url, decoder=decoder,
-                                            outside_of_the_pool=True)
+                                            outside_of_the_pool=True,
+                                            headers={'connection': 'close'})
 
             d.addCallback(defer.drop_param, request_changes, self._changes,
                           query)
@@ -548,7 +549,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
               isinstance(failure.value.cause, tw_error.ConnectionDone)):
             self._on_disconnected()
             self.reconnect()
-            raise NotConnectedError("Connection to database was lost.")
+            raise NotConnectedError("Connection to the database was lost.")
 
         else:
             failure.raiseException()
