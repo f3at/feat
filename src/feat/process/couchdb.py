@@ -71,7 +71,7 @@ class Process(base.Base):
         self.configure()
         self.prepare_workspace()
 
-        self.command = '/usr/bin/couchdb'
+        self.command = base.which('couchdb', os.environ['PATH'])
         self.env = copy.deepcopy(os.environ)
         self.args = ['-a', self.config['local_ini']]
         self.keep_workdir = False
