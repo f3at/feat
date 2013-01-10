@@ -550,6 +550,5 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self._on_disconnected()
             self.reconnect()
             raise NotConnectedError("Connection to the database was lost.")
-
         else:
             failure.raiseException()

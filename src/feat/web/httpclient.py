@@ -560,6 +560,13 @@ class ConnectionPool(Connection):
         return (len([x for x in self._connected if x.in_pool]) +
                 self._connecting)
 
+    def _connect(self):
+        d = Connection._connect(self)
+        # supress errors returned by _connect() method. They are handled by
+        # clientConnectionFailed() callback
+        d.addErrback(defer.override_result, None)
+        return d
+
     def _request(self, protocol, method, location, headers, body, decoder,
                  outside_of_the_pool, can_pipeline):
         protocol.in_pool = not outside_of_the_pool
