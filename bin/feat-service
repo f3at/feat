@@ -212,6 +212,11 @@ def agent_restart(client, static_name, config):
     context = dict(hostname=hostname, static_name=static_name)
     path = '/agents/%(hostname)s/static_agents' % context
     status, static = yield client.get(hostname, port, path)
+    if status == 404:
+        logger.error(
+            "Got 404 response fetching info about static agents. "
+            "This most likely means that the Host Agent is not running.")
+        defer.returnValue(1)
     if static_name not in static:
         logger.error(
             "Host agent doesn't know about this static agents. Known names "
