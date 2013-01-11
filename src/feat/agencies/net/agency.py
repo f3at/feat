@@ -481,7 +481,11 @@ class Agency(agency.Agency):
             db = self._database.get_connection()
             host = yield locate.locate(db, agent_id)
             port = self.config.gateway.port
-            if host is None:
+            if host is None or (self._broker.is_master() and
+                                host == self.get_hostname()):
+                # Second condition reflects the situation when the agent
+                # has its descriptor in the database but is not running.
+                # It breaks the infinite redirect loop.
                 defer.returnValue(None)
             else:
                 defer.returnValue((host, port, True, ))
