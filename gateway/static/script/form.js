@@ -61,6 +61,18 @@ $.fn.featform._onSubmit = function(ev) {
 
     var $this = $(ev.target);
     var params = {};
+
+    var options = $this.data('featform.options');
+    if (options.method == 'GET') {
+        var url = options.url;
+        var serialized  = $this.serialize();
+        if (serialized) {
+            url = url + "?" + serialized;
+        }
+        document.location = url;
+        return;
+    }
+    
     var array = $this.serializeArray();
 
     $.each(
@@ -129,7 +141,6 @@ $.fn.featform._onSubmit = function(ev) {
     };
 
     $.fn.featform._removeErrors.call($this);
-    options = $this.data('featform.options');
     feat.ajax.send(options.method, options.url, params, success, failure);
 };
 
