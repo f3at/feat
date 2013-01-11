@@ -234,11 +234,7 @@ class ModelWriter(log.Logger):
             markup.span(_class='name')(action.label or action.name).close()
             if action.desc:
                 markup.span(_class='desc')(action.desc).close()
-            if action.category != ActionCategories.retrieve:
-                self._render_action_form(action, markup, context)
-            else:
-                url = action.reference.resolve(context)
-                markup.a(_class="get_action", href=url)("GET").close()
+            self._render_action_form(action, markup, context)
             li.close()
         ul.close()
 
@@ -249,7 +245,7 @@ class ModelWriter(log.Logger):
         div = markup.div()
         for param in action.parameters:
             self._render_param_field(markup, context, param)
-        markup.input(type='submit', value='Perform')
+        markup.input(type='submit', value=method)
         div.close()
         form.close()
 
