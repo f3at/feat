@@ -20,6 +20,11 @@
 
 # Headers in this file shall remain intact.
 import pprint
+import random
+import StringIO
+import tempfile
+import os
+import subprocess
 
 from zope.interface import implements
 
@@ -40,7 +45,7 @@ from feat.interface.agent import AgencyAgentState, IAgent, IMonitorAgent
 from feat.interface.agent import IAlertAgent
 from feat.interface.alert import Severity
 from feat.models.interface import IModel, IReference, ActionCategories
-from feat.models.interface import Unauthorized
+from feat.models.interface import Unauthorized, NotAvailable
 
 
 @featmodels.register_adapter(net_agency.Agency, IModel)
@@ -67,6 +72,8 @@ class Root(model.Model):
     model.child('applications', model='feat.applications',
                 label='Applications', desc='Loaded applications',
                 view=call.model_call('get_applications'))
+    model.child('debug', model='feat.debug',
+                label='Debug', desc='Debugging the live application')
 
     model.meta("html-order", "agencies, agents")
     model.item_meta("agencies", "html-render", "array, 1")
@@ -100,6 +107,68 @@ _app_names = dict()
 def register_app(name, model):
     global _app_names
     _app_names[name] = model
+
+
+@featmodels.register_model
+class Debug(model.Model):
+
+    model.identity('feat.debug')
+    model.child('objgraph', model='feat.debug.objgraph')
+
+
+@featmodels.register_model
+class ObjGraph(model.Model):
+    model.identity('feat.debug.objgraph')
+    model.attribute('most_common_types', value.Binary('text/plain'),
+                    getter=call.model_call('get_most_common_types'))
+    model.action('show_back_refs', action.MetaAction.new(
+        u'show_back_refs',
+        category=ActionCategories.retrieve,
+        result_info=value.Binary('image/png'),
+        is_idempotent=True,
+        params=[
+            action.Param('obj_type', value.String()),
+            action.Param('max_depth', value.Integer(5), is_required=False)],
+        effects=[
+            call.model_perform('generate_backref_graph')]))
+
+    def init(self):
+        try:
+            import objgraph
+            self.objgraph = objgraph
+        except ImportError:
+            raise NotAvailable('Failed import objgraph library')
+
+    def get_most_common_types(self):
+        output = StringIO.StringIO()
+        stats = self.objgraph.most_common_types(limit=20, objects=None)
+        width = max(len(name) for name, count in stats)
+        for name, count in stats:
+            print >> output, ('%-*s %i' % (width, name, count))
+        return output.getvalue()
+
+    def generate_backref_graph(self, obj_type, max_depth):
+        try:
+            dot_name = tempfile.mktemp('.dot')
+            output = None
+            obj = random.choice(self.objgraph.by_type(obj_type))
+            self.objgraph.show_backrefs([obj],
+                                        max_depth=max_depth,
+                                        filename=dot_name)
+            fd, output = tempfile.mkstemp('.png')
+            f = os.fdopen(fd, "wb")
+            dot = subprocess.Popen(['dot', '-Tpng', dot_name],
+                                   stdout=f, close_fds=False)
+            dot.wait()
+            f.close()
+            with open(output, 'r') as f:
+                return f.read()
+        finally:
+            for cleanup in (dot_name, output):
+                try:
+                    os.unlink(cleanup)
+                except OSError:
+                    pass
 
 
 @featmodels.register_model
