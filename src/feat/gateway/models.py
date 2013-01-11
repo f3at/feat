@@ -151,8 +151,8 @@ class ObjGraph(model.Model):
         try:
             dot_name = tempfile.mktemp('.dot')
             output = None
-            obj = self.objgraph.by_type(obj_type)
-            self.objgraph.show_backrefs([random.choice(obj)],
+            obj = random.choice(self.objgraph.by_type(obj_type))
+            self.objgraph.show_backrefs([obj],
                                         max_depth=max_depth,
                                         filename=dot_name)
             fd, output = tempfile.mkstemp('.png')
