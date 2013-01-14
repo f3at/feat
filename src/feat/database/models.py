@@ -177,6 +177,7 @@ class RangeType(value.Collection):
     value.max_size(2)
     value.min_size(2)
     value.allows(value.Integer())
+    value.allows(value.String())
 
     def validate(self, v):
         v = super(RangeType, self).validate(v)
