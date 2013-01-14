@@ -255,8 +255,9 @@ class Protocol(http.BaseProtocol):
         self._client_error(InvalidResponse())
 
     def process_error(self, exception):
-        self._response.connectionLost(failure.Failure(exception))
-        self._response = None
+        if self._response:
+            self._response.connectionLost(failure.Failure(exception))
+            self._response = None
 
     ### Private Methods ###
 
