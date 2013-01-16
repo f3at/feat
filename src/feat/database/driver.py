@@ -22,7 +22,7 @@
 from urllib import urlencode, quote
 
 from zope.interface import implements
-from twisted.internet import error as tw_error, base
+from twisted.internet import error as tw_error
 from twisted.python import failure
 from twisted.protocols import basic
 from twisted.web.http import _DataLoss as DataLoss
@@ -65,7 +65,20 @@ class ChangeReceiver(basic.LineReceiver):
     def connectionMade(self):
         d = self._deferred
         self._deferred = None
-        d.callback(self)
+        if self.status == 200:
+            d.callback(self)
+        elif self.status == 404:
+            self.stopping = True
+            f = failure.Failure(NotFoundError(self._notifier.name))
+            f.cleanFailure()
+            d.errback(f)
+        else:
+            self.stopping = True
+            msg = ("Calling change notifier: %s gave %s status code" %
+                   (self._notifier.name, int(self.status)))
+            f = failure.Failure(DatabaseError(msg))
+            f.cleanFailure()
+            d.errback(f)
 
     def lineReceived(self, line):
         if not line:
@@ -89,9 +102,6 @@ class ChangeReceiver(basic.LineReceiver):
     def connectionLost(self, reason=None):
         if self.stopping:
             return
-        if self.status == 404:
-            reason = failure.Failure(NotFoundError())
-            reason.cleanFailure()
         if not reason or reason.check(DataLoss):
             reason = failure.Failure(
                 tw_error.ConnectionLost("Couchdb closed connection"))
@@ -178,6 +188,8 @@ class Notifier(object):
 
     def connectionLost(self, reason):
         self._changes = None
+        if reason.check(NotFoundError):
+            return reason
         self._db.connectionLost(reason)
 
 

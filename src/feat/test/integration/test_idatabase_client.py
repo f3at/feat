@@ -675,9 +675,9 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testUsingQueryView(self):
-        views = (QueryView, )
-        design_doc = view.DesignDocument.generate_from_views(views)[0]
-        yield self.connection.save_document(design_doc)
+        views = (QueryView, view.DocumentDeletions)
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
 
         for x in range(20):
             if x % 2 == 0:
@@ -795,6 +795,15 @@ class PaisleySpecific(object):
         self.database.add_disconnected_cb(mock.on_disconnect)
         self.database.add_reconnected_cb(mock.on_connect)
         return mock
+
+    def testFilteredChanges404(self):
+
+        def listener(doc_id, rev, deleted, own_change):
+            pass
+
+        d = self.connection.changes_listener(view.DocumentDeletions, listener)
+        self.assertFailure(d, NotFoundError)
+        return d
 
     @defer.inlineCallbacks
     def testGettingDocsWhileDisconnected(self):

@@ -49,6 +49,7 @@ class Response(object):
         self.headers = {}
         self.length = None
         self.body = None
+        self.protocol = None
 
 
 class Delegate(object):
@@ -64,32 +65,22 @@ class Delegate(object):
         setattr(instance.__dict__[self.attr], self.name, value)
 
 
-class BaseDecoder(object, Protocol):
+class ResponseDecoder(object, Protocol):
 
+    protocol = Delegate('_response', 'protocol')
     status = Delegate('_response', 'status')
     headers = Delegate('_response', 'headers')
     length = Delegate('_response', 'length')
     body = Delegate('_response', 'body')
 
     def __init__(self):
-        self._response = None
-
-    ### private interface of the decoder ###
-
-    def get_result(self):
-        return self
-
-
-class ResponseDecoder(BaseDecoder):
-
-    def __init__(self):
         self._deferred = defer.Deferred()
-        BaseDecoder.__init__(self)
+        self._response = Response()
 
     ### IProtocol ###
 
     def connectionMade(self):
-        self._response = Response()
+        pass
 
     def dataReceived(self, data):
         if self._response.body is None:
@@ -206,9 +197,9 @@ class Protocol(http.BaseProtocol):
             return
         protocol, status = parts
         self._response = self._requests.pop(0)
-        self._response.makeConnection(self.transport)
         self._response.protocol = protocol
         self._response.status = status
+        self._response.makeConnection(self.transport)
 
         # HTTP 1.0 doesn't require Content-Length or Transfer-Encoding
         # response headers. It can simply start printing body after the
