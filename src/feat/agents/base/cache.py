@@ -29,7 +29,8 @@ from twisted.python import failure
 from zope.interface import Interface, implements
 
 from feat.agents.base import replay, notifier
-from feat.database import view
+from feat.database.view import DocumentDeletions
+
 from feat.common import log, fiber, defer
 from feat.agents.application import feat
 
@@ -85,15 +86,6 @@ class DeleteDocument(Exception):
 
 class ResignFromModifying(Exception):
     pass
-
-
-@feat.register_view
-class DocumentDeletions(view.BaseView):
-
-    name = 'deletions'
-
-    def filter(doc, request):
-        return doc.get('_deleted', False)
 
 
 @feat.register_restorator

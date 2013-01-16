@@ -714,6 +714,20 @@ class TestCase(object):
         yield self._query_test([5, 7, 9], c1, O.AND, c4, O.AND, q)
 
     @defer.inlineCallbacks
+    def testQueryViewDeletedDocs(self):
+        views = (QueryView, view.DocumentDeletions)
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
+        doc = yield self.connection.save_document(
+            QueryDoc(field1=1, field2=1, field3=u"A"))
+        yield self._query_test([1], query.Condition(
+            'field1', query.Evaluator.equals, 1))
+        yield self.connection.delete_document(doc)
+        yield common.delay(None, 0.1)
+        yield self._query_test([], query.Condition(
+            'field1', query.Evaluator.equals, 1))
+
+    @defer.inlineCallbacks
     def _query_test(self, result, *parts, **kwargs):
         q = query.Query(QueryView, *parts, sorting=kwargs.pop('sorting', None))
         res = yield query.select(self.connection, q)

@@ -52,6 +52,16 @@ class Cache(log.Logger):
                 size += entry.size
         return size
 
+    def on_document_deleted(self, doc_id, rev, deleted, own_change):
+        for cache in self._cache.itervalues():
+            for entry in cache.itervalues():
+                try:
+                    entry.entries.remove(doc_id)
+                    self.debug("Removed %s from cache results, because it was"
+                               " deleted", doc_id)
+                except:
+                    pass
+
     ### private, continuations of query process ###
 
     def _got_seq_num(self, connection, factory, subquery, seq_num):

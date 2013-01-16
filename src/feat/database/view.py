@@ -177,6 +177,15 @@ class FormatableView(BaseView, formatable.Formatable):
             return cls(**value)
 
 
+@feat.register_view
+class DocumentDeletions(BaseView):
+
+    name = 'deletions'
+
+    def filter(doc, request):
+        return doc.get('_deleted', False)
+
+
 @feat.register_restorator
 class DesignDocument(document.Document):
 

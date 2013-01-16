@@ -28,7 +28,7 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.common import log, defer, time, journal, serialization
-from feat.database import document, query
+from feat.database import document, query, view
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
@@ -359,6 +359,8 @@ class Connection(log.Logger, log.LogProxy):
         if not hasattr(self, '_query_cache'):
             if create:
                 self._query_cache = query.Cache(self)
+                self.changes_listener(view.DocumentDeletions,
+                                      self._query_cache.on_document_deleted)
             else:
                 return None
         return self._query_cache

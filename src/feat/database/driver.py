@@ -89,6 +89,9 @@ class ChangeReceiver(basic.LineReceiver):
     def connectionLost(self, reason=None):
         if self.stopping:
             return
+        if self.status == 404:
+            reason = failure.Failure(NotFoundError())
+            reason.cleanFailure()
         if not reason or reason.check(DataLoss):
             reason = failure.Failure(
                 tw_error.ConnectionLost("Couchdb closed connection"))
