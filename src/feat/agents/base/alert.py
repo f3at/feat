@@ -73,6 +73,7 @@ class BaseAlert(serialization.Serializable):
 
     name = None
     severity = None
+    description = None
 
     def __init__(self, hostname, agent_id, status_info=None):
         self.name = type(self).name
@@ -97,6 +98,7 @@ class DynamicAlert(formatable.Formatable):
     formatable.field('hostname', None)
     formatable.field('status_info', None)
     formatable.field('agent_id', None)
+    formatable.field('description', None)
 
     def __call__(self, hostname, agent_id, status_info):
         assert self.name is not None, \
@@ -107,6 +109,7 @@ class DynamicAlert(formatable.Formatable):
         return type(self)(
             name=self.name,
             severity=self.severity,
+            description=self.description,
             hostname=hostname,
             agent_id=agent_id,
             status_info=status_info)

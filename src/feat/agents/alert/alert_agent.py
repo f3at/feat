@@ -65,7 +65,7 @@ define service {
     use                    passive-service
     check_command          check_dummy!3!"No Data Received"
     host_name              %(hostname)s
-    service_description    %(agent_id)s-%(name)s
+    service_description    %(description)s
     action_url             %(gateway_url)sagents/%(agent_id)s
 }
 """)
@@ -96,6 +96,17 @@ class ReceivedAlerts(formatable.Formatable):
     formatable.field('severity', None)
     formatable.field('hostname', None)
     formatable.field('status_info', None)
+    formatable.field('description', None)
+
+    @classmethod
+    def from_alert(cls, alert, agent):
+        descr = (alert.description or
+                 "%s-%s" % (agent.agent_id, alert.name))
+        return cls(name=alert.name,
+                   agent_id=agent.agent_id,
+                   severity=alert.severity,
+                   description=descr,
+                   hostname=agent.hostname)
 
 
 @feat.register_agent('alert_agent')
@@ -179,6 +190,7 @@ class AlertAgent(agent.BaseAgent):
             params = dict(hostname=service.hostname,
                           agent_id=service.agent_id,
                           name=service.name,
+                          description=service.description,
                           gateway_url=gateway_url)
             res += c.service_template % params
         return res.encode('utf8')
@@ -216,11 +228,7 @@ class AlertAgent(agent.BaseAgent):
     def _find_entry(self, state, alert):
         key = (alert.hostname, alert.agent_id, alert.name)
         if key not in state.alerts:
-            state.alerts[key] = ReceivedAlerts(
-                name=alert.name,
-                agent_id=alert.agent_id,
-                severity=alert.severity,
-                hostname=alert.hostname)
+            state.alerts[key] = ReceivedAlerts.from_alert(alert, alert)
             self.info("Received alert for service we don't know, triggering "
                       "shard rescan in 1 sec. Service: %r", key)
             self.call_later(1, self.rescan_shard,
@@ -238,11 +246,7 @@ class AlertAgent(agent.BaseAgent):
                     old_keys.remove(key)
                     continue
                 changed = True
-                state.alerts[key] = ReceivedAlerts(
-                    name=alert.name,
-                    agent_id=agent.agent_id,
-                    severity=alert.severity,
-                    hostname=agent.hostname)
+                state.alerts[key] = ReceivedAlerts.from_alert(alert, agent)
                 status = agent.statuses.get(alert.name)
                 if status:
                     state.alerts[key].received_count = status[0]

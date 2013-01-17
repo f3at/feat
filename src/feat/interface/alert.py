@@ -23,3 +23,4 @@ class IAlert(Interface):
     status_info = Attribute('C{str} optional string specifing more details.')
     agent_id = Attribute("C{str} agent_id who raised the alert")
     severity = Attribute('L{Severity}')
+    description = Attribute('C{str} optional description to use in nagios')
