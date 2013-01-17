@@ -70,9 +70,8 @@ class SendNSCA(base.Base):
                 code = 0
             else:
                 code = CODES[alert.severity]
-            service_description = "%s-%s" % (alert.agent_id, alert.name)
             status = alert.status_info or 'None specified'
-            msg = ("%s;%s;%s;%s\n" % (alert.hostname, service_description,
+            msg = ("%s;%s;%s;%s\n" % (alert.hostname, alert.description,
                                       code, status))
             lines.append(msg)
         self._body = "".join(lines)
