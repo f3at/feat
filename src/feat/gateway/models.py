@@ -1077,6 +1077,9 @@ class AlertService(model.Model):
     model.attribute('status_info', value.String(default=''),
                     getter.source_attr('status_info'),
                     label='Last status')
+    model.attribute('description', value.String(default=''),
+                    getter.source_attr('description'),
+                    label='Description used in Nagios')
     model.item_meta("name", "html-link", "owner")
 
     model.action('raise', RaiseAlert)
