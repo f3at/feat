@@ -70,7 +70,7 @@ def stop(sig=signal.SIGUSR1):
     if not run.signal_pid(pid, sig):
         logger.error("Process with PID %d not found!", pid)
         return 1
-    return _pidfile_wait(exists=False, timeout=10)
+    return _pidfile_wait(exists=False, timeout=30)
 
 
 def main(args):
