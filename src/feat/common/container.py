@@ -593,7 +593,7 @@ class ExpQueue(ExpBase):
 
     __slots__ = ("_time", "_heap", "_max_size", "_last_pack")
 
-    def __init__(self, time_provider, max_size=None):
+    def __init__(self, time_provider, max_size=None, on_expire=None):
         """Create an expiration queue.
         @param time_provider: who provide the time
         @type time_provider: L{ITimeProvider}
@@ -603,6 +603,7 @@ class ExpQueue(ExpBase):
         self._heap = []
         self._max_size = max_size or self.DEFAULT_MAX_SIZE
         self._last_pack = 0
+        self._on_expire = on_expire
 
     def pack(self):
         """Packs the set by removing all expired items."""
@@ -643,6 +644,8 @@ class ExpQueue(ExpBase):
                 item = heapq.heappop(self._heap)
                 if item.exp is None or item.exp > now:
                     return item.value
+                elif callable(self._on_expire):
+                    self._on_expire(item.value)
             except IndexError:
                 raise Empty(), None, sys.exc_info()[2]
 
@@ -705,7 +708,13 @@ class ExpQueue(ExpBase):
                 self._pack(now)
 
     def _pack(self, now):
-        new_heap = [i for i in self._heap if i.exp is None or i.exp > now]
+        new_heap = []
+        for i in self._heap:
+            if i.exp is None or i.exp > now:
+                new_heap.append(i)
+            elif callable(self._on_expire):
+                self._on_expire(i.value)
+
         heapq.heapify(new_heap)
         self._heap = new_heap
         self._last_pack = now
