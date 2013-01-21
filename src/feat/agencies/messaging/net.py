@@ -286,7 +286,8 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         self._processing_chain = []
         self._seen_messages = container.ExpDict(self)
         # holds list of messages to send in case we are disconnected
-        self._to_send = container.ExpQueue(self, max_size=50)
+        self._to_send = container.ExpQueue(self, max_size=50,
+                                           on_expire=self._sending_cancelled)
         self._notifier = defer.Notifier()
 
         # RabbitMQ behaviour for creating/deleting bindings has a following
@@ -331,8 +332,10 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                              "protocol_id: %s, recipient: %r",
                              message.protocol_id, message.recipient)
                 return defer.succeed(None)
-            self._to_send.add((key, shard, message), message.expiration_time)
-            return self._notifier.wait('flushed')
+            d = defer.Deferred(void_canceller)
+            self._to_send.add((key, shard, message, d),
+                              message.expiration_time)
+            return d
         else:
             return self._publish(key, shard, message)
 
@@ -531,13 +534,19 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                                   if x.remember_between_connections]
 
     def _flush_pending_messages(self):
-        calls = [self._publish(key, shard, message)
-                 for key, shard, message in self._to_send]
-        self._to_send.clear()
-        d = defer.DeferredList(calls, consumeErrors=True)
-        d.addBoth(defer.bridge_param, self._notifier.callback,
-                  'flushed', None)
-        return d
+        try:
+            while True:
+                key, shard, message, cb = self._to_send.pop()
+                d = self._publish(key, shard, message)
+                d.chainDeffered(cb)
+        except container.Empty:
+            pass
+
+    def _sending_cancelled(self, entry):
+        key, shard, message, cb = entry
+        self.log('Message msg=%s, shard=%s, key=%s. Will not be published, '
+                 'because it has expired.', message, shard, key)
+        cb.cancel()
 
     ### Private methods managing setup and resetup ###
 
@@ -655,3 +664,7 @@ class WrappedQueue(Queue, log.Logger):
         else:
             self.error('Unknown exception %r, reraising', f)
             f.raiseException()
+
+
+def void_canceller(deferred):
+    deferred.callback(None)
