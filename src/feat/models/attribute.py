@@ -79,7 +79,7 @@ class MetaAttribute(type(model.AbstractModel)):
                                                effect.static_value('')],
                                            result_info=value_module.String(),
                                            is_idempotent=True)
-            cls.annotate_action(u"delete", Action)
+            cls.annotate_action(u"del", Action)
 
 
         return cls
