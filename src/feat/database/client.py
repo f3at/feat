@@ -297,10 +297,11 @@ class Connection(log.Logger, log.LogProxy):
                 self._cancel_listener(l_id)
 
     @serialization.freeze_tag('IDatabaseClient.query_view')
-    def query_view(self, factory, **options):
+    def query_view(self, factory, parse_results=True, **options):
         factory = IViewFactory(factory)
         d = self._database.query_view(factory, **options)
-        d.addCallback(self._parse_view_results, factory, options)
+        if parse_results:
+            d.addCallback(self._parse_view_results, factory, options)
         return d
 
     @serialization.freeze_tag('IDatabaseClient.disconnect')

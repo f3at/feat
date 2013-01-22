@@ -713,6 +713,13 @@ class TestCase(object):
                                sorting=[('field1', D.DESC)])
         yield self._query_test([5, 7, 9], c1, O.AND, c4, O.AND, q)
 
+        yield self._query_values('field1', set(range(20)))
+        yield self._query_values('field2', set(range(10)))
+        yield self._query_values('field3', set(['A', 'B']))
+        d = self._query_values('unknown', set(['A', 'B']))
+        self.assertFailure(d, ValueError)
+        yield d
+
     @defer.inlineCallbacks
     def testQueryViewDeletedDocs(self):
         views = (QueryView, view.DocumentDeletions)
@@ -726,6 +733,15 @@ class TestCase(object):
         yield common.delay(None, 0.1)
         yield self._query_test([], query.Condition(
             'field1', query.Evaluator.equals, 1))
+
+    @defer.inlineCallbacks
+    def _query_values(self, field, expected):
+        values = yield query.values(
+            self.connection,
+            query.Query(QueryView,
+                        query.Condition('field1', query.Evaluator.none, None)),
+            field)
+        self.assertEqual(expected, values)
 
     @defer.inlineCallbacks
     def _query_test(self, result, *parts, **kwargs):
