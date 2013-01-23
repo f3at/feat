@@ -538,7 +538,7 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             while True:
                 key, shard, message, cb = self._to_send.pop()
                 d = self._publish(key, shard, message)
-                d.chainDeffered(cb)
+                d.chainDeferred(cb)
         except container.Empty:
             pass
 
