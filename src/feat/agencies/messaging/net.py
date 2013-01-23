@@ -105,7 +105,7 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
                       self._spec, self._user, self._password)
 
     def clientConnectionMade(self, client):
-        self.log('In client connection made, client: %r', client)
+        self.debug('Made connection to RabbitMQ, client: %r', client)
         self.resetDelay()
         self.client = client
         if not self._wait_for_client.called:
@@ -117,8 +117,8 @@ class AMQFactory(protocol.ReconnectingClientFactory, log.Logger, log.LogProxy):
         self._reset_client()
         protocol.ReconnectingClientFactory.clientConnectionLost(\
             self, connector, reason)
-        self.log("Connection lost. Host: %s, Port: %d",
-                 connector.host, connector.port)
+        self.debug("Connection to RabbitMQ lost. Host: %s, Port: %d",
+                   connector.host, connector.port)
 
         for cb in self._connection_lost_cbs:
             cb()
@@ -288,7 +288,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
         # holds list of messages to send in case we are disconnected
         self._to_send = container.ExpQueue(self, max_size=50,
                                            on_expire=self._sending_cancelled)
-        self._notifier = defer.Notifier()
 
         # RabbitMQ behaviour for creating/deleting bindings has a following
         # issue: if you call create binding two times, and than delete ones
@@ -506,7 +505,6 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
             return
 
         if len(self._processing_chain) == 0:
-            self._notifier.callback('processing_chain_empty', None)
             return
 
         call = self._processing_chain.pop(0)
@@ -534,13 +532,18 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
                                   if x.remember_between_connections]
 
     def _flush_pending_messages(self):
+        d = defer.succeed(None)
         try:
             while True:
                 key, shard, message, cb = self._to_send.pop()
-                d = self._publish(key, shard, message)
+                d.addCallback(defer.drop_param, self._publish,
+                              key, shard, message)
                 d.chainDeferred(cb)
         except container.Empty:
             pass
+        finally:
+            d.addCallback(defer.override_result, None)
+            return d
 
     def _sending_cancelled(self, entry):
         key, shard, message, cb = entry
@@ -610,14 +613,13 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
 
         self._cleanup_processing_chain()
 
-        d2 = self._notifier.wait('processing_chain_empty')
-        d2.addCallback(defer.drop_param, self._flush_pending_messages)
-
         defers = [configure(queue) for queue in self._queues]
         d = defer.DeferredList(defers, consumeErrors=True)
         d.addCallback(defer.drop_param,
                       self._set_state, ChannelState.performing)
         d.addCallback(defer.drop_param, self.process_next)
+        d.addCallback(defer.drop_param,
+                      self._call_on_channel, self._flush_pending_messages)
         return d
 
 
