@@ -315,6 +315,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def disconnect(self):
         self._cancel_reconnector()
+        self.couchdb.disconnect()
 
     # listen_chagnes from ChangeListener
 
