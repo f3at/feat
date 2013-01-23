@@ -243,6 +243,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.port = None
         # name -> Notifier
         self.notifiers = dict()
+        # this flag is prevents reconnector from being spawned
+        self.disconnected = False
 
         self.retry = 0
         self.reconnector = None
@@ -316,6 +318,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     def disconnect(self):
         self._cancel_reconnector()
         self.couchdb.disconnect()
+        self.disconnected = True
 
     # listen_chagnes from ChangeListener
 
@@ -391,6 +394,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         # ping database to figure trigger changing state to connected
         if self.is_connected():
             return defer.succeed(self)
+        if self.disconnected:
+            return
+
         if self.reconnector is None or not self.reconnector.active():
             self.retry += 1
             wait = min(2**(self.retry - 1), 300)
@@ -506,6 +512,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.host, self.port = host, port
         self.couchdb = CouchDB(host, port, logger=self)
         self.db_name = name
+        self.disconnected = False
 
         self._pending_notifications.clear()
         self._document_locks.clear()
