@@ -33,9 +33,13 @@ class QueryView(query.QueryView):
     def extract_field3(doc):
         yield doc.get('field3')
 
+    def extract_doc_id(doc):
+        yield doc.get('_id')
+
     query.field('field1', extract_field1)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
+    query.field('doc_id', extract_doc_id)
     query.document_types(['query'])
 
 
@@ -55,19 +59,17 @@ class QueryModel(models.QueryView):
     model.identity('test')
     model.child_model(DocumentExtended)
     model.query_model(DocumentModel)
+    model.view(effect.static_value('static-view'))
     models.db_connection(effect.context_value('source'))
     models.view_factory(
         QueryView, ['field1', 'field2'],
         call.model_call('get_static_conditions'),
-        call.model_filter('fetch_documents'))
-    model.child_source(getter.model_get('model_get'))
+        call.model_filter('fetch_documents'),
+        item_field='doc_id')
     models.query_target('source')
 
     def get_static_conditions(self):
         return [query.Condition('field3', query.Evaluator.equals, 'A')]
-
-    def model_get(self, doc_id):
-        return self.connection.get_document(doc_id)
 
     def fetch_documents(self, value):
         self._fetch_documents_called = True
@@ -99,9 +101,19 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
     @defer.inlineCallbacks
     def testFetchChild(self):
         submodel = yield self.model_descend(self.model, 'query_1')
+        self.assertEqual('static-view', submodel.view)
         self.assertIsInstance(submodel, DocumentExtended)
         v = yield self.modelattr(submodel, 'field4')
         self.assertEqual('value', v)
+
+    @defer.inlineCallbacks
+    def testFetchItemAsJson(self):
+        js = yield self.model_as_json(self.model)
+        self.assertIsInstance(js, dict)
+        self.assertEqual(10, len(js))
+        for k, v in js.iteritems():
+            self.assertIsInstance(v, unicode)
+            self.assertEqual("root/%s" % (k, ), v)
 
     @defer.inlineCallbacks
     def testQuerySimple(self):

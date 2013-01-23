@@ -161,6 +161,7 @@ class QueryViewMeta(type(view.BaseView)):
     def __init__(cls, name, bases, dct):
         cls.HANDLERS = HANDLERS = dict()
         cls.DOCUMENT_TYPES = DOCUMENT_TYPES = list()
+        cls._fields = list()
 
         # map() and filter() function have to be generated separetely for
         # each subclass, because they will have different constants attached
@@ -202,7 +203,7 @@ class QueryViewMeta(type(view.BaseView)):
 
     @property
     def fields(cls):
-        return cls.HANDLERS.keys()
+        return list(cls._fields)
 
     def has_field(cls, name):
         return name in cls.HANDLERS
@@ -210,6 +211,7 @@ class QueryViewMeta(type(view.BaseView)):
     ### annotatations ###
 
     def _annotate_field(cls, name, handler):
+        cls._fields.append(name)
         cls.HANDLERS[name] = handler
 
     def _annotate_document_types(cls, types):

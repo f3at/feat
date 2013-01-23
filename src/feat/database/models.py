@@ -20,12 +20,13 @@ def query_target(target):
 
 
 def view_factory(factory, allowed_fields=[], static_conditions=None,
-                 fetch_documents=None):
+                 fetch_documents=None, item_field=None):
     annotate.injectClassCallback(
         "view_factory", 3, "annotate_view_factory",
         factory, allowed_fields=allowed_fields,
         static_conditions=static_conditions,
-        fetch_documents=fetch_documents)
+        fetch_documents=fetch_documents,
+        item_field=item_field)
 
 
 class QueryView(model.Collection):
@@ -34,9 +35,6 @@ class QueryView(model.Collection):
     _query_model = None
     _connection_getter = None
     _view = None
-
-    model.child_meta('json', 'render-inline')
-    model.meta('json', 'render-as-list')
 
     def init(self):
         if not callable(type(self)._connection_getter):
@@ -75,6 +73,7 @@ class QueryView(model.Collection):
     def render_select_response(self, value):
         if not hasattr(self, '_query_set_factory'):
             factory = model.MetaQuerySetCollection.new(type(self))
+            factory.annotate_meta('json', 'render-as-list')
             self._query_set_factory = factory
         items = [(self.get_child_name(x), x) for x in value]
         result = self._query_set_factory(self.source, items)
@@ -108,7 +107,8 @@ class QueryView(model.Collection):
     @classmethod
     def annotate_view_factory(cls, factory, allowed_fields=[],
                               static_conditions=None,
-                              fetch_documents=None):
+                              fetch_documents=None,
+                              item_field=None):
         cls._view = IQueryViewFactory(factory)
         cls._static_conditions = (static_conditions and
                                   model._validate_effect(static_conditions))
@@ -131,16 +131,16 @@ class QueryView(model.Collection):
         SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
         result_info = value.Model()
 
-        def get_static_conditions(value, context, *args, **kwargs):
+        def build_query(value, context, *args, **kwargs):
 
-            def build_query(static_conditions, factory, q):
+            def merge_conditions(static_conditions, factory, q):
                 subquery = query.Query(factory, *static_conditions)
                 return query.Query(factory, q, query.Operator.AND, subquery)
 
             cls = type(context['model'])
             if cls._static_conditions:
                 d = cls._static_conditions(None, context)
-                d.addCallback(build_query, cls._view, kwargs['query'])
+                d.addCallback(merge_conditions, cls._view, kwargs['query'])
                 return d
             return defer.succeed(kwargs['query'])
 
@@ -149,7 +149,7 @@ class QueryView(model.Collection):
             ActionCategories.retrieve,
             is_idempotent=False, result_info=result_info,
             effects=[
-                get_static_conditions,
+                build_query,
                 call.model_perform('do_select'),
                 fetch_documents,
                 call.model_filter('render_select_response')],
@@ -164,12 +164,58 @@ class QueryView(model.Collection):
             utils.mk_class_name(cls._view.name, "Count"),
             ActionCategories.retrieve,
             effects=[
-                get_static_conditions,
+                build_query,
                 call.model_perform('do_count')],
             result_info=value.Integer(),
             is_idempotent=False,
             params=[action.Param('query', QueryValue())])
         cls.annotate_action(u"count", CountAction)
+
+        # define how to fetch items
+        if item_field:
+            if not cls._view.has_field(item_field):
+                raise ValueError("%r doesn't define a field: '%s'" %
+                                 (cls, item_field))
+
+            def fetch_names(value, context):
+                model = context['model']
+                d = build_query(None, context, query=query.Query(cls._view))
+                d.addCallback(defer.inject_param, 1,
+                              query.values, model.connection, item_field)
+                return d
+
+            cls.annotate_child_names(fetch_names)
+
+            def fetch_matching(value, context):
+                c = query.Condition(item_field, query.Evaluator.equals,
+                                    context['key'])
+                q = query.Query(cls._view, c)
+                d = build_query(None, context, query=q)
+                d.addCallback(context['model'].do_select, skip=0)
+                d.addCallback(fetch_documents, context)
+
+                def unpack(result):
+                    if result:
+                        return result[0]
+
+                d.addCallback(unpack)
+                return d
+
+            def fetch_source(value, context):
+                if cls._query_target == 'source':
+                    return fetch_matching(value, context)
+                else:
+                    return context['source']
+
+            cls.annotate_child_source(fetch_source)
+
+            def fetch_view(value, context):
+                if cls._query_target == 'view':
+                    return fetch_matching(value, context)
+                else:
+                    return context['view']
+
+            cls.annotate_child_view(fetch_view)
 
 
 class RangeType(value.Collection):
@@ -264,16 +310,7 @@ class QueryValue(value.Collection):
 
     def validate(self, v):
         v = value.Collection.validate(self, v)
-
-        cls = type(self)
-        if not v:
-            # this is to allow querying with empty query
-            v = [query.Condition(cls.allowed_fields[0],
-                                 query.Evaluator.none,
-                                 None)]
-
-        q = query.Query(cls.factory, *v)
-        return q
+        return query.Query(type(self).factory, *v)
 
     def publish(self, v):
         return str(v)
