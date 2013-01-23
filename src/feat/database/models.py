@@ -205,7 +205,7 @@ class QueryView(model.Collection):
                 if cls._query_target == 'source':
                     return fetch_matching(value, context)
                 else:
-                    return context['source']
+                    return context['model'].source
 
             cls.annotate_child_source(fetch_source)
 
