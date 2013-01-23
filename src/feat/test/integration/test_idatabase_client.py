@@ -736,11 +736,8 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def _query_values(self, field, expected):
-        values = yield query.values(
-            self.connection,
-            query.Query(QueryView,
-                        query.Condition('field1', query.Evaluator.none, None)),
-            field)
+        values = yield query.values(self.connection,
+                                    query.Query(QueryView), field)
         self.assertEqual(expected, values)
 
     @defer.inlineCallbacks

@@ -198,6 +198,23 @@ class QueryViewMeta(type(view.BaseView)):
         cls.attach_constant(
             cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
 
+    ### IQueryViewFactory ###
+
+    @property
+    def fields(cls):
+        return cls.HANDLERS.keys()
+
+    def has_field(cls, name):
+        return name in cls.HANDLERS
+
+    ### annotatations ###
+
+    def _annotate_field(cls, name, handler):
+        cls.HANDLERS[name] = handler
+
+    def _annotate_document_types(cls, types):
+        cls.DOCUMENT_TYPES.extend(types)
+
 
 class QueryView(view.BaseView):
 
@@ -208,22 +225,6 @@ class QueryView(view.BaseView):
     @classmethod
     def parse_view_result(cls, rows, reduced, include_docs):
         return [x[2] for x in rows]
-
-    ### IQueryViewFactory ###
-
-    @classmethod
-    def has_field(cls, name):
-        return name in cls.HANDLERS
-
-    ### annotatations ###
-
-    @classmethod
-    def _annotate_field(cls, name, handler):
-        cls.HANDLERS[name] = handler
-
-    @classmethod
-    def _annotate_document_types(cls, types):
-        cls.DOCUMENT_TYPES.extend(types)
 
 
 def field(name, extract=None):
@@ -306,9 +307,11 @@ class Query(serialization.Serializable):
         self.parts = []
         self.operators = []
         if len(parts) == 0:
-            raise ValueError("Empty query?")
+            # this is to allow querying with empty query
+            field = factory.fields[0]
+            parts = [Condition(field, Evaluator.none, None)]
 
-        for part, index in zip(parts, range(len(parts))):
+        for index, part in enumerate(parts):
             if index % 2 == 0:
                 if not IPlanBuilder.providedBy(part):
                     raise ValueError("Element at index %d should be a Query or"
