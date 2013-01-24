@@ -32,12 +32,12 @@ class Cache(log.Logger):
     ### IQueryCache ###
 
     def empty(self):
-        self.debug("Emptying query cache.")
+        self.log("Emptying query cache.")
         self._cache.clear()
 
     def query(self, connection, factory, subquery):
-        self.debug("query() called for %s view and subquery %r", factory.name,
-                   subquery)
+        self.log("query() called for %s view and subquery %r", factory.name,
+                 subquery)
         d = connection.get_update_seq()
         d.addCallback(defer.inject_param, 3,
             self._got_seq_num, connection, factory, subquery)
@@ -71,8 +71,8 @@ class Cache(log.Logger):
                 return self._fetch_subquery(
                     connection, factory, subquery, seq_num)
             elif entry.seq_num == seq_num:
-                self.debug("Query served from the cache hit, %d rows",
-                           len(entry.entries))
+                self.log("Query served from the cache hit, %d rows",
+                         len(entry.entries))
                 return entry.entries
             else:
                 d = connection.get_changes(factory, limit=2,
@@ -94,8 +94,8 @@ class Cache(log.Logger):
         return d
 
     def _cache_response(self, entries, factory, subquery, seq_num):
-        self.debug("Caching response for %r at seq_num: %d, %d rows",
-                   subquery, seq_num, len(entries))
+        self.log("Caching response for %r at seq_num: %d, %d rows",
+                 subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
         self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
@@ -104,7 +104,7 @@ class Cache(log.Logger):
     def _analyze_changes(self, connection, factory, subquery, entry, changes,
                          seq_num):
         if changes['results']:
-            self.debug("View %s has changed, expiring cache.", factory.name)
+            self.log("View %s has changed, expiring cache.", factory.name)
             if factory.name in self._cache: # this is not to fail on
                                             # concurrent checks expiring cache
                 self._cache[factory.name].clear()
@@ -113,8 +113,8 @@ class Cache(log.Logger):
                           self._cache_response, factory, subquery, seq_num)
             return d
         else:
-            self.debug("View %s has not changed, marking cached fragments as "
-                       "fresh. %d rows", factory.name, len(entry.entries))
+            self.log("View %s has not changed, marking cached fragments as "
+                     "fresh. %d rows", factory.name, len(entry.entries))
             result = entry.entries
             if factory.name in self._cache:
                 for entry in self._cache[factory.name].itervalues():
