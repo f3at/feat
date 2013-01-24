@@ -348,7 +348,7 @@ class Action(models_meta.Metadata, mro.DeferredMroMixin):
                 if not expected:
                     msg = ("Action %s expects no parameters" % (self.name, ))
                 else:
-                    msg = ("Action %s do not expects parameter(s): %s"
+                    msg = ("Action %s does not expect parameter(s): %s"
                            % (self.name, ", ".join(unknown)))
                 raise UnknownParameters(msg, params=unknown)
 
