@@ -19,17 +19,16 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.python.failure import Failure
 from zope.interface import implements
+from twisted.python.failure import Failure
 
 from feat.agents.base import replay
-from feat.agencies import common
-from feat.common import log, defer, serialization, error
+from feat.common import log, defer, serialization
 
 from feat.agencies.interface import (IAgencyInitiatorFactory,
                                      ILongRunningProtocol)
 from feat.interface.serialization import ISerializable
-from feat.interface.protocols import IInitiatorFactory, ProtocolFailed
+from feat.interface.protocols import IInitiatorFactory
 
 
 @serialization.register
@@ -74,7 +73,7 @@ class RetryingProtocolFactory(serialization.Serializable):
         return (self.__dict__ != other.__dict__)
 
 
-class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
+class RetryingProtocol(log.Logger):
 
     implements(ISerializable, ILongRunningProtocol)
 
@@ -85,7 +84,6 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
     def __init__(self, agency_agent, factory, args=None, kwargs=None,
                  max_retries=None, initial_delay=1, max_delay=None, busy=True,
                  alert_after=None, alert_service=None):
-        common.TransientInitiatorMediumBase.__init__(self)
         log.Logger.__init__(self, agency_agent)
 
         self.protocol_id = "retried-" + factory.protocol_id
@@ -120,15 +118,13 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         self._delayed_call = None
         self._initiator = None
 
+        self._fnotifier = defer.Notifier()
+
     ### Public Methods ###
 
     def initiate(self):
         self.call_next(self._bind)
         return self
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        return common.TransientInitiatorMediumBase.notify_finish(self)
 
     def call_later(self, _time, _method, *args, **kwargs):
         return self.medium.call_later_ex(_time, _method, args, kwargs,
@@ -145,6 +141,12 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
     ### ILongRunningProtocol Methods ###
 
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
+    def notify_finish(self):
+        msg = "notify_finish() called after finalizing the RetryingProtocol"
+        assert self._fnotifier is not None, msg
+        return self._fnotifier.wait('finish')
+
     @serialization.freeze_tag('RetryingProtocol.cancel')
     def cancel(self):
         self.max_retries = self.attempt - 1
@@ -152,11 +154,12 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
             self.medium.cancel_delayed_call(self._delayed_call)
             self._delayed_call = None
             return defer.succeed(None)
+        if not self._fnotifier:
+            self._fnotifier.cancel('finish')
+            self._fnotifier = None
         if self._initiator:
             #FIXME: we shouldn't have to use _get_state()
-            d = self._initiator._get_state().medium.expire_now()
-            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
-            return d
+            self._initiator._get_state().medium.cleanup()
 
     def is_idle(self):
         if self._initiator is not None:
@@ -167,11 +170,6 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
 
     def snapshot(self):
         return id(self)
-
-    ### Required by TransientInitiatorMediumbase ###
-
-    def call_next(self, _method, *args, **kwargs):
-        return self.medium.call_next(_method, *args, **kwargs)
 
     ### Private Methods ###
 
@@ -192,7 +190,18 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         if self.alert_after is not None and self.attempt > self.alert_after:
             self.medium.agent.resolve_alert(self.alert_service)
 
-        common.TransientInitiatorMediumBase._terminate(self, result)
+        self._trigger_callbacks(result)
+
+    def _trigger_callbacks(self, result):
+        if not self._fnotifier:
+            return
+        if isinstance(result, (Failure, Exception)):
+            self.log("Firing errback of notifier with result: %r.", result)
+            self.call_next(self._fnotifier.errback, 'finish', result)
+        else:
+            self.log("Firing callback of notifier with result: %r.", result)
+            self.call_next(self._fnotifier.callback, 'finish', result)
+        self._fnotifier = None
 
     def _wait_and_retry(self, failure):
         self.info('Retrying failed for the %d time with %s %s factory %r',
@@ -209,7 +218,7 @@ class RetryingProtocol(common.TransientInitiatorMediumBase, log.Logger):
         # check if we are done
         if self.max_retries is not None and self.attempt > self.max_retries:
             self.info("Will not try to restart.")
-            common.TransientInitiatorMediumBase._terminate(self, failure)
+            self._trigger_callbacks(failure)
             return
 
         # do retry

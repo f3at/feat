@@ -399,22 +399,6 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
         return state.medium.initiate_protocol(*args, **kwargs)
 
     @replay.immutable
-    def retrying_protocol(self, state, *args, **kwargs):
-        return state.medium.retrying_protocol(*args, **kwargs)
-
-    @replay.immutable
-    def periodic_protocol(self, state, *args, **kwargs):
-        return state.medium.periodic_protocol(*args, **kwargs)
-
-    @replay.immutable
-    def initiate_task(self, state, *args, **kwargs):
-        return state.medium.initiate_task(*args, **kwargs)
-
-    @replay.immutable
-    def retrying_task(self, state, *args, **kwargs):
-        return state.medium.retrying_task(*args, **kwargs)
-
-    @replay.immutable
     def register_interest(self, state, *args, **kwargs):
         return state.medium.register_interest(*args, **kwargs)
 

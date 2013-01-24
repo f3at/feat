@@ -30,7 +30,7 @@ from feat.agents.base import descriptor, contractor, replay, manager
 from feat.interface import contracts, protocols
 from feat.common import time, defer, first
 
-from . import common
+from feat.test import common
 
 
 class DummyContractor(contractor.BaseContractor, common.Mock):

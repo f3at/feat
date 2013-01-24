@@ -24,6 +24,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import descriptor, replay, task
 from feat.agencies.tasks import TaskState, NOT_DONE_YET
+from feat.agencies import retrying
 from feat.common import defer
 from feat.interface import protocols
 
@@ -169,7 +170,8 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
     @defer.inlineCallbacks
     def testRetryingProtocol(self):
         d = self.cb_after(None, self.agent, 'initiate_protocol')
-        task = self.agent.retrying_protocol(ErrorTask, max_retries=3)
+        factory = retrying.RetryingProtocolFactory(ErrorTask, max_retries=3)
+        task = self.agent.initiate_protocol(factory)
         self.finished = task.notify_finish()
         yield d
         self.assertEqual(task.attempt, 1)

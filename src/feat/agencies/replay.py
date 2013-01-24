@@ -851,28 +851,6 @@ class AgencyAgent(BaseReplayDummy):
     def initiate_protocol(self, factory, *args, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
-    @replay.named_side_effect('AgencyAgent.initiate_protocol')
-    def initiate_task(self, factory, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_protocol(self, factory, recipients=None, max_retries=None,
-                         initial_delay=1, max_delay=None, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_task(self, factory, recipients=None, max_retries=None,
-                         initial_delay=1, max_delay=None, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.periodic_protocol')
-    @replay.named_side_effect('AgencyAgent.periodic_protocol')
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        pass
-
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
         pass

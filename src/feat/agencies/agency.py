@@ -26,7 +26,6 @@
 import copy
 import uuid
 import weakref
-import warnings
 import socket
 
 # Import external project modules
@@ -34,7 +33,7 @@ from twisted.python.failure import Failure
 from zope.interface import implements
 
 # Import feat modules
-from feat.agencies import common, dependency, retrying, periodic, messaging
+from feat.agencies import common, dependency, retrying, messaging
 from feat.agencies import recipient
 from feat.agents.base import replay
 from feat import applications
@@ -365,42 +364,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
     def initiate_protocol(self, factory, *args, **kwargs):
         return self._initiate_protocol(factory, args, kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_protocol(self, factory, recipients=None,
-                          max_retries=None, initial_delay=1,
-                          max_delay=None, args=None, kwargs=None):
-        #FIXME: this is not needed in agency side API, could be in agent
-        Factory = retrying.RetryingProtocolFactory
-        factory = Factory(factory, max_retries=max_retries,
-                          initial_delay=initial_delay, max_delay=max_delay)
-        if recipients is not None:
-            args = (recipients, ) + args if args else (recipients, )
-        return self._initiate_protocol(factory, args, kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.periodic_protocol')
-    @replay.named_side_effect('AgencyAgent.periodic_protocol')
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        #FIXME: this is not needed in agency side API, could be in agent
-        factory = periodic.PeriodicProtocolFactory(factory, period)
-        return self._initiate_protocol(factory, args, kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
-    @replay.named_side_effect('AgencyAgent.initiate_protocol')
-    def initiate_task(self, *args, **kwargs):
-        warnings.warn("initiate_task() is deprecated, "
-                      "please use initiate_protocol()",
-                      DeprecationWarning)
-        return self.initiate_protocol(*args, **kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_task(self, *args, **kwargs):
-        warnings.warn("retrying_task() is deprecated, "
-                      "please use retrying_protocol()",
-                      DeprecationWarning)
-        return self.retrying_protocol(*args, **kwargs)
 
     @serialization.freeze_tag('AgencyAgency.save_document')
     def save_document(self, document):

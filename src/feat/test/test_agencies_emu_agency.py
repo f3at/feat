@@ -182,8 +182,8 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
     def testTerminatingTheAgent(self):
         # make him have running retrying request (covers all the hard cases)
         d = self.cb_after(None, self.agent, 'initiate_protocol')
-        self.agent.retrying_protocol(DummyRequester, self.endpoint,
-                                     args=(None, ))
+        factory = retrying.RetryingProtocolFactory(DummyRequester)
+        self.agent.initiate_protocol(factory, self.endpoint, None)
         yield d
 
         self.assertEqual(1, len(self.agent._protocols))

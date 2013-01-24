@@ -83,9 +83,6 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
 
         raise Exception("Unexpected protocol %r" % factory)
 
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        raise Exception("Unexpected protocol")
-
     def get_full_id(self):
         return "%s/%s" % (self.descriptor.doc_id, self.descriptor.instance_id)
 
