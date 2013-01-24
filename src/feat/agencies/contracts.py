@@ -82,11 +82,6 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
         self.manager._send_message(msg, recipients=self.recipient,
                                    remote_id=self.bid.sender_id)
 
-    def _call(self, *args, **kwargs):
-        # delegate calling methods to medium class
-        # this way we can reuse the error handler
-        self.manager._call(*args, **kwargs)
-
     def _on_report(self, report):
         self.report = report
 
@@ -113,7 +108,9 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
                 {'method': self._on_report,
                  'state_before': ContractorState.granted,
                  'state_after': ContractorState.completed}}
-        self._event_handler(mapping, msg)
+        handler = self._event_handler(mapping, msg)
+        if callable(handler):
+            self.manager._call(handler, msg)
 
 
 class ManagerContractors(dict):
@@ -329,7 +326,9 @@ class AgencyManager(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_before': ContractState.granted,
                  'state_after': ContractState.cancelled},
         }
-        self._event_handler(mapping, msg)
+        handler = self._event_handler(mapping, msg)
+        if callable(handler):
+            self._call(handler, msg)
 
     ### ISerializable Methods ###
 
@@ -642,7 +641,9 @@ class AgencyContractor(log.LogProxy, log.Logger, common.StateMachineMixin,
                  'state_after': ContractState.acknowledged,
                  'state_before': ContractState.completed},
         }
-        self._event_handler(mapping, msg)
+        handler = self._event_handler(mapping, msg)
+        if callable(handler):
+            self._call(handler, msg)
 
     ### ISerializable Methods ###
 

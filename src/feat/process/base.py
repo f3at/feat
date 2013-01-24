@@ -192,7 +192,9 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
                  {'state_before': ProcessState.terminating,
                   'state_after': ProcessState.finished,
                   'method': self.on_finished}]}
-        self._event_handler(mapping, exception)
+        handler = self._event_handler(mapping, exception)
+        if callable(handler):
+            handler(exception)
 
     def started_test(self):
         raise NotImplementedError('This method should be overloaded')
@@ -251,12 +253,6 @@ class Base(log.Logger, log.LogProxy, StateMachineMixin,
 
     def get_config(self):
         return copy.deepcopy(self.config)
-
-    def _call(self, method, *args, **kwargs):
-        '''
-        Required by StateMachine._event_handler
-        '''
-        return method(*args, **kwargs)
 
 
 class DependencyError(Exception):

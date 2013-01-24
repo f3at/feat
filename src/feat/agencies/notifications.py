@@ -23,10 +23,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import uuid
 
-from twisted.python import components
 from zope.interface import implements
 
-from feat.common import log, defer, error_handler, adapter
+from feat.common import log, defer, error, adapter
 from feat.agencies import common, protocols
 from feat.agents.base import replay
 
@@ -63,9 +62,13 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
         self.poster = poster
         self.protocol_id = poster.protocol_id
 
-        self.agent.call_next(self._call, poster.initiate,
-                             *self.args, **self.kwargs)
-
+        d = defer.Deferred()
+        d.addCallback(defer.drop_param, poster.initiate,
+                      *self.args, **self.kwargs)
+        d.addErrback(defer.inject_param, 1, error.handle_failure,
+                     self, 'initate() method of poster: %r failed',
+                     self.poster)
+        self.agent.call_next(d.callback, None)
         return poster
 
     ### IAgencyPoster Methods ###
@@ -90,14 +93,6 @@ class AgencyPoster(log.LogProxy, log.Logger, common.InitiatorMediumBase):
 
     def snapshot(self):
         return id(self)
-
-    ### Private Methods ###
-
-    def _call(self, method, *args, **kwargs):
-        '''Call the method, wrap it in Deferred and bind error handler'''
-        d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addErrback(lambda f: error_handler(self, f))
-        return d
 
 
 @adapter.register(IPosterFactory, IAgencyInitiatorFactory)
@@ -167,7 +162,9 @@ class AgencyCollector(log.LogProxy, log.Logger, common.InterestedMediumBase):
     def _call(self, method, *args, **kwargs):
         '''Call the method, wrap it in Deferred and bind error handler'''
         d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addErrback(lambda f: error_handler(self, f))
+        d.addErrback(defer.inject_param, 1, error.handle_failure,
+                     self, 'Failed calling %r with args: %r and kwargs: %r',
+                     method, args, kwargs)
         return d
 
 

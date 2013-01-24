@@ -118,7 +118,9 @@ class AgencyRequester(log.LogProxy, log.Logger, common.StateMachineMixin,
                 {'state_before': RequestState.requested,
                  'state_after': RequestState.requested,
                  'method': self._on_reply}}
-        self._event_handler(mapping, msg)
+        handler = self._event_handler(mapping, msg)
+        if callable(handler):
+            self._call(handler, msg)
 
     ### ISerializable Methods ###
 
@@ -218,7 +220,9 @@ class AgencyReplier(log.LogProxy, log.Logger, common.StateMachineMixin,
             {'state_before': RequestState.requested,
              'state_after': RequestState.requested,
              'method': self._requested}}
-        self._event_handler(mapping, msg)
+        handler = self._event_handler(mapping, msg)
+        if callable(handler):
+            self._call(handler, msg)
 
     ### ISerializable Methods ###
 

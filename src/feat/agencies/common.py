@@ -50,7 +50,7 @@ class Statistics(object):
         return self._statistics.items()
 
 
-class StateAssertationError(RuntimeError):
+class StateAssertationError(Exception):
     pass
 
 
@@ -104,7 +104,7 @@ class StateMachineMixin(object):
         decision = mapping.get(klass, None)
         if not decision:
             self.warning("Unknown event received %r. Ignoring", event)
-            return False
+            return
 
         if isinstance(decision, list):
             match = filter(
@@ -114,7 +114,7 @@ class StateMachineMixin(object):
                              "state %r, found %r handlers", event,
                              self._get_machine_state(),
                              len(match))
-                return False
+                return
             decision = match[0]
 
         state_before = decision['state_before']
@@ -125,12 +125,11 @@ class StateMachineMixin(object):
                          "for this method is: %r",
                          klass, self._get_machine_state(),
                          decision['state_before'])
-            return False
+            return
 
         state_after = decision['state_after']
         self._set_state(state_after)
-
-        self._call(decision['method'], event)
+        return decision['method']
 
     # Make it possible to use mixin without the logging submodule
 
@@ -271,18 +270,11 @@ class AgencyMiddleMixin(object):
         return d
 
     def _error_handler(self, f):
-        # FIXME: This has been commented out, because I have a feeling that
-        # this code cannot be accessed.
-        # if f.check(FiberCancelled):
-        #     self._terminate(ProtocolFailed("Fiber was cancelled because "
-        #                 "the state of the medium changed. This happens "
-        #                 "when constructing a fiber with a canceller."))
         if f.check(defer.CancelledError):
             # this is what happens when the call is cancelled by the
             # _call() method, just swallow it
             pass
         else:
-            error_handler(self, f)
             self._set_state(self.error_state)
             self._terminate(f)
 
