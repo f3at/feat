@@ -349,7 +349,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
     def connectionMade(self):
         peer = self.transport.getPeer()
         self.log_name = "%s:%s" % (peer.host, peer.port)
-        self.debug('Connection made')
+        self.log('Connection made')
         self.process_setup()
         self.reset_timeout("firstline")
         self.onConnectionMade()
@@ -378,7 +378,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._handle_received(data)
 
     def connectionLost(self, reason):
-        self.debug('Connection lost: %s', reason.getErrorMessage())
+        self.log('Connection lost: %s', reason.getErrorMessage())
 
         self.cancel_all_timeouts()
 
@@ -491,7 +491,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
             self.process_set_header(header, data)
 
     def _got_all_headers(self):
-        self.debug("All headers received")
+        self.log("All headers received")
         assert self._state == self.STATE_HEADERS
 
         self.cancel_timeout("headers")
@@ -511,7 +511,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self.setRawMode()
 
     def _got_all_content(self, extra=''):
-        self.debug("All content received")
+        self.log("All content received")
         self.cancel_timeout("idle")
         self.reset_timeout("inactivity")
 

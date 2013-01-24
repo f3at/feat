@@ -126,7 +126,7 @@ class Protocol(http.BaseProtocol):
         # queue of Protocol instances which will receive the body
         self._pending_decoders = []
 
-        self.debug("HTTP client protocol created")
+        self.log("HTTP client protocol created")
 
     def is_idle(self):
         return http.BaseProtocol.is_idle(self) and not self._requests
@@ -183,7 +183,7 @@ class Protocol(http.BaseProtocol):
         if not self._requests:
             self.reset_timeout('inactivity')
             self.factory.onConnectionReset(self)
-            self.debug('Ready for new request')
+            self.log('Ready for new request')
         else:
             # we are still waiting for the response of the pipelined request
             pass
@@ -501,7 +501,7 @@ class ConnectionPool(Connection):
             # we can have more connections, so that the next request can be
             # handeled by it.
             if self._pool_len() < self._max:
-                self.debug("Initializing new connection.")
+                self.log("Initializing new connection.")
                 self._connecting += 1
                 self._connect()
         d.addCallback(self._request, method, location, headers, body, decoder,
