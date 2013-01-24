@@ -1184,7 +1184,7 @@ class Server(log.LogProxy, log.Logger):
             # but it would be hard at this point given we don't know what
             # triggered this exception.
             msg = "Failed to encode response to accepted charset"
-            error.handle_failure(self, failure, msg)
+            self.debug(msg)
             if response.can_update_headers:
                 response.set_status(http.Status.NOT_ACCEPTABLE)
 
@@ -1632,7 +1632,6 @@ class Response(log.Logger):
             self.write(data)
 
     def set_status(self, code, message=None):
-        self._request.debug("Setting response code: %s", code)
         self._check_header_not_sent()
         self._request._ref.setResponseCode(int(code))
 
@@ -1823,7 +1822,9 @@ class Response(log.Logger):
             self._objects = []
 
     def _finish(self):
-        self._request.debug("Finishing the request.")
+        status = http.Status[self._request._ref.code].name
+        self._request.debug("Finishing the request. Status: %s", status)
+
         self._finished = time.time()
         try:
             if self._cache is not None:
