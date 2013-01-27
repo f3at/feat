@@ -95,7 +95,7 @@ class NestedStuff(contractor.NestingContractor):
     def _finalize(self, state):
         if not state.agent.get_from_state('should_fail_grant'):
             state.agent.got('completed')
-            state.medium.finalize(message.FinalReport())
+            state.medium.complete(message.FinalReport())
 
 
 class NestedFunManager(manager.BaseManager):

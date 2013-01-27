@@ -114,7 +114,7 @@ class ManagerContractor(common.StateMachineMixin, log.Logger):
                  'state_after': ContractorState.completed}}
         handler = self._event_handler(mapping, msg)
         if callable(handler):
-            self.manager.call_agent_side(handler, msg)
+            handler(msg)
 
 
 class ManagerContractors(dict):
@@ -317,7 +317,7 @@ class AgencyManager(common.AgencyMiddleBase):
         }
         handler = self._event_handler(mapping, msg)
         if callable(handler):
-            self.call_agent_side(handler, msg)
+            handler(msg)
 
     ### ISerializable Methods ###
 
@@ -338,9 +338,12 @@ class AgencyManager(common.AgencyMiddleBase):
     def _on_bid(self, bid):
         self.log('Received bid %r', bid)
         ManagerContractor(self, bid)
-        d = self.call_agent_side(self.manager.bid, bid)
-        d.addCallback(defer.drop_param, self._check_if_should_goto_close)
-        return d
+        d = self.manager.bid(bid)
+        if isinstance(d, defer.Deferred):
+            d.addCallback(defer.drop_param, self._check_if_should_goto_close)
+            return d
+        else:
+            self._check_if_should_goto_close()
 
     def _on_refusal(self, refusal):
         self.log('Received refusal  %r', refusal)
@@ -395,8 +398,11 @@ class AgencyManager(common.AgencyMiddleBase):
             contractor.on_event(ack)
 
         reports = map(lambda x: x.report, contractors)
-        d = self.call_agent_side(self.manager.completed, reports)
-        d.addCallback(self.finalize)
+        d = self.manager.completed(reports)
+        if isinstance(d, defer.Deferred):
+            d.addCallback(self.finalize)
+        else:
+            self.finalize(d)
 
     ### Private Methods ###
 
@@ -523,8 +529,8 @@ class AgencyContractor(common.AgencyMiddleBase):
         self.finalize(None)
         return cancellation
 
-    @replay.named_side_effect('AgencyContractor.finalize')
-    def finalize(self, report):
+    @replay.named_side_effect('AgencyContractor.complete')
+    def complete(self, report):
         report = report.duplicate()
         self.debug("Sending final report %r", report)
 
@@ -582,7 +588,7 @@ class AgencyContractor(common.AgencyMiddleBase):
         }
         handler = self._event_handler(mapping, msg)
         if callable(handler):
-            self.call_agent_side(handler, msg)
+            handler(msg)
 
     ### ISerializable Methods ###
 

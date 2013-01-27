@@ -235,9 +235,9 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
         self.set_remote_id(remote_id)
         self.set_protocol_id(protocol_id)
 
-        # Reference to currently performed agent-side job.
-        # There can be only one at time
-        self._deferred = None
+        # List of references to currently performed agent-side jobs.
+        self._agent_jobs = list()
+
         self._finalize_called = False
         self._fnotifier = defer.Notifier()
 
@@ -252,22 +252,26 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
         return self._fnotifier.wait('finish')
 
     def is_idle(self):
-        return self._deferred is None and (self._timeout_call is None or
-                                           not self._timeout_call.active())
+        return len(self._agent_jobs) == 0 and (self._timeout_call is None or
+                                               not self._timeout_call.active())
 
     def cleanup(self):
         self.cancel_timeout()
-        if self._deferred:
-            self._deferred.cancel()
-            self._deferred = None
+        self.cancel_agent_jobs()
 
         if not self._finalize_called:
             self.finalize(self.create_expired_error())
 
     def get_agent_side(self):
-        raise NotImplementedError("should be implemneted in the child class")
+        raise NotImplementedError("should be implemented in the child class")
 
     ### public ###
+
+    def cancel_agent_jobs(self):
+        l = self._agent_jobs
+        self._agent_jobs = list()
+        for d in l:
+            d.cancel()
 
     def cancel_timeout(self):
         if self._timeout_call and self._timeout_call.active():
@@ -286,13 +290,18 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
             return self._expiration_call.getTime()
 
     def call_agent_side(self, method, *args, **kwargs):
-        '''Call the method, wrap it in Deferred and bind error handler'''
-        if self._deferred:
-            self._deferred.cancel()
-        self._deferred = d = defer.Deferred()
+        '''
+        Call the method, wrap it in Deferred and bind error handler.
+        '''
+        assert not self._finalize_called, ("Attempt to call agent side code "
+                                           "after finalize() method has been "
+                                           "called. Method: %r" % (method, ))
+
+        d = defer.Deferred()
+        self._agent_jobs.append(d)
         d.addCallback(defer.drop_param, method, *args, **kwargs)
         d.addErrback(self._error_handler, method)
-        d.addBoth(defer.bridge_param, self._remove_reference)
+        d.addBoth(defer.bridge_param, self._remove_agent_job, d)
         time.call_next(d.callback, None)
         return d
 
@@ -319,7 +328,7 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
             self.log("Firing callback of notifier with result: %r.",
                      result)
             time.call_next(self._fnotifier.callback, 'finish', result)
-        time.call_next(self.cleanup)
+        self.cleanup()
 
     ### specific to sending messages ###
 
@@ -365,8 +374,13 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
             self._set_state(state)
         self.call_agent_side(callback, *args, **kwargs)
 
-    def _remove_reference(self):
-        self._defer = None
+    def _remove_agent_job(self, d):
+        try:
+            self._agent_jobs.remove(d)
+        except:
+            # this might happen because of race condition between the
+            # remove_agent_job() and cancel_agent_jobs() calls
+            pass
 
     def _error_handler(self, f, method):
         if f.check(defer.CancelledError):

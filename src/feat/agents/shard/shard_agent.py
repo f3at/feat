@@ -482,7 +482,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
     @replay.immutable
     def _finalize(self, state, _):
         report = message.FinalReport()
-        state.medium.finalize(report)
+        state.medium.complete(report)
 
     # private
 
@@ -809,7 +809,7 @@ class JoinShardContractor(contractor.NestingContractor):
     @replay.immutable
     def _finalize(self, state, _):
         report = message.FinalReport()
-        state.medium.finalize(report)
+        state.medium.complete(report)
 
 
 class FixMissingPartner(task.BaseTask):

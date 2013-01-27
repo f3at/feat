@@ -758,7 +758,7 @@ class HostAllocationContractor(contractor.BaseContractor):
     def _finalize(self, state, allocation_id):
         report = message.FinalReport()
         report.payload['allocation_id'] = allocation_id
-        state.medium.finalize(report)
+        state.medium.complete(report)
 
 
 class StartAgentReplier(replier.BaseReplier):
@@ -864,7 +864,7 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.immutable
     def _finalize(self, state, recp):
         msg = message.FinalReport(payload=recp)
-        state.medium.finalize(msg)
+        state.medium.complete(msg)
 
     @replay.immutable
     def _starting_failed(self, state, fail):
