@@ -127,37 +127,35 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
     def tearDown(self):
         return self.finished
 
-    def assertState(self, _, state):
+    def assertState(self, state):
+        self.assertEqual(state, self.task._get_medium().state)
         self.assertFalse(self.task._get_medium().guid in
                          self.agent._protocols)
-        self.assertEqual(state, self.task._get_medium().state)
         return self.finished
 
-    def assertTimeout(self, _):
-        self.assertState(_, TaskState.expired)
+    def assertTimeout(self):
+        self.assertState(TaskState.expired)
         self.assertCalled(self.task, 'expired', times=1)
 
+    @defer.inlineCallbacks
     def testInitiateTimeout(self):
         self.start_task(TimeoutTask)
-        d = self.cb_after(arg=None, obj=self.task._get_medium(),
-                          method="_terminate")
-        d.addCallback(self.assertTimeout)
         self.assertFailure(self.finished, protocols.ProtocolExpired)
-        return d
+        yield self.finished
+        self.assertTimeout()
 
+    @defer.inlineCallbacks
     def testInitiateError(self):
         self.start_task(ErrorTask)
-        d = self.cb_after(arg=None, obj=self.agent,
-                          method="unregister_protocol")
-        d.addCallback(self.assertState, TaskState.error)
         self.assertFailure(self.finished, DummyException)
-        return d
+        yield self.finished
+        self.assertState(TaskState.error)
 
     def testInitiateSuccess(self):
         self.start_task(SuccessTask)
         d = self.cb_after(arg=None, obj=self.agent,
                           method="unregister_protocol")
-        d.addCallback(self.assertState, TaskState.completed)
+        d.addCallback(defer.drop_param, self.assertState, TaskState.completed)
         return d
 
     @defer.inlineCallbacks

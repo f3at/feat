@@ -87,9 +87,16 @@ class AgencyTask(common.AgencyMiddleBase):
     def get_agent_side(self):
         return self.task
 
+    def cleanup(self):
+        common.AgencyMiddleBase.cleanup(self)
+        self.agent.unregister_protocol(self)
+
+    ### IAgencyTask ###
+
     @serialization.freeze_tag('AgencyTask.terminate')
     @replay.named_side_effect('AgencyTask.terminate')
     def terminate(self, arg=None):
+        self._set_state(TaskState.completed)
         self.finalize(arg)
 
     @replay.named_side_effect('AgencyTask.fail')

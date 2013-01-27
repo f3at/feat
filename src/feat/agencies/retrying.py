@@ -23,7 +23,7 @@ from zope.interface import implements
 from twisted.python.failure import Failure
 
 from feat.agents.base import replay
-from feat.common import log, defer, serialization
+from feat.common import log, defer, serialization, time
 
 from feat.agencies.interface import (IAgencyInitiatorFactory,
                                      ILongRunningProtocol)
@@ -123,7 +123,7 @@ class RetryingProtocol(log.Logger):
     ### Public Methods ###
 
     def initiate(self):
-        self.call_next(self._bind)
+        time.call_next(self._bind)
         return self
 
     def call_later(self, _time, _method, *args, **kwargs):
@@ -197,10 +197,10 @@ class RetryingProtocol(log.Logger):
             return
         if isinstance(result, (Failure, Exception)):
             self.log("Firing errback of notifier with result: %r.", result)
-            self.call_next(self._fnotifier.errback, 'finish', result)
+            time.call_next(self._fnotifier.errback, 'finish', result)
         else:
             self.log("Firing callback of notifier with result: %r.", result)
-            self.call_next(self._fnotifier.callback, 'finish', result)
+            time.call_next(self._fnotifier.callback, 'finish', result)
         self._fnotifier = None
 
     def _wait_and_retry(self, failure):

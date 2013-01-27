@@ -176,7 +176,7 @@ class AgencyReplier(common.AgencyMiddleBase):
              'method': self._requested}}
         handler = self._event_handler(mapping, msg)
         if callable(handler):
-            self._call(handler, msg)
+            handler(msg)
 
     ### ISerializable Methods ###
 
