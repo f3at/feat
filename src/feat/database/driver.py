@@ -505,7 +505,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             elif response.status == http.Status.CONFLICT:
                 raise ConflictError(msg)
             else:
-                raise DatabaseError(str(int(response.status) + ": " + msg))
+                raise DatabaseError(str(int(response.status)) + ": " + msg)
 
     def _configure(self, host, port, name):
         self._cancel_reconnector()
