@@ -46,8 +46,8 @@ class DummyInitiator(serialization.Serializable):
     def _get_state(self):
         return self.state
 
-    def expire_now(self):
-        return defer.succeed(self)
+    def cleanup(self):
+        return
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):

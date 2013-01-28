@@ -24,16 +24,17 @@
 import uuid
 
 from zope.interface import implements, classProvides
-from feat.interface.fiber import ICancellable, FiberCancelled
+from feat.interface.fiber import ICancellable
 from feat.interface.log import LogLevel
 from twisted.python import failure
 
 from feat.common import log, defer, fiber, observer, time, enum
-from feat.common import serialization, error_handler, mro, error, first
+from feat.common import serialization, mro, error, first
 from feat.agents.base import replay
 
-from feat.interface.protocols import ProtocolFailed, ProtocolExpired
+from feat.interface.protocols import ProtocolExpired, ProtocolFailed
 from feat.interface.serialization import IRestorator
+from feat.agencies.interface import IAgencyProtocolInternal
 
 
 class Statistics(object):
@@ -83,7 +84,7 @@ class StateMachineMixin(object):
             self.state = state
 
         if self._notifier:
-            self._notifier.callback(state, self)
+            time.call_next(self._notifier.callback, state, self)
 
     def _cmp_state(self, states):
         if not isinstance(states, (list, tuple, )):
@@ -213,36 +214,139 @@ class StateCanceller(object):
         return not self.__eq__(other)
 
 
-class AgencyMiddleMixin(object):
+class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
     '''Responsible for formating messages, calling methods etc'''
-
-    guid = None
-
-    protocol_id = None
-    remote_id = None
 
     error_state = None
 
-    def __init__(self, remote_id=None, protocol_id=None):
+    implements(IAgencyProtocolInternal)
+
+    def __init__(self, agency_agent, factory,
+                 remote_id=None, protocol_id=None):
+        log.Logger.__init__(self, agency_agent)
+        log.LogProxy.__init__(self, agency_agent)
+        StateMachineMixin.__init__(self)
+
+
+        self.agent = agency_agent
+        self.factory = factory
+
         self.guid = str(uuid.uuid1())
-        self._set_remote_id(remote_id)
-        self._set_protocol_id(protocol_id)
-        self._deferred = None
+        self.set_remote_id(remote_id)
+        self.set_protocol_id(protocol_id)
+
+        # List of references to currently performed agent-side jobs.
+        self._agent_jobs = list()
+
+        self._finalize_called = False
+        self._fnotifier = defer.Notifier()
+
+        self._timeout_call = None
+
+    ### IAgencyProtocolInternal ###
+
+    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
+    def notify_finish(self):
+        if self._finalize_called:
+            if isinstance(self._result, (Exception, failure.Failure)):
+                return defer.fail(self._result)
+            else:
+                return defer.succeed(self._result)
+        return self._fnotifier.wait('finish')
 
     def is_idle(self):
-        return False
+        return len(self._agent_jobs) == 0 and (self._timeout_call is None or
+                                               not self._timeout_call.active())
 
-    def _set_remote_id(self, remote_id):
-        if self.remote_id is not None and self.remote_id != remote_id:
+    def cleanup(self):
+        self.cancel_timeout()
+        self.cancel_agent_jobs()
+
+        if not self._finalize_called:
+            self.finalize(self.create_expired_error())
+
+    def get_agent_side(self):
+        raise NotImplementedError("should be implemented in the child class")
+
+    ### public ###
+
+    def cancel_agent_jobs(self):
+        l = self._agent_jobs
+        self._agent_jobs = list()
+        for d in l:
+            d.cancel()
+
+    def cancel_timeout(self):
+        if self._timeout_call and self._timeout_call.active():
+            self._timeout_call.cancel()
+        self._timeout_call = None
+
+    def set_timeout(self, expiration_time, state, callback, *args, **kwargs):
+        self.cancel_timeout()
+        eta = max([0, time.left(expiration_time)])
+        self._timeout_call = time.call_later(
+            eta, self._timeout_target, state, callback, args, kwargs)
+
+    @replay.side_effect
+    def get_expiration_time(self):
+        if self._timeout_call:
+            return self._timeout_call.getTime()
+
+    def call_agent_side(self, method, *args, **kwargs):
+        '''
+        Call the method, wrap it in Deferred and bind error handler.
+        '''
+        assert not self._finalize_called, ("Attempt to call agent side code "
+                                           "after finalize() method has been "
+                                           "called. Method: %r" % (method, ))
+
+        d = defer.Deferred()
+        self._agent_jobs.append(d)
+        d.addCallback(defer.drop_param, method, *args, **kwargs)
+        d.addErrback(self._error_handler, method)
+        d.addBoth(defer.bridge_param, self._remove_agent_job, d)
+        time.call_next(d.callback, None)
+        return d
+
+    def create_expired_error(self, msg="Forced expiration"):
+        factory = self.factory
+        pname = factory.type_name if factory is not None else "unknown"
+        agent = self.agent.get_agent() if self.agent is not None else None
+        aname = agent.descriptor_type if agent is not None else "unknown"
+        aid = self.agent.get_agent_id() if self.agent is not None else None
+        error_msg = "%s agent %s's protocol %s expired" % (aname, aid, pname)
+        if msg:
+            error_msg += ": " + msg
+        return ProtocolExpired(error_msg)
+
+    def finalize(self, result):
+        if self._finalize_called:
+            return
+        self._finalize_called = True
+        self._result = result
+
+        if isinstance(result, (failure.Failure, Exception)):
+            self.log("Firing errback of notifier with result: %r.", result)
+            time.call_next(self._fnotifier.errback, 'finish', result)
+        else:
+            self.log("Firing callback of notifier with result: %r.",
+                     result)
+            time.call_next(self._fnotifier.callback, 'finish', result)
+        self.cleanup()
+
+    ### specific to sending messages ###
+
+    def set_remote_id(self, remote_id):
+        if hasattr(self, 'remote_id') and self.remote_id != remote_id:
             self.debug('Changing id of remote peer. %r -> %r. '
                        'This usually means the message has been handed over.',
                        self.remote_id, remote_id)
         self.remote_id = remote_id
 
-    def _set_protocol_id(self, protocol_id):
+    def set_protocol_id(self, protocol_id):
         self.protocol_id = protocol_id
 
-    def _send_message(self, msg, expiration_time=None, recipients=None,
+    def send_message(self, msg, expiration_time=None, recipients=None,
                       remote_id=None):
         msg.sender_id = self.guid
         msg.receiver_id = remote_id or self.remote_id
@@ -252,178 +356,46 @@ class AgencyMiddleMixin(object):
                 expiration_time = time.future(10)
             msg.expiration_time = expiration_time
 
-        if not recipients:
+        if not recipients and getattr(self, 'recipients') is not None:
             recipients = self.recipients
 
         return self.agent.send_msg(recipients, msg)
 
-    def _handover_message(self, msg, remote_id=None):
+    def handover_message(self, msg, remote_id=None):
         msg.receiver_id = remote_id or self.remote_id
         return self.agent.send_msg(self.recipients, msg)
 
-    def _call(self, method, *args, **kwargs):
-        '''Call the method, wrap it in Deferred and bind error handler'''
-        if self._deferred:
-            self._deferred.cancel()
-        self._deferred = d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addErrback(self._error_handler)
+    ### private ###
+
+    def _run_and_terminate(self, method, *args, **kwargs):
+        d = self.call_agent_side(method, *args, **kwargs)
+        d.addBoth(ProtocolFailed)
+        d.addCallback(self.finalize)
         return d
 
-    def _error_handler(self, f):
+    def _timeout_target(self, state, callback, args, kwargs):
+        if state:
+            self._set_state(state)
+        self.call_agent_side(callback, *args, **kwargs)
+
+    def _remove_agent_job(self, d):
+        try:
+            self._agent_jobs.remove(d)
+        except:
+            # this might happen because of race condition between the
+            # remove_agent_job() and cancel_agent_jobs() calls
+            pass
+
+    def _error_handler(self, f, method):
         if f.check(defer.CancelledError):
             # this is what happens when the call is cancelled by the
             # _call() method, just swallow it
             pass
         else:
+            error.handle_failure(self, f, "Failed calling agent method %r",
+                                 method)
             self._set_state(self.error_state)
-            self._terminate(f)
-
-
-class ExpirationCallsMixin(object):
-    '''
-    Mixin class used by protocol peers for protecting execution time with
-    timeout.
-    '''
-
-    agent = None
-    factory = None
-
-    def __init__(self):
-        self._expiration_call = None
-
-    @replay.side_effect
-    def get_expiration_time(self):
-        if self._expiration_call:
-            return self._expiration_call.getTime()
-
-    def _get_time(self):
-        raise NotImplemented('Should be define in the class using the mixin')
-
-    def _setup_expiration_call(self, expire_time, state,
-                               method, *args, **kwargs):
-        self.log('Setting expiration call of method: %r.%r',
-                 self.__class__.__name__, method.__name__)
-
-        time_left = time.left(expire_time)
-        if time_left < 0:
-            raise RuntimeError('Tried to call method in the past! ETA: %r' %
-                               (time_left, ))
-
-        def to_call(callback):
-            if state:
-                self._set_state(state)
-            self.log('Calling method: %r with args: %r', method, args)
-            d = self._call(method, *args, **kwargs)
-            d.chainDeferred(callback)
-
-        result = defer.Deferred()
-        self._expiration_call = time.callLater(
-            time_left, to_call, result)
-        return result
-
-    def _expire_at(self, expire_time, state, method, *args, **kwargs):
-
-        def expired(param):
-            return self._terminate(self._create_expired_error(param))
-
-        d = self._setup_expiration_call(expire_time, state,
-                                        method, *args, **kwargs)
-        d.addCallback(expired)
-        return d
-
-    @replay.side_effect
-    def _cancel_expiration_call(self):
-        if self._expiration_call and self._expiration_call.active():
-            self.log('Canceling expiration call')
-            self._expiration_call.cancel()
-            self._expiration_call = None
-
-    def _terminate(self):
-        self._cancel_expiration_call()
-
-    def expire_now(self):
-        if self._expiration_call and self._expiration_call.active():
-            self._expiration_call.reset(0)
-            d = self.notify_finish()
-            return d
-
-        self.error('Expiration call %r is None or was already called '
-                   'or cancelled', self._expiration_call)
-
-        return defer.fail(self._create_expired_error("Forced expiration"))
-
-    def _create_expired_error(self, msg):
-
-        def get_type_name(obj):
-            return obj.type_name if obj is not None else "unknown"
-
-        cause = None
-
-        if isinstance(msg, failure.Failure):
-            cause = msg
-            msg = error.get_failure_message(msg)
-        elif msg is not None:
-            msg = str(msg)
-
-        factory = self.factory
-        pname = factory.type_name if factory is not None else "unknown"
-        agent = self.agent.get_agent() if self.agent is not None else None
-        aname = agent.descriptor_type if agent is not None else "unknown"
-        aid = self.agent.get_agent_id() if self.agent is not None else None
-
-        error_msg = "%s agent %s's protocol %s expired" % (aname, aid, pname)
-        if msg is not None:
-            error_msg += ": %s" % (msg, )
-
-        return ProtocolExpired(error_msg, cause=cause)
-
-
-class InitiatorMediumBase(object):
-
-    def _terminate(self):
-        '''Nothing special.'''
-
-
-class TransientInitiatorMediumBase(InitiatorMediumBase):
-
-    def __init__(self):
-        self._fnotifier = defer.Notifier()
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        #FIXME: Should fail if already terminated
-        return self._fnotifier.wait('finish')
-
-    def _terminate(self, result):
-        if isinstance(result, (failure.Failure, Exception)):
-            self.log("Firing errback of notifier with result: %r.", result)
-            self.call_next(self._fnotifier.errback, 'finish', result)
-        else:
-            self.log("Firing callback of notifier with result: %r.", result)
-            self.call_next(self._fnotifier.callback, 'finish', result)
-
-
-class InterestedMediumBase(object):
-
-    def _terminate(self):
-        '''Nothing special.'''
-
-
-class TransientInterestedMediumBase(InterestedMediumBase):
-
-    def __init__(self):
-        self._fnotifier = defer.Notifier()
-
-    def _terminate(self, result):
-        self.call_next(self._fnotifier.callback, 'finish', result)
-
-    @serialization.freeze_tag('IAgencyProtocol.notify_finish')
-    def notify_finish(self):
-        return self._fnotifier.wait('finish')
-
-    def call_next(self, *_):
-        raise NotImplementedError("This method should be implemented outside "
-                                  "of this mixin!")
+            self.finalize(f)
 
 
 @serialization.register

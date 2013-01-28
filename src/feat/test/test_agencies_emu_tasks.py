@@ -24,6 +24,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from feat.agents.base import descriptor, replay, task
 from feat.agencies.tasks import TaskState, NOT_DONE_YET
+from feat.agencies import retrying
 from feat.common import defer
 from feat.interface import protocols
 
@@ -126,38 +127,32 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
     def tearDown(self):
         return self.finished
 
-    def assertState(self, _, state):
-        self.assertFalse(self.task._get_medium().guid in
-                         self.agent._protocols)
+    def assertState(self, state):
         self.assertEqual(state, self.task._get_medium().state)
-        return self.finished
 
-    def assertTimeout(self, _):
-        self.assertState(_, TaskState.expired)
+    def assertTimeout(self):
+        self.assertState(TaskState.expired)
         self.assertCalled(self.task, 'expired', times=1)
 
+    @defer.inlineCallbacks
     def testInitiateTimeout(self):
         self.start_task(TimeoutTask)
-        d = self.cb_after(arg=None, obj=self.task._get_medium(),
-                          method="_terminate")
-        d.addCallback(self.assertTimeout)
         self.assertFailure(self.finished, protocols.ProtocolExpired)
-        return d
+        yield self.finished
+        self.assertTimeout()
 
+    @defer.inlineCallbacks
     def testInitiateError(self):
         self.start_task(ErrorTask)
-        d = self.cb_after(arg=None, obj=self.agent,
-                          method="unregister_protocol")
-        d.addCallback(self.assertState, TaskState.error)
         self.assertFailure(self.finished, DummyException)
-        return d
+        yield self.finished
+        self.assertState(TaskState.error)
 
+    @defer.inlineCallbacks
     def testInitiateSuccess(self):
         self.start_task(SuccessTask)
-        d = self.cb_after(arg=None, obj=self.agent,
-                          method="unregister_protocol")
-        d.addCallback(self.assertState, TaskState.completed)
-        return d
+        yield self.finished
+        self.assertState(TaskState.completed)
 
     @defer.inlineCallbacks
     def testWaitForState(self):
@@ -169,7 +164,8 @@ class TestTask(common.TestCase, common.AgencyTestHelper):
     @defer.inlineCallbacks
     def testRetryingProtocol(self):
         d = self.cb_after(None, self.agent, 'initiate_protocol')
-        task = self.agent.retrying_protocol(ErrorTask, max_retries=3)
+        factory = retrying.RetryingProtocolFactory(ErrorTask, max_retries=3)
+        task = self.agent.initiate_protocol(factory)
         self.finished = task.notify_finish()
         yield d
         self.assertEqual(task.attempt, 1)

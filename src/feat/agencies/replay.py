@@ -469,8 +469,7 @@ class Replay(log.LogProxy, log.Logger):
     def effect_protocol_created(self, factory, medium, *args, **kwargs):
         self.require_agent()
         instance = factory(self.agent, medium)
-        if medium.keep_track_of_instances:
-            self.protocols.append(instance)
+        self.protocols.append(instance)
 
     def effect_protocol_deleted(self, journal_id, dummy_id):
         self.require_agent()
@@ -851,28 +850,6 @@ class AgencyAgent(BaseReplayDummy):
     def initiate_protocol(self, factory, *args, **kwargs):
         pass
 
-    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
-    @replay.named_side_effect('AgencyAgent.initiate_protocol')
-    def initiate_task(self, factory, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_protocol(self, factory, recipients=None, max_retries=None,
-                         initial_delay=1, max_delay=None, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_task(self, factory, recipients=None, max_retries=None,
-                         initial_delay=1, max_delay=None, *args, **kwargs):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.periodic_protocol')
-    @replay.named_side_effect('AgencyAgent.periodic_protocol')
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        pass
-
     @replay.named_side_effect('AgencyAgent.revoke_interest')
     def revoke_interest(self, factory):
         pass
@@ -989,10 +966,6 @@ class AgencyAgent(BaseReplayDummy):
 
 class AgencyProtocol(BaseReplayDummy, StateMachineSpecific):
 
-    # flag saying if Replay class should register us in protocols list
-    # (this should be done for IAgencyProtocolInternal implementations)
-    keep_track_of_instances = True
-
     @serialization.freeze_tag('IAgencyProtocol.notify_finish')
     def notify_finish(self):
         pass
@@ -1068,8 +1041,8 @@ class AgencyContractor(AgencyProtocol, StateMachineSpecific):
     def defect(self, cancellation):
         pass
 
-    @replay.named_side_effect('AgencyContractor.finalize')
-    def finalize(self, report):
+    @replay.named_side_effect('AgencyContractor.complete')
+    def complete(self, report):
         pass
 
     @serialization.freeze_tag('AgencyContractor.update_manager_address')
@@ -1156,8 +1129,6 @@ class AgencyCollector(AgencyProtocol):
 
 
 class AgencyPoster(AgencyProtocol):
-
-    keep_track_of_instances = False
 
     implements(IAgencyPoster)
 

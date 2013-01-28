@@ -106,14 +106,9 @@ class TestCollector(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testRecivingNotification(self):
-        self.assertEqual(1, len(self.agent._protocols))
         yield self.recv_notification()
         yield self.wait_agency_for_idle(self.agency, 10)
         self.assertCalled(self.collector, "notified", 1)
-
-    def testRevokingInterest(self):
-        self.agent.revoke_interest(DummyCollector)
-        self.assertEqual(0, len(self.agent._protocols))
 
     @defer.inlineCallbacks
     def testNotificationIdle(self):
@@ -121,6 +116,8 @@ class TestCollector(common.TestCase, common.AgencyTestHelper):
         d = defer.Deferred()
         self.collector.result = d
         yield self.recv_notification()
+        # call is done in broken execution chain
+        yield common.delay(None, 0.01)
         self.assertCalled(self.collector, "notified", 1)
         self.assertFalse(self.interest.is_idle())
         d.callback(None)

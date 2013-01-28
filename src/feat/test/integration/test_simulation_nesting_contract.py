@@ -24,7 +24,7 @@ from feat.agents.base import agent, contractor, replay, manager, descriptor
 from feat.agencies import message, recipient
 from feat.common import text_helper, defer, fiber
 
-from feat.interface.protocols import *
+from feat.interface.protocols import ProtocolFailed
 from feat.agents.application import feat
 
 
@@ -95,7 +95,7 @@ class NestedStuff(contractor.NestingContractor):
     def _finalize(self, state):
         if not state.agent.get_from_state('should_fail_grant'):
             state.agent.got('completed')
-            state.medium.finalize(message.FinalReport())
+            state.medium.complete(message.FinalReport())
 
 
 class NestedFunManager(manager.BaseManager):
@@ -153,7 +153,7 @@ class TestNesting(common.SimulationTest):
         agent1 = self.get_local('agent1').get_agent()
         agent4.got('should_fail_grant')
         d = agent1.start()
-        self.assertFailure(d, ProtocolExpired)
+        self.assertFailure(d, ProtocolFailed)
         yield d
 
         for medium in self.driver.iter_agents('contract_nesting_agent'):
