@@ -4,6 +4,7 @@ from feat.agents.host import host_agent
 from feat.common import first
 from feat.gateway.application import featmodels
 from feat.gateway import models
+from feat.web import http
 
 from feat.models import model, value, call, getter, reference, attribute
 from feat.models import effect, action, response
@@ -41,10 +42,10 @@ class StartStaticAgent(action.Action):
     action.result(value.Response())
     action.param('force', value.Boolean(False), is_required=False,
                  label="Start the agent even it is already running")
-    action.effect(call.action_filter('perform'))
-    action.effect(response.done('done'))
+    action.effect(call.action_filter('do_spawn'))
+    action.effect(call.action_filter('render_response'))
 
-    def perform(self, force=False):
+    def do_spawn(self, force=False):
         if self.model.running and not force:
             raise InvalidParameters(
                 params=dict(force="Agent is already running, you have to use"
@@ -52,6 +53,13 @@ class StartStaticAgent(action.Action):
         desc = copy.copy(self.model.view.initial_descriptor)
         return self.model.source.spawn_agent(
             desc, static_name=self.model.view.name, **self.model.view.kwargs)
+
+    def render_response(self, value):
+        if value is None:
+            raise http.HTTPError(name="Spawning agent failed",
+                                 status=http.Status[409])
+        else:
+            return response.Done(value, "Done")
 
 
 @featmodels.register_model

@@ -239,8 +239,8 @@ def agent_restart(client, static_name, config):
             logger.error("Response for shutdown call: %r", r)
     logger.info('About to start the agent %s.', static_name)
     status, r = yield client.post(hostname, port, path + '/_start', force=True)
-    if 'key' in r:
-        logger.info("New agent has ID: %r", r['key'])
+    if status == 200 and isinstance(r, dict) and r.get('type') == 'done':
+        logger.info("Done")
         defer.returnValue(0)
     else:
         logger.error("Got response starting agent: %r", r)
