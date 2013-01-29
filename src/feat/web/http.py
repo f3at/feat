@@ -393,6 +393,10 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._reset()
         self.process_cleanup(reason)
 
+
+        # cancel timeouts again, because in case of no body
+        # decoder we would have an inactivity timeout running now
+        self.cancel_all_timeouts()
         self.onConnectionLost(reason)
 
     ### private ###
