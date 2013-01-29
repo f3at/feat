@@ -1474,7 +1474,10 @@ class QueryItemsMixin(DynamicItemsMixin):
     _query_item = None
     _query_target = None
     _query_model = None
-    __query_set_factory = None
+
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        cls.__query_set_factory = None
 
     ### IQueryModel ###
 
@@ -1554,9 +1557,15 @@ class QueryItemsMixin(DynamicItemsMixin):
 
     @property
     def _query_set_factory(self):
-        if not self.__query_set_factory:
-            self.__query_set_factory = MetaQuerySetCollection.new(type(self))
-        return self.__query_set_factory
+        # This is done like this, because we can only create QuerySetCollection
+        # after all the annotations have been processed. The annotations and
+        # __class__init__() calls are processed in reverse-mro order, so it
+        # seems the only way to have the mixin code act after the annotation
+        # from descendands.
+        cls = type(self)
+        if not cls.__query_set_factory:
+            cls.__query_set_factory = MetaQuerySetCollection.new(cls)
+        return cls.__query_set_factory
 
     ### annotations ###
 

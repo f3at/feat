@@ -36,6 +36,10 @@ class QueryView(model.Collection):
     _connection_getter = None
     _view = None
 
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        cls._query_set_factory = None
+
     def init(self):
         if not callable(type(self)._connection_getter):
             raise ValueError("This model needs to be annotated with "
@@ -71,12 +75,14 @@ class QueryView(model.Collection):
         return method(self.connection, value, skip, limit)
 
     def render_select_response(self, value):
-        if not hasattr(self, '_query_set_factory'):
+        cls = type(self)
+        if not cls._query_set_factory:
+            # query set collection is created only once per class type
             factory = model.MetaQuerySetCollection.new(type(self))
             factory.annotate_meta('json', 'render-as-list')
-            self._query_set_factory = factory
+            cls._query_set_factory = factory
         items = [(self.get_child_name(x), x) for x in value]
-        result = self._query_set_factory(self.source, items)
+        result = cls._query_set_factory(self.source, items)
         return result.initiate(view=self.view, officer=self.officer,
                                aspect=self.aspect)
 
