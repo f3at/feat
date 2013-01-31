@@ -23,6 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 import operator
+import os
 
 from twisted.trial.unittest import SkipTest
 
@@ -35,13 +36,13 @@ except ImportError as e:
 from feat.database import emu, view, document, query
 from feat.process import couchdb
 from feat.process.base import DependencyError
-from feat.common import serialization, defer
+from feat.common import serialization, defer, error
 from feat.agencies.common import ConnectionState
 
 from . import common
 from feat.test.common import attr, Mock
 
-from feat.database.interface import ConflictError, NotFoundError
+from feat.database.interface import ConflictError, NotFoundError, DatabaseError
 from feat.database.interface import NotConnectedError, ResignFromModifying
 
 
@@ -865,6 +866,48 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
         common.IntegrationTest.setUp(self)
         self.database = emu.Database()
         self.connection = self.database.get_connection()
+
+
+class RemoteDatabaseTest(common.IntegrationTest, TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.IntegrationTest.setUp(self)
+        if 'TEST_COUCHDB' not in os.environ:
+            raise SkipTest("This test case can be used to test the driver \n"
+                           "against the couchdb/bigcouch instance which is \n"
+                           "not started/stopped by the test case. \n"
+                           "To use it you need to set the TEST_COUCHDB \n"
+                           "environment variable to host:port, for example: \n"
+                           "export TEST_COUCHDB=localhost:15984")
+        try:
+            host, port = os.environ['TEST_COUCHDB'].split(":")
+            port = int(port)
+        except:
+            raise SkipTest("Invalid value for TEST_COUCHDB environment\n"
+                           "variable: %r. Valid setting would be: \n"
+                           "export TEST_COUCHDB=localhost:15984" %
+                           (os.environ['TEST_COUCHDB'], ))
+        self.database = driver.Database(host, port,
+                                        self._testMethodName.lower())
+        self.connection = self.database.get_connection()
+        try:
+            yield self.database.create_db()
+        except DatabaseError:
+            yield self.database.delete_db()
+            yield self.database.create_db()
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        if 'KEEP_TEST_COUCHDB' not in os.environ:
+            try:
+                yield self.database.delete_db()
+            except Exception as e:
+                error.handle_exception(self, e,
+                                       "Failed to delete the test database")
+        self.connection.disconnect()
+        self.database.disconnect()
+        yield common.IntegrationTest.tearDown(self)
 
 
 @attr('slow')
