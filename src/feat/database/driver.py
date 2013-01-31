@@ -306,7 +306,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def delete_db(self):
         url = '/%s/' % (self.db_name, )
-        return self.couchdb_call(self.db_name, self.couchdb.detele, url)
+        return self.couchdb_call(self.db_name, self.couchdb.delete, url)
 
     def replicate(self, source, target, **options):
         url = '/_replicate'
