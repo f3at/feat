@@ -156,6 +156,7 @@ class Notifier(object):
                 d.addCallback(set_since)
 
             def request_changes(decoder, query):
+                query['since'] = json.dumps(query['since'])
                 url = '/%s/_changes?%s' % (self._db.db_name, urlencode(query))
                 return self._db.couchdb.get(url, decoder=decoder,
                                             outside_of_the_pool=True,

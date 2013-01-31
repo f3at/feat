@@ -758,7 +758,7 @@ class TestCase(object):
     def _len_changes(self, expected):
 
         def check():
-            return len(self.changes) == expected
+            return len(self.changes) >= expected
 
         return check
 
@@ -888,14 +888,23 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
                            "variable: %r. Valid setting would be: \n"
                            "export TEST_COUCHDB=localhost:15984" %
                            (os.environ['TEST_COUCHDB'], ))
-        self.database = driver.Database(host, port,
-                                        self._testMethodName.lower())
-        self.connection = self.database.get_connection()
+        db_name = self._testMethodName.lower()
+        self.database = driver.Database(host, port, db_name)
         try:
             yield self.database.create_db()
         except DatabaseError:
             yield self.database.delete_db()
-            yield self.database.create_db()
+            # yield common.delay(None, 10)
+            try:
+                yield self.database.create_db()
+            except DatabaseError:
+                self.warning("Recreating the database returned the error "
+                             "response. There is a bug in bigcouch:\n"
+                             "https://github.com/cloudant/bigcouch/issues/123"
+                             "\nso I will ignore it.")
+                pass
+
+        self.connection = self.database.get_connection()
 
     @defer.inlineCallbacks
     def tearDown(self):
