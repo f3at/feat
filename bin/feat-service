@@ -227,8 +227,8 @@ def agent_restart(client, static_name, config):
         defer.returnValue(1)
     if static_name not in static:
         logger.error(
-            "Host agent doesn't know about this static agents. Known names "
-            "are: %s", static.keys())
+            "Host agent doesn't know about this static agent. Known static "
+            "agents are: '%s'", "', '".join(static.keys()))
         defer.returnValue(1)
 
     path = '/agents/%(hostname)s/static_agents/%(static_name)s' % context
