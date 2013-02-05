@@ -196,6 +196,7 @@ class Notifier(object):
 class CouchDB(httpclient.ConnectionPool):
 
     log_category = 'couchdb-connection'
+    dump = None
 
     def __init__(self, host, port, maximum_connections=2, logger=None):
         httpclient.ConnectionPool.__init__(
@@ -204,7 +205,8 @@ class CouchDB(httpclient.ConnectionPool):
             logger=logger,
             # FIXME: figure out why pipelineing didn't work on frf and
             # enable it again
-            enable_pipelineing=False)
+            enable_pipelineing=False,
+            dump_channel=self.dump)
 
     def get(self, url, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")
@@ -515,7 +517,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     def _configure(self, host, port, name):
         self._cancel_reconnector()
         self.host, self.port = host, port
-        self.couchdb = CouchDB(host, port, logger=self)
+        self.couchdb = CouchDB(host, port, logger=self,
+                               maximum_connections=1)
         self.db_name = name
         self.disconnected = False
 
