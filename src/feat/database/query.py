@@ -94,7 +94,7 @@ class Cache(log.Logger):
         return d
 
     def _cache_response(self, entries, factory, subquery, seq_num):
-        self.log("Caching response for %r at seq_num: %d, %d rows",
+        self.log("Caching response for %r at seq_num: %s, %d rows",
                  subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
