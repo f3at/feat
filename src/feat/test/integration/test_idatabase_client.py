@@ -894,15 +894,7 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
             yield self.database.create_db()
         except DatabaseError:
             yield self.database.delete_db()
-            # yield common.delay(None, 10)
-            try:
-                yield self.database.create_db()
-            except DatabaseError:
-                self.warning("Recreating the database returned the error "
-                             "response. There is a bug in bigcouch:\n"
-                             "https://github.com/cloudant/bigcouch/issues/123"
-                             "\nso I will ignore it.")
-                pass
+            yield self.database.create_db()
 
         self.connection = self.database.get_connection()
 
