@@ -105,6 +105,7 @@ class ResponseDecoder(object, Protocol):
 class Protocol(http.BaseProtocol):
 
     owner = None
+    dump_channel = None
 
     def __init__(self, log_keeper, owner):
         if owner is not None:
@@ -162,10 +163,26 @@ class Protocol(http.BaseProtocol):
         self._requests.append(decoder)
 
         self.transport.writeSequence(seq)
+        if self.dump_channel:
+            for line in seq:
+                payload = "< %s" % (line, )
+                self.dump_channel.writelines([payload])
 
         return decoder.get_result()
 
     ### Overridden Methods ###
+
+    def lineReceived(self, line):
+        if self.dump_channel:
+            payload = "> %s\n" % (line, )
+            self.dump_channel.writelines([payload])
+        super(Protocol, self).lineReceived(line)
+
+    def rawDataReceived(self, data):
+        if self.dump_channel:
+            payload = "> %s" % (data, )
+            self.dump_channel.writelines([payload])
+        super(Protocol, self).rawDataReceived(data)
 
     def onConnectionMade(self):
         self.factory.onConnectionMade(self)
@@ -263,10 +280,12 @@ class Factory(ClientFactory):
 
     protocol = Protocol
 
-    def __init__(self, log_keeper, owner, deferred):
+    def __init__(self, log_keeper, owner, deferred,
+                 dump_channel=None):
         self.owner = IHTTPClientOwner(owner)
         self.log_keeper = log_keeper
         self._deferred = deferred
+        self._dump_channel = dump_channel
 
     def buildProtocol(self, addr):
         return self.create_protocol(self.log_keeper, self.owner)
@@ -274,6 +293,7 @@ class Factory(ClientFactory):
     def create_protocol(self, *args, **kwargs):
         proto = self.protocol(*args, **kwargs)
         proto.factory = self
+        proto.dump_channel = self._dump_channel
         return proto
 
     def clientConnectionFailed(self, connector, reason):
@@ -454,7 +474,7 @@ class ConnectionPool(Connection):
 
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None,
-                 maximum_connections=10):
+                 maximum_connections=10, dump_channel=False):
         Connection.__init__(self, host, port, protocol,
                             security_policy, logger)
         self._connected = set()
@@ -463,8 +483,12 @@ class ConnectionPool(Connection):
         self._awaiting_client = list()
         self._max = maximum_connections
         self._connecting = 0
+        self._dump_channel = dump_channel
 
     ### public ###
+
+    def create_protocol(self, deferred):
+        return self.factory(self, self, deferred, self._dump_channel)
 
     def is_idle(self):
         return all([x.is_idle() for x in self._connected])

@@ -892,6 +892,9 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
                            "export TEST_COUCHDB=localhost:15984" %
                            (os.environ['TEST_COUCHDB'], ))
         db_name = self._testMethodName.lower()
+        if 'COUCHDB_DUMP' in os.environ:
+            driver.CouchDB.dump = open(db_name + ".dump", 'w')
+
         self.database = driver.Database(host, port, db_name)
         try:
             yield self.database.create_db()
