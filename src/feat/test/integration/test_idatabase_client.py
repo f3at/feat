@@ -113,11 +113,14 @@ class SummingView(view.FormatableView):
 
     view.attach_constant(map, 'VALUE_FIELD', VALUE_FIELD)
 
-    def reduce(keys, values):
-        value = 0
-        for row in values:
-            value += row['value']
-        return value
+    def reduce(keys, values, rereduce):
+        if rereduce:
+            return sum(values)
+        else:
+            value = 0
+            for row in values:
+                value += row['value']
+            return value
 
 
 class CountingView(view.BaseView):
