@@ -30,6 +30,7 @@ import optparse
 import os
 import sys
 import time
+import warnings
 
 from feat.common import run, signal, text_helper, log, defer
 from feat.configure import configure
@@ -179,22 +180,29 @@ def main(args):
 
     if command == 'agentrestart':
         c = config.parse_service_config()
+        # for compatibility, still accept -n to pass the name
         parser = optparse.OptionParser()
         parser.add_option('-n', '--static-name',
                           help='Name of static agent to restart',
                           action='store',
                           type="str", metavar="NAME", dest='static_name')
 
-        opts, _ = parser.parse_args(args)
-        if not opts.static_name:
-            logger.error("Static name not specified.")
-            sys.exit(1)
+        opts, args = parser.parse_args(args)
+        if not args:
+            if not opts.static_name:
+                logger.error("Please specify the name of a statically "
+                    "configured agent to restart.")
+                sys.exit(1)
+            args = [opts.static_name, ]
+            warnings.warn(
+                "The agent name is not optional.  Specify it as an argument.",
+                DeprecationWarning)
 
         from feat.web import security
         sp = security.ClientPolicy(
             security.ClientContextFactory(p12_filename=c.gateway.client_p12))
         client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
-        sys.exit(_gateway_script(agent_restart, client, opts.static_name, c))
+        sys.exit(_gateway_script(agent_restart, client, args[0], c))
 
 
     logger.error("No such command, %s", command)
@@ -219,8 +227,8 @@ def agent_restart(client, static_name, config):
         defer.returnValue(1)
     if static_name not in static:
         logger.error(
-            "Host agent doesn't know about this static agents. Known names "
-            "are: %s", static.keys())
+            "Host agent doesn't know about this static agent. Known static "
+            "agents are: '%s'", "', '".join(static.keys()))
         defer.returnValue(1)
 
     path = '/agents/%(hostname)s/static_agents/%(static_name)s' % context
