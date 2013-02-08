@@ -365,7 +365,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                               quote(name.encode('utf-8'))))
         headers = {'accept': '*'}
         return self.couchdb_call(doc_id, self.couchdb.get, uri,
-                                 headers=headers)
+                                 headers=headers, return_raw=True)
 
     def get_update_seq(self):
         url = "/%s/" % (self.db_name, )
@@ -478,15 +478,17 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self._document_locks[doc_id] = lock_value
 
     def couchdb_call(self, tag, method, *args, **kwargs):
+        return_raw = kwargs.pop('return_raw', False)
         d = method(*args, **kwargs)
         d.addCallbacks(self._couchdb_cb, self._error_handler,
-                       callbackArgs=(tag, ), errbackArgs=(tag, ))
+                       callbackArgs=(tag, return_raw), errbackArgs=(tag, ))
         return d
 
-    def _couchdb_cb(self, response, tag):
+    def _couchdb_cb(self, response, tag, return_raw):
         self._on_connected()
         if response.status < 400:
-            if response.headers.get('content-type') == 'application/json':
+            if (not return_raw and
+                response.headers.get('content-type') == 'application/json'):
                 try:
                     return json.loads(response.body)
                 except ValueError:
