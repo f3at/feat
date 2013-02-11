@@ -454,7 +454,7 @@ class ConnectionPool(Connection):
 
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None,
-                 maximum_connections=10):
+                 maximum_connections=10, enable_pipelineing=True):
         Connection.__init__(self, host, port, protocol,
                             security_policy, logger)
         self._connected = set()
@@ -463,6 +463,7 @@ class ConnectionPool(Connection):
         self._awaiting_client = list()
         self._max = maximum_connections
         self._connecting = 0
+        self._enable_pipelineing = enable_pipelineing
 
     ### public ###
 
@@ -478,7 +479,8 @@ class ConnectionPool(Connection):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
-        if headers.get('connection') == 'close':
+        if (not not self._enable_pipelineing or
+            headers.get('connection') == 'close'):
             dont_pipeline = True
         # post requests are not idempotent and should not be pipelined
         can_pipeline = not dont_pipeline and method != http.Methods.POST

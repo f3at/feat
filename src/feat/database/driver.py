@@ -201,7 +201,10 @@ class CouchDB(httpclient.ConnectionPool):
         httpclient.ConnectionPool.__init__(
             self, host, port,
             maximum_connections=maximum_connections,
-            logger=logger)
+            logger=logger,
+            # FIXME: figure out why pipelineing didn't work on frf and
+            # enable it again
+            enable_pipelineing=False)
 
     def get(self, url, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")
