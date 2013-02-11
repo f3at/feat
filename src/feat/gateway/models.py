@@ -36,6 +36,7 @@ from feat.common import defer, reflect, error, first
 from feat.models import model, value, reference, response
 from feat.models import effect, call, getter, action
 from feat.gateway.application import featmodels
+from feat.web import http
 from feat import applications
 
 from feat.agencies.interface import AgencyRoles
@@ -163,10 +164,13 @@ class ObjGraph(model.Model):
             f.close()
             with open(output, 'r') as f:
                 return f.read()
+        except IndexError:
+            raise http.NotFoundError(obj_type)
         finally:
             for cleanup in (dot_name, output):
                 try:
-                    os.unlink(cleanup)
+                    if cleanup:
+                        os.unlink(cleanup)
                 except OSError:
                     pass
 

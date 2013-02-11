@@ -537,7 +537,7 @@ class AgencyTestHelper(object):
 
     def send_final_report(self, contractor):
         msg = message.FinalReport()
-        contractor._get_medium().finalize(msg)
+        contractor._get_medium().complete(msg)
         return contractor
 
     def send_cancel(self, contractor, reason=""):

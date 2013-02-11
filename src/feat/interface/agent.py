@@ -194,27 +194,6 @@ class IAgencyAgent(Interface):
         @returns: Instance of protocols initiator
         '''
 
-    def retrying_protocol(self, factory, recipients=None,
-                          max_retries=None, initial_delay=1,
-                          max_delay=None, args=None, kwargs=None):
-        '''
-        Initiates the protocol which will get restart if it fails.
-        The restart will be delayed with exponential growth.
-
-        Extra params comparing to L{IAgencyAgent.initiate_protocol}:
-
-        @param max_retries: After how many retries to give up. Def. None: never
-        @param initial_delay: Delay before the first retry.
-        @param max_delay: Miximum delay to wait (above it it will not grow).
-        @returns: L{RetryingProtocol}
-        '''
-
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        '''
-        Will start specified protocol periodically.
-        @returns: L{PeriodicProtocol}
-        '''
-
     def save_document(document):
         '''
         Save the document into the database. Document might have been loaded

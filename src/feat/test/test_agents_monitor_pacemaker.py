@@ -21,13 +21,10 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.agencies import periodic, message
 from feat.agents.monitor import pacemaker
-from feat.common import journal, log, defer, time
+from feat.common import journal, log, time
 
-from feat.agents.monitor.interface import *
-from feat.interface.agent import *
-from feat.interface.task import *
+from feat.interface.agent import IAgent
 
 from feat.test import common
 
@@ -82,9 +79,6 @@ class DummyPatron(journal.DummyRecorderNode, log.LogProxy, log.Logger):
             return self.task
 
         raise Exception("Unexpected protocol %r" % factory)
-
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        raise Exception("Unexpected protocol")
 
     def get_full_id(self):
         return "%s/%s" % (self.descriptor.doc_id, self.descriptor.instance_id)

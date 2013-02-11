@@ -1,3 +1,0 @@
-[submodule "src/feat/extern/paisley"]
-	path = src/feat/extern/paisley
-	url = git://github.com/f3at/paisley.git

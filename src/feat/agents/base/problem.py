@@ -224,7 +224,7 @@ class SolveProblemContractor(contractor.BaseContractor):
     @replay.mutable
     def _finalize(self, state):
         report = message.FinalReport()
-        state.medium.finalize(report)
+        state.medium.complete(report)
 
 
 @feat.register_restorator

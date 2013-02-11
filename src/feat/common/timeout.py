@@ -24,6 +24,8 @@ class Mixin(object):
             dc.cancel()
 
     def cancel_all_timeouts(self):
+        if self._timeouts is None:
+            return
         for dc in self._callids.values():
             dc.cancel()
         self._callids.clear()

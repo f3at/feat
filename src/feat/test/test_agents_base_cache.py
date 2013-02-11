@@ -143,7 +143,7 @@ class TestDocument(document.Document):
 
     type_name = 'test_document'
     document.field('field', 0)
-    document.field('zone', None)
+    document.field('zone', None, keep_deleted=True)
 
 
 @serialization.register

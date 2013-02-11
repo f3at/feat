@@ -21,20 +21,18 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import warnings
-
-from twisted.python import components, failure
+from twisted.python import failure
 from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.agencies import common, protocols
-from feat.common import log, enum, defer, time, serialization, error_handler
+from feat.common import enum, defer, time, serialization
 from feat.common import adapter
 
-from feat.agencies.interface import *
-from feat.interface.serialization import *
-from feat.interface.task import *
-from feat.interface.protocols import *
+from feat.agencies.interface import IAgencyInitiatorFactory
+from feat.agencies.interface import ILongRunningProtocol
+from feat.interface.serialization import ISerializable
+from feat.interface.task import NOT_DONE_YET, ITaskFactory, IAgencyTask
 
 
 class TaskState(enum.Enum):
@@ -49,27 +47,17 @@ class TaskState(enum.Enum):
     performing, completed, expired, error, terminated = range(5)
 
 
-class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
-                 common.ExpirationCallsMixin, common.AgencyMiddleMixin,
-                 common.TransientInitiatorMediumBase):
+class AgencyTask(common.AgencyMiddleBase):
 
-    implements(ISerializable, IAgencyTask, IAgencyProtocolInternal,
-               ILongRunningProtocol)
+    implements(ISerializable, IAgencyTask, ILongRunningProtocol)
 
     type_name = 'task-medium'
 
-    error_state = TaskState.error # used by AgencyMiddleMixin
+    error_state = TaskState.error # used by AgencyMiddleBase
 
     def __init__(self, agency_agent, factory, *args, **kwargs):
-        log.Logger.__init__(self, agency_agent)
-        log.LogProxy.__init__(self, agency_agent)
-        common.StateMachineMixin.__init__(self)
-        common.ExpirationCallsMixin.__init__(self)
-        common.AgencyMiddleMixin.__init__(self)
-        common.TransientInitiatorMediumBase.__init__(self)
+        common.AgencyMiddleBase.__init__(self, agency_agent, factory)
 
-        self.agent = agency_agent
-        self.factory = factory
         self.task = None
         self.args = args
         self.kwargs = kwargs
@@ -83,70 +71,51 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def cancel_delayed_call(self, call_id):
         return self.agent.cancel_delayed_call(call_id)
 
-    ### IAgencyTask Methods ###
-
-    def initiate(self):
-        self.agent.journal_protocol_created(self.factory, self,
-                                            *self.args, **self.kwargs)
-        task = self.factory(self.agent.get_agent(), self)
-        self.agent.register_protocol(self)
-
-        self.task = task
-
-        self._set_state(TaskState.performing)
-
-        self._cancel_expiration_call()
-
-        if self.task.timeout:
-            timeout = time.future(self.task.timeout)
-            d = self._setup_expiration_call(
-                timeout, TaskState.expired, self._expired)
-
-        self.call_next(self._initiate, *self.args, **self.kwargs)
-
-        return task
-
-    ### IAgencyProtocolInternal Methods ###
-
-    def is_idle(self):
-        return not self.factory.busy
+    ### ILongRunningProtocol ###
 
     def cancel(self):
         if self.factory.busy:
             # Busy task cannot be canceled
             return
-        return self._call(self.task.cancel)
+        d = self.call_agent_side(self.task.cancel)
+        d.addBoth(self.finalize)
+        return d
+
+    ### IAgencyTask Methods ###
+
+    def initiate(self):
+        task = self.factory(self.agent.get_agent(), self)
+
+        self.task = task
+        self._set_state(TaskState.performing)
+
+        if self.task.timeout:
+            timeout = time.future(self.task.timeout)
+            self.set_timeout(timeout, TaskState.expired, self._expired)
+
+        self.call_agent_side(self._initiate, *self.args, **self.kwargs)
+
+        return task
+
+    ### IAgencyProtocolInternal Methods ###
 
     def get_agent_side(self):
         return self.task
 
-    def cleanup(self):
-        if self.factory and self.factory.timeout:
-            return self.expire_now()
-        #FIXME: calling expired anyway when no timeout is not the way
-        self.debug('Task which is expiring: %s, initiated with args: %r, '
-                   'kwargs: %r.', type(self.task).__name__, self.args,
-                   self.kwargs)
-        return self._call(self.task.expired)
-
-    @replay.named_side_effect('AgencyTask.terminate')
-    def finish(self, arg=None):
-        warnings.warn("AgencyTask.finish() is deprecated, "
-                      "please use AgencyTask.terminate()",
-                      DeprecationWarning, stacklevel=2)
-        self._completed(arg)
+    ### IAgencyTask ###
 
     @serialization.freeze_tag('AgencyTask.terminate')
     @replay.named_side_effect('AgencyTask.terminate')
     def terminate(self, arg=None):
-        self._completed(arg)
+        self._set_state(TaskState.completed)
+        self.finalize(arg)
 
     @replay.named_side_effect('AgencyTask.fail')
     def fail(self, fail):
         if isinstance(fail, Exception):
             fail = failure.Failure(fail)
         self._set_state(self.error_state)
-        self._terminate(fail)
+        self.finalize(fail)
 
     @replay.named_side_effect('AgencyTask.finished')
     def finished(self):
@@ -157,46 +126,27 @@ class AgencyTask(log.LogProxy, log.Logger, common.StateMachineMixin,
     def snapshot(self):
         return id(self)
 
-    ### Required by InitiatorMediumbase ###
-
-    def call_next(self, _method, *args, **kwargs):
-        return self.agent.call_next(_method, *args, **kwargs)
-
-    # Used by ExpirationCallsMixin
-
-    def _get_time(self):
-        return self.agent.get_time()
-
     ### Private Methods ###
 
     def _initiate(self, *args, **kwargs):
-        d = self._call(self.task.initiate, *args, **kwargs)
-        d.addCallback(self._completed)
-        return d
+        result = self.task.initiate(*args, **kwargs)
+        if isinstance(result, defer.Deferred):
+            result.addCallback(self._completed)
+            return result
+        self._completed(result)
 
     def _completed(self, arg):
         if arg != NOT_DONE_YET and self._cmp_state(TaskState.performing):
             self._set_state(TaskState.completed)
-            time.callLater(0, self._terminate, arg)
+            self.finalize(arg)
 
     def _expired(self):
-        error = self._create_expired_error("Timeout exceeded waiting "
-                                           "for task.initiate()")
+        error = self.create_expired_error("Timeout exceeded waiting "
+                                          "for task.initiate()")
         self._set_state(TaskState.expired)
-        d = self._call(self.task.expired)
-        d.addCallback(defer.drop_param, self._terminate, error)
+        d = self.call_agent_side(self.task.expired)
+        d.addCallback(defer.drop_param, self.finalize, error)
         return d
-
-    def _terminate(self, result):
-        if self._cmp_state(TaskState.performing):
-            self._set_state(TaskState.terminated)
-        common.ExpirationCallsMixin._terminate(self)
-
-        self.log("Unregistering task %s" % self.guid)
-        self.agent.unregister_protocol(self)
-
-        common.TransientInitiatorMediumBase._terminate(self, result)
-        return defer.succeed(self)
 
 
 @adapter.register(ITaskFactory, IAgencyInitiatorFactory)
@@ -205,6 +155,5 @@ class AgencyTaskFactory(protocols.BaseInitiatorFactory):
     protocol_factory = AgencyTask
 
     def __call__(self, agency_agent, *args, **kwargs):
-        # Dropping recipients
         return self.protocol_factory(agency_agent, self._factory,
                                      *args, **kwargs)

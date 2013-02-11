@@ -146,7 +146,7 @@ class PartnershipProtocol(BaseRequester):
 
 class Propose(BaseRequester):
 
-    timeout = 3
+    timeout = 6
     protocol_id = 'lets-pair-up'
 
     @replay.entry_point

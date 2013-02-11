@@ -268,7 +268,16 @@ class Connection(log.Logger, log.LogProxy):
     @serialization.freeze_tag('IDatabaseClient.delete_document')
     def delete_document(self, doc):
         assert isinstance(doc, document.Document), type(doc)
-        d = self._database.delete_doc(doc.doc_id, doc.rev)
+        body = {
+            "_id": doc.doc_id,
+            "_rev": doc.rev,
+            "_deleted": True,
+            ".type": unicode(doc.type_name)}
+        for field in type(doc)._fields:
+            if field.meta('keep_deleted'):
+                body[field.serialize_as] = getattr(doc, field.name)
+        serialized = self._serializer.convert(body)
+        d = self._database.save_doc(serialized, doc.doc_id)
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
@@ -297,10 +306,11 @@ class Connection(log.Logger, log.LogProxy):
                 self._cancel_listener(l_id)
 
     @serialization.freeze_tag('IDatabaseClient.query_view')
-    def query_view(self, factory, **options):
+    def query_view(self, factory, parse_results=True, **options):
         factory = IViewFactory(factory)
         d = self._database.query_view(factory, **options)
-        d.addCallback(self._parse_view_results, factory, options)
+        if parse_results:
+            d.addCallback(self._parse_view_results, factory, options)
         return d
 
     @serialization.freeze_tag('IDatabaseClient.disconnect')

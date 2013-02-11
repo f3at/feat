@@ -56,7 +56,7 @@ class IAgencyContractor(contracts.IContractPeer):
     def defect(cancellation):
         '''Cancels the granted job'''
 
-    def finalize(report):
+    def complete(report):
         '''Reports a completed job'''
 
     def update_manager_address(recipient):

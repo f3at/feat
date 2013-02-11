@@ -88,7 +88,7 @@ def view(effect_or_value):
     _annotate("view", effect_or_value)
 
 
-def attribute(name, value, getter=None, setter=None,
+def attribute(name, value, getter=None, setter=None, deleter=None,
               label=None, desc=None, meta=None):
     """
     Annotates a model attribute.
@@ -105,6 +105,8 @@ def attribute(name, value, getter=None, setter=None,
                    and returned;
                    see feat.models.call for effect information.
     @type setter: callable or None
+    @param deleter: an effect or None if the attribute cannot be deleted;
+    @type deleter: callable or None
     @param label: the attribute label or None.
     @type label: str or unicode or None
     @parama desc: the description of the attribute or None if not documented.
@@ -113,6 +115,7 @@ def attribute(name, value, getter=None, setter=None,
     @type meta: list of tuple
     """
     _annotate("attribute", name, value, getter=getter, setter=setter,
+              deleter=deleter,
               label=label, desc=desc, meta=meta)
 
 
@@ -855,13 +858,15 @@ class StaticChildrenMixin(object):
 
     @classmethod
     def annotate_attribute(cls, name, value_info, getter=None, setter=None,
-                           label=None, desc=None, meta=None, model_meta=None):
+                           deleter=None, label=None, desc=None, meta=None,
+                           model_meta=None):
         """@see: feat.models.model.attribute"""
         from feat.models import attribute
         name = _validate_str(name)
         attr_ident = cls._model_identity + "." + name
         attr_cls = attribute.MetaAttribute.new(attr_ident, value_info,
                                                getter=getter, setter=setter,
+                                               deleter=deleter,
                                                meta=model_meta)
         item = MetaModelItem.new(name, model=attr_cls,
                                  label=label, desc=desc, meta=meta)
@@ -1469,7 +1474,10 @@ class QueryItemsMixin(DynamicItemsMixin):
     _query_item = None
     _query_target = None
     _query_model = None
-    __query_set_factory = None
+
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        cls.__query_set_factory = None
 
     ### IQueryModel ###
 
@@ -1549,9 +1557,15 @@ class QueryItemsMixin(DynamicItemsMixin):
 
     @property
     def _query_set_factory(self):
-        if not self.__query_set_factory:
-            self.__query_set_factory = MetaQuerySetCollection.new(type(self))
-        return self.__query_set_factory
+        # This is done like this, because we can only create QuerySetCollection
+        # after all the annotations have been processed. The annotations and
+        # __class__init__() calls are processed in reverse-mro order, so it
+        # seems the only way to have the mixin code act after the annotation
+        # from descendands.
+        cls = type(self)
+        if not cls.__query_set_factory:
+            cls.__query_set_factory = MetaQuerySetCollection.new(cls)
+        return cls.__query_set_factory
 
     ### annotations ###
 

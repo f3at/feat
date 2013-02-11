@@ -114,7 +114,7 @@ class ProtoFiberCancelTest(common.SimulationTest):
         requester = agent.initiate_protocol(LateRequester, recip)
 
         d = requester.notify_finish()
-        self.assertFailure(d, protocols.ProtocolExpired)
+        self.assertFailure(d, protocols.ProtocolFailed)
         yield d
 
         yield agent.callback_event("late event", None)

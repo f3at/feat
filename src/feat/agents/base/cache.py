@@ -29,7 +29,7 @@ from twisted.python import failure
 from zope.interface import Interface, implements
 
 from feat.agents.base import replay, notifier
-from feat.database import view
+
 from feat.common import log, fiber, defer
 from feat.agents.application import feat
 
@@ -87,15 +87,6 @@ class ResignFromModifying(Exception):
     pass
 
 
-@feat.register_view
-class DocumentDeletions(view.BaseView):
-
-    name = 'deletions'
-
-    def filter(doc, request):
-        return doc.get('_deleted', False)
-
-
 @feat.register_restorator
 class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
     """
@@ -142,20 +133,11 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         f.add_callback(fiber.drop_param, state.agent.register_change_listener,
                        state.view_factory, self._document_changed,
                        **state.filter_params)
-        # When a document gets deleted the filter function is given the
-        # json to evaluate. Unfortunately before doing this CouchDB removes
-        # all the information except the '_id', '_rev' and '_deleted keys'.
-        # Normal view functions will not make any use of the document like
-        # this. For this reason the document cache uses separate channel to
-        # receive the notification about the document deletions.
-        f.add_callback(fiber.drop_param, state.agent.register_change_listener,
-                       DocumentDeletions, self._document_changed)
         f.add_callback(fiber.drop_param, self.get_document_ids)
         return f
 
     @replay.mutable
     def cleanup(self, state):
-        state.agent.cancel_change_listener(DocumentDeletions)
         state.agent.cancel_change_listener(state.view_factory)
 
     @replay.immutable

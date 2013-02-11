@@ -318,9 +318,14 @@ class ModelWriter(log.Logger):
         value = ""
         get_action = yield model.fetch_action('get')
         if get_action is not None:
-            d = get_action.perform()
-            d.addErrback(self._get_action_errback, model, context)
-            value = yield d
+            try:
+                value = yield get_action.perform()
+            except Exception as e:
+                self.debug('Failed fetching value for model %r, '
+                           'context path is: %r, exception: %r',
+                           model, context.names, e)
+                defer.returnValue("")
+
             if get_action.result_info.value_type is ValueTypes.binary:
                 value = "%d bytes" % len(value)
             if supercontext and "owner" in links:

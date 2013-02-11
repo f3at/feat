@@ -19,16 +19,13 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-
-import sys
-
 from zope.interface import implements
 
 from feat.common import defer, annotate
-from feat.models import model, action
-from feat.models import utils, meta as models_meta
+from feat.models import model, action, utils, effect, value as value_module
 
-from feat.models.interface import *
+from feat.models.interface import ActionCategories, IAttribute, NotSupported
+from feat.models.interface import IValueInfo
 
 
 def value(value_info):
@@ -38,7 +35,8 @@ def value(value_info):
 class MetaAttribute(type(model.AbstractModel)):
 
     @staticmethod
-    def new(identity, value_info, getter=None, setter=None, meta=None):
+    def new(identity, value_info, getter=None, setter=None,
+            deleter=None, meta=None):
         cls_name = utils.mk_class_name(identity, "Attribute")
         cls = MetaAttribute(cls_name, (_DynAttribute, ), {"__slots__": ()})
         cls.annotate_identity(identity)
@@ -71,6 +69,18 @@ class MetaAttribute(type(model.AbstractModel)):
                                            is_idempotent=True)
 
             cls.annotate_action(u"set", Action)
+
+        if deleter is not None:
+
+            Action = action.MetaAction.new('delete.' + identity,
+                                           ActionCategories.delete,
+                                           effects=[
+                                               deleter,
+                                               effect.static_value('')],
+                                           result_info=value_module.String(),
+                                           is_idempotent=True)
+            cls.annotate_action(u"del", Action)
+
 
         return cls
 

@@ -82,29 +82,51 @@ class Schemes(enum.Enum):
 
 class Status(enum.Enum):
 
-    OK = http.OK
-    CREATED = http.CREATED
-    ACCEPTED = http.ACCEPTED
-    NO_CONTENT = http.NO_CONTENT
-    MOVED_PERMANENTLY = http.MOVED_PERMANENTLY
-    FOUND = http.FOUND
-    NOT_MODIFIED = http.NOT_MODIFIED
-    BAD_REQUEST = http.BAD_REQUEST
-    UNAUTHORIZED = http.UNAUTHORIZED
-    FORBIDDEN = http.FORBIDDEN
-    NOT_FOUND = http.NOT_FOUND
-    NOT_ALLOWED = http.NOT_ALLOWED
-    NOT_ACCEPTABLE = http.NOT_ACCEPTABLE
-    REQUEST_TIMEOUT = http.REQUEST_TIMEOUT
-    CONFLICT = http.CONFLICT
-    GONE = http.GONE
-    UNSUPPORTED_MEDIA_TYPE = http.UNSUPPORTED_MEDIA_TYPE
+    OK = 200
+    CREATED = 201
+    ACCEPTED = 202
+    NON_AUTHORITATIVE_INFORMATION = 203
+    NO_CONTENT = 204
+    RESET_CONTENT = 205
+    PARTIAL_CONTENT = 206
+    MULTI_STATUS = 207
+
+    MULTIPLE_CHOICE = 300
+    MOVED_PERMANENTLY = 301
+    FOUND = 302
+    SEE_OTHER = 303
+    NOT_MODIFIED = 304
+    USE_PROXY = 305
+    TEMPORARY_REDIRECT = 307
+
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    PAYMENT_REQUIRED = 402
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    NOT_ALLOWED = 405
+    NOT_ACCEPTABLE = 406
+    PROXY_AUTH_REQUIRED = 407
+    REQUEST_TIMEOUT = 408
+    CONFLICT = 409
+    GONE = 410
+    LENGTH_REQUIRED = 411
+    PRECONDITION_FAILED = 412
+    REQUEST_ENTITY_TOO_LARGE = 413
+    REQUEST_URI_TOO_LONG = 414
+    UNSUPPORTED_MEDIA_TYPE = 415
+    REQUESTED_RANGE_NOT_SATISFIABLE = 416
+    EXPECTATION_FAILED = 417
     UNPROCESSABLE_ENTITY = 422
-    INTERNAL_SERVER_ERROR = http.INTERNAL_SERVER_ERROR
-    NOT_IMPLEMENTED = http.NOT_IMPLEMENTED
-    BAD_GATEWAY = http.BAD_GATEWAY
-    SERVICE_UNAVAILABLE = http.SERVICE_UNAVAILABLE
-    GATEWAY_TIMEOUT = http.GATEWAY_TIMEOUT
+
+    INTERNAL_SERVER_ERROR = 500
+    NOT_IMPLEMENTED = 501
+    BAD_GATEWAY = 502
+    SERVICE_UNAVAILABLE = 503
+    GATEWAY_TIMEOUT = 504
+    HTTP_VERSION_NOT_SUPPORTED = 505
+    INSUFFICIENT_STORAGE_SPACE = 507
+    NOT_EXTENDED = 510
 
     def is_error(self):
         return self >= 400
@@ -246,8 +268,6 @@ class IExpirationPolicy(Interface):
 
 class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
 
-    log_category = "http-parser"
-
     max_headers = 20
 
     STATE_REQLINE = 0
@@ -329,7 +349,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
     def connectionMade(self):
         peer = self.transport.getPeer()
         self.log_name = "%s:%s" % (peer.host, peer.port)
-        self.debug('Connection made')
+        self.log('Connection made')
         self.process_setup()
         self.reset_timeout("firstline")
         self.onConnectionMade()
@@ -358,7 +378,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._handle_received(data)
 
     def connectionLost(self, reason):
-        self.debug('Connection lost: %s', reason.getErrorMessage())
+        self.log('Connection lost: %s', reason.getErrorMessage())
 
         self.cancel_all_timeouts()
 
@@ -373,6 +393,10 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._reset()
         self.process_cleanup(reason)
 
+
+        # cancel timeouts again, because in case of no body
+        # decoder we would have an inactivity timeout running now
+        self.cancel_all_timeouts()
         self.onConnectionLost(reason)
 
     ### private ###
@@ -471,7 +495,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
             self.process_set_header(header, data)
 
     def _got_all_headers(self):
-        self.debug("All headers received")
+        self.log("All headers received")
         assert self._state == self.STATE_HEADERS
 
         self.cancel_timeout("headers")
@@ -491,8 +515,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self.setRawMode()
 
     def _got_all_content(self, extra=''):
-        self.debug("All content received")
-
+        self.log("All content received")
         self.cancel_timeout("idle")
         self.reset_timeout("inactivity")
 

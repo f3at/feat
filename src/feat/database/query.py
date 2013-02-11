@@ -32,12 +32,12 @@ class Cache(log.Logger):
     ### IQueryCache ###
 
     def empty(self):
-        self.debug("Emptying query cache.")
+        self.log("Emptying query cache.")
         self._cache.clear()
 
     def query(self, connection, factory, subquery):
-        self.debug("query() called for %s view and subquery %r", factory.name,
-                   subquery)
+        self.log("query() called for %s view and subquery %r", factory.name,
+                 subquery)
         d = connection.get_update_seq()
         d.addCallback(defer.inject_param, 3,
             self._got_seq_num, connection, factory, subquery)
@@ -52,6 +52,16 @@ class Cache(log.Logger):
                 size += entry.size
         return size
 
+    def on_document_deleted(self, doc_id, rev, deleted, own_change):
+        for cache in self._cache.itervalues():
+            for entry in cache.itervalues():
+                try:
+                    entry.entries.remove(doc_id)
+                    self.debug("Removed %s from cache results, because it was"
+                               " deleted", doc_id)
+                except:
+                    pass
+
     ### private, continuations of query process ###
 
     def _got_seq_num(self, connection, factory, subquery, seq_num):
@@ -61,8 +71,8 @@ class Cache(log.Logger):
                 return self._fetch_subquery(
                     connection, factory, subquery, seq_num)
             elif entry.seq_num == seq_num:
-                self.debug("Query served from the cache hit, %d rows",
-                           len(entry.entries))
+                self.log("Query served from the cache hit, %d rows",
+                         len(entry.entries))
                 return entry.entries
             else:
                 d = connection.get_changes(factory, limit=2,
@@ -84,8 +94,8 @@ class Cache(log.Logger):
         return d
 
     def _cache_response(self, entries, factory, subquery, seq_num):
-        self.debug("Caching response for %r at seq_num: %d, %d rows",
-                   subquery, seq_num, len(entries))
+        self.log("Caching response for %r at seq_num: %d, %d rows",
+                 subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
         self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
@@ -94,7 +104,7 @@ class Cache(log.Logger):
     def _analyze_changes(self, connection, factory, subquery, entry, changes,
                          seq_num):
         if changes['results']:
-            self.debug("View %s has changed, expiring cache.", factory.name)
+            self.log("View %s has changed, expiring cache.", factory.name)
             if factory.name in self._cache: # this is not to fail on
                                             # concurrent checks expiring cache
                 self._cache[factory.name].clear()
@@ -103,8 +113,8 @@ class Cache(log.Logger):
                           self._cache_response, factory, subquery, seq_num)
             return d
         else:
-            self.debug("View %s has not changed, marking cached fragments as "
-                       "fresh. %d rows", factory.name, len(entry.entries))
+            self.log("View %s has not changed, marking cached fragments as "
+                     "fresh. %d rows", factory.name, len(entry.entries))
             result = entry.entries
             if factory.name in self._cache:
                 for entry in self._cache[factory.name].itervalues():
@@ -151,6 +161,7 @@ class QueryViewMeta(type(view.BaseView)):
     def __init__(cls, name, bases, dct):
         cls.HANDLERS = HANDLERS = dict()
         cls.DOCUMENT_TYPES = DOCUMENT_TYPES = list()
+        cls._fields = list()
 
         # map() and filter() function have to be generated separetely for
         # each subclass, because they will have different constants attached
@@ -188,6 +199,24 @@ class QueryViewMeta(type(view.BaseView)):
         cls.attach_constant(
             cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
 
+    ### IQueryViewFactory ###
+
+    @property
+    def fields(cls):
+        return list(cls._fields)
+
+    def has_field(cls, name):
+        return name in cls.HANDLERS
+
+    ### annotatations ###
+
+    def _annotate_field(cls, name, handler):
+        cls._fields.append(name)
+        cls.HANDLERS[name] = handler
+
+    def _annotate_document_types(cls, types):
+        cls.DOCUMENT_TYPES.extend(types)
+
 
 class QueryView(view.BaseView):
 
@@ -198,22 +227,6 @@ class QueryView(view.BaseView):
     @classmethod
     def parse_view_result(cls, rows, reduced, include_docs):
         return [x[2] for x in rows]
-
-    ### IQueryViewFactory ###
-
-    @classmethod
-    def has_field(cls, name):
-        return name in cls.HANDLERS
-
-    ### annotatations ###
-
-    @classmethod
-    def _annotate_field(cls, name, handler):
-        cls.HANDLERS[name] = handler
-
-    @classmethod
-    def _annotate_document_types(cls, types):
-        cls.DOCUMENT_TYPES.extend(types)
 
 
 def field(name, extract=None):
@@ -296,9 +309,11 @@ class Query(serialization.Serializable):
         self.parts = []
         self.operators = []
         if len(parts) == 0:
-            raise ValueError("Empty query?")
+            # this is to allow querying with empty query
+            field = factory.fields[0]
+            parts = [Condition(field, Evaluator.none, None)]
 
-        for part, index in zip(parts, range(len(parts))):
+        for index, part in enumerate(parts):
             if index % 2 == 0:
                 if not IPlanBuilder.providedBy(part):
                     raise ValueError("Element at index %d should be a Query or"
@@ -399,7 +414,31 @@ def count(connection, query):
     defer.returnValue(len(temp))
 
 
+def values(connection, query, field):
+    defers = []
+    if not query.factory.has_field(field):
+        raise ValueError("%r doesn't have %s field defined" %
+                         (query.factory, field))
+    defers.append(connection.query_view(
+        query.factory, startkey=(field, ),
+        endkey=(field, {}), parse_results=False))
+    defers.append(select_ids(connection, query))
+    d = defer.DeferredList(defers)
+    d.addCallback(_parse_values_response)
+    return d
+
+
 ### private ###
+
+
+def _parse_values_response(results):
+    (s1, rows), (s2, ids) = results
+    if not s1:
+        return rows
+    if not s2:
+        return ids
+
+    return set(x[0][1] for x in rows if x[2] in ids)
 
 
 @defer.inlineCallbacks

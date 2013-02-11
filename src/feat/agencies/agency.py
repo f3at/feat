@@ -26,7 +26,6 @@
 import copy
 import uuid
 import weakref
-import warnings
 import socket
 
 # Import external project modules
@@ -34,7 +33,7 @@ from twisted.python.failure import Failure
 from zope.interface import implements
 
 # Import feat modules
-from feat.agencies import common, dependency, retrying, periodic, messaging
+from feat.agencies import common, dependency, retrying, messaging
 from feat.agencies import recipient
 from feat.agents.base import replay
 from feat import applications
@@ -239,10 +238,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         '''called as part of SIGTERM handler.'''
 
         def generate_body():
-            d = defer.succeed(None)
-            # run IAgent.killed() and wait for the protocols to finish the job
-            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
-            return d
+            return self.agent.on_agent_killed()
 
         return self._terminate_procedure(generate_body)
 
@@ -366,42 +362,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     def initiate_protocol(self, factory, *args, **kwargs):
         return self._initiate_protocol(factory, args, kwargs)
 
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_protocol(self, factory, recipients=None,
-                          max_retries=None, initial_delay=1,
-                          max_delay=None, args=None, kwargs=None):
-        #FIXME: this is not needed in agency side API, could be in agent
-        Factory = retrying.RetryingProtocolFactory
-        factory = Factory(factory, max_retries=max_retries,
-                          initial_delay=initial_delay, max_delay=max_delay)
-        if recipients is not None:
-            args = (recipients, ) + args if args else (recipients, )
-        return self._initiate_protocol(factory, args, kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.periodic_protocol')
-    @replay.named_side_effect('AgencyAgent.periodic_protocol')
-    def periodic_protocol(self, factory, period, *args, **kwargs):
-        #FIXME: this is not needed in agency side API, could be in agent
-        factory = periodic.PeriodicProtocolFactory(factory, period)
-        return self._initiate_protocol(factory, args, kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.initiate_protocol')
-    @replay.named_side_effect('AgencyAgent.initiate_protocol')
-    def initiate_task(self, *args, **kwargs):
-        warnings.warn("initiate_task() is deprecated, "
-                      "please use initiate_protocol()",
-                      DeprecationWarning)
-        return self.initiate_protocol(*args, **kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.retrying_protocol')
-    @replay.named_side_effect('AgencyAgent.retrying_protocol')
-    def retrying_task(self, *args, **kwargs):
-        warnings.warn("retrying_task() is deprecated, "
-                      "please use retrying_protocol()",
-                      DeprecationWarning)
-        return self.retrying_protocol(*args, **kwargs)
-
     @serialization.freeze_tag('AgencyAgency.save_document')
     def save_document(self, document):
         return self._database.save_document(document)
@@ -454,10 +414,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         '''Kill the agent without notifying anybody.'''
 
         def generate_body():
-            d = defer.succeed(None)
-            # run IAgent.killed() and wait for the listeners to finish the job
-            d.addBoth(self._run_and_wait, self.agent.on_agent_killed)
-            return d
+            return self.agent.on_agent_killed()
 
         return self._terminate_procedure(generate_body)
 
@@ -568,6 +525,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         else:
             self.error('Tried to unregister protocol with guid: %r, '
                         'but not found!', protocol.guid)
+        if not self._protocols:
+            self._notifier.callback('protocols_finished', None)
 
     def send_msg(self, recipients, msg):
         assert msg.expiration_time is not None
@@ -609,18 +568,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return t.render(iter(totals, allocated))
 
     ### Protected Methods ###
-
-    def wait_for_protocols_finish(self):
-        '''Used by tests.'''
-
-        def wait_for_protocol(protocol):
-            d = protocol.notify_finish()
-            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
-            return d
-
-        a = [interest.wait_finished() for interest in self._iter_interests()]
-        b = [wait_for_protocol(l) for l in self._protocols.itervalues()]
-        return defer.DeferredList(a + b)
 
     def is_idle(self):
         return (self.is_ready()
@@ -705,10 +652,22 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         factory = IInitiatorFactory(factory)
         medium_factory = IAgencyInitiatorFactory(factory)
         medium = medium_factory(self, *args, **kwargs)
+
+        done = medium.notify_finish()
+        done.addErrback(Failure.trap, ProtocolFailed)
+
+        if IAgencyProtocolInternal.providedBy(medium):
+            self.register_protocol(medium)
+            self.journal_protocol_created(factory, medium, args, kwargs)
+            done.addBoth(defer.drop_param, self.unregister_protocol, medium)
+
         if ILongRunningProtocol.providedBy(medium):
+            # This interface is implemented by the simpler protocols
+            # (example: RetryingProtocol).
             self._long_running_protocols.append(medium)
             cb = lambda _: self._long_running_protocols.remove(medium)
-            medium.notify_finish().addBoth(cb)
+            done.addBoth(cb)
+
         return medium.initiate()
 
     def _subscribe_for_descriptor_changes(self):
@@ -829,10 +788,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.log('Begging termination procedure, storing snapshot.')
         self.check_if_should_snapshot(force=True)
 
-        # Revoke all interests
-        [self.revoke_interest(i.agent_factory)
-         for i in list(self._iter_interests())]
-
         d = defer.succeed(None)
 
         # Cancel all long running protocols
@@ -849,6 +804,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         d.addErrback(self._handle_failure)
         # Run code specific to the given shutdown
         d.addBoth(defer.drop_param, body)
+        d.addErrback(self._handle_failure)
+        d.addBoth(self._kill_all_protocols)
         d.addErrback(self._handle_failure)
         # Tell the agency we are no more
         d.addBoth(defer.drop_param, self._unregister_from_agency)
@@ -890,24 +847,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         def generate_body():
             d = defer.succeed(None)
-            # Run IAgent.shutdown() and wait for
-            # the protocols to finish the job
-            d.addBoth(self._run_and_wait, self.agent.shutdown_agent)
+            d.addBoth(defer.drop_param, self.agent.shutdown_agent)
             # Delete the descriptor
             d.addBoth(lambda _: self.delete_document(self._descriptor))
-            # TODO: delete the queue
             return d
 
         return self._terminate_procedure(generate_body)
-
-    def _run_and_wait(self, _, method, *args, **kwargs):
-        '''
-        Run a agent-side method and wait for all the protocols
-        to finish processing.
-        '''
-        d = defer.maybeDeferred(method, *args, **kwargs)
-        d.addBoth(defer.drop_param, self.wait_for_protocols_finish)
-        return d
 
     def _iter_interests(self):
         return (interest
@@ -916,14 +861,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _kill_all_protocols(self, *_):
 
-        def expire_one(prot):
-            d = defer.succeed(None)
-            d.addCallback(defer.drop_param, prot.cleanup)
-            d.addErrback(Failure.trap, ProtocolFailed, error.FeatError)
-            return d
+        # Revoke all interests
+        for i in list(self._iter_interests()):
+            self.revoke_interest(i.agent_factory)
 
-        d = defer.DeferredList([expire_one(x)
-                                for x in self._protocols.values()])
+        if not self._protocols:
+            return defer.succeed(None)
+
+        d = self._notifier.wait('protocols_finished')
+
+        for x in self._protocols.values():
+            x.cleanup()
         return d
 
     def _call_initiate(self, **kwargs):

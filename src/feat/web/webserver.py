@@ -149,6 +149,8 @@ class IWebRequest(Interface):
     accepted_languages = Attribute("")
     length = Attribute("")
     context = Attribute("")
+    cancelled = Attribute("C{bool} set if the underlying connection was "
+                          "closed before the response has been rendered ")
     received = Attribute("C{float} epoch time this request was parsed")
 
     def get_header(key):
@@ -868,7 +870,12 @@ class Server(log.LogProxy, log.Logger):
             if isinstance(d, defer.Deferred):
                 # Asynchronous rendering
                 d.addErrback(self._emergency_termination, request, response)
-                d.addBoth(defer.bridge_param, response._finish)
+                d.addCallback(defer.drop_param, response._finish)
+                # # _emergency_termination bridges through the CancelledError
+                # # so that we don't try to finalize the response
+                # d.addErrback(Failure.trap, defer.CancelledError)
+                finished = request.wait_finished()
+                finished.addErrback(defer.drop_param, d.cancel)
             else:
                 response._finish()
 
@@ -1184,10 +1191,16 @@ class Server(log.LogProxy, log.Logger):
             # but it would be hard at this point given we don't know what
             # triggered this exception.
             msg = "Failed to encode response to accepted charset"
-            error.handle_failure(self, failure, msg)
+            self.debug(msg)
             if response.can_update_headers:
                 response.set_status(http.Status.NOT_ACCEPTABLE)
 
+        elif isinstance(exception, defer.CancelledError):
+            self.debug("Request processing was cancelled. This is a normal "
+                       "behaviour when the underlying connection is closed "
+                       "by the client.")
+            request.cancelled = True
+            return None
         else:
 
             msg = "Exception during HTTP resource rendering"
@@ -1234,6 +1247,12 @@ class Server(log.LogProxy, log.Logger):
         return self._terminate(request, response)
 
     def _emergency_termination(self, failure, request, response):
+
+        if failure.check(defer.CancelledError):
+            # This happens when the request is broken before the handler
+            # renders it. This case is handled in _prepare_error().
+            return failure
+
         try:
             msg = "Unrecovered Failure During Web Request"
             error.handle_failure(self, failure, msg)
@@ -1324,6 +1343,7 @@ class Request(log.Logger, log.LogProxy):
 
         self._context = {} # Black box
 
+        self._cancelled = False
         self._reading = False
         self._objects = []
 
@@ -1431,6 +1451,14 @@ class Request(log.Logger, log.LogProxy):
     def context(self):
         return self._context
 
+    def _get_cancelled(self):
+        return self._cancelled
+
+    def _set_cancelled(self, value):
+        self._cancelled = True
+
+    cancelled = property(_get_cancelled, _set_cancelled)
+
     def get_header(self, key):
         header = self._ref.getHeader(key)
         if header and isinstance(header, str):
@@ -1461,7 +1489,7 @@ class Request(log.Logger, log.LogProxy):
         self._ref.content.seek(0)
 
     def wait_finished(self):
-        d = self._req.notifyFinish()
+        d = self._ref.notifyFinish()
         d.addCallback(defer.override_result, self)
         return d
 
@@ -1569,6 +1597,7 @@ class Response(log.Logger):
         self._objects = []
         self._finished = None
         self._bytes = 0
+        self._cancelled = False
 
     ### IWebResponse ###
 
@@ -1632,7 +1661,6 @@ class Response(log.Logger):
             self.write(data)
 
     def set_status(self, code, message=None):
-        self._request.debug("Setting response code: %s", code)
         self._check_header_not_sent()
         self._request._ref.setResponseCode(int(code))
 
@@ -1823,7 +1851,12 @@ class Response(log.Logger):
             self._objects = []
 
     def _finish(self):
-        self._request.debug("Finishing the request.")
+        if self._request.cancelled:
+            return
+
+        status = http.Status[self._request._ref.code].name
+        self._request.debug("Finishing the request. Status: %s", status)
+
         self._finished = time.time()
         try:
             if self._cache is not None:

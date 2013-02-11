@@ -385,6 +385,42 @@ class TestExpQueue(common.TestCase):
         expected.sort()
         self.assertEqual(values, expected)
 
+    def testOnExpireCallback(self):
+
+        class Listener(object):
+
+            def on_expire(self, element):
+                self.expired.append(element)
+
+            @property
+            def expired(self):
+                if not hasattr(self, '_expired'):
+                    self._expired = list()
+                return self._expired
+
+        listener = Listener()
+
+        t = DummyTimeProvider(0)
+        q = ExpQueue(t, on_expire=listener.on_expire)
+        q.add("spam", 10)
+        q.add("bacon", 20)
+        q.add("eggs", 30)
+        q.add("beans", 23)
+        self.check_iterator(iter(q), ["spam", "bacon", "beans", "eggs"])
+        q.pack()
+        self.assertEqual([], listener.expired)
+
+        t.time += 15
+        self.check_iterator(iter(q), ["bacon", "beans", "eggs"])
+        q.pack()
+        self.assertEqual(["spam"], listener.expired)
+
+        t.time += 10
+        eggs = q.pop()
+        self.assertEqual('eggs', eggs)
+        self.assertEqual(["spam", "bacon", "beans"], listener.expired)
+        self.check_iterator(iter(q), [])
+
     def testBasicOperations(self):
         q = ExpQueue(self)
         self.assertRaises(Empty, q.pop)

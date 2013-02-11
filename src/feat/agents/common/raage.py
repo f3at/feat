@@ -20,7 +20,7 @@
 
 # Headers in this file shall remain intact.
 from feat.agents.base import manager, replay, descriptor
-from feat.agencies import message
+from feat.agencies import message, retrying
 from feat.agents.application import feat
 from feat.common import error, fiber
 
@@ -54,9 +54,10 @@ def retrying_allocate_resource(agent, resources, shard=None,
         raise AllocationFailedError(resources, cause=f)
 
     f = discover(agent, shard)
-    f.add_callback(fiber.inject_param, 1, agent.retrying_protocol,
-        AllocationManager, max_retries=max_retries,
-        args=(resources, categories, max_distance, agent_id, ))
+    factory = retrying.RetryingProtocolFactory(AllocationManager,
+                                               max_retries=max_retries)
+    f.add_callback(fiber.inject_param, 1, agent.initiate_protocol,
+                   factory, resources, categories, max_distance, agent_id)
     f.add_callback(fiber.call_param, 'notify_finish')
     f.add_errback(fiber.raise_error, AllocationFailedError, resources)
     return f

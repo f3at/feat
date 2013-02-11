@@ -97,7 +97,7 @@ class CheckInContractor(contractor.NestingContractor):
 
     @replay.journaled
     def _finalize(self, state):
-        state.medium.finalize(message.FinalReport())
+        state.medium.complete(message.FinalReport())
 
 
 class AgentMigrationBase(object):

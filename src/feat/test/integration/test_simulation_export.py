@@ -193,6 +193,7 @@ class ExportTest(common.SimulationTest, Common):
         self.assertEqual(1, len(migration.get_steps()))
         agents = yield self._get_agents_at(self.host2)
         self.assertEqual(3, len(agents))
+        yield self.wait_for_idle(4)
         for agent in agents:
             self.assertFalse(agent.is_migrating())
 

@@ -193,6 +193,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
         iterator = (self._perform_map(doc, factory)
                     for doc in self._iterdocs())
+        # In erlang ordering of objects is different than in python.
+        # Empty dict ({}) is the "biggest" value, by convetion its used
+        # to denote the end of the range. In python {} < str, so we substitute
+        # {} with '~'
+        for keyname in ('startkey', 'endkey'):
+            if keyname in options and isinstance(options[keyname], tuple):
+                options[keyname] = tuple(x if x != {} else "~"
+                                         for x in options[keyname])
         d = defer.succeed(iterator)
         d.addCallback(self._flatten, **options)
         if use_reduce:

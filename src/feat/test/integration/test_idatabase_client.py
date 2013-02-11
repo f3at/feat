@@ -23,6 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
 import operator
+import os
 
 from twisted.trial.unittest import SkipTest
 
@@ -35,13 +36,13 @@ except ImportError as e:
 from feat.database import emu, view, document, query
 from feat.process import couchdb
 from feat.process.base import DependencyError
-from feat.common import serialization, defer
+from feat.common import serialization, defer, error
 from feat.agencies.common import ConnectionState
 
 from . import common
 from feat.test.common import attr, Mock
 
-from feat.database.interface import ConflictError, NotFoundError
+from feat.database.interface import ConflictError, NotFoundError, DatabaseError
 from feat.database.interface import NotConnectedError, ResignFromModifying
 
 
@@ -567,7 +568,6 @@ class TestCase(object):
 
         yield self.connection.changes_listener(FilteringView, self.change_cb,
                                                field='value1')
-
         self.changes = list()
         my_doc = ViewDocument(field=u'value1')
         my_doc = yield self.connection.save_document(my_doc)
@@ -581,12 +581,15 @@ class TestCase(object):
         other_connection = self.database.get_connection()
         yield other_connection.changes_listener(FilteringView, self.change_cb,
                                                field='value2')
+
         my_doc2 = ViewDocument(field=u'value2')
         my_doc2 = yield self.connection.save_document(my_doc2)
+
         yield self.wait_for(self._len_changes(1), 2, freq=0.01)
         doc_id, rev, deleted, own_change = self.changes.pop()
 
         yield self.connection.disconnect()
+
         my_doc.value += 1
         my_doc2.value += 1
         yield other_connection.save_document(my_doc)
@@ -674,8 +677,8 @@ class TestCase(object):
     @defer.inlineCallbacks
     def testUsingQueryView(self):
         views = (QueryView, )
-        design_doc = view.DesignDocument.generate_from_views(views)[0]
-        yield self.connection.save_document(design_doc)
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
 
         for x in range(20):
             if x % 2 == 0:
@@ -710,6 +713,33 @@ class TestCase(object):
         yield self._query_test([13, 11, 9, 7, 5], q, O.AND, c4,
                                sorting=[('field1', D.DESC)])
         yield self._query_test([5, 7, 9], c1, O.AND, c4, O.AND, q)
+
+        yield self._query_values('field1', set(range(20)))
+        yield self._query_values('field2', set(range(10)))
+        yield self._query_values('field3', set(['A', 'B']))
+        d = self._query_values('unknown', set(['A', 'B']))
+        self.assertFailure(d, ValueError)
+        yield d
+
+    @defer.inlineCallbacks
+    def testQueryViewDeletedDocs(self):
+        views = (QueryView, )
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
+        doc = yield self.connection.save_document(
+            QueryDoc(field1=1, field2=1, field3=u"A"))
+        yield self._query_test([1], query.Condition(
+            'field1', query.Evaluator.equals, 1))
+        yield self.connection.delete_document(doc)
+        yield common.delay(None, 0.1)
+        yield self._query_test([], query.Condition(
+            'field1', query.Evaluator.equals, 1))
+
+    @defer.inlineCallbacks
+    def _query_values(self, field, expected):
+        values = yield query.values(self.connection,
+                                    query.Query(QueryView), field)
+        self.assertEqual(expected, values)
 
     @defer.inlineCallbacks
     def _query_test(self, result, *parts, **kwargs):
@@ -780,6 +810,15 @@ class PaisleySpecific(object):
         self.database.add_reconnected_cb(mock.on_connect)
         return mock
 
+    def testFilteredChanges404(self):
+
+        def listener(doc_id, rev, deleted, own_change):
+            pass
+
+        d = self.connection.changes_listener(view.DocumentDeletions, listener)
+        self.assertFailure(d, NotFoundError)
+        return d
+
     @defer.inlineCallbacks
     def testGettingDocsWhileDisconnected(self):
         doc = DummyDocument(field=u'sth')
@@ -805,6 +844,7 @@ class PaisleySpecific(object):
         yield self.process.terminate(keep_workdir=True)
         yield self.database.wait_for_state(ConnectionState.disconnected)
         yield common.delay(None, 0.1)
+
         self.assertCalled(mock, 'on_disconnect', times=1)
 
         yield self.process.restart()
@@ -826,6 +866,48 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
         common.IntegrationTest.setUp(self)
         self.database = emu.Database()
         self.connection = self.database.get_connection()
+
+
+class RemoteDatabaseTest(common.IntegrationTest, TestCase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield common.IntegrationTest.setUp(self)
+        if 'TEST_COUCHDB' not in os.environ:
+            raise SkipTest("This test case can be used to test the driver \n"
+                           "against the couchdb/bigcouch instance which is \n"
+                           "not started/stopped by the test case. \n"
+                           "To use it you need to set the TEST_COUCHDB \n"
+                           "environment variable to host:port, for example: \n"
+                           "export TEST_COUCHDB=localhost:15984")
+        try:
+            host, port = os.environ['TEST_COUCHDB'].split(":")
+            port = int(port)
+        except:
+            raise SkipTest("Invalid value for TEST_COUCHDB environment\n"
+                           "variable: %r. Valid setting would be: \n"
+                           "export TEST_COUCHDB=localhost:15984" %
+                           (os.environ['TEST_COUCHDB'], ))
+        self.database = driver.Database(host, port,
+                                        self._testMethodName.lower())
+        self.connection = self.database.get_connection()
+        try:
+            yield self.database.create_db()
+        except DatabaseError:
+            yield self.database.delete_db()
+            yield self.database.create_db()
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        if 'KEEP_TEST_COUCHDB' not in os.environ:
+            try:
+                yield self.database.delete_db()
+            except Exception as e:
+                error.handle_exception(self, e,
+                                       "Failed to delete the test database")
+        self.connection.disconnect()
+        self.database.disconnect()
+        yield common.IntegrationTest.tearDown(self)
 
 
 @attr('slow')

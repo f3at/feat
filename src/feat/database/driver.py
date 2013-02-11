@@ -19,36 +19,99 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import urllib
-import os
-import sys
+from urllib import urlencode, quote
 
 from zope.interface import implements
-from twisted.web import error as web_error
-from twisted.internet import error
-from twisted.web._newclient import ResponseDone
+from twisted.internet import error as tw_error
 from twisted.python import failure
+from twisted.protocols import basic
+from twisted.web.http import _DataLoss as DataLoss
 
 from feat.database.client import Connection, ChangeListener
-from feat.common import log, defer, time
+from feat.common import log, defer, time, error
 from feat.agencies import common
+from feat.web import http, httpclient
+from feat import hacks
+
+json = hacks.import_json()
 
 from feat.database.interface import IDatabaseDriver, IDbConnectionFactory
 from feat.database.interface import NotFoundError, NotConnectedError
-from feat.database.interface import ConflictError, IViewFactory
+from feat.database.interface import ConflictError, IViewFactory, DatabaseError
 from feat.database.interface import IAttachmentPrivate
-
-from feat import extern
-# Add feat/extern/paisley to the load path
-sys.path.insert(0, os.path.join(extern.__path__[0], 'paisley'))
-
-from paisley.changes import ChangeNotifier
-from paisley.client import CouchDB, json as pjson
 
 
 DEFAULT_DB_HOST = "localhost"
 DEFAULT_DB_PORT = 5985
 DEFAULT_DB_NAME = "feat"
+
+
+class ChangeReceiver(basic.LineReceiver):
+
+    delimiter = '\n'
+
+    def __init__(self, notifier):
+        self._notifier = notifier
+        self._deferred = defer.Deferred()
+
+        self.status = None
+        self.headers = {}
+        self.length = None
+        self.stopping = False
+
+    def get_result(self):
+        return self._deferred
+
+    def connectionMade(self):
+        d = self._deferred
+        self._deferred = None
+        if self.status == 200:
+            d.callback(self)
+        elif self.status == 404:
+            self.stopping = True
+            f = failure.Failure(NotFoundError(self._notifier.name))
+            f.cleanFailure()
+            d.errback(f)
+        else:
+            self.stopping = True
+            msg = ("Calling change notifier: %s gave %s status code" %
+                   (self._notifier.name, int(self.status)))
+            f = failure.Failure(DatabaseError(msg))
+            f.cleanFailure()
+            d.errback(f)
+
+    def lineReceived(self, line):
+        if not line:
+            return
+
+        change = json.loads(line)
+
+        if not 'id' in change:
+            return
+
+        self._notifier.changed(change)
+
+    def stop(self):
+        if self._deferred:
+            self._deferred.cancel()
+            self._deferred = None
+        else:
+            self.stopping = True
+            self.transport.loseConnection()
+
+    def connectionLost(self, reason=None):
+        if self.stopping:
+            return
+        if not reason or reason.check(DataLoss):
+            reason = failure.Failure(
+                tw_error.ConnectionLost("Couchdb closed connection"))
+            reason.cleanFailure()
+        if self._deferred:
+            d = self._deferred
+            self._deferred = None
+            d.errback(reason)
+        else:
+            self._notifier.connectionLost(reason)
 
 
 class Notifier(object):
@@ -58,30 +121,48 @@ class Notifier(object):
         self._filter = filter_
         self.name = self._filter.name
         self._params = None
-
-        self.reconfigure()
-
-    def reconfigure(self):
-        # called after changing the database
-        self._changes = ChangeNotifier(self._db.paisley, self._db.db_name)
-        self._changes.addListener(self)
+        self._changes = None
 
     def setup(self):
         new_params = self._filter.extract_params()
-        if self._params is not None and \
-           new_params == self._params and \
-           self._changes.isRunning():
+        if (self._params is not None and
+            new_params == self._params and
+            self._changes is not None):
             return defer.succeed(None)
 
         self._params = new_params
 
-        if self._changes.isRunning():
+        if self._changes is not None:
             self._changes.stop()
+            self._changes = None
+
+
         d = defer.succeed(None)
         if new_params is not None:
+            self._changes = ChangeReceiver(self)
             d.addCallback(defer.drop_param, self._db.wait_connected)
-            d.addCallback(defer.drop_param, self._changes.start,
-                           heartbeat=1000, **new_params)
+
+            query = dict(new_params)
+            query['feed'] = 'continuous'
+            query['heartbeat'] = 1000
+            if 'since' not in query:
+                url = '/%s/' % (self._db.db_name, )
+                d.addCallback(defer.drop_param, self._db.couchdb_call,
+                              'infoDB', self._db.couchdb.get, url)
+
+                def set_since(resp):
+                    query['since'] = resp['update_seq']
+
+                d.addCallback(set_since)
+
+            def request_changes(decoder, query):
+                url = '/%s/_changes?%s' % (self._db.db_name, urlencode(query))
+                return self._db.couchdb.get(url, decoder=decoder,
+                                            outside_of_the_pool=True,
+                                            headers={'connection': 'close'})
+
+            d.addCallback(defer.drop_param, request_changes, self._changes,
+                          query)
         else:
             self._db.log("Stopping notifier: %r", self.name)
         d.addErrback(self.connectionLost)
@@ -106,7 +187,42 @@ class Notifier(object):
             self.info('Bizare notification received from CouchDB: %r', change)
 
     def connectionLost(self, reason):
+        self._changes = None
+        if reason.check(NotFoundError):
+            return reason
         self._db.connectionLost(reason)
+
+
+class CouchDB(httpclient.ConnectionPool):
+
+    log_category = 'couchdb-connection'
+
+    def __init__(self, host, port, maximum_connections=2, logger=None):
+        httpclient.ConnectionPool.__init__(
+            self, host, port,
+            maximum_connections=maximum_connections,
+            logger=logger)
+
+    def get(self, url, headers=dict(), **extra):
+        headers.setdefault('accept', "application/json")
+        return self.request(http.Methods.GET, url, headers=headers, **extra)
+
+    def put(self, url, body='', headers=dict(), **extra):
+        headers.setdefault('accept', "application/json")
+        headers.setdefault('content-type', "application/json")
+        return self.request(http.Methods.PUT, url, body=body.encode('utf8'),
+                            headers=headers, **extra)
+
+    def post(self, url, body='', headers=dict(), **extra):
+        headers.setdefault('accept', "application/json")
+        headers.setdefault('content-type', "application/json")
+        return self.request(http.Methods.POST, url, body=body.encode('utf8'),
+                            headers=headers, **extra)
+
+    def delete(self, url, headers=dict(), **extra):
+        headers.setdefault('accept', "application/json")
+        return self.request(http.Methods.DELETE, url, headers=headers,
+                            **extra)
 
 
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
@@ -120,12 +236,15 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
 
-        self.paisley = None
+        self.couchdb = None
         self.db_name = None
+        self.version = None
         self.host = None
         self.port = None
         # name -> Notifier
         self.notifiers = dict()
+        # this flag is prevents reconnector from being spawned
+        self.disconnected = False
 
         self.retry = 0
         self.reconnector = None
@@ -161,36 +280,45 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     ### IDatabaseDriver
 
     def open_doc(self, doc_id):
-        return self._paisley_call(doc_id, self.paisley.openDoc,
-                                  self.db_name, doc_id)
+        url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+        return self.couchdb_call(doc_id, self.couchdb.get, url)
 
     def save_doc(self, doc, doc_id=None):
-        return self._lock_document(doc_id, self._paisley_call,
-                                   doc_id, self.paisley.saveDoc,
-                                   self.db_name, doc, doc_id)
+        if doc_id:
+            url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+            method = self.couchdb.put
+        else:
+            url = '/%s/' % (self.db_name, )
+            method = self.couchdb.post
+        return self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                   method, url, doc)
 
     def delete_doc(self, doc_id, revision):
-        return self._lock_document(doc_id, self._paisley_call,
-                                   doc_id, self.paisley.deleteDoc,
-                                   self.db_name, doc_id, revision)
+        url = "/%s/%s?%s" % (self.db_name, quote(doc_id.encode('utf-8')),
+                             urlencode({'rev': revision.encode('utf-8')}))
+
+        return self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                   self.couchdb.delete, url)
 
     def create_db(self):
-        return self._paisley_call(self.db_name, self.paisley.createDB,
-                                  self.db_name)
+        url = '/%s/' % (self.db_name, )
+        return self.couchdb_call(self.db_name, self.couchdb.put, url)
 
     def delete_db(self):
-        return self._paisley_call(self.db_name, self.paisley.deleteDB,
-                                  self.db_name)
+        url = '/%s/' % (self.db_name, )
+        return self.couchdb_call(self.db_name, self.couchdb.delete, url)
 
     def replicate(self, source, target, **options):
-        uri = '/_replicate'
-        body = dict(source=source, target=target)
-        body.update(options)
-        return self._paisley_call(self.db_name, self.paisley.post,
-                                  uri, body, 'replicate')
+        url = '/_replicate'
+        params = dict(source=source, target=target)
+        params.update(options)
+        body = json.dumps(params)
+        return self.couchdb_call('replicate', self.couchdb.post, url, body)
 
     def disconnect(self):
         self._cancel_reconnector()
+        self.couchdb.disconnect()
+        self.disconnected = True
 
     # listen_chagnes from ChangeListener
 
@@ -198,38 +326,50 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def query_view(self, factory, **options):
         factory = IViewFactory(factory)
-        d = self._paisley_call(factory.design_doc_id,
-                               self.paisley.openView,
-                               self.db_name, factory.design_doc_id,
-                               factory.name, **options)
+
+        url = "/%s/_design/%s/_view/%s" % (self.db_name,
+                                           quote(str(factory.design_doc_id)),
+                                           quote(str(factory.name)))
+        if 'keys' in options:
+            body = json.dumps({"keys": options.pop("keys")})
+        else:
+            body = None
+        if options:
+            encoded = urlencode(dict((k, json.dumps(v))
+                                     for k, v in options.iteritems()))
+            url += '?' + encoded
+        if body:
+            d = self.couchdb_call(factory.design_doc_id, self.couchdb.post,
+                                  url, body=body)
+        else:
+            d = self.couchdb_call(factory.design_doc_id, self.couchdb.get, url)
         d.addCallback(self._parse_view_result)
         return d
 
     def save_attachment(self, doc_id, revision, attachment):
         attachment = IAttachmentPrivate(attachment)
         uri = ('/%s/%s/%s?rev=%s' %
-               (self.db_name, urllib.quote(doc_id.encode('utf-8')),
-                urllib.quote(attachment.name), revision.encode('utf-8')))
-        headers = {'Content-Type': [attachment.content_type]}
+               (self.db_name, quote(doc_id.encode('utf-8')),
+                quote(attachment.name), revision.encode('utf-8')))
+        headers = {'content-type': attachment.content_type}
         body = attachment.get_body()
         if isinstance(body, unicode):
             body = body.encode('utf-8')
-        d = self._lock_document(doc_id, self._paisley_call, doc_id,
-                                self.paisley.put, uri,
-                                body, headers=headers)
-        d.addCallback(self.paisley.parseResult)
+        d = self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                self.couchdb.put, uri, body, headers=headers)
         return d
 
     def get_attachment(self, doc_id, name):
-        uri = ('/%s/%s/%s' %
-               (self.db_name, urllib.quote(doc_id.encode('utf-8')),
-                urllib.quote(name)))
-        headers = {'Accept': ['*/*']}
-        return self._paisley_call(doc_id, self.paisley.get,
-                                  uri, headers=headers)
+        uri = ('/%s/%s/%s' % (self.db_name,
+                              quote(doc_id.encode('utf-8')),
+                              quote(name.encode('utf-8'))))
+        headers = {'accept': '*'}
+        return self.couchdb_call(doc_id, self.couchdb.get, uri,
+                                 headers=headers, return_raw=True)
 
     def get_update_seq(self):
-        d = self._paisley_call('update_seq', self.paisley.infoDB, self.db_name)
+        url = "/%s/" % (self.db_name, )
+        d = self.couchdb_call('update_seq', self.couchdb.get, url)
         d.addCallback(lambda x: x['update_seq'])
         return d
 
@@ -240,23 +380,23 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         if filter_ is not None:
             params['filter'] = str('%s/%s' % (filter_.view.design_doc_id,
                                               filter_.view.name))
-        url = str('/%s/_changes?%s' % (self.db_name, urllib.urlencode(params)))
-        d = self._paisley_call('get_changes', self.paisley.get, url)
-        d.addCallback(self.paisley.parseResult)
-        return d
+        url = str('/%s/_changes?%s' % (self.db_name, urlencode(params)))
+        return self.couchdb_call('get_changes', self.couchdb.get, url)
 
     def bulk_get(self, doc_ids):
-        body = dict(keys=doc_ids)
         url = '/%s/_all_docs?include_docs=true' % (self.db_name, )
-        d = self._paisley_call('bulk_get', self.paisley.post,
-                               url, pjson.dumps(body))
-        d.addCallback(self.paisley.parseResult)
-        return d
+        return self.couchdb_call('bulk_get', self.couchdb.post,
+                                 url, json.dumps(dict(keys=doc_ids)))
 
     ### public ###
 
     def reconnect(self):
         # ping database to figure trigger changing state to connected
+        if self.is_connected():
+            return defer.succeed(self)
+        if self.disconnected:
+            return
+
         if self.reconnector is None or not self.reconnector.active():
             self.retry += 1
             wait = min(2**(self.retry - 1), 300)
@@ -266,8 +406,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                            'network problem. Will try to reconnect in '
                            '%d seconds.', self.retry, wait)
             d = defer.Deferred()
-            d.addCallback(defer.drop_param, self._paisley_call,
-                           None, self.paisley.listDB)
+            d.addCallback(defer.drop_param, self.couchdb_call,
+                          'reconnect', self.couchdb.get, '/')
+            d.addCallback(self._set_version)
+            d.addCallback(defer.drop_param, self._setup_notifiers)
             d.addErrback(failure.Failure.trap, NotConnectedError)
             self.reconnector = time.callLater(wait, d.callback, None)
             return d
@@ -275,22 +417,25 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             return self.wait_connected()
 
     def connectionLost(self, reason):
-        if reason.check(error.ConnectionDone):
+        if reason.check(tw_error.ConnectionDone):
             # expected just pass
             return
-        elif reason.check(ResponseDone):
+        elif reason.check(tw_error.ConnectionLost):
             self.debug("CouchDB closed the notification listener. This might "
                        "indicate misconfiguration. Take a look at it.")
+            self._on_disconnected()
+            self.reconnect()
             return
-        elif reason.check(error.ConnectionRefusedError):
+        elif reason.check(tw_error.ConnectionRefusedError):
             self.reconnect()
             return
         else:
             # FIXME handle disconnection when network is down
             self._on_disconnected()
-            self.warning('Connection to db lost with reason: %r', reason)
+            error.handle_failure(self, reason,
+                                 'Connection to couchdb lost with '
+                                 'unusual reason.')
             self.reconnect()
-            return self._setup_notifiers()
 
     ### used by Notifier ###
 
@@ -332,24 +477,49 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         else:
             self._document_locks[doc_id] = lock_value
 
-    def _paisley_call(self, tag, method, *args, **kwargs):
+    def couchdb_call(self, tag, method, *args, **kwargs):
+        return_raw = kwargs.pop('return_raw', False)
         d = method(*args, **kwargs)
-        d.addCallback(defer.bridge_param, self._on_connected)
-        d.addErrback(self._error_handler, tag)
+        d.addCallbacks(self._couchdb_cb, self._error_handler,
+                       callbackArgs=(tag, return_raw), errbackArgs=(tag, ))
         return d
+
+    def _couchdb_cb(self, response, tag, return_raw):
+        self._on_connected()
+        if response.status < 400:
+            if (not return_raw and
+                response.headers.get('content-type') == 'application/json'):
+                try:
+                    return json.loads(response.body)
+                except ValueError:
+                    self.error(
+                        "Could not parse json data from couchdb. Data: %r",
+                        response.body)
+                    raise DatabaseError("Json parse error")
+            else:
+                return response.body
+        else:
+            msg = response.body
+            if tag:
+                msg = tag + " " + msg
+            if response.status == http.Status.NOT_FOUND:
+                raise NotFoundError(msg)
+            elif response.status == http.Status.CONFLICT:
+                raise ConflictError(msg)
+            else:
+                raise DatabaseError(str(int(response.status)) + ": " + msg)
 
     def _configure(self, host, port, name):
         self._cancel_reconnector()
         self.host, self.port = host, port
-        self.paisley = CouchDB(host, port)
+        self.couchdb = CouchDB(host, port, logger=self)
         self.db_name = name
+        self.disconnected = False
 
         self._pending_notifications.clear()
         self._document_locks.clear()
 
-        [notifier.reconfigure() for notifier in self.notifiers.values()]
         self.reconnect()
-        self._setup_notifiers()
 
     def _parse_view_result(self, resp):
         assert "rows" in resp
@@ -383,6 +553,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         common.ConnectionManager._on_connected(self)
         self._cancel_reconnector()
 
+    def _set_version(self, response):
+        self.version = response.get('version')
+
     def _cancel_reconnector(self):
         if self.reconnector:
             self.debug("Reconnected to couchdb.")
@@ -392,23 +565,15 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self.retry = 0
 
     def _error_handler(self, failure, tag=None):
-        exception = failure.value
-        msg = failure.getErrorMessage()
-        if isinstance(exception, web_error.Error):
-            prefix = (tag + " ") if tag is not None else ""
-            status = int(exception.status)
-            if status == 409:
-                raise ConflictError("%s%s" % (prefix, msg))
-            elif status == 404:
-                raise NotFoundError("%s%s" % (prefix, msg))
-            else:
-                self.error('%s%s' % (prefix, exception.response))
-                raise NotImplementedError(
-                    'Behaviour for response code %d not defined yet, FIXME!' %
-                    status)
-        elif failure.check(error.ConnectionRefusedError):
+        if failure.check(tw_error.ConnectionRefusedError):
             self._on_disconnected()
             self.reconnect()
             raise NotConnectedError("Database connection refused.")
+        elif (failure.check(httpclient.RequestError) and
+              failure.value.cause and
+              isinstance(failure.value.cause, tw_error.ConnectionDone)):
+            self._on_disconnected()
+            self.reconnect()
+            raise NotConnectedError("Connection to the database was lost.")
         else:
             failure.raiseException()

@@ -474,6 +474,8 @@ class IViewFactory(Interface):
 
 class IQueryViewFactory(IViewFactory):
 
+    fields = Attribute("C{list} of str. Names of fields defined by this view")
+
     def has_field(name):
         '''
         @returns: C{bool} if this name is part of the view

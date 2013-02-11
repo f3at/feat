@@ -126,7 +126,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         categories = {}
         allocation_id, irecipient = \
                 yield self.req_agent.request_resource(resources, categories)
-        yield self.host_medium.wait_for_protocols_finish()
+        yield self.wait_for_idle(5)
         checkAllocation(self, self.host_agent, resources)
         d = self.req_agent.request_resource(resources, categories)
         self.assertFailure(d, raage.AllocationFailedError)
@@ -195,7 +195,7 @@ class MultiHostAllocationSimulation(common.SimulationTest):
     def _waitToFinish(self, _=None):
         for x in self.driver.iter_agents():
             yield x._cancel_long_running_protocols()
-            yield x.wait_for_protocols_finish()
+            yield self.wait_for_idle(5)
 
     @defer.inlineCallbacks
     def _startAllocation(self, resources, categories, count, sequencial=True):

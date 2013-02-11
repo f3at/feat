@@ -130,7 +130,6 @@ class TestQueryObject(common.TestCase):
         self.assertEqual(('field2', query.Evaluator.equals, 'other'),
                          queries[1])
 
-
         #check sorting by not part of the query
         # this should be ok
         q = query.Query(
@@ -143,8 +142,15 @@ class TestQueryObject(common.TestCase):
         self.assertEqual(('field2', query.Evaluator.equals, 'other'),
                          queries[0])
 
+        # empty query should default to something which should give us
+        # all the values
+        q = query.Query(DummyView)
+        queries = q.get_basic_queries()
+        self.assertIsInstance(queries, list)
+        self.assertEqual(1, len(queries))
+        self.assertEqual(('field1', query.Evaluator.none, None), queries[0])
+
         # check wrong declarations
-        self.assertRaises(ValueError, query.Query, DummyView)
         self.assertRaises(ValueError, query.Query, DummyView, c1, c2)
         self.assertRaises(ValueError, query.Query, DummyView, c1,
                           query.Operator.OR, query.Operator.OR)

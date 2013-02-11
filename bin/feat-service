@@ -30,6 +30,7 @@ import optparse
 import os
 import sys
 import time
+import warnings
 
 from feat.common import run, signal, text_helper, log, defer
 from feat.configure import configure
@@ -70,7 +71,7 @@ def stop(sig=signal.SIGUSR1):
     if not run.signal_pid(pid, sig):
         logger.error("Process with PID %d not found!", pid)
         return 1
-    return _pidfile_wait(exists=False, timeout=10)
+    return _pidfile_wait(exists=False, timeout=30)
 
 
 def main(args):
@@ -179,22 +180,29 @@ def main(args):
 
     if command == 'agentrestart':
         c = config.parse_service_config()
+        # for compatibility, still accept -n to pass the name
         parser = optparse.OptionParser()
         parser.add_option('-n', '--static-name',
                           help='Name of static agent to restart',
                           action='store',
                           type="str", metavar="NAME", dest='static_name')
 
-        opts, _ = parser.parse_args(args)
-        if not opts.static_name:
-            logger.error("Static name not specified.")
-            sys.exit(1)
+        opts, args = parser.parse_args(args)
+        if not args:
+            if not opts.static_name:
+                logger.error("Please specify the name of a statically "
+                    "configured agent to restart.")
+                sys.exit(1)
+            args = [opts.static_name, ]
+            warnings.warn(
+                "The agent name is not optional.  Specify it as an argument.",
+                DeprecationWarning)
 
         from feat.web import security
         sp = security.ClientPolicy(
             security.ClientContextFactory(p12_filename=c.gateway.client_p12))
         client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
-        sys.exit(_gateway_script(agent_restart, client, opts.static_name, c))
+        sys.exit(_gateway_script(agent_restart, client, args[0], c))
 
 
     logger.error("No such command, %s", command)
@@ -212,10 +220,15 @@ def agent_restart(client, static_name, config):
     context = dict(hostname=hostname, static_name=static_name)
     path = '/agents/%(hostname)s/static_agents' % context
     status, static = yield client.get(hostname, port, path)
+    if status == 404:
+        logger.error(
+            "Got 404 response fetching info about static agents. "
+            "This most likely means that the Host Agent is not running.")
+        defer.returnValue(1)
     if static_name not in static:
         logger.error(
-            "Host agent doesn't know about this static agents. Known names "
-            "are: %s", static.keys())
+            "Host agent doesn't know about this static agent. Known static "
+            "agents are: '%s'", "', '".join(static.keys()))
         defer.returnValue(1)
 
     path = '/agents/%(hostname)s/static_agents/%(static_name)s' % context
@@ -234,8 +247,8 @@ def agent_restart(client, static_name, config):
             logger.error("Response for shutdown call: %r", r)
     logger.info('About to start the agent %s.', static_name)
     status, r = yield client.post(hostname, port, path + '/_start', force=True)
-    if 'key' in r:
-        logger.info("New agent has ID: %r", r['key'])
+    if status == 200 and isinstance(r, dict) and r.get('type') == 'done':
+        logger.info("Done")
         defer.returnValue(0)
     else:
         logger.error("Got response starting agent: %r", r)

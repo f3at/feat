@@ -22,18 +22,11 @@
 # -*- coding: utf-8 -*-
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-import uuid
-import time
-
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 
 from feat.common import log, time
-from feat.agencies import protocols, retrying, periodic
-from feat.agents.base import task, replay
-
-from feat.agencies.interface import *
-from feat.interface.requests import *
-from feat.interface.protocols import *
+from feat.agencies import retrying
+from feat.agents.base import task
 
 from . import common
 
@@ -243,47 +236,3 @@ class TestRetryingProtocol(common.TestCase):
             initial_delay=initial_delay, max_delay=max_delay,
             alert_after=alert_after, alert_service=alert_service)
         return instance.initiate()
-
-
-@common.attr(timescale=0.1)
-class TestPeriodicalProtocol(common.TestCase):
-
-    timeout = 30
-
-    def setUp(self):
-        self.medium = DummyPeriodicalMedium(self)
-        common.TestCase.setUp(self)
-
-    @defer.inlineCallbacks
-    def testSyncTask(self):
-        self.assertEqual(self.medium.internal_counter, 0)
-        self.assertEqual(self.medium.external_counter, 0)
-        p = self.start_protocol(DummySyncTask, 10)
-        yield self.wait_counter(p, 3, 30)
-        self.assertEqual(self.medium.internal_counter, 3)
-        self.assertEqual(self.medium.external_counter, 3)
-        p.cancel()
-
-    @defer.inlineCallbacks
-    def testAsyncTask(self):
-        self.assertEqual(self.medium.internal_counter, 0)
-        self.assertEqual(self.medium.external_counter, 0)
-        p = self.start_protocol(DummyAsyncTask, 10)
-        yield self.wait_counter(p, 3, 30)
-        self.assertEqual(self.medium.internal_counter, 3)
-        self.assertEqual(self.medium.external_counter, 3)
-        p.cancel()
-
-    def start_protocol(self, factory, period):
-        instance = periodic.PeriodicProtocol(self.medium, factory,
-                                             period=period)
-        return instance.initiate()
-
-    @defer.inlineCallbacks
-    def wait_counter(self, proto, value, timeout):
-
-        def check():
-            return self.medium.current is None \
-                   and self.medium.internal_counter == value
-
-        yield self.wait_for(check, timeout)

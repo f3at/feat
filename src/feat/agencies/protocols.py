@@ -19,19 +19,18 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import uuid
+from zope.interface import implements
 
-from twisted.python import components
-from zope.interface import implements, classProvides
-
-from feat.agencies import common
 from feat.agents.base import replay
-from feat.common import log, defer, time
-from feat.common import container, serialization, error_handler
+from feat.common import log, defer
+from feat.common import container
 
-from feat.agencies.interface import *
-from feat.interface.serialization import *
-from feat.interface.protocols import *
+from feat.agencies.interface import IAgencyInitiatorFactory
+from feat.agencies.interface import IAgencyInterestedFactory
+from feat.agencies.interface import IAgencyInterestInternalFactory
+from feat.agencies.interface import IAgencyInterestInternal
+from feat.interface.serialization import ISerializable
+from feat.interface.protocols import InterestType, IAgencyInterest
 
 
 class BaseInitiatorFactory(object):
@@ -232,8 +231,13 @@ class DialogInterest(BaseInterest):
         medium = medium_factory(self.agency_agent, message,
                                 *self.args, **self.kwargs)
         medium.initiate()
-        protocol = self.agency_agent.register_protocol(medium)
-        medium.notify_finish().addBoth(defer.drop_param,
-                                       self._message_processed, message)
+        self.agency_agent.register_protocol(medium)
+        self.agency_agent.journal_protocol_created(self.agent_factory, medium,
+                                                   *self.args, **self.kwargs)
+        d = medium.notify_finish()
+        d.addBoth(defer.drop_param,
+                  self._message_processed, message)
+        d.addBoth(defer.drop_param, self.agency_agent.unregister_protocol,
+                  medium)
 
-        self.agency_agent.call_next(protocol.on_message, message)
+        self.agency_agent.call_next(medium.on_message, message)

@@ -22,13 +22,11 @@
 from zope.interface import implements, classProvides
 
 from feat.agents.base import replay, task, poster, labour
-from feat.common import fiber, error_handler
 from feat.agents.application import feat
 
-from feat.agencies import periodic
-from feat.agents.monitor.interface import *
-from feat.interface.agent import *
-from feat.interface.task import *
+from feat.agents.monitor.interface import IPacemakerFactory, IPacemaker
+from feat.agents.monitor.interface import DEFAULT_HEARTBEAT_PERIOD
+from feat.interface.agent import IAgent
 
 
 @feat.register_restorator

@@ -353,10 +353,10 @@ class SimulationTest(common.TestCase, OverrideConfigMixin):
 
     @defer.inlineCallbacks
     def _check_replayability(self):
-        self.driver.snapshot_all_agents()
         if not self.skip_replayability:
             self.info("Test finished, now validating replayability.")
             yield self.wait_for(self.driver._journaler.is_idle, 10, 0.01)
+            self.driver.snapshot_all_agents()
 
             histories = yield self.driver._jourwriter.get_histories()
             for history in histories:

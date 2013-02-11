@@ -424,7 +424,7 @@ class DNSMappingContractor(contractor.BaseContractor):
         mapping = grant.payload['mapping']
         self.tell_agent(mtype, prefix, mapping)
         payload = dict(suffix=state.agent.get_suffix())
-        state.medium.finalize(message.FinalReport(payload=payload))
+        state.medium.complete(message.FinalReport(payload=payload))
 
     def tell_agent(self, prefix, ip):
         """To be overriden in sub-classes."""

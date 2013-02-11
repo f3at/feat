@@ -29,17 +29,21 @@ from feat.common.serialization.json import VERSION_ATOM
 
 class Field(object):
 
-    def __init__(self, name, default, serialize_as=None):
+    def __init__(self, name, default, serialize_as=None, **meta):
         self.name = name
         self.default = default
         self.serialize_as = serialize_as or name
+        self._meta = meta
 
     def __repr__(self):
         return "%r default %r" % (self.name, self.default, )
 
+    def meta(self, name):
+        return self._meta.get(name)
 
-def field(name, default, serialize_as=None):
-    f = Field(name, default, serialize_as)
+
+def field(name, default, serialize_as=None, **meta):
+    f = Field(name, default, serialize_as, **meta)
     annotate.injectClassCallback("field", 3, "_register_field", f)
 
 
