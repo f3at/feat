@@ -676,7 +676,7 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testUsingQueryView(self):
-        views = (QueryView, view.DocumentDeletions)
+        views = (QueryView, )
         for design_doc in view.DesignDocument.generate_from_views(views):
             yield self.connection.save_document(design_doc)
 
@@ -723,7 +723,7 @@ class TestCase(object):
 
     @defer.inlineCallbacks
     def testQueryViewDeletedDocs(self):
-        views = (QueryView, view.DocumentDeletions)
+        views = (QueryView, )
         for design_doc in view.DesignDocument.generate_from_views(views):
             yield self.connection.save_document(design_doc)
         doc = yield self.connection.save_document(

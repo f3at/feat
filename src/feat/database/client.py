@@ -28,7 +28,7 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 from feat.common import log, defer, time, journal, serialization
-from feat.database import document, query, view
+from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
@@ -268,7 +268,16 @@ class Connection(log.Logger, log.LogProxy):
     @serialization.freeze_tag('IDatabaseClient.delete_document')
     def delete_document(self, doc):
         assert isinstance(doc, document.Document), type(doc)
-        d = self._database.delete_doc(doc.doc_id, doc.rev)
+        body = {
+            "_id": doc.doc_id,
+            "_rev": doc.rev,
+            "_deleted": True,
+            ".type": unicode(doc.type_name)}
+        for field in type(doc)._fields:
+            if field.meta('keep_deleted'):
+                body[field.serialize_as] = getattr(doc, field.name)
+        serialized = self._serializer.convert(body)
+        d = self._database.save_doc(serialized, doc.doc_id)
         d.addCallback(self._update_id_and_rev, doc)
         return d
 
@@ -360,8 +369,6 @@ class Connection(log.Logger, log.LogProxy):
         if not hasattr(self, '_query_cache'):
             if create:
                 self._query_cache = query.Cache(self)
-                self.changes_listener(view.DocumentDeletions,
-                                      self._query_cache.on_document_deleted)
             else:
                 return None
         return self._query_cache
