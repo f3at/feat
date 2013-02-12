@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import operator
 from urllib import urlencode, quote
 
 from zope.interface import implements
@@ -44,6 +45,8 @@ from feat.database.interface import IAttachmentPrivate
 DEFAULT_DB_HOST = "localhost"
 DEFAULT_DB_PORT = 5985
 DEFAULT_DB_NAME = "feat"
+
+BOUNDARY = '32c90c040f034b15959861e58b8ec35d'
 
 
 class ChangeReceiver(basic.LineReceiver):
@@ -202,8 +205,6 @@ class CouchDB(httpclient.ConnectionPool):
             self, host, port,
             maximum_connections=maximum_connections,
             logger=logger,
-            # FIXME: figure out why pipelineing didn't work on frf and
-            # enable it again
             enable_pipelineing=False)
 
     def get(self, url, headers=dict(), **extra):
@@ -286,15 +287,49 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
         return self.couchdb_call(doc_id, self.couchdb.get, url)
 
-    def save_doc(self, doc, doc_id=None):
+    @defer.inlineCallbacks
+    def save_doc(self, doc, doc_id=None, following_attachments=None):
         if doc_id:
             url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
             method = self.couchdb.put
         else:
             url = '/%s/' % (self.db_name, )
             method = self.couchdb.post
-        return self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                   method, url, doc)
+        version = yield self.get_version()
+
+        if not following_attachments:
+            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                          method, url, doc)
+            defer.returnValue(r)
+        elif version >= (1, 1, 2):
+            parts = ["\r\ncontent-type: application/json\r\n\r\n%s\r\n" %
+                     (doc, )]
+            following = following_attachments.items()
+            following.sort(key=operator.itemgetter(0))
+            for _, attachment in following:
+                parts.append("\r\n\r\n%s\r\n" % (attachment.get_body(), ))
+            separator = "--" + BOUNDARY
+            body = separator + separator.join(parts) + separator + "--"
+            content_type = 'multipart/related;boundary=%s' % (BOUNDARY, )
+            headers = {'content-type': content_type}
+            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                          method, url, body,
+                                          headers=headers)
+            defer.returnValue(r)
+        else:
+            # updating documents with multipart/related doesnt work
+            # in couchdb version prior to 1.1.2
+            unserialized = json.loads(doc)
+            for name, body in unserialized['_attachments'].items():
+                if body.get('follows'):
+                    del unserialized['_attachments'][name]
+            doc = json.dumps(unserialized)
+
+            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
+                                          method, url, doc)
+            for attachment in following_attachments.itervalues():
+                r = yield self.save_attachment(doc_id, r['rev'], attachment)
+            defer.returnValue(r)
 
     def delete_doc(self, doc_id, revision):
         url = "/%s/%s?%s" % (self.db_name, quote(doc_id.encode('utf-8')),
@@ -390,6 +425,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = '/%s/_all_docs?include_docs=true' % (self.db_name, )
         return self.couchdb_call('bulk_get', self.couchdb.post,
                                  url, json.dumps(dict(keys=doc_ids)))
+
+    def get_version(self):
+        if self.version:
+            return defer.succeed(self.version)
+        else:
+            d = self.couchdb_call('info', self.couchdb.get, '/')
+            d.addCallback(self._set_version)
+            return d
 
     ### public ###
 
@@ -557,7 +600,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._cancel_reconnector()
 
     def _set_version(self, response):
-        self.version = response.get('version')
+        self.version = tuple(map(int, response.get('version', '').split('.')))
+        return self.version
 
     def _cancel_reconnector(self):
         if self.reconnector:

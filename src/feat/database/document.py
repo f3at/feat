@@ -106,9 +106,8 @@ class Document(formatable.Formatable):
         if hasattr(self, '_attachments'):
             res['_attachments'] = dict()
             for name, attachment in self._attachments.iteritems():
-                if not attachment.saved:
-                    continue
                 res['_attachments'][name] = attachment.snapshot()
+
         return res
 
     ### private ###
@@ -193,8 +192,13 @@ class _Attachment(object):
     ### ISerializable ###
 
     def snapshot(self):
-        return dict(stub=True, content_type=unicode(self.content_type),
-                    length=self.length)
+        b = dict(content_type=unicode(self.content_type),
+                 length=self.length)
+        if self.saved:
+            b['stub'] = True
+        else:
+            b['follows'] = True
+        return b
 
     def recover(self, snapshot):
         self._name = snapshot['name']

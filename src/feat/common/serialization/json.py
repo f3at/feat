@@ -162,7 +162,8 @@ class Serializer(PreSerializer):
 
     def __init__(self, indent=None, separators=None,
                  force_unicode=False, encoding=None,
-                 externalizer=None, source_ver=None, target_ver=None):
+                 externalizer=None, source_ver=None, target_ver=None,
+                 sort_keys=False):
         PreSerializer.__init__(self, force_unicode=force_unicode,
                                  externalizer=externalizer,
                                  source_ver=source_ver,
@@ -170,6 +171,7 @@ class Serializer(PreSerializer):
         self._indent = indent
         self._separators = separators
         self._encoding = encoding
+        self._sort_keys = sort_keys
 
     ### Overridden Methods ###
 
@@ -177,9 +179,11 @@ class Serializer(PreSerializer):
         if self._encoding is not None:
             return json.dumps(data, indent=self._indent,
                               separators=self._separators,
-                              encoding=self._encoding)
+                              encoding=self._encoding,
+                              sort_keys=self._sort_keys)
         return json.dumps(data, indent=self._indent,
-                          separators=self._separators)
+                          separators=self._separators,
+                          sort_keys=self._sort_keys)
 
 
 class Unserializer(base.Unserializer):

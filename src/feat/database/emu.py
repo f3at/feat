@@ -86,7 +86,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def replicate(self, source, target, **options):
         raise NotImplementedError("Not implemented in emu")
 
-    def save_doc(self, doc, doc_id=None):
+    def save_doc(self, doc, doc_id=None, following_attachments=None):
         '''Imitate sending HTTP request to CouchDB server'''
 
         self.log("save_document called for doc: %r", doc)
@@ -106,7 +106,19 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 self._attachments[doc['_id']] = dict()
             attachments = doc.get('_attachments', dict())
             for name in attachments:
-                if name not in self._attachments[doc['_id']]:
+                if attachments[name].get('follows'):
+                    if name not in following_attachments:
+                        raise ValueError("Document id %s had attachment name"
+                                         " %s marked with follows=True, but"
+                                         " it was not passed to save_doc() "
+                                         % (doc['_id'], name))
+
+                    del attachments[name]['follows']
+                    attachments[name]['stub'] = True
+                    b = following_attachments[name].get_body()
+                    self._attachments[doc['_id']][name] = b
+
+                elif name not in self._attachments[doc['_id']]:
                     raise ValueError("Document id %s body has attachment "
                                      "named %s "
                                      "but it is not in our cache " %

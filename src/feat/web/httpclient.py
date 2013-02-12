@@ -455,6 +455,7 @@ class ConnectionPool(Connection):
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None,
                  maximum_connections=10, enable_pipelineing=True):
+
         Connection.__init__(self, host, port, protocol,
                             security_policy, logger)
         self._connected = set()

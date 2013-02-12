@@ -235,10 +235,18 @@ class TestCase(object):
         # first just create an attachment
         at = doc.create_attachment('attachment', u'This is attached data',
                                    'text/plain')
+        at2 = doc.create_attachment('attachment2',
+                                    u'This is other attachments data',
+                                    'text/plain')
+        at3 = doc.create_attachment('attachment3',
+                                    u'This is third data',
+                                    'text/plain')
         doc = yield self.connection.save_document(doc)
 
-        self.assertEqual(1, len(doc.attachments))
+        self.assertEqual(3, len(doc.attachments))
         self.assertIn('attachment', doc.attachments)
+        self.assertIn('attachment2', doc.attachments)
+        self.assertIn('attachment3', doc.attachments)
 
         # we do have a data in cache, getting it from there
         body = yield self.connection.get_attachment_body(at)
@@ -248,19 +256,24 @@ class TestCase(object):
         doc = yield self.connection.reload_document(doc)
         body = yield self.connection.get_attachment_body(at)
         self.assertEquals('This is attached data', body)
+        body = yield self.connection.get_attachment_body(at2)
+        self.assertEquals('This is other attachments data', body)
+        body = yield self.connection.get_attachment_body(at3)
+        self.assertEquals('This is third data', body)
 
         # updating document in a differnt way, check that attachment is still
         # there
         doc.field = 5555555
         doc = yield self.connection.save_document(doc)
         doc = yield self.connection.reload_document(doc)
-        self.assertEquals(1, len(doc.attachments))
+        self.assertEquals(3, len(doc.attachments))
 
         # test deleting the uknown attachment
         self.assertRaises(NotFoundError, doc.delete_attachment, 'unknown')
         doc.delete_attachment('attachment')
         doc = yield self.connection.save_document(doc)
-        self.assertEquals({}, doc.attachments)
+        self.assertEquals(set(['attachment2', 'attachment3']),
+                          set(doc.attachments.keys()))
 
         # getting unknown (already deleted) attachment
         d = self.connection.get_attachment_body(at)
@@ -888,14 +901,16 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
                            "variable: %r. Valid setting would be: \n"
                            "export TEST_COUCHDB=localhost:15984" %
                            (os.environ['TEST_COUCHDB'], ))
-        self.database = driver.Database(host, port,
-                                        self._testMethodName.lower())
-        self.connection = self.database.get_connection()
+
+        db_name = self._testMethodName.lower()
+        self.database = driver.Database(host, port, db_name)
+
         try:
             yield self.database.create_db()
         except DatabaseError:
             yield self.database.delete_db()
             yield self.database.create_db()
+        self.connection = self.database.get_connection()
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -921,6 +936,9 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
     @defer.inlineCallbacks
     def setUp(self):
         yield common.IntegrationTest.setUp(self)
+        if 'COUCHDB_DUMP' in os.environ:
+            driver.CouchDB.dump = open(self._testMethodName.lower() + ".dump",
+                                       'w')
         if driver is None:
             raise SkipTest('Skipping the test because of missing '
                            'dependecies: %r' % import_error)

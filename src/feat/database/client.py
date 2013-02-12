@@ -178,7 +178,7 @@ class Connection(log.Logger, log.LogProxy):
         log.Logger.__init__(self, database)
         log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
-        self._serializer = serialization.json.Serializer()
+        self._serializer = serialization.json.Serializer(sort_keys=True)
         self._unserializer = (unserializer or
                               serialization.json.PaisleyUnserializer())
 
@@ -216,15 +216,15 @@ class Connection(log.Logger, log.LogProxy):
         doc = IDocument(doc)
 
         serialized = self._serializer.convert(doc)
-        resp = yield self._database.save_doc(serialized, doc.doc_id)
+        following_attachments = dict((name, attachment)
+                                     for name, attachment
+                                     in doc.get_attachments().iteritems()
+                                     if not attachment.saved)
+        resp = yield self._database.save_doc(serialized, doc.doc_id,
+                                             following_attachments)
         self._update_id_and_rev(resp, doc)
-
-        for name, attachment in doc.get_attachments().iteritems():
-            if not attachment.saved:
-                resp = yield self._database.save_attachment(
-                    doc.doc_id, doc.rev, attachment)
-                self._update_id_and_rev(resp, doc)
-                attachment.set_saved()
+        for attachment in following_attachments.itervalues():
+            attachment.set_saved()
         defer.returnValue(doc)
 
     @serialization.freeze_tag('IDatabaseClient.get_attachment_body')
