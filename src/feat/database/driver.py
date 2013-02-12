@@ -199,14 +199,17 @@ class CouchDB(httpclient.ConnectionPool):
     dump = None
 
     def __init__(self, host, port, maximum_connections=2, logger=None):
+        import os
+        dump = open("/var/log/feat/couchdb_%s.dump" % (os.getpid(), ), 'w')
         httpclient.ConnectionPool.__init__(
             self, host, port,
             maximum_connections=maximum_connections,
             logger=logger,
-            # FIXME: figure out why pipelineing didn't work on frf and
-            # enable it again
-            enable_pipelineing=False,
-            dump_channel=self.dump)
+            # # FIXME: figure out why pipelineing didn't work on frf and
+            # # enable it again
+            # enable_pipelineing=False,
+            # dump_channel=self.dump)
+            dump_channel=dump)
 
     def get(self, url, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")
