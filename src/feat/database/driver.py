@@ -601,6 +601,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def _set_version(self, response):
         self.version = tuple(map(int, response.get('version', '').split('.')))
+        self.couchdb.enable_pipelineing(self.version >= (1, 2, 0))
         return self.version
 
     def _cancel_reconnector(self):

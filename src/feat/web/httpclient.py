@@ -475,6 +475,9 @@ class ConnectionPool(Connection):
         [x.cancel() for x in self._awaiting_client]
         [x.transport.loseConnection() for x in self._connected]
 
+    def enable_pipelineing(self, value):
+        self._enable_pipelineing = value
+
     def request(self, method, location, headers=None, body=None, decoder=None,
                 outside_of_the_pool=False, dont_pipeline=False):
         self.debug('%s-ing on %s', method.name, location)
