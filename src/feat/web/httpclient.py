@@ -479,7 +479,7 @@ class ConnectionPool(Connection):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
-        if (not not self._enable_pipelineing or
+        if (not self._enable_pipelineing or
             headers.get('connection') == 'close'):
             dont_pipeline = True
         # post requests are not idempotent and should not be pipelined
