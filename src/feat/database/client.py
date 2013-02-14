@@ -32,8 +32,8 @@ from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
-from feat.database.interface import NotFoundError, ConflictError
-from feat.database.interface import ResignFromModifying
+from feat.database.interface import NotFoundError, ConflictResolutionStrategy
+from feat.database.interface import ResignFromModifying, ConflictError
 from feat.interface.generic import ITimeProvider
 from feat.interface.serialization import ISerializable
 
@@ -476,8 +476,27 @@ class Connection(log.Logger, log.LogProxy):
             d = self.delete_document(doc)
         else:
             d = self.save_document(result)
+        if (IDocument.providedBy(doc) and
+            doc.conflict_resolution_strategy ==
+            ConflictResolutionStrategy.merge):
+            update_log = document.UpdateLog(
+                handler=_method,
+                args=args,
+                keywords=keywords,
+                rev_from=rev,
+                timestamp=int(time.time()))
+            d.addCallback(defer.keep_param, self._log_update,
+                          update_log)
         d.addErrback(self._errback_on_update, doc_id,
                      _method, args, keywords)
+        return d
+
+    def _log_update(self, doc, update_log):
+        update_log.rev_to = doc.rev
+        update_log.owner_id = doc.doc_id
+        d = self.get_update_seq()
+        d.addCallback(lambda seq: setattr(update_log, 'seq_num', seq))
+        d.addCallback(defer.drop_param, self.save_document, update_log)
         return d
 
     def _errback_on_update(self, fail, doc_id, _method, args, keywords):

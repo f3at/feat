@@ -79,3 +79,7 @@ def steps(document, *updates):
         return document
     else:
         raise ResignFromModifying()
+
+
+def delete(document):
+    return None

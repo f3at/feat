@@ -22,18 +22,13 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import copy
+import json
 import operator
 import os
 
 from twisted.trial.unittest import SkipTest
 
-try:
-    from feat.database import driver
-except ImportError as e:
-    database = None
-    import_error = e
-
-from feat.database import emu, view, document, query
+from feat.database import emu, view, document, query, driver, update, conflicts
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization, defer, error
@@ -45,6 +40,7 @@ from feat.test.common import attr, Mock
 
 from feat.database.interface import ConflictError, NotFoundError, DatabaseError
 from feat.database.interface import NotConnectedError, ResignFromModifying
+from feat.database.interface import ConflictResolutionStrategy
 
 
 @serialization.register
@@ -888,15 +884,6 @@ class PaisleySpecific(object):
         self.database.add_reconnected_cb(mock.on_connect)
         return mock
 
-    def testFilteredChanges404(self):
-
-        def listener(doc_id, rev, deleted, own_change):
-            pass
-
-        d = self.connection.changes_listener(view.DocumentDeletions, listener)
-        self.assertFailure(d, NotFoundError)
-        return d
-
     @defer.inlineCallbacks
     def testGettingDocsWhileDisconnected(self):
         doc = DummyDocument(field=u'sth')
@@ -946,7 +933,112 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
         self.connection = self.database.get_connection()
 
 
-class RemoteDatabaseTest(common.IntegrationTest, TestCase):
+class NonEmuTests(object):
+
+    def testFilteredChanges404(self):
+
+        def listener(doc_id, rev, deleted, own_change):
+            pass
+
+        d = self.connection.changes_listener(view.DocumentDeletions, listener)
+        self.assertFailure(d, NotFoundError)
+        return d
+
+    @defer.inlineCallbacks
+    def testResolvingConflicts(self):
+        host, port = self.database.host, self.database.port
+        dbname = self.database.db_name
+        repl, rconnection = yield conflicts.configure_replicator_database(
+            host, port)
+
+        @defer.inlineCallbacks
+        def cleanup_replications():
+            to_delete = yield rconnection.query_view(conflicts.Replications,
+                                                     keys=[("source", 'temp'),
+                                                           ("source", dbname),
+                                                           ("target", 'temp'),
+                                                           ("target", dbname)])
+            to_delete = set(x[2] for x in to_delete)
+            for row in to_delete:
+                yield rconnection.update_document(row, update.delete)
+        yield cleanup_replications()
+
+        db2 = driver.Database(host, port, 'temp')
+        version = yield db2.get_version()
+        if version < (1, 1, 0):
+            raise SkipTest('This testcase requires at least couchdb 1.1.0')
+        try:
+            yield db2.create_db()
+        except DatabaseError:
+            yield db2.delete_db()
+            yield db2.create_db()
+        connection2 = db2.get_connection()
+        for connection in {self.connection, connection2}:
+            for doc in view.DesignDocument.generate_from_views([
+                conflicts.Conflicts, conflicts.UpdateLogs]):
+                yield connection.save_document(doc)
+
+        connection2 = db2.get_connection()
+
+        doc = ConcurrentDoc(field1=1, field2=[1, 2, 3])
+        doc = yield self.connection.save_document(doc)
+
+        @defer.inlineCallbacks
+        def cleanup():
+            yield cleanup_replications()
+
+            yield rconnection.disconnect()
+            yield repl.disconnect()
+            yield db2.delete_db()
+            yield connection2.disconnect()
+            yield db2.disconnect()
+
+        self.addCleanup(cleanup)
+
+        # replicate the document
+        yield self.database.save_doc(replication_doc(dbname, 'temp'),
+                                     db_name="_replicator")
+        yield common.delay(None, 0.1)
+
+        # check that it reached the target
+        doc2 = yield connection2.get_document(doc.doc_id)
+        self.assertEqual(doc, doc2)
+
+        doc = yield self.connection.update_document(
+            doc, update.attributes, {'field1': 5})
+        doc = yield self.connection.update_document(
+            doc, update.append_to_list, 'field2', 'A')
+        self.assertEqual([1, 2, 3, 'A'], doc.field2)
+        doc2 = yield connection2.update_document(
+            doc2, update.append_to_list, 'field2', 'B')
+        self.assertEqual([1, 2, 3, 'B'], doc2.field2)
+
+        # replicate the changes
+        yield self.database.save_doc(replication_doc(dbname, 'temp'),
+                                     db_name="_replicator")
+        yield common.delay(None, 0.1)
+
+        conf = yield connection2.query_view(conflicts.Conflicts)
+        self.assertEqual([(doc.doc_id, None, doc.doc_id)], conf)
+
+
+@serialization.register
+class ConcurrentDoc(document.Document):
+
+    conflict_resolution_strategy = ConflictResolutionStrategy.merge
+
+    document.field('field1', None)
+    document.field('field2', None)
+
+
+def replication_doc(source, target, **options):
+    doc = dict(options)
+    doc.update({'source': source, 'target': target})
+    return json.dumps(doc)
+
+
+@attr('slow')
+class RemoteDatabaseTest(common.IntegrationTest, TestCase, NonEmuTests):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -992,7 +1084,7 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
 
 @attr('slow')
 class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
-                             PaisleySpecific):
+                             PaisleySpecific, NonEmuTests):
 
     timeout = 4
     slow = True
@@ -1004,10 +1096,6 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
         if 'COUCHDB_DUMP' in os.environ:
             driver.CouchDB.dump = open(self._testMethodName.lower() + ".dump",
                                        'w')
-        if driver is None:
-            raise SkipTest('Skipping the test because of missing '
-                           'dependecies: %r' % import_error)
-
         try:
             self.process = couchdb.Process(self)
         except DependencyError as e:

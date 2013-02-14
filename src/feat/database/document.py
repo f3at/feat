@@ -28,7 +28,7 @@ from feat.common.serialization.json import VERSION_ATOM
 
 from feat.database.interface import IDocument, IVersionedDocument
 from feat.database.interface import IDocumentPrivate, IAttachment
-from feat.database.interface import NotFoundError
+from feat.database.interface import NotFoundError, ConflictResolutionStrategy
 from feat.database.interface import IAttachmentPrivate, DataNotAvailable
 from feat.interface.serialization import ISerializable, IRestorator
 
@@ -39,6 +39,7 @@ field = formatable.field
 class Document(formatable.Formatable):
 
     implements(IDocument, IDocumentPrivate)
+    conflict_resolution_strategy = ConflictResolutionStrategy.db_winner
 
     ### IDocument ###
 
@@ -231,3 +232,18 @@ class VersionedDocument(Document):
         snapshot = Document.snapshot(self)
         snapshot[str(VERSION_ATOM)] = type(self).version
         return snapshot
+
+
+@serialization.register
+class UpdateLog(VersionedDocument):
+
+    type_name = 'update_log'
+
+    field('seq_num', None)
+    field('handler', None)
+    field('keywords', dict())
+    field('args', tuple())
+    field('rev_from', None)
+    field('rev_to', None)
+    field('owner_id', None)
+    field('timestamp', None)
