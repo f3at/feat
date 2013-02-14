@@ -297,18 +297,26 @@ class Connection(log.Logger, log.LogProxy):
 
     @serialization.freeze_tag('IDatabaseClient.delete_document')
     def delete_document(self, doc):
-        assert isinstance(doc, document.Document), type(doc)
-        body = {
-            "_id": doc.doc_id,
-            "_rev": doc.rev,
-            "_deleted": True,
-            ".type": unicode(doc.type_name)}
-        for field in type(doc)._fields:
-            if field.meta('keep_deleted'):
-                body[field.serialize_as] = getattr(doc, field.name)
+        if IDocument.providedBy(doc):
+            body = {
+                "_id": doc.doc_id,
+                "_rev": doc.rev,
+                "_deleted": True,
+                ".type": unicode(doc.type_name)}
+            for field in type(doc)._fields:
+                if field.meta('keep_deleted'):
+                    body[field.serialize_as] = getattr(doc, field.name)
+        elif isinstance(doc, dict):
+            body = {
+                "_id": doc["_id"],
+                "_rev": doc["_rev"],
+                "_deleted": True}
+        else:
+            raise ValueError(repr(doc))
+
         serialized = self._serializer.convert(body)
         self._lock_notifications()
-        d = self._database.save_doc(serialized, doc.doc_id)
+        d = self._database.save_doc(serialized, body["_id"])
         d.addCallback(self._update_id_and_rev, doc)
         d.addBoth(defer.bridge_param, self._unlock_notifications)
         return d
@@ -432,20 +440,34 @@ class Connection(log.Logger, log.LogProxy):
         return factory.parse_view_result(rows, reduced, include_docs)
 
     def _update_id_and_rev(self, resp, doc):
-        doc.doc_id = unicode(resp.get('id', None))
-        doc.rev = unicode(resp.get('rev', None))
-        self._notice_doc_revision(doc)
+        if IDocument.providedBy(doc):
+            doc.doc_id = unicode(resp.get('id', None))
+            doc.rev = unicode(resp.get('rev', None))
+            self._notice_doc_revision(doc)
         return doc
 
     def _notice_doc_revision(self, doc):
+        if IDocument.providedBy(doc):
+            doc_id = doc.doc_id
+            rev = doc.rev
+        else:
+            doc_id = doc['_id']
+            rev = doc['_rev']
         self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
-                 doc.doc_id, doc.rev)
-        self._known_revisions[doc.doc_id] = _parse_doc_revision(doc.rev)
+                 doc_id, rev)
+        self._known_revisions[doc_id] = _parse_doc_revision(rev)
         return doc
 
     ### private parts of update_document subroutine ###
 
     def _iterate_on_update(self, doc, _method, args, keywords):
+        if IDocument.providedBy(doc):
+            doc_id = doc.doc_id
+            rev = doc.rev
+        else:
+            doc_id = doc['_id']
+            rev = doc['_rev']
+
         try:
             result = _method(doc, *args, **keywords)
         except ResignFromModifying:
@@ -454,7 +476,7 @@ class Connection(log.Logger, log.LogProxy):
             d = self.delete_document(doc)
         else:
             d = self.save_document(result)
-        d.addErrback(self._errback_on_update, doc.doc_id,
+        d.addErrback(self._errback_on_update, doc_id,
                      _method, args, keywords)
         return d
 
