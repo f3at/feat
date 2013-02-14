@@ -431,8 +431,9 @@ class IViewFactory(Interface):
     use_reduce = Attribute('C{bool}. Should the reduce function be used')
     design_doc_id = Attribute('C{unicode}. The id of the design_doc to put'
                               ' this view in.')
+    language = Attribute('C{unicode}. Language the of the view methods.')
 
-    def map(doc):
+    def perform_map(doc):
         '''
         Function called for every document in the database.
         It has to be a generator yielding tuples (key, value).
@@ -442,7 +443,7 @@ class IViewFactory(Interface):
                    specific to the application.
         '''
 
-    def reduce(keys, values):
+    def perform_reduce(keys, values):
         '''
         Defined optionaly if use_reduce = True.
         Function called with the list of results emited by the map() calls
@@ -454,7 +455,7 @@ class IViewFactory(Interface):
         @return: Resulting value.
         '''
 
-    def filter(document, request):
+    def perform_filter(document, request):
         '''
         Defined optionaly to create a change/replication filter.
         @param document: The document to be filtered

@@ -371,7 +371,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         cached = self._get_cache(doc['_id'], factory.name)
         if cached:
             return cached
-        res = list(x + (doc['_id'], ) for x in factory.map(doc))
+        res = list(x + (doc['_id'], ) for x in factory.perform_map(doc))
         self._set_cache(doc['_id'], factory.name, res)
         return res
 
@@ -409,12 +409,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _reduce_values(self, factory, group_key, keys, values):
         if not values:
             return []
-        if callable(factory.reduce):
-            result = factory.reduce(keys, values)
+        if not factory.reduce:
+            pass
         elif factory.reduce == '_sum':
             result = sum(values)
         elif factory.reduce == '_count':
             result = len(values)
+        else:
+            result = factory.perform_reduce(keys, values)
 
         return [(group_key, result, )]
 

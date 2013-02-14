@@ -37,6 +37,7 @@ from feat.database import emu, view, document, query
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization, defer, error
+from feat.common.text_helper import format_block
 from feat.agencies.common import ConnectionState
 
 from . import common
@@ -118,6 +119,37 @@ class SummingView(view.FormatableView):
         for row in values:
             value += row['value']
         return value
+
+
+class JSSummingView(view.JavascriptView):
+
+    name = 'some_view'
+    use_reduce = True
+    design_doc_id = u'featjs'
+
+    map = format_block('''
+    function(doc) {
+        if (doc[".type"] == "dummy") {
+            emit(doc.field, {"value": doc.value, "field": doc.field});
+        }
+    }''')
+
+    @classmethod
+    def perform_map(cls, doc):
+        return SummingView.map(doc)
+
+    reduce = format_block('''
+    function(keys, values) {
+        var value = 0;
+        for (var i = 0; i < values.length; i += 1) {
+            value += values[i].value
+        }
+        return value;
+    }''')
+
+    @classmethod
+    def perform_reduce(cls, keys, values):
+        return SummingView.reduce(keys, values)
 
 
 class CountingView(view.BaseView):
@@ -368,12 +400,17 @@ class TestCase(object):
     @defer.inlineCallbacks
     def testQueryingViews(self):
         # create design document
-        views = (SummingView, CountingView, )
-        design_doc = view.DesignDocument.generate_from_views(views)[0]
-        yield self.connection.save_document(design_doc)
+        views = (SummingView, CountingView, JSSummingView)
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
 
         # check formatable view returning empty list
         resp = yield self.connection.query_view(SummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertFalse(resp)
+
+        # check js view returning empty list
+        resp = yield self.connection.query_view(JSSummingView, reduce=False)
         self.assertIsInstance(resp, list)
         self.assertFalse(resp)
 
@@ -391,6 +428,13 @@ class TestCase(object):
         self.assertIsInstance(resp[0], SummingView)
         self.assertEqual(2, resp[0].value)
 
+        resp = yield self.connection.query_view(JSSummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertEqual(1, len(resp))
+        self.assertIsInstance(resp[0], tuple)
+        self.assertIsInstance(resp[0][1], dict)
+        self.assertEqual(2, resp[0][1]['value'])
+
         # now check counting view
         resp = yield self.connection.query_view(CountingView)
         self.assertEqual(1, resp[0])
@@ -398,6 +442,9 @@ class TestCase(object):
         # use summing view with reduce
         resp = yield self.connection.query_view(SummingView)
         self.assertEqual([2], resp)
+
+        resp = yield self.connection.query_view(JSSummingView)
+        self.assertEqual([(None, 2)], resp)
 
         # save second document
         yield self.connection.save_document(DummyDocument(value=3))
@@ -411,9 +458,21 @@ class TestCase(object):
         self.assertIsInstance(resp[1], SummingView)
         self.assertIn(resp[1].value, (2, 3, ))
 
+        resp = yield self.connection.query_view(JSSummingView, reduce=False)
+        self.assertIsInstance(resp, list)
+        self.assertEqual(2, len(resp))
+        self.assertIsInstance(resp[0], tuple)
+        self.assertIsInstance(resp[0][1], dict)
+        self.assertIn(resp[0][1]['value'], (2, 3, ))
+        self.assertIsInstance(resp[1][1], dict)
+        self.assertIn(resp[1][1]['value'], (2, 3, ))
+
         # check that reduce works as well
         resp = yield self.connection.query_view(SummingView)
         self.assertEqual([5], resp)
+
+        resp = yield self.connection.query_view(JSSummingView)
+        self.assertEqual([(None, 5)], resp)
 
         # finnally check the counting view works as expected
         resp = yield self.connection.query_view(CountingView)
@@ -425,10 +484,16 @@ class TestCase(object):
         resp = yield self.connection.query_view(SummingView)
         self.assertEqual([13], resp)
 
+        resp = yield self.connection.query_view(JSSummingView)
+        self.assertEqual([(None, 13)], resp)
+
         # now delete it
         yield self.connection.delete_document(doc1)
         resp = yield self.connection.query_view(SummingView)
         self.assertEqual([3], resp)
+
+        resp = yield self.connection.query_view(JSSummingView)
+        self.assertEqual([(None, 3)], resp)
 
     @defer.inlineCallbacks
     def testSavingAndGettingTheDocument(self):

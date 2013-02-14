@@ -37,11 +37,53 @@ field = formatable.field
 QUERY_METHODS = ['map', 'reduce', 'filter']
 
 
+class JavascriptView(annotate.Annotable):
+
+    name = None
+    use_reduce = False
+    design_doc_id = None
+    language = u'javascript'
+
+    @classmethod
+    def __class__init__(cls, name, bases, dct):
+        directlyProvides(cls, IViewFactory)
+
+    @classmethod
+    def parse_view_result(cls, rows, reduced, include_docs):
+        return list(rows)
+
+    @classmethod
+    def perform_map(cls, doc):
+        cls._not_supported('perform_map')
+
+    @classmethod
+    def perform_reduce(cls, keys, values):
+        cls._not_supported('perform_reduce')
+
+    @classmethod
+    def perform_filter(cls, doc, request):
+        cls._not_supported('perform_filter')
+
+    @classmethod
+    def get_code(cls, name):
+        return unicode(getattr(cls, name))
+
+    ### private ###
+
+    @classmethod
+    def _not_supported(cls, what):
+        raise NotImplementedError("Class %r doesn't support emu database "
+                                  "evaluating the %s callback. If you need "
+                                  "to use it, you should overload it." %
+                                  (cls, what))
+
+
 class BaseView(annotate.Annotable):
 
     name = None
     use_reduce = False
     design_doc_id = u'feat'
+    language = u'python'
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
@@ -69,6 +111,18 @@ class BaseView(annotate.Annotable):
     @classmethod
     def parse(cls, key, value, reduced):
         return value
+
+    @classmethod
+    def perform_map(cls, doc):
+        return cls.map(doc)
+
+    @classmethod
+    def perform_reduce(cls, keys, values):
+        return cls.reduce(keys, values)
+
+    @classmethod
+    def perform_filter(cls, doc, request):
+        return cls.filter(doc, request)
 
     ### annotations ###
 
@@ -201,17 +255,26 @@ class DesignDocument(document.Document):
         # id -> instance
         instances = dict()
 
-        def get_instance(name):
+        def get_instance(view):
+            name = view.design_doc_id
+            if name is None:
+                raise ValueError("%r.design_doc_id is None" % (view, ))
             existing = instances.get(name, None)
             if not existing:
                 doc_id = u"_design/%s" % (name, )
-                existing = cls(doc_id=doc_id)
+                existing = cls(doc_id=doc_id,
+                               language=view.language)
                 instances[name] = existing
+            elif existing.language != view.language:
+                raise ValueError("Language mismatch! Design document %s "
+                                 "has language: %s, the view %s has language: "
+                                 " %s" % (doc_id, existing.language,
+                                          name, view.language))
             return existing
 
         for view in views:
             view = IViewFactory(view)
-            instance = get_instance(view.design_doc_id)
+            instance = get_instance(view)
             entry = dict()
             if hasattr(view, 'map'):
                 entry['map'] = view.get_code('map')
@@ -220,7 +283,7 @@ class DesignDocument(document.Document):
                 instance.views[view.name] = entry
 
             if hasattr(view, 'filter'):
-                instance.filters[view.name] = unicode(view.filter.source)
+                instance.filters[view.name] = view.get_code('filter')
         return instances.values()
 
 

@@ -49,7 +49,7 @@ class ViewFilter(object):
 
     def match(self, doc):
         # used only by emu
-        return self.view.filter(doc, self._request)
+        return self.view.perform_filter(doc, self._request)
 
     def add_listener(self, callback, listener_id):
         self._listeners[listener_id] = callback
