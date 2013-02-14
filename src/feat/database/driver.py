@@ -182,10 +182,7 @@ class Notifier(object):
             doc_id = change['id']
             deleted = change.get('deleted', False)
             for line in change['changes']:
-                # The changes are analized when there is not http request
-                # pending. Otherwise it can result in race condition problem.
-                self._db.process_notifications(
-                    self._filter, doc_id, line['rev'], deleted)
+                self._filter.notified(doc_id, line['rev'], deleted)
         else:
             self.info('Bizare notification received from CouchDB: %r', change)
 
@@ -298,8 +295,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         version = yield self.get_version()
 
         if not following_attachments:
-            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                          method, url, doc)
+            r = yield self.couchdb_call(doc_id, method, url, doc)
             defer.returnValue(r)
         elif version >= (1, 1, 2):
             parts = ["\r\ncontent-type: application/json\r\n\r\n%s\r\n" %
@@ -312,9 +308,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             body = separator + separator.join(parts) + separator + "--"
             content_type = 'multipart/related;boundary=%s' % (BOUNDARY, )
             headers = {'content-type': content_type}
-            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                          method, url, body,
-                                          headers=headers)
+            r = yield self.couchdb_call(
+                doc_id, method, url, body, headers=headers)
             defer.returnValue(r)
         else:
             # updating documents with multipart/related doesnt work
@@ -325,8 +320,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                     del unserialized['_attachments'][name]
             doc = json.dumps(unserialized)
 
-            r = yield self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                          method, url, doc)
+            r = yield self.couchdb_call(doc_id, method, url, doc)
             for attachment in following_attachments.itervalues():
                 r = yield self.save_attachment(doc_id, r['rev'], attachment)
             defer.returnValue(r)
@@ -335,8 +329,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = "/%s/%s?%s" % (self.db_name, quote(doc_id.encode('utf-8')),
                              urlencode({'rev': revision.encode('utf-8')}))
 
-        return self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                   self.couchdb.delete, url)
+        return self.couchdb_call(doc_id, self.couchdb.delete, url)
 
     def create_db(self):
         url = '/%s/' % (self.db_name, )
@@ -393,8 +386,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         body = attachment.get_body()
         if isinstance(body, unicode):
             body = body.encode('utf-8')
-        d = self._lock_document(doc_id, self.couchdb_call, doc_id,
-                                self.couchdb.put, uri, body, headers=headers)
+        d = self.couchdb_call(doc_id, self.couchdb.put, uri, body,
+                              headers=headers)
         return d
 
     def get_attachment(self, doc_id, name):
@@ -483,45 +476,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                                  'unusual reason.')
             self.reconnect()
 
-    ### used by Notifier ###
-
-    def process_notifications(self, filter, doc_id, rev, deleted):
-        if doc_id not in self._pending_notifications:
-            filter.notified(doc_id, rev, deleted)
-        else:
-            self._pending_notifications[doc_id].append((filter, rev, deleted))
-
     ### private
-
-    def _lock_document(self, doc_id, method, *args, **kwargs):
-        lock_value = self._document_locks.get(doc_id, 0) + 1
-        self._document_locks[doc_id] = lock_value
-
-        if lock_value == 1:
-            assert doc_id not in self._pending_notifications, \
-                   "lock_value == 1 and _pending_notifications has a entry"\
-                   ". Something is leaking."
-            self._pending_notifications[doc_id] = list()
-
-        d = method(*args, **kwargs)
-        d.addBoth(defer.bridge_param, self._unlock_document, doc_id)
-        return d
-
-    def _unlock_document(self, doc_id):
-        lock_value = self._document_locks.get(doc_id, None)
-        assert lock_value is not None, \
-               "_unlock_document() called, but counter is not there!"
-        lock_value -= 1
-
-        if lock_value == 0:
-            del(self._document_locks[doc_id])
-            notifications = self._pending_notifications.pop(doc_id, None)
-            assert notifications is not None, \
-                   "Lock value reached 0 but there is no pending_notifications"
-            for filter, rev, deleted in notifications:
-                filter.notified(doc_id, rev, deleted)
-        else:
-            self._document_locks[doc_id] = lock_value
 
     def couchdb_call(self, tag, method, *args, **kwargs):
         return_raw = kwargs.pop('return_raw', False)

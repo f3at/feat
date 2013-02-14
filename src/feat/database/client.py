@@ -192,12 +192,38 @@ class Connection(log.Logger, log.LogProxy):
         # received after the expiration time due to reconnection
         # killing agents.
         self._known_revisions = {} # {DOC_ID: (REV_INDEX, REV_HASH)}
+        # If the counter of current tasks on database which can produce
+        # a new revision
+        self._update_lock_counter = 0
+        # Unlocked callbacks
+        self._unlocked_callbacks = set()
 
     ### IRevisionStore ###
 
     @property
     def known_revisions(self):
         return self._known_revisions
+
+    @property
+    def analyzes_locked(self):
+        return self._update_lock_counter > 0
+
+    def wait_unlocked(self, callback):
+        self._unlocked_callbacks.add(callback)
+
+    ### private used for locking and unlocking the updates ###
+
+    def _lock_notifications(self):
+        self._update_lock_counter += 1
+
+    def _unlock_notifications(self):
+        assert self._update_lock_counter > 0, "Lock value dropped below 0!"
+        self._update_lock_counter -= 1
+        if self._update_lock_counter == 0:
+            u = self._unlocked_callbacks
+            self._unlocked_callbacks = set()
+            for callback in u:
+                callback()
 
     ### ITimeProvider ###
 
@@ -214,18 +240,22 @@ class Connection(log.Logger, log.LogProxy):
     @defer.inlineCallbacks
     def save_document(self, doc):
         doc = IDocument(doc)
+        try:
+            self._lock_notifications()
 
-        serialized = self._serializer.convert(doc)
-        following_attachments = dict((name, attachment)
-                                     for name, attachment
-                                     in doc.get_attachments().iteritems()
-                                     if not attachment.saved)
-        resp = yield self._database.save_doc(serialized, doc.doc_id,
-                                             following_attachments)
-        self._update_id_and_rev(resp, doc)
-        for attachment in following_attachments.itervalues():
-            attachment.set_saved()
-        defer.returnValue(doc)
+            serialized = self._serializer.convert(doc)
+            following_attachments = dict((name, attachment)
+                                         for name, attachment
+                                         in doc.get_attachments().iteritems()
+                                         if not attachment.saved)
+            resp = yield self._database.save_doc(serialized, doc.doc_id,
+                                                 following_attachments)
+            self._update_id_and_rev(resp, doc)
+            for attachment in following_attachments.itervalues():
+                attachment.set_saved()
+            defer.returnValue(doc)
+        finally:
+            self._unlock_notifications()
 
     @serialization.freeze_tag('IDatabaseClient.get_attachment_body')
     def get_attachment_body(self, attachment):
@@ -277,8 +307,10 @@ class Connection(log.Logger, log.LogProxy):
             if field.meta('keep_deleted'):
                 body[field.serialize_as] = getattr(doc, field.name)
         serialized = self._serializer.convert(body)
+        self._lock_notifications()
         d = self._database.save_doc(serialized, doc.doc_id)
         d.addCallback(self._update_id_and_rev, doc)
+        d.addBoth(defer.bridge_param, self._unlock_notifications)
         return d
 
     @serialization.freeze_tag('IDatabaseClient.changes_listener')
@@ -453,11 +485,22 @@ class RevisionAnalytic(log.Logger):
 
         self.connection = IRevisionStore(connection)
         self._callback = callback
+        self._buffer = list()
 
     def on_change(self, doc_id, rev, deleted):
         self.log('Change notification received doc_id: %r, rev: %r, '
                  'deleted: %r', doc_id, rev, deleted)
+        if self.connection.analyzes_locked:
+            self.connection.wait_unlocked(self.unlocked)
+            self._buffer.append((doc_id, rev, deleted))
+        else:
+            self.process_change(doc_id, rev, deleted)
 
+    def unlocked(self):
+        while len(self._buffer) > 0:
+            self.process_change(*self._buffer.pop(0))
+
+    def process_change(self, doc_id, rev, deleted):
         own_change = False
         if doc_id in self.connection.known_revisions:
             rev_index, rev_hash = _parse_doc_revision(rev)

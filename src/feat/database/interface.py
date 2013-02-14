@@ -408,6 +408,16 @@ class IRevisionStore(Interface):
     by this connection.'''
 
     known_revisions = Attribute('dict of doc_id -> (last_index, last_hash)')
+    analyzes_locked = Attribute('C{bool} flag saying that at the moment the'
+                                ' notifications should not be processed')
+
+    def wait_unlocked(callback):
+        '''
+        @type callback: {callable}
+
+        Register a callback to be called when the Revision Analityc can
+        process his notifications.
+        '''
 
 
 class IViewFactory(Interface):
