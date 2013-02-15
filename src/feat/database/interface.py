@@ -94,6 +94,8 @@ class DataNotAvailable(DatabaseError):
 
 class IDatabaseClient(Interface):
 
+    database = Attribute("IDatabaseDriver this connection is connected to.")
+
     def save_document(document):
         '''
         Save the document into the database. Document might have been loaded

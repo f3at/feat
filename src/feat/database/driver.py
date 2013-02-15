@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import types
 import operator
 from urllib import urlencode, quote
 
@@ -284,6 +285,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
         if extra:
             url += '?'
+            # this is necessary, because otherwise we would pass True or False
+            # to couchdb, and it requires smallcase
+            for k, v in extra.iteritems():
+                if isinstance(v, types.BooleanType):
+                    extra[k] = str(v).lower()
             url += urlencode(extra)
         return self.couchdb_call(doc_id, self.couchdb.get, url)
 

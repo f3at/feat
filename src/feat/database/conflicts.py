@@ -40,6 +40,25 @@ class Conflicts(view.JavascriptView):
 
 
 @feat.register_view
+class Replication(view.JavascriptView):
+    '''
+    Replication filter to be used between feat database.
+    The deletes of update logs are made local.
+    '''
+
+    design_doc_id = 'featjs'
+    name = 'replication'
+
+    filter = format_block('''
+    function(doc, request) {
+        if (doc[".type"] == "update_log" && doc._deleted) {
+            return false;
+        }
+        return true;
+    }''')
+
+
+@feat.register_view
 class UpdateLogs(view.JavascriptView):
 
     design_doc_id = 'featjs'
@@ -48,15 +67,30 @@ class UpdateLogs(view.JavascriptView):
     map = format_block('''
     function(doc) {
         if (doc[".type"] == "update_log") {
-            emit(["by_rev", doc.owner_id, doc.rev_to], null);
-            emit(["by_seq", doc.seq_num], null);
+            // querying for a specific document by merge logic
+            emit(["doc_id", doc.owner_id], null);
+            // querying by cleanup logic for local update logs
+            emit(["seq_num", doc.partition_tag, doc.seq_num], doc.owner_id);
+            // querying by cleanup logic for update logs imported from
+            // different partinions
+            emit(["rev", doc.partition_tag, doc.owner_id, doc.rev_to], null);
         }
     }''')
 
     @classmethod
+    def until_seq(cls, partition_tag, seq):
+        if seq is None:
+            seq = {}
+        return dict(startkey=("seq_num", partition_tag),
+                    endkey=("seq_num", partition_tag, seq))
+
+    @classmethod
+    def all(cls):
+        return dict(startkey=("rev", ), endkey=("rev", {}))
+
+    @classmethod
     def for_doc(cls, doc_id):
-        return dict(startkey=("by_rev", doc_id),
-                    endkey=("by_rev", doc_id, {}),
+        return dict(startkey=("doc_id", doc_id), endkey=("doc_id", doc_id, {}),
                     include_docs=True)
 
 
@@ -106,7 +140,7 @@ def solve(connection, doc_id):
     connection.info('Solving conflicts for documnet: %s', doc_id)
 
     plain_doc = yield connection.get_document(doc_id, raw=True,
-                                              conflicts='true')
+                                              conflicts=True)
     if '_conflicts' not in plain_doc:
         connection.debug('Document:%s is not in state conflict, aborting.',
                          doc_id)
@@ -229,3 +263,109 @@ def _get_logs_between(from_rev, to_rev, lookup):
         if rev == from_rev:
             break
     return resp
+
+
+@defer.inlineCallbacks
+def cleanup_logs(connection, rconnection):
+    '''
+    Perform a cleanup of update logs.
+    This methods analazyes what replication are configured and removes
+    the update logs which we will not need in future.
+    It returns the C{int} counter of performed deletes.
+    '''
+
+    database = connection.database
+    if not isinstance(database, driver.Database):
+        raise TypeError("This procedure would work only for driver connected"
+                        " to the real database. It uses public methods which"
+                        " are not the part of IDatabaseDriver interface")
+
+    version = yield connection.database.get_version()
+    if version < (1, 2, 0):
+        raise ValueError("CouchDB 1.2.0 required, found %r" % (version, ))
+
+    dbname = database.db_name
+    active_tasks = yield database.couchdb_call('_active_tasks',
+                                               database.couchdb.get,
+                                               '/_active_tasks')
+    active_tasks = dict((x['replication_id'], x) for x in active_tasks
+                        if (x['type'] == 'replication' and
+                            'replication_id' in x))
+
+    replications = yield rconnection.query_view(Replications,
+                                                key=('source', dbname),
+                                                include_docs=True)
+
+    # target database -> checkpoint_source_seq
+    counter = dict()
+    for replication in replications:
+        target = replication['target']
+        if replication.get('_replication_state') == 'completed':
+            seq = replication['_replication_stats']['checkpointed_source_seq']
+        elif (replication.get('_replication_state') == 'triggered' and
+              replication.get('continuous')):
+            task = active_tasks.get(replication['_replication_id'])
+            if not task:
+                continue
+            seq = task['checkpointed_source_seq']
+        else:
+            continue
+        counter[target] = max([counter.get(target, 0), seq])
+
+    cleanup_seq = min(counter.values()) if replications else None
+    own_tag = yield connection.get_database_tag()
+
+    deletes_count = 0 # this is returned as a result
+
+    # this is cleanup for the update logs created locally
+    keys = UpdateLogs.until_seq(own_tag, cleanup_seq)
+    rows = yield connection.query_view(UpdateLogs, **keys)
+    for row in rows:
+        deletes_count += 1
+        in_conflict, raw_doc = yield _check_conflict(connection, row[1])
+        if not in_conflict:
+            yield _cleanup_update_log(connection, row[2])
+
+    # this is cleanup of the update logs imported from remote partinions
+    # they should be cleaned up if the document is not in conflict state
+    rows = yield connection.query_view(UpdateLogs, **UpdateLogs.all())
+    grouped = _group_rows(rows,
+                          # (partition_tag, owner_id)
+                          key=lambda row: (row[0][1], row[0][2]),
+                          # (rev, doc_id)
+                          value=lambda row: (row[0][3], row[2]))
+    for (partion_tag, owner_id), entries in grouped.iteritems():
+        if partion_tag == own_tag:
+            # this is local update log, this is handeled by the code above
+            continue
+        in_conflict, raw_doc = yield _check_conflict(connection, owner_id)
+        last_rev = entries[-1][0]
+        if not in_conflict and last_rev <= raw_doc['_rev']:
+            for (rev, doc_id) in entries:
+                deletes_count += 1
+                yield _cleanup_update_log(connection, doc_id)
+    defer.returnValue(deletes_count)
+
+
+@defer.inlineCallbacks
+def _check_conflict(connection, doc_id):
+    raw_doc = yield connection.get_document(doc_id, raw=True, conflicts=True)
+    in_conflict = '_conflicts' in raw_doc
+    defer.returnValue((in_conflict, raw_doc))
+
+
+def _cleanup_update_log(connection, doc_id):
+    d = connection.update_document(doc_id, update.delete)
+    # this is normal if there is a concurrent cleanup running
+    d.addErrback(Failure.trap, NotFoundError)
+    return d
+
+
+def _group_rows(rows, key, value):
+    result = dict()
+    for row in rows:
+        key_ = key(row)
+        value_ = value(row)
+        result.setdefault(key_, [])
+        result[key_].append(value_)
+    return result

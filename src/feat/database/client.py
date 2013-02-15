@@ -232,6 +232,10 @@ class Connection(log.Logger, log.LogProxy):
 
     ### IDatabaseClient ###
 
+    @property
+    def database(self):
+        return self._database
+
     @serialization.freeze_tag('IDatabaseClient.create_database')
     def create_database(self):
         return self._database.create_db()
@@ -478,6 +482,9 @@ class Connection(log.Logger, log.LogProxy):
             doc.doc_id = unicode(resp.get('id', None))
             doc.rev = unicode(resp.get('rev', None))
             self._notice_doc_revision(doc)
+        else:
+            doc['_id'] = unicode(resp.get('id', None))
+            doc['_rev'] = unicode(resp.get('rev', None))
         return doc
 
     def _notice_doc_revision(self, doc):
@@ -519,10 +526,11 @@ class Connection(log.Logger, log.LogProxy):
                 keywords=keywords,
                 rev_from=rev,
                 timestamp=time.time())
-            dl = defer.DeferredList([d, self.get_database_tag(),
-                                     self.get_update_seq()])
-            dl.addCallback(self._log_update, update_log)
-            d = dl
+            d.addCallback(lambda doc:
+                          defer.DeferredList([defer.succeed(doc),
+                                              self.get_database_tag(),
+                                              self.get_update_seq()]))
+            d.addCallback(self._log_update, update_log)
         d.addErrback(self._errback_on_update, doc_id,
                      _method, args, keywords)
         return d
