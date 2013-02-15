@@ -239,16 +239,21 @@ class Connection(log.Logger, log.LogProxy):
     @serialization.freeze_tag('IDatabaseClient.save_document')
     @defer.inlineCallbacks
     def save_document(self, doc):
-        doc = IDocument(doc)
+        assert IDocument.providedBy(doc) or isinstance(doc, dict), repr(doc)
         try:
             self._lock_notifications()
 
             serialized = self._serializer.convert(doc)
-            following_attachments = dict((name, attachment)
-                                         for name, attachment
-                                         in doc.get_attachments().iteritems()
-                                         if not attachment.saved)
-            resp = yield self._database.save_doc(serialized, doc.doc_id,
+            if IDocument.providedBy(doc):
+                following_attachments = dict(
+                    (name, attachment) for name, attachment
+                    in doc.get_attachments().iteritems()
+                    if not attachment.saved)
+                doc_id = doc.doc_id
+            else:
+                following_attachments = dict()
+                doc_id = doc.get('_id')
+            resp = yield self._database.save_doc(serialized, doc_id,
                                                  following_attachments)
             self._update_id_and_rev(resp, doc)
             for attachment in following_attachments.itervalues():
@@ -263,9 +268,10 @@ class Connection(log.Logger, log.LogProxy):
         return d
 
     @serialization.freeze_tag('IDatabaseClient.get_document')
-    def get_document(self, doc_id):
-        d = self._database.open_doc(doc_id)
-        d.addCallback(self._unserializer.convert)
+    def get_document(self, doc_id, raw=False, **extra):
+        d = self._database.open_doc(doc_id, **extra)
+        if not raw:
+            d.addCallback(self._unserializer.convert)
         d.addCallback(self._notice_doc_revision)
         return d
 
