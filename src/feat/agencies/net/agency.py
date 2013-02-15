@@ -34,7 +34,7 @@ from feat.agents.base import replay
 from feat.configure import configure
 from feat import applications
 from feat.common import log, defer, time, error, run, signal
-from feat.common import manhole, text_helper
+from feat.common import manhole, text_helper, serialization
 
 from feat.process import standalone
 from feat.process.base import ProcessState
@@ -731,3 +731,10 @@ class Agency(agency.Agency):
         if not self._broker.is_master():
             raise RuntimeError("We are not a master, wtf?!")
         return self._messaging.get_backend('unix')
+
+    ### IAgency ###
+
+    @serialization.freeze_tag('IAgency.get_config')
+    @replay.named_side_effect('IAgency.get_config')
+    def get_config(self):
+        return self.config

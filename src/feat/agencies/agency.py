@@ -1015,8 +1015,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
              dependency.AgencyDependencyMixin, common.ConnectionManager):
 
     log_category = 'agency'
+    type_name = "agency" # this is used by ISerializable
 
-    implements(IAgency, IExternalizer, ITimeProvider)
+    implements(IAgency, IExternalizer, ITimeProvider, ISerializable)
 
     agency_agent_factory = AgencyAgent
 
@@ -1525,3 +1526,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _disconnect_backends(self):
         return self._messaging.disconnect_backends()
+
+    ### ISerializable ###
+
+    def snapshot(self):
+        return None
