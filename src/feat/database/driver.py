@@ -280,8 +280,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     ### IDatabaseDriver
 
-    def open_doc(self, doc_id):
+    def open_doc(self, doc_id, **extra):
         url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+        if extra:
+            url += '?'
+            url += urlencode(extra)
         return self.couchdb_call(doc_id, self.couchdb.get, url)
 
     @defer.inlineCallbacks

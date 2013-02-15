@@ -490,7 +490,7 @@ class Connection(log.Logger, log.LogProxy):
                 args=args,
                 keywords=keywords,
                 rev_from=rev,
-                timestamp=int(time.time()))
+                timestamp=time.time())
             d.addCallback(defer.keep_param, self._log_update,
                           update_log)
         d.addErrback(self._errback_on_update, doc_id,

@@ -948,8 +948,11 @@ class NonEmuTests(object):
     def testResolvingConflicts(self):
         host, port = self.database.host, self.database.port
         dbname = self.database.db_name
-        repl, rconnection = yield conflicts.configure_replicator_database(
-            host, port)
+        try:
+            repl, rconnection = yield conflicts.configure_replicator_database(
+                host, port)
+        except ValueError as e:
+            raise SkipTest(str(e))
 
         @defer.inlineCallbacks
         def cleanup_replications():
@@ -989,15 +992,16 @@ class NonEmuTests(object):
 
             yield rconnection.disconnect()
             yield repl.disconnect()
-            yield db2.delete_db()
+            if 'KEEP_TEST_COUCHDB' not in os.environ:
+                yield db2.delete_db()
             yield connection2.disconnect()
             yield db2.disconnect()
 
         self.addCleanup(cleanup)
 
         # replicate the document
-        yield self.database.save_doc(replication_doc(dbname, 'temp'),
-                                     db_name="_replicator")
+        yield rconnection.save_document(replication_doc(dbname, 'temp'))
+
         yield common.delay(None, 0.1)
 
         # check that it reached the target
@@ -1006,20 +1010,58 @@ class NonEmuTests(object):
 
         doc = yield self.connection.update_document(
             doc, update.attributes, {'field1': 5})
+        rev1 = doc.rev
         doc = yield self.connection.update_document(
             doc, update.append_to_list, 'field2', 'A')
+        rev2 = doc.rev
         self.assertEqual([1, 2, 3, 'A'], doc.field2)
         doc2 = yield connection2.update_document(
             doc2, update.append_to_list, 'field2', 'B')
         self.assertEqual([1, 2, 3, 'B'], doc2.field2)
+        rev1b = doc2.rev
+        doc2 = yield connection2.update_document(
+            doc2, update.append_to_list, 'field2', 'C')
+        self.assertEqual([1, 2, 3, 'B', 'C'], doc2.field2)
+
+        # assert update logs where created
+        keys = {
+            'startkey': ('by_rev', ),
+            'endkey': ('by_rev', {}),
+            'include_docs': True}
+        logs1 = yield self.connection.query_view(conflicts.UpdateLogs, **keys)
+        self.assertEqual(2, len(logs1))
+        self.assertEqual(rev1, logs1[0].rev_to)
+        self.assertEqual(update.attributes, logs1[0].handler)
+        self.assertEqual(rev1, logs1[1].rev_from)
+        self.assertEqual(rev2, logs1[1].rev_to)
+        self.assertEqual(update.append_to_list, logs1[1].handler)
+        logs2 = yield connection2.query_view(conflicts.UpdateLogs, **keys)
+        self.assertEqual(2, len(logs2))
+        self.assertEqual(rev1b, logs2[0].rev_to)
 
         # replicate the changes
-        yield self.database.save_doc(replication_doc(dbname, 'temp'),
-                                     db_name="_replicator")
+        yield rconnection.save_document(replication_doc(dbname, 'temp'))
         yield common.delay(None, 0.1)
 
         conf = yield connection2.query_view(conflicts.Conflicts)
         self.assertEqual([(doc.doc_id, None, doc.doc_id)], conf)
+        combined = yield connection2.query_view(conflicts.UpdateLogs, **keys)
+        self.assertEqual(4, len(combined))
+
+        yield conflicts.solve(connection2, doc.doc_id)
+        merged = yield connection2.reload_document(doc)
+        self.assertEqual([1, 2, 3, 'A', 'B', 'C'], merged.field2)
+        self.assertEqual(5, merged.field1)
+        conf = yield connection2.query_view(conflicts.Conflicts)
+        self.assertEqual([], conf)
+
+        # replicate the solution back
+        yield rconnection.save_document(replication_doc('temp', dbname))
+        yield common.delay(None, 0.1)
+        conf = yield self.connection.query_view(conflicts.Conflicts)
+        self.assertEqual([], conf)
+        merged_ = yield self.connection.reload_document(doc)
+        self.assertEqual(merged, merged_)
 
 
 @serialization.register
@@ -1033,8 +1075,8 @@ class ConcurrentDoc(document.Document):
 
 def replication_doc(source, target, **options):
     doc = dict(options)
-    doc.update({'source': source, 'target': target})
-    return json.dumps(doc)
+    doc.update({'source': unicode(source), 'target': unicode(target)})
+    return doc
 
 
 @attr('slow')

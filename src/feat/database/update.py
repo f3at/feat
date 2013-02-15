@@ -66,7 +66,7 @@ def step(method, *args, **kwargs):
 
 
 def steps(document, *updates):
-    changed = True
+    changed = False
     for method, args, kwargs in updates:
         try:
             document = method(document, *args, **kwargs)
