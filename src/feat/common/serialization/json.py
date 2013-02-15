@@ -90,9 +90,12 @@ class PreSerializer(base.Serializer):
 
     def flatten_key(self, key, caps, freezing):
         if not isinstance(key, str):
-            raise TypeError("Serializer %s is not capable of serializing "
-                            "non-string dictionary keys: %r"
-                            % (reflect.canonical_name(self), key))
+            if isinstance(key, unicode) and self._force_unicode:
+                pass
+            else:
+                raise TypeError("Serializer %s is not capable of serializing "
+                                "non-string dictionary keys: %r"
+                                % (reflect.canonical_name(self), key))
         # Flatten it as unicode by using the selected encoding
         return self.pack_unicode, key.decode(DEFAULT_ENCODING)
 

@@ -178,7 +178,8 @@ class Connection(log.Logger, log.LogProxy):
         log.Logger.__init__(self, database)
         log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
-        self._serializer = serialization.json.Serializer(sort_keys=True)
+        self._serializer = serialization.json.Serializer(sort_keys=True,
+                                                         force_unicode=True)
         self._unserializer = (unserializer or
                               serialization.json.PaisleyUnserializer())
 
