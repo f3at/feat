@@ -287,9 +287,8 @@ class Unserializer(base.Unserializer):
         items = [(k.encode(DEFAULT_ENCODING), v)for k, v in data.iteritems()]
         container.update(self.unpack_unordered_pairs(items))
 
-    def unpack_function(self, container, data):
-        f = reflect.named_object(data[1])
-        container.update(f)
+    def unpack_function(self, data):
+        return reflect.named_object(data[1])
 
     _list_unpackers = {BYTES_ATOM: (None, unpack_bytes),
                        ENCODED_ATOM: (None, unpack_encoded),
