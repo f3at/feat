@@ -18,7 +18,7 @@ class UnsolvableConflict(error.NonCritical):
         self.doc = doc
 
     log_level = 3
-    log_line_template = "Failed solving conflit."
+    log_line_template = "Failed solving conflict."
 
 
 class Modified(Exception):
