@@ -1031,13 +1031,18 @@ class NonEmuTests(object):
         logs1 = yield self.connection.query_view(conflicts.UpdateLogs, **keys)
         self.assertEqual(2, len(logs1))
         self.assertEqual(rev1, logs1[0].rev_to)
+        part = logs1[0].partition_tag
+        self.assertIsNot(None, part)
         self.assertEqual(update.attributes, logs1[0].handler)
         self.assertEqual(rev1, logs1[1].rev_from)
         self.assertEqual(rev2, logs1[1].rev_to)
+        self.assertEqual(part, logs1[1].partition_tag)
         self.assertEqual(update.append_to_list, logs1[1].handler)
         logs2 = yield connection2.query_view(conflicts.UpdateLogs, **keys)
         self.assertEqual(2, len(logs2))
         self.assertEqual(rev1b, logs2[0].rev_to)
+        part2 = logs2[0].partition_tag
+        self.assertNotEqual(part2, part)
 
         # replicate the changes
         yield rconnection.save_document(replication_doc(dbname, 'temp'))

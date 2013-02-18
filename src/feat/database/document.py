@@ -247,3 +247,4 @@ class UpdateLog(VersionedDocument):
     field('rev_to', None)
     field('owner_id', None)
     field('timestamp', None)
+    field('partition_tag', None)

@@ -419,6 +419,34 @@ class Connection(log.Logger, log.LogProxy):
                 return None
         return self._query_cache
 
+    ### public methods used by update and replication mechanism ###
+
+    def get_database_tag(self):
+        '''
+        Each feat database has a unique tag which identifies it. Thanks to it
+        the mechanism cleaning up the update logs make the difference between
+        the changes done locally and remotely. The condition for cleaning
+        those up is different.
+        '''
+
+        def conflict_handler(fail):
+            fail.trap(ConflictError)
+            return self.get_database_tag()
+
+        def parse_response(doc):
+            self._database_tag = doc['tag']
+            return self._database_tag
+
+        if not hasattr(self, '_database_tag'):
+            tag = unicode(uuid.uuid1())
+            d = self.save_document({'_id': u'_local/database_tag',
+                                    'tag': tag})
+            d.addErrback(conflict_handler)
+            d.addCallback(parse_response)
+            return d
+        else:
+            return defer.succeed(self._database_tag)
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -491,18 +519,22 @@ class Connection(log.Logger, log.LogProxy):
                 keywords=keywords,
                 rev_from=rev,
                 timestamp=time.time())
-            d.addCallback(defer.keep_param, self._log_update,
-                          update_log)
+            dl = defer.DeferredList([d, self.get_database_tag(),
+                                     self.get_update_seq()])
+            dl.addCallback(self._log_update, update_log)
+            d = dl
         d.addErrback(self._errback_on_update, doc_id,
                      _method, args, keywords)
         return d
 
-    def _log_update(self, doc, update_log):
+    def _log_update(self, ((_s1, doc), (_s2, tag), (_s3, seq)), update_log):
         update_log.rev_to = doc.rev
         update_log.owner_id = doc.doc_id
-        d = self.get_update_seq()
-        d.addCallback(lambda seq: setattr(update_log, 'seq_num', seq))
-        d.addCallback(defer.drop_param, self.save_document, update_log)
+        update_log.seq_num = seq
+        update_log.partition_tag = tag
+
+        d = self.save_document(update_log)
+        d.addCallback(defer.override_result, doc)
         return d
 
     def _errback_on_update(self, fail, doc_id, _method, args, keywords):
