@@ -42,7 +42,7 @@ class StartStaticAgent(action.Action):
     action.result(value.Response())
     action.param('force', value.Boolean(False), is_required=False,
                  label="Start the agent even it is already running")
-    action.effect(call.action_filter('do_spawn'))
+    action.effect(call.action_perform('do_spawn'))
     action.effect(call.action_filter('render_response'))
 
     def do_spawn(self, force=False):
