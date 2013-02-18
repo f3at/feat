@@ -19,8 +19,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import os
-
 from feat.agencies.net import agency, broker
 from feat.common import defer, time, fcntl, error
 
@@ -140,6 +138,7 @@ class Agency(agency.Agency):
         return self._broker.push_event(recp.key, 'started')
 
     def notify_failed(self, failure, agent_id):
-        # FIXME: I guess here we should shutdown ourselves
-        self._error_handler(failure)
+        error.handle_failure(self, failure,
+                             "Failed to spawn the agent. I will terminate")
+        time.call_next(self._shutdown, stop_process=True)
         return self._broker.fail_event(failure, agent_id, 'started')
