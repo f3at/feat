@@ -13,7 +13,16 @@ def installResolver(reactor=None,
     L = [hostResolver, cache.CacheResolver(), theResolver]
     if reactor is None:
         from twisted.internet import reactor
-    reactor.installResolver(resolve.ResolverChain(L))
+    reactor.installResolver(ResolverChain(L))
+
+
+class ResolverChain(resolve.ResolverChain):
+
+    def _cbRecords(self, (ans, auth, add), name, effort):
+        result = extractRecord(self, dns.Name(name), ans + auth + add, effort)
+        if not result:
+            raise error.DNSLookupError(name)
+        return result
 
 
 class Resolver(client.Resolver):
@@ -26,12 +35,6 @@ class Resolver(client.Resolver):
         d = self.lookupAddress(name, timeout)
         d.addCallback(self._cbRecords, name, effort)
         return d
-
-    def _cbRecords(self, (ans, auth, add), name, effort):
-        result = extractRecord(self, dns.Name(name), ans + auth + add, effort)
-        if not result:
-            raise error.DNSLookupError(name)
-        return result
 
 
 def extractRecord(resolver, name, answers, level=10):
