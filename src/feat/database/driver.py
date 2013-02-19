@@ -210,17 +210,17 @@ class CouchDB(httpclient.ConnectionPool):
         headers.setdefault('accept', "application/json")
         return self.request(http.Methods.GET, url, headers=headers, **extra)
 
-    def put(self, url, body='', headers=dict(), **extra):
+    def put(self, url, body=None, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")
         headers.setdefault('content-type', "application/json")
-        return self.request(http.Methods.PUT, url, body=body.encode('utf8'),
-                            headers=headers, **extra)
+        return self.request(http.Methods.PUT, url,
+                            body=body, headers=headers, **extra)
 
-    def post(self, url, body='', headers=dict(), **extra):
+    def post(self, url, body=None, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")
         headers.setdefault('content-type', "application/json")
-        return self.request(http.Methods.POST, url, body=body.encode('utf8'),
-                            headers=headers, **extra)
+        return self.request(http.Methods.POST, url,
+                            body=body, headers=headers, **extra)
 
     def delete(self, url, headers=dict(), **extra):
         headers.setdefault('accept', "application/json")

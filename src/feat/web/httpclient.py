@@ -137,10 +137,7 @@ class Protocol(http.BaseProtocol):
 
         headers = dict(headers) if headers is not None else {}
         if body:
-            # without typecast to str, in case of unicode input
-            # the server just breaks connection with me
-            # TODO: think if it cannot be fixed better
-            body = body.encode('utf-8')
+            body = self._encode_body(body)
             headers["content-length"] = len(body)
         lines = []
         http.compose_request(method, location, protocol, buffer=lines)
@@ -251,6 +248,15 @@ class Protocol(http.BaseProtocol):
             self._response = None
 
     ### Private Methods ###
+
+    def _encode_body(self, body):
+        if body is None:
+            return None
+        if isinstance(body, unicode):
+            body = body.encode('utf8', 'replace')
+        if not isinstance(body, str):
+            raise TypeError(repr(type(body)))
+        return body
 
     def _client_error(self, exception):
         if self._response:

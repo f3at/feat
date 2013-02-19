@@ -230,6 +230,24 @@ class TestCase(object):
         self.assertEquals(doc, res[0])
 
     @defer.inlineCallbacks
+    def testBinaryAttachments(self):
+        gifdata = ("%c" * 35) % (
+            0x47, 0x49, 0x46, 0x38, 0x39, 0x61,
+            0x01, 0x00, 0x01, 0x00, 0x80, 0xff,
+            0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+            0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x01, 0x00, 0x00, 0x02,
+            0x02, 0x44, 0x01, 0x00, 0x3b)
+
+        doc = DummyDocument(doc_id=u'some_doc')
+        # first just create an attachment
+        at = doc.create_attachment('attachment', gifdata, 'image/gif')
+        doc = yield self.connection.save_document(doc)
+
+        body = yield self.connection.get_attachment_body(at)
+        self.assertEquals(gifdata, body)
+
+    @defer.inlineCallbacks
     def testAttachments(self):
         doc = DummyDocument(doc_id=u'some_doc')
         # first just create an attachment
