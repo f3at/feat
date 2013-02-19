@@ -73,6 +73,9 @@ class StealthPeriodicTask(BaseTask):
     timeout = None
 
     def initiate(self, period):
+        """
+        @param period: the periodicity of the task, in seconds
+        """
         self._period = period
         self._call = None
         self._canceled = False
@@ -92,8 +95,8 @@ class StealthPeriodicTask(BaseTask):
             state.medium.terminate()
 
     def run(self):
-        """Overridden in sub-classes. The time of the asynchnours job
-        perfromed here is not substracted from the period."""
+        """Overridden in sub-classes. The time of the asynchronous job
+        performed here is not subtracted from the period."""
 
     ### Private Methods ###
 
