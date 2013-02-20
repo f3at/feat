@@ -62,11 +62,20 @@ def bridge_result(_result, _method, *args, **kwargs):
 
 
 def drop_param(_param, _method, *args, **kwargs):
+    """
+    Used as a callback to ignore the result from the previous callback
+    added to this fiber.
+    """
     assert callable(_method), "method %r is not callable" % (_method, )
     return _method(*args, **kwargs)
 
 
 def bridge_param(_param, _method, *args, **kwargs):
+    """
+    Used as a callback to keep the result from the previous callback
+    and use that instead of the result of the given callback when
+    chaining to the next callback in the fiber.
+    """
     assert callable(_method), "method %r is not callable" % (_method, )
     f = Fiber(debug_depth=1, debug_call=_method)
     f.add_callback(drop_param, _method, *args, **kwargs)
