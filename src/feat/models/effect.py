@@ -21,40 +21,35 @@
 # Headers in this file shall remain intact.
 
 """
-This module defines a set of generic effects:
-
- - delay: perform the specified effect outside the execution chain after
-          the specified time returning specified result right away.
-
- - select_param: drop the current value and use the parameter
-                 with specified name as the new value.
-
- - local_ref: return a local reference constructed from the factory
-              arguments and finishing with the context's key.
-
- - context_key: return the context key as the new value.
-
+This module defines a set of generic effect factories.
+See the individual function docstrings for an explanation of each effect
+factory.
 
 EFFECT DEFINITION:
 
-Effects are standardized callable with known parameters that can perform
+Effects are standardized callables with known parameters that can perform
 different actions.
 
-Effects' first argument is the current value in a processing chain.
+An effect takes two arguments and keyword arguments:
 
-Effect's second argument is the current context, a dictionary
-containing the following keys when meaningful:
+  1. the current value in a processing chain.
 
-  - model: the current model.
-  - view: the current view.
-  - action: the current action.
-  - key: the current key.
+  2. current context: a dictionary, containing the following keys when
+     meaningful:
 
-Effect's keywords arguments are extra dynamic parameters
-that could be used by the effect, usually action parameters.
+      - model:  the current model
+      - view:   the current view
+      - action: the current action
+      - key:    the current key
 
-Effect's result is ALWAYSa defer.Deffered() instance fired
+  3. An effect's keywords arguments are extra dynamic parameters
+     that could be used by the effect, usually action parameters.
+
+The effect's result is ALWAYS a defer.Deferred() instance fired
 with the new value of the processing chain.
+
+FIXME: this last sentence seems wrong.  I see effects that return values as is,
+without wrapping them in a Deferred.
 """
 
 from feat.common import defer, time
@@ -63,17 +58,19 @@ from feat.models import reference
 
 def delay(effect, result=None, delay=0.001):
     """
-    Creates and effect that will delays the execution
-    of the specified effect and return the specified result right away.
-    @param effect: the effect to delay.
-    @type effect: callable
-    @param result: the value to return right away.
-    @type result: Any
-    @param delay: the time to wait before performing
-                  the specified effect in seconds.
-    @type delay: float
-    @return: a new effect that will delay the specified effect.
-    @rtype: callable
+    Returns a new effect that will delay the execution
+    of the given effect and return the specified result right away.
+
+    @param effect: the effect to delay
+    @type  effect: callable
+    @param result: the value to return right away
+    @type  result: Any
+    @param delay:  the time to wait before performing
+                   the specified effect, in seconds
+    @type  delay:  float
+
+    @return: a new effect that will delay the given effect
+    @rtype:  callable
     """
 
     def delay(value, context, **params):
@@ -87,8 +84,9 @@ def delay(effect, result=None, delay=0.001):
 
 def select_param(param_name, default=None):
     """
-    Drop the current value and return the parameter with specified name
-    instead or the specified default value if the parameter is not specified.
+    Returns an effect that drops the current value and returns the parameter
+    with the specified name instead, or the specified default value if the
+    parameter is not specified.
     """
 
     def select_param(_value, _context, **params):
@@ -99,9 +97,12 @@ def select_param(param_name, default=None):
 
 def local_ref(*parts):
     """
-    Create a reference builder with specified base location.
-    using getter.local_ref("some", "base") to get a value with key
-    "toto" will gives reference.Local("some", "base", "toto")
+    Returns an effect that returns a local reference constructed from the
+    given factory arguments joined with the context's 'key'.
+
+    This is a reference builder with a specified base location:
+    Using getter.local_ref("some", "base") to get a value with context key
+    "toto" will give reference.Local("some", "base", "toto")
     """
 
     def local_ref(_value, context, **_params):
@@ -124,8 +125,10 @@ def relative_ref(*parts):
 
 
 def context_value(name):
-    """Drop the current value, and return context's value
-    with specified name."""
+    """
+    Returns an effect that drops the current value, and replaces it with
+    the value from the context with the given name.
+    """
 
     def context_value(_value, context, **_params):
         return defer.succeed(context[name])
@@ -148,7 +151,7 @@ def identity(value, context, *args, **kwargs):
 
 def subroutine(*effects):
     """
-    Creates an effect performing a list of effects. The value passed to each
+    Returns an effect performing a list of effects. The value passed to each
     effect is a result of the previous effect.
     """
 
