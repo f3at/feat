@@ -4,8 +4,9 @@
 
 # this script is run -i so that PS1 doesn't get cleared
 
-# change this variable to a different location depending on where you
-# store your checkouts
+unset MYFEAT
+unset FEAT_DIR
+
 # variables below can be configured in the following config file
 CONFIG=$HOME/.config/feat/uninstalled
 if test -f $CONFIG
