@@ -998,30 +998,19 @@ class NonEmuTests(object):
 
         # create a replication document in each database so that
         # the logic in cleanup_logs() know that the docs are there
-        r1 = yield rconnection.save_document(replication_doc(dbname, 'temp'))
-        yield common.wait_for(replications_completed, 5, kwargs={
-            'connection': rconnection,
-            'ids': [r1['_id']]})
-
-        r2 = yield rconnection.save_document(replication_doc('temp', dbname))
-        yield common.wait_for(replications_completed, 5, kwargs={
-            'connection': rconnection,
-            'ids': [r2['_id']]})
+        yield replicate(rconnection, dbname, 'temp')
+        yield replicate(rconnection, 'temp', dbname)
 
         doc = ConcurrentDoc(field1=1, field2=[1, 2, 3])
         doc = yield self.connection.save_document(doc)
 
-        # make sure this is commited
+        # # make sure this is commited
         yield self.connection.database.couchdb_call(
             'ensure_full_commit',
             self.connection.database.couchdb.post,
             '/%s/_ensure_full_commit' % (dbname, ))
 
-        # replicate the document
-        r = yield rconnection.save_document(replication_doc(dbname, 'temp'))
-        yield self.wait_for(replications_completed, 5, kwargs={
-            'connection': rconnection,
-            'ids': [r['_id']]})
+        yield replicate(rconnection, dbname, 'temp')
 
         # check that it reached the target
         doc2 = yield connection2.get_document(doc.doc_id)
@@ -1029,13 +1018,10 @@ class NonEmuTests(object):
 
         # doing the cleaunp on each partition should not delete anything,
         # as there are no updates yet
-        count = yield conflicts.cleanup_logs(self.connection, rconnection)
-        self.assertEqual(0, count)
-        count = yield conflicts.cleanup_logs(connection2, rconnection)
-        self.assertEqual(0, count)
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(0, connection2, rconnection)
 
         # do some concurrent updates
-
         doc = yield self.connection.update_document(
             doc, update.attributes, {'field1': 5})
         rev1 = doc.rev
@@ -1052,10 +1038,7 @@ class NonEmuTests(object):
         self.assertEqual([1, 2, 3, 'B', 'C'], doc2.field2)
 
         # assert update logs where created
-        keys = conflicts.UpdateLogs.all()
-        keys['include_docs'] = True
-        logs1 = yield self.connection.query_view(conflicts.UpdateLogs, **keys)
-        self.assertEqual(2, len(logs1))
+        logs1 = yield self.assert_logs(2, self.connection)
         self.assertEqual(rev1, logs1[0].rev_to)
         part = logs1[0].partition_tag
         self.assertIsNot(None, part)
@@ -1064,7 +1047,8 @@ class NonEmuTests(object):
         self.assertEqual(rev2, logs1[1].rev_to)
         self.assertEqual(part, logs1[1].partition_tag)
         self.assertEqual(update.append_to_list, logs1[1].handler)
-        logs2 = yield connection2.query_view(conflicts.UpdateLogs, **keys)
+
+        logs2 = yield self.assert_logs(2, connection2)
         self.assertEqual(2, len(logs2))
         self.assertEqual(rev1b, logs2[0].rev_to)
         part2 = logs2[0].partition_tag
@@ -1072,43 +1056,32 @@ class NonEmuTests(object):
 
         # doing the cleaunp now should not delete anything, because neither
         # of partitions replicated their changes
-        count = yield conflicts.cleanup_logs(self.connection, rconnection)
-        self.assertEqual(0, count)
-        count = yield conflicts.cleanup_logs(connection2, rconnection)
-        self.assertEqual(0, count)
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(0, connection2, rconnection)
 
         # replicate the changes
-        r = yield rconnection.save_document(replication_doc(dbname, 'temp'))
-        yield self.wait_for(replications_completed, 5, kwargs={
-            'connection': rconnection,
-            'ids': [r['_id']]})
+        yield replicate(rconnection, dbname, 'temp')
 
-        combined = yield connection2.query_view(conflicts.UpdateLogs, **keys)
-        self.assertEqual(4, len(combined))
-        conf = yield connection2.query_view(conflicts.Conflicts)
-        self.assertEqual([(doc.doc_id, None, doc.doc_id)], conf)
-
+        yield self.assert_logs(4, connection2)
+        yield self.assert_conflicts(connection2, doc)
         # the other partition does not notive the conflict
-        conf = yield self.connection.query_view(conflicts.Conflicts)
-        self.assertEqual([], conf)
+        yield self.assert_conflicts(self.connection)
 
         # doing the cleaunp now should not delete the logs, because
         # they are done for the document which is currently in conflict state
-        count = yield conflicts.cleanup_logs(connection2, rconnection)
-        self.assertEqual(0, count)
+        yield self.assert_cleanup(0, connection2, rconnection)
         # This database is not in conflict state because the changes on the
         # other partion were not propagated here. It sent its logs to the
         # other partion, so its free to delete its logs.
-        count = yield conflicts.cleanup_logs(self.connection, rconnection)
-        self.assertEqual(2, count)
+        yield self.assert_cleanup(2, self.connection, rconnection)
 
         # solve the conflict of the partition which
         yield conflicts.solve(connection2, doc.doc_id)
         merged = yield connection2.reload_document(doc)
         self.assertEqual([1, 2, 3, 'A', 'B', 'C'], merged.field2)
         self.assertEqual(5, merged.field1)
-        conf = yield connection2.query_view(conflicts.Conflicts)
-        self.assertEqual([], conf)
+
+        yield self.assert_conflicts(connection2)
 
         # the other partition does not need a conflict resolution
         # this does nothing..
@@ -1117,54 +1090,66 @@ class NonEmuTests(object):
         # The cleanup on the partition with the conflict solved
         # can get rid of the logs coming from the other partion.
         # The other partition has nothing to cleanup anymore
-        count = yield conflicts.cleanup_logs(self.connection, rconnection)
-        self.assertEqual(0, count)
-        count = yield conflicts.cleanup_logs(connection2, rconnection)
-        self.assertEqual(2, count)
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(2, connection2, rconnection)
 
         # replicate the solution back, replication is done with the filter
         # so the update logs are not deleted on the target
-        r = yield rconnection.save_document(
-            replication_doc('temp', dbname, filter=u'featjs/replication'))
-        yield self.wait_for(replications_completed, 5, kwargs={
-            'connection': rconnection,
-            'ids': [r['_id']]})
+        yield replicate(rconnection, 'temp', dbname,
+                        filter=u'featjs/replication')
 
-        conf = yield self.connection.query_view(conflicts.Conflicts)
-        self.assertEqual([], conf)
+        yield self.assert_conflicts(self.connection)
+
         merged_ = yield self.connection.reload_document(doc)
         self.assertEqual(merged, merged_)
-        logs = yield self.connection.query_view(conflicts.UpdateLogs, **keys)
         # there is 3 of them now in the target, the third one comes from
         # solving the conflict
-        self.assertEqual(3, len(logs))
+        yield self.assert_logs(3, self.connection)
 
         # Replication also transmited the update logs done in other partion
         # they should be collected by the cleanup now. There is 3 of them
         # because solving conflict created another one.
-        count = yield conflicts.cleanup_logs(self.connection, rconnection)
-        self.assertEqual(3, count)
+        yield self.assert_cleanup(3, self.connection, rconnection)
         # The partition solving the conflict is finally ready to get rid
         # of its logs.
-        count = yield conflicts.cleanup_logs(connection2, rconnection)
-        self.assertEqual(3, count)
+        yield self.assert_cleanup(3, connection2, rconnection)
 
         # assert that there are no logs left
         for connection in (self.connection, connection2):
-            logs = yield connection.query_view(conflicts.UpdateLogs, **keys)
-            self.assertEqual(0, len(logs))
+            yield self.assert_logs(0, connection)
+
+    def assert_logs(self, expected, connection):
+        keys = conflicts.UpdateLogs.all()
+        keys['include_docs'] = True
+        d = connection.query_view(conflicts.UpdateLogs, **keys)
+        d.addCallback(defer.keep_param,
+                      lambda logs: self.assertEqual(expected, len(logs)))
+        return d
+
+    def assert_cleanup(self, expected, connection, rconnection):
+        d = conflicts.cleanup_logs(connection, rconnection)
+        d.addCallback(self.assertEqual, expected)
+        return d
+
+    @defer.inlineCallbacks
+    def assert_conflicts(self, connection, *docs):
+        expected = [(doc.doc_id, None, doc.doc_id) for doc in docs]
+        conf = yield connection.query_view(conflicts.Conflicts)
+        self.assertEqual(expected, conf)
 
 
 @defer.inlineCallbacks
-def replications_completed(connection, ids):
-    for doc_id in ids:
-        doc = yield connection.get_document(doc_id)
-        state = doc.get('_replication_state')
-        if state == 'error':
-            print state
-        if state != 'completed':
-            defer.returnValue(False)
-    defer.returnValue(True)
+def replicate(connection, source, target, **options):
+    r = replication_doc(source, target, **options)
+    r = yield connection.save_document(r)
+    yield time.wait_for(replication_completed, 5, connection, r['_id'])
+
+
+@defer.inlineCallbacks
+def replication_completed(connection, doc_id):
+    doc = yield connection.get_document(doc_id)
+    state = doc.get('_replication_state')
+    defer.returnValue(state == 'completed')
 
 
 @serialization.register
