@@ -218,7 +218,8 @@ def _solve_merge(connection, doc, conflicts):
 
         # We remove previous mergies from the merge log, before above we
         # extracted individual logs forming there into the linear history
-        logs = [x for x in lookup.itervalues() if x.handler is not perform_merge]
+        logs = [x for x in lookup.itervalues()
+                if x.handler is not perform_merge]
         logs.sort(key=operator.attrgetter('timestamp'))
         try:
             yield connection.update_document(doc, perform_merge,
@@ -285,25 +286,17 @@ def _get_logs_between(from_rev, to_rev, lookup):
 
 
 @defer.inlineCallbacks
-def cleanup_logs(connection, rconnection):
-    '''
-    Perform a cleanup of update logs.
-    This methods analazyes what replication are configured and removes
-    the update logs which we will not need in future.
-    It returns the C{int} counter of performed deletes.
-    '''
-
-    database = connection.database
+def get_replication_status(rconnection, source):
+    database = rconnection.database
     if not isinstance(database, driver.Database):
         raise TypeError("This procedure would work only for driver connected"
                         " to the real database. It uses public methods which"
                         " are not the part of IDatabaseDriver interface")
 
-    version = yield connection.database.get_version()
+    version = yield rconnection.database.get_version()
     if version < (1, 2, 0):
         raise ValueError("CouchDB 1.2.0 required, found %r" % (version, ))
 
-    dbname = database.db_name
     active_tasks = yield database.couchdb_call('_active_tasks',
                                                database.couchdb.get,
                                                '/_active_tasks')
@@ -312,26 +305,46 @@ def cleanup_logs(connection, rconnection):
                             'replication_id' in x))
 
     replications = yield rconnection.query_view(Replications,
-                                                key=('source', dbname),
+                                                key=('source', source),
                                                 include_docs=True)
 
-    # target database -> checkpoint_source_seq
-    counter = dict()
+    # target database -> [(checkpointed_source_seq, continuous, status)]
+    result = dict()
     for replication in replications:
         target = replication['target']
+        result.setdefault(target, list())
+
         if replication.get('_replication_state') == 'completed':
             seq = replication['_replication_stats']['checkpointed_source_seq']
+            result[target].append((seq, False, 'completed'))
         elif (replication.get('_replication_state') == 'triggered' and
               replication.get('continuous')):
             task = active_tasks.get(replication['_replication_id'])
             if not task:
+                result[target].append((0, True, 'task_missing'))
                 continue
             seq = task['checkpointed_source_seq']
+            result[target].append((seq, True, 'running'))
         else:
-            continue
-        counter[target] = max([counter.get(target, 0), seq])
+            result[target].append((0, replication.get('continuous'),
+                                   replication.get('_replication_state')))
+    defer.returnValue(result)
 
-    cleanup_seq = min(counter.values()) if replications else None
+
+@defer.inlineCallbacks
+def cleanup_logs(connection, rconnection):
+    '''
+    Perform a cleanup of update logs.
+    This methods analazyes what replication are configured and removes
+    the update logs which we will not need in future.
+    It returns the C{int} counter of performed deletes.
+    '''
+    source = connection.database.db_name
+    statuses = yield get_replication_status(rconnection, source)
+
+    counters = dict((name, max([row[0] for row in replications]))
+                    for name, replications in statuses.iteritems())
+    cleanup_seq = min(counters.values()) if statuses else None
     own_tag = yield connection.get_database_tag()
 
     deletes_count = 0 # this is returned as a result
