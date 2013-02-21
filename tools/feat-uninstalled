@@ -1,0 +1,37 @@
+#!/bin/bash -i
+#
+# this script setups up env to work on feat uninstalled
+
+# this script is run -i so that PS1 doesn't get cleared
+
+# change this variable to a different location depending on where you
+# store your checkouts
+# variables below can be configured in the following config file
+CONFIG=$HOME/.config/feat/uninstalled
+if test -f $CONFIG
+then
+  source $CONFIG
+fi
+
+# extract version from $0
+# if this script is called "feat-master" then version will be "master"
+VERSION=`echo $0 | sed s/.*feat-//g`
+
+CONFIG=$HOME/.config/feat/$VERSION
+if test -f $CONFIG
+then
+  source $CONFIG
+fi
+
+MYFEAT=${MYFEAT:-$HOME/feat}
+
+export FEAT_DIR=${FEAT_DIR:-$MYFEAT/$VERSION/feat}
+if test ! -d $FEAT_DIR
+then
+  echo $FEAT_DIR does not exist
+  exit 1
+fi
+
+echo "setting up feat $VERSION (uninstalled) in $FEAT_DIR"
+cd $FEAT_DIR
+PS1="[feat-$VERSION] $PS1" ./env $SHELL "$@"
