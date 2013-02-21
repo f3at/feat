@@ -38,6 +38,14 @@ class Conflicts(view.JavascriptView):
         }
     }''')
 
+    filter = format_block('''
+    function(doc, request) {
+        if (doc._conflicts) {
+            return true;
+        }
+        return false;
+    }''')
+
 
 @feat.register_view
 class Replication(view.JavascriptView):
