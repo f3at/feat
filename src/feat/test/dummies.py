@@ -239,6 +239,9 @@ class DummyProtocol(object):
     def notify(self, *args, **kwargs):
         pass
 
+    def finalize(self):
+        pass
+
 
 @adapter.register(IInterest, IAgencyInterestInternalFactory)
 class DummyAgencyInterest(protocols.DialogInterest):

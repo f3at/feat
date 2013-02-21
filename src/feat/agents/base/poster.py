@@ -70,6 +70,11 @@ class BasePoster(protocols.BaseInitiator):
     def update_recipients(self, state, recp):
         state.medium.recipients = recp
 
+    @replay.side_effect
+    @replay.immutable
+    def finalize(self, state):
+        state.medium.finalize(None)
+
     ### Private Methods ###
 
     @replay.immutable
