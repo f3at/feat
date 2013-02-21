@@ -39,7 +39,7 @@ from feat.gateway.application import featmodels
 from feat.web import http
 from feat import applications
 
-from feat.agencies.interface import AgencyRoles
+from feat.agencies.interface import AgencyRoles, IAgencyProtocolInternal
 from feat.agents.monitor.interface import MonitorState, LocationState
 from feat.agents.monitor.interface import PatientState
 from feat.interface.agent import AgencyAgentState, IAgent, IMonitorAgent
@@ -556,6 +556,31 @@ class AgencyAgent(model.Model):
         return ref.resolve(context)
 
 
+@featmodels.register_model
+@featmodels.register_adapter(IAgencyProtocolInternal, IModel)
+class Protocol(model.Model):
+    model.identity('feat.IAgencyProtocolInternal')
+
+    model.attribute('protocol_id', value.String(),
+                    getter=getter.source_attr('protocol_id'))
+    model.attribute('agent_class', value.String(),
+                    getter=call.model_call('get_agent_class'))
+    model.item_meta("agent_class", "html-link", "owner")
+    model.attribute('idle', value.Boolean(),
+                    getter=call.source_call('is_idle'))
+    model.delete('del',
+                 call.model_call('force_termination'),
+                 response.deleted("Protocol terminated"),
+                 label="Force termination")
+
+    def get_agent_class(self):
+        return reflect.canonical_name(self.source.get_agent_side())
+
+    def force_termination(self):
+        result = error.FeatError("Termianted via gateway")
+        self.source.finalize(result)
+
+
 class AgentTypeValue(value.String):
     value.label("Agent Type")
     value.desc("Agents type allowed to be started")
@@ -688,6 +713,12 @@ class Agent(model.Model):
                 enabled=call.model_call("_has_resources"),
                 label="Resources", desc="Agent's resources.")
 
+    model.collection("protocols",
+                     label="Protocols",
+                     child_names=call.model_call("get_protocols"),
+                     child_source=getter.model_get('get_protocol'),
+                     model_meta=[("html-render", "array, 2")])
+
     #FIXME: use another mean to specify the default action than name
     model.delete("del",
                  call.model_call("_terminate"),
@@ -725,6 +756,12 @@ class Agent(model.Model):
 
     def get_application(self):
         return self.source.application.name
+
+    def get_protocols(self):
+        return self._medium._protocols.keys()
+
+    def get_protocol(self, key):
+        return self._medium._protocols.get(key)
 
 
 @featmodels.register_model
