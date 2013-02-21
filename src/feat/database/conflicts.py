@@ -184,6 +184,13 @@ def _solve_alert(connection, doc, conflicts):
 def _solve_merge(connection, doc, conflicts):
     logs = yield connection.query_view(
         UpdateLogs, **UpdateLogs.for_doc(doc.doc_id))
+    # Some of the logs might be the result of solving the merge.
+    # These logs contain other logs inside, which might have already been
+    # cleaned up. Here we expand them.
+    for log in list(logs):
+        if log.handler is perform_merge:
+            logs.extend(log.keywords['logs'])
+
     lookup = dict((x.rev_to, x) for x in logs)
     root_rev = _find_common_ancestor(lookup, [doc.rev] + conflicts)
     if root_rev:
@@ -200,6 +207,9 @@ def _solve_merge(connection, doc, conflicts):
                     raise UnsolvableConflict(str(e), doc)
             root = doc
 
+        # We remove previous mergies from the merge log, before above we
+        # extracted individual logs forming there into the linear history
+        logs = [x for x in lookup.itervalues() if x.handler is not perform_merge]
         logs.sort(key=operator.attrgetter('timestamp'))
         try:
             yield connection.update_document(doc, perform_merge,

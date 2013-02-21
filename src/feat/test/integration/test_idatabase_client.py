@@ -1093,26 +1093,46 @@ class NonEmuTests(object):
         yield self.assert_cleanup(0, self.connection, rconnection)
         yield self.assert_cleanup(2, connection2, rconnection)
 
+        # Before the solution is replicated back, we make another change on
+        # the document.
+        doc = yield self.connection.update_document(
+            doc, update.append_to_list, 'field2', 'D')
+        self.assertEqual([1, 2, 3, 'A', 'D'], doc.field2)
+
         # replicate the solution back, replication is done with the filter
         # so the update logs are not deleted on the target
         yield replicate(rconnection, 'temp', dbname,
                         filter=u'featjs/replication')
-
-        yield self.assert_conflicts(self.connection)
-
-        merged_ = yield self.connection.reload_document(doc)
-        self.assertEqual(merged, merged_)
-        # there is 3 of them now in the target, the third one comes from
-        # solving the conflict
-        yield self.assert_logs(3, self.connection)
-
-        # Replication also transmited the update logs done in other partion
-        # they should be collected by the cleanup now. There is 3 of them
-        # because solving conflict created another one.
-        yield self.assert_cleanup(3, self.connection, rconnection)
-        # The partition solving the conflict is finally ready to get rid
-        # of its logs.
+        # The partition solving the first conflict is finally
+        # ready to get rid of its logs.
         yield self.assert_cleanup(3, connection2, rconnection)
+
+        # we are in conflict state, because of the change adding 'D'
+        yield self.assert_conflicts(self.connection, doc)
+        # but we can solve it
+        yield conflicts.solve(self.connection, doc.doc_id)
+        yield self.assert_conflicts(self.connection)
+        doc = yield self.connection.reload_document(doc)
+        self.assertEqual([1, 2, 3, 'A', 'B', 'C', 'D'], doc.field2)
+
+        # there is 5 of them now in the target, the third one comes from
+        # solving the conflict, 4th from update adding 'D', 5th from
+        # solving second conflict
+        yield self.assert_logs(5, self.connection)
+        # 3 of them can be cleaned up, because they are already included in
+        # the revision we have
+        yield self.assert_cleanup(3, self.connection, rconnection)
+
+        # after solving the second conflict replicate the solution
+        # to temp database
+        yield replicate(rconnection, dbname, 'temp',
+                        filter=u'featjs/replication')
+        # there should be no conflict
+        yield self.assert_conflicts(connection2)
+
+        # we can remove the remaining logs
+        yield self.assert_cleanup(2, self.connection, rconnection)
+        yield self.assert_cleanup(2, connection2, rconnection)
 
         # assert that there are no logs left
         for connection in (self.connection, connection2):
