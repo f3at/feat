@@ -31,7 +31,7 @@ from twisted.trial import unittest, util
 from twisted.scripts import trial
 
 from feat.database import emu as database
-from feat.agencies import agency, messaging, journaler, message, recipient
+from feat.agencies import agency, journaler, message, recipient
 from feat.agencies.messaging import emu, rabbitmq
 from feat.agents.base import agent
 from feat.common import log, defer, decorator, journal, time, signal
@@ -180,12 +180,11 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
 
         return util.acquireAttribute(self._parents, 'slow', False)
 
-    @defer.inlineCallbacks
     def wait_for(self, check, timeout, freq=0.5, kwargs=dict()):
-        try:
-            yield time.wait_for(self, check, timeout, freq, kwargs)
-        except RuntimeError as e:
-            raise unittest.FailTest(str(e))
+        d = time.wait_for_ex(check, timeout, freq=freq, kwargs=kwargs,
+                             logger=self)
+        d.addErrback(unittest.FailTest)
+        return d
 
     def is_agency_idle(self, agency):
         return all([agent.is_idle() for agent in agency.get_agents()])
