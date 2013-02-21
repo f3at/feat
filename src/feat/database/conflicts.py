@@ -113,7 +113,8 @@ def configure_replicator_database(host, port):
     """
     Connects to dabatase, checks the version and creates the
     design document used by feat (if it doesn't exist).
-    @returns: (database, connection)
+
+    @returns: IDatabaseConnection bound to _replicator database
     """
     database = driver.Database(host, port, '_replicator')
     connection = database.get_connection()
@@ -132,7 +133,7 @@ def configure_replicator_database(host, port):
 
         except NotFoundError:
             yield connection.save_document(doc)
-    defer.returnValue((database, connection))
+    defer.returnValue(connection)
 
 
 @defer.inlineCallbacks

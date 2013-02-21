@@ -948,7 +948,7 @@ class NonEmuTests(object):
         host, port = self.database.host, self.database.port
         dbname = self.database.db_name
         try:
-            repl, rconnection = yield conflicts.configure_replicator_database(
+            rconnection = yield conflicts.configure_replicator_database(
                 host, port)
         except ValueError as e:
             raise SkipTest(str(e))
@@ -986,7 +986,7 @@ class NonEmuTests(object):
             yield cleanup_replications()
 
             yield rconnection.disconnect()
-            yield repl.disconnect()
+            yield rconnection.database.disconnect()
             if 'KEEP_TEST_COUCHDB' not in os.environ:
                 yield db2.delete_db()
             yield connection2.disconnect()
