@@ -5,9 +5,9 @@ from feat.common import defer
 from feat.database import conflicts
 from feat.gateway.application import featmodels
 from feat.gateway import models
-from feat.models import model, value, call, getter
+from feat.models import model, value, call, getter, response, action
 
-from feat.models.interface import IModel
+from feat.models.interface import IModel, InvalidParameters
 
 
 @featmodels.register_model
@@ -45,6 +45,23 @@ class Replications(model.Collection):
             return
         rows.sort(key=operator.itemgetter(0), reverse=True)
         return rows[0]
+
+    model.create('post',
+                 call.model_perform('create_replication'),
+                 response.created('Replication set up'),
+                 params=[action.Param('target', value.String())])
+
+    def create_replication(self, target):
+        if target in self.statuses:
+            status = sorted(self.statuses[target],
+                            key=operator.itemgetter(0), reverse=True)[0]
+            seq, continuous, status, r_id = status
+            if continuous:
+                msg = 'Continuous replication to this target already exists'
+                raise InvalidParameters(params=dict(target=msg))
+        doc = {'source': unicode(self.config.name), 'target': target,
+               'continuous': True, 'filter': u'featjs/replication'}
+        return self.connection.save_document(doc)
 
 
 @featmodels.register_model

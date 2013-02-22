@@ -178,7 +178,7 @@ class DummyMediumBase(DummyAgent):
 class DummyAgency(object):
 
     def get_config(self):
-        return config.Config()
+        return config.Config(db=config.DbConfig(name=u'test'))
 
 
 class DummyMedium(DummyMediumBase):

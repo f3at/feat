@@ -115,6 +115,13 @@ class Replications(view.JavascriptView):
         }
     }''')
 
+    @staticmethod
+    def perform_map(doc):
+        #this is used by emu database for unit tests of the api of the
+        #integrity agent
+        yield ('source', doc.get('source')), None
+        yield ('target', doc.get('target')), None
+
 
 @defer.inlineCallbacks
 def configure_replicator_database(host, port):
