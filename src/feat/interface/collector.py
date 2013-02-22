@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 from zope.interface import Interface, Attribute
 
 from feat.interface import protocols
@@ -27,7 +28,7 @@ __all__ = ["ICollectorFactory", "IAgencyCollector", "IAgentCollector"]
 
 
 class ICollectorFactory(protocols.IInterest):
-    '''This class constructs a notification collector instances implementing
+    '''This class constructs a notification collector instance implementing
     L{IAgentCollector}. Used when registering interest in notification.
     It is passed as a parameter during registration of interest'''
 
@@ -41,4 +42,7 @@ class IAgentCollector(protocols.IInterested):
     to L{IAgencyCollector} given at creation time as a medium.'''
 
     def notified(notification):
+        """
+        @type  notification: L{feat.agencies.message.Notification}
+        """
         pass

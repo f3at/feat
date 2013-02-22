@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 from zope.interface import implements
 
 from feat.common import log, defer, reflect, serialization, fiber
@@ -69,8 +70,9 @@ class BaseCollector(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
+# FIXME: initiate is not in the interface ?
     def initiate(self):
-        '''@see: L{IAgentCollector}'''
+        '''@see: L{feat.interface.collector.IAgentCollector}'''
 
     def notified(self, notification):
-        '''@see: L{IAgentCollector}'''
+        '''@see: L{feat.interface.collector.IAgentCollector}'''
