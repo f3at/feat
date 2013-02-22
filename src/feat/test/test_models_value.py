@@ -77,6 +77,17 @@ class TestStructure(value.Structure):
     value.field("field2", value.Integer(6), is_required=False)
 
 
+class DictObject(object):
+
+    def __init__(self, **params):
+        self._params =  params
+
+    def __getattr__(self, name):
+        if name not in self._params:
+            raise AttributeError(name)
+        return self._params[name]
+
+
 class TestModelsValue(common.TestCase):
 
     def testStructure(self):
@@ -98,6 +109,14 @@ class TestModelsValue(common.TestCase):
                           dict(field2=10))
         self.assertRaises(UnknownParameters, v.validate,
                           dict(field1=1, unknown=10))
+
+        res = v.publish(dict(field1=1, string='12'))
+        self.assertEqual(dict(field1=1, string='12', field2=6), res)
+        res = v.publish(DictObject(field1=1, string='12'))
+        self.assertEqual(dict(field1=1, string='12', field2=6), res)
+        # missing required field
+        self.assertRaises(ValueError, v.publish, dict(string=1))
+        self.assertRaises(ValueError, v.publish, DictObject(string=1))
 
     def testCollection(self):
         v = TestCollection1()

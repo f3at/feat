@@ -726,7 +726,28 @@ class Structure(Value):
         return validated
 
     def publish(self, value):
-        return unicode(value)
+
+        def getter(value, name):
+            try:
+                if isinstance(value, dict):
+                    return value[name]
+                else:
+                    return getattr(value, name)
+            except (KeyError, AttributeError) as e:
+                raise ValueError(str(e))
+
+        result = dict()
+
+        for field in self.fields:
+            try:
+                v = getter(value, field.name)
+                result[field.name] = field.value_info.publish(v)
+            except ValueError:
+                if field.is_required:
+                    raise
+                if field.value_info.use_default:
+                    result[field.name] = field.value_info.default
+        return result
 
     ### IValueList ###
 
