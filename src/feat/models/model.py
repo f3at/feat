@@ -95,7 +95,7 @@ def attribute(name, value, getter=None, setter=None, deleter=None,
     @param name: attribute name, unique for a model.
     @type name: str or unicode
     @param value: attribute type information.
-    @type value: IValueInfo
+    @type value: implementer of L{src.feat.models.interface.IValueInfo}
     @param getter: an effect or None if the attribute is write-only;
                    the retrieved value that will be validated;
                    see feat.models.call for effect information.
