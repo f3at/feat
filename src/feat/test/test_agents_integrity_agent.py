@@ -28,7 +28,7 @@ class Method(object):
         self.result = result
 
 
-class IntegrationAgentTest(common.TestCase, ModelTestMixin):
+class _Base(common.TestCase, ModelTestMixin):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -41,6 +41,9 @@ class IntegrationAgentTest(common.TestCase, ModelTestMixin):
         self.assertTrue(conflicts.configure_replicator_database.called)
 
         self.state = self.agent._get_state()
+
+
+class IntegrationAgentTest(_Base):
 
     @defer.inlineCallbacks
     def testSolveConflictAlerts(self):
@@ -68,3 +71,36 @@ class IntegrationAgentTest(common.TestCase, ModelTestMixin):
         # this should resolve alert
         self.assertIn('conflict-id', self.state.alert_statuses)
         self.assertEqual(0, self.state.alert_statuses['conflict-id'][0])
+
+
+class ApiTest(_Base):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield _Base.setUp(self)
+        self.model = api.IntegrityAgent(self.agent)
+        yield self.model.initiate()
+
+    @defer.inlineCallbacks
+    def testGetReplications(self):
+        get_replication_status = Method()
+        self.patch(conflicts, 'get_replication_status', get_replication_status)
+
+        result = {
+            'target1': [(4, False, 'completed'),
+                        (10, True, 'triggered')],
+            'target2': [(0, False, 'error')]}
+        get_replication_status.reset(defer.succeed(result))
+        submodel = yield self.model_descend(self.model, 'replications')
+
+        js = yield self.model_as_json(submodel)
+
+        exp = {
+            'target1': {'last_seq': 10,
+                        'continuous': True,
+                        'status': 'triggered'},
+            'target2': {'last_seq': 0,
+                        'continuous': False,
+                        'status': 'error'}}
+
+        self.assertEqual(exp, js)
