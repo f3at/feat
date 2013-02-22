@@ -1,5 +1,5 @@
 from feat.agents.application import feat
-from feat.agents.base import agent, descriptor, replay, task
+from feat.agents.base import agent, descriptor, replay, task, alert
 from feat.common import error, fiber, defer
 from feat.database import conflicts
 
@@ -68,9 +68,10 @@ class IntegrityAgent(agent.BaseAgent):
         d = conflicts.solve(state.medium.get_database(), doc_id)
         d.addCallbacks(self._solve_cb, self._solve_err,
                        callbackArgs=(doc_id, ))
+        return d
 
     @replay.immutable
-    def _solve_cb(self, state, doc_id):
+    def _solve_cb(self, state, _ignored, doc_id):
         # resolve the alert only if we previously raised the alert
         # for this document
         name = self._alert_name(doc_id)
@@ -81,11 +82,15 @@ class IntegrityAgent(agent.BaseAgent):
     def _solve_err(self, state, fail):
         fail.trap(conflicts.UnsolvableConflict)
         doc = fail.value.doc
-        if IDocument.provided_by(doc):
+        if IDocument.providedBy(doc):
             doc_id = doc.doc_id
         else:
             doc_id = doc['_id']
         name = self._alert_name(doc_id)
+        self.may_raise_alert(alert.DynamicAlert(
+            name=name,
+            severity=alert.Severity.warn,
+            description=name))
         self.raise_alert(name, error.get_failure_message(fail))
 
     def _alert_name(self, doc_id):

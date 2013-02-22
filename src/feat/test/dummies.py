@@ -24,6 +24,7 @@ from zope.interface import implements
 from feat.common import defer, time, log, journal, fiber, adapter
 from feat.agents.base import descriptor, requester, replier, replay, cache
 from feat.agencies import protocols, common, message
+from feat.agencies.net import config
 from feat.database import emu as database
 
 from feat.agencies.interface import IAgencyInterestInternalFactory
@@ -174,8 +175,15 @@ class DummyMediumBase(DummyAgent):
         raise NotImplementedError()
 
 
+class DummyAgency(object):
+
+    def get_config(self):
+        return config.Config()
+
+
 class DummyMedium(DummyMediumBase):
 
+    agency = DummyAgency()
     state = AgencyAgentState.ready
 
     def leave_shard(self, shard):
