@@ -87,9 +87,9 @@ class ApiTest(_Base):
         self.patch(conflicts, 'get_replication_status', get_replication_status)
 
         result = {
-            'target1': [(4, False, 'completed'),
-                        (10, True, 'triggered')],
-            'target2': [(0, False, 'error')]}
+            'target1': [(4, False, 'completed', 'id1'),
+                        (10, True, 'triggered', 'id2')],
+            'target2': [(0, False, 'error', 'id3')]}
         get_replication_status.reset(defer.succeed(result))
         submodel = yield self.model_descend(self.model, 'replications')
 
@@ -98,9 +98,11 @@ class ApiTest(_Base):
         exp = {
             'target1': {'last_seq': 10,
                         'continuous': True,
-                        'status': 'triggered'},
+                        'status': 'triggered',
+                        'id': 'id2'},
             'target2': {'last_seq': 0,
                         'continuous': False,
-                        'status': 'error'}}
+                        'status': 'error',
+                        'id': 'id3'}}
 
         self.assertEqual(exp, js)

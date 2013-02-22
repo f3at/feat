@@ -56,6 +56,8 @@ class Replication(model.Model):
                     getter=getter.model_attr('continuous'))
     model.attribute('status', value.String(),
                     getter=getter.model_attr('status'))
+    model.attribute('id', value.String(),
+                    getter=getter.model_attr('id'))
 
     def init(self):
-        self.seq, self.continuous, self.status = self.view
+        self.seq, self.continuous, self.status, self.id = self.view

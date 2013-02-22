@@ -314,20 +314,22 @@ def get_replication_status(rconnection, source):
         target = replication['target']
         result.setdefault(target, list())
 
-        if replication.get('_replication_state') == 'completed':
+        r_id = replication['_replication_id']
+        r_state = replication.get('_replication_state')
+        r_continuous = replication.get('continuous', False)
+        if r_state == 'completed':
             seq = replication['_replication_stats']['checkpointed_source_seq']
-            result[target].append((seq, False, 'completed'))
-        elif (replication.get('_replication_state') == 'triggered' and
-              replication.get('continuous')):
-            task = active_tasks.get(replication['_replication_id'])
+            result[target].append((seq, False, 'completed', r_id))
+        elif r_state == 'triggered' and r_continuous:
+            task = active_tasks.get(r_id)
             if not task:
                 result[target].append((0, True, 'task_missing'))
                 continue
             seq = task['checkpointed_source_seq']
-            result[target].append((seq, True, 'running'))
+            result[target].append((seq, True, 'running', r_id))
         else:
-            result[target].append((0, replication.get('continuous'),
-                                   replication.get('_replication_state')))
+
+            result[target].append((0, r_continuous, r_state, r_id))
     defer.returnValue(result)
 
 
