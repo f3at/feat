@@ -118,7 +118,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
         self._updating = False
         self._update_queue = []
-        self._delayed_calls = container.ExpDict(self)
+        self._delayed_calls = dict()
         # Terminating flag, used to not to run
         # termination procedure more than once
         self._terminating = False
@@ -433,23 +433,26 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                       args=None, kwargs=None, busy=True):
         args = args or []
         kwargs = kwargs or {}
-        call = time.callLater(time_left, self._call, method,
-                              *args, **kwargs)
         call_id = str(uuid.uuid1())
+        d = defer.Deferred()
+        d.addCallback(self._call, *args, **kwargs)
+        d.addBoth(defer.bridge_param, self.cancel_delayed_call,
+                  call_id)
+        call = time.callLater(time_left, d.callback, method)
+
         self._store_delayed_call(call_id, call, busy)
         return call_id
 
     @replay.named_side_effect('AgencyAgent.cancel_delayed_call')
     def cancel_delayed_call(self, call_id):
         try:
-            _busy, call = self._delayed_calls.remove(call_id)
+            _busy, call = self._delayed_calls.pop(call_id)
         except KeyError:
             self.log('Tried to cancel nonexisting call id: %r', call_id)
             return
 
-        if not call.active():
-            return
-        call.cancel()
+        if call.active():
+            call.cancel()
 
     @replay.named_side_effect("AgencyAgent.is_connected")
     def is_connected(self):
@@ -902,7 +905,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _store_delayed_call(self, call_id, call, busy):
         if call.active():
-            self._delayed_calls.set(call_id, (busy, call), call.getTime() + 1)
+            self._delayed_calls[call_id] = busy, call
 
     def _cancel_all_delayed_calls(self):
         for call_id, (_busy, call) in self._delayed_calls.iteritems():
