@@ -2,8 +2,8 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.24.5
-%define unmangled_version 0.24.5
+%define version 0.24.6
+%define unmangled_version 0.24.6
 %define build_rev 1
 
 Name:           python-feat
@@ -176,6 +176,14 @@ fi
 
 
 %changelog
+* Sun Feb 24 2013 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.24.6-1
+- new release
+
+* Thu Feb 21 2013 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.24.5-1
+- new release
+
 * Tue Feb 19 2013 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.24.4-1
 - new release
