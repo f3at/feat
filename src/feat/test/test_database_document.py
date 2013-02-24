@@ -26,7 +26,10 @@ class DocumentSerializationTest(common.TestCase):
         # unsaved attachment should not appear in snapshot
         serialized = self.serialize(d)
         self.assertIn('_attachments', serialized)
-        self.assertEquals({}, serialized['_attachments'])
+        exp = {u'attachment': {u'content_type': u'text/plain',
+                               u'follows': True,
+                               u'length': 15}}
+        self.assertEquals(exp, serialized['_attachments'])
 
         # once it saved it should be there as a stub
         d.get_attachments()['attachment'].set_saved()
