@@ -22,6 +22,8 @@ class Alert2(alert.BaseAlert):
 
 class DummyMedium(dummies.DummyMedium):
 
+    _protocols = dict()
+
     def get_configuration(self):
         return alert_agent.AlertAgentConfiguration(enabled=False)
 
@@ -37,7 +39,7 @@ class TestAgent(common.TestCase, ModelTestMixin):
         self.medium = DummyMedium(self)
         self.agent = alert_agent.AlertAgent(self.medium)
         self.medium.agent = self.agent
-        yield self.agent.initiate()
+        yield self.agent.initiate_agent()
         self.state = self.agent._get_state()
 
     @defer.inlineCallbacks
@@ -69,6 +71,7 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
         # now validate the model for the current state
         model = models.AlertAgent(self.agent)
+        yield model.initiate()
         yield self.validate_model_tree(model)
 
     @defer.inlineCallbacks
