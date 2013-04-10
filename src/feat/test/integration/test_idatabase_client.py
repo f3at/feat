@@ -28,6 +28,7 @@ import os
 from twisted.trial.unittest import SkipTest
 
 from feat.database import emu, view, document, query, driver, update, conflicts
+from feat.database import links
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization, defer, error, time
@@ -204,6 +205,35 @@ def update_dict(document, **keywords):
 
 
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testLinkingDocuments(self):
+        views = (links.Join, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        docs = []
+        for x in [DummyDocument() for x in range(3)]:
+            doc = yield self.connection.save_document(x)
+            docs.append(doc)
+
+        docs[0].links.create(doc=docs[1])
+        docs[0] = yield self.connection.save_document(docs[0])
+
+        # check that it can be fetched from both sides
+        fetched1 = yield links.fetch(self.connection, docs[0].doc_id)
+        self.assertEqual([docs[1]], fetched1)
+        fetched2 = yield links.fetch(self.connection, docs[1].doc_id)
+        self.assertEqual([docs[0]], fetched2)
+
+        # now use roles
+        docs[0].links.create(doc=docs[2], linker_roles=['parent'],
+                             linkee_roles=['child'])
+        docs[0] = yield self.connection.save_document(docs[0])
+        fetched1 = yield links.fetch(self.connection, docs[0].doc_id, 'child')
+        self.assertEqual([docs[2]], fetched1)
+        fetched2 = yield links.fetch(self.connection, docs[2].doc_id, 'parent')
+        self.assertEqual([docs[0]], fetched2)
 
     @defer.inlineCallbacks
     def testDeleteDocumentConcurrently(self):

@@ -92,6 +92,21 @@ class DocumentSerializationTest(common.TestCase):
         a = d.create_attachment('attachment.json', '', unique=True)
         self.assertEqual(a.name, 'attachment_1.json')
 
+    def testLinks(self):
+        d = TestDocument(doc_id=u'test1')
+        d2 = TestDocument(doc_id=u'test2')
+        d3 = TestDocument(doc_id=u'test3')
+        d.links.create(doc=d2)
+        self.assertEqual([['test_doc', 'test2', [], []]], d.linked)
+
+        d.links.create(doc=d2, linker_roles=['parent'])
+        self.assertEqual([['test_doc', 'test2', ['parent'], []]], d.linked)
+        d.links.create(doc_id=d3.doc_id, type_name='test_doc',
+                       linker_roles=['child'], linkee_roles=['parent'])
+        self.assertEqual([['test_doc', 'test2', ['parent'], []],
+                          ['test_doc', 'test3', ['child'], ['parent']]],
+                         d.linked)
+
     def serialize(self, w):
         return sjson.loads(self.serializer.convert(w))
 
