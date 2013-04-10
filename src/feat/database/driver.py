@@ -19,6 +19,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import types
 import operator
 from urllib import urlencode, quote
 
@@ -280,17 +281,27 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     ### IDatabaseDriver
 
-    def open_doc(self, doc_id):
+    def open_doc(self, doc_id, **extra):
         url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+        if extra:
+            url += '?'
+            # this is necessary, because otherwise we would pass True or False
+            # to couchdb, and it requires smallcase
+            for k, v in extra.iteritems():
+                if isinstance(v, types.BooleanType):
+                    extra[k] = str(v).lower()
+            url += urlencode(extra)
         return self.couchdb_call(doc_id, self.couchdb.get, url)
 
     @defer.inlineCallbacks
-    def save_doc(self, doc, doc_id=None, following_attachments=None):
+    def save_doc(self, doc, doc_id=None, following_attachments=None,
+                 db_name=None):
+        db_name = db_name or self.db_name
         if doc_id:
-            url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+            url = '/%s/%s' % (db_name, quote(doc_id.encode('utf-8')))
             method = self.couchdb.put
         else:
-            url = '/%s/' % (self.db_name, )
+            url = '/%s/' % (db_name, )
             method = self.couchdb.post
         version = yield self.get_version()
 
