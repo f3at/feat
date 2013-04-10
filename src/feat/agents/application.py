@@ -40,6 +40,7 @@ class Feat(applications.Application):
         'feat.agents.migration.migration_agent',
         'feat.agents.nagios.nagios_agent',
         'feat.agents.integrity.integrity_agent',
+        'feat.agents.integrity.api',
         'feat.agents.common.host',
         'feat.agents.common.shard',
         'feat.agents.common.raage',
