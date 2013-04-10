@@ -433,18 +433,24 @@ class Connection(log.Logger, log.LogProxy):
         those up is different.
         '''
 
-        def conflict_handler(fail):
-            fail.trap(ConflictError)
-            return self.get_database_tag()
-
         def parse_response(doc):
             self._database_tag = doc['tag']
             return self._database_tag
 
+        def create_new(fail):
+            fail.trap(NotFoundError)
+            doc = {'_id': doc_id, 'tag': unicode(uuid.uuid1())}
+            return self.save_document(doc)
+
+        def conflict_handler(fail):
+            fail.trap(ConflictError)
+            return self.get_database_tag()
+
+
         if not hasattr(self, '_database_tag'):
-            tag = unicode(uuid.uuid1())
-            d = self.save_document({'_id': u'_local/database_tag',
-                                    'tag': tag})
+            doc_id = u'_local/database_tag'
+            d = self.get_document(doc_id)
+            d.addErrback(create_new)
             d.addErrback(conflict_handler)
             d.addCallback(parse_response)
             return d
