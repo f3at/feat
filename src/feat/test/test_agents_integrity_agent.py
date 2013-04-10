@@ -105,6 +105,28 @@ class ApiTest(_Base):
         self.assertEqual('test', repl.get('source'))
         self.assertEqual('featjs/replication', repl.get('filter'))
 
+        # now test pause action on this replication
+        get_replication_status.reset(defer.succeed(
+            {'target': [(10, True, 'triggered', 'id2')]}))
+        yield self.model.initiate()
+        submodel = yield self.model_descend(
+            self.model, 'replications', 'target')
+        self.assertIsInstance(submodel, api.Replication)
+
+        yield submodel.perform_action('pause')
+        # the replication should not be continuous anymore
+
+        view = yield self.connection.query_view(conflicts.Replications,
+                                                key=('source', 'test'),
+                                                include_docs=True)
+        self.assertEqual(1, len(view))
+        repl = view[0]
+        self.assertIsInstance(repl, dict)
+        self.assertNotIn('continuous', repl)
+        self.assertEqual('target', repl.get('target'))
+        self.assertEqual('test', repl.get('source'))
+        self.assertEqual('featjs/replication', repl.get('filter'))
+
     @defer.inlineCallbacks
     def testCreateReplicationAlreadyExist(self):
         get_replication_status = Method()

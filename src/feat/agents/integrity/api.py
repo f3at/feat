@@ -5,9 +5,9 @@ from feat.common import defer
 from feat.database import conflicts
 from feat.gateway.application import featmodels
 from feat.gateway import models
-from feat.models import model, value, call, getter, response, action
+from feat.models import model, value, call, getter, response, action, effect
 
-from feat.models.interface import IModel, InvalidParameters
+from feat.models.interface import IModel, InvalidParameters, ActionCategories
 
 
 @featmodels.register_model
@@ -78,3 +78,43 @@ class Replication(model.Model):
 
     def init(self):
         self.seq, self.continuous, self.status, self.id = self.view
+
+    model.action('pause',
+                 action.MetaAction.new('perform_pause',
+                                       ActionCategories.command,
+                                       effects=[effect.context_value('key'),
+                                                call.model_perform('pause'),
+                                                response.done('done')],
+                                       result_info=value.Response()))
+
+    def pause(self, value):
+        if not self.continuous:
+            return
+        state = self.source._get_state()
+        connection = state.replicator
+
+        d = connection.query_view(conflicts.Replications,
+                                  key=('target', value),
+                                  include_docs=True)
+
+        def delete_continuous(replications):
+            d = defer.succeed(None)
+            for replication in replications:
+                if replication.get('continuous'):
+                    d.addCallback(defer.drop_param,
+                                  connection.delete_document,
+                                  replication)
+            return d
+
+        d.addCallback(defer.keep_param, delete_continuous)
+
+        def create_1_repl(replications):
+            if not replications:
+                return
+            r = replications[0]
+            doc = {'source': r['source'], 'target': r['target'],
+                   'filter': r['filter']}
+            return connection.save_document(doc)
+
+        d.addCallback(create_1_repl)
+        return d
