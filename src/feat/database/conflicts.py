@@ -307,6 +307,13 @@ def get_replication_status(rconnection, source):
     active_tasks = yield database.couchdb_call('_active_tasks',
                                                database.couchdb.get,
                                                '/_active_tasks')
+    # In couchdb version >= 1.2.2 the replication_id is suffixed with
+    # string literal '+continuous'. Here we cut it off
+    for task in active_tasks:
+        if (task.get('type') == 'replication' and
+            task.get('replication_id', '').endswith('+continuous')):
+            task['replication_id'] = task['replication_id'].replace(
+                '+continuous', '')
     active_tasks = dict((x['replication_id'], x) for x in active_tasks
                         if (x['type'] == 'replication' and
                             'replication_id' in x))
