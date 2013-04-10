@@ -337,7 +337,7 @@ def get_replication_status(rconnection, source):
         elif r_state == 'triggered' and r_continuous:
             task = active_tasks.get(r_id)
             if not task:
-                result[target].append((0, True, 'task_missing'))
+                result[target].append((0, True, 'task_missing', r_id))
                 continue
             seq = task['checkpointed_source_seq']
             result[target].append((seq, True, 'running', r_id))
