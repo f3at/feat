@@ -289,15 +289,17 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         if doc_id:
             url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
             method = self.couchdb.put
+            force_json = False
         else:
             url = '/%s/' % (self.db_name, )
             method = self.couchdb.post
+            force_json = True
         version = yield self.get_version()
 
         if not following_attachments:
             r = yield self.couchdb_call(doc_id, method, url, doc)
             defer.returnValue(r)
-        elif version >= (1, 1, 2):
+        elif version >= (1, 1, 2) and not force_json:
             parts = ["\r\ncontent-type: application/json\r\n\r\n%s\r\n" %
                      (doc, )]
             following = following_attachments.items()
@@ -312,8 +314,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                 doc_id, method, url, body, headers=headers)
             defer.returnValue(r)
         else:
-            # updating documents with multipart/related doesnt work
-            # in couchdb version prior to 1.1.2
+            # Updating documents with multipart/related doesnt work
+            # in couchdb version prior to 1.1.2.
+            # Also multipart request cannot be used when creating new documents
             unserialized = json.loads(doc)
             for name, body in unserialized['_attachments'].items():
                 if body.get('follows'):
@@ -322,7 +325,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
             r = yield self.couchdb_call(doc_id, method, url, doc)
             for attachment in following_attachments.itervalues():
-                r = yield self.save_attachment(doc_id, r['rev'], attachment)
+                r = yield self.save_attachment(r['id'], r['rev'], attachment)
             defer.returnValue(r)
 
     def delete_doc(self, doc_id, revision):
