@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 import urllib
 import urlparse
+import re
 
 from zope.interface import Interface
 
@@ -890,7 +891,15 @@ def compose_request(method, uri, protocol=None, buffer=None):
 def compose_headers(headers, buffer=None):
     buffer = buffer if buffer is not None else []
     for name, value in headers.iteritems():
-        capname = '-'.join([p.capitalize() for p in name.split('-')])
+        # HTTP 1.1 specifies some certain header name capitalization
+        # Unfortunately there are services out there (eg. SOAP) which doesn't
+        # comply to the standard and require custom names like SOAPAction.
+        # Consequently this method will preserve the original capitalization
+        # if at least one character is passed in capital
+        if not re.search(r"[A-Z]", name):
+            capname = '-'.join([p.capitalize() for p in name.split('-')])
+        else:
+            capname = name
         if is_header_multifield(name):
             if isinstance(value, str):
                 value = [value]

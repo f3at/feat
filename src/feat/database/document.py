@@ -136,13 +136,16 @@ class Attachment(serialization.Serializable):
     type_name = 'attachment'
 
     def __init__(self, doc_id, name):
-        if doc_id is None:
+        self.doc_id = doc_id and unicode(doc_id)
+        self.name = unicode(name)
+
+    def snapshot(self):
+        if self.doc_id is None:
             raise ValueError("Attachments should be created on already saved "
                              "document. Overwise we cannot know their _id. "
                              "If you really need this, set the doc_id of the "
                              "document by hand first.")
-        self.doc_id = unicode(doc_id)
-        self.name = unicode(name)
+        return super(Attachment, self).snapshot()
 
 
 class _Attachment(object):
