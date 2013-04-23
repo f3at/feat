@@ -234,6 +234,12 @@ class DummyProtocol(object):
     def get_def(self):
         return self.deferred
 
+    def execute(self, agent):
+        instance = self.factory(agent, DummyMedium(agent))
+        d = instance.initiate(*self.args, **self.kwargs)
+        d.chainDeferred(self.deferred)
+        return self.deferred
+
     ### used if it's a Poster ###
 
     def notify(self, *args, **kwargs):
