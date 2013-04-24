@@ -27,16 +27,11 @@ import os
 
 from twisted.trial.unittest import SkipTest
 
-try:
-    from feat.database import driver
-except ImportError as e:
-    database = None
-    import_error = e
-
-from feat.database import emu, view, document, query
+from feat.database import emu, view, document, query, driver, update, conflicts
+from feat.database import links
 from feat.process import couchdb
 from feat.process.base import DependencyError
-from feat.common import serialization, defer, error
+from feat.common import serialization, defer, error, time
 from feat.common.text_helper import format_block
 from feat.agencies.common import ConnectionState
 
@@ -45,6 +40,7 @@ from feat.test.common import attr, Mock
 
 from feat.database.interface import ConflictError, NotFoundError, DatabaseError
 from feat.database.interface import NotConnectedError, ResignFromModifying
+from feat.database.interface import ConflictResolutionStrategy
 
 
 @serialization.register
@@ -209,6 +205,35 @@ def update_dict(document, **keywords):
 
 
 class TestCase(object):
+
+    @defer.inlineCallbacks
+    def testLinkingDocuments(self):
+        views = (links.Join, )
+        design_doc = view.DesignDocument.generate_from_views(views)[0]
+        yield self.connection.save_document(design_doc)
+
+        docs = []
+        for x in [DummyDocument() for x in range(3)]:
+            doc = yield self.connection.save_document(x)
+            docs.append(doc)
+
+        docs[0].links.create(doc=docs[1])
+        docs[0] = yield self.connection.save_document(docs[0])
+
+        # check that it can be fetched from both sides
+        fetched1 = yield links.fetch(self.connection, docs[0].doc_id)
+        self.assertEqual([docs[1]], fetched1)
+        fetched2 = yield links.fetch(self.connection, docs[1].doc_id)
+        self.assertEqual([docs[0]], fetched2)
+
+        # now use roles
+        docs[0].links.create(doc=docs[2], linker_roles=['parent'],
+                             linkee_roles=['child'])
+        docs[0] = yield self.connection.save_document(docs[0])
+        fetched1 = yield links.fetch(self.connection, docs[0].doc_id, 'child')
+        self.assertEqual([docs[2]], fetched1)
+        fetched2 = yield links.fetch(self.connection, docs[2].doc_id, 'parent')
+        self.assertEqual([docs[0]], fetched2)
 
     @defer.inlineCallbacks
     def testDeleteDocumentConcurrently(self):
@@ -906,15 +931,6 @@ class PaisleySpecific(object):
         self.database.add_reconnected_cb(mock.on_connect)
         return mock
 
-    def testFilteredChanges404(self):
-
-        def listener(doc_id, rev, deleted, own_change):
-            pass
-
-        d = self.connection.changes_listener(view.DocumentDeletions, listener)
-        self.assertFailure(d, NotFoundError)
-        return d
-
     @defer.inlineCallbacks
     def testGettingDocsWhileDisconnected(self):
         doc = DummyDocument(field=u'sth')
@@ -964,7 +980,263 @@ class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
         self.connection = self.database.get_connection()
 
 
-class RemoteDatabaseTest(common.IntegrationTest, TestCase):
+class NonEmuTests(object):
+
+    def testFilteredChanges404(self):
+
+        def listener(doc_id, rev, deleted, own_change):
+            pass
+
+        d = self.connection.changes_listener(view.DocumentDeletions, listener)
+        self.assertFailure(d, NotFoundError)
+        return d
+
+    @defer.inlineCallbacks
+    def testResolvingConflicts(self):
+        host, port = self.database.host, self.database.port
+        dbname = self.database.db_name
+        try:
+            rconnection = yield conflicts.configure_replicator_database(
+                host, port)
+        except ValueError as e:
+            raise SkipTest(str(e))
+
+        @defer.inlineCallbacks
+        def cleanup_replications():
+            to_delete = yield rconnection.query_view(conflicts.Replications,
+                                                     keys=[("source", 'temp'),
+                                                           ("source", dbname),
+                                                           ("target", 'temp'),
+                                                           ("target", dbname)])
+            to_delete = set(x[2] for x in to_delete)
+            for row in to_delete:
+                yield rconnection.update_document(row, update.delete)
+        yield cleanup_replications()
+
+        db2 = driver.Database(host, port, 'temp')
+        version = yield db2.get_version()
+        if version < (1, 2, 0):
+            raise SkipTest('This testcase requires at least couchdb 1.2.0')
+        try:
+            yield db2.create_db()
+        except DatabaseError:
+            yield db2.delete_db()
+            yield db2.create_db()
+        connection2 = db2.get_connection()
+        for connection in (self.connection, connection2):
+            for doc in view.DesignDocument.generate_from_views([
+                conflicts.Conflicts, conflicts.UpdateLogs,
+                conflicts.Replication]):
+                yield connection.save_document(doc)
+
+        @defer.inlineCallbacks
+        def cleanup():
+            yield cleanup_replications()
+
+            yield rconnection.disconnect()
+            yield rconnection.database.disconnect()
+            if 'KEEP_TEST_COUCHDB' not in os.environ:
+                yield db2.delete_db()
+            yield connection2.disconnect()
+            yield db2.disconnect()
+
+        self.addCleanup(cleanup)
+
+        # test case starts here
+
+        # create a replication document in each database so that
+        # the logic in cleanup_logs() know that the docs are there
+        yield replicate(rconnection, dbname, 'temp')
+        yield replicate(rconnection, 'temp', dbname)
+
+        doc = ConcurrentDoc(field1=1, field2=[1, 2, 3])
+        doc = yield self.connection.save_document(doc)
+
+        # # make sure this is commited
+        yield self.connection.database.couchdb_call(
+            'ensure_full_commit',
+            self.connection.database.couchdb.post,
+            '/%s/_ensure_full_commit' % (dbname, ))
+
+        yield replicate(rconnection, dbname, 'temp')
+
+        # check that it reached the target
+        doc2 = yield connection2.get_document(doc.doc_id)
+        self.assertEqual(doc, doc2)
+
+        # doing the cleaunp on each partition should not delete anything,
+        # as there are no updates yet
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(0, connection2, rconnection)
+
+        # do some concurrent updates
+        doc = yield self.connection.update_document(
+            doc, update.attributes, {'field1': 5})
+        rev1 = doc.rev
+        doc = yield self.connection.update_document(
+            doc, update.append_to_list, 'field2', 'A')
+        rev2 = doc.rev
+        self.assertEqual([1, 2, 3, 'A'], doc.field2)
+        doc2 = yield connection2.update_document(
+            doc2, update.append_to_list, 'field2', 'B')
+        self.assertEqual([1, 2, 3, 'B'], doc2.field2)
+        rev1b = doc2.rev
+        doc2 = yield connection2.update_document(
+            doc2, update.append_to_list, 'field2', 'C')
+        self.assertEqual([1, 2, 3, 'B', 'C'], doc2.field2)
+
+        # assert update logs where created
+        logs1 = yield self.assert_logs(2, self.connection)
+        self.assertEqual(rev1, logs1[0].rev_to)
+        part = logs1[0].partition_tag
+        self.assertIsNot(None, part)
+        self.assertEqual(update.attributes, logs1[0].handler)
+        self.assertEqual(rev1, logs1[1].rev_from)
+        self.assertEqual(rev2, logs1[1].rev_to)
+        self.assertEqual(part, logs1[1].partition_tag)
+        self.assertEqual(update.append_to_list, logs1[1].handler)
+
+        logs2 = yield self.assert_logs(2, connection2)
+        self.assertEqual(2, len(logs2))
+        self.assertEqual(rev1b, logs2[0].rev_to)
+        part2 = logs2[0].partition_tag
+        self.assertNotEqual(part2, part)
+
+        # doing the cleaunp now should not delete anything, because neither
+        # of partitions replicated their changes
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(0, connection2, rconnection)
+
+        # replicate the changes
+        yield replicate(rconnection, dbname, 'temp')
+
+        yield self.assert_logs(4, connection2)
+        yield self.assert_conflicts(connection2, doc)
+        # the other partition does not notive the conflict
+        yield self.assert_conflicts(self.connection)
+
+        # doing the cleaunp now should not delete the logs, because
+        # they are done for the document which is currently in conflict state
+        yield self.assert_cleanup(0, connection2, rconnection)
+        # This database is not in conflict state because the changes on the
+        # other partion were not propagated here. It sent its logs to the
+        # other partion, so its free to delete its logs.
+        yield self.assert_cleanup(2, self.connection, rconnection)
+
+        # solve the conflict of the partition which
+        yield conflicts.solve(connection2, doc.doc_id)
+        merged = yield connection2.reload_document(doc)
+        self.assertEqual([1, 2, 3, 'A', 'B', 'C'], merged.field2)
+        self.assertEqual(5, merged.field1)
+
+        yield self.assert_conflicts(connection2)
+
+        # the other partition does not need a conflict resolution
+        # this does nothing..
+        yield conflicts.solve(self.connection, doc.doc_id)
+
+        # The cleanup on the partition with the conflict solved
+        # can get rid of the logs coming from the other partion.
+        # The other partition has nothing to cleanup anymore
+        yield self.assert_cleanup(0, self.connection, rconnection)
+        yield self.assert_cleanup(2, connection2, rconnection)
+
+        # Before the solution is replicated back, we make another change on
+        # the document.
+        doc = yield self.connection.update_document(
+            doc, update.append_to_list, 'field2', 'D')
+        self.assertEqual([1, 2, 3, 'A', 'D'], doc.field2)
+
+        # replicate the solution back, replication is done with the filter
+        # so the update logs are not deleted on the target
+        yield replicate(rconnection, 'temp', dbname,
+                        filter=u'featjs/replication')
+        # The partition solving the first conflict is finally
+        # ready to get rid of its logs.
+        yield self.assert_cleanup(3, connection2, rconnection)
+
+        # we are in conflict state, because of the change adding 'D'
+        yield self.assert_conflicts(self.connection, doc)
+        # but we can solve it
+        yield conflicts.solve(self.connection, doc.doc_id)
+        yield self.assert_conflicts(self.connection)
+        doc = yield self.connection.reload_document(doc)
+        self.assertEqual([1, 2, 3, 'A', 'B', 'C', 'D'], doc.field2)
+
+        # there is 5 of them now in the target, the third one comes from
+        # solving the conflict, 4th from update adding 'D', 5th from
+        # solving second conflict
+        yield self.assert_logs(5, self.connection)
+        # 3 of them can be cleaned up, because they are already included in
+        # the revision we have
+        yield self.assert_cleanup(3, self.connection, rconnection)
+
+        # after solving the second conflict replicate the solution
+        # to temp database
+        yield replicate(rconnection, dbname, 'temp',
+                        filter=u'featjs/replication')
+        # there should be no conflict
+        yield self.assert_conflicts(connection2)
+
+        # we can remove the remaining logs
+        yield self.assert_cleanup(2, self.connection, rconnection)
+        yield self.assert_cleanup(2, connection2, rconnection)
+
+        # assert that there are no logs left
+        for connection in (self.connection, connection2):
+            yield self.assert_logs(0, connection)
+
+    def assert_logs(self, expected, connection):
+        keys = conflicts.UpdateLogs.all()
+        keys['include_docs'] = True
+        d = connection.query_view(conflicts.UpdateLogs, **keys)
+        d.addCallback(defer.keep_param,
+                      lambda logs: self.assertEqual(expected, len(logs)))
+        return d
+
+    def assert_cleanup(self, expected, connection, rconnection):
+        d = conflicts.cleanup_logs(connection, rconnection)
+        d.addCallback(self.assertEqual, expected)
+        return d
+
+    @defer.inlineCallbacks
+    def assert_conflicts(self, connection, *docs):
+        expected = [(doc.doc_id, None, doc.doc_id) for doc in docs]
+        conf = yield connection.query_view(conflicts.Conflicts)
+        self.assertEqual(expected, conf)
+
+
+@defer.inlineCallbacks
+def replicate(connection, source, target, **options):
+    r = replication_doc(source, target, **options)
+    r = yield connection.save_document(r)
+    yield time.wait_for(replication_completed, 5, connection, r['_id'])
+
+
+@defer.inlineCallbacks
+def replication_completed(connection, doc_id):
+    doc = yield connection.get_document(doc_id)
+    state = doc.get('_replication_state')
+    defer.returnValue(state == 'completed')
+
+
+@serialization.register
+class ConcurrentDoc(document.Document):
+
+    conflict_resolution_strategy = ConflictResolutionStrategy.merge
+
+    document.field('field1', None)
+    document.field('field2', None)
+
+
+def replication_doc(source, target, **options):
+    doc = dict(options)
+    doc.update({'source': unicode(source), 'target': unicode(target)})
+    return doc
+
+
+@attr('slow')
+class RemoteDatabaseTest(common.IntegrationTest, TestCase, NonEmuTests):
 
     @defer.inlineCallbacks
     def setUp(self):
@@ -1010,7 +1282,7 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase):
 
 @attr('slow')
 class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
-                             PaisleySpecific):
+                             PaisleySpecific, NonEmuTests):
 
     timeout = 4
     slow = True
@@ -1022,10 +1294,6 @@ class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
         if 'COUCHDB_DUMP' in os.environ:
             driver.CouchDB.dump = open(self._testMethodName.lower() + ".dump",
                                        'w')
-        if driver is None:
-            raise SkipTest('Skipping the test because of missing '
-                           'dependecies: %r' % import_error)
-
         try:
             self.process = couchdb.Process(self)
         except DependencyError as e:

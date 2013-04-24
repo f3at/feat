@@ -32,8 +32,8 @@ from feat.database import document, query
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
-from feat.database.interface import NotFoundError, ConflictError
-from feat.database.interface import ResignFromModifying
+from feat.database.interface import NotFoundError, ConflictResolutionStrategy
+from feat.database.interface import ResignFromModifying, ConflictError
 from feat.interface.generic import ITimeProvider
 from feat.interface.serialization import ISerializable
 
@@ -233,6 +233,10 @@ class Connection(log.Logger, log.LogProxy):
 
     ### IDatabaseClient ###
 
+    @property
+    def database(self):
+        return self._database
+
     @serialization.freeze_tag('IDatabaseClient.create_database')
     def create_database(self):
         return self._database.create_db()
@@ -240,16 +244,21 @@ class Connection(log.Logger, log.LogProxy):
     @serialization.freeze_tag('IDatabaseClient.save_document')
     @defer.inlineCallbacks
     def save_document(self, doc):
-        doc = IDocument(doc)
+        assert IDocument.providedBy(doc) or isinstance(doc, dict), repr(doc)
         try:
             self._lock_notifications()
 
             serialized = self._serializer.convert(doc)
-            following_attachments = dict((name, attachment)
-                                         for name, attachment
-                                         in doc.get_attachments().iteritems()
-                                         if not attachment.saved)
-            resp = yield self._database.save_doc(serialized, doc.doc_id,
+            if IDocument.providedBy(doc):
+                following_attachments = dict(
+                    (name, attachment) for name, attachment
+                    in doc.get_attachments().iteritems()
+                    if not attachment.saved)
+                doc_id = doc.doc_id
+            else:
+                following_attachments = dict()
+                doc_id = doc.get('_id')
+            resp = yield self._database.save_doc(serialized, doc_id,
                                                  following_attachments)
             self._update_id_and_rev(resp, doc)
             for attachment in following_attachments.itervalues():
@@ -264,9 +273,10 @@ class Connection(log.Logger, log.LogProxy):
         return d
 
     @serialization.freeze_tag('IDatabaseClient.get_document')
-    def get_document(self, doc_id):
-        d = self._database.open_doc(doc_id)
-        d.addCallback(self._unserializer.convert)
+    def get_document(self, doc_id, raw=False, **extra):
+        d = self._database.open_doc(doc_id, **extra)
+        if not raw:
+            d.addCallback(self._unserializer.convert)
         d.addCallback(self._notice_doc_revision)
         return d
 
@@ -298,18 +308,26 @@ class Connection(log.Logger, log.LogProxy):
 
     @serialization.freeze_tag('IDatabaseClient.delete_document')
     def delete_document(self, doc):
-        assert isinstance(doc, document.Document), type(doc)
-        body = {
-            "_id": doc.doc_id,
-            "_rev": doc.rev,
-            "_deleted": True,
-            ".type": unicode(doc.type_name)}
-        for field in type(doc)._fields:
-            if field.meta('keep_deleted'):
-                body[field.serialize_as] = getattr(doc, field.name)
+        if IDocument.providedBy(doc):
+            body = {
+                "_id": doc.doc_id,
+                "_rev": doc.rev,
+                "_deleted": True,
+                ".type": unicode(doc.type_name)}
+            for field in type(doc)._fields:
+                if field.meta('keep_deleted'):
+                    body[field.serialize_as] = getattr(doc, field.name)
+        elif isinstance(doc, dict):
+            body = {
+                "_id": doc["_id"],
+                "_rev": doc["_rev"],
+                "_deleted": True}
+        else:
+            raise ValueError(repr(doc))
+
         serialized = self._serializer.convert(body)
         self._lock_notifications()
-        d = self._database.save_doc(serialized, doc.doc_id)
+        d = self._database.save_doc(serialized, body["_id"])
         d.addCallback(self._update_id_and_rev, doc)
         d.addBoth(defer.bridge_param, self._unlock_notifications)
         return d
@@ -406,6 +424,40 @@ class Connection(log.Logger, log.LogProxy):
                 return None
         return self._query_cache
 
+    ### public methods used by update and replication mechanism ###
+
+    def get_database_tag(self):
+        '''
+        Each feat database has a unique tag which identifies it. Thanks to it
+        the mechanism cleaning up the update logs make the difference between
+        the changes done locally and remotely. The condition for cleaning
+        those up is different.
+        '''
+
+        def parse_response(doc):
+            self._database_tag = doc['tag']
+            return self._database_tag
+
+        def create_new(fail):
+            fail.trap(NotFoundError)
+            doc = {'_id': doc_id, 'tag': unicode(uuid.uuid1())}
+            return self.save_document(doc)
+
+        def conflict_handler(fail):
+            fail.trap(ConflictError)
+            return self.get_database_tag()
+
+
+        if not hasattr(self, '_database_tag'):
+            doc_id = u'_local/database_tag'
+            d = self.get_document(doc_id)
+            d.addErrback(create_new)
+            d.addErrback(conflict_handler)
+            d.addCallback(parse_response)
+            return d
+        else:
+            return defer.succeed(self._database_tag)
+
     ### ISerializable Methods ###
 
     def snapshot(self):
@@ -433,20 +485,37 @@ class Connection(log.Logger, log.LogProxy):
         return factory.parse_view_result(rows, reduced, include_docs)
 
     def _update_id_and_rev(self, resp, doc):
-        doc.doc_id = unicode(resp.get('id', None))
-        doc.rev = unicode(resp.get('rev', None))
-        self._notice_doc_revision(doc)
+        if IDocument.providedBy(doc):
+            doc.doc_id = unicode(resp.get('id', None))
+            doc.rev = unicode(resp.get('rev', None))
+            self._notice_doc_revision(doc)
+        else:
+            doc['_id'] = unicode(resp.get('id', None))
+            doc['_rev'] = unicode(resp.get('rev', None))
         return doc
 
     def _notice_doc_revision(self, doc):
+        if IDocument.providedBy(doc):
+            doc_id = doc.doc_id
+            rev = doc.rev
+        else:
+            doc_id = doc['_id']
+            rev = doc['_rev']
         self.log('Storing knowledge about doc rev. ID: %r, REV: %r',
-                 doc.doc_id, doc.rev)
-        self._known_revisions[doc.doc_id] = _parse_doc_revision(doc.rev)
+                 doc_id, rev)
+        self._known_revisions[doc_id] = _parse_doc_revision(rev)
         return doc
 
     ### private parts of update_document subroutine ###
 
     def _iterate_on_update(self, doc, _method, args, keywords):
+        if IDocument.providedBy(doc):
+            doc_id = doc.doc_id
+            rev = doc.rev
+        else:
+            doc_id = doc['_id']
+            rev = doc['_rev']
+
         try:
             result = _method(doc, *args, **keywords)
         except ResignFromModifying:
@@ -455,8 +524,32 @@ class Connection(log.Logger, log.LogProxy):
             d = self.delete_document(doc)
         else:
             d = self.save_document(result)
-        d.addErrback(self._errback_on_update, doc.doc_id,
+        if (IDocument.providedBy(doc) and
+            doc.conflict_resolution_strategy ==
+            ConflictResolutionStrategy.merge):
+            update_log = document.UpdateLog(
+                handler=_method,
+                args=args,
+                keywords=keywords,
+                rev_from=rev,
+                timestamp=time.time())
+            d.addCallback(lambda doc:
+                          defer.DeferredList([defer.succeed(doc),
+                                              self.get_database_tag(),
+                                              self.get_update_seq()]))
+            d.addCallback(self._log_update, update_log)
+        d.addErrback(self._errback_on_update, doc_id,
                      _method, args, keywords)
+        return d
+
+    def _log_update(self, ((_s1, doc), (_s2, tag), (_s3, seq)), update_log):
+        update_log.rev_to = doc.rev
+        update_log.owner_id = doc.doc_id
+        update_log.seq_num = seq
+        update_log.partition_tag = tag
+
+        d = self.save_document(update_log)
+        d.addCallback(defer.override_result, doc)
         return d
 
     def _errback_on_update(self, fail, doc_id, _method, args, keywords):

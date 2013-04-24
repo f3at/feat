@@ -50,7 +50,16 @@ class JavascriptView(annotate.Annotable):
 
     @classmethod
     def parse_view_result(cls, rows, reduced, include_docs):
-        return list(rows)
+        if not include_docs:
+            # return list of ids
+            return list(rows)
+        else:
+            unserializer = serialization.json.PaisleyUnserializer()
+            resp = list()
+            for x in rows:
+                if len(x) == 4:
+                    resp.append(unserializer.convert(x[3]))
+            return resp
 
     @classmethod
     def perform_map(cls, doc):

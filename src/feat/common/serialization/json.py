@@ -24,7 +24,7 @@ from feat import hacks
 json = hacks.import_json()
 
 from feat.common import reflect
-from feat.interface.serialization import *
+from feat.interface.serialization import Capabilities, IVersionAdapter
 
 from feat.common.serialization import base
 
@@ -40,6 +40,7 @@ EXTERNAL_ATOM = u".ext"
 REFERENCE_ATOM = u".ref"
 DEREFERENCE_ATOM = u".deref"
 VERSION_ATOM = u".version"
+FUNCTION_ATOM = u".function"
 
 INSTANCE_TYPE_ATOM = u".type"
 INSTANCE_STATE_ATOM = u".state"
@@ -65,11 +66,11 @@ JSON_CONVERTER_CAPS = set([Capabilities.int_values,
                            Capabilities.str_keys,
                            Capabilities.circular_references,
                            Capabilities.new_style_types,
-                           Capabilities.meta_types])
+                           Capabilities.meta_types,
+                           Capabilities.function_values])
 
 JSON_FREEZER_CAPS = JSON_CONVERTER_CAPS \
                     | set([Capabilities.builtin_values,
-                           Capabilities.function_values,
                            Capabilities.method_values])
 
 
@@ -156,6 +157,9 @@ class PreSerializer(base.Serializer):
 
     def pack_frozen_function(self, data):
         return reflect.canonical_name(data)
+
+    def pack_function(self, data):
+        return [FUNCTION_ATOM, reflect.canonical_name(data)]
 
     pack_frozen_builtin = pack_frozen_function
     pack_frozen_method = pack_frozen_function
@@ -286,6 +290,9 @@ class Unserializer(base.Unserializer):
         items = [(k.encode(DEFAULT_ENCODING), v)for k, v in data.iteritems()]
         container.update(self.unpack_unordered_pairs(items))
 
+    def unpack_function(self, data):
+        return reflect.named_object(data[1])
+
     _list_unpackers = {BYTES_ATOM: (None, unpack_bytes),
                        ENCODED_ATOM: (None, unpack_encoded),
                        ENUM_ATOM: (None, unpack_enum),
@@ -294,7 +301,8 @@ class Unserializer(base.Unserializer):
                        SET_ATOM: (set, unpack_set),
                        EXTERNAL_ATOM: (None, unpack_external),
                        REFERENCE_ATOM: (None, unpack_reference),
-                       DEREFERENCE_ATOM: (None, unpack_dereference)}
+                       DEREFERENCE_ATOM: (None, unpack_dereference),
+                       FUNCTION_ATOM: (None, unpack_function)}
 
 
 class PaisleyUnserializer(Unserializer):

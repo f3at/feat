@@ -64,3 +64,9 @@ class IAgency(Interface):
         '''
         Get the mode to run given component.
         '''
+
+    def get_config():
+        '''
+        Returns the agency config.
+        @rtype: feat.agencies.net.config.AgencyConfig
+        '''

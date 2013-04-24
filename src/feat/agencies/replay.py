@@ -762,6 +762,16 @@ class Connection(BaseReplayDummy):
         raise RuntimeError('bulk_get() should never be called!')
 
 
+class Agency(BaseReplayDummy):
+
+    type_name = "agency"
+
+    @serialization.freeze_tag('IAgency.get_config')
+    @replay.named_side_effect('IAgency.get_config')
+    def get_config(self):
+        pass
+
+
 class AgencyAgent(BaseReplayDummy):
 
     type_name = "agent-medium"
@@ -773,6 +783,7 @@ class AgencyAgent(BaseReplayDummy):
         self.journal_keeper = self
         self.replay = replay
         self.replay.set_aa(self)
+        self.agency = Agency(replay, dummy_id=None)
 
     ### IAgencyAgent Methods ###
 

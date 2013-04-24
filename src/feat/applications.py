@@ -164,7 +164,10 @@ class Application(log.Logger):
         return register_adapter
 
     def register_view(self, klass):
-        klass.design_doc_id = unicode(self.name)
+        if klass.design_doc_id == 'feat':
+            # don't override the design document name if it has been set
+            # to something nondefault
+            klass.design_doc_id = unicode(self.name)
         self._views.register(klass, application=self)
         return klass
 

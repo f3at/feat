@@ -23,27 +23,29 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from zope.interface import implements, classProvides
 
-from feat.common import formatable, serialization
+from feat.common import formatable, serialization, first
 from feat.common.serialization.json import VERSION_ATOM
 
 from feat.database.interface import IDocument, IVersionedDocument
 from feat.database.interface import IDocumentPrivate, IAttachment
-from feat.database.interface import NotFoundError
+from feat.database.interface import NotFoundError, ConflictResolutionStrategy
 from feat.database.interface import IAttachmentPrivate, DataNotAvailable
 from feat.interface.serialization import ISerializable, IRestorator
 
 
 field = formatable.field
 
-
 class Document(formatable.Formatable):
 
     implements(IDocument, IDocumentPrivate)
+    conflict_resolution_strategy = ConflictResolutionStrategy.db_winner
 
     ### IDocument ###
 
     field('doc_id', None, '_id')
     field('rev', None, '_rev')
+    # [[type_name, doc_id, [linker_roles], [likee_roles]]]
+    field('linked', list())
 
     @property
     def attachments(self):
@@ -81,6 +83,12 @@ class Document(formatable.Formatable):
             raise NotFoundError("Uknown attachment %s" % (name, ))
         del self._attachments[name]
         del self._public_attachments[name]
+
+    @property
+    def links(self):
+        if not hasattr(self, '_linked_documents'):
+            self._linked_documents = LinkedDocuments(self.linked)
+        return self._linked_documents
 
     ### IDocumentPrivate ###
 
@@ -234,3 +242,62 @@ class VersionedDocument(Document):
         snapshot = Document.snapshot(self)
         snapshot[str(VERSION_ATOM)] = type(self).version
         return snapshot
+
+
+@serialization.register
+class UpdateLog(VersionedDocument):
+
+    type_name = 'update_log'
+
+    field('seq_num', None)
+    field('handler', None)
+    field('keywords', dict())
+    field('args', tuple())
+    field('rev_from', None)
+    field('rev_to', None)
+    field('owner_id', None)
+    field('timestamp', None)
+    field('partition_tag', None)
+
+
+class LinkedDocuments(object):
+    '''
+    Utility class making sure the format of *doc.links* list is preserved.
+    '''
+
+    def __init__(self, links):
+        self._links = links
+
+    def create(self, doc_id=None, linker_roles=list(),
+               linkee_roles=list(), type_name=None, doc=None):
+        if doc is not None:
+            if IDocument.providedBy(doc):
+                doc_id = doc.doc_id or doc_id
+                type_name = doc.type_name
+            elif isinstance(doc, dict):
+                doc_id = doc['_id']
+            else:
+                raise TypeError(doc)
+        if doc_id is None:
+            raise ValueError("Either pass doc_id or saved document instance")
+        if type_name is None:
+            raise ValueError("Type name is needed to create a link")
+        if not isinstance(linker_roles, list):
+            raise TypeError(linker_roles)
+        if not isinstance(linkee_roles, list):
+            raise TypeError(linkee_roles)
+
+        self.remove(doc_id, noraise=True)
+        self._links.append([type_name, doc_id,
+                            linker_roles, linkee_roles])
+
+    def remove(self, doc_id, noraise=False):
+        r = self._get(doc_id, noraise)
+        if r:
+            self._links.remove(r)
+
+    def _get(self, doc_id, noraise):
+        r = first(x for x in self._links if x[1] == doc_id)
+        if not r and not noraise:
+            raise KeyError(doc_id)
+        return r

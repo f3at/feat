@@ -27,6 +27,7 @@ from zope.interface import implements
 from twisted.internet import reactor, defer
 
 from feat import hacks
+from feat.common import log
 
 from twisted.internet.interfaces import IDelayedCall
 
@@ -116,25 +117,31 @@ def reset():
 
 
 @defer.inlineCallbacks
-def wait_for(logger, check, timeout, freq=0.5, kwargs=dict()):
+def wait_for_ex(check, timeout, freq, args=(), kwargs={}, logger=None):
+    if logger is None:
+        logger = log.Logger(log.get_default())
     assert callable(check)
     waiting = 0
 
     while True:
-        value = yield check(**kwargs)
+        value = yield check(*args, **kwargs)
         if value:
-            logger.info('Check %r positive, continuing with the test.',
+            logger.info('Check %r positive, continuing.',
                       check.__name__)
             break
         logger.info('Check %r still negative, sleeping %r seconds.',
-                  check.__name__, freq)
+                    check.__name__, freq)
         waiting += freq
         if waiting > timeout:
-            raise RuntimeError('Timeout error waiting for check %r.'
-                               % check.__name__)
+            raise defer.TimeoutError('Timeout error waiting for check %r.'
+                                     % check.__name__)
         d = defer.Deferred()
         call_later(freq, d.callback, None)
         yield d
+
+
+def wait_for(check, timeout, *args, **kwargs):
+    return wait_for_ex(check, timeout, 0.05, args, kwargs)
 
 
 ### private ###

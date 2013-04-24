@@ -21,8 +21,9 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
-
 from zope.interface import Interface, Attribute
+
+from feat.common import enum
 
 
 __all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
@@ -30,7 +31,8 @@ __all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
            "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
-           "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration")
+           "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration",
+           "ConflictResolutionStrategy")
 
 
 class DatabaseError(Exception):
@@ -91,6 +93,8 @@ class DataNotAvailable(DatabaseError):
 
 
 class IDatabaseClient(Interface):
+
+    database = Attribute("IDatabaseDriver this connection is connected to.")
 
     def save_document(document):
         '''
@@ -330,6 +334,7 @@ class IDocument(Interface):
     rev = Attribute('revision of the document')
     # name -> IAttachment
     attachments = Attribute('C{dict} of attachments')
+    conflict_resolution_strategy = Attribute('L{ConflictResolutionStrategy}')
 
     def create_attachment(name, body, content_type='text/plain'):
         '''
@@ -526,3 +531,20 @@ class IMigration(Interface):
         '''
         @param database: IDatabaseDriver
         '''
+
+
+class ConflictResolutionStrategy(enum.Enum):
+    '''
+    How should conflict resoultion mechanism handle this document type.
+
+    db_winner - winner elected by database is fine
+    alert     - use this for document types, where conflict should never happen
+                detecting the conflict will result in raise an alert with
+                the necessary information
+    merge     - documents of this type, should only be updated with
+                update_document() calls. This will create a special document
+                with all the information necessary to later recreate the change
+                if conflict happens.
+    '''
+
+    db_winner, alert, merge = range(3)

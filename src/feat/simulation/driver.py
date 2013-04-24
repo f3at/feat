@@ -90,7 +90,7 @@ class Commands(manhole.Manhole):
 
     @manhole.expose()
     def wait_for_idle(self, timeout=20, freq=0.01):
-        return time.wait_for(self, self.is_idle, timeout, freq)
+        return time.wait_for_ex(self.is_idle, timeout, freq, logger=self)
 
     @manhole.expose()
     def uuid(self):
