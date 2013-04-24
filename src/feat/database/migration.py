@@ -1,7 +1,7 @@
 from zope.interface import implements
 
 from feat.common import serialization, defer
-from feat.database import tools, client
+from feat.database import tools, client, view
 
 from feat.database.interface import IMigration
 from feat.interface.serialization import IRestorator
@@ -25,13 +25,14 @@ class Migration(object):
     def run(self, database):
         connection = client.Connection(database, self.unserializer)
         for name, callback in self._handlers.items():
-            keys = dict(key=name, include_docs=True)
+            keys = dict(key=name, include_docs=True, parse_results=False)
             yield tools.view_aterator(connection, self._handler,
-                                      tools.DocumentByType, keys,
+                                      view.DocumentByType, keys,
                                       args=(name, callback),
                                       consume_errors=False)
 
-    def _handler(self, connection, unparsed, name, callback):
+    def _handler(self, connection, row, name, callback):
+        unparsed = row[3]
         if callable(callback):
             return callback(connection, unparsed)
         else:

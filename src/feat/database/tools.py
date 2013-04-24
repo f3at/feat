@@ -221,29 +221,6 @@ class ApplicationVersions(view.BaseView):
         return dict(key=name, include_docs=True)
 
 
-@feat.register_view
-class DocumentByType(view.BaseView):
-    '''
-    View used by migrations scripts, when querying with include_docs
-    it returns unparsed object to make it easy to do custom manipulations
-    before unserializing.
-    '''
-
-    name = 'by_type'
-
-    def map(doc):
-        yield doc['.type'], None
-
-    @classmethod
-    def parse_view_result(cls, rows, reduced, include_docs):
-        if not include_docs:
-            # return list of types
-            return [x[0] for x in rows]
-        else:
-            # return unparsed docs
-            return [x[3] for x in rows]
-
-
 def standalone(script, options=[]):
 
     def define_options(extra_options):

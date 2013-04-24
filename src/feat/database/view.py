@@ -25,6 +25,7 @@ import inspect
 from zope.interface import directlyProvides
 
 from feat.common import formatable, annotate, serialization
+from feat.common.text_helper import format_block
 from feat.database import document
 from feat import applications
 
@@ -247,6 +248,25 @@ class DocumentDeletions(BaseView):
 
     def filter(doc, request):
         return doc.get('_deleted', False)
+
+
+@feat.register_view
+class DocumentByType(JavascriptView):
+
+    design_doc_id = 'featjs'
+    name = 'by_type'
+
+    map = format_block('''
+    function(doc) {
+        if (doc[".type"]) {
+            emit(doc[".type"], null);
+        }
+    }''')
+
+    @staticmethod
+    def perform_map(doc):
+        if '.type' in doc:
+            yield doc['.type'], None
 
 
 @feat.register_restorator
