@@ -500,19 +500,23 @@ class ConnectionPool(Connection):
             headers.get('connection') == 'close'):
             dont_pipeline = True
         # post requests are not idempotent and should not be pipelined
-        can_pipeline = not dont_pipeline and method != http.Methods.POST
-        try:
+        can_pipeline = (not dont_pipeline and method != http.Methods.POST and
+                        reset_retry == 1)
+        if self._idle and reset_retry == 1:
+            self.log("Reusing existing idle connection.")
             protocol = self._idle.pop()
             d = defer.succeed(protocol)
-            self.log("Reusing existing connection.")
-        except KeyError:
+        else:
             protocol = None
             if can_pipeline:
                 protocol = first(x for x in self._connected
                                  if x.can_pipeline and x.in_pool)
             if protocol:
+                self.log("The request will be pipelined.")
                 d = defer.succeed(protocol)
             else:
+                self.log("The request will be handled when a connection"
+                         " returns to a pool.")
                 d = defer.Deferred()
                 self._awaiting_client.append(d)
 
