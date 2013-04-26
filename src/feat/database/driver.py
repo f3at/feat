@@ -570,7 +570,13 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def _set_version(self, response):
         self.version = tuple(map(int, response.get('version', '').split('.')))
-        self.couchdb.enable_pipelineing(self.version >= (1, 2, 0))
+        # # This is not handled well in 1.2.2 either. After 409 response
+        # # the connection is closed without the Connection: close header.
+        # # This should be reenabled when either couchdb fixes it, or our
+        # # client handles this case.
+        # self.couchdb.enable_pipelineing(self.version >= (1, 2, 0))
+        self.couchdb.enable_pipelineing(False)
+
         return self.version
 
     def _cancel_reconnector(self):

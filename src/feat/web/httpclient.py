@@ -19,6 +19,10 @@ class RequestCanceled(RequestError):
     pass
 
 
+class ConnectionReset(RequestError):
+    pass
+
+
 class InvalidResponse(RequestError):
     pass
 
@@ -173,7 +177,9 @@ class Protocol(http.BaseProtocol):
 
     def process_cleanup(self, reason):
         for request in self._requests:
-            request.connectionLost(RequestError(cause=reason))
+            msg = ("Connection was closed before the response was received."
+                   " Reason: %s" % (reason, ))
+            request.connectionLost(ConnectionReset(msg))
         self._requests = None
 
     def process_reset(self):
@@ -485,7 +491,8 @@ class ConnectionPool(Connection):
         self._enable_pipelineing = value
 
     def request(self, method, location, headers=None, body=None, decoder=None,
-                outside_of_the_pool=False, dont_pipeline=False):
+                outside_of_the_pool=False, dont_pipeline=False,
+                reset_retry=1):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
@@ -493,19 +500,23 @@ class ConnectionPool(Connection):
             headers.get('connection') == 'close'):
             dont_pipeline = True
         # post requests are not idempotent and should not be pipelined
-        can_pipeline = not dont_pipeline and method != http.Methods.POST
-        try:
+        can_pipeline = (not dont_pipeline and method != http.Methods.POST and
+                        reset_retry == 1)
+        if self._idle and reset_retry == 1:
+            self.log("Reusing existing idle connection.")
             protocol = self._idle.pop()
             d = defer.succeed(protocol)
-            self.log("Reusing existing connection.")
-        except KeyError:
+        else:
             protocol = None
             if can_pipeline:
                 protocol = first(x for x in self._connected
                                  if x.can_pipeline and x.in_pool)
             if protocol:
+                self.log("The request will be pipelined.")
                 d = defer.succeed(protocol)
             else:
+                self.log("The request will be handled when a connection"
+                         " returns to a pool.")
                 d = defer.Deferred()
                 self._awaiting_client.append(d)
 
@@ -518,7 +529,23 @@ class ConnectionPool(Connection):
                 self._connect()
         d.addCallback(self._request, method, location, headers, body, decoder,
                       outside_of_the_pool, can_pipeline)
+        d.addErrback(self._handle_connection_reset, method, location,
+                     headers, body, decoder, outside_of_the_pool,
+                     dont_pipeline, reset_retry)
         return d
+
+    def _handle_connection_reset(self, fail, method, location,
+                     headers, body, decoder, outside_of_the_pool,
+                     dont_pipeline, reset_retry):
+        fail.trap(ConnectionReset)
+        if reset_retry > 3:
+            return fail
+        self.warning("The request will be retrying, because the underlying"
+                     " connection was closed before the reponse was received."
+                     " This is retry no %s.", reset_retry)
+        return self.request(method, location,
+                            headers, body, decoder, outside_of_the_pool,
+                            dont_pipeline, reset_retry + 1)
 
     def onClientConnectionFailed(self, reason):
         self._connecting -= 1
