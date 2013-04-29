@@ -114,8 +114,9 @@ class Application(log.Logger):
             del(sys.modules[canonical_name])
             del(m)
 
-    def register_restorator(self, restorator):
-        self._restorators.register(restorator, application=self)
+    def register_restorator(self, restorator, type_name=None):
+        self._restorators.register(restorator, application=self,
+                                   key=type_name)
         return restorator
 
     def register_descriptor(self, name):
