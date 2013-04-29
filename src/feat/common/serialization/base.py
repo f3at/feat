@@ -508,7 +508,7 @@ class Serializer(object):
             except TypeError:
                 raise TypeError("Serialization of type %s values "
                                 "not supported by %s. Value = %r."
-                                % (type(value).__name__,
+                                % (reflect.canonical_name(value),
                                    reflect.canonical_name(self), value)), \
                       None, sys.exc_info()[2]
 
