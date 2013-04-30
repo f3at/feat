@@ -1,3 +1,5 @@
+import operator
+
 from feat.agents.application import feat
 from feat.common.text_helper import format_block
 from feat.database import view
@@ -60,3 +62,10 @@ class Join(view.JavascriptView):
 def fetch(connection, doc_id, type_name=None):
     keys = Join.keys(doc_id, type_name)
     return connection.query_view(Join, include_docs=True, **keys)
+
+
+def get_ids(connection, doc_id, type_name=None):
+    keys = Join.keys(doc_id, type_name)
+    d = connection.query_view(Join, parse_results=False, **keys)
+    d.addCallback(operator.itemgetter(2))
+    return d
