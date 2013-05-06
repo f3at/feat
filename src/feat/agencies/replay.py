@@ -735,6 +735,10 @@ class Connection(BaseReplayDummy):
     def changes_listener(self, filter_, callback, **kwargs):
         raise RuntimeError('changes_listener()should never be called!')
 
+    @serialization.freeze_tag('IDatabaseClient.update_document')
+    def update_document(self, doc, _method, *args, **kwargs):
+        raise RuntimeError('update_document()should never be called!')
+
     @serialization.freeze_tag('IDatabaseClient.cancel_listener')
     @replay.named_side_effect('IDatabaseClient.cancel_listener')
     def cancel_listener(self, filter_):
