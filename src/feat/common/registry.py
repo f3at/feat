@@ -34,6 +34,7 @@ class BaseRegistry(object):
     allow_blank_application = True
     verify_interface = None
     key_attribute = None
+    allow_none_key = True
 
     def __init__(self, *data):
         self.reset(data)
@@ -64,6 +65,9 @@ class BaseRegistry(object):
                 key = getattr(obj, self.key_attribute)
             else:
                 raise ValueError("Key is missing: %r" % (key, ))
+        if key is None and not self.allow_none_key:
+            raise ValueError("%r doesn't allows None as the entry key" %
+                             (self, ))
         entry = RegistryEntry(obj, key, application)
         self._data[key] = entry
         return obj

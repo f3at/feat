@@ -258,8 +258,10 @@ def lookup_descriptor(name):
 class ViewRegistry(registry.BaseRegistry):
 
     allow_blank_application = False
+    allow_none_key = False
     verify_interface = IViewFactory
     key_attribute = 'name'
+
 
 
 _view_registry = ViewRegistry()
