@@ -37,7 +37,7 @@ from feat.agents.application import feat
 
 from feat.agents.dns.interface import (IDNSServerLabourFactory, RecordA,
                                        RecordCNAME, RecordType)
-from feat.database.interface import NotFoundError
+from feat.database.interface import NotFoundError, ResignFromModifying
 from feat.interface.agency import ExecMode
 from feat.interface.agent import Address
 from feat.interface.protocols import InterestType
@@ -83,8 +83,6 @@ class Descriptor(descriptor.Descriptor):
     descriptor.field('suffix', None)
     descriptor.field('notify', None)
 
-    descriptor.field('pending_updates', list())
-
 
 @feat.register_restorator
 class DnsName(document.Document):
@@ -92,7 +90,7 @@ class DnsName(document.Document):
     type_name = 'dns_name'
 
     # dns zone this name belongs to
-    document.field('zone', None)
+    document.field('zone', None, keep_deleted=True)
     # name for which we resolve
     document.field('name', None)
     # list of entries [Entry]
@@ -180,10 +178,6 @@ class DNSAgent(agent.BaseAgent):
 
         state.cache = cache.DocumentCache(self, self, DnsView,
                                           dict(zone=state.suffix))
-        state.queue_holder = cache.DescriptorQueueHolder(
-            self, 'pending_updates')
-        state.document_updater = cache.PersistentUpdater(
-            state.queue_holder, state.cache, state.medium)
 
         return self._save_configuration_to_descriptor()
 
@@ -193,8 +187,6 @@ class DNSAgent(agent.BaseAgent):
             raise RuntimeError(
                 "Network error: port %d is not available." % state.port)
         self.info("Listening on port %d", state.port)
-
-        state.document_updater.startup()
 
         f = state.cache.load_view(key=state.suffix)
         f.add_callback(self._load_documents)
@@ -341,50 +333,29 @@ class DNSAgent(agent.BaseAgent):
     @replay.mutable
     def _add_record(self, state, name, record):
         doc_id = DnsName.name_to_id(name)
-        return state.document_updater.update(
-            doc_id, '_add_record_body', name, record)
+        f = self.update_document(doc_id, add_record_body, name, record,
+                                 state.suffix)
+        f.add_errback(self._create_new_document, name, state.suffix, record)
+        return f
+
+    @replay.immutable
+    def _create_new_document(self, state, fail, name, suffix, record):
+        fail.trap(NotFoundError)
+        doc_id = DnsName.name_to_id(name)
+        document = DnsName(doc_id=doc_id,
+                           name=unicode(name), zone=unicode(suffix),
+                           entries=[record])
+        return state.medium.save_document(document)
 
     @replay.mutable
     def _remove_record(self, state, name, record):
         doc_id = DnsName.name_to_id(name)
-        return state.document_updater.update(
-            doc_id, '_remove_record_body', record)
+        f = self.update_document(doc_id, remove_record_body, record)
+        f.add_errback(self._trap_not_found)
+        return f
 
-    @replay.immutable
-    def _add_record_body(self, state, document, name, record):
-        if not document:
-            doc_id = DnsName.name_to_id(name)
-            document = DnsName(doc_id=doc_id,
-                               name=unicode(name),
-                               zone=unicode(state.suffix))
-        if record in document.entries:
-            self.debug("Not adding the entry %r for name %s, because "
-                       "it's already there.", record, name)
-            raise cache.ResignFromModifying()
-        self.debug("Adding the alias entry %s for name %s", record.ip, name)
-        if record.type == RecordType.record_CNAME and document.entries:
-            self.debug('As we already have some other records for the name '
-                       '%s they I gonna get removed.', name)
-            document.entries = list()
-
-        document.entries.append(record)
-        self.debug("DNS mapping type: %s from %s to %s added",
-                   record.type.name, name, record.ip)
-        return document
-
-    @replay.immutable
-    def _remove_record_body(self, state, document, record):
-        if not document:
-            raise cache.ResignFromModifying()
-
-        if record not in document.entries:
-            raise cache.ResignFromModifying()
-
-        document.entries.remove(record)
-
-        if not document.entries:
-            raise cache.DeleteDocument()
-        return document
+    def _trap_not_found(self, fail):
+        fail.trap(NotFoundError)
 
     @replay.side_effect
     def _lookup_ns(self):
@@ -482,3 +453,24 @@ class MappingUpdatesCollector(collector.BaseCollector):
     @replay.immutable
     def action_remove_alias(self, state, prefix, alias):
         state.agent.remove_alias(prefix, alias)
+
+
+def add_record_body(document, name, record, suffix):
+    if record in document.entries:
+        raise ResignFromModifying()
+    if record.type == RecordType.record_CNAME and document.entries:
+        document.entries = list()
+
+    document.entries.append(record)
+    return document
+
+
+def remove_record_body(document, record):
+    if record not in document.entries:
+        raise ResignFromModifying()
+
+    document.entries.remove(record)
+
+    if not document.entries:
+        return None
+    return document

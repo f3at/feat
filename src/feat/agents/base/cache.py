@@ -217,10 +217,11 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         return res is not None
 
     @replay.mutable
-    def _update_not_found(self, state, fail, doc_id):
+    def _update_not_found(self, state, fail, doc_id, reraise=True):
         fail.trap(NotFoundError)
         self._delete_doc(doc_id)
-        return fail
+        if reraise:
+            return fail
 
     @replay.journaled
     def _document_changed(self, state, doc_id, rev, deleted, own_change):
@@ -237,6 +238,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
                                self._refresh_document, doc_id)
             if state.listener:
                 f.add_callback(state.listener.on_document_change)
+            f.add_errback(self._update_not_found, doc_id, reraise=False)
             f.add_callback(fiber.override_result, None)
             return f
 

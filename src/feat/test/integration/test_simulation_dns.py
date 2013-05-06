@@ -175,17 +175,17 @@ class DNSAgentTest(common.SimulationTest):
         self.assertTrue([x for x in doc.entries if x.ip == ip],
                         "name %s doesn't resolve to %s" % (name, ip, ))
 
+    @defer.inlineCallbacks
     def assert_not_resolves(self, name, ip):
 
-        def evaluate(doc):
+        try:
+            doc = yield self.driver.get_document(DnsName.name_to_id(name))
+        except NotFoundError:
+            pass
+        else:
             self.assertFalse([x for x in doc.entries if x.ip == ip],
                              "Name %s resolves to %s. Entries: %r" %
                              (name, ip, doc.entries, ))
-
-        d = self.driver.get_document(DnsName.name_to_id(name))
-        d.addCallback(evaluate)
-        d.addErrback(failure.Failure.trap, NotFoundError)
-        return d
 
     @defer.inlineCallbacks
     def testAliases(self):
@@ -461,6 +461,7 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
 
     @defer.inlineCallbacks
     def _assert_address(self, name, expected, exp_ttl = 300):
+        yield common.delay(None, 0.1)
         for dns_medium in self.driver.iter_agents("dns_agent"):
             dns_agent = dns_medium.get_agent()
             result = yield dns_agent.lookup_address(name, "127.0.0.1")
@@ -471,6 +472,7 @@ class ExternalApiTest(common.SimulationTest, common.ModelTestMixin):
 
     @defer.inlineCallbacks
     def _assert_alias(self, name, expected, exp_ttl = 300):
+        yield common.delay(None, 0.1)
         for dns_medium in self.driver.iter_agents("dns_agent"):
             dns_agent = dns_medium.get_agent()
             alias, _ = yield dns_agent.lookup_alias(name)
