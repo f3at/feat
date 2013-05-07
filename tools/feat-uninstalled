@@ -5,8 +5,8 @@ MYDEFAULT=$HOME/dev/feat
 
 ### generic
 
-# get the part of the basename before the dash
-PROJECT=`basename $0 | sed 's/\(.*\)-.*/\1/'`
+# get the part of the basename before the first dash as the project name
+PROJECT=`basename $0 | sed 's/\([^-]*\)-.*/\1/'`
 PROJECTUC=${PROJECT^^}
 
 # this script setups up env to work on $PROJECT uninstalled
