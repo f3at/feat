@@ -134,17 +134,12 @@ class BaseContextFactory(object):
                                   self._verify_ca_from_p12,
                                   self._key_pass, self._p12_pass)
 
-        opts = 0
-
-        if self._verify_ca_from_p12 or self._verify_ca_filename is not None:
-            log.debug("ssl-context", "getContext: setting VERIFY_PEER")
-            opts |= SSL.VERIFY_PEER
         if self._enforce_cert:
+            log.debug("ssl-context", "getContext: setting VERIFY_PEER")
             log.debug("ssl-context",
                 "getContext: setting VERIFY_FAIL_IF_NO_PEER_CERT")
+            opts = SSL.VERIFY_PEER
             opts |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
-
-        if opts != 0:
             ctx.set_verify(opts, self._verify_callback)
 
         return ctx
