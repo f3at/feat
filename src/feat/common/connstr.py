@@ -11,7 +11,7 @@ _regexp = re.compile(r"""
     (?P<user>\w+)
     (:(?P<password>\w+))? # optional password
   @)?
-  (?P<host>[\w\./]+)      # host or path
+  (?P<host>[^:]+)         # host or path
   (:(?P<port>\d+))?       # optional port number
 $
 """, re.VERBOSE)

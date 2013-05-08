@@ -30,3 +30,14 @@ class ConnStrTest(common.TestCase):
         self.assertEqual(None, resp['password'])
         self.assertEqual(None, resp['port'])
         self.assertEqual('/var/log/journal.sqlite3', resp['host'])
+
+    def testSQLiteDash(self):
+        resp = connstr.parse(
+            'sqlite:///home/thomas/credex/git/dev/release-1.5.x/'
+            'feat/log/journal.sqlite3')
+        self.assertEqual('sqlite', resp['protocol'])
+        self.assertEqual(None, resp['user'])
+        self.assertEqual(None, resp['password'])
+        self.assertEqual(None, resp['port'])
+        self.assertEqual('/home/thomas/credex/git/dev/release-1.5.x/'
+            'feat/log/journal.sqlite3', resp['host'])
