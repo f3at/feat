@@ -77,7 +77,7 @@ def stop(sig=signal.SIGUSR1):
 
 def main(args):
     usage = text_helper.format_block("""
-    Usage: feat {start|stop|shutdown|restart|status|clean} [extra_options]
+    Usage: feat {start|stop|shutdown|restart|status|clean|hostclean} [extra_options]
 
     Commands:
     * start - Start the service
@@ -88,7 +88,7 @@ def main(args):
     * restart - Stop service gently and start it back.
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
-    * hostcleanup - Cleans up descriptors of the agents running on the host.
+    * hostclean - Cleans up descriptors of the agents running on the host.
     * agentrestart - Restarts a statically configured agent.
     """)
 
@@ -149,7 +149,7 @@ def main(args):
                 pass
         return
 
-    if command == 'hostcleanup':
+    if command in ['hostclean', 'hostcleanup']:
         from feat import applications
 
         c = config.parse_service_config()
