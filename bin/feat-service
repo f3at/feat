@@ -49,6 +49,7 @@ def start(args):
         # add local.ini if it exists
         cmd += " -C " + localfile
     cmd = " ".join([cmd] + args)
+    cmd += " >> %s 2>&1" % os.path.join(configure.logdir, 'feat-service.log')
 
     logger.info("Starting feat")
     logger.debug("Executing %s" % cmd)
