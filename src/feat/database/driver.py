@@ -307,10 +307,16 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             force_json = True
         version = yield self.get_version()
 
+        # This turns off using multipart requests for now
+        force_json = True
+
         if not following_attachments:
             r = yield self.couchdb_call(doc_id, method, url, doc)
             defer.returnValue(r)
         elif version >= (1, 1, 2) and not force_json:
+            ### FIXME: This part is disabled because force_json is always True
+            ###        This is because of the problems with occasional 500
+            ###        responses with "reason": "function_clause"
             parts = ["\r\ncontent-type: application/json\r\n\r\n%s\r\n" %
                      (doc, )]
             following = following_attachments.items()
