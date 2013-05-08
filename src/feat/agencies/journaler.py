@@ -157,7 +157,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
                 self._possible_targets.append(parse_connstr(con_str))
                 self.log("Adding journaler target: %r",
                          self._possible_targets[-1])
-            except error.FeatError:
+            except error.FeatError, e:
+                error.handle_exception(None, e, 'Connection String')
                 self.error("Connection string %s is wrong. Ignoring!", con_str)
                 continue
         if self._writer is None:
