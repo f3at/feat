@@ -3,7 +3,18 @@
 
 import re
 
-_regexp = re.compile('\A(\w+)://((\w+)(:(\w+))?@)?([\w\./]+)(:(\d+))?\Z')
+_regexp = re.compile(r"""
+^
+  (\w+)       # protocol
+  ://
+  (           # optional @ section
+    (\w+)
+    (:(\w+))? # optional password
+  @)?
+  ([\w\./]+)  # path
+  (:(\d+))?   # optional port number
+$
+""", re.VERBOSE)
 
 
 def parse(connstr):
