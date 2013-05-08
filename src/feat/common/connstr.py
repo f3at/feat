@@ -1,3 +1,6 @@
+# -*- Mode: Python; test-case-name: feat.test.test_common_connstr -*-
+# vi:si:et:sw=4:sts=4:ts=4
+
 import re
 
 _regexp = re.compile('\A(\w+)://((\w+)(:(\w+))?@)?([\w\./]+)(:(\d+))?\Z')
