@@ -50,7 +50,8 @@ def start(args):
         cmd += " -C " + localfile
     cmd = " ".join([cmd] + args)
 
-    logger.debug("Starting feat ")
+    logger.info("Starting feat")
+    logger.debug("Executing %s" % cmd)
     status, output = commands.getstatusoutput(cmd)
     if status != 0:
         logger.error("Running command:\n %s\n failed with the "
