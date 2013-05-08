@@ -362,6 +362,8 @@ class Connection(log.Logger, log.LogProxy):
         d = self._database.query_view(factory, **options)
         if parse_results:
             d.addCallback(self._parse_view_results, factory, options)
+        else:
+            d.addCallback(list)
         return d
 
     @serialization.freeze_tag('IDatabaseClient.disconnect')
