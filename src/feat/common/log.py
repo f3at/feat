@@ -259,15 +259,23 @@ class PythonLogKeeper(object):
 
     def __init__(self, logger):
         self._logger = logger
+        from feat.extern.log import log as flulog
+        self._flulog = flulog
 
     def do_log(self, level, object, category, format, args,
                depth=1, file_path=None, line_num=None):
         if level == LogLevel.log:
             # logger from logging module has only 4 levels
-            # also, it produces to much of noise
+            # also, it produces too much noise
             return
+        (file, line) = self._flulog.getFileLine(where=-depth - 1)
         method = getattr(self._logger, level.name)
-        method(format, *args)
+        extra = {
+            'category': category,
+            'file': self._flulog.scrubFilename(file),
+            'line': line,
+        }
+        method(format, *args, extra=extra)
 
 
 class VoidLogKeeper(object):

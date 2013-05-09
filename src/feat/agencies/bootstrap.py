@@ -210,7 +210,9 @@ class _Bootstrap(object):
         if self.opts.agency_daemonize:
             tmp = tempfile.mktemp(suffix="feat.temp.log")
             log.info("run", "Logging will temporarily be done to: %s", tmp)
+            log.info("run", "Starting daemon")
             run.daemonize(stdout=tmp, stderr=tmp)
+            log.info("run", "Started daemon")
             # dump all the log entries logged so far to the FluLogKeeper again
             # the reason for this is that we want them to be included in text
             # file (so far they have been printed to the console)
