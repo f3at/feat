@@ -262,7 +262,7 @@ def _fork():
     try:
         pid = os.fork()
         if pid > 0:
-            sys.exit(0)   # exit first parent
+            sys.exit(0)
     except OSError, e:
         sys.stderr.write("Failed to fork: (%d) %s\n" % (e.errno, e.strerror))
         sys.exit(1)

@@ -197,12 +197,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         return self._idle
 
     def initiate_broker(self):
-        if sys.platform == "win32":
-            d = defer.succeed(None)
-            d.addCallback(defer.drop_param, self.become_master)
-            d.addErrback(self._handle_critical_error)
-            return d
-
         self._set_idle(False)
 
         if not self._is_standalone:
@@ -214,7 +208,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
                                                    mode=self.socket_mode)
                 d = defer.succeed(None)
                 d.addCallback(defer.drop_param, self.become_master)
-                d.addErrback(self._handle_critical_error)
                 d.addBoth(defer.bridge_param, self._set_idle, True)
                 return d
             except CannotListenError as e:
@@ -224,9 +217,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         elif self._is_standalone:
             self.info('Standalone role')
             return self._connect_as_slave()
-
-    def _handle_critical_error(self, fail):
-        error.handle_failure(self, fail, 'Critical error occured.')
 
     def _connect_as_slave(self):
         cb = defer.Deferred()
@@ -360,7 +350,6 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
         d = defer.succeed(None)
         if callable(self.on_slave_cb):
             d.addCallback(defer.drop_param, self.on_slave_cb)
-            d.addErrback(self._handle_critical_error)
 
         d.addCallback(defer.drop_param, self._master.callRemote,
                       'handshake', self, self.agency, self.agency.agency_id,
@@ -639,7 +628,6 @@ class StandaloneBroker(Broker):
         d = defer.succeed(None)
         if callable(self.on_master_missing_cb):
             d.addCallback(defer.drop_param, self.on_master_missing_cb)
-            d.addErrback(self._handle_critical_error)
         return d
 
     def disconnect(self):

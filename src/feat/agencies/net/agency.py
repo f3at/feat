@@ -246,15 +246,13 @@ class Agency(agency.Agency):
 
     def on_become_master(self):
         self._ssh.start_listening()
-        self._journaler.set_connection_strings(
-            self.config.agency.journal)
+        self._journaler.set_connection_strings(self.config.agency.journal)
         try:
             self._start_master_gateway()
         except Exception as e:
             error.handle_exception(
                 self, e, "Failed setting up gateway, it will stay disabled.")
 
-        self._redirect_text_log()
         self._create_pid_file()
         self._link_log_file(options.MASTER_LOG_LINK)
 
@@ -291,7 +289,6 @@ class Agency(agency.Agency):
         writer = journaler.BrokerProxyWriter(self._broker)
         writer.initiate()
         self._journaler.configure_with(writer)
-        self._redirect_text_log()
         self._start_slave_gateway()
 
         backend = unix.Slave(self._broker)
@@ -301,14 +298,6 @@ class Agency(agency.Agency):
         if agency.Agency.is_idle(self):
             return self._broker.is_idle()
         return False
-
-    def _redirect_text_log(self):
-        if self.config.agency.daemonize:
-            log_id = str(self.agency_id)
-
-            logname = "%s.%s.log" % ('feat', log_id, )
-            logfile = os.path.join(self.config.agency.logdir, logname)
-            log.FluLogKeeper.move_files(logfile, logfile)
 
     def _initiate_success(self, _value):
         self.info("Agency initiate finished successfully")
@@ -362,6 +351,7 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param, self._gateway.cleanup)
 
         if pre_state == BrokerRole.master:
+            self.debug('Removing pid file.')
             d.addCallback(defer.drop_param, run.delete_pidfile,
                           self.config.agency.rundir, force=True)
         return d
@@ -416,8 +406,10 @@ class Agency(agency.Agency):
             d.addBoth(defer.inject_param, 1, self.debug, "Gateway stopped: %r")
         if self._journaler:
             d.addCallback(defer.drop_param, self._journaler.close)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Journaler closed: %r")
+            d.addCallbacks(defer.inject_param, defer.inject_param,
+                           callbackArgs=(1, self.debug, "Journaler closed"),
+                           errbackArgs=(1, self, "Failed closing journaler"))
+
         if self._database:
             d.addCallback(defer.drop_param, self._database.disconnect)
             d.addBoth(defer.inject_param, 1, self.debug,
@@ -715,7 +707,7 @@ class Agency(agency.Agency):
         pid_file = run.acquire_pidfile(rundir)
 
         path = run.write_pidfile(rundir, file=pid_file)
-        self.log("Written pid file %s" % path)
+        self.debug("Written pid file %s" % path)
 
     def _spawn_agency(self, desc="", args=[]):
 

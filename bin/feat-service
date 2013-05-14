@@ -56,7 +56,7 @@ def start(args):
     status, output = commands.getstatusoutput(cmd)
     if status != 0:
         logger.error("Running command:\n %s\n failed with the "
-                  "exit code %d.", cmd, status)
+                     "exit code %d.", cmd, status)
         logger.error("The command output:\n%s", output)
         return status
 

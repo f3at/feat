@@ -1496,10 +1496,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")
-        self.debug("Retrying in %d seconds",
-                   HOST_RESTART_RETRY_INTERVAL)
-        time.callLater(HOST_RESTART_RETRY_INTERVAL,
-                       self._start_host_agent)
+        self.debug("Retrying in %d seconds", HOST_RESTART_RETRY_INTERVAL)
+        time.callLater(HOST_RESTART_RETRY_INTERVAL, self._start_host_agent)
 
     def _notify_agents_about_disconnection(self):
         for medium in self.iter_agents():

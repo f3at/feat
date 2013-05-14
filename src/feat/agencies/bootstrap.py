@@ -19,17 +19,15 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-import tempfile
 import os
 import optparse
 import sys
 
-from feat.database import driver
 from feat.agencies.net import agency as net_agency, standalone
 from feat.agencies.net import options, config as config_module
 from feat.agencies.net.options import OptionError
 
-from feat.common import log, run, defer, resolver
+from feat.common import log, run, defer, resolver, error
 from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
@@ -90,6 +88,9 @@ def check_category(catdef):
     raise OptionError("Invalid host category: %s" % catdef)
 
 
+_exit_code = 0
+
+
 def bootstrap(parser=None, args=None, descriptors=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
@@ -107,118 +108,156 @@ def bootstrap(parser=None, args=None, descriptors=None):
     @return: the deferred of the bootstrap chain
     @rtype:  defer.Deferred()"""
 
+    tee = log.init()
+    # The purpose of having log buffer here, is to be able to dump the
+    # log lines to a journal after establishing connection with it.
+    # This is done in stage_configure() of net agency Startup procedure.
+    tee.add_keeper('buffer', log.LogBuffer(limit=10000))
+
+    # use the resolver from twisted.names instead of the default
+    # the reason for this is that ThreadedResolver behaves strangely
+    # after the reconnection - raises the DNSLookupError for names
+    # which have been resolved while there was no connection
+    resolver.installResolver(reactor)
+
     if parser is None:
         parser = optparse.OptionParser()
         options.add_options(parser)
+    opts, args = check_options(*parser.parse_args(args))
 
-    with _Bootstrap(parser=parser, args=args) as bootstrap:
-        agency = bootstrap.agency
-        opts = bootstrap.opts
-        args = bootstrap.args
-        opts, args = check_options(opts, args)
+    if opts.standalone:
+        cls = standalone.Agency
+    else:
+        cls = net_agency.Agency
+    config = config_module.Config()
+    config.load(os.environ, opts)
+    agency = cls(config)
 
-        applications.load('feat.agents.application', 'feat')
-        applications.load('feat.gateway.application', 'featmodels')
+    applications.load('feat.agents.application', 'feat')
+    applications.load('feat.gateway.application', 'featmodels')
 
-        d = defer.Deferred()
-        reactor.callWhenRunning(d.callback, None)
+    d = defer.Deferred()
+    reactor.callWhenRunning(d.callback, None)
 
-        if not opts.standalone:
-            # specific to running normal agency
+    if not opts.standalone:
+        # specific to running normal agency
 
-            hostdef = opts.hostdef
+        hostdef = opts.hostdef
 
-            if opts.hostres or opts.hostcat or opts.hostports:
-                from feat.agents.common import host
-                hostdef = host.HostDef()
-                for resdef in opts.hostres:
-                    parts = resdef.split(":", 1)
-                    name = parts[0]
-                    value = 1
-                    if len(parts) > 1:
-                        try:
-                            value = int(parts[1])
-                        except ValueError:
-                            raise OptionError(
-                                "Invalid host resource: %s" % resdef), \
-                                None, sys.exc_info()[2]
-                    hostdef.resources[name] = value
+        if opts.hostres or opts.hostcat or opts.hostports:
+            from feat.agents.common import host
+            hostdef = host.HostDef()
+            for resdef in opts.hostres:
+                parts = resdef.split(":", 1)
+                name = parts[0]
+                value = 1
+                if len(parts) > 1:
+                    try:
+                        value = int(parts[1])
+                    except ValueError:
+                        raise OptionError(
+                            "Invalid host resource: %s" % resdef), \
+                            None, sys.exc_info()[2]
+                hostdef.resources[name] = value
 
-                for catdef in opts.hostcat:
-                    name, value = check_category(catdef)
-                    hostdef.categories[name] = value
+            for catdef in opts.hostcat:
+                name, value = check_category(catdef)
+                hostdef.categories[name] = value
 
-                if opts.hostports:
-                    hostdef.ports_ranges = dict()
-                for ports in opts.hostports:
-                    group, start, stop = tuple(ports.split(":"))
-                    hostdef.ports_ranges[group] = (int(start), int(stop))
+            if opts.hostports:
+                hostdef.ports_ranges = dict()
+            for ports in opts.hostports:
+                group, start, stop = tuple(ports.split(":"))
+                hostdef.ports_ranges[group] = (int(start), int(stop))
 
-            agency.set_host_def(hostdef)
+        agency.set_host_def(hostdef)
 
-            d.addCallback(defer.drop_param, agency.initiate)
-            for desc, kwargs, name in opts.agents:
-                d.addCallback(defer.drop_param, agency.add_static_agent,
-                              desc, kwargs, name)
-        else:
-            # standalone specific
-            kwargs = opts.standalone_kwargs or dict()
-            to_spawn = opts.agent_id or opts.agents[0][0]
-            d.addCallback(defer.drop_param, agency.initiate)
-            d.addCallback(defer.drop_param, agency.spawn_agent,
-                          to_spawn, **kwargs)
-        return d
+        d.addCallback(defer.drop_param, agency.initiate)
+        for desc, kwargs, name in opts.agents:
+            d.addCallback(defer.drop_param, agency.add_static_agent,
+                          desc, kwargs, name)
+    else:
+        # standalone specific
+        kwargs = opts.standalone_kwargs or dict()
+        to_spawn = opts.agent_id or opts.agents[0][0]
+        d.addCallback(defer.drop_param, agency.initiate)
+        d.addCallback(defer.drop_param, agency.spawn_agent,
+                      to_spawn, **kwargs)
+    queue = None
+    if opts.agency_daemonize:
+        import multiprocessing
+        queue = multiprocessing.Queue()
 
+    d.addCallbacks(_bootstrap_success, _bootstrap_failure,
+                   callbackArgs=(queue, ), errbackArgs=(agency, queue))
 
-class _Bootstrap(object):
-
-    def __init__(self, parser=None, args=None):
-        self._parser = parser
-        self.args = args
-        self.opts = None
-        self.agency = None
-
-    def __enter__(self):
-        tee = log.init()
-        tee.add_keeper('buffer', log.LogBuffer(limit=10000))
-        self._parse_opts()
-
-        if self.opts.debug:
-            log.FluLogKeeper.set_debug(self.opts.debug)
-        self.agency = self._run_agency()
-        return self
-
-    def __exit__(self, type, value, traceback):
-        if type is not None:
-            raise type(value), None, traceback
-        if self.opts.agency_daemonize:
-            tmp = tempfile.mktemp(suffix="feat.temp.log")
-            log.info("run", "Logging will temporarily be done to: %s", tmp)
-            log.info("run", "Starting daemon")
-            run.daemonize(stdout=tmp, stderr=tmp)
-            log.info("run", "Started daemon")
-            # dump all the log entries logged so far to the FluLogKeeper again
-            # the reason for this is that we want them to be included in text
-            # file (so far they have been printed to the console)
-            tee = log.get_default()
-            buff = tee.get_keeper('buffer')
-            flulog = tee.get_keeper('flulog')
-            buff.dump(flulog)
-        # use the resolver from twisted.names instead of the default
-        # the reason for this is that ThreadedResolver behaves strangely
-        # after the reconnection - raises the DNSLookupError for names
-        # which have been resolved while there was no connection
-        resolver.installResolver(reactor)
+    if not opts.agency_daemonize:
         reactor.run()
+    else:
+        logname = "%s.%s.log" % ('feat', agency.agency_id)
+        logfile = os.path.join(config.agency.logdir, logname)
+        log.info("bootstrap", "Daemon processs will be loggin to %s path",
+                 logfile)
 
-    def _parse_opts(self):
-        self.opts, self.args = self._parser.parse_args(args=self.args)
+        try:
+            pid = os.fork()
+        except OSError, e:
+            sys.stderr.write("Failed to fork: (%d) %s\n" %
+                             (e.errno, e.strerror))
+            os._exit(1)
 
-    def _run_agency(self):
-        if self.opts.standalone:
-            cls = standalone.Agency
+        if pid > 0:
+            # original process waits for information about what status code
+            # to use on exit
+            log.info('bootstrap',
+                     "Waiting for deamon process to intialize the agency")
+            try:
+                exit_code, reason = queue.get(timeout=20)
+            except multiprocessing.queues.Empty:
+                log.error('bootstrap',
+                          "20 seconds timeout expires waiting for agency"
+                          " in child process to initiate.")
+                os._exit(1)
+            else:
+                log.info('bootstrap', "Process exiting with %d status",
+                         exit_code)
+                if exit_code:
+                    log.info('bootstrap', 'Reason for failure: %s', reason)
+                sys.exit(exit_code)
         else:
-            cls = net_agency.Agency
-        config = config_module.Config()
-        config.load(os.environ, self.opts)
-        return cls(config)
+            # child process performs second fork
+            try:
+                pid = os.fork()
+            except OSError, e:
+                sys.stderr.write("Failed to fork: (%d) %s\n" %
+                                 (e.errno, e.strerror))
+                os._exit(1)
+            if pid > 0:
+                # child process just exits
+                sys.exit(0)
+            else:
+                # grandchild runs the reactor and logs to an external log file
+                log.FluLogKeeper.redirect_to(logfile, logfile)
+                reactor.run()
+
+    global _exit_code
+    log.info('bootstrap', 'Process exiting with %d status', _exit_code)
+    sys.exit(_exit_code)
+
+
+def _bootstrap_success(value, queue):
+    log.info("bootstrap", "Bootstrap finished successfully")
+    if queue:
+        # this informs the master process that it can terminate with 0 status
+        queue.put((0, ""))
+
+
+def _bootstrap_failure(fail, agency, queue=None):
+    error.handle_failure(agency, fail, 'Agency bootstrap failed, exiting.')
+    reason = error.get_failure_message(fail)
+    if queue:
+        queue.put((1, reason))
+
+    global _exit_code
+    _exit_code = 1
+    agency.kill(stop_process=True)
