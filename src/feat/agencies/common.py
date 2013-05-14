@@ -473,6 +473,7 @@ class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
         self.friend = friend
         self.opts = opts
         self._observer = observer.Observer(self._initiate)
+        self._failures = []
 
     ### public methods ###
 
@@ -502,7 +503,13 @@ class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
             d.addBoth(defer.drop_param, self._set_state, stage)
             d.addBoth(defer.drop_param, self.call_mro, method_name)
             d.addBoth(self._print_log, stage)
+        d.addBoth(self._format_result)
         return d
+
+    def _format_result(self, _res):
+        # if any of the stages failed return the first failure as the result
+        if self._failures:
+            return self._failures[0]
 
     def _print_log(self, param, stage):
         self.log('Finished stage %s. Defer result at this point: %r',
@@ -510,3 +517,4 @@ class Procedure(log.Logger, StateMachineMixin, mro.DeferredMroMixin):
         if isinstance(param, failure.Failure):
             error.handle_failure(self, param, 'Failure in stage %s: ',
                                  stage.name)
+            self._failures.append(param)
