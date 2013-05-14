@@ -118,10 +118,6 @@ def add_agency_options(parser):
     group.add_option('--no-daemonize',
                      action="store_false", dest="agency_daemonize",
                      help="Don't daemonize the process", default=True)
-    group.add_option('--force-host-restart',
-                     action="store_true", dest="force_host_restart",
-                     help=("cleanup first after an host agent and the "
-                           "agents he was running"), default=False)
     group.add_option('-a', '--agent', dest="agents", action="callback",
                       help="Start an agent of the specified type.",
                       metavar="AGENT_NAME", default=[], type='str',

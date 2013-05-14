@@ -90,11 +90,7 @@ def check_category(catdef):
     raise OptionError("Invalid host category: %s" % catdef)
 
 
-def add_options(parser):
-    options.add_options(parser)
-
-
-def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
+def bootstrap(parser=None, args=None, descriptors=None):
     """Bootstrap a feat process, handling command line arguments.
     @param parser: the option parser to use; more options will be
         added to the parser; if not specified or None
@@ -121,9 +117,6 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
         args = bootstrap.args
         opts, args = check_options(opts, args)
 
-        if callable(init_callback):
-            init_callback(agency, opts, args)
-
         applications.load('feat.agents.application', 'feat')
         applications.load('feat.gateway.application', 'featmodels')
 
@@ -132,15 +125,6 @@ def bootstrap(parser=None, args=None, descriptors=None, init_callback=None):
 
         if not opts.standalone:
             # specific to running normal agency
-            if opts.force_host_restart:
-                # lazy import not to load descriptor before feat is loaded
-                from feat.utils import host_restart
-
-                dbc = agency.config.db
-                db = driver.Database(dbc.host, int(dbc.port), dbc.name)
-                connection = db.get_connection()
-                d.addCallback(defer.drop_param, host_restart.do_cleanup,
-                              connection, agency._get_host_agent_id())
 
             hostdef = opts.hostdef
 
