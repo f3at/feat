@@ -1198,8 +1198,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                                "over it.", key)
 
     def is_idle(self):
-        return all([x.is_idle() for x in self._agents]) and\
-               self._messaging.is_idle()
+        return (all([x.is_idle() for x in self._agents]) and
+                self._messaging.is_idle() and
+                not self._starting_host)
 
     def add_static_agent(self, desc, kwargs, name):
         self.debug("Configuring agency to start agent %s with descriptor %r "
