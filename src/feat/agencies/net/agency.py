@@ -398,26 +398,36 @@ class Agency(agency.Agency):
                    'database: %r, broker: %r', self._ssh, self._gateway,
                    self._journaler, self._database, self._broker)
         d = defer.succeed(None)
+
+        handler = lambda msg: (1, error.handle_failure, self, msg)
         if self._ssh:
             d.addCallback(defer.drop_param, self._ssh.stop_listening)
-            d.addBoth(defer.inject_param, 1, self.debug, "Ssh stopped: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "SSH stopped"),
+                           errbackArgs=handler("Failed stopping SSH"))
         if self._gateway:
             d.addCallback(defer.drop_param, self._gateway.cleanup)
-            d.addBoth(defer.inject_param, 1, self.debug, "Gateway stopped: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Gateway stopped"),
+                           errbackArgs=handler("Failed stopping gateway"))
         if self._journaler:
             d.addCallback(defer.drop_param, self._journaler.close)
-            d.addCallbacks(defer.inject_param, defer.inject_param,
-                           callbackArgs=(1, self.debug, "Journaler closed"),
-                           errbackArgs=(1, self, "Failed closing journaler"))
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Journaler closed"),
+                           errbackArgs=handler("Failed closing journaler"))
 
         if self._database:
             d.addCallback(defer.drop_param, self._database.disconnect)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Database disconnected: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Database disconnected"),
+                           errbackArgs=handler("Failed disconnecting from "
+                                               "the database"))
         if self._broker:
             d.addCallback(defer.drop_param, self._broker.disconnect)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Broker disconnected: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Broker disconnected"),
+                           errbackArgs=handler("Failed disconnecting from "
+                                               "the broker"))
         return d
 
     def register_agent(self, medium):
