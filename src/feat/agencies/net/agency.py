@@ -196,6 +196,11 @@ class Agency(agency.Agency):
 
     ### public ###
 
+    def initiate(self, **opts):
+        d = super(Agency, self).initiate(*opts)
+        d.addCallbacks(self._initiate_success, self._initiate_failure)
+        return d
+
     @property
     def role(self):
         if self._broker.is_standalone():
@@ -304,6 +309,18 @@ class Agency(agency.Agency):
             logname = "%s.%s.log" % ('feat', log_id, )
             logfile = os.path.join(self.config.agency.logdir, logname)
             log.FluLogKeeper.move_files(logfile, logfile)
+
+    def _initiate_success(self, _value):
+        self.info("Agency initiate finished successfully")
+
+        # this initiates startup of HA in a broken execution thread,
+        # so there is no need to return/yield the return value
+        self._start_host_agent()
+
+    def _initiate_failure(self, fail):
+        error.handle_failure(self, fail, 'Agency initiate failed, exiting.')
+        self.kill(stop_process=True)
+        return fail
 
     def _link_log_file(self, filename):
         if not self.config.agency.daemonize:
@@ -615,12 +632,12 @@ class Agency(agency.Agency):
             error.handle_exception(self, e, msg)
         return None
 
-    def _can_start_host_agent(self, startup=False):
+    def _can_start_host_agent(self):
         if not self._broker.is_master():
             self.log('Not starting host agent, because we are not the '
                      'master agency')
             return False
-        return agency.Agency._can_start_host_agent(self, startup)
+        return agency.Agency._can_start_host_agent(self)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
