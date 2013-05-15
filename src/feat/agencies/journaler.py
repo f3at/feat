@@ -109,6 +109,8 @@ def in_state(func, *states):
     def wrapper(self, *args, **kwargs):
         d = defer.succeed(None)
         if not self._cmp_state(states):
+            self.debug("State now is %s, waiting to switch to: %r", self.state,
+                       states)
             d.addCallback(defer.drop_param, self.wait_for_state, *states)
         d.addCallback(defer.drop_param, func, self, *args, **kwargs)
         d.addErrback(failure.Failure.trap, defer.CancelledError)
@@ -151,15 +153,14 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         return self._writer is not None and self._current_target_index
 
     def set_connection_strings(self, con_strings):
-        self.log("set_connection_strings() called with: %r", con_strings)
+        self.debug("set_connection_strings() called with: %r", con_strings)
         for con_str in con_strings:
             try:
                 self._possible_targets.append(parse_connstr(con_str))
-                self.log("Adding journaler target: %r",
-                         self._possible_targets[-1])
+                self.debug("Adding journaler target: %r",
+                           self._possible_targets[-1])
             except error.FeatError, e:
-                error.handle_exception(None, e, 'Connection String')
-                self.error("Connection string %s is wrong. Ignoring!", con_str)
+                error.handle_exception(None, e, 'Connection string is wrong.')
                 continue
         if self._writer is None:
             return self.use_next_writer()
@@ -396,6 +397,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     def _close_writer(self, flush_writer=True):
         d = defer.succeed(None)
         if self._writer:
+            self.debug("Closing journal writer %r, flush=%r", self._writer,
+                       flush_writer)
             d.addCallback(defer.drop_param, self._writer.close,
                           flush=flush_writer)
         return d
@@ -523,6 +526,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._journaler = None
 
     def initiate(self):
+        self.debug("Initiating sqlite journal writer.")
         self._db = adbapi.ConnectionPool('sqlite3', self._filename,
                                          cp_min=1, cp_max=1, cp_noisy=True,
                                          check_same_thread=False,
@@ -533,8 +537,10 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
     def close(self, flush=True):
         d = defer.succeed(None)
         if self._cmp_state(State.disconnected):
+            self.debug("Writer is already disconnected.")
             return d
         if flush:
+            self.debug("Flusing SQL writer before closign")
             d.addCallback(defer.drop_param, self._flush_next)
         d.addCallback(defer.drop_param, self._db.close)
         d.addCallback(defer.drop_param, self._uninstall_sighup)
@@ -966,8 +972,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         return d
 
     def _initiated_ok(self, *_):
-        self.log('Journaler initiated correctly for the filename %r',
-                 self._filename)
+        self.debug('Sqlite journal writer initiated correctly for the '
+                   'filename %r', self._filename)
         self._set_state(State.connected)
         return self._flush_next()
 

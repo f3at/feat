@@ -196,6 +196,11 @@ class Agency(agency.Agency):
 
     ### public ###
 
+    def initiate(self, **opts):
+        d = super(Agency, self).initiate(*opts)
+        d.addCallbacks(self._initiate_success, self._initiate_failure)
+        return d
+
     @property
     def role(self):
         if self._broker.is_standalone():
@@ -241,15 +246,13 @@ class Agency(agency.Agency):
 
     def on_become_master(self):
         self._ssh.start_listening()
-        self._journaler.set_connection_strings(
-            self.config.agency.journal)
+        self._journaler.set_connection_strings(self.config.agency.journal)
         try:
             self._start_master_gateway()
         except Exception as e:
             error.handle_exception(
                 self, e, "Failed setting up gateway, it will stay disabled.")
 
-        self._redirect_text_log()
         self._create_pid_file()
         self._link_log_file(options.MASTER_LOG_LINK)
 
@@ -286,7 +289,6 @@ class Agency(agency.Agency):
         writer = journaler.BrokerProxyWriter(self._broker)
         writer.initiate()
         self._journaler.configure_with(writer)
-        self._redirect_text_log()
         self._start_slave_gateway()
 
         backend = unix.Slave(self._broker)
@@ -297,13 +299,17 @@ class Agency(agency.Agency):
             return self._broker.is_idle()
         return False
 
-    def _redirect_text_log(self):
-        if self.config.agency.daemonize:
-            log_id = str(self.agency_id)
+    def _initiate_success(self, _value):
+        self.info("Agency initiate finished successfully")
 
-            logname = "%s.%s.log" % ('feat', log_id, )
-            logfile = os.path.join(self.config.agency.logdir, logname)
-            log.FluLogKeeper.move_files(logfile, logfile)
+        # this initiates startup of HA in a broken execution thread,
+        # so there is no need to return/yield the return value
+        self._start_host_agent()
+
+    def _initiate_failure(self, fail):
+        error.handle_failure(self, fail, 'Agency initiate failed, exiting.')
+        self.kill(stop_process=True)
+        return fail
 
     def _link_log_file(self, filename):
         if not self.config.agency.daemonize:
@@ -345,6 +351,7 @@ class Agency(agency.Agency):
             d.addCallback(defer.drop_param, self._gateway.cleanup)
 
         if pre_state == BrokerRole.master:
+            self.debug('Removing pid file.')
             d.addCallback(defer.drop_param, run.delete_pidfile,
                           self.config.agency.rundir, force=True)
         return d
@@ -391,24 +398,36 @@ class Agency(agency.Agency):
                    'database: %r, broker: %r', self._ssh, self._gateway,
                    self._journaler, self._database, self._broker)
         d = defer.succeed(None)
+
+        handler = lambda msg: (1, error.handle_failure, self, msg)
         if self._ssh:
             d.addCallback(defer.drop_param, self._ssh.stop_listening)
-            d.addBoth(defer.inject_param, 1, self.debug, "Ssh stopped: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "SSH stopped"),
+                           errbackArgs=handler("Failed stopping SSH"))
         if self._gateway:
             d.addCallback(defer.drop_param, self._gateway.cleanup)
-            d.addBoth(defer.inject_param, 1, self.debug, "Gateway stopped: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Gateway stopped"),
+                           errbackArgs=handler("Failed stopping gateway"))
         if self._journaler:
             d.addCallback(defer.drop_param, self._journaler.close)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Journaler closed: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Journaler closed"),
+                           errbackArgs=handler("Failed closing journaler"))
+
         if self._database:
             d.addCallback(defer.drop_param, self._database.disconnect)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Database disconnected: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Database disconnected"),
+                           errbackArgs=handler("Failed disconnecting from "
+                                               "the database"))
         if self._broker:
             d.addCallback(defer.drop_param, self._broker.disconnect)
-            d.addBoth(defer.inject_param, 1, self.debug,
-                      "Broker disconnected: %r")
+            d.addCallbacks(defer.drop_param, defer.inject_param,
+                           callbackArgs=(self.debug, "Broker disconnected"),
+                           errbackArgs=handler("Failed disconnecting from "
+                                               "the broker"))
         return d
 
     def register_agent(self, medium):
@@ -615,12 +634,12 @@ class Agency(agency.Agency):
             error.handle_exception(self, e, msg)
         return None
 
-    def _can_start_host_agent(self, startup=False):
+    def _can_start_host_agent(self):
         if not self._broker.is_master():
             self.log('Not starting host agent, because we are not the '
                      'master agency')
             return False
-        return agency.Agency._can_start_host_agent(self, startup)
+        return agency.Agency._can_start_host_agent(self)
 
     @manhole.expose()
     def snapshot_agents(self, force=False):
@@ -698,7 +717,7 @@ class Agency(agency.Agency):
         pid_file = run.acquire_pidfile(rundir)
 
         path = run.write_pidfile(rundir, file=pid_file)
-        self.log("Written pid file %s" % path)
+        self.debug("Written pid file %s" % path)
 
     def _spawn_agency(self, desc="", args=[]):
 

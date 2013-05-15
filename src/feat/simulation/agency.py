@@ -134,8 +134,6 @@ class Agency(agency.Agency):
     shutdown_factory = Shutdown
     startup_factory = Startup
 
-    start_host_agent = True
-
     def __init__(self):
         agency.Agency.__init__(self)
         self._disabled_protocols = set()
@@ -185,9 +183,11 @@ class Agency(agency.Agency):
     def initiate(self, database, journaler, driver, ip, hostname,
                  start_host, *backends):
         self._driver = driver
-        self.start_host_agent = start_host
-        return self._initiate(database=database, journaler=journaler, ip=ip,
-                              hostname=hostname, backends=backends)
+        d = self._initiate(database=database, journaler=journaler, ip=ip,
+                           hostname=hostname, backends=backends)
+        if start_host:
+            d.addCallback(defer.drop_result, self._start_host_agent)
+        return d
 
     def upgrade(self, upgrade_cmd):
         self._upgrade_cmd = upgrade_cmd

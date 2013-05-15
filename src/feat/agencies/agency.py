@@ -958,8 +958,8 @@ class Shutdown(common.Procedure):
 
 class StartupStage(enum.Enum):
 
-    initiated, configure, messaging, database, journaler, \
-            private, host_agent, finish = range(8)
+    (initiated, configure, messaging, database, journaler,
+     private, finish) = range(7)
 
 
 class Startup(common.Procedure):
@@ -1004,11 +1004,6 @@ class Startup(common.Procedure):
 
     def stage_private(self):
         self.friend._check_msg_and_db_state()
-
-    def stage_host_agent(self):
-        if not self.friend.start_host_agent:
-            return
-        return self.friend._start_host_agent(True)
 
     def stage_finish(self):
         pass
@@ -1203,8 +1198,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
                                "over it.", key)
 
     def is_idle(self):
-        return all([x.is_idle() for x in self._agents]) and\
-               self._messaging.is_idle()
+        return (all([x.is_idle() for x in self._agents]) and
+                self._messaging.is_idle() and
+                not self._starting_host)
 
     def add_static_agent(self, desc, kwargs, name):
         self.debug("Configuring agency to start agent %s with descriptor %r "
@@ -1374,27 +1370,25 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
             self._shutdown_task = type(self).shutdown_factory(self, **opts)
             return self._shutdown_task.initiate()
 
-    def _can_start_host_agent(self, startup=False):
-        # allow host start in the startup procedure, only if the 'startup'
-        # flag is passed
-        if self._startup_task and not startup:
+    def _can_start_host_agent(self):
+        if self._startup_task:
             self.debug('Not starting host agent, because the agency '
-                       'spawns it on startup')
+                       'is still starting up')
             return False
 
         if self._shutdown_task is not None:
             self.debug('Not starting host agent, because the agency '
-                     'is about to terminate itself')
+                       'is about to terminate.')
             return False
 
         if self.get_host_agent():
             self.debug('Not starting host agent, because we already '
-                     ' have one')
+                       ' have one')
             return False
 
         if self._starting_host:
             self.debug('Not starting host agent, because we are already '
-                     'starting one.')
+                       'starting one.')
             return False
         return True
 
@@ -1445,7 +1439,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def _get_host_agent_id(self):
         return self.get_hostname()
 
-    def _start_host_agent(self, startup=False):
+    def _start_host_agent(self):
         '''
         This method starts saves the host agent descriptor and runs it.
         To make this happen following conditions needs to be fulfilled:
@@ -1458,7 +1452,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         def set_flag(value):
             self._starting_host = value
 
-        if not self._can_start_host_agent(startup):
+        if not self._can_start_host_agent():
             return
 
         def handle_error_on_get(fail, connection, doc_id):
@@ -1503,10 +1497,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def _host_restart_failed(self, failure):
         error.handle_failure(self, failure, "Failure during host restart")
-        self.debug("Retrying in %d seconds",
-                   HOST_RESTART_RETRY_INTERVAL)
-        time.callLater(HOST_RESTART_RETRY_INTERVAL,
-                       self._start_host_agent)
+        self.debug("Retrying in %d seconds", HOST_RESTART_RETRY_INTERVAL)
+        time.callLater(HOST_RESTART_RETRY_INTERVAL, self._start_host_agent)
 
     def _notify_agents_about_disconnection(self):
         for medium in self.iter_agents():
