@@ -22,7 +22,7 @@
 from cStringIO import StringIO
 import types
 
-from zope.interface import Interface, Attribute
+from zope.interface import Interface, Attribute, declarations, interface
 from zope.interface import implements, providedBy, adapter as zope_adapter
 from twisted.python.failure import Failure
 
@@ -254,6 +254,11 @@ class Registry(object):
             assert (writer.registry is None) or (writer.registry is self)
             writer.registry = self
 
+        # deal with class->interface adapters:
+        if (iface is not None and # None stands for default adapter
+            not isinstance(iface, interface.InterfaceClass)):
+            iface = declarations.implementedBy(iface)
+
         self._registry.register([iface], IWritableDocument,
                                 mime_type, writer)
         return writer
@@ -408,7 +413,6 @@ class BaseWriterWrapper(object):
 
     def write(self, doc, obj, *args, **kwargs):
         try:
-
             d = self._write_fun(doc, obj, *args, **kwargs)
 
             if (d is None) or (d is doc):
