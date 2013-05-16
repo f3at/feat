@@ -89,6 +89,7 @@ class AgentNotifier(serialization.Serializable):
         if timeout:
             notification.cancellation_id = self.agent.call_later(
                 timeout, self._expire, notification_name, notification.id)
+
         self._store(notification_name, notification)
         return notification.deferred
 

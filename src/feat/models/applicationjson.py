@@ -256,7 +256,7 @@ def render_compact_items(items, context, result):
     for item in items:
         if render_inline(item):
             d = item.fetch()
-            d.addCallback(render_compact_model, context)
+            d.addCallback(render_inline_model, context)
             result.add(item.name, d)
         elif iattribute_meta(item) and not prevent_inline(item):
             d = item.fetch()
@@ -317,8 +317,11 @@ def filter_model_errors(failure, item, context):
 
 
 def render_json(data, doc):
-    enc = CustomJSONEncoder(encoding=doc.encoding)
-    doc.write(enc.encode(data))
+    if doc.encoding == 'nested-json':
+        doc.write(data)
+    else:
+        enc = CustomJSONEncoder(encoding=doc.encoding)
+        doc.write(enc.encode(data))
 
 
 def write_model(doc, obj, *args, **kwargs):
@@ -346,13 +349,47 @@ def write_query_model(doc, obj, *args, **kwargs):
     return d
 
 
+class NestedJson(document.BaseDocument):
+    '''
+    This is an implementation used to represent nested documents which
+    are rendered inline. It is used in CustomJSONEncoder to injects
+    preserialized parts of resulting json into the structure.
+    '''
+
+    implements(document.IWritableDocument)
+
+    def __init__(self):
+        document.BaseDocument.__init__(self, MIME_TYPE, 'nested-json')
+        self._data = None
+
+    def get_data(self):
+        return self._data
+
+    ### IWriter ###
+
+    def write(self, data):
+        self._data = data
+
+    def writelines(self, sequence):
+        raise NotImplementedError("This should not be used for NestedJson")
+
+
+def render_inline_model(obj, context, *args, **kwargs):
+    obj = IModel(obj)
+
+    doc = NestedJson()
+    d = document.write(doc, obj, context=context)
+    d.addCallback(defer.override_result, doc)
+    return d
+
+
 def render_model_as_list(obj, context):
 
     def got_items(items):
         defers = list()
         for item in items:
             d = item.fetch()
-            d.addCallbacks(render_compact_model, filter_model_errors,
+            d.addCallbacks(render_inline_model, filter_model_errors,
                            callbackArgs=(context, ),
                            errbackArgs=(item, context))
             defers.append(d)
@@ -441,4 +478,9 @@ class CustomJSONEncoder(json.JSONEncoder):
             return self._serializer.convert(obj)
         if serialization.ISnapshotable.providedBy(obj):
             return self._serializer.freeze(obj)
+        if isinstance(obj, NestedJson):
+            # models marked with render-inline are rendered into a separate
+            # IWritableDocument instance, which is here injected into its
+            # placeholder in the resulting document
+            return obj.get_data()
         return json.JSONEncoder.default(self, obj)
