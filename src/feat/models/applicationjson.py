@@ -24,9 +24,10 @@ import json
 
 from zope.interface import implements
 
-from feat.common import defer, serialization
+from feat.common import defer, serialization, error
 from feat.common.serialization import json as feat_json
 from feat.web import document
+from feat.models import model
 
 from feat.models.interface import IModel, IReference
 from feat.models.interface import IErrorPayload
@@ -395,13 +396,20 @@ def render_model_as_list(obj, context):
             defers.append(d)
         return defer.DeferredList(defers, consumeErrors=True)
 
-    def get_results(results):
-        return [x[1] for x in results]
-
     d = obj.fetch_items()
     d.addCallback(got_items)
-    d.addCallback(get_results)
+    d.addCallback(unpack_deferred_list_result)
+    d.addCallback(list)
     return d
+
+
+def unpack_deferred_list_result(results):
+
+    for successful, result in results:
+        if not successful:
+            error.handle_failure(None, result, "Failed rendering inline model")
+            continue
+        yield result
 
 
 def write_reference(doc, obj, *args, **kwargs):
@@ -450,6 +458,35 @@ def read_action(doc, *args, **kwargs):
     return ActionPayload(params)
 
 
+def write_query_set_collection(doc, obj, *args, **kwargs):
+    # This type of object is used as a result of 'select' query of dbmodels api
+    result = list()
+
+    if IModel.implementedBy(obj._item_model):
+        model_factory = obj._item_model
+    else:
+        model_factory = model.get_factory(obj._item_model)
+    if model_factory is None:
+        # use the adapter
+        model_factory = IModel
+
+    for _, child in obj._items:
+        if obj.query_target == 'view':
+            instance = model_factory(obj.source)
+            d = instance.initiate(view=child)
+        else:
+            instance = model_factory(child)
+            d = instance.initiate(view=obj.view)
+        d.addCallback(render_inline_model, *args, **kwargs)
+        result.append(d)
+    d = defer.DeferredList(result)
+    d.addCallback(unpack_deferred_list_result)
+    d.addCallback(list)
+    d.addCallback(render_json, doc)
+    d.addCallback(defer.override_result, None)
+    return d
+
+
 document.register_writer(write_model, MIME_TYPE, IModel)
 document.register_writer(write_error, MIME_TYPE, IErrorPayload)
 document.register_writer(write_reference, MIME_TYPE, IReference)
@@ -457,6 +494,8 @@ document.register_writer(write_reference, MIME_TYPE, IReference)
 #                          serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)
 document.register_writer(write_query_model, MIME_TYPE, IQueryModel)
+document.register_writer(write_query_set_collection, MIME_TYPE,
+                         model._QuerySetCollection)
 
 document.register_reader(read_action, MIME_TYPE, IActionPayload)
 

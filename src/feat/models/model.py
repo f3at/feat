@@ -1648,11 +1648,11 @@ class MetaQuerySetCollection(MetaCollection):
         # parent_class here is a QueryItemsMixin object
         identity = parent_class._model_identity + '.query'
         cls_name = parent_class.__name__ + "QuerySet"
+        target = parent_class._query_target
         cls = MetaQuerySetCollection(cls_name, (_QuerySetCollection, ),
-                                     {"__slots__": ()})
+                                     {"query_target": target})
         cls.annotate_identity(identity)
 
-        target = parent_class._query_target
         if target == 'source':
             cls.annotate_child_source(_QuerySetCollection.getter)
             cls.annotate_child_view(parent_class._fetch_view)
