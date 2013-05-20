@@ -312,28 +312,6 @@ class DummyReplier(replier.BaseReplier):
         state.medium.reply(message.ResponseMessage())
 
 
-class DummyCache():
-
-    def __init__(self, agent):
-        self.documents = {}
-        self.agent = agent
-
-    def update(self, doc_id, operation, *args, **kwargs):
-        method = getattr(self.agent, operation)
-        document = self.documents.get(doc_id)
-        try:
-            self.documents[doc_id] = method(document, *args, **kwargs)
-        except cache.DeleteDocument:
-            del self.documents[doc_id]
-        except cache.ResignFromModifying:
-            pass
-
-    def get_document(self, doc_id):
-        if not doc_id in self.documents:
-            raise NotFoundError()
-        return self.documents[doc_id]
-
-
 class DummyPosterMedium(DummyMediumBase):
 
     def __init__(self):

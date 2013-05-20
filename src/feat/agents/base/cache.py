@@ -231,13 +231,13 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
                 state.listener.on_document_deleted(doc_id)
         else:
             should_update = doc_id not in state.documents or \
-                            state.documents[doc_id] != rev
+                            state.documents[doc_id].rev != rev
             f = fiber.succeed()
             if should_update:
                 f.add_callback(fiber.drop_param,
                                self._refresh_document, doc_id)
-            if state.listener:
-                f.add_callback(state.listener.on_document_change)
+                if state.listener:
+                    f.add_callback(state.listener.on_document_change)
             f.add_errback(self._update_not_found, doc_id, reraise=False)
             f.add_callback(fiber.override_result, None)
             return f

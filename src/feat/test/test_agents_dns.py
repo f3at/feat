@@ -28,7 +28,7 @@ from feat.agents.base import resource
 from feat.agencies import message
 from feat.agents.dns import dns_agent, production
 from feat.common import log, guard
-from feat.test.dummies import DummyMedium, DummyCache
+from feat.test.dummies import DummyMedium
 
 from feat.agents.dns.interface import RecordA, RecordCNAME
 
@@ -184,12 +184,9 @@ class TestDNSAgent(common.TestCase):
         self.dns = dns_agent.DNSAgent(self.medium)
         self.collector = \
             dns_agent.MappingUpdatesCollector(self.dns, self.medium)
-        self.cache = DummyCache(self.dns)
 
         yield self.dns.initiate()
         yield self.dns.startup()
-        self.dns._get_state().cache = self.cache
-        self.dns._get_state().document_updater = self.cache
 
     def _notify(self, action, *args):
         msg = message.BaseMessage(payload=[action, args])
@@ -199,6 +196,7 @@ class TestDNSAgent(common.TestCase):
     def testMappings(self):
         # Add mapping
         yield self.dns.add_mapping('test', '1.1.1.1')
+        yield common.delay(None, 0.01)
         # Resolve mapping
         a = yield self.dns.lookup_address('test.lan', '')
         self.assertEquals(a[0][0], '1.1.1.1')
@@ -206,22 +204,27 @@ class TestDNSAgent(common.TestCase):
         yield self.dns.add_mapping('test', '1.1.1.1')
         # Remove mapping
         yield self.dns.remove_mapping('test', '1.1.1.1')
+        yield common.delay(None, 0.01)
         a = yield self.dns.lookup_address('test.lan', '')
+        self.assertEquals(a, [])
+
         # Remove again the mapping
         yield self.dns.remove_mapping('test', '1.1.1.1')
         # Remove wrong mapping
         yield self.dns.remove_mapping('test', '1.1.1.2')
-        self.assertEquals(a, [])
+
 
     @defer.inlineCallbacks
     def testAlias(self):
         # Add alias
         yield self.dns.add_alias('dog', '1.1.1.2')
         # Resolve alias
+        yield common.delay(None, 0.01)
         a = yield self.dns.lookup_alias('dog.lan')
         self.assertEquals(a[0], '1.1.1.2')
         # Remove alias
         yield self.dns.remove_alias('dog', '1.1.1.2')
+        yield common.delay(None, 0.01)
         a = yield self.dns.lookup_alias('dog')
         # Remove alias again
         yield self.dns.remove_alias('dog', '1.1.1.2')
