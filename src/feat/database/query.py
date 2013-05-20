@@ -35,10 +35,13 @@ class Cache(log.Logger):
         self.log("Emptying query cache.")
         self._cache.clear()
 
-    def query(self, connection, factory, subquery):
-        self.log("query() called for %s view and subquery %r", factory.name,
-                 subquery)
-        d = connection.get_update_seq()
+    def query(self, connection, factory, subquery, update_seq=None):
+        self.log("query() called for %s view and subquery %r. Update seq: %r",
+                 factory.name, subquery, update_seq)
+        if update_seq is None:
+            d = connection.get_update_seq()
+        else:
+            d = defer.succeed(update_seq)
         d.addCallback(defer.inject_param, 3,
             self._got_seq_num, connection, factory, subquery)
         return d
@@ -445,10 +448,11 @@ def _parse_values_response(results):
 def _get_query_response(connection, query):
     cache = connection.get_query_cache()
     responses = dict()
+    update_seq = yield connection.get_update_seq()
     for subquery in query.get_basic_queries():
         # subquery -> list of doc ids
         responses[subquery] = yield cache.query(
-            connection, query.factory, subquery)
+            connection, query.factory, subquery, update_seq)
     defer.returnValue((_calculate_query_response(responses, query), responses))
 
 
