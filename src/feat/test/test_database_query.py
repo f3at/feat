@@ -24,7 +24,7 @@ class DummyCache(object):
     def __init__(self, stubs):
         self.stubs = stubs
 
-    def query(self, connection, factory, subquery):
+    def query(self, connection, factory, subquery, seq_num=None):
         assert isinstance(connection, DummyConnection), repr(connection)
         assert factory is DummyView, repr(factory)
         assert isinstance(subquery, tuple), repr(subquery)
