@@ -67,5 +67,5 @@ def fetch(connection, doc_id, type_name=None):
 def get_ids(connection, doc_id, type_name=None):
     keys = Join.keys(doc_id, type_name)
     d = connection.query_view(Join, parse_results=False, **keys)
-    d.addCallback(operator.itemgetter(2))
+    d.addCallback(lambda x: map(operator.itemgetter(2), x))
     return d
