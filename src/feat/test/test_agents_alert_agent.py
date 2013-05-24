@@ -96,7 +96,8 @@ class TestAgent(common.TestCase, ModelTestMixin):
         res = yield d
         self.assertIsInstance(res, response.Done)
 
-        self.assertEqual(3, len(self.state.alerts))
+        self.assertEqual(3, len(self.state.alerts),
+                         str(self.state.alerts.keys()))
 
         self._assert_service('host1', 'agent1', Alert1, received=1,
                              status_info="bum")
@@ -131,10 +132,10 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
     def _assert_service(self, hostname, agent_id, alert,
                         received=0, status_info=None):
-        key = (hostname, agent_id, alert.name)
-        self.assertIn(key, self.state.alerts)
+        key = (hostname, "-".join([agent_id, alert.name]))
+        self.assertIn(key, self.state.alerts, self.state.alerts.keys())
         a = self.state.alerts[key]
-        self.assertIsInstance(a, alert_agent.ReceivedAlerts)
+        self.assertIsInstance(a, alert_agent.AlertService)
         self.assertEqual(received, a.received_count)
         self.assertEqual(alert.name, a.name)
         self.assertEqual(alert.severity, a.severity)

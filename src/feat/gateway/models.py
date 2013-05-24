@@ -1044,26 +1044,26 @@ class AlertAgentsOnHost(model.Collection):
 
     model.child_names(call.model_call('get_names'))
     model.child_view(getter.model_get('getter'))
-    model.child_model("feat.agent.alert.services.<hostname>.<agent_id>")
-    model.meta('html-render', 'array, 3')
+    model.child_model("feat.agent.alert.services.<hostname>.<description>")
     model.meta("html-render", ALERT_TABLE_ORDER)
 
     def get_names(self):
-        return set([x.agent_id for x in self.view])
+        return set([x.description or x.agent_id for x in self.view])
 
-    def getter(self, agent_id):
-        return [x for x in self.view if x.agent_id == agent_id]
+    def getter(self, description):
+        return [x for x in self.view
+                if description in (x.description, x.agent_id)]
 
 
 @featmodels.register_model
 class AlertServicesOfAgent(model.Collection):
-    model.identity("feat.agent.alert.services.<hostname>.<agent_id>")
+    model.identity("feat.agent.alert.services.<hostname>.<description>")
 
     model.child_names(call.model_call('get_names'))
     model.child_source(getter.model_get('getter'))
     model.child_view(effect.context_value('source'))
     model.child_model(
-        "feat.agent.alert.services.<hostname>.<agent_id>.service")
+        "feat.agent.alert.services.<hostname>.<description>.service")
     model.meta('html-render', 'array, 3')
     model.meta("html-render", ALERT_TABLE_ORDER)
 
@@ -1099,7 +1099,7 @@ class ResolveAlert(_AlertAction):
 
 @featmodels.register_model
 class AlertService(model.Model):
-    model.identity("feat.agent.alert.services.<hostname>.<agent_id>.service")
+    model.identity("feat.agent.alert.services.<hostname>.<description>.service")
     model.attribute('count', value.Integer(),
                     getter.source_attr('received_count'),
                     label='Count')

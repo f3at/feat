@@ -23,12 +23,12 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from zope.interface import implements
 
-from feat.common import formatable, text_helper, fiber
+from feat.common import text_helper, fiber
 from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager, task
 
 from feat.agencies import recipient, message
-from feat.database import document
+from feat.database import document, view
 from feat.agents.common import export, monitor, nagios as cnagios, rpc
 from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat
@@ -88,15 +88,28 @@ feat.initial_data(AlertAgentConfiguration)
 
 
 @feat.register_restorator
-class ReceivedAlerts(formatable.Formatable):
+class AlertService(document.Document):
 
-    formatable.field('received_count', 0)
-    formatable.field('name', None)
-    formatable.field('agent_id', None)
-    formatable.field('severity', None)
-    formatable.field('hostname', None)
-    formatable.field('status_info', None)
-    formatable.field('description', None)
+    type_name = 'alert_service'
+
+    document.field('name', None)
+    document.field('severity', None)
+    document.field('hostname', None)
+    document.field('status_info', None)
+    document.field('description', None)
+    document.field('persistent', False)
+
+    def __init__(self, received_count=0, agent_id=None, **kwargs):
+        super(AlertService, self).__init__(**kwargs)
+        # fields defined below are instance variable not document fields,
+        # they would not get saved to the database
+        self.received_count = received_count
+        self.agent_id = agent_id
+
+    def restored(self):
+        super(AlertService, self).restored()
+        self.received_count = 0
+        self.agent_id = None
 
     @classmethod
     def from_alert(cls, alert, agent):
@@ -106,6 +119,7 @@ class ReceivedAlerts(formatable.Formatable):
                    agent_id=agent.agent_id,
                    severity=alert.severity,
                    description=descr,
+                   persistent=alert.persistent,
                    hostname=agent.hostname)
 
 
@@ -132,11 +146,32 @@ class AlertAgent(agent.BaseAgent):
         config = state.medium.get_configuration()
         state.nagios = self.dependency(INagiosSenderLabourFactory, self,
                                        config)
-        # (hostname, agent_id, service_name) -> ReceivedAlerts
+        # (hostname, description) -> AlertService
         state.alerts = dict()
 
         state.config_notifier = cnagios.create_poster(self)
+        f = self.query_view(view.DocumentByType, key=AlertService.type_name,
+                            include_docs=True)
+        f.add_callback(self._load_persistent_services)
+        return f
+
+    @replay.journaled
+    def startup(self, state):
         state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
+
+    @replay.mutable
+    def _load_persistent_services(self, state, view_result):
+        self.info("Loading info about persistent services. %d entries found",
+                  len(view_result))
+        for doc in view_result:
+            key = (doc.hostname, doc.description)
+            if key not in state.alerts:
+                state.alerts[key] = doc
+            else:
+                # Because of concurency in receiving alerts and scaning shards
+                # we might have duplicates in documents describing persitent
+                # alert. Here they are removed
+                self.call_next(self.delete_document, doc)
 
     @replay.journaled
     def on_configuration_change(self, state, config):
@@ -226,13 +261,21 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def _find_entry(self, state, alert):
-        key = (alert.hostname, alert.agent_id, alert.name)
+        key = (alert.hostname, alert.description or
+               "-".join([alert.agent_id, alert.name]))
         if key not in state.alerts:
-            state.alerts[key] = ReceivedAlerts.from_alert(alert, alert)
+            state.alerts[key] = new = AlertService.from_alert(alert, alert)
             self.info("Received alert for service we don't know, triggering "
                       "shard rescan in 1 sec. Service: %r", key)
             self.call_later(1, self.rescan_shard,
                             force_update_notification=True)
+            if new.persistent:
+                self.info("Persisting the service definition in couchdb")
+                self.call_next(state.medium.save_document, new)
+        elif state.alerts[key].agent_id is None:
+            # the alert was loaded from the database, there is a new agent
+            # responsible for it, we should save its ID after the restart
+            state.alerts[key].agent_id = alert.agent_id
         return state.alerts[key]
 
     @replay.mutable
@@ -241,19 +284,27 @@ class AlertAgent(agent.BaseAgent):
         old_keys = state.alerts.keys()
         for agent in response:
             for alert in agent.alerts:
-                key = (agent.hostname, agent.agent_id, alert.name)
+                key = (agent.hostname, alert.description
+                       or "-".join([agent.agent_id, alert.name]))
                 if key in old_keys:
                     old_keys.remove(key)
                     continue
                 changed = True
-                state.alerts[key] = ReceivedAlerts.from_alert(alert, agent)
+                state.alerts[key] = new = AlertService.from_alert(alert, agent)
+                if new.persistent:
+                    self.info("Persisting the service definition in couchdb. "
+                              "%r", new)
+                    self.call_next(state.medium.save_document, new)
                 status = agent.statuses.get(alert.name)
                 if status:
                     state.alerts[key].received_count = status[0]
                     state.alerts[key].status_info = status[1]
         for key in old_keys:
-            changed = True
-            del(state.alerts[key])
+            if not state.alerts[key].persistent:
+                # don't remove persistent services, even if there is no agent
+                # responsible for them at the moment
+                changed = True
+                del(state.alerts[key])
         return changed
 
 

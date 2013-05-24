@@ -11,6 +11,9 @@ class IAlertFactory(Interface):
 
     name = Attribute('C{str} unique name of the service')
     severity = Attribute('L{Severity}')
+    persistent = Attribute('C{bool} flag saying if the alert should persist '
+                           'in nagios config between restarts of the cluster')
+    description = Attribute('C{str} optional description to use in nagios')
 
     def __call__(hostname, agent_id, status_info):
         '''Construct IAlert'''
@@ -23,4 +26,3 @@ class IAlert(Interface):
     status_info = Attribute('C{str} optional string specifing more details.')
     agent_id = Attribute("C{str} agent_id who raised the alert")
     severity = Attribute('L{Severity}')
-    description = Attribute('C{str} optional description to use in nagios')
