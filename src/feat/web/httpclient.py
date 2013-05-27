@@ -542,7 +542,7 @@ class ConnectionPool(Connection):
         if reset_retry > 3:
             return fail
         self.warning("The request will be retrying, because the underlying"
-                     " connection was closed before the reponse was received."
+                     " connection was closed before the response was received."
                      " This is retry no %s.", reset_retry)
         return self.request(method, location,
                             headers, body, decoder, outside_of_the_pool,
