@@ -496,6 +496,8 @@ class ConnectionPool(Connection):
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
+        if headers is None:
+            headers = dict()
         if (not self._enable_pipelineing or
             headers.get('connection') == 'close'):
             dont_pipeline = True
