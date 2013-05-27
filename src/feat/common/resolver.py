@@ -1,7 +1,8 @@
 import socket
 
 from twisted.names import dns, client, resolve, cache, hosts as hostsModule
-from twisted.internet import error
+from twisted.names.error import DNSNameError
+from twisted.internet import error, defer
 
 
 def installResolver(reactor=None,
@@ -23,6 +24,15 @@ class ResolverChain(resolve.ResolverChain):
         if not result:
             raise error.DNSLookupError(name)
         return result
+
+    def _lookup(self, name, cls, type, timeout):
+        d = resolve.ResolverChain._lookup(self, name, cls, type, timeout)
+        d.addErrback(self._formatError, name)
+        return d
+
+    def _formatError(self, fail, name):
+        fail.trap(DNSNameError)
+        return defer.fail(error.DNSLookupError(name))
 
 
 class Resolver(client.Resolver):
