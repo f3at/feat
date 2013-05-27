@@ -1030,8 +1030,8 @@ class Server(log.LogProxy, log.Logger):
                 else:
                     new_loc = old_loc
             else:
-                new_loc = result[2]
-                new_rem = result[3]
+                new_loc = result[1]
+                new_rem = result[2]
 
         else:
 
