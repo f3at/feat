@@ -27,6 +27,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay
 from feat.common.container import *
+from feat.common import container
 from feat.common import serialization, journal, time
 from feat.common.serialization import base, pytree
 from feat.interface.generic import *
@@ -827,3 +828,19 @@ class TestMroDictOfList(common.TestCase):
                                        "sausage": [9]})
         self.assertEqual(dict(D.dol), {"spam": [1, 3], "egg": [8, 6],
                                        "bacon": [4, 7, 5], "tomato": [0]})
+
+
+class TestRunningAverage(common.TestCase):
+
+    def testItWorks(self):
+        av = container.RunningAverage(100)
+        self.assertEqual(100, av.get_value())
+
+        av.add_point(3)
+        self.assertEqual(3, av.get_value())
+        av.add_point(5)
+        self.assertEqual(4, av.get_value())
+        av.add_point(20)
+        self.assertEqual((28.0/3), av.get_value())
+        av.add_point(0)
+        self.assertEqual((28.0/4), av.get_value())

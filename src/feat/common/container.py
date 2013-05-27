@@ -342,6 +342,24 @@ class ExpBase(object):
         return cls.__new__(cls)
 
 
+class RunningAverage(object):
+
+    def __init__(self, default):
+        self._default = default
+        self._nominator = 0
+        self._denominator = 0
+
+    def get_value(self):
+        try:
+            return float(self._nominator) / self._denominator
+        except ZeroDivisionError:
+            return self._default
+
+    def add_point(self, value):
+        self._nominator += value
+        self._denominator += 1
+
+
 @serialization.register
 class ExpDict(ExpBase):
     """
@@ -368,7 +386,7 @@ class ExpDict(ExpBase):
         @type max_size: int"""
         self._time = ITimeProvider(time_provider)
         self._items = {} # {KEY: ExpItem(TIME, VALUE)}
-        self._max_size = max_size or self.DEFAULT_MAX_SIZE
+        self._max_size = RunningAverage(max_size or self.DEFAULT_MAX_SIZE)
         self._last_pack = 0
 
     def clear(self):
@@ -541,11 +559,12 @@ class ExpDict(ExpBase):
     ### ISerializable Method ###
 
     def snapshot(self):
-        return (self._time, self._max_size,
+        return (self._time, self._max_size.get_value(),
                 dict([(k, i.snapshot()) for k, i in self._items.iteritems()]))
 
     def recover(self, snapshot):
-        self._time, self._max_size, data = snapshot
+        self._time, max_size, data = snapshot
+        self._max_size = RunningAverage(max_size)
         self._items = dict([(k, ExpItem.restore(s))
                             for k, s in data.iteritems()])
         self._last_pack = 0
@@ -553,7 +572,7 @@ class ExpDict(ExpBase):
     ### Private Methods ###
 
     def _lazy_pack(self):
-        if len(self._items) > self._max_size:
+        if len(self._items) > self._max_size.get_value() * 1.25:
             now = self._time.get_time()
             # Regulate lazy packing rate
             if (now - self._last_pack) >= (1.0 / MAX_LAZY_PACK_PER_SECOND):
@@ -563,6 +582,7 @@ class ExpDict(ExpBase):
         self._items = dict([(k, i) for k, i in self._items.iteritems()
                             if i.exp is None or i.exp > now])
         self._last_pack = now
+        self._max_size.add_point(len(self._items))
 
     def _get_item(self, key):
         self._lazy_pack()
@@ -601,7 +621,7 @@ class ExpQueue(ExpBase):
         @type max_size: int"""
         self._time = ITimeProvider(time_provider)
         self._heap = []
-        self._max_size = max_size or self.DEFAULT_MAX_SIZE
+        self._max_size = RunningAverage(max_size or self.DEFAULT_MAX_SIZE)
         self._last_pack = 0
         self._on_expire = on_expire
 
@@ -701,7 +721,7 @@ class ExpQueue(ExpBase):
     ### Private Methods ###
 
     def _lazy_pack(self):
-        if len(self._heap) > self._max_size:
+        if len(self._heap) > self._max_size.get_value() * 1.25:
             now = self._time.get_time()
             # Regulate lazy packing rate
             if (now - self._last_pack) >= (1.0 / MAX_LAZY_PACK_PER_SECOND):
@@ -718,6 +738,7 @@ class ExpQueue(ExpBase):
         heapq.heapify(new_heap)
         self._heap = new_heap
         self._last_pack = now
+        self._max_size.add_point(len(new_heap))
 
 
 ## Private Stuff ###
