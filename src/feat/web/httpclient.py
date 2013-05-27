@@ -177,9 +177,8 @@ class Protocol(http.BaseProtocol):
 
     def process_cleanup(self, reason):
         for request in self._requests:
-            msg = ("Connection was closed before the response was received."
-                   " Reason: %s" % (reason, ))
-            request.connectionLost(ConnectionReset(msg))
+            msg = "Connection was closed before the response was received."
+            request.connectionLost(ConnectionReset(msg, cause=reason))
         self._requests = None
 
     def process_reset(self):
