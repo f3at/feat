@@ -171,7 +171,7 @@ class AlertAgent(agent.BaseAgent):
                 # Because of concurency in receiving alerts and scaning shards
                 # we might have duplicates in documents describing persitent
                 # alert. Here they are removed
-                self.call_next(self.delete_document, doc)
+                self.call_next(state.medium.delete_document, doc)
 
     @replay.journaled
     def on_configuration_change(self, state, config):
