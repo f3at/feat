@@ -497,6 +497,12 @@ class IQueryViewFactory(IViewFactory):
         @returns: C{bool} if this name is part of the view
         '''
 
+    def get_transform(name):
+        '''
+        @returns: C{callable} used to transform the values presented to the
+                  outside world from what should be used as view indexes
+        '''
+
 
 class IQueryCache(Interface):
 

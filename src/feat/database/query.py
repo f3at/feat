@@ -88,7 +88,8 @@ class Cache(log.Logger):
             return self._fetch_subquery(connection, factory, subquery, seq_num)
 
     def _fetch_subquery(self, connection, factory, subquery, seq_num):
-        keys = self._generate_keys(*subquery)
+        transform = factory.get_transform(field)
+        keys = self._generate_keys(transform, *subquery)
         self.log("Will query view %s, with keys %r, as a result of"
                  " subquery: %r", factory.name, keys, subquery)
         d = connection.query_view(factory, **keys)
@@ -124,17 +125,18 @@ class Cache(log.Logger):
                     entry.seq_num = seq_num
             return result
 
-    def _generate_keys(self, field, evaluator, value):
+    def _generate_keys(self, transform, field, evaluator, value):
         if evaluator == Evaluator.equals:
-            return dict(key=(field, value))
+            return dict(key=(field, transform(value)))
         if evaluator == Evaluator.le:
-            return dict(startkey=(field, ), endkey=(field, value))
+            return dict(startkey=(field, ), endkey=(field, transform(value)))
         if evaluator == Evaluator.ge:
-            return dict(startkey=(field, value), endkey=(field, {}))
+            return dict(startkey=(field, transform(value)), endkey=(field, {}))
         if evaluator == Evaluator.between:
-            return dict(startkey=(field, value[0]), endkey=(field, value[1]))
+            return dict(startkey=(field, transform(value[0])),
+                        endkey=(field, transform(value[1])))
         if evaluator == Evaluator.inside:
-            return dict(keys=[(field, x) for x in value])
+            return dict(keys=[(field, transform(x)) for x in value])
         if evaluator == Evaluator.none:
             return dict(startkey=(field, ), endkey=(field, {}))
 
@@ -164,6 +166,7 @@ class QueryViewMeta(type(view.BaseView)):
     def __init__(cls, name, bases, dct):
         cls.HANDLERS = HANDLERS = dict()
         cls.DOCUMENT_TYPES = DOCUMENT_TYPES = list()
+        cls.TRANSFORM = TRANSFORM = dict()
         cls._fields = list()
 
         # map() and filter() function have to be generated separetely for
@@ -176,8 +179,13 @@ class QueryViewMeta(type(view.BaseView)):
             if doc['.type'] not in DOCUMENT_TYPES:
                 return
             for field, handler in HANDLERS.iteritems():
-                for value in handler(doc):
-                    yield (field, value), None
+                if field in TRANSFORM:
+                    transform = TRANSFORM[field]
+                    for value in handler(doc):
+                        yield (field, transform(value)), None
+                else:
+                    for value in handler(doc):
+                        yield (field, value), None
         cls.map = cls._querymethod(dct.pop('map', map))
 
         def filter(doc, request):
@@ -187,20 +195,29 @@ class QueryViewMeta(type(view.BaseView)):
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
 
-        # we cannot use normal mechanism for attaching code to query methods,
-        # because we want to build a complex object out of it, so we need to
-        # inject it after all the annotations have been processed
-        names = {}
-        for field, handler in cls.HANDLERS.iteritems():
-            cls.attach_method(cls.map, handler)
-            names[field] = handler.__name__
-        code = ", ".join(["'%s': %s" % (k, v)
-                          for k, v in names.iteritems()])
-        cls.attach_code(cls.map, "HANDLERS = {%s}" % code)
+        cls.attach_dict_of_methods('HANDLERS')
+        cls.attach_dict_of_methods('TRANSFORM')
         cls.attach_constant(
             cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
         cls.attach_constant(
             cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
+
+    def attach_dict_of_methods(cls, name):
+        # we cannot use normal mechanism for attaching code to query methods,
+        # because we want to build a complex object out of it, so we need to
+        # inject it after all the annotations have been processed
+        names = {}
+        obj = getattr(cls, name)
+        if not isinstance(obj, dict):
+            raise ValueError("%s.%s expected dict, %r found" %
+                             (cls, name, obj))
+        for field, handler in obj.iteritems():
+            cls.attach_method(cls.map, handler)
+            names[field] = handler.__name__
+        code = ", ".join(["'%s': %s" % (k, v)
+                          for k, v in names.iteritems()])
+        cls.attach_code(cls.map, "%s = {%s}" % (name, code))
+
 
     ### IQueryViewFactory ###
 
@@ -211,11 +228,23 @@ class QueryViewMeta(type(view.BaseView)):
     def has_field(cls, name):
         return name in cls.HANDLERS
 
+    def get_transform(cls, name):
+        return cls.TRANSFORM.get(name, cls.identity)
+
+    ### private ###
+
+    def identity(cls, x):
+        return x
+
     ### annotatations ###
 
-    def _annotate_field(cls, name, handler):
+    def _annotate_field(cls, name, handler, transform=None):
         cls._fields.append(name)
         cls.HANDLERS[name] = handler
+        if transform:
+            if not callable(transform):
+                raise ValueError("Expected callable, found %r" % (transform, ))
+            cls.TRANSFORM[name] = transform
 
     def _annotate_document_types(cls, types):
         cls.DOCUMENT_TYPES.extend(types)
@@ -232,16 +261,16 @@ class QueryView(view.BaseView):
         return [x[2] for x in rows]
 
 
-def field(name, extract=None):
+def field(name, extract=None, sort_key=None):
     if callable(extract):
         annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                     name, extract)
+                                     name, extract, sort_key)
     else:
         # used as decorator
 
         def field(extract):
             annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                         name, extract)
+                                         name, extract, sort_key)
             return extract
 
         return field

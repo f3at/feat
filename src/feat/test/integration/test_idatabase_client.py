@@ -821,6 +821,8 @@ class TestCase(object):
         c4 = C('field1', E.between, (5, 14))
 
         yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], c1)
+        yield self._query_test([9, 8, 7, 6, 5, 4, 3, 2, 1, 0], c1,
+                               sorting=[('field1_resorted', D.ASC)])
         yield self._query_test([5, 6, 7, 8, 9], c1, O.AND, c2)
         yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                 15, 16, 17, 18, 19], c1, O.OR, c2)
@@ -828,6 +830,8 @@ class TestCase(object):
 
         yield self._query_test([1, 3, 5, 7, 9, 11, 13, 15, 17, 19], c3,
                                sorting=[('field1', D.ASC)])
+        yield self._query_test([19, 17, 15, 13, 11, 9, 7, 5, 3, 1],
+                               c3, sorting=[('field1_resorted', D.ASC)])
         q = Q(QueryView, c3)
         yield self._query_test([1, 3, 5, 7, 9], q, O.AND, c1,
                                sorting=[('field1', D.ASC)])
@@ -906,9 +910,13 @@ class QueryView(query.QueryView):
     def extract_field3(doc):
         yield doc.get('field3')
 
+    def resort(value):
+        return 100 - value
+
     query.field('field1', extract_field1)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
+    query.field('field1_resorted', extract_field1, resort)
     query.document_types(['query'])
 
 
