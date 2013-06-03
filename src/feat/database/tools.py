@@ -43,7 +43,7 @@ def get_current_initials():
 
 
 def create_connection(host, port, name):
-    db = driver.Database(host, port, name)
+    db = driver.Database(host, int(port), name)
     return db.get_connection()
 
 
