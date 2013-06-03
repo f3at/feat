@@ -27,7 +27,7 @@ from feat.agencies.net import agency as net_agency, standalone
 from feat.agencies.net import options, config as config_module
 from feat.agencies.net.options import OptionError
 
-from feat.common import log, run, defer, resolver, error
+from feat.common import log, defer, resolver, error
 from feat.common.serialization import json
 from feat.interface.agent import Access, Address, Storage
 
@@ -123,7 +123,11 @@ def bootstrap(parser=None, args=None, descriptors=None):
     if parser is None:
         parser = optparse.OptionParser()
         options.add_options(parser)
-    opts, args = check_options(*parser.parse_args(args))
+    try:
+        opts, args = check_options(*parser.parse_args(args))
+    except Exception as e:
+        error.handle_exception('bootstrap', e, "Failed parsing config")
+        sys.exit(1)
 
     if opts.standalone:
         cls = standalone.Agency

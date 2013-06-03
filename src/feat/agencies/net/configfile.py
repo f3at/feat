@@ -1,12 +1,11 @@
 import os
-import sys
 import glob
 import ConfigParser
 import StringIO
 
 from feat import applications
 from feat.common.text_helper import format_block
-from feat.common import serialization
+from feat.common import serialization, error
 from feat.configure import configure
 
 
@@ -84,10 +83,10 @@ def _parse_application_section(cfg, parser, section):
     name = cfg.get(section, 'name')
     try:
         applications.load(module, name)
-    except ImportError:
-        raise (ConfigParser.Error(
+    except ImportError as e:
+        raise error.FeatError(
             "Loading application %s.%s failed, requested from section %s" %
-            (module, name, section, )), None, sys.exc_info()[2])
+            (module, name, section, ), cause=e)
 
 
 def _parse_agent_section(cfg, parser, section):
