@@ -442,6 +442,7 @@ class Agency(agency.Agency):
         self._start_host_agent()
 
     @manhole.expose()
+    @serialization.freeze_tag('IAgency.start_agent')
     def start_agent(self, descriptor, **kwargs):
         """
         Starting an agent is delegated to the broker, who makes sure that

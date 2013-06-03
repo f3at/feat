@@ -38,9 +38,8 @@ from feat.agencies import recipient
 from feat.agents.base import replay
 from feat import applications
 
-from feat.common import (log, defer, fiber, serialization, journal, time,
-                         manhole, error_handler, text_helper, container,
-                         first, error, enum)
+from feat.common import log, defer, fiber, serialization, journal, time
+from feat.common import manhole, text_helper, container, first, error, enum
 
 # Internal to register serialization adapters
 from feat.common.serialization import adapters
@@ -79,8 +78,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                IRecorderNode, IJournalKeeper, ISerializable)
 
     type_name = "agent-medium" # this is used by ISerializable
-
-    _error_handler = error_handler
 
     journal_parent = None
 
@@ -122,6 +119,11 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # Terminating flag, used to not to run
         # termination procedure more than once
         self._terminating = False
+
+        # this is set if initiate_agent() throws an error. Its used by
+        # the StartAgent task of Host Agent to know that the agent is going
+        # to be terminated
+        self.startup_failure = None
 
         self._entries_since_snapshot = 0
 
@@ -223,10 +225,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self.agency.journal_protocol_created(self._descriptor.doc_id,
                                              self._instance_id,
                                              *args, **kwargs)
-
-    @serialization.freeze_tag('AgencyAgent.start_agent')
-    def start_agent(self, desc, **kwargs):
-        return self.agency.start_agent(desc, **kwargs)
 
     @serialization.freeze_tag('AgencyAgent.check_if_hosted')
     def check_if_hosted(self, agent_id):
@@ -897,10 +895,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._set_state(AgencyAgentState.ready)
 
     def _startup_error(self, fail):
-        self._error_handler(fail)
-        self.error("Agent raised an error while starting up. "
-                   "He will be punished by terminating. Medium state while "
-                   "that happend: %r", self._get_machine_state())
+        error.handle_failure(self, fail,
+                             "Agent raised an error while starting up. "
+                             "He will be punished by terminating. "
+                             "Medium state while that happend: %r",
+                             self._get_machine_state())
+
+        # this allows StartAgent task of Host Agent know what is going on
+        self.startup_failure = fail
+        # terminate() doesn't return the Deferred, so its a fire-and-forget
+        # the terminatation is done in a broken execution chain
         self.terminate()
 
     def _store_delayed_call(self, call_id, call, busy):
@@ -927,7 +931,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                  args, kwargs)
         d = defer.maybeDeferred(method, *args, **kwargs)
         d.addCallback(raise_on_fiber)
-        d.addErrback(self._error_handler)
+        d.addErrback(defer.inject_param, 1, error.handle_failure, self,
+                     'Failure calling method %r, with args: %r, kwargs: %r',
+                     method, args, kwargs)
         return d
 
 
@@ -1018,8 +1024,6 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     implements(IAgency, IExternalizer, ITimeProvider, ISerializable)
 
     agency_agent_factory = AgencyAgent
-
-    _error_handler = error_handler
 
     shutdown_factory = Shutdown
     startup_factory = Startup
@@ -1132,6 +1136,7 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         return d
 
     @manhole.expose()
+    @serialization.freeze_tag('IAgency.start_agent')
     def start_agent(self, descriptor, **kwargs):
         return self.start_agent_locally(descriptor, **kwargs)
 
