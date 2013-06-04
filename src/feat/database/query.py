@@ -88,7 +88,7 @@ class Cache(log.Logger):
             return self._fetch_subquery(connection, factory, subquery, seq_num)
 
     def _fetch_subquery(self, connection, factory, subquery, seq_num):
-        transform = factory.get_transform(field)
+        transform = factory.get_transform(subquery[0])
         keys = self._generate_keys(transform, *subquery)
         self.log("Will query view %s, with keys %r, as a result of"
                  " subquery: %r", factory.name, keys, subquery)
