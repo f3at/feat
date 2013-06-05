@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import copy
 import uuid
 
 from zope.interface import implements
@@ -225,7 +226,7 @@ class TestCache(common.TestCase):
         doc = yield self.cache.add_document('test')
         self.assertIsInstance(doc, TestDocument)
 
-        yield self._change_doc(doc)
+        doc = yield self._change_doc(doc)
         yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
         type_, doc_id, doc_ = self.agent.notifications.pop()
         self.assertEqual('change', type_)
@@ -239,7 +240,7 @@ class TestCache(common.TestCase):
         doc = yield self.cache.add_document('test2')
         self.assertIsInstance(doc, TestDocument)
 
-        doc = yield self._db.delete_document(doc)
+        yield self._db.delete_document(doc)
         yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
         type_, doc_id, doc_ = self.agent.notifications.pop()
         self.assertEqual('delete', type_)
@@ -247,7 +248,7 @@ class TestCache(common.TestCase):
         self.assertEqual(None, doc_)
 
         # recreate the document
-        yield self._db.save_document(doc)
+        doc = yield self._db.save_document(doc)
         yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
         type_, doc_id, doc_ = self.agent.notifications.pop()
         self.assertEqual('change', type_)
@@ -255,10 +256,10 @@ class TestCache(common.TestCase):
 
         # forget it
         yield self.cache.forget_document(doc.doc_id)
-        yield self._change_doc(doc)
+        doc = yield self._change_doc(doc)
 
         # change the other one to check that its notification comes first
-        yield self._change_doc(doc__)
+        doc = yield self._change_doc(doc__)
         yield self.wait_for(self.agent.len_notifications(1), 1, 0.02)
         type_, doc_id, doc_ = self.agent.notifications.pop()
         self.assertEqual('change', type_)
@@ -275,6 +276,7 @@ class TestCache(common.TestCase):
         return d
 
     def _change_doc(self, doc):
+        doc = copy.deepcopy(doc)
         doc.field += 1
         return self._db.save_document(doc)
 
