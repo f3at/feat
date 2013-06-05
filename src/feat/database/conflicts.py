@@ -4,7 +4,7 @@ from twisted.python.failure import Failure
 
 from feat.agents.application import feat
 from feat.common.text_helper import format_block
-from feat.common import defer, error
+from feat.common import defer, error, first
 from feat.database import view, driver, update
 
 from feat.database.interface import NotFoundError, IDocument
@@ -153,7 +153,7 @@ def configure_replicator_database(host, port):
 
 @defer.inlineCallbacks
 def solve(connection, doc_id):
-    connection.info('Solving conflicts for documnet: %s', doc_id)
+    connection.info('Solving conflicts for document: %s', doc_id)
 
     plain_doc = yield connection.get_document(doc_id, raw=True,
                                               conflicts=True)
@@ -187,6 +187,7 @@ def _solve_db_winner(connection, doc, conflicts):
     for rev in conflicts:
         d = connection.delete_document({'_id': doc.doc_id, '_rev': rev})
         d.addErrback(Failure.trap, NotFoundError)
+        defers.append(d)
     if defers:
         return defer.DeferredList(defers, consumeErrors=True)
 
@@ -209,37 +210,50 @@ def _solve_merge(connection, doc, conflicts):
 
     lookup = dict((x.rev_to, x) for x in logs)
     root_rev = _find_common_ancestor(lookup, [doc.rev] + conflicts)
-    if root_rev:
-        try:
-            root = yield connection.get_document(doc.doc_id, rev=root_rev)
-        except NotFoundError:
-            connection.debug('Cannot fetch root revision, the soluton will '
-                             'be composed based on db winner.')
-            logs = list()
-            for conflict in conflicts:
-                try:
-                    logs.extend(_get_logs_between(root_rev, conflict, lookup))
-                except ValueError as e:
-                    raise UnsolvableConflict(str(e), doc)
-            root = doc
-
-        # We remove previous mergies from the merge log, before above we
-        # extracted individual logs forming there into the linear history
-        logs = [x for x in lookup.itervalues()
-                if x.handler is not perform_merge]
-        logs.sort(key=operator.attrgetter('timestamp'))
-        try:
-            yield connection.update_document(doc, perform_merge,
-                                             root=root, logs=logs, rev=doc.rev)
-        except Modified:
-            connection.info("The document was modified while we were merging."
-                            " I will restart the procedure.")
-            yield solve(connection, doc.doc_id)
-        else:
-            # delete conflicting revisions
-            yield _solve_db_winner(connection, doc, conflicts)
-    else:
+    if not root_rev:
         raise UnsolvableConflict("Failed to find common ancestor", doc)
+
+    try:
+        root = yield connection.get_document(doc.doc_id, rev=root_rev)
+    except NotFoundError:
+        connection.debug('Cannot fetch root revision, the solution will '
+                         'be composed based on db winner.')
+        logs = list()
+        for conflict in conflicts:
+            try:
+                logs.extend(_get_logs_between(root_rev, conflict, lookup))
+            except ValueError as e:
+                raise UnsolvableConflict(str(e), doc)
+        root = doc
+
+    # We remove previous mergies from the merge log, before above we
+    # extracted individual logs forming there into the linear history
+    logs = [x for x in lookup.itervalues()
+            if x.handler is not perform_merge]
+    logs.sort(key=operator.attrgetter('timestamp'))
+
+    # We should remove any logs which we might have loaded from database
+    # which created a revision which we would use a root, this is iterational
+    # process
+
+    def remove_target_rev(rev_to_remove):
+        to_remove = first(x for x in logs if x.rev_to == rev_to_remove)
+        if to_remove:
+            logs.remove(to_remove)
+            remove_target_rev(to_remove.rev_from)
+
+    remove_target_rev(root_rev)
+
+    try:
+        yield connection.update_document(doc, perform_merge,
+                                         root=root, logs=logs, rev=doc.rev)
+    except Modified:
+        connection.info("The document was modified while we were merging."
+                        " I will restart the procedure.")
+        yield solve(connection, doc.doc_id)
+    else:
+        # delete conflicting revisions
+        yield _solve_db_winner(connection, doc, conflicts)
 
 
 def perform_merge(document, root, logs, rev):
