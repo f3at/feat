@@ -176,10 +176,7 @@ class BaseView(annotate.Annotable):
     @classmethod
     def _get_normalized_source(cls, func):
         source_lines, _ = inspect.getsourcelines(func)
-        decorator_line = re.compile('\A\s*@')
         leading_whitespace = re.compile('\A\s*')
-        source_lines = [x for x in source_lines
-                        if not decorator_line.search(x)]
         found = leading_whitespace.search(source_lines[0])
         if found:
             count = len(found.group(0))

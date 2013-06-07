@@ -910,13 +910,24 @@ class QueryView(query.QueryView):
     def extract_field3(doc):
         yield doc.get('field3')
 
-    def resort(value):
-        return 100 - value
-
     query.field('field1', extract_field1)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
-    query.field('field1_resorted', extract_field1, resort)
+    BaseField = query.BaseField
+
+    @query.field('field1_resorted')
+    class ResortedField(BaseField):
+
+        document_types = ['query']
+
+        @staticmethod
+        def field_value(doc):
+            yield doc.get('field1')
+
+        @staticmethod
+        def sort_key(value):
+            return 100 - value
+
     query.document_types(['query'])
 
 

@@ -1,9 +1,12 @@
 import operator
 import sys
+import types
 
-from zope.interface import implements
+from twisted.python import components
+from zope.interface import implements, Interface, declarations
 
 from feat.common import serialization, enum, first, defer, annotate, log
+from feat.common import adapter
 from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
@@ -88,11 +91,13 @@ class Cache(log.Logger):
             return self._fetch_subquery(connection, factory, subquery, seq_num)
 
     def _fetch_subquery(self, connection, factory, subquery, seq_num):
-        transform = factory.get_transform(subquery[0])
-        keys = self._generate_keys(transform, *subquery)
+        controller = factory.get_view_controller(subquery[0])
+
+        keys = controller.generate_keys(*subquery)
         self.log("Will query view %s, with keys %r, as a result of"
                  " subquery: %r", factory.name, keys, subquery)
-        d = connection.query_view(factory, **keys)
+        d = connection.query_view(factory, parse_results=False, **keys)
+        d.addCallback(controller.parse_view_result)
         d.addCallback(defer.keep_param,
                       self._cache_response, factory, subquery, seq_num)
         return d
@@ -125,21 +130,6 @@ class Cache(log.Logger):
                     entry.seq_num = seq_num
             return result
 
-    def _generate_keys(self, transform, field, evaluator, value):
-        if evaluator == Evaluator.equals:
-            return dict(key=(field, transform(value)))
-        if evaluator == Evaluator.le:
-            return dict(startkey=(field, ), endkey=(field, transform(value)))
-        if evaluator == Evaluator.ge:
-            return dict(startkey=(field, transform(value)), endkey=(field, {}))
-        if evaluator == Evaluator.between:
-            return dict(startkey=(field, transform(value[0])),
-                        endkey=(field, transform(value[1])))
-        if evaluator == Evaluator.inside:
-            return dict(keys=[(field, transform(x)) for x in value])
-        if evaluator == Evaluator.none:
-            return dict(startkey=(field, ), endkey=(field, {}))
-
     ### private, check that the cache is not too big ###
 
     def _check_size_limit(self):
@@ -159,15 +149,34 @@ class Cache(log.Logger):
             del self._cache[entry[2]][entry[3]]
 
 
+class BaseField(object):
+
+    document_types = []
+
+    @staticmethod
+    def field_value(doc):
+        return iter(list())
+
+    @staticmethod
+    def sort_key(value):
+        return value
+
+    @staticmethod
+    def emit_value(doc):
+        return None
+
+    # this informs the logic generating the view keys to append reduce=false
+    perform_reduce = None
+
+
 class QueryViewMeta(type(view.BaseView)):
 
     implements(IQueryViewFactory)
 
     def __init__(cls, name, bases, dct):
         cls.HANDLERS = HANDLERS = dict()
-        cls.DOCUMENT_TYPES = DOCUMENT_TYPES = list()
-        cls.TRANSFORM = TRANSFORM = dict()
-        cls._fields = list()
+        cls.DOCUMENT_TYPES = DOCUMENT_TYPES = set()
+        cls._view_controllers = dict()
 
         # map() and filter() function have to be generated separetely for
         # each subclass, because they will have different constants attached
@@ -179,30 +188,72 @@ class QueryViewMeta(type(view.BaseView)):
             if doc['.type'] not in DOCUMENT_TYPES:
                 return
             for field, handler in HANDLERS.iteritems():
-                if field in TRANSFORM:
-                    transform = TRANSFORM[field]
-                    for value in handler(doc):
-                        yield (field, transform(value)), None
+                if doc['.type'] not in getattr(handler, 'document_types',
+                                               DOCUMENT_TYPES):
+                    continue
+
+                if hasattr(handler, 'emit_value'):
+                    emit_value = handler.emit_value(doc)
                 else:
-                    for value in handler(doc):
-                        yield (field, value), None
+                    emit_value = None
+
+                if hasattr(handler, 'field_value'):
+                    values = handler.field_value(doc)
+                else:
+                    values = handler(doc)
+                transform = getattr(handler, 'sort_key', lambda x: x)
+
+                for value in values:
+                    yield (field, transform(value)), emit_value
         cls.map = cls._querymethod(dct.pop('map', map))
 
         def filter(doc, request):
             return doc.get('.type') in DOCUMENT_TYPES
         cls.filter = cls._querymethod(dct.pop('filter', filter))
 
+        use_reduce = any(getattr(field, 'perform_reduce', None)
+                         for field in HANDLERS.itervalues())
+        if use_reduce:
+            cls.use_reduce = True
+
+            def reduce(keys, values, rereduce):
+                if rereduce:
+                    values = filter(None, values)
+                    if not values:
+                        return
+                    field = values[0]['field']
+                    handler = getattr(HANDLERS[field], 'perform_reduce', None)
+                    if not callable(handler):
+                        return
+                    values = map(operator.itemgetter('results'), values)
+                    return dict(results=handler(values, rereduce),
+                                field=field)
+
+                else:
+                    field = keys[0][0]
+                    handler = getattr(HANDLERS[field], 'perform_reduce', None)
+                    if not callable(handler):
+                        return
+                    return dict(results=handler(values, rereduce),
+                                field=field)
+            cls.reduce = cls._querymethod(dct.pop('reduce', reduce))
+
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
 
-        cls.attach_dict_of_methods('HANDLERS')
-        cls.attach_dict_of_methods('TRANSFORM')
+        cls.attach_dict_of_objects(cls.map, 'HANDLERS')
+
+        cls.DOCUMENT_TYPES.update(set([x for field in HANDLERS.itervalues()
+                                       if hasattr(field, 'document_types')
+                                       for x in field.document_types]))
         cls.attach_constant(
             cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
         cls.attach_constant(
             cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
+        if use_reduce:
+            cls.attach_dict_of_objects(cls.reduce, 'HANDLERS')
 
-    def attach_dict_of_methods(cls, name):
+    def attach_dict_of_objects(cls, query_method, name):
         # we cannot use normal mechanism for attaching code to query methods,
         # because we want to build a complex object out of it, so we need to
         # inject it after all the annotations have been processed
@@ -211,67 +262,138 @@ class QueryViewMeta(type(view.BaseView)):
         if not isinstance(obj, dict):
             raise ValueError("%s.%s expected dict, %r found" %
                              (cls, name, obj))
-        for field, handler in obj.iteritems():
-            cls.attach_method(cls.map, handler)
+        for field, handler in obj.items():
+            if isinstance(handler, types.FunctionType):
+                cls.attach_method(query_method, handler)
+            elif isinstance(handler, types.TypeType):
+                cls.attach_class_definition(query_method, handler)
+            else:
+                raise ValueError(handler)
             names[field] = handler.__name__
         code = ", ".join(["'%s': %s" % (k, v)
-                          for k, v in names.iteritems()])
-        cls.attach_code(cls.map, "%s = {%s}" % (name, code))
+                          for k, v in sorted(names.iteritems())])
+        cls.attach_code(query_method, "%s = {%s}" % (name, code))
 
+    def attach_class_definition(cls, query_method, definition):
+        mro = definition.mro()
+        if mro[1] is not object and mro[1] not in query_method.func_globals:
+            cls.attach_class_definition(query_method, mro[1])
+        cls.attach_method(query_method, definition)
 
     ### IQueryViewFactory ###
 
     @property
     def fields(cls):
-        return list(cls._fields)
+        return cls.HANDLERS.keys()
 
     def has_field(cls, name):
         return name in cls.HANDLERS
 
-    def get_transform(cls, name):
-        return cls.TRANSFORM.get(name, cls.identity)
+    def get_view_controller(cls, name):
+        if name not in cls._view_controllers:
+            obj = cls.HANDLERS[name]
+            factory = components.getRegistry().lookup1(
+                declarations.providedBy(obj), IQueryViewController)
+            if factory is None:
+                raise TypeError("Could not adapt", obj, IQueryViewController)
+            adapted = factory(obj, cls)
+            cls._view_controllers[name] = adapted
 
-    ### private ###
-
-    def identity(cls, x):
-        return x
+        return cls._view_controllers[name]
 
     ### annotatations ###
 
-    def _annotate_field(cls, name, handler, transform=None):
-        cls._fields.append(name)
+    def _annotate_field(cls, name, handler):
+        if not hasattr(handler, 'field_value') and not callable(handler):
+            raise ValueError(handler)
         cls.HANDLERS[name] = handler
-        if transform:
-            if not callable(transform):
-                raise ValueError("Expected callable, found %r" % (transform, ))
-            cls.TRANSFORM[name] = transform
 
     def _annotate_document_types(cls, types):
-        cls.DOCUMENT_TYPES.extend(types)
+        cls.DOCUMENT_TYPES.update(set(types))
+
+
+class IQueryViewController(Interface):
+    '''
+    This is a private interface standarizing the way the QueryCache queries
+    the underlying couchdb view and parses its result.
+    '''
+
+    def generate_keys(field, evaluator, value):
+        '''
+        @param field: C{str} name of the field
+        @param evaluator: enum values of Evaluator
+        @param value: value used
+        '''
+
+    def parse_view_result(rows):
+        '''
+        Transform the rows given by couchdb to a list of IDs.
+        The format of those IDs is transparently returned as result of
+        select_ids() method.
+        '''
+
+
+@adapter.register(types.FunctionType, IQueryViewController)
+@adapter.register(type(BaseField), IQueryViewController)
+class BaseQueryViewController(object):
+
+    def __init__(self, field, factory):
+        self._field = field
+        self._factory = factory
+        if hasattr(self._field, 'sort_key'):
+            self.transform = self._field.sort_key
+        else:
+            self.transform = self._identity
+
+    implements(IQueryViewController)
+
+    def generate_keys(self, field, evaluator, value):
+        r = self._generate_keys(self.transform, field, evaluator, value)
+        if self._factory.use_reduce:
+            r['reduce'] = False
+        return r
+
+    def parse_view_result(self, rows):
+        # the ids are emited as links
+        return [x[2] for x in rows]
+
+    ### protected ###
+
+    def _identity(self, value):
+        return value
+
+    def _generate_keys(self, transform, field, evaluator, value):
+        if evaluator == Evaluator.equals:
+            return dict(key=(field, transform(value)))
+        if evaluator == Evaluator.le:
+            return dict(startkey=(field, ), endkey=(field, transform(value)))
+        if evaluator == Evaluator.ge:
+            return dict(startkey=(field, transform(value)), endkey=(field, {}))
+        if evaluator == Evaluator.between:
+            return dict(startkey=(field, transform(value[0])),
+                        endkey=(field, transform(value[1])))
+        if evaluator == Evaluator.inside:
+            return dict(keys=[(field, transform(x)) for x in value])
+        if evaluator == Evaluator.none:
+            return dict(startkey=(field, ), endkey=(field, {}))
 
 
 class QueryView(view.BaseView):
 
     __metaclass__ = QueryViewMeta
 
-    ### IViewFactory ###
 
-    @classmethod
-    def parse_view_result(cls, rows, reduced, include_docs):
-        return [x[2] for x in rows]
-
-
-def field(name, extract=None, sort_key=None):
-    if callable(extract):
+def field(name, definition=None):
+    if callable(definition):
         annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                     name, extract, sort_key)
+                                     name, definition)
     else:
         # used as decorator
 
-        def field(extract):
+        def field(definition):
             annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                         name, extract, sort_key)
-            return extract
+                                         name, definition)
+            return definition
 
         return field
 
