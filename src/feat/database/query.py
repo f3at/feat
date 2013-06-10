@@ -181,6 +181,7 @@ class QueryViewMeta(type(view.BaseView)):
         cls.HANDLERS = HANDLERS = dict()
         cls.DOCUMENT_TYPES = DOCUMENT_TYPES = set()
         cls._view_controllers = dict()
+        cls._fields = list()
 
         # map() and filter() function have to be generated separetely for
         # each subclass, because they will have different constants attached
@@ -259,7 +260,7 @@ class QueryViewMeta(type(view.BaseView)):
 
     @property
     def fields(cls):
-        return cls.HANDLERS.keys()
+        return list(cls._fields)
 
     def has_field(cls, name):
         return name in cls.HANDLERS
@@ -273,6 +274,9 @@ class QueryViewMeta(type(view.BaseView)):
         if not hasattr(handler, 'field_value') and not callable(handler):
             raise ValueError(handler)
         cls.HANDLERS[name] = handler
+        # the names are kept privately in a list to keep the order of
+        # definition
+        cls._fields.append(name)
         cls._view_controllers[name] = controller(handler, cls)
 
     def _annotate_document_types(cls, types):
