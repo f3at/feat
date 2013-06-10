@@ -287,7 +287,7 @@ class SortField(value.Collection):
 class MetaQueryValue(type(value.Collection)):
 
     @staticmethod
-    def new(name, factory, allowed_fields, include_value):
+    def new(name, factory, allowed_fields, include_value=list()):
         cls = MetaQueryValue(name, (QueryValue, ),
                              {'factory': factory,
                               'allowed_fields': allowed_fields,
