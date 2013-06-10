@@ -464,7 +464,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _get_doc(self, docId):
         doc = self._documents.get(docId, None)
         if not doc:
-            raise NotFoundError("%s missing" % docId)
+            raise NotFoundError("%s missing" % (docId, ))
         return doc
 
     def _generate_id(self, doc):

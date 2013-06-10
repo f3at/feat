@@ -2,7 +2,7 @@ import operator
 import sys
 import types
 
-from zope.interface import implements, Interface
+from zope.interface import implements, Interface, Attribute
 
 from feat.common import serialization, enum, first, defer, annotate, log
 from feat.database import view
@@ -13,9 +13,19 @@ from feat.database.interface import IPlanBuilder, IQueryCache
 
 class CacheEntry(object):
 
-    def __init__(self, seq_num, entries):
+    def __init__(self, seq_num, entries, keep_value=False):
         self.seq_num = seq_num
-        self.entries = entries
+        if not keep_value:
+            # here entries is just a list of ids
+            self.entries = entries
+        else:
+            # in this case entries is a list of tuples (id, field_value)
+            self.entries = list()
+            self.values = dict()
+            for entry, value in entries:
+                self.entries.append(entry)
+                self.values[entry] = value
+
         self.size = sys.getsizeof(entries)
 
 
@@ -96,17 +106,19 @@ class Cache(log.Logger):
                  " subquery: %r", factory.name, keys, subquery)
         d = connection.query_view(factory, parse_results=False, **keys)
         d.addCallback(controller.parse_view_result)
-        d.addCallback(defer.keep_param,
-                      self._cache_response, factory, subquery, seq_num)
+        d.addCallback(self._cache_response, factory, subquery, seq_num,
+                      keep_value=controller.keeps_value)
         return d
 
-    def _cache_response(self, entries, factory, subquery, seq_num):
+    def _cache_response(self, entries, factory, subquery, seq_num, keep_value):
         self.log("Caching response for %r at seq_num: %d, %d rows",
                  subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
-        self._cache[factory.name][subquery] = CacheEntry(seq_num, entries)
+        self._cache[factory.name][subquery] = CacheEntry(seq_num, entries,
+                                                         keep_value)
         self._check_size_limit()
+        return self._cache[factory.name][subquery].entries
 
     def _analyze_changes(self, connection, factory, subquery, entry, changes,
                          seq_num):
@@ -115,10 +127,7 @@ class Cache(log.Logger):
             if factory.name in self._cache: # this is not to fail on
                                             # concurrent checks expiring cache
                 self._cache[factory.name].clear()
-            d = self._fetch_subquery(connection, factory, subquery, seq_num)
-            d.addCallback(defer.keep_param,
-                          self._cache_response, factory, subquery, seq_num)
-            return d
+            return self._fetch_subquery(connection, factory, subquery, seq_num)
         else:
             self.log("View %s has not changed, marking cached fragments as "
                      "fresh. %d rows", factory.name, len(entry.entries))
@@ -276,6 +285,10 @@ class IQueryViewController(Interface):
     the underlying couchdb view and parses its result.
     '''
 
+    keeps_value = Attribute("C{bool} of true parse_view_result() returns 2 "
+                            "element tuples with (ID, value). If False "
+                            "it returns only IDs")
+
     def generate_keys(field, evaluator, value):
         '''
         @param field: C{str} name of the field
@@ -294,6 +307,8 @@ class IQueryViewController(Interface):
 class BaseQueryViewController(object):
 
     implements(IQueryViewController)
+
+    keeps_value = False
 
     def __init__(self, field, factory=None):
         self._field = field
@@ -437,8 +452,14 @@ class Query(serialization.Serializable):
                                      "Operator, %r given" % (index, part))
                 self.operators.append(part)
 
+        self.include_value = kwargs.pop('include_value', list())
+
         sorting = kwargs.pop('sorting', None)
         self.set_sorting(sorting)
+
+        if not isinstance(self.include_value, (list, tuple)):
+            raise ValueError("%r should be a list or tuple" %
+                             (self.include_value), )
 
         if kwargs:
             raise ValueError('Uknown keywords: %s' % (kwargs.keys(), ))
@@ -477,6 +498,13 @@ class Query(serialization.Serializable):
                 if not included:
                     temp.append((sortby, Evaluator.none, None))
 
+        # if we want a value of some field included in the result we need to
+        # make sure its also fetched along the query
+        for part in self.include_value:
+            included = first(x[0] for x in temp if x[0] == part)
+            if not included:
+                temp.append((part, Evaluator.none, None))
+
         # remove duplicates
         resp = list()
         while temp:
@@ -506,13 +534,29 @@ def select_ids(connection, query, skip=0, limit=None):
         stop = skip + limit
     else:
         stop = None
-    defer.returnValue(temp[slice(skip, stop)])
+    r = temp[slice(skip, stop)]
+    defer.returnValue(r)
 
 
 def select(connection, query, skip=0, limit=None):
     d = select_ids(connection, query, skip, limit)
     d.addCallback(connection.bulk_get)
+    if query.include_value:
+        d.addCallback(include_values, connection.get_query_cache(), query)
     return d
+
+
+def include_values(docs, cache, query):
+    # dict (field, evaluator, value) -> CacheEntry
+    cached = cache._cache[query.factory.name]
+    # dict field_name -> CacheEntry
+    lookup = dict((field, first(v for k, v in cached.iteritems()
+                                if k[0] == field))
+                  for field in query.include_value)
+    for doc in docs:
+        for name, cache_entry in lookup.iteritems():
+            setattr(doc, name, cache_entry.values.get(doc.doc_id))
+    return docs
 
 
 @defer.inlineCallbacks

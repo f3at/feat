@@ -202,6 +202,10 @@ class VersionDocument(document.Document):
 
 class ReduceFieldController(query.BaseQueryViewController):
 
+    # this informs the QueryCache that parse_view_result() will be returning
+    # a tuples() including the actual value
+    keeps_value = True
+
     def generate_keys(self, field, evaluator, value):
         s = super(ReduceFieldController, self).generate_keys
         r = s(field, evaluator, value)
@@ -216,10 +220,12 @@ class ReduceFieldController(query.BaseQueryViewController):
         # here we are given multiple values for the same document, we only
         # should take the first one, because we are interested in the highest
         # value
+        seen = set()
         result = list()
         for row in rows:
-            if row[1]['_id'] not in result:
-                result.append(row[1]['_id'])
+            if row[1]['_id'] not in seen:
+                seen.add(row[1]['_id'])
+                result.append((row[1]['_id'], row[1]['value']))
         return result
 
 
@@ -910,9 +916,14 @@ class TestCase(object):
         Q = query.Query
         D = query.Direction
 
-        q = Q(QueryReduceView)
+        q = Q(QueryReduceView, include_value=["version"])
         res = yield query.select(self.connection, q)
         self.assertEqual(saved, res) # its sorted by first field
+        # the version fields are set correctly
+        self.assertEqual('11.2.3', res[0].version)
+        self.assertEqual('5.3.1', res[1].version)
+        self.assertEqual('5.6.7', res[2].version)
+        self.assertEqual(None, res[3].version)
 
         q = Q(QueryReduceView, sorting=[('version', D.ASC)])
         res = yield query.select(self.connection, q)
