@@ -181,6 +181,88 @@ class GroupCountingView(view.BaseView):
         return key, value
 
 
+### testing query reduce view ###
+
+
+@serialization.register
+class InfoDocument(document.Document):
+
+    type_name = "info-document"
+
+    document.field('field', None)
+
+
+@serialization.register
+class VersionDocument(document.Document):
+
+    type_name = "version-document"
+
+    document.field('version', None)
+
+
+class ReduceFieldController(query.BaseQueryViewController):
+
+    def generate_keys(self, field, evaluator, value):
+        s = super(ReduceFieldController, self).generate_keys
+        r = s(field, evaluator, value)
+        # we are interesed in the highest value, so here we revert the
+        # row order to later only take the highest value
+        if 'startkey' in r and 'endkey' in r:
+            r['endkey'], r['startkey'] = r['startkey'], r['endkey']
+            r['descending'] = True
+        return r
+
+    def parse_view_result(self, rows):
+        # here we are given multiple values for the same document, we only
+        # should take the first one, because we are interested in the highest
+        # value
+        result = list()
+        for row in rows:
+            if row[1]['_id'] not in result:
+                result.append(row[1]['_id'])
+        return result
+
+
+class QueryReduceView(query.QueryView):
+
+    name = 'test_query_view'
+    BaseField = query.BaseField
+
+    @query.field('field')
+    class Field(BaseField):
+
+        document_types = ["info-document"]
+
+        @staticmethod
+        def field_value(doc):
+            yield doc.get('field')
+
+    @query.field('version', controller=ReduceFieldController)
+    class VersionField(BaseField):
+
+        document_types = ["version-document"]
+
+        @staticmethod
+        def field_value(doc):
+            yield doc.get('version')
+
+        @staticmethod
+        def sort_key(value):
+            import re
+            return tuple(int(x) for x in re.findall(r'[0-9]+', value))
+
+        @classmethod
+        def emit_value(cls, doc):
+            return dict(_id=cls.get_linked_id(doc, 'info-document'),
+                        value=list(cls.field_value(doc))[0])
+
+        @staticmethod
+        def get_linked_id(doc, type_name):
+            for row in doc.get('linked', list()):
+                if row[0] == type_name:
+                    return row[1]
+
+
 ### used to tests update_document() ###
 
 
@@ -796,6 +878,51 @@ class TestCase(object):
         self.assertIsInstance(gets[0], NotFoundError)
 
     @defer.inlineCallbacks
+    def testReduceFieldInQueryView(self):
+        '''
+        In this testcase the query view index is created from 2 types of
+        documents. The version field as a highest value out of the set of
+        linked documents.
+        '''
+        views = (QueryReduceView, )
+        for design_doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(design_doc)
+
+        # field -> versions to create
+        mapping = [
+            ('A', ['1.2.3', '11.2.3', '2.1,4']),
+            ('B', ['1.2.4', '5.3.1']),
+            ('C', ['5.6.7']),
+            ('D', [])]
+
+        saved = list()
+
+        for field, versions in mapping:
+            d = yield self.connection.save_document(InfoDocument(field=field))
+            saved.append(d)
+            for version in versions:
+                v = VersionDocument(version=version)
+                v.links.create(doc=d)
+                yield self.connection.save_document(v)
+
+        C = query.Condition
+        E = query.Evaluator
+        Q = query.Query
+        D = query.Direction
+
+        q = Q(QueryReduceView)
+        res = yield query.select(self.connection, q)
+        self.assertEqual(saved, res) # its sorted by first field
+
+        q = Q(QueryReduceView, sorting=[('version', D.ASC)])
+        res = yield query.select(self.connection, q)
+        self.assertEqual([saved[0], saved[2], saved[1], saved[3]], res)
+
+        q = Q(QueryReduceView, C('version', E.equals, '11.2.3'))
+        res = yield query.select(self.connection, q)
+        self.assertEqual([saved[0]], res)
+
+    @defer.inlineCallbacks
     def testUsingQueryView(self):
         views = (QueryView, )
         for design_doc in view.DesignDocument.generate_from_views(views):
@@ -990,7 +1117,7 @@ class PaisleySpecific(object):
 
 
 @common.attr(timescale=0.05)
-class EmuDatabaseIntegrationTest(common.IntegrationTest, TestCase):
+class EmuDatabaseTest(common.IntegrationTest, TestCase):
     skip_coverage = False
 
     def setUp(self):

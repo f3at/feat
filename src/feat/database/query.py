@@ -2,11 +2,9 @@ import operator
 import sys
 import types
 
-from twisted.python import components
-from zope.interface import implements, Interface, declarations
+from zope.interface import implements, Interface
 
 from feat.common import serialization, enum, first, defer, annotate, log
-from feat.common import adapter
 from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
@@ -165,9 +163,6 @@ class BaseField(object):
     def emit_value(doc):
         return None
 
-    # this informs the logic generating the view keys to append reduce=false
-    perform_reduce = None
-
 
 class QueryViewMeta(type(view.BaseView)):
 
@@ -211,33 +206,6 @@ class QueryViewMeta(type(view.BaseView)):
             return doc.get('.type') in DOCUMENT_TYPES
         cls.filter = cls._querymethod(dct.pop('filter', filter))
 
-        use_reduce = any(getattr(field, 'perform_reduce', None)
-                         for field in HANDLERS.itervalues())
-        if use_reduce:
-            cls.use_reduce = True
-
-            def reduce(keys, values, rereduce):
-                if rereduce:
-                    values = filter(None, values)
-                    if not values:
-                        return
-                    field = values[0]['field']
-                    handler = getattr(HANDLERS[field], 'perform_reduce', None)
-                    if not callable(handler):
-                        return
-                    values = map(operator.itemgetter('results'), values)
-                    return dict(results=handler(values, rereduce),
-                                field=field)
-
-                else:
-                    field = keys[0][0]
-                    handler = getattr(HANDLERS[field], 'perform_reduce', None)
-                    if not callable(handler):
-                        return
-                    return dict(results=handler(values, rereduce),
-                                field=field)
-            cls.reduce = cls._querymethod(dct.pop('reduce', reduce))
-
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
 
@@ -250,8 +218,6 @@ class QueryViewMeta(type(view.BaseView)):
             cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
         cls.attach_constant(
             cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
-        if use_reduce:
-            cls.attach_dict_of_objects(cls.reduce, 'HANDLERS')
 
     def attach_dict_of_objects(cls, query_method, name):
         # we cannot use normal mechanism for attaching code to query methods,
@@ -290,23 +256,15 @@ class QueryViewMeta(type(view.BaseView)):
         return name in cls.HANDLERS
 
     def get_view_controller(cls, name):
-        if name not in cls._view_controllers:
-            obj = cls.HANDLERS[name]
-            factory = components.getRegistry().lookup1(
-                declarations.providedBy(obj), IQueryViewController)
-            if factory is None:
-                raise TypeError("Could not adapt", obj, IQueryViewController)
-            adapted = factory(obj, cls)
-            cls._view_controllers[name] = adapted
-
         return cls._view_controllers[name]
 
     ### annotatations ###
 
-    def _annotate_field(cls, name, handler):
+    def _annotate_field(cls, name, handler, controller):
         if not hasattr(handler, 'field_value') and not callable(handler):
             raise ValueError(handler)
         cls.HANDLERS[name] = handler
+        cls._view_controllers[name] = controller(handler, cls)
 
     def _annotate_document_types(cls, types):
         cls.DOCUMENT_TYPES.update(set(types))
@@ -333,11 +291,11 @@ class IQueryViewController(Interface):
         '''
 
 
-@adapter.register(types.FunctionType, IQueryViewController)
-@adapter.register(type(BaseField), IQueryViewController)
 class BaseQueryViewController(object):
 
-    def __init__(self, field, factory):
+    implements(IQueryViewController)
+
+    def __init__(self, field, factory=None):
         self._field = field
         self._factory = factory
         if hasattr(self._field, 'sort_key'):
@@ -345,16 +303,11 @@ class BaseQueryViewController(object):
         else:
             self.transform = self._identity
 
-    implements(IQueryViewController)
-
     def generate_keys(self, field, evaluator, value):
-        r = self._generate_keys(self.transform, field, evaluator, value)
-        if self._factory.use_reduce:
-            r['reduce'] = False
-        return r
+        return self._generate_keys(self.transform, field, evaluator, value)
 
     def parse_view_result(self, rows):
-        # the ids are emited as links
+        # the ids are of original documents
         return [x[2] for x in rows]
 
     ### protected ###
@@ -383,16 +336,16 @@ class QueryView(view.BaseView):
     __metaclass__ = QueryViewMeta
 
 
-def field(name, definition=None):
+def field(name, definition=None, controller=BaseQueryViewController):
     if callable(definition):
         annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                     name, definition)
+                                     name, definition, controller)
     else:
         # used as decorator
 
         def field(definition):
             annotate.injectClassCallback('query field', 3, '_annotate_field',
-                                         name, definition)
+                                         name, definition, controller)
             return definition
 
         return field

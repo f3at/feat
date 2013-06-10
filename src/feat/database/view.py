@@ -128,7 +128,10 @@ class BaseView(annotate.Annotable):
 
     @classmethod
     def perform_reduce(cls, keys, values):
-        return cls.reduce(keys, values)
+        if cls.reduce.func_code.co_argcount == 3:
+            return cls.reduce(keys, values, rereduce=False)
+        else:
+            return cls.reduce(keys, values)
 
     @classmethod
     def perform_filter(cls, doc, request):
