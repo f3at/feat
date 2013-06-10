@@ -185,6 +185,9 @@ class BaseView(annotate.Annotable):
             count = len(found.group(0))
             source_lines = [x[count:-1] for x in source_lines
                             if x and len(x) >= count]
+        decorator_line = re.compile('\A@')
+        source_lines = [x for x in source_lines
+                        if not decorator_line.search(x)]
 
         return '\n'.join(source_lines)
 

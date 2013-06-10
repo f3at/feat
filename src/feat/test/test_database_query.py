@@ -230,7 +230,11 @@ class TestQueryView(common.TestCase):
                       "'position': extract_position}", code)
         self.assertIn("def extract_position(doc)", code)
         self.assertIn("class ComplexField(BaseField)", code)
+        self.assertIn("    @staticmethod\n    def field_value(doc):", code)
         self.assertIn("class BaseField(object)", code)
+
+        # decorators need to be cleared out
+        self.assertNotIn("@query.field", code)
 
         # check that we can get the code multiple times
         code2 = QueryView.get_code('map')
