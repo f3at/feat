@@ -270,13 +270,15 @@ class QueryViewMeta(type(view.BaseView)):
 
     ### annotatations ###
 
-    def _annotate_field(cls, name, handler, controller):
+    def _annotate_field(cls, name, handler, controller=None):
         if not hasattr(handler, 'field_value') and not callable(handler):
             raise ValueError(handler)
         cls.HANDLERS[name] = handler
         # the names are kept privately in a list to keep the order of
         # definition
         cls._fields.append(name)
+        if controller is None:
+            controller = cls.view_controller
         cls._view_controllers[name] = controller(handler, cls)
 
     def _annotate_document_types(cls, types):
@@ -353,9 +355,10 @@ class BaseQueryViewController(object):
 class QueryView(view.BaseView):
 
     __metaclass__ = QueryViewMeta
+    view_controller = BaseQueryViewController
 
 
-def field(name, definition=None, controller=BaseQueryViewController):
+def field(name, definition=None, controller=None):
     if callable(definition):
         annotate.injectClassCallback('query field', 3, '_annotate_field',
                                      name, definition, controller)
