@@ -20,12 +20,13 @@ def query_target(target):
 
 
 def view_factory(factory, allowed_fields=[], static_conditions=None,
-                 fetch_documents=None, item_field=None):
+                 fetch_documents=None, item_field=None, include_value=list()):
     annotate.injectClassCallback(
         "view_factory", 3, "annotate_view_factory",
         factory, allowed_fields=allowed_fields,
         static_conditions=static_conditions,
         fetch_documents=fetch_documents,
+        include_value=include_value,
         item_field=item_field)
 
 
@@ -114,6 +115,7 @@ class QueryView(model.Collection):
     def annotate_view_factory(cls, factory, allowed_fields=[],
                               static_conditions=None,
                               fetch_documents=None,
+                              include_value=list(),
                               item_field=None):
         cls._view = IQueryViewFactory(factory)
         cls._static_conditions = (static_conditions and
@@ -130,9 +132,15 @@ class QueryView(model.Collection):
                 raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
         cls._allowed_fields = allowed_fields
 
+        for x in include_value:
+            if not cls._view.has_field(x):
+                raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
+        cls._include_value = include_value
+
         # define query action
         name = utils.mk_class_name(cls._view.name, "Query")
-        QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields)
+        QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields,
+                                        cls._include_value)
         name = utils.mk_class_name(cls._view.name, "Sorting")
         SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
         result_info = value.Model()
@@ -141,7 +149,8 @@ class QueryView(model.Collection):
 
             def merge_conditions(static_conditions, factory, q):
                 subquery = query.Query(factory, *static_conditions)
-                return query.Query(factory, q, query.Operator.AND, subquery)
+                return query.Query(factory, q, query.Operator.AND, subquery,
+                                   include_value=cls._include_value)
 
             cls = type(context['model'])
             if cls._static_conditions:
@@ -278,10 +287,11 @@ class SortField(value.Collection):
 class MetaQueryValue(type(value.Collection)):
 
     @staticmethod
-    def new(name, factory, allowed_fields):
+    def new(name, factory, allowed_fields, include_value):
         cls = MetaQueryValue(name, (QueryValue, ),
                              {'factory': factory,
-                              'allowed_fields': allowed_fields})
+                              'allowed_fields': allowed_fields,
+                              'include_value': include_value})
         # this is to make conditions with strings work
         name = name + 'S'
         cls.annotate_allows(
@@ -316,7 +326,8 @@ class QueryValue(value.Collection):
 
     def validate(self, v):
         v = value.Collection.validate(self, v)
-        return query.Query(type(self).factory, *v)
+        cls = type(self)
+        return query.Query(cls.factory, *v, include_value=cls.include_value)
 
     def publish(self, v):
         return str(v)
