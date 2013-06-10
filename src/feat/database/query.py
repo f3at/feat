@@ -173,6 +173,32 @@ class BaseField(object):
         return None
 
 
+class JoinedVersionField(BaseField):
+
+    version_field = None
+    target_document_type = None
+
+    @classmethod
+    def field_value(cls, doc):
+        yield doc.get(cls.version_field)
+
+    @staticmethod
+    def sort_key(value):
+        import re
+        return tuple(int(x) for x in re.findall(r'[0-9]+', value))
+
+    @classmethod
+    def emit_value(cls, doc):
+        return dict(_id=cls.get_linked_id(doc, cls.target_document_type),
+                    value=list(cls.field_value(doc))[0])
+
+    @staticmethod
+    def get_linked_id(doc, type_name):
+        for row in doc.get('linked', list()):
+            if row[0] == type_name:
+                return row[1]
+
+
 class QueryViewMeta(type(view.BaseView)):
 
     implements(IQueryViewFactory)
@@ -350,6 +376,39 @@ class BaseQueryViewController(object):
             return dict(keys=[(field, transform(x)) for x in value])
         if evaluator == Evaluator.none:
             return dict(startkey=(field, ), endkey=(field, {}))
+
+
+class HighestValueFieldController(BaseQueryViewController):
+    '''
+    Use this controller to extract the value of a joined field.
+    It emits the highest value.
+    '''
+
+    # this informs the QueryCache that parse_view_result() will be returning
+    # a tuples() including the actual value
+    keeps_value = True
+
+    def generate_keys(self, field, evaluator, value):
+        s = super(HighestValueFieldController, self).generate_keys
+        r = s(field, evaluator, value)
+        # we are interesed in the highest value, so here we revert the
+        # row order to later only take the highest value
+        if 'startkey' in r and 'endkey' in r:
+            r['endkey'], r['startkey'] = r['startkey'], r['endkey']
+            r['descending'] = True
+        return r
+
+    def parse_view_result(self, rows):
+        # here we are given multiple values for the same document, we only
+        # should take the first one, because we are interested in the highest
+        # value
+        seen = set()
+        result = list()
+        for row in rows:
+            if row[1]['_id'] not in seen:
+                seen.add(row[1]['_id'])
+                result.append((row[1]['_id'], row[1]['value']))
+        return result
 
 
 class QueryView(view.BaseView):

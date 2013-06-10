@@ -233,6 +233,7 @@ class QueryReduceView(query.QueryView):
 
     name = 'test_query_view'
     BaseField = query.BaseField
+    JoinedVersionField = query.JoinedVersionField
 
     @query.field('field')
     class Field(BaseField):
@@ -243,30 +244,12 @@ class QueryReduceView(query.QueryView):
         def field_value(doc):
             yield doc.get('field')
 
-    @query.field('version', controller=ReduceFieldController)
-    class VersionField(BaseField):
+    @query.field('version', controller=query.HighestValueFieldController)
+    class VersionField(JoinedVersionField):
 
         document_types = ["version-document"]
-
-        @staticmethod
-        def field_value(doc):
-            yield doc.get('version')
-
-        @staticmethod
-        def sort_key(value):
-            import re
-            return tuple(int(x) for x in re.findall(r'[0-9]+', value))
-
-        @classmethod
-        def emit_value(cls, doc):
-            return dict(_id=cls.get_linked_id(doc, 'info-document'),
-                        value=list(cls.field_value(doc))[0])
-
-        @staticmethod
-        def get_linked_id(doc, type_name):
-            for row in doc.get('linked', list()):
-                if row[0] == type_name:
-                    return row[1]
+        version_field = 'version'
+        target_document_type = 'info-document'
 
 
 ### used to tests update_document() ###
