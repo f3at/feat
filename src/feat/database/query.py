@@ -110,7 +110,8 @@ class Cache(log.Logger):
                       keep_value=controller.keeps_value)
         return d
 
-    def _cache_response(self, entries, factory, subquery, seq_num, keep_value):
+    def _cache_response(self, entries, factory, subquery, seq_num,
+                        keep_value=False):
         self.log("Caching response for %r at seq_num: %d, %d rows",
                  subquery, seq_num, len(entries))
         if factory.name not in self._cache:
