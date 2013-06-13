@@ -128,7 +128,10 @@ class BaseView(annotate.Annotable):
 
     @classmethod
     def perform_reduce(cls, keys, values):
-        return cls.reduce(keys, values)
+        if cls.reduce.func_code.co_argcount == 3:
+            return cls.reduce(keys, values, rereduce=False)
+        else:
+            return cls.reduce(keys, values)
 
     @classmethod
     def perform_filter(cls, doc, request):
@@ -176,15 +179,15 @@ class BaseView(annotate.Annotable):
     @classmethod
     def _get_normalized_source(cls, func):
         source_lines, _ = inspect.getsourcelines(func)
-        decorator_line = re.compile('\A\s*@')
         leading_whitespace = re.compile('\A\s*')
-        source_lines = [x for x in source_lines
-                        if not decorator_line.search(x)]
         found = leading_whitespace.search(source_lines[0])
         if found:
             count = len(found.group(0))
             source_lines = [x[count:-1] for x in source_lines
                             if x and len(x) >= count]
+        decorator_line = re.compile('\A@')
+        source_lines = [x for x in source_lines
+                        if not decorator_line.search(x)]
 
         return '\n'.join(source_lines)
 

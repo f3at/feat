@@ -183,7 +183,7 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
     def wait_for(self, check, timeout, freq=0.5, kwargs=dict()):
         d = time.wait_for_ex(check, timeout, freq=freq, kwargs=kwargs,
                              logger=self)
-        d.addErrback(unittest.FailTest)
+        d.addErrback(lambda f: self.fail(f.value))
         return d
 
     def is_agency_idle(self, agency):

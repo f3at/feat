@@ -1692,6 +1692,10 @@ class Response(log.Logger):
         self._check_header_not_sent()
         if self.strict_negotiation:
             if not self._request.does_accept_mime_type(mime_type):
+                self.debug("Refusing to set not accepted mime_type: %s. "
+                           "Accept header: %s. Accept tree: %r", mime_type,
+                           self._request.get_header('accept'),
+                           self._request._accept_tree)
                 raise http.NotAcceptableError()
         self._mime_type = mime_type
 

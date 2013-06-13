@@ -135,7 +135,13 @@ class Agency(agency.Agency):
 
     def notify_running(self, medium):
         recp = IRecipient(medium)
-        return self._broker.push_event(recp.key, 'started')
+        if medium.startup_failure:
+            # we access this branch of code when the agent raises from
+            # initiate_agent()
+            return self._broker.fail_event(medium.startup_failure,
+                                           recp.key, 'started')
+        else:
+            return self._broker.push_event(recp.key, 'started')
 
     def notify_failed(self, failure, agent_id):
         error.handle_failure(self, failure,

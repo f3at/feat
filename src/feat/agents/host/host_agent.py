@@ -38,7 +38,7 @@ from feat import applications
 
 from feat.database.interface import NotFoundError
 from feat.interface.protocols import InterestType
-from feat.interface.agent import CategoryError, IDescriptor
+from feat.interface.agent import CategoryError, IDescriptor, IAgencyAgent
 from feat.agents.application import feat
 
 
@@ -312,13 +312,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         f.add_errback(self._spawn_agent_failed, desc, alert_name=static_name)
         return f
 
-    @replay.immutable
-    def medium_start_agent(self, state, desc, **kwargs):
-        '''
-        Just delegation to Agency part. Used by StartAgent task.
-        '''
-        return state.medium.start_agent(desc, **kwargs)
-
     @replay.journaled
     def restart_agent(self, state, agent_id):
         self.debug('I will restart agent with id %r.', agent_id)
@@ -530,10 +523,19 @@ class StartAgent(task.BaseTask):
         f.add_callback(fiber.drop_param, self._check_requirements)
         f.add_callback(fiber.drop_param, self._validate_allocation)
         f.add_callback(self._update_descriptor)
-        f.add_callback(state.agent.medium_start_agent, **kwargs)
-        f.add_callback(recipient.IRecipient)
-        f.add_callback(self._establish_partnership)
+        f.add_callback(state.medium.agent.agency.start_agent, **kwargs)
+        f.add_callback(self._check_if_successful)
         return f
+
+    def _check_if_successful(self, agency_agent):
+        # agency_agent here is either IAgencyAgent for agents started in
+        # the same process or IRecipient for standalone process.
+        # In case of the failure while starting the standalone agent the
+        # failure is returned, thanks to the broker notifications mechanism.
+        if (IAgencyAgent.providedBy(agency_agent) and
+            agency_agent.startup_failure):
+            return agency_agent.startup_failure
+        return self._establish_partnership(recipient.IRecipient(agency_agent))
 
     @replay.immutable
     def _establish_partnership(self, state, recp):

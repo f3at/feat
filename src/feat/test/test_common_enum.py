@@ -76,6 +76,9 @@ class F(enum.Enum):
 
 class TestEnum(common.TestCase):
 
+    def testCompareToObject(self):
+        self.assertFalse(E.a == object()) #it used to raise TypeError
+
     def testCustomNames(self):
         self.assertEqual(E.a, 1)
         self.assertEqual(E.b, 2)

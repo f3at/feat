@@ -167,13 +167,32 @@ class QueryView(query.QueryView):
     def extract_name(doc):
         yield doc.get('name')
 
+    query.field('name', extract_name)
+
     @query.field('position')
     def extract_position(doc):
         pos = doc.get('pos', None)
         if pos is not None:
             yield pos
 
-    query.field('name', extract_name)
+    BaseField = query.BaseField
+
+    @query.field('complex')
+    class ComplexField(BaseField):
+
+        document_types = ['type1']
+
+        @staticmethod
+        def field_value(doc):
+            yield doc.get('pos')
+
+        @staticmethod
+        def sort_key(value):
+            return 20 - value
+
+        @staticmethod
+        def emit_value(doc):
+            return doc.get('name')
 
 
 class TestQueryCache(common.TestCase):
@@ -182,7 +201,7 @@ class TestQueryCache(common.TestCase):
     '''
 
     def testReleaseCache(self):
-        s = lambda : str(uuid.uuid1()).replase('-', '')
+        s = lambda: str(uuid.uuid1()).replase('-', '')
         cache = query.Cache(self)
 
         for seq_num in range(0, 10):
@@ -205,10 +224,17 @@ class TestQueryView(common.TestCase):
 
     def testMap(self):
         code = QueryView.get_code('map')
-        self.assertIn("DOCUMENT_TYPES = ['type1', 'type2']", code)
-        self.assertIn("HANDLERS = {'position': extract_position, "
-                      "'name': extract_name}", code)
+        self.assertIn("DOCUMENT_TYPES = set(['type1', 'type2'])", code)
+        self.assertIn("HANDLERS = {'complex': ComplexField, "
+                      "'name': extract_name, "
+                      "'position': extract_position}", code)
         self.assertIn("def extract_position(doc)", code)
+        self.assertIn("class ComplexField(BaseField)", code)
+        self.assertIn("    @staticmethod\n    def field_value(doc):", code)
+        self.assertIn("class BaseField(object)", code)
+
+        # decorators need to be cleared out
+        self.assertNotIn("@query.field", code)
 
         # check that we can get the code multiple times
         code2 = QueryView.get_code('map')
@@ -217,9 +243,10 @@ class TestQueryView(common.TestCase):
         # now check that map function works (the globals have been injected)
         r = list(QueryView.map({'_id': 'id1', '.type': 'type1',
                                 'name': 'John', 'pos': 3}))
-        self.assertEqual(2, len(r))
+        self.assertEqual(3, len(r))
         self.assertIn((('position', 3), None), r)
         self.assertIn((('name', 'John'), None), r)
+        self.assertIn((('complex', 17), 'John'), r) # 17 = 20 - 3
 
         # name is always emited
         r = list(QueryView.map({'_id': 'id1', '.type': 'type2'}))
@@ -233,7 +260,7 @@ class TestQueryView(common.TestCase):
 
     def testFilter(self):
         code = QueryView.get_code('filter')
-        self.assertIn("DOCUMENT_TYPES = ['type1', 'type2']", code)
+        self.assertIn("DOCUMENT_TYPES = set(['type1', 'type2'])", code)
 
         r = QueryView.filter(
             {'_id': 'id1', '.type': 'type3', 'name': 'John'}, None)
@@ -242,4 +269,3 @@ class TestQueryView(common.TestCase):
         r = QueryView.filter(
             {'_id': 'id1', '.type': 'type1', 'name': 'John'}, None)
         self.assertIs(True, r)
-

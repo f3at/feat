@@ -106,6 +106,7 @@ class IAgencyAgent(Interface):
 
     agent = Attribute("L{IAgent}")
     agency = Attribute("L{IAgency}")
+    startup_failure = Attribute("Failure or NoneType")
 
     def remove_external_route(backend_id, **kwargs):
         pass

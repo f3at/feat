@@ -37,6 +37,14 @@ from feat.database.interface import ConflictError, NotFoundError
 from feat.database.interface import IViewFactory, IAttachmentPrivate
 
 
+class Biggest(object):
+
+    def __cmp__(self, other):
+        return 1
+
+BIGGEST = Biggest()
+
+
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                common.Statistics):
 
@@ -208,10 +216,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         # In erlang ordering of objects is different than in python.
         # Empty dict ({}) is the "biggest" value, by convetion its used
         # to denote the end of the range. In python {} < str, so we substitute
-        # {} with '~'
+        # {} with a special object which always compares to bigger value
         for keyname in ('startkey', 'endkey'):
             if keyname in options and isinstance(options[keyname], tuple):
-                options[keyname] = tuple(x if x != {} else "~"
+                options[keyname] = tuple(x if x != {} else BIGGEST
                                          for x in options[keyname])
         d = defer.succeed(iterator)
         d.addCallback(self._flatten, **options)
@@ -221,7 +229,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         if include_docs:
             d.addCallback(self._include_docs)
         d.addCallback(self._apply_slice, **options)
-        d.addCallback(self._sort_by_key)
+        d.addCallback(self._sort_by_key, **options)
         return d
 
     def disconnect(self):
@@ -320,7 +328,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _apply_slice(self, rows, **slice_options):
         skip = slice_options.get('skip', 0)
         limit = slice_options.get('limit', None)
-        descend = slice_options.get('descending', False)
 
         if skip > 0 or limit is not None:
             if limit is None:
@@ -329,13 +336,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 index = slice(skip, skip + limit)
             rows = rows[index]
 
-        if descend:
-            rows.reverse()
-
         return rows
 
-    def _sort_by_key(self, rows):
-        return sorted(rows, key=operator.itemgetter(0))
+    def _sort_by_key(self, rows, **options):
+        descend = options.get('descending', False)
+        return sorted(rows, key=operator.itemgetter(0), reverse=descend)
 
     def _matches_filter(self, tup, **filter_options):
         if 'key' in filter_options:
@@ -459,7 +464,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
     def _get_doc(self, docId):
         doc = self._documents.get(docId, None)
         if not doc:
-            raise NotFoundError("%s missing" % docId)
+            raise NotFoundError("%s missing" % (docId, ))
         return doc
 
     def _generate_id(self, doc):

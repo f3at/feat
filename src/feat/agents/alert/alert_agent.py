@@ -201,7 +201,12 @@ class AlertAgent(agent.BaseAgent):
         This method is also run once an hour by recurring task, so that
         nagios wouldnt ever have to run check_dummy check.'''
         self.debug("Pushing all notifications to nagios.")
-        f = fiber.wrap_defer(state.nagios.send, state.alerts.values())
+
+        # We are pushing only the alerts which has the agent responsible for
+        # them. As long as noone claims responsiblity the state should not
+        # change.
+        to_send = [x for x in state.alerts.itervalues() if x.agent_id]
+        f = fiber.wrap_defer(state.nagios.send, to_send)
         f.add_callback(fiber.override_result, None)
         return f
 

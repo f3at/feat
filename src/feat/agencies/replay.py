@@ -597,6 +597,7 @@ class BaseReplayDummy(log.LogProxy, log.Logger):
         log.Logger.__init__(self, replay)
         log.LogProxy.__init__(self, replay)
         self._dummy_id = dummy_id
+        self.replay = replay
 
     ### ISerializable Methods ###
 
@@ -775,6 +776,11 @@ class Agency(BaseReplayDummy):
     def get_config(self):
         pass
 
+    @serialization.freeze_tag('IAgency.start_agent')
+    @replay.named_side_effect('IAgency.start_agent')
+    def start_agent(self, *args, **kwargs):
+        pass
+
 
 class AgencyAgent(BaseReplayDummy):
 
@@ -850,10 +856,6 @@ class AgencyAgent(BaseReplayDummy):
 
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
-        pass
-
-    @serialization.freeze_tag('AgencyAgent.start_agent')
-    def start_agent(self, desc):
         pass
 
     @serialization.freeze_tag('AgencyAgent.check_if_hosted')
@@ -1132,6 +1134,10 @@ class AgencyTask(AgencyProtocol, StateMachineSpecific):
     @replay.named_side_effect('AgencyTask.finished')
     def finished(self):
         pass
+
+    @property
+    def agent(self):
+        return self.replay.medium
 
 
 class AgencyCollector(AgencyProtocol):
