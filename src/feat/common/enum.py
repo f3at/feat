@@ -143,7 +143,12 @@ class Enum(int):
             return NotImplemented
         if isinstance(value, Enum) and not isinstance(value, type(self)):
             raise TypeError("Cannot compare between enums")
-        return super(Enum, self).__cmp__(value)
+        try:
+            return super(Enum, self).__cmp__(value)
+        except TypeError:
+            # this happens when we try to compare to something
+            # which is not enum
+            return NotImplemented
 
     def __str__(self):
         return '<%s value %s>' % (
