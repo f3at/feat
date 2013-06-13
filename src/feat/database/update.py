@@ -4,9 +4,23 @@ from feat.database.interface import ResignFromModifying
 def attributes(document, params):
     changed = False
     for key, value in params.iteritems():
-        if getattr(document, key) != value:
-            setattr(document, key, value)
+        if not isinstance(key, tuple):
+            key = (key, )
+        actual = document
+        for part in key[:-1]:
+            if isinstance(actual, dict):
+                actual = actual[part]
+            else:
+                actual = getattr(actual, part)
+
+        if isinstance(actual, dict):
+            if actual.get(key[-1]) != value:
+                actual[key[-1]] = value
+                changed = True
+        elif getattr(actual, key[-1]) != value:
+            setattr(actual, key[-1], value)
             changed = True
+
     if changed:
         return document
     else:
