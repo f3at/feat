@@ -2,15 +2,14 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.26.0
-%define unmangled_version 0.26.0
-%define build_rev 1
+%define version 0.26.1
+%define build_rev 0.1
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
 Version:        %{version}
 Release:        %{?build_rev}%{?dist}
-Source0:        feat-%{unmangled_version}.tar.gz
+Source0:        feat-%{version}.tar.gz
 
 Group:          Development/Languages
 License:        GPL
@@ -31,7 +30,7 @@ Provides:       %{name}
 Flumotion Asynchronous Autonomous Agent Toolkit
 
 %prep
-%setup -q -n feat-%{unmangled_version}
+%setup -q -n feat-%{version}
 
 %build
 CFLAGS="$RPM_OPT_FLAGS" %{__python} setup.py build
