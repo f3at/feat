@@ -42,8 +42,8 @@ def get_current_initials():
     return applications.get_initial_data_registry().get_snapshot()
 
 
-def create_connection(host, port, name):
-    db = driver.Database(host, int(port), name)
+def create_connection(host, port, name, username=None, password=None):
+    db = driver.Database(host, int(port), name, username, password)
     return db.get_connection()
 
 
@@ -184,7 +184,8 @@ class dbscript(object):
 
     def __enter__(self):
         self.connection = create_connection(
-            self.config.host, self.config.port, self.config.name)
+            self.config.host, self.config.port, self.config.name,
+            self.config.username, self.config.password)
 
         log.info('script', "Using host: %s, port: %s, db_name; %s",
                  self.config.host, self.config.port, self.config.name)

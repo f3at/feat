@@ -1396,9 +1396,14 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase, NonEmuTests):
                            "variable: %r. Valid setting would be: \n"
                            "export TEST_COUCHDB=localhost:15984" %
                            (os.environ['TEST_COUCHDB'], ))
+        try:
+            username, password = os.environ['TEST_COUCHDB_AUTH'].split(':')
+        except:
+            username = password = None
 
         db_name = self._testMethodName.lower()
-        self.database = driver.Database(host, port, db_name)
+        self.database = driver.Database(host, port, db_name,
+                                        username, password)
 
         try:
             yield self.database.create_db()

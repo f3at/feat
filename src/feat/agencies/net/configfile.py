@@ -193,6 +193,8 @@ p12_path: tunnel-p12
 host: dbhost
 port: dbport
 name: dbname
+username: dbusername
+password: dbpassword
 
 [manhole]
 public_key: pubkey
