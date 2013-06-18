@@ -1471,9 +1471,9 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         def handle_success_on_get(desc):
             msg = ("Descriptor of host agent has been found in "
                    "database (hostname: %s). I will wait patiently "
-                   "until in disappears. It should happend any minute now "
+                   "until it disappears. It should happen any minute now "
                    "providing there is still a monitor agent in the "
-                   "cluster who will take care of it. In other case "
+                   "cluster who will take care of it. Otherwise "
                    "you would have to cleanup the database. In development "
                    "the --force-host-restart feat script option is your "
                    "only friend. " % desc.doc_id)
