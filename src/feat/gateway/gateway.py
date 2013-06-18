@@ -130,7 +130,8 @@ class Gateway(log.LogProxy, log.Logger):
                 self.debug("Port %d not available for %sgateway", port, log_tag)
                 continue
 
-        raise NoPortAvailableError("No port available for %sgateway" % log_tag)
+        raise NoPortAvailableError("No port [%d:%d] available for %sgateway" % (
+            min_port, max_port, log_tag))
 
     def _build_resource(self, port):
         return resources.Root(self._host, port,
