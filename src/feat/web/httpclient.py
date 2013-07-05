@@ -465,7 +465,8 @@ class ConnectionPool(Connection):
 
     def __init__(self, host, port=None, protocol=None,
                  security_policy=None, logger=None,
-                 maximum_connections=10, enable_pipelineing=True):
+                 maximum_connections=10, enable_pipelineing=True,
+                 response_timeout=None):
 
         Connection.__init__(self, host, port, protocol,
                             security_policy, logger)
@@ -476,6 +477,9 @@ class ConnectionPool(Connection):
         self._max = maximum_connections
         self._connecting = 0
         self._enable_pipelineing = enable_pipelineing
+
+        # this is used by http.BaseProtocol, passing None defaults to 60s
+        self.response_timeout = response_timeout
 
     ### public ###
 
