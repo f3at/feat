@@ -70,7 +70,8 @@ class Startup(agency.Startup):
 
         dbc = self.c.db
         assert isinstance(dbc, config.DbConfig), str(type(dbc))
-        self._db = driver.Database(dbc.host, int(dbc.port), dbc.name)
+        self._db = driver.Database(dbc.host, int(dbc.port), dbc.name,
+                                   dbc.username, dbc.password)
         self._journaler = journaler.Journaler(
             on_rotate_cb=self.friend._force_snapshot_agents,
             on_switch_writer_cb=self.friend._on_journal_writer_switch,

@@ -32,7 +32,7 @@ from twisted.web.http import _DataLoss as DataLoss
 from feat.database.client import Connection, ChangeListener
 from feat.common import log, defer, time, error
 from feat.agencies import common
-from feat.web import http, httpclient
+from feat.web import http, httpclient, auth
 from feat import hacks
 
 json = hacks.import_json()
@@ -198,7 +198,13 @@ class CouchDB(httpclient.ConnectionPool):
 
     log_category = 'couchdb-connection'
 
-    def __init__(self, host, port, maximum_connections=2, logger=None):
+    def __init__(self, host, port, username=None, password=None,
+                 maximum_connections=2, logger=None):
+        if username is not None and password is not None:
+            a = auth.BasicHTTPCredentials(username, password)
+            self._auth_header = a.header_value
+        else:
+            self._auth_header = None
         httpclient.ConnectionPool.__init__(
             self, host, port,
             maximum_connections=maximum_connections,
@@ -206,25 +212,34 @@ class CouchDB(httpclient.ConnectionPool):
             enable_pipelineing=False)
 
     def get(self, url, headers=dict(), **extra):
+        self._set_auth(headers)
         headers.setdefault('accept', "application/json")
         return self.request(http.Methods.GET, url, headers=headers, **extra)
 
     def put(self, url, body=None, headers=dict(), **extra):
+        self._set_auth(headers)
         headers.setdefault('accept', "application/json")
         headers.setdefault('content-type', "application/json")
         return self.request(http.Methods.PUT, url,
                             body=body, headers=headers, **extra)
 
     def post(self, url, body=None, headers=dict(), **extra):
+        self._set_auth(headers)
         headers.setdefault('accept', "application/json")
         headers.setdefault('content-type', "application/json")
         return self.request(http.Methods.POST, url,
                             body=body, headers=headers, **extra)
 
     def delete(self, url, headers=dict(), **extra):
+        self._set_auth(headers)
         headers.setdefault('accept', "application/json")
         return self.request(http.Methods.DELETE, url, headers=headers,
                             **extra)
+
+    def _set_auth(self, headers):
+        if self._auth_header:
+            headers['authorization'] = self._auth_header
+        return headers
 
 
 class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
@@ -233,7 +248,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     log_category = "database"
 
-    def __init__(self, host, port, db_name):
+    def __init__(self, host, port, db_name, username=None, password=None):
         common.ConnectionManager.__init__(self)
         log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
@@ -261,10 +276,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
 
-        self._configure(host, port, db_name)
+        self._configure(host, port, db_name, username, password)
 
-    def reconfigure(self, host, port, name):
-        self._configure(host, port, name)
+    def reconfigure(self, host, port, name, username=None, password=None):
+        self._configure(host, port, name, username, password)
 
     def show_connection_status(self):
         eta = self.reconnector and self.reconnector.active() and \
@@ -530,10 +545,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             else:
                 raise DatabaseError(str(int(response.status)) + ": " + msg)
 
-    def _configure(self, host, port, name):
+    def _configure(self, host, port, name, username, password):
         self._cancel_reconnector()
         self.host, self.port = host, port
-        self.couchdb = CouchDB(host, port, logger=self)
+        self.username, self.password = username, password
+        self.couchdb = CouchDB(host, port, username, password, logger=self)
         self.db_name = name
         self.disconnected = False
 

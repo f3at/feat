@@ -41,6 +41,8 @@ class DbConfig(formatable.Formatable):
     formatable.field('host', options.DEFAULT_DB_HOST)
     formatable.field('port', options.DEFAULT_DB_PORT)
     formatable.field('name', options.DEFAULT_DB_NAME)
+    formatable.field('username', None)
+    formatable.field('password', None)
 
 
 class ManholeConfig(formatable.Formatable):

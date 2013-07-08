@@ -204,6 +204,12 @@ def add_db_options(parser):
                      help=("name of database to use "
                            "(default: %s)" % DEFAULT_DB_NAME),
                      metavar="NAME")
+    group.add_option('--dbusername', dest="db_username",
+                     help="username to use for authentication ",
+                     metavar="USER")
+    group.add_option('--dbpassword', dest="db_password",
+                     help="password to use for authentication ",
+                     metavar="USER")
     parser.add_option_group(group)
 
 
