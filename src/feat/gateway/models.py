@@ -1099,7 +1099,8 @@ class ResolveAlert(_AlertAction):
 
 @featmodels.register_model
 class AlertService(model.Model):
-    model.identity("feat.agent.alert.services.<hostname>.<description>.service")
+    model.identity("feat.agent.alert.services.<hostname>.<description>"
+                   ".service")
     model.attribute('count', value.Integer(),
                     getter.source_attr('received_count'),
                     label='Count')
@@ -1125,3 +1126,9 @@ class AlertService(model.Model):
 
     model.action('raise', RaiseAlert)
     model.action('resolve', ResolveAlert)
+    model.delete('del',
+                 effect.context_value('source'),
+                 call.view_filter('delete_alert'),
+                 response.deleted("Deleted"),
+                 desc="Delete the alert",
+                 label="Delete")

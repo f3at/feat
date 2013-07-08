@@ -164,7 +164,7 @@ class AlertAgent(agent.BaseAgent):
         self.info("Loading info about persistent services. %d entries found",
                   len(view_result))
         for doc in view_result:
-            key = (doc.hostname, doc.description)
+            key = self._alert_key(doc)
             if key not in state.alerts:
                 state.alerts[key] = doc
             else:
@@ -235,6 +235,19 @@ class AlertAgent(agent.BaseAgent):
             res += c.service_template % params
         return res.encode('utf8')
 
+    @replay.mutable
+    def delete_alert(self, state, alert):
+        key = self._alert_key(alert)
+        if key in state.alerts:
+            self.info('Removing alert from agent state.')
+            del state.alerts[key]
+        if alert.persistent:
+            self.info("Removing alert definition from database. Doc id: %s",
+                      alert.doc_id)
+            f = self.delete_document(alert)
+            f.add_callback(fiber.override_result, None)
+            return f
+
     ### receiving alert notifications ###
 
     @replay.mutable
@@ -264,10 +277,13 @@ class AlertAgent(agent.BaseAgent):
         if changed:
             state.config_notifier.notify(self.generate_nagios_service_cfg())
 
+    def _alert_key(self, alert):
+        return (alert.hostname, alert.description or
+                "-".join([alert.agent_id, alert.name]))
+
     @replay.mutable
     def _find_entry(self, state, alert):
-        key = (alert.hostname, alert.description or
-               "-".join([alert.agent_id, alert.name]))
+        key = self._alert_key(alert)
         if key not in state.alerts:
             state.alerts[key] = new = AlertService.from_alert(alert, alert)
             self.info("Received alert for service we don't know, triggering "
