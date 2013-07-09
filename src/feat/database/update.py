@@ -1,7 +1,7 @@
 from feat.database.interface import ResignFromModifying
 
 
-def attributes(document, params):
+def attributes(document, params, force_save=False):
     changed = False
     for key, value in params.iteritems():
         if not isinstance(key, tuple):
@@ -21,7 +21,7 @@ def attributes(document, params):
             setattr(actual, key[-1], value)
             changed = True
 
-    if changed:
+    if force_save or changed:
         return document
     else:
         raise ResignFromModifying()

@@ -28,7 +28,7 @@ from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager, task
 
 from feat.agencies import recipient, message
-from feat.database import document, view
+from feat.database import document, view, update
 from feat.agents.common import export, monitor, nagios as cnagios, rpc
 from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat
@@ -98,17 +98,16 @@ class AlertService(document.Document):
     document.field('status_info', None)
     document.field('description', None)
     document.field('persistent', False)
+    document.field('received_count', 0)
 
-    def __init__(self, received_count=0, agent_id=None, **kwargs):
+    def __init__(self, agent_id=None, **kwargs):
         super(AlertService, self).__init__(**kwargs)
         # fields defined below are instance variable not document fields,
         # they would not get saved to the database
-        self.received_count = received_count
         self.agent_id = agent_id
 
     def restored(self):
         super(AlertService, self).restored()
-        self.received_count = 0
         self.agent_id = None
 
     @classmethod
@@ -158,6 +157,22 @@ class AlertAgent(agent.BaseAgent):
     @replay.journaled
     def startup(self, state):
         state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
+        # 24 hours after we started we want the get rid of any persistent
+        # services which noone claimed responsibility for
+        state.medium.call_later_ex(24 * 3600, self._cleanup_orphaned_services,
+                                   busy=False)
+
+    @replay.mutable
+    def _cleanup_orphaned_services(self, state):
+        to_delete = list()
+        for alert in state.alerts.itervalues():
+            if alert.persistent and not alert.agent_id:
+                to_delete.append(alert)
+        if to_delete:
+            f = fiber.FiberList([self.delete_alert(x) for x in to_delete],
+                                consumeErrors=True)
+            f.add_callback(fiber.override_result, None)
+            return f.succeed()
 
     @replay.mutable
     def _load_persistent_services(self, state, view_result):
@@ -171,7 +186,8 @@ class AlertAgent(agent.BaseAgent):
                 # Because of concurency in receiving alerts and scaning shards
                 # we might have duplicates in documents describing persitent
                 # alert. Here they are removed
-                self.call_next(state.medium.delete_document, doc)
+                db = state.medium.get_database()
+                self.call_next(db.update_document, doc, update.delete)
 
     @replay.journaled
     def on_configuration_change(self, state, config):
@@ -202,10 +218,7 @@ class AlertAgent(agent.BaseAgent):
         nagios wouldnt ever have to run check_dummy check.'''
         self.debug("Pushing all notifications to nagios.")
 
-        # We are pushing only the alerts which has the agent responsible for
-        # them. As long as noone claims responsiblity the state should not
-        # change.
-        to_send = [x for x in state.alerts.itervalues() if x.agent_id]
+        to_send = state.alerts.values()
         f = fiber.wrap_defer(state.nagios.send, to_send)
         f.add_callback(fiber.override_result, None)
         return f
@@ -239,14 +252,24 @@ class AlertAgent(agent.BaseAgent):
     def delete_alert(self, state, alert):
         key = self._alert_key(alert)
         if key in state.alerts:
-            self.info('Removing alert from agent state.')
-            del state.alerts[key]
+            self.info('Removing alert from agent state. Key: %r', key)
+            alert = state.alerts.pop(key)
         if alert.persistent:
             self.info("Removing alert definition from database. Doc id: %s",
                       alert.doc_id)
-            f = self.delete_document(alert)
+            f = self.update_document(alert, update.delete)
             f.add_callback(fiber.override_result, None)
             return f
+        else:
+            return fiber.succeed()
+
+    @replay.immutable
+    def _update_persistent_alert(self, state, _, alert):
+        updates = {'received_count': alert.received_count,
+                   'status_info': alert.status_info}
+        db = state.medium.get_database()
+        return db.update_document(alert, update.attributes, updates,
+                                  force_save=True)
 
     ### receiving alert notifications ###
 
@@ -258,7 +281,10 @@ class AlertAgent(agent.BaseAgent):
         r.received_count += 1
         r.status_info = alert.status_info
         if should_notify:
-            return fiber.wrap_defer(state.nagios.send, [r])
+            f = fiber.wrap_defer(state.nagios.send, [r])
+            if r.persistent:
+                f.add_callback(self._update_persistent_alert, r)
+            return f
 
     @replay.mutable
     def alert_resolved(self, state, alert):
@@ -268,7 +294,10 @@ class AlertAgent(agent.BaseAgent):
         r.received_count = 0
         r.status_info = alert.status_info
         if should_notify:
-            return fiber.wrap_defer(state.nagios.send, [r])
+            f = fiber.wrap_defer(state.nagios.send, [r])
+            if r.persistent:
+                f.add_callback(self._update_persistent_alert, r)
+            return f
 
     ### private ###
 
