@@ -268,8 +268,8 @@ class LinkedDocuments(object):
     def __init__(self, links):
         self._links = links
 
-    def create(self, doc_id=None, linker_roles=list(),
-               linkee_roles=list(), type_name=None, doc=None):
+    def create(self, doc_id=None, linker_roles=None,
+               linkee_roles=None, type_name=None, doc=None):
         if doc is not None:
             if IDocument.providedBy(doc):
                 doc_id = doc.doc_id or doc_id
@@ -282,14 +282,14 @@ class LinkedDocuments(object):
             raise ValueError("Either pass doc_id or saved document instance")
         if type_name is None:
             raise ValueError("Type name is needed to create a link")
-        if not isinstance(linker_roles, list):
+        if linker_roles and not isinstance(linker_roles, list):
             raise TypeError(linker_roles)
-        if not isinstance(linkee_roles, list):
+        if linkee_roles and not isinstance(linkee_roles, list):
             raise TypeError(linkee_roles)
 
         self.remove(doc_id, noraise=True)
         self._links.append([type_name, doc_id,
-                            linker_roles, linkee_roles])
+                            linker_roles or list(), linkee_roles or list()])
 
     def remove(self, doc_id, noraise=False):
         r = self._get(doc_id, noraise)
