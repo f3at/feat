@@ -294,6 +294,8 @@ class TestCase(object):
         # check that it can be fetched from both sides
         fetched1 = yield links.fetch(self.connection, docs[0].doc_id)
         self.assertEqual([docs[1]], fetched1)
+        fetched1 = yield links.fetch_one(self.connection, docs[0].doc_id)
+        self.assertEqual(docs[1], fetched1)
         fetched2 = yield links.fetch(self.connection, docs[1].doc_id)
         self.assertEqual([docs[0]], fetched2)
 

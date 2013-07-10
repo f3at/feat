@@ -64,6 +64,13 @@ def fetch(connection, doc_id, type_name=None):
     return connection.query_view(Join, include_docs=True, **keys)
 
 
+def fetch_one(connection, doc_id, type_name=None):
+    keys = Join.keys(doc_id, type_name)
+    d = connection.query_view(Join, include_docs=True, limit=1, **keys)
+    d.addCallback(lambda x: x[0] if x else None)
+    return d
+
+
 def get_ids(connection, doc_id, type_name=None):
     keys = Join.keys(doc_id, type_name)
     d = connection.query_view(Join, parse_results=False, **keys)
