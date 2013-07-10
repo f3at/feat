@@ -35,6 +35,7 @@ from feat.interface.serialization import ISerializable, IRestorator
 
 field = formatable.field
 
+
 class Document(formatable.Formatable):
 
     implements(IDocument, IDocumentPrivate)
@@ -295,6 +296,12 @@ class LinkedDocuments(object):
         r = self._get(doc_id, noraise)
         if r:
             self._links.remove(r)
+
+    def first(self, type_name):
+        '''Return doc_id of the document of the first matching type.'''
+        if IRestorator.providedBy(type_name):
+            type_name = type_name.type_name
+        return first(x[1] for x in self._links if x[0] == type_name)
 
     def _get(self, doc_id, noraise):
         r = first(x for x in self._links if x[1] == doc_id)

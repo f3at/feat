@@ -97,6 +97,9 @@ class DocumentSerializationTest(common.TestCase):
         d2 = TestDocument(doc_id=u'test2')
         d3 = TestDocument(doc_id=u'test3')
         d.links.create(doc=d2)
+        self.assertEqual(d2.doc_id, d.links.first(TestDocument.type_name))
+        #by type works as well
+        self.assertEqual(d2.doc_id, d.links.first(TestDocument))
         self.assertEqual([['test_doc', 'test2', [], []]], d.linked)
 
         d.links.create(doc=d2, linker_roles=['parent'])
