@@ -245,15 +245,6 @@ class FormatableView(BaseView, formatable.Formatable):
 
 
 @feat.register_view
-class DocumentDeletions(BaseView):
-
-    name = 'deletions'
-
-    def filter(doc, request):
-        return doc.get('_deleted', False)
-
-
-@feat.register_view
 class DocumentByType(JavascriptView):
 
     design_doc_id = 'featjs'

@@ -1153,7 +1153,7 @@ class NonEmuTests(object):
         def listener(doc_id, rev, deleted, own_change):
             pass
 
-        d = self.connection.changes_listener(view.DocumentDeletions, listener)
+        d = self.connection.changes_listener(view.DocumentByType, listener)
         self.assertFailure(d, NotFoundError)
         return d
 
