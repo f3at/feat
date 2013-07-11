@@ -97,3 +97,8 @@ def steps(document, *updates):
 
 def delete(document):
     return None
+
+
+def create_link(document, *args, **kwargs):
+    document.links.create(*args, **kwargs)
+    return document
