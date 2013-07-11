@@ -268,6 +268,9 @@ class LinkedDocuments(object):
 
     def __init__(self, links):
         self._links = links
+        # list of documents to be saved after the owner of this class is saved
+        # format: [(IDocument, linker_roles or None, linkee_roles or None)]
+        self.to_save = list()
 
     def create(self, doc_id=None, linker_roles=None,
                linkee_roles=None, type_name=None, doc=None):
@@ -291,6 +294,9 @@ class LinkedDocuments(object):
         self.remove(doc_id, noraise=True)
         self._links.append([type_name, doc_id,
                             linker_roles or list(), linkee_roles or list()])
+
+    def save_and_link(self, doc, linker_roles=None, linkee_roles=None):
+        self.to_save.append((doc, linker_roles, linkee_roles))
 
     def remove(self, doc_id, noraise=False):
         r = self._get(doc_id, noraise)

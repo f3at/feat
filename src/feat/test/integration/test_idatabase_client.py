@@ -309,6 +309,30 @@ class TestCase(object):
         self.assertEqual([docs[0]], fetched2)
 
     @defer.inlineCallbacks
+    def testSaveDocumentWithALink(self):
+        views = (links.Join, view.DocumentByType)
+        for doc in view.DesignDocument.generate_from_views(views):
+            yield self.connection.save_document(doc)
+
+        doc = DummyDocument(field='first')
+        doc.links.save_and_link(DummyDocument(field='second'),
+                                linker_roles=['linkee'])
+
+        yield self.connection.save_document(doc)
+
+        by_type = yield self.connection.query_view(view.DocumentByType,
+                                                   key=DummyDocument.type_name,
+                                                   include_docs=True)
+        self.assertEqual(2, len(by_type))
+        indexed = dict((x.field, x) for x in by_type)
+        self.assertEqual(indexed['first'].doc_id,
+                         indexed['second'].links.first(DummyDocument))
+
+        fetched = yield links.fetch_one(self.connection,
+                                        indexed['first'].doc_id, 'linkee')
+        self.assertEqual(indexed['second'], fetched)
+
+    @defer.inlineCallbacks
     def testDeleteDocumentConcurrently(self):
         doc = DummyDocument(field=u'some_doc')
         doc = yield self.connection.save_document(doc)

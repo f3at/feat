@@ -263,6 +263,15 @@ class Connection(log.Logger, log.LogProxy):
             self._update_id_and_rev(resp, doc)
             for attachment in following_attachments.itervalues():
                 attachment.set_saved()
+
+            # now process all the documents which have been registered to
+            # be saved together with this document
+            while doc.links.to_save:
+                to_link, linker_roles, linkee_roles = doc.links.to_save.pop(0)
+                to_link.links.create(doc=doc, linker_roles=linker_roles,
+                                     linkee_roles=linkee_roles)
+                yield self.save_document(to_link)
+
             defer.returnValue(doc)
         finally:
             self._unlock_notifications()
