@@ -1089,7 +1089,7 @@ class CallbacksReceiver(Mock):
         pass
 
 
-class PaisleySpecific(object):
+class CouchdbSpecific(object):
 
     def setup_receiver(self):
         mock = CallbacksReceiver()
@@ -1452,8 +1452,8 @@ class RemoteDatabaseTest(common.IntegrationTest, TestCase, NonEmuTests):
 
 
 @attr('slow')
-class PaisleyIntegrationTest(common.IntegrationTest, TestCase,
-                             PaisleySpecific, NonEmuTests):
+class CouchdbIntegrationTest(common.IntegrationTest, TestCase,
+                             CouchdbSpecific, NonEmuTests):
 
     timeout = 4
     slow = True
