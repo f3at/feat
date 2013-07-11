@@ -27,7 +27,7 @@ from twisted.internet import reactor
 
 from feat.database import view, driver, document
 from feat.agencies.net import options, config
-from feat.common import log, defer, error
+from feat.common import log, defer, error, first
 from feat.agents.application import feat
 from feat import applications
 
@@ -143,9 +143,18 @@ def tupletize_version(version_string):
 @defer.inlineCallbacks
 def migration_script(connection):
     log.info("script", "Running the migration script.")
+    version_docs = yield connection.query_view(
+        view.DocumentByType,
+        key=ApplicationVersion.type_name,
+        include_docs=True)
+    if version_docs:
+        log.info("script", "Current versions of the installed applications:")
+        for version_doc in version_docs:
+            log.info('script', '%s: %s', version_doc.name, version_doc.version)
+
     for application in applications.get_application_registry().itervalues():
-        keys = ApplicationVersions.key_for(application.name)
-        version_doc = yield connection.query_view(ApplicationVersions, **keys)
+        version_doc = first(x for x in version_docs
+                            if x.name == application.name)
         if not version_doc:
             to_run = application.get_migrations()
             version_doc = ApplicationVersion(name=unicode(application.name))
@@ -206,20 +215,6 @@ class ApplicationVersion(document.Document):
 
     document.field("name", None)
     document.field("version", None)
-
-
-@feat.register_view
-class ApplicationVersions(view.BaseView):
-
-    name = 'application_versions'
-
-    def map(doc):
-        if doc['.type'] == 'application-version':
-            yield doc.get('name'), None
-
-    @staticmethod
-    def key_for(name):
-        return dict(key=name, include_docs=True)
 
 
 def standalone(script, options=[]):
