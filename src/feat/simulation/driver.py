@@ -292,6 +292,7 @@ class Driver(log.Logger, log.LogProxy, Commands):
         d = defer.succeed(None)
         for x in self.iter_agents():
             d.addCallback(defer.drop_param, x._cancel_long_running_protocols)
+            d.addCallback(defer.drop_param, x._cancel_all_delayed_calls)
             d.addCallback(defer.drop_param, x._kill_all_protocols)
         return d
 
