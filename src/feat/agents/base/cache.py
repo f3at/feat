@@ -128,7 +128,8 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
         if not state.view_factory:
             raise AttributeError("This function call makes sense only if the"
                                  " cache has been configured to use the view.")
-        f = state.agent.query_view(state.view_factory, **params)
+        f = state.agent.query_view(state.view_factory, include_docs=True,
+                                   **params)
         f.add_callback(self._view_loaded)
         f.add_callback(fiber.drop_param, state.agent.register_change_listener,
                        state.view_factory, self._document_changed,
@@ -195,9 +196,7 @@ class DocumentCache(replay.Replayable, log.Logger, log.LogProxy):
 
     @replay.mutable
     def _view_loaded(self, state, result):
-        state.documents.clear()
-        fibers = [self._refresh_document(x.doc_id) for x in result]
-        return fiber.FiberList(fibers, consumeErrors=True).succeed()
+        state.documents = dict((x.doc_id, x) for x in result)
 
     @replay.immutable
     def _refresh_document(self, state, doc_id):

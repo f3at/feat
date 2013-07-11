@@ -154,14 +154,14 @@ class TestDNSAgentMisc(common.TestCase):
     def testView(self):
         name = {'_id': '1', '.type': 'dns_name',
                 'zone': 'test.lan', 'name': 'jander'}
-        view = dns_agent.DnsView()
+        view = dns_agent.DnsView
 
-        self.assertEquals(list(view.map(name))[0],
-                          (name['zone'], {'doc_id': name['_id']}))
+        self.assertEquals(list(view.perform_map(name))[0],
+                          (name['zone'], None))
         query1 = {'query': {'zone': 'test.lan'}}
         query2 = {'query': {'zone': 'test1.lan'}}
-        self.assertTrue(view.filter(name, query1))
-        self.assertFalse(view.filter(name, query2))
+        self.assertTrue(view.perform_filter(name, query1))
+        self.assertFalse(view.perform_filter(name, query2))
 
 
 class DummyDNSMedium(DummyMedium):

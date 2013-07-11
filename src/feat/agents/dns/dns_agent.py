@@ -32,7 +32,7 @@ from feat.database import view, document
 from feat.agents.common import export
 from feat.agents.dns import production, simulation
 from feat.agencies import message
-from feat.common import fiber, manhole, formatable
+from feat.common import fiber, manhole, formatable, text_helper
 from feat.agents.application import feat
 
 from feat.agents.dns.interface import (IDNSServerLabourFactory, RecordA,
@@ -109,23 +109,42 @@ class DnsName(document.Document):
         return unicode(match.group(1))
 
 
-@feat.register_restorator
 @feat.register_view
-class DnsView(view.FormatableView):
+class DnsView(view.JavascriptView):
 
+    design_doc_id = 'featjs'
     name = 'dns'
 
-    def map(doc):
+    map = text_helper.format_block('''
+    function(doc) {
+        if (doc[".type"] == "dns_name") {
+            emit(doc["zone"], null);
+        }
+    }
+    ''')
+
+    filter = text_helper.format_block('''
+    function(doc, request) {
+        var zone;
+        if (doc[".type"] == "dns_name") {
+            zone = request.query.zone;
+            return (!zone || doc.zone == zone);
+        }
+        return false;
+    }
+    ''')
+
+    @staticmethod
+    def perform_map(doc):
         if doc.get('.type') == 'dns_name':
             zone = doc.get('zone')
-            yield zone, dict(doc_id=doc.get('_id'))
+            yield zone, None
 
-    def filter(doc, request):
+    @staticmethod
+    def perform_filter(doc, request):
         zone = request['query'].get('zone')
         return doc.get('.type') == 'dns_name' and \
                (zone is None or doc.get('zone') == zone)
-
-    formatable.field('doc_id', None)
 
 
 @feat.register_agent('dns_agent')
