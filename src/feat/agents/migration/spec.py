@@ -21,7 +21,6 @@
 # Headers in this file shall remain intact.
 from feat.agents.migration import protocol
 from feat.common import formatable
-from feat.database import view
 from feat.agents.application import feat
 
 
@@ -56,25 +55,12 @@ class GetShardStructureResponse(protocol.BaseResponse):
     formatable.field('shards', list())
 
 
-@feat.register_view
 @feat.register_restorator
-class ShardStructure(view.FormatableView):
-    # NOTE FOR LATER: after versioned formatables are done this class should
-    # inherit from sth like FormatableVersionedView
-    name = "shard_structure"
+class ShardStructure(formatable.Formatable):
 
-    def map(doc):
-        if doc['.type'] == 'shard_agent':
-            hosts = list()
-            for p in doc['partners']:
-                if p['.type'] == 'shard->host':
-                    hosts.append(p['recipient']['key'])
-            yield doc['shard'], dict(agent_id=doc['_id'],
-                                     shard=doc['shard'],
-                                     hosts=hosts)
-    view.field('agent_id', None)
-    view.field('shard', None)
-    view.field('hosts', list())
+    formatable.field('agent_id', None)
+    formatable.field('shard', None)
+    formatable.field('hosts', list())
 
 
 @feat.register_restorator

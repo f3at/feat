@@ -26,7 +26,7 @@ import sys
 
 from feat.agents.base import agent, replay, manager, contractor, task, sender
 from feat.agencies import message
-from feat.database import document
+from feat.database import document, view
 from feat.agents.common import (rpc, export, host, start_agent, )
 from feat.common import (formatable, serialization, log, fiber,
                          text_helper, manhole, first, )
@@ -217,7 +217,8 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.journaled
     def get_shard_structure(self, state):
-        f = self.query_view(spec.ShardStructure)
+        f = self.query_view(view.DocumentByType, key='shard_agent',
+                            include_docs=True)
         f.add_callback(self._got_shards)
         return f
 
@@ -319,7 +320,13 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.mutable
     def _got_shards(self, state, shards):
-        state.shards = shards
+        state.shards = [
+            spec.ShardStructure(
+                agent_id=descriptor.doc_id,
+                shard=descriptor.shard,
+                hosts=[p.recipient.key for p in descriptor.partners
+                       if p.type_name == 'shard->host'])
+            for descriptor in shards]
         return state.shards
 
 
