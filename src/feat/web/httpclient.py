@@ -265,7 +265,7 @@ class Protocol(http.BaseProtocol):
 
     def _client_error(self, exception):
         if self._response:
-            self._response.connectionLost(exception)
+            self._response.connectionLost(failure.Failure(exception))
             self._response = None
         self.transport.loseConnection()
 
