@@ -290,8 +290,8 @@ class Connection(log.Logger, log.LogProxy):
         return d
 
     @serialization.freeze_tag('IDatabaseClient.update_document')
-    def update_document(self, doc, _method, *args, **kwargs):
-        return self.update_document_ex(doc, _method, args, kwargs)
+    def update_document(self, _doc, _method, *args, **kwargs):
+        return self.update_document_ex(_doc, _method, args, kwargs)
 
     @serialization.freeze_tag('IDatabaseClient.update_document_ex')
     def update_document_ex(self, doc, _method, args=tuple(), keywords=dict()):
