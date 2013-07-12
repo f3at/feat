@@ -519,24 +519,24 @@ class Connection(log.Logger, log.LogProxy):
 
     ### private parts of update_document subroutine ###
 
-    def _iterate_on_update(self, doc, _method, args, keywords):
-        if IDocument.providedBy(doc):
-            doc_id = doc.doc_id
-            rev = doc.rev
+    def _iterate_on_update(self, _document, _method, args, keywords):
+        if IDocument.providedBy(_document):
+            doc_id = _document.doc_id
+            rev = _document.rev
         else:
-            doc_id = doc['_id']
-            rev = doc['_rev']
+            doc_id = _document['_id']
+            rev = _document['_rev']
 
         try:
-            result = _method(doc, *args, **keywords)
+            result = _method(_document, *args, **keywords)
         except ResignFromModifying:
-            return doc
+            return _document
         if result is None:
-            d = self.delete_document(doc)
+            d = self.delete_document(_document)
         else:
             d = self.save_document(result)
-        if (IDocument.providedBy(doc) and
-            doc.conflict_resolution_strategy ==
+        if (IDocument.providedBy(_document) and
+            _document.conflict_resolution_strategy ==
             ConflictResolutionStrategy.merge):
             update_log = document.UpdateLog(
                 handler=_method,
