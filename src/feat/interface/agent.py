@@ -444,8 +444,13 @@ class IPartner(Interface):
     role = Attribute('C{unicode} optional role identifier')
 
     def initiate(agent):
-        """After returning a synchronous result or when the returned fiber
-        is finished the partner is stored to descriptor."""
+        """
+        After returning a synchronous result or when the returned fiber
+        is finished, the partner is stored to descriptor.
+
+        Subclasses can add their keyword arguments with which they
+        will be initiated.
+        """
 
     def on_shutdown(agent):
         pass

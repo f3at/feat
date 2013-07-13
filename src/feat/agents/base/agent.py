@@ -177,7 +177,7 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
                                 dict(config=config),
                                 raise_on_unconsumed=False)
 
-    ### Methods called as a result of agency calls ###
+    ### IPartner methods; called as a result of agency calls ###
 
     @replay.immutable
     def initiate(self, state):
