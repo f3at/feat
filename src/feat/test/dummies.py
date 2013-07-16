@@ -111,7 +111,7 @@ class DummyAgent(DummyBase):
         self._delayed_calls = dict()
 
     def reset(self):
-        self.protocols = list()
+        del self.protocols[:]
         DummyBase.reset(self)
 
     def get_database(self):
