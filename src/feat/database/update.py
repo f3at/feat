@@ -3,7 +3,9 @@ from feat.database.interface import ResignFromModifying
 
 def attributes(document, params, force_save=False):
     changed = False
-    for key, value in params.iteritems():
+    if isinstance(params, dict):
+        params = params.iteritems()
+    for key, value in params:
         if not isinstance(key, tuple):
             key = (key, )
         actual = document
