@@ -88,10 +88,19 @@ class Application(log.Logger):
             else:
                 reflect.named_module(module)
 
+        self.load_adapters()
+
+    def load_adapters(self):
         if self._adapter_hook in interface.adapter_hooks:
             self.warning("Adapter hook has already been present")
         else:
             interface.adapter_hooks.append(self._adapter_hook)
+
+    def unload_adapters(self):
+        try:
+            interface.adapter_hooks.remove(self._adapter_hook)
+        except ValueError:
+            self.warning("Adapter hook has not been present")
 
     def unload(self):
         self.info("Unloading application %s", self.name)
@@ -100,10 +109,7 @@ class Application(log.Logger):
         self._views.application_cleanup(self)
         self._initial_data.application_cleanup(self)
         self._models.application_cleanup(self)
-        try:
-            interface.adapter_hooks.remove(self._adapter_hook)
-        except ValueError:
-            self.warning("Adapter hook has not been present")
+        self.unload_adapters()
         del(self._adapters)
 
         for canonical_name, module in sys.modules.items():
@@ -261,7 +267,6 @@ class ViewRegistry(registry.BaseRegistry):
     allow_none_key = False
     verify_interface = IViewFactory
     key_attribute = 'name'
-
 
 
 _view_registry = ViewRegistry()
