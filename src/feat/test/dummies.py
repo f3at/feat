@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import implements
 
-from feat.common import defer, time, log, journal, fiber, adapter
+from feat.common import defer, time, log, journal, fiber, adapter, first
 from feat.agents.base import descriptor, requester, replier, replay, cache
 from feat.agencies import protocols, common, message
 from feat.agencies.net import config
@@ -77,6 +77,21 @@ class DummyBase(journal.DummyRecorderNode, log.LogProxy, log.Logger):
             del self.calls[callid]
 
 
+class ListOfProtocols(list):
+
+    def by_factory(self, factory):
+        return (x for x in self if x.factory == factory)
+
+    def wait_for(self, factory, timeout=10):
+
+        def get_first(factory):
+            return first(self.by_factory(factory))
+
+        d = time.wait_for(get_first, timeout, factory)
+        d.addCallback(defer.drop_result, get_first, factory)
+        return d
+
+
 class DummyAgent(DummyBase):
 
     descriptor_class = descriptor.Descriptor
@@ -84,7 +99,7 @@ class DummyAgent(DummyBase):
     def __init__(self, logger, db=None):
         DummyBase.__init__(self, logger)
         self.descriptor = self.descriptor_class(shard='test_shard')
-        self.protocols = list()
+        self.protocols = ListOfProtocols()
 
         # db connection
         self._db = db and db or database.Database().get_connection()
