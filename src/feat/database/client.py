@@ -266,11 +266,13 @@ class Connection(log.Logger, log.LogProxy):
 
             # now process all the documents which have been registered to
             # be saved together with this document
-            while doc.links.to_save:
-                to_link, linker_roles, linkee_roles = doc.links.to_save.pop(0)
-                to_link.links.create(doc=doc, linker_roles=linker_roles,
-                                     linkee_roles=linkee_roles)
-                yield self.save_document(to_link)
+            if IDocument.providedBy(doc):
+                while doc.links.to_save:
+                    to_link, linker_roles, linkee_roles = (
+                        doc.links.to_save.pop(0))
+                    to_link.links.create(doc=doc, linker_roles=linker_roles,
+                                         linkee_roles=linkee_roles)
+                    yield self.save_document(to_link)
 
             defer.returnValue(doc)
         finally:

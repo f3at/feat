@@ -217,7 +217,7 @@ class QueryViewMeta(type(view.BaseView)):
         # QueryView
 
         def map(doc):
-            if doc['.type'] not in DOCUMENT_TYPES:
+            if '.type' not in doc or doc['.type'] not in DOCUMENT_TYPES:
                 return
             for field, handler in HANDLERS.iteritems():
                 if doc['.type'] not in getattr(handler, 'document_types',
