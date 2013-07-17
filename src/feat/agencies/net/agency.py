@@ -255,7 +255,7 @@ class Agency(agency.Agency):
                 self, e, "Failed setting up gateway, it will stay disabled.")
 
         self._create_pid_file()
-        self._link_log_file(options.MASTER_LOG_LINK)
+        self.link_log_file(options.MASTER_LOG_LINK)
 
         signal.signal(signal.SIGUSR1, self._sigusr1_handler)
         signal.signal(signal.SIGUSR2, self._sigusr2_handler)
@@ -312,7 +312,7 @@ class Agency(agency.Agency):
         self.kill(stop_process=True)
         return fail
 
-    def _link_log_file(self, filename):
+    def link_log_file(self, filename):
         if not self.config.agency.daemonize:
             # if haven't demonized the log is just at the users console
             return

@@ -54,6 +54,9 @@ class Descriptor(document.Document, pb.Copyable):
     document.field('under_restart', None)
     # Resources allocated by host agent for this agent
     document.field('resources', None)
+    # Setting this for standalone agents will result in symlink created for
+    # the agency log running the agent
+    document.field('symlink_log', None)
 
     ### methods usefull for descriptor manipulations done ###
     ### by agents who don't own them                      ###

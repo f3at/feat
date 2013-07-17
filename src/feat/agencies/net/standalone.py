@@ -19,8 +19,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+import os
+
 from feat.agencies.net import agency, broker
 from feat.common import defer, time, fcntl, error
+from feat.configure import configure
 
 from feat.interface.recipient import IRecipient
 from feat.interface.agent import IDocument
@@ -128,10 +131,18 @@ class Agency(agency.Agency):
         else:
             d.addCallback(lambda _: self._database.get_connection())
             d.addCallback(defer.call_param, 'get_document', aid)
+        d.addCallback(defer.keep_param, self.create_log_link)
         d.addCallback(self.start_agent_locally, **kwargs)
         d.addCallbacks(self.notify_running, self.notify_failed,
                        errbackArgs=(aid, ))
         return d
+
+    def create_log_link(self, desc):
+        if desc.symlink_log:
+            path = desc.symlink_log
+            if not os.path.isabs(path):
+                path = os.path.join(configure.logdir, path)
+                self.link_log_file(path)
 
     def notify_running(self, medium):
         recp = IRecipient(medium)
