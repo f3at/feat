@@ -1254,11 +1254,13 @@ class Server(log.LogProxy, log.Logger):
             return failure
 
         try:
-            msg = "Unrecovered Failure During Web Request"
-            error.handle_failure(self, failure, msg)
+            if not failure.check(http.HTTPError):
+                msg = "Unrecovered Failure During Web Request"
+                error.handle_failure(self, failure, msg)
 
             if response.can_update_headers:
                 response.set_header("content-type", "text/plain")
+                response.force_encoding('ascii')
                 msg = failure.getErrorMessage()
                 if msg:
                     response.write("Error: %s\n" % (msg, ))
@@ -1580,6 +1582,10 @@ class Response(log.Logger):
 
     strict_negotiation = True
 
+    # map encodings unknown to Python but used by browsers to what Python
+    # knows how to handle
+    ENCODING_TRANSLATION = {'x-gbk': 'gbk'}
+
     def __init__(self, server, request):
         log.Logger.__init__(self, request)
         self._server = server
@@ -1868,14 +1874,18 @@ class Response(log.Logger):
                 self._cache = None
                 self.prepare()
                 self._request._ref.write(self._encode(data))
+        except http.HTTPError:
+            pass
         except Exception, e:
-            msg = "Exception during response finalization"
+            msg = "Exception while writing the response"
             error.handle_exception(self, e, msg)
 
         # Always try to finish
 
         try:
             self._request._ref.finish()
+        except http.HTTPError:
+            pass
         except Exception, e:
             msg = "Exception during response finalization"
             error.handle_exception(self, e, msg)
@@ -1907,6 +1917,7 @@ class Response(log.Logger):
         if not self._encoding:
             accepted = self._request.accepted_encodings
             selected = self._get_preferred(accepted, http.DEFAULT_ENCODING)
+            selected = self.ENCODING_TRANSLATION.get(selected, selected)
             self._encoding = selected
 
     def _select_suitable_language(self):
@@ -1925,7 +1936,12 @@ class Response(log.Logger):
     def _encode(self, value):
         if isinstance(value, unicode):
             self._select_suitable_encoding()
-            return value.encode(self._encoding)
+            try:
+                return value.encode(self._encoding)
+            except LookupError:
+                self.info("Responding with NOT_ACCEPTABLE because of unknown"
+                          " encoding requested: %s", self._encoding)
+                raise http.NotAcceptableError()
         return value
 
     def _update_headers(self):
