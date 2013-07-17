@@ -1911,7 +1911,9 @@ class Response(log.Logger):
         return default
 
     def _set_header(self, key, value):
-        self._request._ref.setHeader(key, self._encode(value))
+        if isinstance(value, unicode):
+            value = value.encode(http.HEADER_ENCODING)
+        self._request._ref.setHeader(key, value)
 
     def _select_suitable_encoding(self):
         if not self._encoding:
