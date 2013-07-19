@@ -141,8 +141,9 @@ class AgencyTask(common.AgencyMiddleBase):
             self.finalize(arg)
 
     def _expired(self):
-        error = self.create_expired_error("Timeout exceeded waiting "
-                                          "for task.initiate()")
+        error = self.create_expired_error(
+            "Timeout of %d seconds exceeded waiting "
+            "for task.initiate() to finish" % (self.task.timeout, ))
         self._set_state(TaskState.expired)
         d = self.call_agent_side(self.task.expired)
         d.addCallback(defer.drop_param, self.finalize, error)
