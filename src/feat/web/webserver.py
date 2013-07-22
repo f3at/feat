@@ -523,8 +523,15 @@ class ELFLog(object):
         self._output.flush()
 
     def cleanup(self):
-        signal.unregister(signal.SIGHUP, self._sighup_handler)
-        self._output.close()
+        try:
+            signal.unregister(signal.SIGHUP, self._sighup_handler)
+        except ValueError:
+            # this happens when cleanup() is called when init()
+            # was not called before.
+            pass
+        if hasattr(self, '_output'):
+            self._output.close()
+            del self._output
 
     ### extracting data ###
 
