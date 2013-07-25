@@ -1,7 +1,7 @@
 import socket
 
 from twisted.names import dns, client, resolve, cache, hosts as hostsModule
-from twisted.names.error import DNSNameError
+from twisted.names.error import DomainError
 from twisted.internet import error, defer
 
 
@@ -31,7 +31,7 @@ class ResolverChain(resolve.ResolverChain):
         return d
 
     def _formatError(self, fail, name):
-        fail.trap(DNSNameError)
+        fail.trap(DomainError)
         return defer.fail(error.DNSLookupError(name))
 
 
