@@ -18,7 +18,7 @@ class Join(view.JavascriptView):
                 var row = doc.linked[x];
 
                 // emit link from document to linkee
-                if (row[3]) {
+                if (row[3] && row[3].length && row[3][0][0] != '.') {
                     for (var xx=0; xx < row[3].length; xx ++) {
                         emit([doc["_id"], row[3][xx]], {"_id": row[1]});
                     }
@@ -26,7 +26,7 @@ class Join(view.JavascriptView):
                 emit([doc["_id"], row[0]], {"_id": row[1]});
 
                 // emit reverse link, from linkee to linker
-                if (row[2]) {
+                if (row[2] && row[2].length && row[2][0][0] != '.') {
                     for (var xx=0; xx < row[2].length; xx ++) {
                         emit([row[1], row[2][xx]], null);
                     }
