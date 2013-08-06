@@ -379,6 +379,19 @@ class BaseQueryViewController(object):
             return dict(startkey=(field, ), endkey=(field, {}))
 
 
+class KeepValueController(BaseQueryViewController):
+    '''
+    Use this controller if you want to define a field which later you can
+    query with include_values paramater.
+    This is usefull for loading collations.
+    '''
+
+    keeps_value = True
+
+    def parse_view_result(self, rows):
+        return [(x[2], x[0][1]) for x in rows]
+
+
 class HighestValueFieldController(BaseQueryViewController):
     '''
     Use this controller to extract the value of a joined field.
