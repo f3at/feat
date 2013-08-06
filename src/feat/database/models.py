@@ -145,6 +145,15 @@ class QueryView(model.Collection):
         SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
         result_info = value.Model()
 
+        name = utils.mk_class_name(cls._view.name, "EnumOptions")
+        EnumOptions = type(name, (value.String, ), {})
+        EnumOptions.annotate_options_only()
+        for field in cls._allowed_fields:
+            EnumOptions.annotate_option(field)
+
+        name = utils.mk_class_name(cls._view.name, "IncludeValue")
+        IncludeValue = value.MetaCollection.new(name, [EnumOptions()])
+
         def build_query(value, context, *args, **kwargs):
 
             def merge_conditions(static_conditions, factory, q):
@@ -152,12 +161,25 @@ class QueryView(model.Collection):
                 return query.Query(factory, q, query.Operator.AND, subquery,
                                    include_value=cls._include_value)
 
+            def merge_include_value(query, include_value):
+                query.include_value.extend(include_value)
+                return query
+
+            def store_in_context(query):
+                context['query'] = query
+                return query
+
             cls = type(context['model'])
             if cls._static_conditions:
                 d = cls._static_conditions(None, context)
                 d.addCallback(merge_conditions, cls._view, kwargs['query'])
-                return d
-            return defer.succeed(kwargs['query'])
+            else:
+                d = defer.succeed(kwargs['query'])
+            if kwargs.get('include_value'):
+                d.addCallback(merge_include_value, kwargs['include_value'])
+            d.addCallback(store_in_context)
+
+            return d
 
         SelectAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Select"),
@@ -169,6 +191,8 @@ class QueryView(model.Collection):
                 fetch_documents,
                 call.model_filter('render_select_response')],
             params=[action.Param('query', QueryValue()),
+                    action.Param('include_value', IncludeValue(),
+                                 is_required=False),
                     action.Param('sorting', SortingValue(), is_required=False),
                     action.Param('skip', value.Integer(0), is_required=False),
                     action.Param('limit', value.Integer(), is_required=False)])

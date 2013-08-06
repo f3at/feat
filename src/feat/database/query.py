@@ -519,7 +519,7 @@ class Query(serialization.Serializable):
                                      "Operator, %r given" % (index, part))
                 self.operators.append(part)
 
-        self.include_value = kwargs.pop('include_value', list())
+        self.include_value = list(kwargs.pop('include_value', list()))
 
         sorting = kwargs.pop('sorting', None)
         self.set_sorting(sorting)
