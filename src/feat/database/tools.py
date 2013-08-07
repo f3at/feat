@@ -242,9 +242,11 @@ def standalone(script, options=[]):
     def _error_handler(fail):
         error.handle_failure('script', fail, "Finished with exception: ")
 
+    # call log.init before define_option, which parses the service config
+    # and can fail
+    log.init()
     parser = define_options(options)
     opts, args = parser.parse_args()
-    log.init()
     log.FluLogKeeper.set_debug(opts.log)
 
     db = config.parse_service_config().db
