@@ -40,7 +40,9 @@ class MetaEnum(type):
                 if not key.startswith("_"):
                     cls.add(key, value)
 
-    def add(cls, attr, value):
+    def add(cls, attr, value=None):
+        if value is None:
+            value = max(cls._values.keys()) + 1
         if isinstance(value, tuple) and len(value) == 2:
             value, name = value
         else:
