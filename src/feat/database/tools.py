@@ -115,7 +115,8 @@ def script():
 
     opts, args = parse_options()
     c = config.DbConfig(host=opts.db_host, port=opts.db_port,
-                        name=opts.db_name)
+                        name=opts.db_name, username=opts.db_username,
+                        password=opts.db_password)
     with dbscript(c) as d:
 
         def body(connection):
@@ -201,7 +202,11 @@ class dbscript(object):
         self._deferred = defer.Deferred()
         return self._deferred
 
+    def _handle_error(self, fail):
+        error.handle_failure('script', fail, 'Error in the end')
+
     def __exit__(self, type, value, traceback):
+        self._deferred.addErrback(self._handle_error)
         self._deferred.addBoth(defer.drop_param, reactor.stop)
         reactor.callWhenRunning(self._deferred.callback, self.connection)
         reactor.run()
@@ -222,15 +227,22 @@ def standalone(script, options=[]):
         c = config.parse_service_config()
 
         parser = optparse.OptionParser()
-        parser.add_option('--dbhost', '-H', action='store', dest='hostname',
+        parser.add_option('--dbhost', '-H', action='store', dest='db_host',
                           type='str', help='hostname of the database',
                           default=c.db.host)
-        parser.add_option('--dbname', '-n', action='store', dest='dbname',
+        parser.add_option('--dbname', '-n', action='store', dest='db_name',
                           type='str', help='name of database to use',
                           default=c.db.name)
-        parser.add_option('--dbport', '-P', action='store', dest='dbport',
+        parser.add_option('--dbport', '-P', action='store', dest='db_port',
                           type='str', help='port of database to use',
                           default=c.db.port)
+        parser.add_option('--dbusername', dest="db_username",
+                          help="username to use for authentication ",
+                          metavar="USER", default=c.db.username)
+        parser.add_option('--dbpassword', dest="db_password",
+                          help="password to use for authentication ",
+                          metavar="USER", default=c.db.password)
+
         parser.add_option('--log', action='store', dest='log',
                           type='str', help='log level to set',
                           default=os.environ.get('FEAT_DEBUG', '2'))
@@ -250,7 +262,8 @@ def standalone(script, options=[]):
     log.FluLogKeeper.set_debug(opts.log)
 
     db = config.parse_service_config().db
-    db.host, db.port, db.name = opts.hostname, opts.dbport, opts.dbname
+    db.host, db.port, db.name = opts.db_host, opts.db_port, opts.db_name
+    db.username, db.password = opts.db_username, opts.db_password
 
     with dbscript(db) as d:
         d.addCallback(script, opts)
