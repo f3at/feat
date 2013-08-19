@@ -217,11 +217,12 @@ class QueryViewMeta(type(view.BaseView)):
         # QueryView
 
         def map(doc):
-            if '.type' not in doc or doc['.type'] not in DOCUMENT_TYPES:
+            if '.type' not in doc:
                 return
             for field, handler in HANDLERS.iteritems():
-                if doc['.type'] not in getattr(handler, 'document_types',
-                                               DOCUMENT_TYPES):
+                type_check = getattr(handler, 'document_types',
+                                     DOCUMENT_TYPES)
+                if doc['.type'] not in type_check:
                     continue
 
                 if hasattr(handler, 'emit_value'):
@@ -248,9 +249,6 @@ class QueryViewMeta(type(view.BaseView)):
 
         cls.attach_dict_of_objects(cls.map, 'HANDLERS')
 
-        cls.DOCUMENT_TYPES.update(set([x for field in HANDLERS.itervalues()
-                                       if hasattr(field, 'document_types')
-                                       for x in field.document_types]))
         cls.attach_constant(
             cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
         cls.attach_constant(
@@ -713,6 +711,7 @@ def _generate_sort_key(responses, sorting):
         for name, direction in sorting:
             relevant = [v for k, v in responses.iteritems()
                         if k[0] == name]
+
             for r in relevant:
                 try:
                     index = r.index(row)

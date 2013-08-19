@@ -646,8 +646,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                    channel_type, self.get_full_id())
 
     def _initiate_protocol(self, factory, args, kwargs):
-        self.log('Initiating protocol for factory: %r, args: %r, kwargs: %r',
-                 factory, args, kwargs)
+        self.debug('Initiating protocol %s.%s, args: %r, kwargs: %r',
+                   factory.protocol_type, factory.protocol_id, args, kwargs)
         args = args or ()
         kwargs = kwargs or {}
         factory = IInitiatorFactory(factory)
