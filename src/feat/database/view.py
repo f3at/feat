@@ -153,8 +153,9 @@ class BaseView(annotate.Annotable):
             raise AttributeError("%s not in %r" % (query_method.__name__,
                                                    QUERY_METHODS))
         source = cls._get_normalized_source(method)
-        query_method.source += "\n%s" % (source, )
-        query_method.func_globals.update({method.__name__: method})
+        if source not in query_method.source:
+            query_method.source += "\n%s" % (source, )
+            query_method.func_globals.update({method.__name__: method})
 
     @classmethod
     def attach_code(cls, query_method, code):

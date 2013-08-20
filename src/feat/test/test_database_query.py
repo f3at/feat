@@ -194,6 +194,11 @@ class QueryView(query.QueryView):
         def emit_value(doc):
             return doc.get('name')
 
+    @query.field('another_complex')
+    class AnotherComplexField(BaseField):
+
+        document_types = []
+
 
 class TestQueryCache(common.TestCase):
     '''
@@ -225,13 +230,14 @@ class TestQueryView(common.TestCase):
     def testMap(self):
         code = QueryView.get_code('map')
         self.assertIn("DOCUMENT_TYPES = set(['type1', 'type2'])", code)
-        self.assertIn("HANDLERS = {'complex': ComplexField, "
+        self.assertIn("HANDLERS = {'another_complex': AnotherComplexField, "
+                      "'complex': ComplexField, "
                       "'name': extract_name, "
                       "'position': extract_position}", code)
         self.assertIn("def extract_position(doc)", code)
         self.assertIn("class ComplexField(BaseField)", code)
         self.assertIn("    @staticmethod\n    def field_value(doc):", code)
-        self.assertIn("class BaseField(object)", code)
+        self.assertEqual(1, code.count("class BaseField(object)"))
 
         # decorators need to be cleared out
         self.assertNotIn("@query.field", code)
