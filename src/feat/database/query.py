@@ -623,16 +623,19 @@ class Query(serialization.Serializable):
 @defer.inlineCallbacks
 def select_ids(connection, query, skip=0, limit=None):
     temp, responses = yield _get_query_response(connection, query)
-    if query.sorting:
-        temp = sorted(temp, key=_generate_sort_key(responses, query.sorting))
-    else:
-        temp = list(temp)
+
     if limit is not None:
         stop = skip + limit
     else:
         stop = None
-    r = temp[slice(skip, stop)]
-    defer.returnValue(r)
+
+    name, direction = query.sorting
+    index = first(v for k, v in responses.iteritems()
+                  if k.field == name)
+    if direction == Direction.DESC:
+        index = reversed(index)
+    temp = list(_get_sorted_slice(index, temp, skip, stop))
+    defer.returnValue(temp)
 
 
 def select(connection, query, skip=0, limit=None):
@@ -727,19 +730,30 @@ def _calculate_query_response(responses, query):
             raise ValueError("Unkown operator '%r' %" (oper, ))
 
 
-def _generate_sort_key(responses, sorting):
-    name, direction = sorting
-    relevant = first(v for k, v in responses.iteritems()
-                     if k.field == name)
+def _get_sorted_slice(index, rows, skip, stop):
+    seen = 0
+    if stop is None:
+        stop = len(rows)
 
-    def sort_key(row):
+    for value in index:
+        if not rows:
+            return
         try:
-            index = relevant.index(row)
-        except ValueError:
-            index = sys.maxint
-        if direction == Direction.DESC:
-            index = -index
+            rows.remove(value)
+        except KeyError:
+            continue
 
-        return index
-
-    return sort_key
+        seen += 1
+        if skip < seen <= stop:
+            yield value
+        if seen > stop:
+            break
+    else:
+        # if we haven't reached the sorted target,
+        # now just return the rows as they appear
+        missing = stop - seen
+        try:
+            for x in range(missing):
+                yield rows.pop()
+        except KeyError:
+            pass
