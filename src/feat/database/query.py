@@ -674,11 +674,16 @@ def _parse_values_response(results):
 def _get_query_response(connection, query):
     cache = connection.get_query_cache()
     responses = dict()
+    defers = list()
+
     update_seq = yield connection.get_update_seq()
     for subquery in query.get_basic_queries():
-        # subquery -> list of doc ids
-        responses[subquery] = yield cache.query(
-            connection, query.factory, subquery, update_seq)
+        d = cache.query(connection, query.factory, subquery, update_seq)
+        d.addCallback(defer.inject_param, 1, responses.__setitem__,
+                      subquery)
+        defers.append(d)
+    if defers:
+        yield defer.DeferredList(defers, consumeErrors=True)
     defer.returnValue((_calculate_query_response(responses, query), responses))
 
 
