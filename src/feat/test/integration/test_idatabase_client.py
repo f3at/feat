@@ -934,7 +934,7 @@ class TestCase(object):
         self.assertEqual('5.6.7', res[2].version)
         self.assertEqual(None, res[3].version)
 
-        q = Q(QueryReduceView, sorting=[('version', D.ASC)])
+        q = Q(QueryReduceView, sorting=('version', D.ASC))
         res = yield query.select(self.connection, q)
         self.assertEqual([saved[0], saved[2], saved[1], saved[3]], res)
 
@@ -969,21 +969,22 @@ class TestCase(object):
 
         yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], c1)
         yield self._query_test([9, 8, 7, 6, 5, 4, 3, 2, 1, 0], c1,
-                               sorting=[('field1_resorted', D.ASC)])
+                               sorting=('field1_resorted', D.ASC))
         yield self._query_test([5, 6, 7, 8, 9], c1, O.AND, c2)
         yield self._query_test([0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-                                15, 16, 17, 18, 19], c1, O.OR, c2)
+                                15, 16, 17, 18, 19], c1, O.OR, c2,
+                               order_kept=10)
         yield self._query_test([5, 6, 7, 8, 9], c4, O.AND, c2)
 
         yield self._query_test([1, 3, 5, 7, 9, 11, 13, 15, 17, 19], c3,
-                               sorting=[('field1', D.ASC)])
+                               sorting=('field1', D.ASC))
         yield self._query_test([19, 17, 15, 13, 11, 9, 7, 5, 3, 1],
-                               c3, sorting=[('field1_resorted', D.ASC)])
+                               c3, sorting=('field1_resorted', D.ASC))
         q = Q(QueryView, c3)
         yield self._query_test([1, 3, 5, 7, 9], q, O.AND, c1,
-                               sorting=[('field1', D.ASC)])
+                               sorting=('field1', D.ASC))
         yield self._query_test([13, 11, 9, 7, 5], q, O.AND, c4,
-                               sorting=[('field1', D.DESC)])
+                               sorting=('field1', D.DESC))
         yield self._query_test([5, 7, 9], c1, O.AND, c4, O.AND, q)
 
         yield self._query_values('field1', set(range(20)))
@@ -1014,10 +1015,18 @@ class TestCase(object):
         self.assertEqual(expected, values)
 
     @defer.inlineCallbacks
-    def _query_test(self, result, *parts, **kwargs):
+    def _query_test(self, expected, *parts, **kwargs):
         q = query.Query(QueryView, *parts, sorting=kwargs.pop('sorting', None))
+        order_kept = kwargs.pop('order_kept', None)
         res = yield query.select(self.connection, q)
-        self.assertEquals(result, [x.field1 for x in res])
+        result = [x.field1 for x in res]
+        if order_kept:
+            # sometimes fields are expected to come in random order
+            self.assertEquals(expected[:order_kept], result[:order_kept])
+            self.assertEquals(set(expected), set(result))
+        else:
+            self.assertEquals(expected, result)
+
         count = yield query.count(self.connection, q)
         self.assertEquals(len(result), count)
 

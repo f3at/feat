@@ -141,8 +141,6 @@ class QueryView(model.Collection):
         name = utils.mk_class_name(cls._view.name, "Query")
         QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields,
                                         cls._include_value)
-        name = utils.mk_class_name(cls._view.name, "Sorting")
-        SortingValue = MetaSortingValue.new(name, cls._allowed_fields)
         result_info = value.Model()
 
         name = utils.mk_class_name(cls._view.name, "EnumOptions")
@@ -193,7 +191,8 @@ class QueryView(model.Collection):
             params=[action.Param('query', QueryValue()),
                     action.Param('include_value', IncludeValue(),
                                  is_required=False),
-                    action.Param('sorting', SortingValue(), is_required=False),
+                    action.Param('sorting', SortField(cls._allowed_fields),
+                                 is_required=False),
                     action.Param('skip', value.Integer(0), is_required=False),
                     action.Param('limit', value.Integer(), is_required=False)])
         cls.annotate_action(u"select", SelectAction)
@@ -276,14 +275,6 @@ class FreeList(value.Collection):
     def validate(self, v):
         v = super(FreeList, self).validate(v)
         return tuple(v)
-
-
-class MetaSortingValue(type(value.Collection)):
-
-    @staticmethod
-    def new(name, allowed_fields):
-        return value.MetaCollection.new(
-            name + 'Field', [SortField(allowed_fields)])
 
 
 class SortField(value.Collection):

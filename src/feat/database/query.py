@@ -99,9 +99,10 @@ class Cache(log.Logger):
             return self._fetch_subquery(connection, factory, subquery, seq_num)
 
     def _fetch_subquery(self, connection, factory, subquery, seq_num):
-        controller = factory.get_view_controller(subquery[0])
+        controller = factory.get_view_controller(subquery.field)
 
-        keys = controller.generate_keys(*subquery)
+        keys = controller.generate_keys(subquery.field, subquery.evaluator,
+                                        subquery.value)
         self.log("Will query view %s, with keys %r, as a result of"
                  " subquery: %r", factory.name, keys, subquery)
         d = connection.query_view(factory, parse_results=False, **keys)
@@ -475,15 +476,34 @@ class Condition(serialization.Serializable):
 
         self.field = field
         self.evaluator = evaluator
+        if isinstance(value, list):
+            value = tuple(value)
         self.value = value
 
     ### IPlanBuilder ###
 
     def get_basic_queries(self):
-        return [(self.field, self.evaluator, self.value)]
+        return [self]
+
+    ### end of IPlanBuilder ###
 
     def __str__(self):
         return "%s %s %s" % (self.field, self.evaluator.name, self.value)
+
+    def __hash__(self):
+        return hash((self.field, self.evaluator, self.value))
+
+    def __eq__(self, other):
+        if not isinstance(other, Condition):
+            return NotImplemented
+        return (self.field == other.field and
+                self.evaluator == other.evaluator and
+                self.value == other.value)
+
+    def __ne__(self, other):
+        if not isinstance(other, Condition):
+            return NotImplemented
+        return not self.__eq__(other)
 
 
 class Operator(enum.Enum):
@@ -519,9 +539,9 @@ class Query(serialization.Serializable):
                     raise ValueError("Element at index %d should be a Query or"
                                      " condition, %r given" % (index, part))
                 for query in part.get_basic_queries():
-                    if not factory.has_field(query[0]):
+                    if not factory.has_field(query.field):
                         raise ValueError("Unknown query field: '%s'" %
-                                         (query[0], ))
+                                         (query.field, ))
                 self.parts.append(part)
 
             if index % 2 == 1:
@@ -540,26 +560,26 @@ class Query(serialization.Serializable):
                              (self.include_value), )
 
         if kwargs:
-            raise ValueError('Uknown keywords: %s' % (kwargs.keys(), ))
+            raise ValueError('Unknown keywords: %s' % (kwargs.keys(), ))
 
     def set_sorting(self, sorting):
         self.sorting = sorting
-        bad_sorting = ("Sorting should be a list of tuples: (field, direction)"
+        bad_sorting = ("Sorting should be a tuple: (field, direction)"
                        ", %r given" % (self.sorting, ))
+
         if self.sorting is None:
-            # default sorting to by all the fields in ascending order
-            self.sorting = [(field, Direction.ASC)
-                            for field, _, __ in self.get_basic_queries()]
+            # default sorting to the first field of the query, ascending order
+            field = self.get_basic_queries()[0].field
+            self.sorting = (field, Direction.ASC)
 
         if not isinstance(self.sorting, (list, tuple)):
             raise ValueError(bad_sorting)
-        for part in self.sorting:
-            if not isinstance(part, (list, tuple)) or len(part) != 2:
-                raise ValueError(bad_sorting)
-            if not isinstance(part[0], (str, unicode)):
-                raise ValueError(bad_sorting)
-            if not isinstance(part[1], Direction):
-                raise ValueError(bad_sorting)
+        if len(self.sorting) != 2:
+            raise ValueError(bad_sorting)
+        if not isinstance(self.sorting[0], (str, unicode)):
+            raise ValueError(bad_sorting)
+        if not isinstance(self.sorting[1], Direction):
+            raise ValueError(bad_sorting)
 
     ### IPlanBuilder ###
 
@@ -571,17 +591,16 @@ class Query(serialization.Serializable):
         # if we want to sort by the field which is not available in the query
         # we will need to query for the full range of the index
         if self.sorting:
-            for sortby, _ in self.sorting:
-                included = first(x[0] for x in temp if x[0] == sortby)
-                if not included:
-                    temp.append((sortby, Evaluator.none, None))
+            sortby = self.sorting[0]
+            if not first(x for x in temp if sortby == x.field):
+                temp.append(Condition(sortby, Evaluator.none, None))
 
         # if we want a value of some field included in the result we need to
         # make sure its also fetched along the query
         for part in self.include_value:
-            included = first(x[0] for x in temp if x[0] == part)
+            included = first(x.field for x in temp if x.field == part)
             if not included:
-                temp.append((part, Evaluator.none, None))
+                temp.append(Condition(part, Evaluator.none, None))
 
         # remove duplicates
         resp = list()
@@ -604,16 +623,19 @@ class Query(serialization.Serializable):
 @defer.inlineCallbacks
 def select_ids(connection, query, skip=0, limit=None):
     temp, responses = yield _get_query_response(connection, query)
-    if query.sorting:
-        temp = sorted(temp, key=_generate_sort_key(responses, query.sorting))
-    else:
-        temp = list(temp)
+
     if limit is not None:
         stop = skip + limit
     else:
         stop = None
-    r = temp[slice(skip, stop)]
-    defer.returnValue(r)
+
+    name, direction = query.sorting
+    index = first(v for k, v in responses.iteritems()
+                  if k.field == name)
+    if direction == Direction.DESC:
+        index = reversed(index)
+    temp = list(_get_sorted_slice(index, temp, skip, stop))
+    defer.returnValue(temp)
 
 
 def select(connection, query, skip=0, limit=None):
@@ -629,7 +651,7 @@ def include_values(docs, cache, query):
     cached = cache._cache[query.factory.name]
     # dict field_name -> CacheEntry
     lookup = dict((field, first(v for k, v in cached.iteritems()
-                                if k[0] == field))
+                                if k.field == field))
                   for field in query.include_value)
     for doc in docs:
         for name, cache_entry in lookup.iteritems():
@@ -674,11 +696,16 @@ def _parse_values_response(results):
 def _get_query_response(connection, query):
     cache = connection.get_query_cache()
     responses = dict()
+    defers = list()
+
     update_seq = yield connection.get_update_seq()
     for subquery in query.get_basic_queries():
-        # subquery -> list of doc ids
-        responses[subquery] = yield cache.query(
-            connection, query.factory, subquery, update_seq)
+        d = cache.query(connection, query.factory, subquery, update_seq)
+        d.addCallback(defer.inject_param, 1, responses.__setitem__,
+                      subquery)
+        defers.append(d)
+    if defers:
+        yield defer.DeferredList(defers, consumeErrors=True)
     defer.returnValue((_calculate_query_response(responses, query), responses))
 
 
@@ -703,27 +730,30 @@ def _calculate_query_response(responses, query):
             raise ValueError("Unkown operator '%r' %" (oper, ))
 
 
-def _generate_sort_key(responses, sorting):
+def _get_sorted_slice(index, rows, skip, stop):
+    seen = 0
+    if stop is None:
+        stop = len(rows)
 
-    def sort_key(row):
-        positions = list()
+    for value in index:
+        if not rows:
+            return
+        try:
+            rows.remove(value)
+        except KeyError:
+            continue
 
-        for name, direction in sorting:
-            relevant = [v for k, v in responses.iteritems()
-                        if k[0] == name]
-
-            for r in relevant:
-                try:
-                    index = r.index(row)
-                    break
-                except ValueError:
-                    continue
-            else:
-                index = sys.maxint
-            if direction == Direction.DESC:
-                index = -index
-            positions.append(index)
-
-        return tuple(positions)
-
-    return sort_key
+        seen += 1
+        if skip < seen <= stop:
+            yield value
+        if seen > stop:
+            break
+    else:
+        # if we haven't reached the sorted target,
+        # now just return the rows as they appear
+        missing = stop - seen
+        try:
+            for x in range(missing):
+                yield rows.pop()
+        except KeyError:
+            pass

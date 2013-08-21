@@ -27,8 +27,7 @@ class DummyCache(object):
     def query(self, connection, factory, subquery, seq_num=None):
         assert isinstance(connection, DummyConnection), repr(connection)
         assert factory is DummyView, repr(factory)
-        assert isinstance(subquery, tuple), repr(subquery)
-        assert len(subquery) == 3, repr(subquery)
+        assert isinstance(subquery, query.Condition), repr(subquery)
 
         try:
             return defer.succeed(self.stubs[subquery])
@@ -57,15 +56,16 @@ class TestWithDummyCache(common.TestCase):
 
     def setUp(self):
         E = query.Evaluator
+        C = query.Condition
         self.cache = DummyCache({
-            ('field1', E.equals, 1): ['id1'],
-            ('field1', E.equals, 2): ['id2'],
-            ('field1', E.equals, 3): ['id3'],
-            ('field1', E.equals, 4): ['id4'],
-            ('field1', E.none, None): ['id1', 'id2', 'id3', 'id4'],
-            ('field1', E.le, 2): ['id1', 'id2'],
-            ('field2', E.equals, 'string'): ['id1', 'id3'],
-            ('field2', E.equals, 'other'): ['id2', 'id4']})
+            C('field1', E.equals, 1): ['id1'],
+            C('field1', E.equals, 2): ['id2'],
+            C('field1', E.equals, 3): ['id3'],
+            C('field1', E.equals, 4): ['id4'],
+            C('field1', E.none, None): ['id1', 'id2', 'id3', 'id4'],
+            C('field1', E.le, 2): ['id1', 'id2'],
+            C('field2', E.equals, 'string'): ['id1', 'id3'],
+            C('field2', E.equals, 'other'): ['id2', 'id4']})
         self.connection = DummyConnection(self.cache)
 
     @defer.inlineCallbacks
@@ -78,9 +78,9 @@ class TestWithDummyCache(common.TestCase):
         yield self._test(['id1'], C('field1', E.equals, 1))
         yield self._test(['id1', 'id2'], C('field1', E.le, 2))
         yield self._test(['id2', 'id1'], C('field1', E.le, 2),
-                         sorting=[('field1', D.DESC)])
+                         sorting=('field1', D.DESC))
         yield self._test(['id1', 'id2'], C('field1', E.le, 2),
-                         sorting=[('field1', D.ASC)])
+                         sorting=('field1', D.ASC))
         yield self._test(['id2'], C('field1', E.le, 2), O.AND,
                          C('field2', E.equals, 'other'))
         yield self._test(['id1', 'id2', 'id4'], C('field1', E.le, 2), O.OR,
@@ -92,11 +92,11 @@ class TestWithDummyCache(common.TestCase):
         yield self._test(['id1', 'id2', 'id3', 'id4'],
                          C('field2', E.equals, 'other'), O.OR,
                          C('field2', E.equals, 'string'),
-                         sorting=[('field1', D.ASC)])
+                         sorting=('field1', D.ASC))
         yield self._test(['id4', 'id3', 'id2', 'id1'],
                          C('field2', E.equals, 'other'), O.OR,
                          C('field2', E.equals, 'string'),
-                         sorting=[('field1', D.DESC)])
+                         sorting=('field1', D.DESC))
 
         subquery = query.Query(DummyView, C('field1', E.equals, 1))
         yield self._test([], C('field1', E.equals, 2), O.AND, subquery)
@@ -115,31 +115,32 @@ class TestWithDummyCache(common.TestCase):
 class TestQueryObject(common.TestCase):
 
     def testValidation(self):
-        c1 = query.Condition('field1', query.Evaluator.equals, 'value')
-        c2 = query.Condition('field2', query.Evaluator.equals, 'other')
+        C = query.Condition
+        c1 = C('field1', query.Evaluator.equals, 'value')
+        c2 = C('field2', query.Evaluator.equals, 'other')
 
         # this should be ok
         q = query.Query(
             DummyView, c1, query.Operator.OR, c2,
-            sorting=[('field1', query.Direction.ASC)])
+            sorting=('field1', query.Direction.ASC))
         queries = q.get_basic_queries()
         self.assertIsInstance(queries, list)
         self.assertEqual(2, len(queries))
-        self.assertEqual(('field1', query.Evaluator.equals, 'value'),
+        self.assertEqual(C('field1', query.Evaluator.equals, 'value'),
                          queries[0])
-        self.assertEqual(('field2', query.Evaluator.equals, 'other'),
+        self.assertEqual(C('field2', query.Evaluator.equals, 'other'),
                          queries[1])
 
         #check sorting by not part of the query
         # this should be ok
         q = query.Query(
-            DummyView, c2, sorting=[('field1', query.Direction.ASC)])
+            DummyView, c2, sorting=('field1', query.Direction.ASC))
         queries = q.get_basic_queries()
         self.assertIsInstance(queries, list)
         self.assertEqual(2, len(queries))
-        self.assertEqual(('field1', query.Evaluator.none, None),
+        self.assertEqual(C('field1', query.Evaluator.none, None),
                          queries[1])
-        self.assertEqual(('field2', query.Evaluator.equals, 'other'),
+        self.assertEqual(C('field2', query.Evaluator.equals, 'other'),
                          queries[0])
 
         # empty query should default to something which should give us
@@ -148,7 +149,7 @@ class TestQueryObject(common.TestCase):
         queries = q.get_basic_queries()
         self.assertIsInstance(queries, list)
         self.assertEqual(1, len(queries))
-        self.assertEqual(('field1', query.Evaluator.none, None), queries[0])
+        self.assertEqual(C('field1', query.Evaluator.none, None), queries[0])
 
         # check wrong declarations
         self.assertRaises(ValueError, query.Query, DummyView, c1, c2)
@@ -194,6 +195,11 @@ class QueryView(query.QueryView):
         def emit_value(doc):
             return doc.get('name')
 
+    @query.field('another_complex')
+    class AnotherComplexField(BaseField):
+
+        document_types = []
+
 
 class TestQueryCache(common.TestCase):
     '''
@@ -225,13 +231,14 @@ class TestQueryView(common.TestCase):
     def testMap(self):
         code = QueryView.get_code('map')
         self.assertIn("DOCUMENT_TYPES = set(['type1', 'type2'])", code)
-        self.assertIn("HANDLERS = {'complex': ComplexField, "
+        self.assertIn("HANDLERS = {'another_complex': AnotherComplexField, "
+                      "'complex': ComplexField, "
                       "'name': extract_name, "
                       "'position': extract_position}", code)
         self.assertIn("def extract_position(doc)", code)
         self.assertIn("class ComplexField(BaseField)", code)
         self.assertIn("    @staticmethod\n    def field_value(doc):", code)
-        self.assertIn("class BaseField(object)", code)
+        self.assertEqual(1, code.count("class BaseField(object)"))
 
         # decorators need to be cleared out
         self.assertNotIn("@query.field", code)
