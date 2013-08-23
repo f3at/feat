@@ -53,6 +53,8 @@ class IntegrityAgent(agent.BaseAgent):
         db = state.medium.get_database()
         db.changes_listener(conflicts.Conflicts, self.conflict_cb)
 
+        self.call_next(self.query_conflicts_on_startup)
+
     @replay.mutable
     def shutdown(self, state):
         self._clear_connections()
@@ -62,6 +64,21 @@ class IntegrityAgent(agent.BaseAgent):
         self._clear_connections()
 
     ### solving conflicts ###
+
+    @replay.immutable
+    def query_conflicts_on_startup(self, state):
+        db = state.medium.get_database()
+        d = db.query_view(conflicts.Conflicts, parse_results=False)
+        d.addCallback(self.handle_conflicts_on_startup)
+        return d
+
+    def handle_conflicts_on_startup(self, rows):
+        self.info("Detected %d conflicts on startup", len(rows))
+        d = defer.succeed(None)
+        for row in rows:
+            d.addCallback(defer.drop_param, self.conflict_cb,
+                          row[2], rev=None, deleted=False, own_change=False)
+        return d
 
     @replay.immutable
     def conflict_cb(self, state, doc_id, rev, deleted, own_change):
