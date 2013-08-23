@@ -66,15 +66,15 @@ class IntegrationAgentTest(_Base):
         yield self.agent.conflict_cb('id', 'rev', False, False)
         self.assertTrue(solve.called)
         # this should raise the alert
-        self.assertIn('conflict-id', self.state.alert_statuses)
-        self.assertEqual(1, self.state.alert_statuses['conflict-id'][0])
+        self.assertIn('couchdb-conflicts', self.state.alert_statuses)
+        self.assertEqual(1, self.state.alert_statuses['couchdb-conflicts'][0])
 
         solve.reset(defer.succeed('id'))
         yield self.agent.conflict_cb('id', 'rev', False, False)
         self.assertTrue(solve.called)
         # this should resolve alert
-        self.assertIn('conflict-id', self.state.alert_statuses)
-        self.assertEqual(0, self.state.alert_statuses['conflict-id'][0])
+        self.assertIn('couchdb-conflicts', self.state.alert_statuses)
+        self.assertEqual(0, self.state.alert_statuses['couchdb-conflicts'][0])
 
 
 class ApiTest(_Base):
