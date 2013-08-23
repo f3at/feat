@@ -57,6 +57,13 @@ def done(message):
     return done
 
 
+def updated(message):
+
+    def updated(value, _context, **_params):
+        return Updated(message)
+
+    return updated
+
 
 ### classes ###
 

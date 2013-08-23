@@ -36,11 +36,21 @@ class CleanupLogsTask(task.StealthPeriodicTask):
         return d
 
 
+ALERT_NAME = 'couchdb-conflicts'
+
+
 @feat.register_agent("integrity_agent")
 class IntegrityAgent(agent.BaseAgent):
 
     @replay.mutable
     def initiate(self, state):
+        self.may_raise_alert(alert.DynamicAlert(
+            name=ALERT_NAME,
+            severity=alert.Severity.warn,
+            description=ALERT_NAME))
+
+        state.unsolvable_conflicts = set()
+
         state.db_config = c = state.medium.agency.get_config().db
         f = fiber.wrap_defer(conflicts.configure_replicator_database,
                              c.host, c.port)
@@ -53,6 +63,8 @@ class IntegrityAgent(agent.BaseAgent):
         db = state.medium.get_database()
         db.changes_listener(conflicts.Conflicts, self.conflict_cb)
 
+        self.call_next(self.query_conflicts_on_startup)
+
     @replay.mutable
     def shutdown(self, state):
         self._clear_connections()
@@ -62,6 +74,21 @@ class IntegrityAgent(agent.BaseAgent):
         self._clear_connections()
 
     ### solving conflicts ###
+
+    @replay.immutable
+    def query_conflicts_on_startup(self, state):
+        db = state.medium.get_database()
+        d = db.query_view(conflicts.Conflicts, parse_results=False)
+        d.addCallback(self.handle_conflicts_on_startup)
+        return d
+
+    def handle_conflicts_on_startup(self, rows):
+        self.info("Detected %d conflicts on startup", len(rows))
+        d = defer.succeed(None)
+        for row in rows:
+            d.addCallback(defer.drop_param, self.conflict_cb,
+                          row[2], rev=None, deleted=False, own_change=False)
+        return d
 
     @replay.immutable
     def conflict_cb(self, state, doc_id, rev, deleted, own_change):
@@ -74,9 +101,14 @@ class IntegrityAgent(agent.BaseAgent):
     def _solve_cb(self, state, _ignored, doc_id):
         # resolve the alert only if we previously raised the alert
         # for this document
-        name = self._alert_name(doc_id)
-        if name in state.alert_factories:
-            self.resolve_alert(name, 'solved')
+        try:
+            state.unsolvable_conflicts.remove(doc_id)
+        except KeyError:
+            pass
+        if state.unsolvable_conflicts:
+            self.raise_alert(ALERT_NAME, ', '.join(state.unsolvable_conflicts))
+        else:
+            self.resolve_alert(ALERT_NAME, 'ok')
 
     @replay.immutable
     def _solve_err(self, state, fail):
@@ -86,15 +118,9 @@ class IntegrityAgent(agent.BaseAgent):
             doc_id = doc.doc_id
         else:
             doc_id = doc['_id']
-        name = self._alert_name(doc_id)
-        self.may_raise_alert(alert.DynamicAlert(
-            name=name,
-            severity=alert.Severity.warn,
-            description=name))
-        self.raise_alert(name, error.get_failure_message(fail))
+        state.unsolvable_conflicts.add(doc_id)
 
-    def _alert_name(self, doc_id):
-        return 'conflict-%s' % (doc_id, )
+        self.raise_alert(ALERT_NAME, ', '.join(state.unsolvable_conflicts))
 
     ### private initialization ###
 

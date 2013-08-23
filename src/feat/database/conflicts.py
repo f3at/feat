@@ -199,6 +199,35 @@ def _solve_alert(connection, doc, conflicts):
 
 @defer.inlineCallbacks
 def _solve_merge(connection, doc, conflicts):
+    # First check for the situation when no merge is actually needed.
+    # This happens when the body of the conflicting documents is the same
+    # only the revision is different.
+
+    def compare_revs(one, other):
+        '''
+        Compare only the content of the documents (ignoring the meta fields)
+        '''
+        s1 = one.snapshot()
+        s2 = other.snapshot()
+        for snapshot in (s1, s2):
+            for key in snapshot.keys():
+                if key[0] in ['_', '.']:
+                    del snapshot[key]
+        return s1 == s2
+
+    for rev in conflicts:
+        fetched = yield connection.get_document(doc.doc_id, rev=rev)
+        if not compare_revs(doc, fetched):
+            break
+    else:
+        connection.info('All the conflicting revisions of document: %s '
+                        'are indeed the same, the only difference was in '
+                        'meta fields. Picking db winner.', doc.doc_id)
+        yield _solve_db_winner(connection, doc, conflicts)
+        return
+
+    # We actually have differences, lets resort to merging using the
+    # update logs.
     logs = yield connection.query_view(
         UpdateLogs, **UpdateLogs.for_doc(doc.doc_id))
     # Some of the logs might be the result of solving the merge.
