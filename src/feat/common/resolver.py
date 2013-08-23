@@ -3,6 +3,7 @@ import socket
 from twisted.names import dns, client, resolve, cache, hosts as hostsModule
 from twisted.names.error import DomainError
 from twisted.internet import error, defer
+from twisted.python import failure
 
 
 def installResolver(reactor=None,
@@ -45,6 +46,21 @@ class Resolver(client.Resolver):
         d = self.lookupAddress(name, timeout)
         d.addCallback(self._cbRecords, name, effort)
         return d
+
+    def _query(self, *args):
+        d = client.Resolver._query(self, *args)
+        d.addCallback(self._filter_refused)
+        return d
+
+    def _filter_refused(self, message):
+        if message.rCode == dns.EREFUSED:
+            # normal twisted resolver would only reissue the query in case
+            # the timeout happend. This is annoying when you try to use
+            # dns serves which refuse some queries.
+            # Here the hack is to overwrite the exception,
+            # so that it looks like a timeout.
+            return failure.Failure(dns.DNSQueryTimeoutError(1))
+        return message
 
 
 def extractRecord(resolver, name, answers, level=10):
