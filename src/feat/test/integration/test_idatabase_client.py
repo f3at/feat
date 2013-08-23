@@ -1167,7 +1167,7 @@ class NonEmuTests(object):
         return d
 
     @defer.inlineCallbacks
-    def testResolvingConflicts(self):
+    def replication_test_setup(self):
         host, port = self.database.host, self.database.port
         dbname = self.database.db_name
         try:
@@ -1217,7 +1217,42 @@ class NonEmuTests(object):
 
         self.addCleanup(cleanup)
 
-        # test case starts here
+        defer.returnValue((rconnection, connection2, dbname))
+
+    @defer.inlineCallbacks
+    def testResolvingFakeMergeConflict(self):
+        '''
+        This testcase checks the situation when the partitions have ad-hoc
+        created instance of the documents with merge strategy. The update
+        logs are missing, although they are not needed because the boyd of
+        the documents is the same (only the revision is different).
+        '''
+        rconnection, connection2, dbname = yield self.replication_test_setup()
+        doc_id = "test_doc"
+
+        doc1 = ConcurrentDoc(doc_id=doc_id, field1=1, field2=[1, 2, 3])
+        doc1 = yield self.connection.save_document(doc1)
+
+        doc2 = ConcurrentDoc(doc_id=doc_id, field1=5, field2=[1, 2, 3])
+        doc2 = yield connection2.save_document(doc2)
+        doc2.field1 = 1
+        doc2 = yield connection2.save_document(doc2)
+
+        yield replicate(rconnection, dbname, 'temp')
+        yield replicate(rconnection, 'temp', dbname)
+        yield self.assert_conflicts(connection2, doc1)
+        yield self.assert_conflicts(self.connection, doc2)
+
+        yield conflicts.solve(connection2, doc_id)
+        yield conflicts.solve(self.connection, doc_id)
+
+        # conflicts are solved
+        yield self.assert_conflicts(connection2)
+        yield self.assert_conflicts(self.connection)
+
+    @defer.inlineCallbacks
+    def testResolvingConflicts(self):
+        rconnection, connection2, dbname = yield self.replication_test_setup()
 
         # create a replication document in each database so that
         # the logic in cleanup_logs() know that the docs are there
