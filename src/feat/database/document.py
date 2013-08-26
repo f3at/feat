@@ -21,18 +21,24 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import itertools
+
 from zope.interface import implements, classProvides
 
 from feat.common import formatable, serialization, first
-from feat.common.serialization.json import VERSION_ATOM
+from feat.database import migration, common
 
 from feat.database.interface import IDocument, IVersionedDocument
 from feat.database.interface import IDocumentPrivate, IAttachment
 from feat.database.interface import NotFoundError, ConflictResolutionStrategy
 from feat.database.interface import IAttachmentPrivate, DataNotAvailable
+from feat.database.interface import NotMigratable
+
 from feat.interface.serialization import ISerializable, IRestorator
+from feat.interface.serialization import IVersionAdapter
 
 
+VERSION_ATOM = common.VERSION_ATOM
 field = formatable.field
 
 
@@ -233,7 +239,57 @@ class _Attachment(object):
         return res
 
 
+class MetaVersionedDocument(type(Document)):
+
+    implements(IVersionAdapter)
+
+    def adapt_version(cls, snapshot, source_ver, target_ver):
+        plan = cls.plan_migration(source_ver, target_ver)
+        for step in plan:
+            res = step.synchronous_hook(snapshot)
+            if isinstance(res, tuple) and len(res) == 2:
+                snapshot, context = res
+            elif isinstance(res, dict):
+                snapshot, context = res, None
+            else:
+                raise ValueError("%r.synchronous_hook() returned sth "
+                                 " strange: %r" % (step, res))
+            if context is not None:
+                snapshot.setdefault('_asynchronous_actions', list())
+                snapshot['_asynchronous_actions'].append((step, context))
+        snapshot['_has_migrated'] = True
+        return snapshot
+
+    def plan_migration(cls, source, target):
+        # build up the shortest list of transformations which leads between
+        # versions
+        middle = range(source + 1, target)
+        registry = migration.get_registry()
+
+        for n_divisions in range(target - source):
+            # test all the possible paths between revisions in given
+            # number of steps
+            for division in itertools.combinations(middle, n_divisions):
+                s = source
+                migrations = list()
+                for index in division:
+                    m = registry.lookup((cls.type_name, s, index))
+                    if not m:
+                        break
+                    migrations.append(m)
+                    s = index
+                else:
+                    m = registry.lookup((cls.type_name, s, target))
+                    if not m:
+                        continue
+                    migrations.append(m)
+                    return migrations
+        raise NotMigratable((cls.type_name, source, target))
+
+
 class VersionedDocument(Document):
+
+    __metaclass__ = MetaVersionedDocument
 
     implements(IVersionedDocument)
 
@@ -243,6 +299,25 @@ class VersionedDocument(Document):
         snapshot = Document.snapshot(self)
         snapshot[str(VERSION_ATOM)] = type(self).version
         return snapshot
+
+    ### IVersionedDocument ###
+
+    def get_asynchronous_actions(self):
+        if not hasattr(self, '_asynchronous_actions'):
+            return []
+        return self._asynchronous_actions
+
+    def has_migrated(self):
+        return getattr(self, '_has_migrated', False)
+
+    ### IRestorator ###
+
+    def recover(self, snapshot):
+        if '_asynchronous_actions' in snapshot:
+            self._asynchronous_actions = snapshot.pop('_asynchronous_actions')
+        if '_has_migrated' in snapshot:
+            self._has_migrated = snapshot.pop('_has_migrated')
+        super(VersionedDocument, self).recover(snapshot)
 
 
 @serialization.register
@@ -314,3 +389,23 @@ class LinkedDocuments(object):
         if not r and not noraise:
             raise KeyError(doc_id)
         return r
+
+
+### implementation of versioned formatable used inside the documents ###
+
+
+class MetaVersionedFormatable(type(formatable.Formatable),
+                              type(serialization.VersionAdapter)):
+    pass
+
+
+class VersionedFormatable(formatable.Formatable, serialization.VersionAdapter):
+
+    __metaclass__ = MetaVersionedFormatable
+
+    version = 1
+
+    def snapshot(self):
+        snapshot = formatable.Formatable.snapshot(self)
+        snapshot[str(VERSION_ATOM)] = type(self).version
+        return snapshot

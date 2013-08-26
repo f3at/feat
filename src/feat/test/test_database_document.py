@@ -1,6 +1,6 @@
 from feat.test import common
 from feat.common.serialization import json, register
-from feat.database import document
+from feat.database import document, common as dcommon
 
 import json as sjson
 
@@ -16,7 +16,7 @@ class DocumentSerializationTest(common.TestCase):
     def setUp(self):
         self.serializer = json.Serializer()
         register(TestDocument)
-        self.unserializer = json.PaisleyUnserializer()
+        self.unserializer = dcommon.CouchdbUnserializer()
 
     def testDocumentWithAttachment(self):
         d = TestDocument(doc_id='some_doc')

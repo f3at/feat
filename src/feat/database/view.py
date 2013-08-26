@@ -24,11 +24,12 @@ import inspect
 
 from zope.interface import directlyProvides
 
-from feat.common import formatable, annotate, serialization
+from feat.common import formatable, annotate
 from feat.common.text_helper import format_block
 from feat.database import document
 from feat import applications
 
+from feat.interface.serialization import IRestorator
 from feat.database.interface import IViewFactory
 from feat.agents.application import feat
 
@@ -50,17 +51,12 @@ class JavascriptView(annotate.Annotable):
         directlyProvides(cls, IViewFactory)
 
     @classmethod
-    def parse_view_result(cls, rows, reduced, include_docs):
+    def parse_view_result(cls, rows, reduced, include_docs, unserialize_list):
         if not include_docs:
             # return list of ids
             return list(rows)
         else:
-            unserializer = serialization.json.PaisleyUnserializer()
-            resp = list()
-            for x in rows:
-                if len(x) == 4:
-                    resp.append(unserializer.convert(x[3]))
-            return resp
+            return unserialize_list((x[3] for x in rows if len(x) == 4))
 
     @classmethod
     def perform_map(cls, doc):
@@ -106,17 +102,12 @@ class BaseView(annotate.Annotable):
         directlyProvides(cls, IViewFactory)
 
     @classmethod
-    def parse_view_result(cls, rows, reduced, include_docs):
+    def parse_view_result(cls, rows, reduced, include_docs, unserialize_list):
         if not include_docs:
             # return list of ids
             return [cls.parse(x[0], x[1], reduced) for x in rows]
         else:
-            unserializer = serialization.json.PaisleyUnserializer()
-            resp = list()
-            for x in rows:
-                if len(x) == 4:
-                    resp.append(unserializer.convert(x[3]))
-            return resp
+            return unserialize_list((x[3] for x in rows if len(x) == 4))
 
     @classmethod
     def parse(cls, key, value, reduced):
@@ -250,18 +241,29 @@ class DocumentByType(JavascriptView):
 
     design_doc_id = 'featjs'
     name = 'by_type'
+    use_reduce = True
 
     map = format_block('''
     function(doc) {
         if (doc[".type"]) {
-            emit(doc[".type"], null);
+            emit([doc[".type"], doc[".version"]], null);
         }
     }''')
+
+    reduce = "_count"
 
     @staticmethod
     def perform_map(doc):
         if '.type' in doc:
-            yield doc['.type'], None
+            yield (doc['.type'], doc.get('.version')), None
+
+    @staticmethod
+    def keys(type_name):
+        if IRestorator.providedBy(type_name):
+            type_name = type_name.type_name
+        if not isinstance(type_name, (str, unicode)):
+            raise ValueError(type_name)
+        return dict(startkey=(type_name, ), endkey=(type_name, {}))
 
 
 @feat.register_restorator

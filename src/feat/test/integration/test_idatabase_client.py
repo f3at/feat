@@ -28,7 +28,7 @@ import os
 from twisted.trial.unittest import SkipTest
 
 from feat.database import emu, view, document, query, driver, update, conflicts
-from feat.database import links
+from feat.database import links, common as dcommon
 from feat.process import couchdb
 from feat.process.base import DependencyError
 from feat.common import serialization, defer, error, time
@@ -90,7 +90,7 @@ class IncludeDocsView(view.BaseView):
             # return list of ids
             return [x[2] for x in rows]
         else:
-            unserializer = serialization.json.PaisleyUnserializer()
+            unserializer = dcommon.CouchdbUnserializer()
             return [unserializer.convert(x[3]) for x in rows]
 
 
@@ -320,9 +320,9 @@ class TestCase(object):
 
         yield self.connection.save_document(doc)
 
-        by_type = yield self.connection.query_view(view.DocumentByType,
-                                                   key=DummyDocument.type_name,
-                                                   include_docs=True)
+        by_type = yield self.connection.query_view(
+            view.DocumentByType, reduce=False, include_docs=True,
+            **view.DocumentByType.keys(DummyDocument))
         self.assertEqual(2, len(by_type))
         indexed = dict((x.field, x) for x in by_type)
         self.assertEqual(indexed['first'].doc_id,

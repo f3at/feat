@@ -217,8 +217,9 @@ class ExportAgent(agent.BaseAgent, sender.AgentMixin):
 
     @replay.journaled
     def get_shard_structure(self, state):
-        f = self.query_view(view.DocumentByType, key='shard_agent',
-                            include_docs=True)
+        f = self.query_view(view.DocumentByType,
+                            reduce=False, include_docs=True,
+                            **view.DocumentByType.keys('shard_agent'))
         f.add_callback(self._got_shards)
         return f
 

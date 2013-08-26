@@ -29,7 +29,7 @@ from zope.interface import Interface
 from zope.interface.interface import InterfaceClass
 
 from feat.common import serialization, reflect
-from feat.common.serialization import pytree
+from feat.common.serialization import pytree, base
 from feat.interface.serialization import *
 
 from . import common, common_serialization
@@ -76,7 +76,14 @@ class DummyImmutableSerializable(serialization.ImmutableSerializable):
         self._restored = True
 
 
-class Av1(serialization.Serializable):
+class Versioned(serialization.Serializable, base.VersionAdapter):
+
+    __metaclass__ = type("MetaAv1", (type(serialization.Serializable),
+                                     type(base.VersionAdapter)), {})
+
+
+class Av1(Versioned):
+
     type_name = "A"
 
     def __init__(self):
@@ -119,7 +126,7 @@ class Av3(Av2):
         return snapshot
 
 
-class Bv1(serialization.Serializable):
+class Bv1(Versioned):
     type_name = "B"
 
     def __init__(self):

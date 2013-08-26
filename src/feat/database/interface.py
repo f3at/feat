@@ -26,13 +26,16 @@ from zope.interface import Interface, Attribute
 from feat.common import enum
 
 
-__all__ = ("IDatabaseClient", "DatabaseError", "ConflictError",
+__all__ = ("VERSION_ATOM", "IDatabaseClient", "DatabaseError", "ConflictError",
            "NotFoundError", "NotConnectedError", "ResignFromModifying",
            "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
            "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration",
            "ConflictResolutionStrategy")
+
+
+VERSION_ATOM = u".version"
 
 
 class DatabaseError(Exception):
@@ -58,6 +61,13 @@ class NotConnectedError(Exception):
     '''
     Raised when we get connection refused trying to perform a request to
     database.
+    '''
+
+
+class NotMigratable(DatabaseError):
+    '''
+    Thrown when we cannot figure out how to upgrade the document loaded
+    from the database.
     '''
 
 
@@ -404,6 +414,13 @@ class IDocumentPrivate(Interface):
 class IVersionedDocument(IDocument):
 
     version = Attribute('C{int} current version')
+    has_migrated = Attribute('C{bool} flag saying if the document has '
+                             'been migrated after loading it from database')
+
+    def get_asynchronous_actions():
+        '''
+        @returns: [(IMigration, context)]
+        '''
 
 
 class IRevisionStore(Interface):
@@ -533,9 +550,29 @@ class IMigration(Interface):
     application.register_migration.
     '''
 
-    def run(database):
+    type_name = Attribute('Type for which this migration runs')
+    source_ver = Attribute('C{int} version of the snapshot source')
+    target_ver = Attribute('C{int} version of the snapshot target')
+
+    def synchronous_hook(snapshot):
+        '''
+        Synchronous method converting the snapshot between versions.
+        It should either return a dict with a snapshot or a tuple of the
+        form:
+        return snapshot, context
+
+        In the second case, the context object will be passed to the
+        asynchronous part of the migration which is run after the
+        migration has been processed.
+
+        @rvalue: C{dict} with adapted snapshot or C{tuple} of snapshot, context.
+        '''
+
+    def asynchronous_hook(connection, document, context):
         '''
         @param database: IDatabaseDriver
+        @param document: unserializer document instance
+        @param context: context returned by adapt_snapshot()
         '''
 
 

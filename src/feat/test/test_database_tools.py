@@ -51,10 +51,25 @@ class VersionedTest2(VersionedTest1):
     version = 2
     type_name = 'version-document-test'
 
-    @classmethod
-    def upgrade_to_2(cls, snapshot):
+
+
+class SimpleMigration(migration.Migration):
+
+    def synchronous_hook(self, snapshot):
         snapshot['field1'] += " upgraded"
         return snapshot
+
+
+class ComplexMigration(migration.Migration):
+
+    def synchronous_hook(self, snapshot):
+        snapshot['field1'] += " upgraded"
+        return snapshot, dict(name='attachment', body='Hi!')
+
+    @defer.inlineCallbacks
+    def asynchronous_hook(self, connection, document, context):
+        document.create_attachment(context['name'], context['body'])
+        return connection.save_document(document)
 
 
 class TestCase(common.TestCase, common.AgencyTestHelper):
@@ -71,43 +86,19 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
 
     @defer.inlineCallbacks
     def testComplexMigration(self):
-        mig = migration.Migration()
-
-        self.run = False
-
-        def handler(connection, unparsed):
-            doc = connection._unserializer.convert(unparsed)
-            self.run = True
-            doc.create_attachment('attachment', 'Hi!')
-            return connection.save_document(doc)
-
-        mig.registry.register(VersionedTest2)
-        mig.migrate_type(VersionedTest2, handler)
-        r = applications.get_application_registry()
-        snapshot = r.get_snapshot()
-        self.addCleanup(r.reset, snapshot)
-        r.reset([])
-        app = applications.Application()
-        app.name = u'test'
-        r.register(app)
-        app.register_migration('1.0', mig)
+        migration.register(ComplexMigration(type_name=VersionedTest2.type_name,
+                                            source_ver=1, target_ver=2))
 
         serialization.register(VersionedTest2)
-        doc = yield self.connection.save_document(VersionedTest2())
+        doc = yield self.connection.save_document(VersionedTest1())
         self.assertEqual('default', doc.field1)
 
         yield tools.migration_script(self.connection)
         self.assertTrue(self.run)
 
         doc = yield self.connection.get_document('testdoc')
-        self.assertEqual('default', doc.field1)
+        self.assertEqual('default upgraded', doc.field1)
         self.assertTrue('attachment' in doc.attachments)
-
-        version_doc = yield self.connection.query_view(
-            tools.ApplicationVersions, key='test', include_docs=True)
-        self.assertEquals(1, len(version_doc))
-        self.assertEquals('1.0', version_doc[0].version)
-        self.assertEquals('test', version_doc[0].name)
 
     @defer.inlineCallbacks
     def testMigrating(self):
@@ -118,6 +109,9 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
         self.assertEqual('default', doc.field1)
 
         serialization.register(VersionedTest2)
+        migration.register(SimpleMigration(type_name=VersionedTest2.type_name,
+                                           source_ver=1,
+                                           target_ver=2))
         yield tools.migration_script(self.connection)
 
         doc = yield self.connection.get_document('testdoc')
@@ -130,8 +124,6 @@ class TestCase(common.TestCase, common.AgencyTestHelper):
             SomeDocument(doc_id=u'special_id', field1=u'special'))
 
         yield tools.push_initial_data(self.connection)
-        # 4 = 2 (registered documents) + 2 (design documents)
-        self.assertEqual(4, len(self.db._documents))
         special = yield self.connection.get_document('special_id')
         self.assertIsInstance(special, SomeDocument)
         self.assertEqual('special', special.field1)

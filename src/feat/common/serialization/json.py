@@ -39,9 +39,7 @@ TYPE_ATOM = u".type"
 EXTERNAL_ATOM = u".ext"
 REFERENCE_ATOM = u".ref"
 DEREFERENCE_ATOM = u".deref"
-VERSION_ATOM = u".version"
 FUNCTION_ATOM = u".function"
-
 INSTANCE_TYPE_ATOM = u".type"
 INSTANCE_STATE_ATOM = u".state"
 
@@ -303,25 +301,6 @@ class Unserializer(base.Unserializer):
                        REFERENCE_ATOM: (None, unpack_reference),
                        DEREFERENCE_ATOM: (None, unpack_dereference),
                        FUNCTION_ATOM: (None, unpack_function)}
-
-
-class PaisleyUnserializer(Unserializer):
-    '''Hack to cope with Paisley performing json.loads on its own.
-    Also this unserializer detects the version of the document and upgrades
-    it on the fly if needed.'''
-
-    def pre_convertion(self, data):
-        return data
-
-    def _adapt_snapshot(self, restorator, snapshot):
-        if IVersionAdapter.providedBy(restorator):
-            target_ver = getattr(restorator, 'version', None)
-            source_ver = snapshot.get(VERSION_ATOM, 1)
-            if target_ver is not None and target_ver != source_ver:
-                adapter = IVersionAdapter(restorator)
-                snapshot = adapter.adapt_version(
-                    snapshot, source_ver, target_ver)
-        return snapshot
 
 
 def serialize(value):

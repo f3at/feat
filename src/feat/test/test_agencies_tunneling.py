@@ -55,7 +55,14 @@ class StubChannel(object):
         self.messages.append(msg)
 
 
-class Notification1(message.Notification):
+class Versioned(message.Notification, serialization.VersionAdapter):
+
+    __metaclass__ = type("MetaVersioned", (type(message.Notification),
+                                           type(serialization.VersionAdapter)),
+                         {})
+
+
+class Notification1(Versioned):
     type_name = "dummy-notif"
 
     def __init__(self, *args, **kwargs):

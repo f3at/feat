@@ -24,7 +24,6 @@
 import copy
 
 from feat.common import serialization, annotate
-from feat.common.serialization.json import VERSION_ATOM
 
 
 class Field(object):
@@ -134,13 +133,3 @@ class Formatable(serialization.Serializable, annotate.Annotable):
             else:
                 value = copy.copy(field.default)
             setattr(self, field.name, value)
-
-
-class VersionedFormatable(Formatable):
-
-    version = 1
-
-    def snapshot(self):
-        snapshot = Formatable.snapshot(self)
-        snapshot[str(VERSION_ATOM)] = type(self).version
-        return snapshot

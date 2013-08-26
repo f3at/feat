@@ -4,6 +4,7 @@ from zope.interface import adapter, interface, declarations, implements
 
 from feat.common import serialization, reflect, log, registry, error
 from feat.models import model
+from feat.database import migration
 
 from feat.interface.agent import IAgentFactory, IDescriptor
 from feat.database.interface import IViewFactory, IDocument, IMigration
@@ -74,9 +75,7 @@ class Application(log.Logger):
         self._initial_data = get_initial_data_registry()
         self._adapters = adapter.AdapterRegistry()
         self._models = model.get_registry()
-
-        # (version, IMigration)
-        self._migrations = list()
+        self._migrations = migration.get_registry()
 
     def load(self):
         self.info("Loading application %s", self.name)
@@ -109,6 +108,7 @@ class Application(log.Logger):
         self._views.application_cleanup(self)
         self._initial_data.application_cleanup(self)
         self._models.application_cleanup(self)
+        self._migrations.application_cleanup(self)
         self.unload_adapters()
         del(self._adapters)
 
@@ -194,10 +194,7 @@ class Application(log.Logger):
 
     def register_migration(self, version, migration):
         migration = IMigration(migration)
-        self._migrations.append((version, migration))
-
-    def get_migrations(self):
-        return list(self._migrations)
+        self._migrations.register(migration, application=self)
 
     ### private ###
 

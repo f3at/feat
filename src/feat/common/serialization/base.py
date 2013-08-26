@@ -121,6 +121,34 @@ for adapted in basic_types:
     adapter.register(adapted, ISnapshotable)
 
 
+class MetaSnapshotable(type):
+
+    def __init__(cls, name, bases, dct):
+        if "type_name" not in dct:
+            type_name = dct["__module__"] + "." + name
+            setattr(cls, "type_name", type_name)
+        super(MetaSnapshotable, cls).__init__(name, bases, dct)
+
+
+class Snapshotable(object):
+    """Simple L{ISnapshotable} that snapshot the instance attributes
+    not starting by an underscore. If the class attribute type_name
+    is not defined, the canonical name of the class is used."""
+
+    __metaclass__ = MetaSnapshotable
+
+    implements(ISnapshotable)
+
+    referenceable = True
+
+    ### ISnapshotable ###
+
+    def snapshot(self):
+        return dict([(k, v)
+                     for k, v in self.__dict__.iteritems()
+                     if isinstance(k, str) and not k.startswith('_')])
+
+
 class MetaVersionAdapter(type):
 
     implements(IVersionAdapter)
@@ -129,10 +157,7 @@ class MetaVersionAdapter(type):
 class VersionAdapter(object):
 
     __metaclass__ = MetaVersionAdapter
-
     implements(IVersionAdapter)
-
-    ### IVersionAdapter ###
 
     @classmethod
     def adapt_version(cls, snapshot, source_ver, target_ver):
@@ -156,45 +181,10 @@ class VersionAdapter(object):
 
         return snapshot
 
-    def set_migrated(self):
-        self._migrated = True
-
-    @property
-    def has_migrated(self):
-        return hasattr(self, '_migrated') and self._migrated
-
-
-class MetaSnapshotable(MetaVersionAdapter):
-
-    def __init__(cls, name, bases, dct):
-        if "type_name" not in dct:
-            type_name = dct["__module__"] + "." + name
-            setattr(cls, "type_name", type_name)
-        super(MetaSnapshotable, cls).__init__(name, bases, dct)
-
-
-class Snapshotable(VersionAdapter):
-    """Simple L{ISnapshotable} that snapshot the instance attributes
-    not starting by an underscore. If the class attribute type_name
-    is not defined, the canonical name of the class is used."""
-
-    __metaclass__ = MetaSnapshotable
-
-    implements(ISnapshotable)
-
-    referenceable = True
-
-    ### ISnapshotable ###
-
-    def snapshot(self):
-        return dict([(k, v)
-                     for k, v in self.__dict__.iteritems()
-                     if isinstance(k, str) and not k.startswith('_')])
-
 
 class MetaSerializable(MetaSnapshotable):
 
-    implements(IRestorator, IVersionAdapter)
+    implements(IRestorator)
 
 
 class Serializable(Snapshotable):
@@ -924,13 +914,8 @@ class Unserializer(object):
         for restorator, instance, snapshot, _refid in self._instances:
             if restorator is not None:
                 # delayed mutable instances
-                old_snapshot = copy.copy(snapshot)
                 snapshot = self._adapt_snapshot(restorator, snapshot)
                 instance.recover(snapshot)
-                if old_snapshot != snapshot:
-                    self._migrated = True
-                    if IVersionAdapter.providedBy(instance):
-                        instance.set_migrated()
 
         # Calls the instances post restoration callback in reversed order
         # in an intent to reduce the possibilities of instances relying
@@ -978,15 +963,9 @@ class Unserializer(object):
         if instance is None:
             # Immutable type, we can't delay restoration
             snapshot = self.unpack_data(data)
-            old_snapshot = copy.copy(snapshot)
             snapshot = self._adapt_snapshot(restorator, snapshot)
             instance = restorator.restore(snapshot)
             self._instances.append((None, instance, None, refid))
-
-            if old_snapshot != snapshot:
-                self._migrated = True
-                if IVersionAdapter.providedBy(instance):
-                    instance.set_migrated()
 
             return instance
 

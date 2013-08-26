@@ -27,11 +27,12 @@ from twisted.internet import reactor
 
 from feat.database import view, driver, document
 from feat.agencies.net import options, config
-from feat.common import log, defer, error, first
+from feat.common import log, defer, error, serialization
 from feat.agents.application import feat
 from feat import applications
 
 from feat.database.interface import ConflictError
+from feat.interface.serialization import IVersionAdapter
 
 
 def reset_documents(snapshot):
@@ -144,45 +145,41 @@ def tupletize_version(version_string):
 @defer.inlineCallbacks
 def migration_script(connection):
     log.info("script", "Running the migration script.")
-    version_docs = yield connection.query_view(
-        view.DocumentByType,
-        key=ApplicationVersion.type_name,
-        include_docs=True)
-    if version_docs:
-        log.info("script", "Current versions of the installed applications:")
-        for version_doc in version_docs:
-            log.info('script', '%s: %s', version_doc.name, version_doc.version)
+    index = yield connection.query_view(view.DocumentByType,
+                                        group_level=2, parse_result=False)
+    try:
+        for (type_name, version), count in index:
+            restorator = serialization.lookup(type_name)
+            if not restorator:
+                log.error('script', "Failed to lookup the restorator for the "
+                          "type name: %s. There is %d objects like this in the"
+                          " database. They will not be migrated.", type_name,
+                          count)
+            if (version and IVersionAdapter.providedBy(restorator) and
+                version < restorator.version):
+                log.info('script', "I will migrate %d documents of the "
+                          "type: %s from version %d to %d", count,
+                          type_name, version, restorator.version)
 
-    for application in applications.get_application_registry().itervalues():
-        version_doc = first(x for x in version_docs
-                            if x.name == application.name)
-        if not version_doc:
-            to_run = application.get_migrations()
-            version_doc = ApplicationVersion(name=unicode(application.name))
-        else:
-            t = tupletize_version
-            to_run = [(version, migration)
-                      for version, migration in application.get_migrations()
-                      if t(version) > t(version_doc.version)]
-        if not to_run:
-            log.info("script", "There are no migrations for application %s "
-                     "from version %s to %s", application.name,
-                     version_doc.version, application.version)
-            continue
-        try:
-            for version, migration in to_run:
-                yield migration.run(connection._database)
-                if isinstance(version, str):
-                    version = unicode(version)
-                version_doc.version = version
-                yield connection.save_document(version_doc)
-                log.info("script", "Successfully applied migration %r",
-                         migration)
+                migrated = 0
+                while migrated < count:
+                    fetched = yield connection.query_view(
+                        view.DocumentByType,
+                        key=(type_name, version),
+                        limit=15,
+                        reduce=False,
+                        include_docs=True)
 
-        except Exception as e:
-            error.handle_exception("script", e, "Failed applying migration %r",
-                                   migration)
-            continue
+                    migrated += len(fetched)
+                    if not migrated:
+                        break
+                log.info("script", "Migrated %d documents of the type %s "
+                         "from %s version to %s", migrated, type_name,
+                         version, restorator.version)
+
+    except Exception:
+        error.handle_exception("script", None, "Failed running migration script")
+        raise
 
 
 class dbscript(object):

@@ -149,8 +149,9 @@ class AlertAgent(agent.BaseAgent):
         state.alerts = dict()
 
         state.config_notifier = cnagios.create_poster(self)
-        f = self.query_view(view.DocumentByType, key=AlertService.type_name,
-                            include_docs=True)
+        f = self.query_view(view.DocumentByType,
+                            reduce=False, include_docs=True,
+                            **view.DocumentByType.keys(AlertService))
         f.add_callback(self._load_persistent_services)
         return f
 

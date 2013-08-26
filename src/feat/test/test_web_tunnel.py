@@ -26,7 +26,14 @@ class DummyDispatcher(object):
         self.messages.append((uri, data))
 
 
-class Av1(serialization.Serializable):
+class Versioned(serialization.Serializable, serialization.VersionAdapter):
+
+    __metaclass__ = type("MetaAv1", (type(serialization.Serializable),
+                                     type(serialization.VersionAdapter)), {})
+
+
+
+class Av1(Versioned):
     type_name = "A"
 
     def __init__(self):

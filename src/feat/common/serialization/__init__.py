@@ -24,5 +24,5 @@ from feat.common.serialization.base import (register, lookup,
                                             ImmutableSerializable,
                                             Serializable, MetaSerializable,
                                             Externalizer, get_registry,
-                                            freeze_tag)
+                                            freeze_tag, VersionAdapter)
 from feat.interface.serialization import *

@@ -21,19 +21,22 @@
 # Headers in this file shall remain intact.
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
+import inspect
 import uuid
 import urllib
 
 from twisted.internet import reactor
 from zope.interface import implements
 
-from feat.common import log, defer, time, journal, serialization
-from feat.database import document, query
+from feat.common import log, defer, time, journal, serialization, error
+from feat.common.serialization import json
+from feat.database import document, query, common
 
 from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
 from feat.database.interface import NotFoundError, ConflictResolutionStrategy
 from feat.database.interface import ResignFromModifying, ConflictError
+from feat.database.interface import IVersionedDocument
 from feat.interface.generic import ITimeProvider
 from feat.interface.serialization import ISerializable
 
@@ -178,10 +181,9 @@ class Connection(log.Logger, log.LogProxy):
         log.Logger.__init__(self, database)
         log.LogProxy.__init__(self, database)
         self._database = IDatabaseDriver(database)
-        self._serializer = serialization.json.Serializer(sort_keys=True,
-                                                         force_unicode=True)
-        self._unserializer = (unserializer or
-                              serialization.json.PaisleyUnserializer())
+        self._serializer = json.Serializer(sort_keys=True, force_unicode=True)
+        self._unserializer = (unserializer or common.CouchdbUnserializer())
+
 
         # listner_id -> doc_ids
         self._listeners = dict()
@@ -287,7 +289,7 @@ class Connection(log.Logger, log.LogProxy):
     def get_document(self, doc_id, raw=False, **extra):
         d = self._database.open_doc(doc_id, **extra)
         if not raw:
-            d.addCallback(self._unserializer.convert)
+            d.addCallback(self.unserialize_document)
         d.addCallback(self._notice_doc_revision)
         return d
 
@@ -413,9 +415,9 @@ class Connection(log.Logger, log.LogProxy):
                         self.debug("Bulk get parser consumed error row: %r",
                                    row)
                 else:
-                    result.append(self._unserializer.convert(row['doc']))
-            return result
+                    result.append(row['doc'])
 
+            return self.unserialize_list_of_documents(result)
 
         d = self._database.bulk_get(doc_ids)
         d.addCallback(parse_bulk_response)
@@ -493,9 +495,20 @@ class Connection(log.Logger, log.LogProxy):
         - (key, value, id) for nonreduce views without include docs
         - (key, value, id, doc) for nonreduce with with include docs
         '''
-        reduced = factory.use_reduce and options.get('reduce', True)
-        include_docs = options.get('include_docs', False)
-        return factory.parse_view_result(rows, reduced, include_docs)
+        kwargs = dict()
+        kwargs['reduced'] = factory.use_reduce and options.get('reduce', True)
+        kwargs['include_docs'] = options.get('include_docs', False)
+        # Lines below pass extra arguments to the parsing function if they
+        # are expected. These arguments are bound method unserialize() and
+        # unserialize_list(). They methods perform the magic of parsing and
+        # upgrading if necessary the loaded documents.
+
+        spec = inspect.getargspec(factory.parse_view_result)
+        if 'unserialize' in spec.args:
+            kwargs['unserialize'] = self.unserialize_document
+        if 'unserialize_list' in spec.args:
+            kwargs['unserialize_list'] = self.unserialize_list_of_documents
+        return factory.parse_view_result(rows, **kwargs)
 
     def _update_id_and_rev(self, resp, doc):
         if IDocument.providedBy(doc):
@@ -518,6 +531,52 @@ class Connection(log.Logger, log.LogProxy):
                  doc_id, rev)
         self._known_revisions[doc_id] = _parse_doc_revision(rev)
         return doc
+
+    ### parsing of the documents ###
+
+    def unserialize_document(self, raw):
+        doc = self._unserializer.convert(raw)
+        if IVersionedDocument.providedBy(doc):
+            if doc.has_migrated:
+                d = self.save_document(doc)
+            for handler, context in doc.get_asynchronous_actions():
+                if handler.use_custom_registry:
+                    conn = Connection(self._database, handler.unserializer)
+                else:
+                    conn = self
+                d.addCallback(defer.keep_param, defer.inject_param, 1,
+                              handler.asynchronous_hook, conn, context)
+                d.addErrback(defer.inject_param, 1, error.handle_failure,
+                             self, 'Failed calling %r with context %r',
+                             handler.asynchronous_hook, context)
+            return d
+        return doc
+
+    def unserialize_list_of_documents(self, list_of_raw):
+        result = list()
+        defers = list()
+        for raw in list_of_raw:
+            if isinstance(raw, Exception):
+                # Exceptions are simply preserved. This behaviour is
+                # optionally used by bulk_get().
+                d = raw
+            else:
+                d = self.unserialize_document(raw)
+            if isinstance(d, defer.Deferred):
+                result.append(None)
+                index = len(result) - 1
+                d.addCallback(defer.inject_param, 1,
+                              result.__setitem__, index)
+                defers.append(d)
+            else:
+                result.append(d)
+
+        if defers:
+            d = defer.DeferredList(defers, consumeErrors=True)
+            d.addCallback(defer.override_result, result)
+            return d
+        else:
+            return result
 
     ### private parts of update_document subroutine ###
 
