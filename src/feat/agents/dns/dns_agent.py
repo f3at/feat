@@ -29,7 +29,6 @@ from zope.interface import implements
 from feat.agents.base import replay, agent, dependency, contractor, collector
 from feat.agents.base import descriptor, cache
 from feat.database import view, document
-from feat.agents.common import export
 from feat.agents.dns import production, simulation
 from feat.agencies import message
 from feat.common import fiber, manhole, formatable, text_helper
@@ -160,8 +159,6 @@ class DNSAgent(agent.BaseAgent):
                         simulation.Labour, ExecMode.test)
     dependency.register(IDNSServerLabourFactory,
                         simulation.Labour, ExecMode.simulation)
-
-    migratability = export.Migratability.not_migratable
 
     resources = {'dns': 1}
 

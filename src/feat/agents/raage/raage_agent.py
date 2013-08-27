@@ -25,7 +25,7 @@
 from feat.agents.base import (agent, contractor, manager, partners,
                               replay, notifier)
 from feat.agencies import message
-from feat.agents.common import rpc, shard, monitor, export
+from feat.agents.common import rpc, shard, monitor
 from feat.common import fiber
 from feat.interface.contracts import ContractState
 from feat.interface.protocols import InterestType
@@ -49,8 +49,6 @@ class ResourcesAllocationAgent(agent.BaseAgent):
     partners_class = Partners
 
     restart_strategy = monitor.RestartStrategy.local
-
-    migratability = export.Migratability.locally
 
     @replay.mutable
     def initiate(self, state):

@@ -4,7 +4,7 @@ from feat.common import fiber, error
 
 from feat.agents.base import agent, collector, descriptor, replay, singleton
 from feat.agents.base import task
-from feat.agents.common import monitor, export
+from feat.agents.common import monitor
 from feat.process.base import ProcessState
 from feat.process import standalone
 
@@ -22,8 +22,6 @@ class Descriptor(descriptor.Descriptor):
 class NagiosAgent(agent.BaseAgent, singleton.AgentMixin):
 
     restart_strategy = monitor.RestartStrategy.local
-
-    migratability = export.Migratability.shutdown
 
     @replay.mutable
     def initiate(self, state, update_command=None):

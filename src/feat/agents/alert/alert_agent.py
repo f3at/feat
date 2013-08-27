@@ -29,7 +29,7 @@ from feat.agents.base import dependency, manager, task
 
 from feat.agencies import recipient, message
 from feat.database import document, view, update
-from feat.agents.common import export, monitor, nagios as cnagios, rpc
+from feat.agents.common import monitor, nagios as cnagios, rpc
 from feat.agents.alert import nagios, simulation
 from feat.agents.application import feat
 
@@ -128,8 +128,6 @@ class AlertAgent(agent.BaseAgent):
     implements(IAlertAgent)
 
     restart_strategy = monitor.RestartStrategy.local
-
-    migratability = export.Migratability.locally
 
     dependency.register(INagiosSenderLabourFactory,
                         nagios.Labour, ExecMode.production)

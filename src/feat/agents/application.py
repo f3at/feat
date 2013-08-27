@@ -36,8 +36,6 @@ class Feat(applications.Application):
         'feat.agents.dns.dns_agent',
         'feat.agents.monitor.monitor_agent',
         'feat.agents.alert.alert_agent',
-        'feat.agents.export.export_agent',
-        'feat.agents.migration.migration_agent',
         'feat.agents.nagios.nagios_agent',
         'feat.agents.integrity.integrity_agent',
         'feat.agents.integrity.api',
@@ -47,7 +45,8 @@ class Feat(applications.Application):
         'feat.agents.common.dns',
         'feat.agents.common.monitor',
         'feat.agents.common.nagios',
-        'feat.agents.common.export']
+        ]
+
 
 
 feat = Feat()

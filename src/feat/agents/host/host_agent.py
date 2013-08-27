@@ -28,7 +28,7 @@ from feat.agents.base import (agent, contractor,
                               replay, replier,
                               partners, resource, notifier,
                               problem, task, requester, alert)
-from feat.agents.common import host, rpc, monitor, export
+from feat.agents.common import host, rpc, monitor
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
 from feat.agencies import recipient, message
@@ -101,8 +101,6 @@ class ShardPartner(agent.BasePartner):
 
     def on_died(self, agent, brothers, monitor):
         agent.info('Shard partner died.')
-        if agent.is_migrating():
-            return
         recipients = map(operator.attrgetter('recipient'), brothers)
         task = agent.collectively_restart_shard(
             recipients, self.recipient.key, monitor)
@@ -112,8 +110,6 @@ class ShardPartner(agent.BasePartner):
         agent.callback_event('shard_agent_restarted', self.recipient)
 
     def _handle_no_shard(self, agent, brothers):
-        if agent.is_migrating():
-            return
         recipients = map(operator.attrgetter('recipient'), brothers)
         return agent.resolve_missing_shard_agent_problem(recipients)
 
@@ -144,8 +140,6 @@ class StaticAgent(formatable.Formatable):
 class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     partners_class = Partners
-
-    migratability = export.Migratability.host
 
     alert.may_raise(PrimaryJournalerAlert)
 
@@ -669,11 +663,6 @@ class HostAllocationContractor(contractor.BaseContractor):
 
     @replay.entry_point
     def announced(self, state, announcement):
-        # refuse if we are migrating
-        if state.agent.is_migrating():
-            self._refuse("We are currently migrating.")
-            return
-
         # check that categories match
         categories = announcement.payload['categories']
         ret = check_categories(state.agent, categories)
@@ -797,10 +786,6 @@ class StartAgentContractor(contractor.BaseContractor):
         state.descriptor = announce.payload['descriptor']
         state.factory = applications.lookup_agent(state.descriptor.type_name)
         state.keep_allocated = False
-
-        if state.agent.is_migrating():
-            self._refuse()
-            return
 
         if not check_categories(state.agent, state.factory.categories):
             self._refuse()

@@ -27,7 +27,7 @@ from feat.agents.base import agent, contractor, manager, poster, notifier
 from feat.agents.base import replay, partners, resource, task
 from feat.agencies import message, recipient
 from feat.database import document
-from feat.agents.common import rpc, raage, host, monitor, export
+from feat.agents.common import rpc, raage, host, monitor
 from feat.common import fiber, manhole, enum
 from feat.agents.application import feat
 from feat import applications
@@ -176,8 +176,6 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
 
     restart_strategy = monitor.RestartStrategy.local
 
-    migratability = export.Migratability.locally
-
     @replay.mutable
     def initiate(self, state):
         config = state.medium.get_configuration()
@@ -227,10 +225,6 @@ class ShardAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin,
 
     @replay.mutable
     def fix_shard_structure(self, state):
-        if self.is_migrating():
-            # don't restart partners if they got terminated as part of the
-            # shard shutdown during migration process
-            return
         for partner_class in state.partners.shard_structure:
             factory = self.query_partner_handler(partner_class)
             if factory in state.tasks:
@@ -723,8 +717,7 @@ class JoinShardContractor(contractor.NestingContractor):
             bid = message.Bid()
             bid.payload['cost'] = -100 #this bid should win
         else:
-            allocation = (not state.agent.is_migrating() and
-                          state.agent.preallocate_resource(hosts=1))
+            allocation = state.agent.preallocate_resource(hosts=1)
 
             if allocation is not None:
                 state.preallocation_id = allocation.id

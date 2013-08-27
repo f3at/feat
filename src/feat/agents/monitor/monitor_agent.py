@@ -28,7 +28,7 @@ from zope.interface import implements
 from feat.agents.base import agent, partners, replay
 from feat.agents.base import dependency, problem, task, contractor, requester
 from feat.agents.base import sender
-from feat.agents.common import host, rpc, shard, monitor, export, start_agent
+from feat.agents.common import host, rpc, shard, monitor, start_agent
 from feat.agents.monitor import intensive_care, clerk, simulation
 from feat.database import document
 from feat.common import fiber, serialization, defer, time, manhole, text_helper
@@ -198,8 +198,6 @@ class MonitorAgent(agent.BaseAgent, sender.AgentMixin,
                         ExecMode.simulation)
 
     need_local_monitoring = False # We handle monitors on our own
-
-    migratability = export.Migratability.locally
 
     @replay.mutable
     def initiate(self, state):

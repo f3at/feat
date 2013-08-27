@@ -35,7 +35,7 @@ from feat import applications
 from feat.agencies import retrying, recipient
 from feat.agents.base import (replay, requester, alert,
                               replier, partners, dependency, manager, )
-from feat.agents.common import monitor, rpc, export
+from feat.agents.common import monitor, rpc
 from feat.agents.application import feat
 from feat.configure import configure
 
@@ -97,7 +97,7 @@ class MetaAgent(type(replay.Replayable), type(manhole.Manhole)):
 
 
 class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
-                manhole.Manhole, rpc.AgentMixin, export.AgentMigrationBase,
+                manhole.Manhole, rpc.AgentMixin,
                 dependency.AgentDependencyMixin, monitor.AgentMixin,
                 alert.AgentMixin):
 
