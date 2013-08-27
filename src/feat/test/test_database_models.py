@@ -139,7 +139,7 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         self.assertEquals(3, count)
 
         res = yield self.model.perform_action('select', query=q,
-                                              sorting=[('field1', 'DESC')])
+                                              sorting=['field1', 'DESC'])
         yield self._asserts_on_select([14, 12, 10], res)
 
     @defer.inlineCallbacks
@@ -157,7 +157,7 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         yield self._asserts_on_select([6, 8, 10], res)
 
         res = yield self.model.perform_action(
-            'select', query=q, limit=3, skip=3, sorting=[('field1', 'DESC')])
+            'select', query=q, limit=3, skip=3, sorting=['field1', 'DESC'])
         yield self._asserts_on_select([12, 10, 8], res)
 
     @defer.inlineCallbacks
@@ -244,13 +244,8 @@ class TestValues(common.TestCase):
         self.assertEquals(1234, v.parts[0].value)
 
     def testValidateSorting(self):
-        SortingValue = models.MetaSortingValue.new(
-            'Test', ['field1', 'field2'])
-        sorting = SortingValue()
-        v = sorting.validate([['field1', 'DESC']])
-        self.assertEquals([('field1', query.Direction.DESC)], v)
-        v = sorting.validate([['field1', 'DESC'], ['field2', 'ASC']])
-        self.assertEquals([('field1', query.Direction.DESC),
-                           ('field2', query.Direction.ASC)], v)
-        wrong = [['field1', 'DESC'], ['field2', 'asc']]
+        sorting = models.SortField(['field1', 'field2'])
+        v = sorting.validate(['field1', 'DESC'])
+        self.assertEquals(('field1', query.Direction.DESC), v)
+        wrong = [['field1', 'DESC']]
         self.assertRaises(ValueError, sorting.validate, wrong)
