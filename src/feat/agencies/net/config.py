@@ -4,7 +4,7 @@ import re
 import socket
 
 from feat.common import formatable, log
-from feat.common.serialization import json
+from feat.common.serialization import json, register
 from feat.agencies.net import options, configfile
 
 from feat.configure import configure
@@ -28,6 +28,7 @@ def parse_service_config():
 
 
 
+@register
 class MsgConfig(formatable.Formatable):
 
     formatable.field('host', options.DEFAULT_MSG_HOST)
@@ -36,6 +37,7 @@ class MsgConfig(formatable.Formatable):
     formatable.field('password', options.DEFAULT_MSG_PASSWORD)
 
 
+@register
 class DbConfig(formatable.Formatable):
 
     formatable.field('host', options.DEFAULT_DB_HOST)
@@ -45,6 +47,7 @@ class DbConfig(formatable.Formatable):
     formatable.field('password', None)
 
 
+@register
 class ManholeConfig(formatable.Formatable):
 
     formatable.field('public_key', options.DEFAULT_MH_PUBKEY)
@@ -53,6 +56,7 @@ class ManholeConfig(formatable.Formatable):
     formatable.field('port', options.DEFAULT_MH_PORT)
 
 
+@register
 class AgencyConfig(formatable.Formatable):
 
     formatable.field('journal', [options.DEFAULT_JOURFILE])
@@ -81,6 +85,7 @@ class AgencyConfig(formatable.Formatable):
         return self._full_hostname
 
 
+@register
 class GatewayConfig(formatable.Formatable):
 
     formatable.field('port', options.DEFAULT_GW_PORT)
@@ -89,6 +94,7 @@ class GatewayConfig(formatable.Formatable):
     formatable.field('allow_tcp', options.DEFAULT_ALLOW_TCP_GATEWAY)
 
 
+@register
 class TunnelConfig(formatable.Formatable):
 
     formatable.field('host', None)
@@ -96,6 +102,15 @@ class TunnelConfig(formatable.Formatable):
     formatable.field('p12', options.DEFAULT_TUNNEL_P12_FILE)
 
 
+@register
+class NagiosConfig(formatable.Formatable):
+
+    formatable.field('send_nsca', options.DEFAULT_SEND_NSCA_PATH)
+    formatable.field('config_file', options.DEFAULT_NSCA_CONFIG_PATH)
+    formatable.field('monitors', list())
+
+
+@register
 class Config(formatable.Formatable, log.Logger):
 
     log_category = 'config'
@@ -106,6 +121,7 @@ class Config(formatable.Formatable, log.Logger):
     formatable.field('agency', AgencyConfig())
     formatable.field('gateway', GatewayConfig())
     formatable.field('tunnel', TunnelConfig())
+    formatable.field('nagios', NagiosConfig())
 
     def __init__(self, **kwargs):
         log.Logger.__init__(self, log.get_default())

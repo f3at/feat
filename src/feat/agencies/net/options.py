@@ -62,6 +62,9 @@ MASTER_LOG_LINK = "feat.master.log"
 
 DEFAULT_LOCK_PATH = os.path.join(configure.lockdir, 'feat.lock')
 
+DEFAULT_NSCA_CONFIG_PATH = '/etc/nagios/send_nsca.cfg'
+DEFAULT_SEND_NSCA_PATH = '/usr/sbin/send_nsca'
+
 
 def add_options(parser):
     add_general_options(parser)
@@ -72,6 +75,7 @@ def add_options(parser):
     add_mh_options(parser)
     add_gw_options(parser)
     add_tunnel_options(parser)
+    add_nagios_options(parser)
 
 
 def add_general_options(parser):
@@ -274,6 +278,23 @@ def add_host_options(parser):
                     help="Add a category to the host agent. "
                          "Format: CAT_NAME:CAT_VALUE.",
                     metavar="HOST_DEF_ID", action="append", default=[])
+
+
+def add_nagios_options(parser):
+    # gateway specific
+    group = optparse.OptionGroup(parser, "Nagios options")
+    group.add_option('--send-nsca-path', type="str",
+                     dest='nagios_send_nsca_path',
+                     help=("path to send_nsca executable (default: %s)" %
+                           (DEFAULT_SEND_NSCA_PATH, )), metavar="PATH")
+    group.add_option('--nsca-config-path', type="str",
+                     dest='nagios_nsca_config_path',
+                     help=("path to config file of send_nsca (default: %s)" %
+                           (DEFAULT_NSCA_CONFIG_PATH, )), metavar="PATH")
+    group.add_option('--nagios-monitor', default=[], action="append",
+                     dest='nagios_monitors',
+                     help=("host to push nsca notifications to "
+                           "(multiple allowed)"), metavar="HOST")
 
 
 def _load_module(option, opt, value, parser):

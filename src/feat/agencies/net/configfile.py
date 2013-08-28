@@ -211,4 +211,18 @@ client_p12: gateway-client-p12
 document_id: host-def
 resource: host-resource
 ports: host-ports-ranges
-category: host-category""")
+category: host-category
+
+[nagios]:
+send_nsca: send-nsca-path
+config_path: nsca-config-path
+monitor: nagios-monitor
+monitor1: nagios-monitor
+monitor2: nagios-monitor
+monitor3: nagios-monitor
+monitor4: nagios-monitor
+monitor5: nagios-monitor
+monitor6: nagios-monitor
+monitor7: nagios-monitor
+monitor8: nagios-monitor
+""")

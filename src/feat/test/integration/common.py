@@ -97,10 +97,7 @@ class FullIntegrationTest(IntegrationTest):
         db = database.Database(db_host, db_port, db_name)
         self.db = db.get_connection()
         yield tools.create_db(self.db)
-        # disable nagios integration for the purpose of this test
-        from feat.agents.alert import alert_agent
-        alert_config = alert_agent.AlertAgentConfiguration(enabled=False)
-        feat.initial_data(alert_config)
+
         yield tools.push_initial_data(self.db)
         defer.returnValue((db_host, db_port, db_name, ))
 

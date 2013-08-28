@@ -25,7 +25,7 @@ class DummyMedium(dummies.DummyMedium):
     _protocols = dict()
 
     def get_configuration(self):
-        return alert_agent.AlertAgentConfiguration(enabled=False)
+        return alert_agent.AlertAgentConfiguration()
 
     def get_base_gateway_url(self):
         return 'http://localhost/'
