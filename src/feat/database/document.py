@@ -307,6 +307,7 @@ class VersionedDocument(Document):
             return []
         return self._asynchronous_actions
 
+    @property
     def has_migrated(self):
         return getattr(self, '_has_migrated', False)
 

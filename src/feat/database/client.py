@@ -539,17 +539,18 @@ class Connection(log.Logger, log.LogProxy):
         if IVersionedDocument.providedBy(doc):
             if doc.has_migrated:
                 d = self.save_document(doc)
-            for handler, context in doc.get_asynchronous_actions():
-                if handler.use_custom_registry:
-                    conn = Connection(self._database, handler.unserializer)
-                else:
-                    conn = self
-                d.addCallback(defer.keep_param, defer.inject_param, 1,
-                              handler.asynchronous_hook, conn, context)
-                d.addErrback(defer.inject_param, 1, error.handle_failure,
-                             self, 'Failed calling %r with context %r',
-                             handler.asynchronous_hook, context)
-            return d
+                for handler, context in doc.get_asynchronous_actions():
+                    if handler.use_custom_registry:
+                        conn = Connection(self._database, handler.unserializer)
+                    else:
+                        conn = self
+                    d.addCallback(defer.keep_param, defer.inject_param, 1,
+                                  handler.asynchronous_hook, conn, context)
+                    d.addErrback(defer.inject_param, 1, error.handle_failure,
+                                 self, 'Failed calling %r with context %r',
+                                 handler.asynchronous_hook, context)
+                return d
+
         return doc
 
     def unserialize_list_of_documents(self, list_of_raw):
