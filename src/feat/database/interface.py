@@ -36,6 +36,7 @@ __all__ = ("VERSION_ATOM", "IDatabaseClient", "DatabaseError", "ConflictError",
 
 
 VERSION_ATOM = u".version"
+CURRENT_VERSION_ATOM = u'.skip_version_adaptation'
 
 
 class DatabaseError(Exception):

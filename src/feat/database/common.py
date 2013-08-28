@@ -1,6 +1,6 @@
 from feat.common.serialization import json
 
-from feat.database.interface import VERSION_ATOM
+from feat.database.interface import VERSION_ATOM, CURRENT_VERSION_ATOM
 from feat.interface.serialization import IVersionAdapter
 
 
@@ -20,6 +20,7 @@ class CouchdbUnserializer(json.Unserializer):
         else:
             target = getattr(restorator, 'version', None)
             source = snapshot.get(VERSION_ATOM, 1)
-            if target is not None and target != source:
+            if (target is not None and target != source and
+                CURRENT_VERSION_ATOM not in snapshot):
                 snapshot = adapter.adapt_version(snapshot, source, target)
         return snapshot
