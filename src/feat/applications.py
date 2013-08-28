@@ -192,7 +192,7 @@ class Application(log.Logger):
         self._initial_data.register(doc, application=self)
         return doc
 
-    def register_migration(self, version, migration):
+    def register_migration(self, migration):
         migration = IMigration(migration)
         self._migrations.register(migration, application=self)
 

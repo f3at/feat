@@ -548,7 +548,7 @@ class IPlanBuilder(Interface):
 class IMigration(Interface):
     '''
     Interface implemented by objects which can be registred with
-    application.register_migration.
+    application.register_migration().
     '''
 
     type_name = Attribute('Type for which this migration runs')
