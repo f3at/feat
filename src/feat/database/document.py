@@ -97,6 +97,9 @@ class Document(formatable.Formatable):
             self._linked_documents = LinkedDocuments(self.linked)
         return self._linked_documents
 
+    def mark_as_deleted(self):
+        self._deleted = True
+
     ### IDocumentPrivate ###
 
     def get_attachments(self):
@@ -114,6 +117,8 @@ class Document(formatable.Formatable):
                 a = _Attachment.restore(s)
                 self._attachments[name] = a
                 self._public_attachments[name] = a.to_public()
+        if snapshot.pop('_deleted', False):
+            self._deleted = True
         return formatable.Formatable.recover(self, snapshot)
 
     def snapshot(self):
@@ -122,7 +127,8 @@ class Document(formatable.Formatable):
             res['_attachments'] = dict()
             for name, attachment in self._attachments.iteritems():
                 res['_attachments'][name] = attachment.snapshot()
-
+        if getattr(self, '_deleted', False):
+            res['_deleted'] = True
         return res
 
     ### private ###
