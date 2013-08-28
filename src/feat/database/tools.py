@@ -155,10 +155,12 @@ def migration_script(connection):
                           "type name: %s. There is %d objects like this in the"
                           " database. They will not be migrated.", type_name,
                           count)
-            if (version and IVersionAdapter.providedBy(restorator) and
-                version < restorator.version):
+
+            if (IVersionAdapter.providedBy(restorator) and
+                ((version is None and restorator.version > 1) or
+                 (version is not None and version < restorator.version))):
                 log.info('script', "I will migrate %d documents of the "
-                          "type: %s from version %d to %d", count,
+                          "type: %s from version %s to %d", count,
                           type_name, version, restorator.version)
 
                 migrated = 0
