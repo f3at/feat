@@ -265,6 +265,12 @@ class DocumentByType(JavascriptView):
             raise ValueError(type_name)
         return dict(startkey=(type_name, ), endkey=(type_name, {}))
 
+    @classmethod
+    def fetch(cls, type_name):
+        keys = cls.keys(type_name)
+        keys.update({'reduce': False, 'include_docs': True})
+        return keys
+
 
 @feat.register_restorator
 class DesignDocument(document.Document):
