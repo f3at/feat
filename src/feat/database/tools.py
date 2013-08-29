@@ -55,19 +55,58 @@ def push_initial_data(connection, overwrite=False):
         try:
             yield connection.save_document(doc)
         except ConflictError:
+            fetched = yield connection.get_document(doc.doc_id)
+            if fetched.compare_content(doc):
+                continue
             if not overwrite:
-                log.error('script', 'Document with id %s already exists!',
-                          doc.doc_id)
+                log.warning('script', 'Document with id %s already exists! '
+                            'Use --force, Luck!', doc.doc_id)
             else:
-
-                yield _update_old(connection, doc)
+                log.info('script', 'Updating old version of the document, '
+                         'id: %s', doc.doc_id)
+                rev = yield connection.get_revision(doc.doc_id)
+                doc.rev = rev
+                yield connection.save_document(doc)
 
     design_docs = view.generate_design_docs()
     for design_doc in design_docs:
         try:
             yield connection.save_document(design_doc)
         except ConflictError:
-            yield _update_old(connection, design_doc)
+            fetched = yield connection.get_document(design_doc.doc_id)
+            if fetched.compare_content(design_doc):
+                continue
+
+            log.warning('script', 'The design document %s changed. '
+                        'Use "feat-service upgrade" to push the new revisions '
+                        'and restart the service in organised manner.',
+                        design_doc.doc_id)
+
+            # calculate a diff for debugging purpose
+            diffs = dict()
+            for what in ('views', 'filters'):
+                diffs[what] = dict()
+                a = getattr(design_doc, what)
+                b = getattr(fetched, what)
+                diff = set(a.keys()) - set(b.keys())
+                for key in diff:
+                    diffs[what][key] = (a[key], None)
+                diff = set(b.keys()) - set(a.keys())
+                for key in diff:
+                    diffs[what][key] = (None, b[key])
+
+                for name in set(a.keys()).intersection(set(b.keys())):
+                    if a[name] != b[name]:
+                        diffs[what] = (a[name], b[name])
+
+            for what in diffs:
+                for name in diffs[what]:
+                    strcode = lambda x: "\n".join(
+                        "%s: %s" % t for t in x.items())
+                    log.info('script',
+                             '%s code changed. \nOLD: \n%s\n\nNEW:\n%s\n',
+                             what, strcode(diffs[what][0]),
+                             strcode(diffs[what][1]))
 
 
 @defer.inlineCallbacks
@@ -151,10 +190,11 @@ def migration_script(connection):
         for (type_name, version), count in index:
             restorator = serialization.lookup(type_name)
             if not restorator:
-                log.error('script', "Failed to lookup the restorator for the "
-                          "type name: %s. There is %d objects like this in the"
-                          " database. They will not be migrated.", type_name,
-                          count)
+                log.error(
+                    'script', "Failed to lookup the restorator for the "
+                    "type name: %s. There is %d objects like this in the"
+                    " database. They will not be migrated.", type_name,
+                    count)
 
             if (IVersionAdapter.providedBy(restorator) and
                 ((version is None and restorator.version > 1) or
@@ -180,7 +220,8 @@ def migration_script(connection):
                          version, restorator.version)
 
     except Exception:
-        error.handle_exception("script", None, "Failed running migration script")
+        error.handle_exception("script", None,
+                               "Failed running migration script")
         raise
 
 
