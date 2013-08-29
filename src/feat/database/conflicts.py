@@ -203,21 +203,9 @@ def _solve_merge(connection, doc, conflicts):
     # This happens when the body of the conflicting documents is the same
     # only the revision is different.
 
-    def compare_revs(one, other):
-        '''
-        Compare only the content of the documents (ignoring the meta fields)
-        '''
-        s1 = one.snapshot()
-        s2 = other.snapshot()
-        for snapshot in (s1, s2):
-            for key in snapshot.keys():
-                if key[0] in ['_', '.']:
-                    del snapshot[key]
-        return s1 == s2
-
     for rev in conflicts:
         fetched = yield connection.get_document(doc.doc_id, rev=rev)
-        if not compare_revs(doc, fetched):
+        if not doc.compare_content(fetched):
             break
     else:
         connection.info('All the conflicting revisions of document: %s '

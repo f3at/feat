@@ -100,6 +100,20 @@ class Document(formatable.Formatable):
     def mark_as_deleted(self):
         self._deleted = True
 
+    def compare_content(self, other):
+        '''
+        Compare only the content of the documents (ignoring the meta fields).
+        '''
+        if type(self) is not type(other):
+            return False
+        s1 = self.snapshot()
+        s2 = other.snapshot()
+        for snapshot in (s1, s2):
+            for key in snapshot.keys():
+                if key[0] in ('_', '.'):
+                    del snapshot[key]
+        return s1 == s2
+
     ### IDocumentPrivate ###
 
     def get_attachments(self):
