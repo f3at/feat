@@ -74,7 +74,18 @@ class F(enum.Enum):
     c = enum.value(4, "#/!@")
 
 
+class ChildF(F):
+    d = enum.value(5)
+
+
 class TestEnum(common.TestCase):
+
+    def testEnumInheritance(self):
+        self.assertEqual(ChildF.a, F.a)
+        self.assertIsInstance(ChildF.a, F)
+        self.assertIsInstance(ChildF.d, ChildF)
+        self.assertIsInstance(ChildF.d, F)
+        self.assertRaises(AttributeError, lambda: F.d)
 
     def testCompareToObject(self):
         self.assertFalse(E.a == object()) #it used to raise TypeError
