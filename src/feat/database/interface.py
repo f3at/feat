@@ -131,6 +131,17 @@ class IDatabaseClient(Interface):
                   document.
         '''
 
+    def copy_document(document_or_id, destination_id, rev):
+        '''
+        Copy a document to a new location.
+
+        @param document_or_id: IDocument, dict or C{str} document id
+        @param destination_id: or to copy to
+        @param rev: optional revision, needed to overwrite the existing doc
+        @errback: NotFoundError
+        @errback: ConflictError
+        '''
+
     def update_document(document_or_id, method, *args, **kwargs):
         '''
         Update the document concurrently. This works by trying to update
@@ -249,6 +260,12 @@ class IDatabaseDriver(Interface):
         Fetch document from database.
         @param doc_id: id of the document to fetch
         @return: Deferred fired with json parsed document.
+        '''
+
+    def copy_doc(doc_id, destination_id, revision):
+        '''
+        Copies the document to a new location. Revision is optional, pass it
+        to overwrite the existing document.
         '''
 
     def delete_doc(doc_id, revision):

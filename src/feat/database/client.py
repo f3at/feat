@@ -345,6 +345,20 @@ class Connection(log.Logger, log.LogProxy):
         d.addBoth(defer.bridge_param, self._unlock_notifications)
         return d
 
+    @serialization.freeze_tag('IDatabaseClient.copy_document')
+    def copy_document(self, doc_or_id, destination_id, rev=None):
+        if isinstance(doc_or_id, (str, unicode)):
+            doc_id = doc_or_id
+        elif IDocument.providedBy(doc_or_id):
+            doc_id = doc_or_id.doc_id
+        elif isinstance(doc_or_id, dict):
+            doc_id = doc_or_id['_id']
+        else:
+            raise TypeError(type(doc_or_id))
+        if not doc_id:
+            raise ValueError("Cannot determine doc id from %r" % (doc_or_id, ))
+        return self._database.copy_doc(doc_id, destination_id, rev)
+
     @serialization.freeze_tag('IDatabaseClient.changes_listener')
     def changes_listener(self, filter_, callback, **kwargs):
         assert callable(callback)

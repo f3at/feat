@@ -309,6 +309,30 @@ class TestCase(object):
         self.assertEqual([docs[0]], fetched2)
 
     @defer.inlineCallbacks
+    def testCopyDocument(self):
+        doc = DummyDocument(field='first')
+        doc = yield self.connection.save_document(doc)
+
+        yield self.connection.copy_document(doc, 'new_id')
+        doc2 = yield self.connection.get_document('new_id')
+        self.assertIsInstance(doc2, DummyDocument)
+        fetched = yield self.connection.get_document('new_id')
+
+        self.assertEqual(doc2, fetched)
+
+        doc = yield self.connection.update_document(doc, update.attributes,
+                                                    {'field': 'new value'})
+        d = self.connection.copy_document(doc, 'new_id')
+        self.assertFailure(d, ConflictError)
+        yield d
+
+        yield self.connection.copy_document(doc, 'new_id', fetched.rev)
+        doc3 = yield self.connection.get_document('new_id')
+        self.assertIsInstance(doc2, DummyDocument)
+        self.assertIsInstance(doc3, DummyDocument)
+        self.assertEqual('new value', doc3.field)
+
+    @defer.inlineCallbacks
     def testSaveDocumentWithALink(self):
         views = (links.Join, view.DocumentByType)
         for doc in view.DesignDocument.generate_from_views(views):

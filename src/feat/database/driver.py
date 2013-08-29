@@ -50,6 +50,14 @@ DEFAULT_DB_NAME = "feat"
 BOUNDARY = '32c90c040f034b15959861e58b8ec35d'
 
 
+class Methods(http.Methods):
+    '''
+    This is override to define a non-standard extension used by couchdb (COPY).
+    '''
+
+    COPY = 6
+
+
 class ChangeReceiver(basic.LineReceiver):
 
     delimiter = '\n'
@@ -216,6 +224,11 @@ class CouchDB(httpclient.ConnectionPool):
         headers.setdefault('accept', "application/json")
         return self.request(http.Methods.GET, url, headers=headers, **extra)
 
+    def copy(self, url, headers, **extra):
+        self._set_auth(headers)
+        headers.setdefault('accept', "application/json")
+        return self.request(Methods.COPY, url, headers=headers, **extra)
+
     def put(self, url, body=None, headers=dict(), **extra):
         self._set_auth(headers)
         headers.setdefault('accept', "application/json")
@@ -307,6 +320,15 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                     extra[k] = str(v).lower()
             url += urlencode(extra)
         return self.couchdb_call(doc_id, self.couchdb.get, url)
+
+    def copy_doc(self, doc_id, destination_id, rev=None):
+        url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
+        dest = quote(destination_id.encode('utf-8'))
+        if rev:
+            dest += '?rev=' + quote(rev.encode('utf-8'))
+        headers = {'Destination': dest}
+        return self.couchdb_call(doc_id, self.couchdb.copy, url,
+                                 headers=headers)
 
     @defer.inlineCallbacks
     def save_doc(self, doc, doc_id=None, following_attachments=None,

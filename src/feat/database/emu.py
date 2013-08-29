@@ -172,6 +172,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
 
         return d
 
+    def copy_doc(self, doc_id, destination_id, rev=None):
+        d = self.open_doc(doc_id)
+        d.addCallback(defer.keep_param, defer.call_param,
+                      'update', {'_id': destination_id, '_rev': rev})
+        d.addCallback(json.dumps)
+        d.addCallback(self.save_doc)
+        return d
+
     def delete_doc(self, doc_id, revision):
         '''Imitates sending DELETE request to CouchDB server'''
         d = defer.Deferred()
