@@ -63,7 +63,7 @@ def start(args):
 
 
 def stop(sig=signal.SIGUSR1):
-    logger.debug("Stopping feat ")
+    logger.info("Stopping feat ")
     rundir = configure.rundir
     pid = run.get_pid(rundir)
     if pid is None:
@@ -86,6 +86,8 @@ def main(args):
              machine figures out they are gone.
     * shutdown - Stop service in a gentle way, cleaning up the agents data.
     * restart - Stop service gently and start it back.
+    * upgrade - Update the couchdb views, wait for the indexes to be ready
+                and restart the service.
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
     * hostclean - Cleans up descriptors of the agents running on the host.
@@ -205,10 +207,109 @@ def main(args):
         client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
         sys.exit(_gateway_script(agent_restart, client, args[0], c))
 
+    if command == 'upgrade':
+        c = config.parse_service_config()
+        from feat.database import tools
+
+        with tools.dbscript(c.db) as d:
+            d.addCallback(upgrade)
+
+        sys.exit(start(args))
 
     logger.error("No such command, %s", command)
     print >> sys.stderr, usage
     sys.exit(1)
+
+
+@defer.inlineCallbacks
+def upgrade(connection):
+    to_rotate = yield update_views(connection)
+    stop(signal.SIGUSR2) # ignore the result of stop
+    yield rotate_views(connection, to_rotate)
+
+
+@defer.inlineCallbacks
+def update_views(connection):
+    from feat.database import view
+    from feat.database.interface import ConflictError
+
+    design_docs = view.generate_design_docs()
+    to_update = list()
+    for design_doc in design_docs:
+        try:
+            yield connection.save_document(design_doc)
+            logger.info("Pushed new design document: %s", design_doc.doc_id)
+            continue
+        except ConflictError:
+            fetched = yield connection.get_document(design_doc.doc_id)
+            if fetched.compare_content(design_doc):
+                logger.info("Design document: %s doesn't need an update",
+                            design_doc.doc_id)
+            else:
+                to_update.append((design_doc, fetched))
+
+    yield defer.DeferredList([update_design_doc(connection, doc)
+                              for doc, _orig in to_update])
+    defer.returnValue(to_update)
+
+
+@defer.inlineCallbacks
+def rotate_views(connection, to_rotate):
+    from feat.database import update
+
+    for design_doc, original in to_rotate:
+        yield connection.copy_document(design_doc, original.doc_id,
+                                       original.rev)
+        logger.info("Copied %s -> %s", design_doc.doc_id, original.doc_id)
+        yield connection.update_document(design_doc.doc_id, update.delete)
+        logger.info("Deleted %s.", design_doc.doc_id)
+
+
+@defer.inlineCallbacks
+def update_design_doc(connection, design_doc):
+    from twisted.internet import task
+    from feat import applications
+
+    postfix = '-' + str(int(time.time()))
+    design_doc.doc_id += postfix
+    logger.info("Saving temporary document id: %s", design_doc.doc_id)
+    design_doc = yield connection.save_document(design_doc)
+    if not design_doc.views:
+        logger.info("Design document id: %s has now views to rebuild",
+                    design_doc.doc_id)
+    else:
+        view_factory = applications.get_view_registry().lookup(
+            design_doc.views.keys()[0])
+        # create a children class bound to temporary design document
+        view_factory = type(
+            view_factory.__name__, (view_factory, ),
+            {'design_doc_id': view_factory.design_doc_id + postfix})
+        reporter = task.LoopingCall(report_progress, connection,
+                                    design_doc.doc_id)
+        reporter.start(10)
+        start = time.time()
+        yield connection.query_view(view_factory, limit=1)
+        if reporter.running:
+            reporter.stop()
+        logger.info("Index calculation of design document %s is complete."
+                    " It tooks %2.1f seconds", design_doc.doc_id,
+                    time.time() - start)
+
+
+@defer.inlineCallbacks
+def report_progress(connection, doc_id):
+    from feat.common import first
+
+    db = connection._database
+    active_tasks = yield db.couchdb_call(
+        'active_tasks', db.couchdb.get, '/_active_tasks')
+    relevant = first(x for x in active_tasks
+                     if (x.get('type') == 'indexer' and
+                         x.get('database') == db.db_name and
+                         x.get('design_document') == doc_id))
+    if relevant:
+        logger.info('The progress of updating %s is %s%%', doc_id,
+                    relevant.get('progress'))
 
 
 @defer.inlineCallbacks
