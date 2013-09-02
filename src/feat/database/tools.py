@@ -49,7 +49,7 @@ def create_connection(host, port, name, username=None, password=None):
 
 
 @defer.inlineCallbacks
-def push_initial_data(connection, overwrite=False):
+def push_initial_data(connection, overwrite=False, push_design_docs=True):
     documents = applications.get_initial_data_registry().itervalues()
     for doc in documents:
         try:
@@ -68,6 +68,8 @@ def push_initial_data(connection, overwrite=False):
                 doc.rev = rev
                 yield connection.save_document(doc)
 
+    if not push_design_docs:
+        return
     design_docs = view.generate_design_docs()
     for design_doc in design_docs:
         try:

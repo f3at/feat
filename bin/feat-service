@@ -223,8 +223,13 @@ def main(args):
 
 @defer.inlineCallbacks
 def upgrade(connection):
+    from feat.database import tools
+
     to_rotate = yield update_views(connection)
     stop(signal.SIGUSR2) # ignore the result of stop
+    yield tools.push_initial_data(connection,
+                                  overwrite=True,
+                                  push_design_docs=False)
     yield rotate_views(connection, to_rotate)
 
 
