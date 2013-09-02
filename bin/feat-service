@@ -209,8 +209,17 @@ def main(args):
 
     if command == 'upgrade':
         c = config.parse_service_config()
-        from feat.database import tools
 
+        from feat.agencies.net.options import _load_module as load_module
+
+        parser = optparse.OptionParser()
+        parser.add_option('-i', '--import', help='import specified module',
+                          action='callback', callback=load_module,
+                          type="str", metavar="MODULE")
+
+        opts, args = parser.parse_args(args)
+
+        from feat.database import tools
         with tools.dbscript(c.db) as d:
             d.addCallback(upgrade)
 
