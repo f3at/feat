@@ -92,6 +92,7 @@ def main(args):
     * clean - Cleans the log and rundir.
     * hostclean - Cleans up descriptors of the agents running on the host.
     * agentrestart - Restarts a statically configured agent.
+    * alertclean - Clean up the persistent nagios services.
     """)
 
     try:
@@ -224,6 +225,30 @@ def main(args):
             d.addCallback(upgrade)
 
         sys.exit(start(args))
+
+    if command == 'alertclean':
+        c = config.parse_service_config()
+
+        # parse extra options
+        parser = optparse.OptionParser()
+        parser.add_option('--hostname',
+                          help=('specify the hostname for which for perform '
+                                'the cleanup'),
+                          action='store', type="str",
+                          metavar="HOSTNAME", dest='hostname')
+
+        opts, _ = parser.parse_args(args)
+
+        from feat.database import tools
+        from feat.utils import alert_cleanup
+        from feat.common import log
+
+        log.set_default(log.PythonLogKeeper(logger))
+
+        with tools.dbscript(c.db) as d:
+            d.addCallback(alert_cleanup.do_cleanup, opts.hostname)
+        return
+
 
     logger.error("No such command, %s", command)
     print >> sys.stderr, usage
