@@ -76,10 +76,6 @@ class AlertAgentConfiguration(document.Document):
 
     type_name = 'alert_agent_conf'
     document.field('doc_id', u'alert_agent_conf', '_id')
-    document.field('enabled', True)
-    document.field('monitor', u'')#u'monitor01.bcn.fluendo.net')
-    document.field('config_file', u'/etc/nagios/send_nsca.cfg')
-    document.field('send_nsca', u'/usr/sbin/send_nsca')
     document.field('config_header', unicode(header))
     document.field('service_template', unicode(service_template))
 
@@ -142,9 +138,9 @@ class AlertAgent(agent.BaseAgent):
     def initiate(self, state):
         state.medium.register_interest(AlertsCollector)
 
-        config = state.medium.get_configuration()
+        config = state.medium.agency.get_config()
         state.nagios = self.dependency(INagiosSenderLabourFactory, self,
-                                       config)
+                                       config.nagios)
         # (hostname, description) -> AlertService
         state.alerts = dict()
 

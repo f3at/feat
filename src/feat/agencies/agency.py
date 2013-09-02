@@ -1531,3 +1531,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
 
     def snapshot(self):
         return None
+
+    @serialization.freeze_tag('IAgency.get_config')
+    @replay.named_side_effect('IAgency.get_config')
+    def get_config(self):
+        from feat.agencies.net import config
+        return config.Config()
+
