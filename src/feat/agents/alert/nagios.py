@@ -25,7 +25,7 @@ from zope.interface import implements, classProvides
 
 from feat.process import base
 from feat.agents.base import alert
-from feat.common import log, serialization
+from feat.common import log, serialization, defer
 
 from feat.agents.alert.interface import \
      INagiosSenderLabourFactory, IAlertSenderLabour
@@ -48,19 +48,19 @@ class Labour(log.Logger, log.LogProxy, serialization.Serializable):
         self._config = config
 
     def send(self, alerts):
-        if not self._config.enabled:
+        if not self._config.monitors:
             return
-        p = SendNSCA(self, self._config, alerts)
-        return p.restart()
+        defers = [SendNSCA(self, self._config, monitor, alerts).restart()
+                  for monitor in self._config.monitors]
+        return defer.DeferredList(defers, consumeErrors=True)
 
 
 class SendNSCA(base.Base):
 
-    def initiate(self, config, alerts):
+    def initiate(self, config, monitor, alerts):
         self.debug('initiate send_nsca')
         self.command = config.send_nsca
-        self.args = ['-H', config.monitor, '-c', config.config_file,
-                     '-d', ';']
+        self.args = ['-H', monitor, '-c', config.config_file, '-d', ';']
         self.env = os.environ
 
         self._sent = False

@@ -56,10 +56,15 @@ class TestConfigFile(common.TestCase):
         port: 5200
         p12_path: /etc/ssl/cert/gateway.p12
 
-        [host]:
+        [host]
         resource: epu:1000 bandwidth:100
         ports: dns:10000:10001
-        category: address:fixed storage:static""")
+        category: address:fixed storage:static
+
+        [nagios]
+        monitor1: some.monitor.com
+        monitor2: other.monitor.com
+        """)
 
         f = StringIO(test_config)
         configfile.parse_file(self.parser, f)
@@ -104,6 +109,9 @@ class TestConfigFile(common.TestCase):
                          v.hostres)
         self.assertEqual(['dns:10000:10001'], v.hostports)
         self.assertEqual(['address:fixed', 'storage:static'], v.hostcat)
+
+        self.assertEqual(['some.monitor.com', 'other.monitor.com'],
+                         v.nagios_monitors)
 
     def testInclude(self):
         tmpfile = tempfile.mktemp()
