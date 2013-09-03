@@ -314,7 +314,7 @@ def update_design_doc(connection, design_doc):
     logger.info("Saving temporary document id: %s", design_doc.doc_id)
     design_doc = yield connection.save_document(design_doc)
     if not design_doc.views:
-        logger.info("Design document id: %s has now views to rebuild",
+        logger.info("Design document id: %s has no views to rebuild",
                     design_doc.doc_id)
     else:
         view_factory = applications.get_view_registry().lookup(
@@ -331,7 +331,7 @@ def update_design_doc(connection, design_doc):
         if reporter.running:
             reporter.stop()
         logger.info("Index calculation of design document %s is complete."
-                    " It tooks %2.1f seconds", design_doc.doc_id,
+                    " It took %2.1f seconds", design_doc.doc_id,
                     time.time() - start)
 
 
