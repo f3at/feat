@@ -4,7 +4,7 @@ import types
 
 from zope.interface import implements, Interface, Attribute
 
-from feat.common import serialization, enum, first, defer, annotate, log
+from feat.common import serialization, enum, first, defer, annotate, log, error
 from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
@@ -602,6 +602,7 @@ class Query(serialization.Serializable):
             if not included:
                 temp.append(Condition(part, Evaluator.none, None))
 
+
         # remove duplicates
         resp = list()
         while temp:
@@ -703,6 +704,8 @@ def _get_query_response(connection, query):
         d = cache.query(connection, query.factory, subquery, update_seq)
         d.addCallback(defer.inject_param, 1, responses.__setitem__,
                       subquery)
+        d.addErrback(defer.inject_param, 1, error.handle_failure,
+                     connection, "Failed querying subquery %s", subquery)
         defers.append(d)
     if defers:
         yield defer.DeferredList(defers, consumeErrors=True)
