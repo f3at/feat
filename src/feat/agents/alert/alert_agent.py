@@ -35,7 +35,7 @@ from feat.agents.application import feat
 
 from feat.interface.protocols import InterestType
 from feat.interface.agency import ExecMode
-from feat.interface.alert import IAlert
+from feat.interface.alert import IAlert, Severity
 from feat.interface.agent import IAlertAgent
 from feat.agents.alert.interface import INagiosSenderLabourFactory
 
@@ -112,8 +112,8 @@ class AlertService(document.Document):
                  "%s-%s" % (agent.agent_id, alert.name))
         return cls(name=alert.name,
                    agent_id=agent.agent_id,
-                   severity=alert.severity,
                    description=descr,
+                   severity=Severity.ok,
                    persistent=alert.persistent,
                    hostname=agent.hostname)
 
@@ -272,9 +272,11 @@ class AlertAgent(agent.BaseAgent):
     def alert_raised(self, state, alert):
         r = self._find_entry(alert)
         should_notify = (r.received_count == 0 or
-                         r.status_info != alert.status_info)
+                         r.status_info != alert.status_info or
+                         r.severity != alert.severity)
         r.received_count += 1
         r.status_info = alert.status_info
+        r.severity = alert.severity
         if should_notify:
             f = fiber.wrap_defer(state.nagios.send, [r])
             if r.persistent:
@@ -288,6 +290,7 @@ class AlertAgent(agent.BaseAgent):
                          r.status_info != alert.status_info)
         r.received_count = 0
         r.status_info = alert.status_info
+        r.severity = Severity.ok
         if should_notify:
             f = fiber.wrap_defer(state.nagios.send, [r])
             if r.persistent:
@@ -344,6 +347,7 @@ class AlertAgent(agent.BaseAgent):
                 if status:
                     state.alerts[key].received_count = status[0]
                     state.alerts[key].status_info = status[1]
+                    state.alerts[key].severity = status[2]
         for key in old_keys:
             if not state.alerts[key].persistent:
                 # don't remove persistent services, even if there is no agent

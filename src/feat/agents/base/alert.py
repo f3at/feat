@@ -39,11 +39,14 @@ def may_raise(factory):
 
 @feat.register_restorator
 class AlertingAgentEntry(formatable.Formatable):
+    '''
+    Represents internal state of the alerts the agent is responsible for.
+    '''
 
     formatable.field('hostname', None)
     formatable.field('agent_id', None)
     formatable.field('alerts', []) #[IAlertFactory]
-    formatable.field('statuses', dict()) # name -> (count, info)
+    formatable.field('statuses', dict()) # name -> (count, info, severity)
 
 
 class AlertsDiscoveryContractor(contractor.BaseContractor):
@@ -72,21 +75,22 @@ class BaseAlert(serialization.Serializable):
     implements(IAlert)
 
     name = None
-    severity = None
     description = None
     persistent = False
 
-    def __init__(self, hostname, agent_id, status_info=None):
+    def __init__(self, hostname, agent_id, status_info=None,
+                 severity=Severity.warn):
+        if not isinstance(severity, Severity):
+            raise TypeError(severity)
+
         self.name = type(self).name
-        self.severity = type(self).severity
+        self.severity = severity
         self.hostname = hostname
         self.agent_id = agent_id
         self.status_info = status_info
 
         assert self.name is not None, \
                "Class %r should have name attribute set" % (type(self), )
-        assert isinstance(self.severity, Severity), \
-               "Class %r should have severity attribute set" % (type(self), )
 
 
 @feat.register_restorator
@@ -102,15 +106,16 @@ class DynamicAlert(formatable.Formatable):
     formatable.field('description', None)
     formatable.field('persistent', False)
 
-    def __call__(self, hostname, agent_id, status_info):
+    def __call__(self, hostname, agent_id, status_info,
+                 severity=Severity.warn):
         assert self.name is not None, \
                "DynamicAlert %r should have name attribute set" % (self, )
-        assert isinstance(self.severity, Severity), \
-               "DynamicAlert %r should have severity attribute set" % (self, )
+        if not isinstance(severity, Severity):
+            raise TypeError(severity)
 
         return type(self)(
             name=self.name,
-            severity=self.severity,
+            severity=severity,
             description=self.description,
             persistent=self.persistent,
             hostname=hostname,
@@ -143,20 +148,30 @@ class AgentMixin(object):
         state.alert_statuses = dict()
 
     @replay.mutable
-    def raise_alert(self, state, service_name, status_info=None):
-        alert = self._generate_alert(service_name, status_info)
-        state.alerter.notify('raised', alert)
+    def raise_alert(self, state, service_name, status_info=None,
+                    severity=Severity.warn):
         if service_name in state.alert_statuses:
             count = state.alert_statuses[service_name][0] + 1
+            old_severity = state.alert_statuses[service_name][2]
+            if old_severity is None:
+                old_severity = severity
         else:
             count = 1
-        state.alert_statuses[service_name] = (count, status_info)
+            old_severity = severity
+        # raise a new alert cannot change the severity warn -> critical
+        severity = max([old_severity, severity])
+        state.alert_statuses[service_name] = (count, status_info, severity)
+
+        alert = self._generate_alert(service_name, status_info,
+                                     severity=severity)
+        state.alerter.notify('raised', alert)
 
     @replay.mutable
     def resolve_alert(self, state, service_name, status_info=None):
-        alert = self._generate_alert(service_name, status_info)
+        alert = self._generate_alert(service_name, status_info,
+                                     severity=Severity.ok)
         state.alerter.notify('resolved', alert)
-        state.alert_statuses[service_name] = (0, status_info)
+        state.alert_statuses[service_name] = (0, status_info, Severity.ok)
 
     @replay.mutable
     def may_raise_alert(self, state, factory):
@@ -166,12 +181,14 @@ class AgentMixin(object):
     ### private ###
 
     @replay.immutable
-    def _generate_alert(self, state, service_name, status_info):
+    def _generate_alert(self, state, service_name, status_info,
+                        severity):
         alert_factory = state.alert_factories.get(service_name, None)
         assert alert_factory is not None, \
                "Unknown service name %r" % (service_name, )
         return alert_factory(hostname=state.medium.get_hostname(),
                              status_info=status_info,
+                             severity=severity,
                              agent_id=self.get_agent_id())
 
     ### used by discovery contractor ###

@@ -8,16 +8,15 @@ from feat.gateway import models
 from feat.models import response
 
 from feat.interface.protocols import ProtocolFailed
+from feat.interface.alert import Severity
 
 
 class Alert1(alert.BaseAlert):
     name = 'service1'
-    severity = alert.Severity.warn
 
 
 class Alert2(alert.BaseAlert):
     name = 'service2'
-    severity = alert.Severity.critical
 
 
 class DummyMedium(dummies.DummyMedium):
@@ -51,22 +50,27 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
         self.assertEqual(1, len(self.state.alerts))
 
+        S = Severity
         self._assert_service('host1', 'agent1', Alert1,
-                             received=1, status_info='omg!')
+                             received=1, status_info='omg!',
+                             severity=S.warn)
         self.assertEqual(1, len(self.medium.calls))
         self.assertEqual(self.agent.rescan_shard,
                          self.medium.calls.values()[0][1])
 
         a.status_info = 'fire!'
+        a.severity = S.critical
         yield self.agent.alert_raised(a)
         self._assert_service('host1', 'agent1', Alert1,
-                             received=2, status_info='fire!')
+                             received=2, status_info='fire!',
+                             severity=S.critical)
         self.assertEqual(1, len(self.medium.calls))
 
         a.status_info = 'uff ok again'
         yield self.agent.alert_resolved(a)
         self._assert_service('host1', 'agent1', Alert1,
-                             received=0, status_info='uff ok again')
+                             received=0, status_info='uff ok again',
+                             severity=S.ok)
         self.assertEqual(1, len(self.medium.calls))
 
         # now validate the model for the current state
@@ -81,12 +85,13 @@ class TestAgent(common.TestCase, ModelTestMixin):
         d = model.perform_action('rescan')
         self.assertEqual(1, len(self.medium.protocols))
 
+        S = Severity
         resp = [
             alert.AlertingAgentEntry(
                 hostname='host1',
                 agent_id='agent1',
                 alerts=[Alert1, Alert2],
-                statuses=dict(service1=(1, 'bum'))),
+                statuses=dict(service1=(1, 'bum', S.warn))),
             alert.AlertingAgentEntry(
                 hostname='host2',
                 agent_id='agent2',
@@ -100,9 +105,9 @@ class TestAgent(common.TestCase, ModelTestMixin):
                          str(self.state.alerts.keys()))
 
         self._assert_service('host1', 'agent1', Alert1, received=1,
-                             status_info="bum")
-        self._assert_service('host1', 'agent1', Alert2)
-        self._assert_service('host2', 'agent2', Alert1)
+                             status_info="bum", severity=S.warn)
+        self._assert_service('host1', 'agent1', Alert2, severity=S.ok)
+        self._assert_service('host2', 'agent2', Alert1, severity=S.ok)
         self.medium.reset()
 
         # now rescan and discover new services
@@ -125,20 +130,21 @@ class TestAgent(common.TestCase, ModelTestMixin):
 
         self.assertEqual(4, len(self.state.alerts))
         self._assert_service('host1', 'agent1', Alert1, received=1,
-                             status_info="bum")
-        self._assert_service('host1', 'agent1', Alert2)
-        self._assert_service('host3', 'agent3', Alert1)
-        self._assert_service('host3', 'agent3', Alert2)
+                             status_info="bum", severity=S.warn)
+        self._assert_service('host1', 'agent1', Alert2, severity=S.ok)
+        self._assert_service('host3', 'agent3', Alert1, severity=S.ok)
+        self._assert_service('host3', 'agent3', Alert2, severity=S.ok)
 
     def _assert_service(self, hostname, agent_id, alert,
-                        received=0, status_info=None):
+                        received=0, status_info=None,
+                        severity=None):
         key = (hostname, "-".join([agent_id, alert.name]))
         self.assertIn(key, self.state.alerts, self.state.alerts.keys())
         a = self.state.alerts[key]
         self.assertIsInstance(a, alert_agent.AlertService)
         self.assertEqual(received, a.received_count)
         self.assertEqual(alert.name, a.name)
-        self.assertEqual(alert.severity, a.severity)
+        self.assertEqual(severity, a.severity)
         self.assertEqual(hostname, a.hostname)
         self.assertEqual(status_info, a.status_info)
         self.assertEqual(agent_id, a.agent_id)

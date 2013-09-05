@@ -4,15 +4,15 @@ from feat.common import defer
 from feat.agencies import message
 from feat.agents.base import alert, replay
 
+from feat.interface.alert import Severity
+
 
 class Alert1(alert.BaseAlert):
     name = 'service1'
-    severity = alert.Severity.warn
 
 
 class Alert2(alert.BaseAlert):
     name = 'service2'
-    severity = alert.Severity.critical
 
 
 class DummyAgent(replay.Replayable, alert.AgentMixin):
@@ -62,7 +62,8 @@ class TestCase(common.TestCase):
         self.assertEqual('agent1', al.agent_id)
         self.assertEqual(alert.Severity.warn, al.severity)
         self.assertEqual('service1', al.name)
-        self.assertEquals((1, 'it hurts!'), self.statuses['service1'])
+        self.assertEquals((1, 'it hurts!', Severity.warn),
+                          self.statuses['service1'])
 
         self.agent.resolve_alert('service1', 'now better')
         self.assertEqual(2, len(self.poster.messages))
@@ -73,9 +74,10 @@ class TestCase(common.TestCase):
         self.assertEqual('test.feat.lan', al.hostname)
         self.assertEqual('now better', al.status_info)
         self.assertEqual('agent1', al.agent_id)
-        self.assertEqual(alert.Severity.warn, al.severity)
+        self.assertEqual(alert.Severity.ok, al.severity)
         self.assertEqual('service1', al.name)
-        self.assertEquals((0, 'now better'), self.statuses['service1'])
+        self.assertEquals((0, 'now better', Severity.ok),
+                          self.statuses['service1'])
 
 
 class TestContractor(common.TestCase):

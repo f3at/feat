@@ -238,3 +238,7 @@ class TestEnum(common.TestCase):
             expected = expecteds.pop(0)
             self.assertEqual(expected, en)
         self.assertEqual([], expecteds)
+
+    def testUsingMaxOperator(self):
+        m = max([A.a, A.b, A.c, A.d])
+        self.assertEqual(A.d, m)

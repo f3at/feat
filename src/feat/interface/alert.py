@@ -4,18 +4,17 @@ from feat.common import enum
 
 class Severity(enum.Enum):
 
-    warn, critical = range(2)
+    ok, warn, critical = range(3)
 
 
 class IAlertFactory(Interface):
 
     name = Attribute('C{str} unique name of the service')
-    severity = Attribute('L{Severity}')
     persistent = Attribute('C{bool} flag saying if the alert should persist '
                            'in nagios config between restarts of the cluster')
     description = Attribute('C{str} optional description to use in nagios')
 
-    def __call__(hostname, agent_id, status_info):
+    def __call__(hostname, agent_id, status_info, severity=None):
         '''Construct IAlert'''
 
 
