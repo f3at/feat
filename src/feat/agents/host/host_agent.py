@@ -364,9 +364,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         state.static_agents[name] = StaticAgent(initial_descriptor=desc,
                                                 kwargs=kwargs,
                                                 name=name)
-        self.may_raise_alert(alert.DynamicAlert(
-            name=name,
-            severity=alert.Severity.critical))
+        self.may_raise_alert(alert.DynamicAlert(name=name))
+
         partner = self.find_static_partner(name)
         if partner is None:
             self.info("I will start a statically configured agent named: %s",
@@ -477,7 +476,8 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                              "I will remove the descriptor.")
         if alert_name:
             self.info('raising alert %s', alert_name)
-            self.raise_alert(alert_name, error.get_failure_message(fail))
+            self.raise_alert(alert_name, error.get_failure_message(fail),
+                             severity=alert.Severity.critical)
         f = self.get_document(desc.doc_id)
         f.add_callback(self.delete_document)
         f.add_both(fiber.override_result, None)
