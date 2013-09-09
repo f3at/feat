@@ -498,6 +498,9 @@ class Condition(serialization.Serializable):
     def __str__(self):
         return "%s %s %s" % (self.field, self.evaluator.name, self.value)
 
+    def __repr__(self):
+        return '<Condition: "%s">' % (self, )
+
     def __hash__(self):
         return hash((self.field, self.evaluator, self.value))
 
