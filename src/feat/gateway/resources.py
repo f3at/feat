@@ -464,8 +464,11 @@ class ModelResource(BaseResource):
         response.set_mime_type(mime_type)
         if encoding:
             response.set_encoding(encoding)
-        response.set_length(len(value))
-        response.write(value)
+        if value:
+            response.set_length(len(value))
+            response.write(value)
+        else:
+            response.set_length(0)
 
 
 class ActionResource(BaseResource):
