@@ -237,8 +237,16 @@ class QueryViewMeta(type(view.BaseView)):
                     values = handler(doc)
                 transform = getattr(handler, 'sort_key', lambda x: x)
 
-                for value in values:
-                    yield (field, transform(value)), emit_value
+                from types import GeneratorType
+                from itertools import product
+
+                if isinstance(emit_value, GeneratorType):
+                    for value, emit_value in product(values, emit_value):
+                        yield (field, transform(value)), emit_value
+                else:
+                    for value in values:
+                        yield (field, transform(value)), emit_value
+
         cls.map = cls._querymethod(dct.pop('map', map))
 
         def filter(doc, request):
