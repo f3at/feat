@@ -362,8 +362,11 @@ class BaseQueryViewController(object):
         return self._generate_keys(self.transform, field, evaluator, value)
 
     def parse_view_result(self, rows):
-        # the ids are of original documents
-        return [x[2] for x in rows]
+        # If the row emitted the link with _id=doc_id this value is used,
+        # otherwise the id of the emiting document is used
+        return [
+            x[1]['_id'] if (isinstance(x[1], dict) and '_id' in x[1]) else x[2]
+            for x in rows]
 
     ### protected ###
 
