@@ -36,7 +36,7 @@ from feat.database.interface import IDatabaseClient, IDatabaseDriver
 from feat.database.interface import IRevisionStore, IDocument, IViewFactory
 from feat.database.interface import NotFoundError, ConflictResolutionStrategy
 from feat.database.interface import ResignFromModifying, ConflictError
-from feat.database.interface import IVersionedDocument
+from feat.database.interface import IVersionedDocument, NotMigratable
 from feat.interface.generic import ITimeProvider
 from feat.interface.serialization import ISerializable
 
@@ -552,7 +552,7 @@ class Connection(log.Logger, log.LogProxy):
         doc = self._unserializer.convert(raw)
         if IVersionedDocument.providedBy(doc):
             if doc.has_migrated:
-                d = self.save_document(doc)
+                d = defer.succeed(doc)
                 for handler, context in doc.get_asynchronous_actions():
                     if handler.use_custom_registry:
                         conn = Connection(self._database, handler.unserializer)
@@ -560,12 +560,27 @@ class Connection(log.Logger, log.LogProxy):
                         conn = self
                     d.addCallback(defer.keep_param, defer.inject_param, 1,
                                   handler.asynchronous_hook, conn, context)
-                    d.addErrback(defer.inject_param, 1, error.handle_failure,
-                                 self, 'Failed calling %r with context %r',
+                    d.addErrback(self.handle_immediate_failure,
                                  handler.asynchronous_hook, context)
+                d.addCallback(self.save_document)
+                d.addErrback(self.handle_unserialize_failure, raw)
                 return d
 
         return doc
+
+    def handle_immediate_failure(self, fail, hook, context):
+        error.handle_failure(self, 'Failed calling %r with context %r. '
+                             'This will result in NotMigratable error',
+                             hook, context)
+        return fail
+
+    def handle_unserialize_failure(self, fail, raw):
+        # the failure has been already logged with more
+        # detail from handle_immediate_failure()
+        # handler, here we just repack the error
+        type_name = raw.get('.type')
+        version = raw.get('.version')
+        raise NotMigratable((type_name, version, ))
 
     def unserialize_list_of_documents(self, list_of_raw):
         result = list()
