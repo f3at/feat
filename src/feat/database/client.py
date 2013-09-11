@@ -26,6 +26,7 @@ import uuid
 import urllib
 
 from twisted.internet import reactor
+from twisted.python import failure
 from zope.interface import implements
 
 from feat.common import log, defer, time, journal, serialization, error
@@ -569,18 +570,25 @@ class Connection(log.Logger, log.LogProxy):
         return doc
 
     def handle_immediate_failure(self, fail, hook, context):
-        error.handle_failure(self, 'Failed calling %r with context %r. '
-                             'This will result in NotMigratable error',
+        error.handle_failure(self, fail,
+                             'Failed calling %r with context %r. ',
                              hook, context)
         return fail
 
     def handle_unserialize_failure(self, fail, raw):
-        # the failure has been already logged with more
-        # detail from handle_immediate_failure()
-        # handler, here we just repack the error
         type_name = raw.get('.type')
         version = raw.get('.version')
-        raise NotMigratable((type_name, version, ))
+
+        if fail.check(ConflictError):
+            self.debug('Got conflict error when trying the upgrade the '
+                       'document: %s version: %s. Refetching it.',
+                       type_name, version)
+            # probably we've already upgraded it concurrently
+            return self.get_document(raw['_id'])
+
+        error.handle_failure(self, fail, 'Asynchronous hooks of '
+                             'the upgrade failed. Raising NotMigratable')
+        return failure.Failure(NotMigratable((type_name, version, )))
 
     def unserialize_list_of_documents(self, list_of_raw):
         result = list()
