@@ -686,7 +686,7 @@ class Site(server.Site, log.Logger):
 
 class Server(log.LogProxy, log.Logger):
 
-    log_category = 'web'
+    log_category = 'webserver'
 
     def __init__(self, port, root_resource, registry=None,
                  security_policy=None, server_identity=None,
@@ -717,7 +717,7 @@ class Server(log.LogProxy, log.Logger):
     def initiate(self):
         assert self._listener is None
         self.info("Initializing HTTP server...")
-        self._site = site = Site(RootResourceWrapper(self))
+        self._site = site = Site(RootResourceWrapper(self), log_keeper=self)
         if self._policy.use_ssl:
             ssl_context_factory = self._policy.get_ssl_context_factory()
             self.info('SSL listening on port %r', self._port)
