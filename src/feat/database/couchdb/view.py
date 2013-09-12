@@ -109,19 +109,28 @@ def run(input=sys.stdin, output=sys.stdout):
     def ddoc_new(name, doc):
         env = dict()
         # key in design doc -> expected function name
-        method_mapping = dict(filters='filter')
+        method_mapping = dict(filters='filter', views='map')
         for key, section in doc.iteritems():
             if key not in method_mapping:
                 continue
             env[key] = dict()
             id_error = "%s_compilation_error" % (key)
             for f_name, func_str in section.iteritems():
-                try:
-                    expected_name = method_mapping[key]
-                    env[key][f_name] = _compile(func_str, id_error,
-                                                expected_name)
-                except CompileError as e:
-                    return e.args[0]
+                if isinstance(func_str, dict):
+                    env[key][f_name] = dict()
+                    for expected_name, code in func_str.iteritems():
+                        try:
+                            env[key][f_name][expected_name] = _compile(
+                                code, id_error, expected_name)
+                        except CompileError as e:
+                            return e.args[0]
+                else:
+                    try:
+                        expected_name = method_mapping[key]
+                        env[key][f_name] = _compile(func_str, id_error,
+                                                    expected_name)
+                    except CompileError as e:
+                        return e.args[0]
         environments[name] = env
         return True
 
@@ -154,6 +163,19 @@ def run(input=sys.stdin, output=sys.stdout):
 
         return [True, results]
 
+    def filter_view(rows, function=None):
+        results = []
+
+        for row in rows:
+            r = function(row)
+            try:
+                r.next()
+                results.append(True)
+            except StopIteration:
+                results.append(False)
+
+        return [True, results]
+
     def _compile(func_str, error_id, f_name):
         globals_ = {}
 
@@ -182,7 +204,7 @@ def run(input=sys.stdin, output=sys.stdout):
 
     handlers = {'reset': reset, 'add_fun': add_fun, 'map_doc': map_doc,
                 'reduce': reduce, 'rereduce': rereduce, 'ddoc': ddoc,
-                'filters': filter}
+                'filters': filter, 'views': filter_view}
 
     try:
         while True:
