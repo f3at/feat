@@ -162,3 +162,12 @@ def subroutine(*effects):
         return d
 
     return subroutine
+
+
+def store_in_context(key):
+
+    def store_in_context(value, context, *args, **kwargs):
+        context[key] = value
+        return defer.succeed(value)
+
+    return store_in_context

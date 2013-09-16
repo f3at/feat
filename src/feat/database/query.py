@@ -635,10 +635,20 @@ class Query(serialization.Serializable):
         return "(%s)" % (body, )
 
 
+class Result(list):
+
+    total_count = None
+
+    def update(self, new_list):
+        del self[:]
+        self.extend(new_list)
+
+
 @defer.inlineCallbacks
 def select_ids(connection, query, skip=0, limit=None):
     temp, responses = yield _get_query_response(connection, query)
 
+    total_count = len(temp)
     if limit is not None:
         stop = skip + limit
     else:
@@ -648,16 +658,20 @@ def select_ids(connection, query, skip=0, limit=None):
     index = first(v for k, v in responses.iteritems() if k.field == name)
     if direction == Direction.DESC:
         index = reversed(index)
-    temp = list(_get_sorted_slice(index, temp, skip, stop))
-    defer.returnValue(temp)
+    r = Result(_get_sorted_slice(index, temp, skip, stop))
+    r.total_count = total_count
+    defer.returnValue(r)
 
 
+@defer.inlineCallbacks
 def select(connection, query, skip=0, limit=None):
-    d = select_ids(connection, query, skip, limit)
-    d.addCallback(connection.bulk_get)
+    res = yield select_ids(connection, query, skip, limit)
+    temp = yield connection.bulk_get(res)
+    res.update(temp)
+
     if query.include_value:
-        d.addCallback(include_values, connection.get_query_cache(), query)
-    return d
+        yield include_values(res, connection.get_query_cache(), query)
+    defer.returnValue(res)
 
 
 def include_values(docs, cache, query):

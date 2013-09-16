@@ -1,8 +1,6 @@
-import operator
-
 from zope.interface import implements
 
-from feat.common import annotate, defer, first
+from feat.common import annotate, defer
 from feat.database import query
 from feat.models import model, action, value, utils, call, effect
 from feat.models import applicationjson
@@ -93,25 +91,8 @@ class QueryView(model.Collection):
             method = query.select
         return method(self.connection, value, skip, limit)
 
-    def render_select_response(self, value):
-        cls = type(self)
-        if not cls._query_set_factory:
-            # query set collection is created only once per class type
-            factory = MetaQueryResult.new(type(self))
-            factory.annotate_meta('json', 'render-as-list')
-            cls._query_set_factory = factory
-        items = [(self.get_child_name(x), x) for x in value]
-        result = cls._query_set_factory(self.source, items)
-        return result.initiate(view=self.view, officer=self.officer,
-                               aspect=self.aspect)
-
     def do_count(self, value):
         return query.count(self.connection, value)
-
-    def get_child_name(self, child):
-        '''override in subclass if the result of your query is more complex
-        than just a simple documents.'''
-        return child.doc_id
 
     ### annotations ###
 
@@ -197,15 +178,33 @@ class QueryView(model.Collection):
 
             return d
 
+        def render_select_response(value, context, *args, **kwargs):
+            cls = type(context['model'])
+            if not cls._query_set_factory:
+                # query set collection is created only once per class type
+                factory = MetaQueryResult.new(cls)
+                factory.annotate_meta('json', 'render-as-list')
+                cls._query_set_factory = factory
+            if cls._fetch_documents_set:
+                context['result'].update(value)
+            result = cls._query_set_factory(context['source'],
+                                            context['result'])
+            return result.initiate(view=context['view'],
+                                   officer=context.get('officer'),
+                                   aspect=context.get('aspect'))
+
+
         SelectAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Select"),
             ActionCategories.retrieve,
             is_idempotent=False, result_info=result_info,
-            effects=[
+            effects=(
                 build_query,
                 call.model_perform('do_select'),
+                effect.store_in_context('result'),
                 fetch_documents,
-                call.model_filter('render_select_response')],
+                render_select_response,
+                ),
             params=[action.Param('query', QueryValue()),
                     action.Param('include_value', IncludeValue(),
                                  is_required=False),
@@ -438,27 +437,31 @@ class MetaQueryResult(model.MetaCollection):
 class QueryResult(model.DynCollection):
 
     def __init__(self, source, items):
-        msg = ("Query method argument #1 should be a list of 2 element tuples "
-               "(key, value), got %r instead")
-        if not isinstance(items, (list, tuple)):
-            raise ValueError(msg % (items, ))
-        for el in items:
-            if not isinstance(el, (list, tuple)) or not len(el) == 2:
-                raise ValueError(msg % (items, ))
+        if not isinstance(items, list):
+            raise ValueError(type(items))
 
         self._items = items
         super(QueryResult, self).__init__(source)
 
+    def get_total_count(self):
+        if isinstance(self._items, query.Result):
+            return self._items.total_count
+
+    def get_items(self):
+        return self._items
+
     @staticmethod
     def getter(value, context):
-        value = first(v for k, v in context["model"]._items
-                      if k == context["key"])
-        return defer.succeed(value)
+        try:
+            index = int(context['key'])
+            return defer.succeed(context["model"]._items[index])
+        except:
+            return defer.succeed()
 
     @staticmethod
     def names(value, context):
-        value = map(operator.itemgetter(0), context["model"]._items)
-        return defer.succeed(value)
+        return defer.succeed([str(x)
+                              for x in range(len(context["model"]._items))])
 
 
 def write_query_result(doc, obj, *args, **kwargs):
@@ -473,7 +476,8 @@ def write_query_result(doc, obj, *args, **kwargs):
         # use the adapter
         model_factory = IModel
 
-    for _, child in obj._items:
+    items = obj.get_items()
+    for child in items:
         if obj.query_target == 'view':
             instance = model_factory(obj.source)
             d = instance.initiate(view=child)
@@ -482,9 +486,15 @@ def write_query_result(doc, obj, *args, **kwargs):
             d = instance.initiate(view=obj.view)
         d.addCallback(applicationjson.render_inline_model, *args, **kwargs)
         result.append(d)
+    r = applicationjson.AsyncDict()
     d = defer.DeferredList(result)
     d.addCallback(applicationjson.unpack_deferred_list_result)
     d.addCallback(list)
+    r.add('rows', d)
+
+    r.add('total_count', items.total_count)
+
+    d = r.wait()
     d.addCallback(applicationjson.render_json, doc)
     d.addCallback(defer.override_result, None)
     return d

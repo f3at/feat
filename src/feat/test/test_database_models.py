@@ -166,9 +166,12 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         res = yield self.model.perform_action('select', query=q)
         j = yield self.model_as_json(res)
         field1s = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
-        self.assertIsInstance(j, list)
-        self.assertEqual(len(field1s), len(j))
-        for row in j:
+        self.assertIsInstance(j, dict)
+        self.assertIsInstance(j.get('rows'), list)
+
+        self.assertEqual(len(field1s), len(j['rows']))
+        self.assertEqual(len(field1s), j['total_count'])
+        for row in j['rows']:
             self.assertIn('field1', row)
             self.assertIn('field2', row)
             self.assertIn('field3', row)

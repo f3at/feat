@@ -49,7 +49,7 @@ class DummyConnection(object):
 
     def bulk_get(self, doc_ids):
         assert isinstance(doc_ids, list), repr(doc_ids)
-        return defer.succeed(doc_ids)
+        return defer.succeed(list(doc_ids))
 
 
 class TestWithDummyCache(common.TestCase):
