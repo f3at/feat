@@ -562,6 +562,10 @@ class Query(serialization.Serializable):
                 if not isinstance(part, Operator):
                     raise ValueError("Element at index %d should be an "
                                      "Operator, %r given" % (index, part))
+                if self.operators and part not in self.operators:
+                    raise ValueError("Sorry, mixing different operators inside"
+                                     "a query is not currently supported. "
+                                     "Please use nested queries instead")
                 self.operators.append(part)
 
         self.include_value = list(kwargs.pop('include_value', list()))
@@ -747,17 +751,16 @@ def _calculate_query_response(responses, query):
             for_parts.append(set(responses[part.get_basic_queries()[0]]))
         elif isinstance(part, Query):
             for_parts.append(_calculate_query_response(responses, part))
+    if len(for_parts) == 1:
+        return for_parts[0]
+
     operators = list(query.operators)
-    while True:
-        if len(for_parts) == 1:
-            return for_parts[0]
-        oper = operators.pop(0)
-        if oper == Operator.AND:
-            for_parts[0] = for_parts[0].intersection(for_parts.pop(1))
-        elif oper == Operator.OR:
-            for_parts[0] = for_parts[0].union(for_parts.pop(1))
-        else:
-            raise ValueError("Unkown operator '%r' %" (oper, ))
+    if operators[0] == Operator.AND:
+        return set.intersection(*for_parts)
+    elif operators[0] == Operator.OR:
+        return set.union(*for_parts)
+    else:
+        raise ValueError("Unkown operator '%r' %" (operators[0], ))
 
 
 def _get_sorted_slice(index, rows, skip, stop):
