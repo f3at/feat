@@ -58,7 +58,7 @@ class DocumentExtended(DocumentModel):
 class QueryModel(models.QueryView):
     model.identity('test')
     model.child_model(DocumentExtended)
-    model.query_model(DocumentModel)
+    models.query_model(DocumentModel)
     model.view(effect.static_value('static-view'))
     models.db_connection(effect.context_value('source'))
     models.view_factory(

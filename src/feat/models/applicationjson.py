@@ -337,19 +337,6 @@ def write_model(doc, obj, *args, **kwargs):
     return d.addCallback(render_json, doc)
 
 
-def write_query_model(doc, obj, *args, **kwargs):
-    context = kwargs.pop("context", None)
-    verbose = kwargs.pop("format", False) == 'verbose'
-    d = obj.query_items(**kwargs)
-
-    params = dict(context=context)
-    if verbose:
-        params['format'] = 'verbose'
-    d.addCallback(defer.inject_param, 1, write_model, doc,
-                  **params)
-    return d
-
-
 class NestedJson(document.BaseDocument):
     '''
     This is an implementation used to represent nested documents which
@@ -458,44 +445,12 @@ def read_action(doc, *args, **kwargs):
     return ActionPayload(params)
 
 
-def write_query_set_collection(doc, obj, *args, **kwargs):
-    # This type of object is used as a result of 'select' query of dbmodels api
-    result = list()
-
-    if IModel.implementedBy(obj._item_model):
-        model_factory = obj._item_model
-    else:
-        model_factory = model.get_factory(obj._item_model)
-    if model_factory is None:
-        # use the adapter
-        model_factory = IModel
-
-    for _, child in obj._items:
-        if obj.query_target == 'view':
-            instance = model_factory(obj.source)
-            d = instance.initiate(view=child)
-        else:
-            instance = model_factory(child)
-            d = instance.initiate(view=obj.view)
-        d.addCallback(render_inline_model, *args, **kwargs)
-        result.append(d)
-    d = defer.DeferredList(result)
-    d.addCallback(unpack_deferred_list_result)
-    d.addCallback(list)
-    d.addCallback(render_json, doc)
-    d.addCallback(defer.override_result, None)
-    return d
-
-
 document.register_writer(write_model, MIME_TYPE, IModel)
 document.register_writer(write_error, MIME_TYPE, IErrorPayload)
 document.register_writer(write_reference, MIME_TYPE, IReference)
 # document.register_writer(write_serializable, MIME_TYPE,
 #                          serialization.ISerializable)
 document.register_writer(write_anything, MIME_TYPE, None)
-document.register_writer(write_query_model, MIME_TYPE, IQueryModel)
-document.register_writer(write_query_set_collection, MIME_TYPE,
-                         model._QuerySetCollection)
 
 document.register_reader(read_action, MIME_TYPE, IActionPayload)
 

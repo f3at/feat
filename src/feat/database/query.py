@@ -645,8 +645,7 @@ def select_ids(connection, query, skip=0, limit=None):
         stop = None
 
     name, direction = query.sorting
-    index = first(v for k, v in responses.iteritems()
-                  if k.field == name)
+    index = first(v for k, v in responses.iteritems() if k.field == name)
     if direction == Direction.DESC:
         index = reversed(index)
     temp = list(_get_sorted_slice(index, temp, skip, stop))

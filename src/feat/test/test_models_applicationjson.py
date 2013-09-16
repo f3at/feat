@@ -241,26 +241,6 @@ class DummyModel(model.Model):
                     effect.context_value('view'))
 
 
-class QueryCollection(model.QueryCollection):
-    '''Model representing infinite collection of integers'''
-    model.identity('test.query_collection')
-
-    @staticmethod
-    def query(value, context):
-        query = context['query']
-        offset = query.get('offset', 0)
-        limit = query.get('limit', 10)
-
-        result = range(offset, offset + limit)
-        # [('int', int)]
-        return defer.succeed(list((str(x), x) for x in result))
-
-    model.query_item_view(query)
-    model.child_model(DummyModel)
-    model.child_view(effect.context_value('key'))
-    model.child_meta('json', 'render-inline')
-
-
 class TestApplicationJSON(common.TestCase):
 
     @defer.inlineCallbacks
@@ -290,22 +270,6 @@ class TestApplicationJSON(common.TestCase):
     def vcheck(self, obj, expected, exp_type=None, encoding="UTF8"):
         return self.check(obj, expected, exp_type=exp_type,
                           encoding=encoding, verbose=True)
-
-    @defer.inlineCallbacks
-    def testQueryModel(self):
-        model = QueryCollection('source')
-        v = lambda x: dict(value=x)
-        exp = {u'1': v(1), u'2': v(2)}
-        yield self.check(model, exp, limit=2, offset=1)
-
-        exp = {u'identity': u'test.query_collection.query',
-               u'items': {u'1': {u'href': u'root/1',
-                                 u'metadata': [{u'name': u'json',
-                                                u'value': u'render-inline'}]},
-                          u'2': {u'href': u'root/2',
-                                 u'metadata': [{u'name': u'json',
-                                                u'value': u'render-inline'}]}}}
-        yield self.check(model, exp, limit=2, offset=1, verbose=True)
 
     @defer.inlineCallbacks
     def testVerboseactModelWriter(self):

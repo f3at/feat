@@ -299,19 +299,6 @@ def child_model(model_factory):
     _annotate("child_model", model_factory)
 
 
-def query_model(model):
-    """
-    Annotate the effect used to retrieve the model used as a result of the
-    query. This is ment to provide the lighter view of the model when its
-    retrieved as a list. If this is not specified the child_model is used.
-
-    @param model: the child's model identity, model factory or effect
-                  to get it, or None to use IModel adapter.
-    @type model: str or unicode or callable or IModelFactory or None
-    """
-    _annotate("query_model", model)
-
-
 def child_label(label):
     """
     Annotate child items label.
@@ -1466,128 +1453,6 @@ class DynamicItemsMixin(object):
         cls._fetch_view = _validate_effect(effect)
 
 
-class QueryItemsMixin(DynamicItemsMixin):
-
-    implements(IQueryModel)
-
-    _item_counter = None
-    _query_item = None
-    _query_target = None
-    _query_model = None
-
-    @classmethod
-    def __class__init__(cls, name, bases, dct):
-        cls.__query_set_factory = None
-
-    ### IQueryModel ###
-
-    def provides_item(self, name):
-        if self._fetch_source is None:
-            return self._notsup("checking item availability")
-
-        def log_error(failure):
-            error.handle_failure(None, failure, "Error checking if %s model "
-                                 "%s item %s is provided",
-                                 self.identity, self.name, name)
-            return None
-
-        def cleanup(item):
-            return item is not None
-
-        item = DynamicModelItem(self, name)
-        d = item.initiate().addErrback(log_error)
-        d.addCallback(cleanup)
-        return d
-
-    def count_items(self):
-        if self._item_counter is None:
-            return self._notsup("items counting")
-        context = self.make_context(key=self.name)
-        return self._item_counter(None, context)
-
-    def fetch_item(self, name):
-        if (self._fetch_source is None
-            and self._fetch_view is None):
-            return self._notsup("fetching item")
-
-        def log_error(failure):
-            error.handle_failure(None, failure, "Error fetching %s model %s "
-                                 "item %s", self.identity, self.name, name)
-            return None
-
-        item = DynamicModelItem(self, name)
-        return item.initiate().addErrback(log_error)
-
-    def fetch_items(self):
-        return self._notsup("fetching all items")
-
-    def query_items(self, **kwargs):
-
-        def create_model(children):
-            result = self._query_set_factory(self.source, children)
-            return result.initiate(view=self.view, officer=self.officer,
-                                   aspect=self.aspect)
-
-        def log_error(failure):
-            error.handle_failure(
-                None, failure, "Error creating query set model, identity: %s "
-                "name %s", self.identity, self.name)
-            return failure
-
-        if self._query_items is None:
-            return self._notsup("querying items")
-        context = self.make_context(key=self.name)
-        context['query'] = kwargs
-        if 'limit' not in context['query']:
-            context['query']['limit'] = 10
-        else:
-            context['query']['limit'] = int(context['query']['limit'])
-
-        if 'offset' not in context['query']:
-            context['query']['offset'] = 0
-        else:
-            context['query']['offset'] = int(context['query']['offset'])
-
-        d = self._query_items(None, context)
-        d.addCallback(create_model)
-        d.addErrback(log_error)
-        return d
-
-    ### private ###
-
-    @property
-    def _query_set_factory(self):
-        # This is done like this, because we can only create QuerySetCollection
-        # after all the annotations have been processed. The annotations and
-        # __class__init__() calls are processed in reverse-mro order, so it
-        # seems the only way to have the mixin code act after the annotation
-        # from descendands.
-        cls = type(self)
-        if not cls.__query_set_factory:
-            cls.__query_set_factory = MetaQuerySetCollection.new(cls)
-        return cls.__query_set_factory
-
-    ### annotations ###
-
-    @classmethod
-    def annotate_query_item_source(cls, effect):
-        cls._query_items = _validate_effect(effect)
-        cls._query_target = 'source'
-
-    @classmethod
-    def annotate_query_item_view(cls, effect):
-        cls._query_items = _validate_effect(effect)
-        cls._query_target = 'view'
-
-    @classmethod
-    def annotate_item_counter(cls, effect):
-        cls._item_counter = _validate_effect(effect)
-
-    @classmethod
-    def annotate_query_model(cls, query_model):
-        cls._query_model = _validate_model_factory(query_model)
-
-
 class MetaCollection(type(AbstractModel)):
 
     @staticmethod
@@ -1596,7 +1461,7 @@ class MetaCollection(type(AbstractModel)):
             child_model=None, child_label=None,
             child_desc=None, child_meta=None, meta=None):
         cls_name = utils.mk_class_name(identity)
-        cls = MetaCollection(cls_name, (_DynCollection, ), {"__slots__": ()})
+        cls = MetaCollection(cls_name, (DynCollection, ), {"__slots__": ()})
         cls.annotate_identity(identity)
         cls.annotate_child_label(child_label)
         cls.annotate_child_desc(child_desc)
@@ -1620,7 +1485,7 @@ class Collection(AbstractModel, StaticActionsMixin, DynamicItemsMixin):
     __slots__ = ()
 
 
-class _DynCollection(Collection):
+class DynCollection(Collection):
 
     __slots__ = ("parent", )
 
@@ -1639,91 +1504,6 @@ class _DynCollection(Collection):
                 "view": view if view is not None else model.view,
                 "key": unicode(key) if key is not None else self.name,
                 "action": action}
-
-
-class MetaQuerySetCollection(MetaCollection):
-
-    @staticmethod
-    def new(parent_class):
-        # parent_class here is a QueryItemsMixin object
-        identity = parent_class._model_identity + '.query'
-        cls_name = parent_class.__name__ + "QuerySet"
-        target = parent_class._query_target
-        cls = MetaQuerySetCollection(cls_name, (_QuerySetCollection, ),
-                                     {"query_target": target})
-        cls.annotate_identity(identity)
-
-        if target == 'source':
-            cls.annotate_child_source(_QuerySetCollection.getter)
-            cls.annotate_child_view(parent_class._fetch_view)
-        elif target == 'view':
-            cls.annotate_child_source(parent_class._fetch_source)
-            cls.annotate_child_view(_QuerySetCollection.getter)
-        else:
-            raise AttributeError("Unknown target: %r" % (target, ))
-        cls.annotate_child_names(_QuerySetCollection.names)
-        cls.annotate_child_label(parent_class._item_label)
-        cls.annotate_child_desc(parent_class._item_desc)
-        cls.annotate_child_model(parent_class._query_model or
-                                 parent_class._item_model)
-        for meta in parent_class._item_meta:
-            cls.annotate_child_meta(*meta)
-        for name, meta in parent_class._class_meta.iteritems():
-            for value in meta:
-                cls.annotate_meta(name, value.value)
-
-        return cls
-
-
-class _QuerySetCollection(_DynCollection):
-
-    def __init__(self, source, items):
-        msg = ("Query method argument #1 should be a list of 2 element tuples "
-               "(key, value), got %r instead")
-        if not isinstance(items, (list, tuple)):
-            raise ValueError(msg % (items, ))
-        for el in items:
-            if not isinstance(el, (list, tuple)) or not len(el) == 2:
-                raise ValueError(msg % (items, ))
-
-        self._items = items
-        super(_DynCollection, self).__init__(source)
-
-    @staticmethod
-    def getter(value, context):
-        value = first(v for k, v in context["model"]._items
-                      if k == context["key"])
-        return defer.succeed(value)
-
-    @staticmethod
-    def names(value, context):
-        value = map(operator.itemgetter(0), context["model"]._items)
-        return defer.succeed(value)
-
-
-class CountCollection(models_action.Action):
-
-    models_action.label("Get length of collection")
-    models_action.category(ActionCategories.retrieve)
-    models_action.enabled(getter.model_attr('_item_counter'))
-    models_action.is_idempotent()
-
-    models_action.effect(call.model_call('count_items'))
-    models_action.result(value.Integer())
-
-
-class QueryCollection(AbstractModel, StaticActionsMixin, QueryItemsMixin):
-    """
-    A model with a static list of actions and a dynamic set of sub-models.
-
-    It supports getting subsets of data it represents through query_items()
-    method. It doesn't support fetching all items.
-    """
-
-    __metaclass__ = MetaQuerySetCollection
-    __slots__ = ()
-
-    action('count', CountCollection)
 
 
 class DynamicModelItem(BaseModelItem):

@@ -1,12 +1,16 @@
+import operator
+
 from zope.interface import implements
 
-from feat.common import annotate, defer
+from feat.common import annotate, defer, first
 from feat.database import query
 from feat.models import model, action, value, utils, call, effect
+from feat.models import applicationjson
+from feat.web import document
 
 from feat.database.interface import IQueryViewFactory, IDatabaseClient
 from feat.models.interface import IContextMaker, ActionCategories
-from feat.models.interface import IValueOptions, ValueTypes
+from feat.models.interface import IValueOptions, ValueTypes, IModel
 
 
 def db_connection(effect):
@@ -28,6 +32,20 @@ def view_factory(factory, allowed_fields=[], static_conditions=None,
         fetch_documents=fetch_documents,
         include_value=include_value,
         item_field=item_field)
+
+
+def query_model(model):
+    """
+    Annotate the effect used to retrieve the model used as a result of the
+    query. This is ment to provide the lighter view of the model when its
+    retrieved as a list. If this is not specified the child_model is used.
+
+    @param model: the child's model identity, model factory or effect
+                  to get it, or None to use IModel adapter.
+    @type model: str or unicode or callable or IModelFactory or None
+    """
+    annotate.injectClassCallback("query_model", 3, "annotate_query_model",
+                                 model)
 
 
 class QueryView(model.Collection):
@@ -79,7 +97,7 @@ class QueryView(model.Collection):
         cls = type(self)
         if not cls._query_set_factory:
             # query set collection is created only once per class type
-            factory = model.MetaQuerySetCollection.new(type(self))
+            factory = MetaQueryResult.new(type(self))
             factory.annotate_meta('json', 'render-as-list')
             cls._query_set_factory = factory
         items = [(self.get_child_name(x), x) for x in value]
@@ -381,3 +399,96 @@ class ConditionValue(value.Structure):
 
     def publish(self, value):
         return str(value)
+
+
+class MetaQueryResult(model.MetaCollection):
+
+    @staticmethod
+    def new(parent_class):
+        # parent_class here is a QueryItemsMixin object
+        identity = parent_class._model_identity + '.query'
+        cls_name = parent_class.__name__ + "QueryResult"
+        target = parent_class._query_target
+        cls = MetaQueryResult(cls_name, (QueryResult, ),
+                              {"query_target": target})
+        cls.annotate_identity(identity)
+
+        if target == 'source':
+            cls.annotate_child_source(QueryResult.getter)
+            cls.annotate_child_view(parent_class._fetch_view)
+        elif target == 'view':
+            cls.annotate_child_source(parent_class._fetch_source)
+            cls.annotate_child_view(QueryResult.getter)
+        else:
+            raise AttributeError("Unknown target: %r" % (target, ))
+        cls.annotate_child_names(QueryResult.names)
+        cls.annotate_child_label(parent_class._item_label)
+        cls.annotate_child_desc(parent_class._item_desc)
+        cls.annotate_child_model(parent_class._query_model or
+                                 parent_class._item_model)
+        for meta in parent_class._item_meta:
+            cls.annotate_child_meta(*meta)
+        for name, meta in parent_class._class_meta.iteritems():
+            for value in meta:
+                cls.annotate_meta(name, value.value)
+
+        return cls
+
+
+class QueryResult(model.DynCollection):
+
+    def __init__(self, source, items):
+        msg = ("Query method argument #1 should be a list of 2 element tuples "
+               "(key, value), got %r instead")
+        if not isinstance(items, (list, tuple)):
+            raise ValueError(msg % (items, ))
+        for el in items:
+            if not isinstance(el, (list, tuple)) or not len(el) == 2:
+                raise ValueError(msg % (items, ))
+
+        self._items = items
+        super(QueryResult, self).__init__(source)
+
+    @staticmethod
+    def getter(value, context):
+        value = first(v for k, v in context["model"]._items
+                      if k == context["key"])
+        return defer.succeed(value)
+
+    @staticmethod
+    def names(value, context):
+        value = map(operator.itemgetter(0), context["model"]._items)
+        return defer.succeed(value)
+
+
+def write_query_result(doc, obj, *args, **kwargs):
+    # This type of object is used as a result of 'select' query of dbmodels api
+    result = list()
+
+    if IModel.implementedBy(obj._item_model):
+        model_factory = obj._item_model
+    else:
+        model_factory = model.get_factory(obj._item_model)
+    if model_factory is None:
+        # use the adapter
+        model_factory = IModel
+
+    for _, child in obj._items:
+        if obj.query_target == 'view':
+            instance = model_factory(obj.source)
+            d = instance.initiate(view=child)
+        else:
+            instance = model_factory(child)
+            d = instance.initiate(view=obj.view)
+        d.addCallback(applicationjson.render_inline_model, *args, **kwargs)
+        result.append(d)
+    d = defer.DeferredList(result)
+    d.addCallback(applicationjson.unpack_deferred_list_result)
+    d.addCallback(list)
+    d.addCallback(applicationjson.render_json, doc)
+    d.addCallback(defer.override_result, None)
+    return d
+
+
+document.register_writer(write_query_result, applicationjson.MIME_TYPE,
+                         QueryResult)
