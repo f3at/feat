@@ -1,3 +1,4 @@
+import inspect
 import operator
 import sys
 import types
@@ -5,6 +6,7 @@ import types
 from zope.interface import implements, Interface, Attribute
 
 from feat.common import serialization, enum, first, defer, annotate, log, error
+from feat.common import container
 from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
@@ -318,6 +320,15 @@ class QueryViewMeta(type(view.BaseView)):
     def _annotate_document_types(cls, types):
         cls.DOCUMENT_TYPES.update(set(types))
 
+    def _annotate_aggregation(cls, name, handler):
+        if not callable(handler):
+            raise ValueError(handler)
+        spec = inspect.getargspec(handler)
+        if len(spec.args) != 1:
+            raise ValueError("%r should take a single parameter, values" %
+                             (handler, ))
+        cls.aggregations[name] = handler
+
 
 class IQueryViewController(Interface):
     '''
@@ -435,12 +446,6 @@ class HighestValueFieldController(BaseQueryViewController):
         return result
 
 
-class QueryView(view.BaseView):
-
-    __metaclass__ = QueryViewMeta
-    view_controller = BaseQueryViewController
-
-
 def field(name, definition=None, controller=None):
     if callable(definition):
         annotate.injectClassCallback('query field', 3, '_annotate_field',
@@ -459,6 +464,28 @@ def field(name, definition=None, controller=None):
 def document_types(types):
     annotate.injectClassCallback(
         'document_types', 3, '_annotate_document_types', types)
+
+
+def aggregation(name):
+
+    def aggregation(handler):
+        annotate.injectClassCallback('aggregate', 3, '_annotate_aggregation',
+                                     name, handler)
+        return handler
+
+    return aggregation
+
+
+class QueryView(view.BaseView):
+
+    __metaclass__ = QueryViewMeta
+    view_controller = BaseQueryViewController
+    aggregations = container.MroDict("__mro__aggregations__")
+
+    @aggregation('sum')
+    def reduce_sum(values):
+        l = list(values)
+        return sum(l)
 
 
 class Evaluator(enum.Enum):
@@ -570,12 +597,40 @@ class Query(serialization.Serializable):
 
         self.include_value = list(kwargs.pop('include_value', list()))
 
-        sorting = kwargs.pop('sorting', None)
-        self.set_sorting(sorting)
-
         if not isinstance(self.include_value, (list, tuple)):
             raise ValueError("%r should be a list or tuple" %
                              (self.include_value), )
+
+        aggregate = kwargs.pop('aggregate', None)
+        self.aggregate = list()
+        if aggregate is not None:
+            msg = ('aggregate param should be a list of tuples of'
+                   ' the form (handler, field), passed: %r')
+
+            if not isinstance(aggregate, list):
+                raise ValueError(msg % aggregate)
+            for entry in aggregate:
+                if not (isinstance(entry, (list, tuple)) and
+                        len(entry) == 2):
+                    raise ValueError(msg % entry)
+                handler, field = entry
+                if not handler in self.factory.aggregations:
+                    raise ValueError("Unknown aggregate handler: %r" %
+                                     (handler, ))
+                if not self.factory.has_field(field):
+                    raise ValueError("Unknown aggregate field: %r" % (field, ))
+                controller = factory.get_view_controller(field)
+                if not controller.keeps_value:
+                    raise ValueError("The controller used for the field: %s "
+                                     "is not marked as the one which keeps "
+                                     "the value. Aggregation cannot work"
+                                     " for such index." % (field, ))
+
+                self.aggregate.append(
+                    (self.factory.aggregations[handler], field))
+
+        sorting = kwargs.pop('sorting', None)
+        self.set_sorting(sorting)
 
         if kwargs:
             raise ValueError('Unknown keywords: %s' % (kwargs.keys(), ))
@@ -602,33 +657,35 @@ class Query(serialization.Serializable):
     ### IPlanBuilder ###
 
     def get_basic_queries(self):
-        temp = list()
-        for part in self.parts:
-            temp.extend(part.get_basic_queries())
+        if not hasattr(self, '_cached_basic_queries'):
+            temp = list()
+            for part in self.parts:
+                temp.extend(part.get_basic_queries())
 
-        # if we want to sort by the field which is not available in the query
-        # we will need to query for the full range of the index
-        if self.sorting:
-            sortby = self.sorting[0]
-            if not first(x for x in temp if sortby == x.field):
-                temp.append(Condition(sortby, Evaluator.none, None))
+            # if we want to sort by the field which is not available in
+            # the query we will need to query for the full range of the
+            # index
+            if self.sorting:
+                sortby = self.sorting[0]
+                if not first(x for x in temp if sortby == x.field):
+                    temp.append(Condition(sortby, Evaluator.none, None))
 
-        # if we want a value of some field included in the result we need to
-        # make sure its also fetched along the query
-        for part in self.include_value:
-            included = first(x.field for x in temp if x.field == part)
-            if not included:
-                temp.append(Condition(part, Evaluator.none, None))
+            # if we want a value of some field included in the result we
+            # need to make sure its also fetched along the query
+            for part in self.include_value + [x[1] for x in self.aggregate]:
+                included = first(x.field for x in temp if x.field == part)
+                if not included:
+                    temp.append(Condition(part, Evaluator.none, None))
 
 
-        # remove duplicates
-        resp = list()
-        while temp:
-            x = temp.pop(0)
-            if x not in resp:
-                resp.append(x)
+            # remove duplicates
+            self._cached_basic_queries = resp = list()
+            while temp:
+                x = temp.pop(0)
+                if x not in resp:
+                    resp.append(x)
 
-        return resp
+        return self._cached_basic_queries
 
     def __str__(self):
         ops = [x.name for x in self.operators]
@@ -642,6 +699,7 @@ class Query(serialization.Serializable):
 class Result(list):
 
     total_count = None
+    aggregations = None
 
     def update(self, new_list):
         del self[:]
@@ -660,11 +718,33 @@ def select_ids(connection, query, skip=0, limit=None):
 
     name, direction = query.sorting
     index = first(v for k, v in responses.iteritems() if k.field == name)
+
     if direction == Direction.DESC:
-        index = reversed(index)
-    r = Result(_get_sorted_slice(index, temp, skip, stop))
+        iterator = reversed(index)
+    else:
+        iterator = index
+    r = Result(_get_sorted_slice(iterator, temp, skip, stop))
     r.total_count = total_count
+
+    # count reductions for aggregated fields based on the view index
+    if query.aggregate:
+        r.aggregations = list()
+        cached = connection.get_query_cache()._cache[query.factory.name]
+        queries = query.get_basic_queries()
+        for handler, field in query.aggregate:
+            condition = first(x for x in queries if x.field == field)
+            value_index = cached[condition]
+
+            r.aggregations.append(
+                handler(x for x in value_iterator(index, value_index)))
     defer.returnValue(r)
+
+
+def value_iterator(index, value_index):
+    for x in index:
+        v = value_index.values.get(x)
+        if v is not None:
+            yield v
 
 
 @defer.inlineCallbacks

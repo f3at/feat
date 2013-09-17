@@ -14,9 +14,19 @@ class DummyView(object):
 
     fields = ['field1', 'field2', 'field3']
 
+    reduce_sum = 'dummy'
+
+    aggregations = dict(sum=reduce_sum)
+
     @classmethod
     def has_field(cls, name):
         return name in cls.fields
+
+    @classmethod
+    def get_view_controller(cls, name):
+        return (query.BaseViewController
+                if name in ('field2', 'field3')
+                else query.KeepValueController)
 
 
 class DummyCache(object):
@@ -151,6 +161,10 @@ class TestQueryObject(common.TestCase):
         self.assertEqual(1, len(queries))
         self.assertEqual(C('field1', query.Evaluator.none, None), queries[0])
 
+        # query with aggregations
+        q = query.Query(DummyView, aggregate=[['sum', 'field1']])
+        self.assertEqual([(DummyView.reduce_sum, 'field1')], q.aggregate)
+
         # check wrong declarations
         self.assertRaises(ValueError, query.Query, DummyView, c1, c2)
         self.assertRaises(ValueError, query.Query, DummyView, c1,
@@ -158,6 +172,8 @@ class TestQueryObject(common.TestCase):
         self.assertRaises(ValueError, query.Query, DummyView,
                           query.Condition('unknownfield',
                                           query.Evaluator.equals, 1))
+        self.assertRaises(ValueError, query.Query, DummyView,
+                          aggregation=[['unknown handler', 'field1']])
 
 
 class QueryView(query.QueryView):

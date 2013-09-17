@@ -1018,6 +1018,11 @@ class TestCase(object):
         self.assertFailure(d, ValueError)
         yield d
 
+        # now check reductions with sum
+        q = Q(QueryView, c1, aggregate=[['sum', 'field1']])
+        res = yield query.select_ids(self.connection, q)
+        self.assertEqual([sum(range(10))], res.aggregations)
+
     @defer.inlineCallbacks
     def testQueryViewDeletedDocs(self):
         views = (QueryView, )
@@ -1090,7 +1095,7 @@ class QueryView(query.QueryView):
     def extract_field3(doc):
         yield doc.get('field3')
 
-    query.field('field1', extract_field1)
+    query.field('field1', extract_field1, controller=query.KeepValueController)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
     BaseField = query.BaseField
