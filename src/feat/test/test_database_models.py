@@ -36,7 +36,8 @@ class QueryView(query.QueryView):
     def extract_doc_id(doc):
         yield doc.get('_id')
 
-    query.field('field1', extract_field1)
+    query.field('field1', extract_field1,
+                controller=query.KeepValueController)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
     query.field('doc_id', extract_doc_id)
@@ -63,9 +64,11 @@ class QueryModel(models.QueryView):
     models.db_connection(effect.context_value('source'))
     models.view_factory(
         QueryView, ['field1', 'field2'],
-        call.model_call('get_static_conditions'),
-        call.model_filter('fetch_documents'),
         item_field='doc_id')
+    models.aggregation('total_field1', value.Integer(), 'sum', 'field1')
+    models.static_conditions(call.model_call('get_static_conditions'))
+    models.fetch_documents(call.model_filter('fetch_documents'))
+
     models.query_target('source')
 
     def get_static_conditions(self):
@@ -159,6 +162,16 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         res = yield self.model.perform_action(
             'select', query=q, limit=3, skip=3, sorting=['field1', 'DESC'])
         yield self._asserts_on_select([12, 10, 8], res)
+
+    @defer.inlineCallbacks
+    def testCountSum(self):
+        q = []
+        res = yield self.model.perform_action('select', query=q,
+                                              aggregate=["total_field1"])
+        js = yield self.model_as_json(res)
+        self.assertIn('aggregations', js)
+        self.assertIn('total_field1', js['aggregations'])
+        self.assertEqual(sum(range(20)), js['aggregations']['total_field1'])
 
     @defer.inlineCallbacks
     def testJsonSerialization(self):

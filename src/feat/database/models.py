@@ -1,6 +1,6 @@
 from zope.interface import implements
 
-from feat.common import annotate, defer
+from feat.common import annotate, defer, container, error
 from feat.database import query
 from feat.models import model, action, value, utils, call, effect
 from feat.models import applicationjson
@@ -9,6 +9,7 @@ from feat.web import document
 from feat.database.interface import IQueryViewFactory, IDatabaseClient
 from feat.models.interface import IContextMaker, ActionCategories
 from feat.models.interface import IValueOptions, ValueTypes, IModel
+from feat.models.interface import IValueInfo
 
 
 def db_connection(effect):
@@ -21,13 +22,11 @@ def query_target(target):
                                  target)
 
 
-def view_factory(factory, allowed_fields=[], static_conditions=None,
-                 fetch_documents=None, item_field=None, include_value=list()):
+def view_factory(factory, allowed_fields=[],
+                 item_field=None, include_value=list()):
     annotate.injectClassCallback(
         "view_factory", 3, "annotate_view_factory",
         factory, allowed_fields=allowed_fields,
-        static_conditions=static_conditions,
-        fetch_documents=fetch_documents,
         include_value=include_value,
         item_field=item_field)
 
@@ -46,29 +45,231 @@ def query_model(model):
                                  model)
 
 
+def aggregation(name, value_info, handler, field):
+    annotate.injectClassCallback('aggregation', 3, 'annotate_aggregation',
+                                 name, value_info, handler, field)
+
+
+def static_conditions(effect):
+    annotate.injectClassCallback('static_conditions', 3,
+                                 'annotate_static_conditions',
+                                 effect)
+
+
+def fetch_documents(effect):
+    annotate.injectClassCallback('fetch_documents', 3,
+                                 'annotate_fetch_documents',
+                                 effect)
+
+
+class QueryViewMeta(type(model.Collection)):
+    """
+    I'm responsible for post-processing all the annotated attributes of the
+    QueryView model and creating the model actions for querying with the
+    respect to the parameters and view definition.
+
+    This isn't done in one of the annotations, because if it were, the
+    annotations which come afterwards would not be taken into account.
+    """
+
+    def __init__(cls, name, bases, dct):
+        cls._query_target = None
+        cls._query_model = None
+        cls._connection_getter = None
+        cls._static_conditions = None
+        cls._view = None
+        cls._fetch_documents_set = False
+        cls._fetch_documents = staticmethod(effect.identity)
+        cls._item_field = None
+
+        # this processes all the annotations
+        super(QueryViewMeta, cls).__init__(name, bases, dct)
+
+        if cls._view is None:
+            # The class is not annotated with view_factory() annotations
+            # This is only valid in the base class, althought no actions
+            # should be created.
+            return
+
+        # validate that the required annotations have been called
+        if cls._query_target is None:
+            raise ValueError("This model needs to be annotated with "
+                             "query_target(source|view)")
+
+        if not callable(cls._connection_getter):
+            raise ValueError("This model needs to be annotated with "
+                             "db_connection(effect) annotation")
+
+        # define the Select and Count actions
+        name = utils.mk_class_name(cls._view.name, "Query")
+        QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields,
+                                        cls._include_value)
+        result_info = value.Model()
+
+        name = utils.mk_class_name(cls._view.name, "IncludeValue")
+        IncludeValue = value.MetaCollection.new(
+            name, [FixedValues(cls._allowed_fields)])
+
+        name = utils.mk_class_name(cls._view.name, "AggregateValue")
+        AggregateValue = value.MetaCollection.new(
+            name, [FixedValues(cls._model_aggregations.keys())])
+
+        def build_query(value, context, *args, **kwargs):
+
+            def merge_conditions(static_conditions, factory, q):
+                subquery = query.Query(factory, *static_conditions)
+                return query.Query(factory, q, query.Operator.AND, subquery,
+                                   include_value=cls._include_value)
+
+            def merge_query_options(query, kwargs):
+                if kwargs.get('include_value'):
+                    query.include_value.extend(kwargs['include_value'])
+                    # reset call below is to get rid of cached query plan
+                    # if it has been already calculated
+                    query.reset()
+                if kwargs.get('aggregate'):
+                    aggregate = list()
+                    for name in kwargs['aggregate']:
+                        definition = cls._model_aggregations[name]
+                        aggregate.append((definition[1], definition[2]))
+                    query.aggregate = aggregate
+                return query
+
+            def store_in_context(query):
+                context['query'] = query
+                return query
+
+            cls = type(context['model'])
+            if cls._static_conditions:
+                d = cls._static_conditions(None, context)
+                d.addCallback(merge_conditions, cls._view, kwargs['query'])
+            else:
+                d = defer.succeed(kwargs['query'])
+            d.addCallback(merge_query_options, kwargs)
+            d.addCallback(store_in_context)
+            return d
+
+        def render_select_response(value, context, *args, **kwargs):
+            cls = type(context['model'])
+            if not cls._query_set_factory:
+                # query set collection is created only once per class type
+                factory = MetaQueryResult.new(cls)
+                factory.annotate_meta('json', 'render-as-list')
+                cls._query_set_factory = factory
+            if cls._fetch_documents_set:
+                context['result'].update(value)
+
+            # convert all the aggregate values using their IValueInfo
+            if kwargs.get('aggregate'):
+                raw_values = context['result'].aggregations
+                context['result'].aggregations = dict()
+                for index, name in enumerate(kwargs['aggregate']):
+                    value_info = cls._model_aggregations[name][0]
+                    v = raw_values[index]
+                    try:
+                        published = value_info.publish(v)
+                    except Exception as e:
+                        error.handle_exception(
+                            None, e, "Failed publishing the result %r", v)
+                    else:
+                        context['result'].aggregations[name] = published
+
+            result = cls._query_set_factory(context['source'],
+                                            context['result'])
+            return result.initiate(view=context['view'],
+                                   officer=context.get('officer'),
+                                   aspect=context.get('aspect'))
+
+        SelectAction = action.MetaAction.new(
+            utils.mk_class_name(cls._view.name, "Select"),
+            ActionCategories.retrieve,
+            is_idempotent=False, result_info=result_info,
+            effects=(
+                build_query,
+                call.model_perform('do_select'),
+                effect.store_in_context('result'),
+                cls._fetch_documents,
+                render_select_response,
+                ),
+            params=[action.Param('query', QueryValue()),
+                    action.Param('include_value', IncludeValue(),
+                                 is_required=False),
+                    action.Param('sorting', SortField(cls._allowed_fields),
+                                 is_required=False),
+                    action.Param('skip', value.Integer(0), is_required=False),
+                    action.Param('limit', value.Integer(), is_required=False),
+                    action.Param('aggregate', AggregateValue(),
+                                 is_required=False),
+                    ])
+        cls.annotate_action(u"select", SelectAction)
+
+        # define count action
+        CountAction = action.MetaAction.new(
+            utils.mk_class_name(cls._view.name, "Count"),
+            ActionCategories.retrieve,
+            effects=[
+                build_query,
+                call.model_perform('do_count')],
+            result_info=value.Integer(),
+            is_idempotent=False,
+            params=[action.Param('query', QueryValue())])
+        cls.annotate_action(u"count", CountAction)
+
+        # define how to fetch items
+        if cls._item_field:
+
+            def fetch_names(value, context):
+                model = context['model']
+                d = build_query(None, context, query=query.Query(cls._view))
+                d.addCallback(defer.inject_param, 1,
+                              query.values, model.connection, cls._item_field)
+                return d
+
+            cls.annotate_child_names(fetch_names)
+
+            def fetch_matching(value, context):
+                c = query.Condition(cls._item_field, query.Evaluator.equals,
+                                    context['key'])
+                q = query.Query(cls._view, c)
+                d = build_query(None, context, query=q)
+                d.addCallback(context['model'].do_select, skip=0)
+                d.addCallback(cls._fetch_documents, context)
+
+                def unpack(result):
+                    if result:
+                        return result[0]
+
+                d.addCallback(unpack)
+                return d
+
+            def fetch_source(value, context):
+                if cls._query_target == 'source':
+                    return fetch_matching(value, context)
+                else:
+                    return context['model'].source
+
+            cls.annotate_child_source(fetch_source)
+
+            def fetch_view(value, context):
+                if cls._query_target == 'view':
+                    return fetch_matching(value, context)
+                else:
+                    return context['view']
+
+            cls.annotate_child_view(fetch_view)
+
+
 class QueryView(model.Collection):
 
-    _query_target = None
-    _query_model = None
-    _connection_getter = None
-    _view = None
+    __metaclass__ = QueryViewMeta
+
+    _model_aggregations = container.MroDict('__model_aggregations')
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
         cls._query_set_factory = None
 
     def init(self):
-        if not callable(type(self)._connection_getter):
-            raise ValueError("This model needs to be annotated with "
-                             "db_connection(effect) annotation")
-        if type(self)._view is None:
-            raise ValueError("This model needs to be annotated with "
-                             "view_factory(IQueryViewFactory)")
-
-        if type(self)._query_target is None:
-            raise ValueError("This model needs to be annotated with "
-                             "query_target(source|view)")
-
         context = IContextMaker(self).make_context()
         d = self._connection_getter(None, context)
         d.addCallback(self._set_connection)
@@ -111,20 +312,25 @@ class QueryView(model.Collection):
         cls._connection_getter = model._validate_effect(effect)
 
     @classmethod
+    def annotate_aggregation(cls, name, value_info, handler, field):
+        cls._model_aggregations[name] = (IValueInfo(value_info),
+                                         handler, field)
+
+    @classmethod
+    def annotate_static_conditions(cls, effect):
+        cls._static_conditions = model._validate_effect(effect)
+
+    @classmethod
+    def annotate_fetch_documents(cls, effect):
+        cls._fetch_documents_set = True
+        cls._fetch_documents = model._validate_effect(effect)
+
+    @classmethod
     def annotate_view_factory(cls, factory, allowed_fields=[],
-                              static_conditions=None,
-                              fetch_documents=None,
                               include_value=list(),
                               item_field=None):
+
         cls._view = IQueryViewFactory(factory)
-        cls._static_conditions = (static_conditions and
-                                  model._validate_effect(static_conditions))
-        if not fetch_documents:
-            cls._fetch_documents_set = False
-            fetch_documents = effect.identity
-        else:
-            cls._fetch_documents_set = True
-            fetch_documents = fetch_documents
 
         for x in allowed_fields:
             if not cls._view.has_field(x):
@@ -136,141 +342,11 @@ class QueryView(model.Collection):
                 raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
         cls._include_value = include_value
 
-        # define query action
-        name = utils.mk_class_name(cls._view.name, "Query")
-        QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields,
-                                        cls._include_value)
-        result_info = value.Model()
-
-        name = utils.mk_class_name(cls._view.name, "EnumOptions")
-        EnumOptions = type(name, (value.String, ), {})
-        EnumOptions.annotate_options_only()
-        for field in cls._allowed_fields:
-            EnumOptions.annotate_option(field)
-
-        name = utils.mk_class_name(cls._view.name, "IncludeValue")
-        IncludeValue = value.MetaCollection.new(name, [EnumOptions()])
-
-        def build_query(value, context, *args, **kwargs):
-
-            def merge_conditions(static_conditions, factory, q):
-                subquery = query.Query(factory, *static_conditions)
-                return query.Query(factory, q, query.Operator.AND, subquery,
-                                   include_value=cls._include_value)
-
-            def merge_include_value(query, include_value):
-                query.include_value.extend(include_value)
-                return query
-
-            def store_in_context(query):
-                context['query'] = query
-                return query
-
-            cls = type(context['model'])
-            if cls._static_conditions:
-                d = cls._static_conditions(None, context)
-                d.addCallback(merge_conditions, cls._view, kwargs['query'])
-            else:
-                d = defer.succeed(kwargs['query'])
-            if kwargs.get('include_value'):
-                d.addCallback(merge_include_value, kwargs['include_value'])
-            d.addCallback(store_in_context)
-
-            return d
-
-        def render_select_response(value, context, *args, **kwargs):
-            cls = type(context['model'])
-            if not cls._query_set_factory:
-                # query set collection is created only once per class type
-                factory = MetaQueryResult.new(cls)
-                factory.annotate_meta('json', 'render-as-list')
-                cls._query_set_factory = factory
-            if cls._fetch_documents_set:
-                context['result'].update(value)
-            result = cls._query_set_factory(context['source'],
-                                            context['result'])
-            return result.initiate(view=context['view'],
-                                   officer=context.get('officer'),
-                                   aspect=context.get('aspect'))
-
-
-        SelectAction = action.MetaAction.new(
-            utils.mk_class_name(cls._view.name, "Select"),
-            ActionCategories.retrieve,
-            is_idempotent=False, result_info=result_info,
-            effects=(
-                build_query,
-                call.model_perform('do_select'),
-                effect.store_in_context('result'),
-                fetch_documents,
-                render_select_response,
-                ),
-            params=[action.Param('query', QueryValue()),
-                    action.Param('include_value', IncludeValue(),
-                                 is_required=False),
-                    action.Param('sorting', SortField(cls._allowed_fields),
-                                 is_required=False),
-                    action.Param('skip', value.Integer(0), is_required=False),
-                    action.Param('limit', value.Integer(), is_required=False)])
-        cls.annotate_action(u"select", SelectAction)
-
-        # define count action
-        CountAction = action.MetaAction.new(
-            utils.mk_class_name(cls._view.name, "Count"),
-            ActionCategories.retrieve,
-            effects=[
-                build_query,
-                call.model_perform('do_count')],
-            result_info=value.Integer(),
-            is_idempotent=False,
-            params=[action.Param('query', QueryValue())])
-        cls.annotate_action(u"count", CountAction)
-
-        # define how to fetch items
         if item_field:
             if not cls._view.has_field(item_field):
                 raise ValueError("%r doesn't define a field: '%s'" %
                                  (cls, item_field))
-
-            def fetch_names(value, context):
-                model = context['model']
-                d = build_query(None, context, query=query.Query(cls._view))
-                d.addCallback(defer.inject_param, 1,
-                              query.values, model.connection, item_field)
-                return d
-
-            cls.annotate_child_names(fetch_names)
-
-            def fetch_matching(value, context):
-                c = query.Condition(item_field, query.Evaluator.equals,
-                                    context['key'])
-                q = query.Query(cls._view, c)
-                d = build_query(None, context, query=q)
-                d.addCallback(context['model'].do_select, skip=0)
-                d.addCallback(fetch_documents, context)
-
-                def unpack(result):
-                    if result:
-                        return result[0]
-
-                d.addCallback(unpack)
-                return d
-
-            def fetch_source(value, context):
-                if cls._query_target == 'source':
-                    return fetch_matching(value, context)
-                else:
-                    return context['model'].source
-
-            cls.annotate_child_source(fetch_source)
-
-            def fetch_view(value, context):
-                if cls._query_target == 'view':
-                    return fetch_matching(value, context)
-                else:
-                    return context['view']
-
-            cls.annotate_child_view(fetch_view)
+            cls._item_field = item_field
 
 
 class RangeType(value.Collection):
@@ -493,6 +569,7 @@ def write_query_result(doc, obj, *args, **kwargs):
     r.add('rows', d)
 
     r.add('total_count', items.total_count)
+    r.add('aggregations', items.aggregations)
 
     d = r.wait()
     d.addCallback(applicationjson.render_json, doc)

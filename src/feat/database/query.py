@@ -601,8 +601,21 @@ class Query(serialization.Serializable):
             raise ValueError("%r should be a list or tuple" %
                              (self.include_value), )
 
-        aggregate = kwargs.pop('aggregate', None)
-        self.aggregate = list()
+        self.aggregate = kwargs.pop('aggregate', None)
+
+        sorting = kwargs.pop('sorting', None)
+        self.set_sorting(sorting)
+
+        if kwargs:
+            raise ValueError('Unknown keywords: %s' % (kwargs.keys(), ))
+
+    def _get_aggregate(self):
+        if hasattr(self, '_processed_aggregate'):
+            return self._processed_aggregate
+
+    def _set_aggregate(self, aggregate):
+        self._processed_aggregate = list()
+        self.reset()
         if aggregate is not None:
             msg = ('aggregate param should be a list of tuples of'
                    ' the form (handler, field), passed: %r')
@@ -619,21 +632,17 @@ class Query(serialization.Serializable):
                                      (handler, ))
                 if not self.factory.has_field(field):
                     raise ValueError("Unknown aggregate field: %r" % (field, ))
-                controller = factory.get_view_controller(field)
+                controller = self.factory.get_view_controller(field)
                 if not controller.keeps_value:
                     raise ValueError("The controller used for the field: %s "
                                      "is not marked as the one which keeps "
                                      "the value. Aggregation cannot work"
                                      " for such index." % (field, ))
 
-                self.aggregate.append(
+                self._processed_aggregate.append(
                     (self.factory.aggregations[handler], field))
 
-        sorting = kwargs.pop('sorting', None)
-        self.set_sorting(sorting)
-
-        if kwargs:
-            raise ValueError('Unknown keywords: %s' % (kwargs.keys(), ))
+    aggregate = property(_get_aggregate, _set_aggregate)
 
     def set_sorting(self, sorting):
         self.sorting = sorting
@@ -653,6 +662,12 @@ class Query(serialization.Serializable):
             raise ValueError(bad_sorting)
         if not isinstance(self.sorting[1], Direction):
             raise ValueError(bad_sorting)
+
+    def reset(self):
+        try:
+            del self._cached_basic_queries
+        except AttributeError:
+            pass
 
     ### IPlanBuilder ###
 
