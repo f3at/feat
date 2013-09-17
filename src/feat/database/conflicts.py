@@ -431,11 +431,20 @@ def cleanup_logs(connection, rconnection):
             continue
         in_conflict, raw_doc = yield _check_conflict(connection, owner_id)
         last_rev = entries[-1][0]
-        if not in_conflict and last_rev <= raw_doc['_rev']:
+        if (not in_conflict and
+            parse_rev(last_rev) <= parse_rev(raw_doc['_rev'])):
             for (rev, doc_id) in entries:
                 deletes_count += 1
                 yield _cleanup_update_log(connection, doc_id)
     defer.returnValue(deletes_count)
+
+
+def parse_rev(rev):
+    if '-' not in rev:
+        raise ValueError("%r doesn't seem to be a rev" % (rev, ))
+    seq, tag = rev.split('-', 1)
+    seq = int(seq)
+    return seq, tag
 
 
 @defer.inlineCallbacks
