@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.27.2
 %define unmangled_version 0.27.2
-%define build_rev 0.1
+%define build_rev 1
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -176,6 +176,10 @@ fi
 
 
 %changelog
+* Fri Sep 13 2013 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.27.2
+- new release
+
 * Mon Aug 19 2013 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.27.1
 - new release, optimize queries
