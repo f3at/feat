@@ -766,10 +766,14 @@ def select_ids(connection, query, skip=0, limit=None):
     index = first(v for k, v in responses.iteritems() if k.field == name)
 
     if direction == Direction.DESC:
-        iterator = reversed(index)
-    else:
-        iterator = index
-    r = Result(_get_sorted_slice(iterator, temp, skip, stop))
+        index = reversed(index)
+
+    if query.aggregate:
+        # we have to copy the collection, because _get_sorted_slice()
+        # treats it as a buffer, and modifies the content
+        aggregate_index = set(temp)
+
+    r = Result(_get_sorted_slice(index, temp, skip, stop))
     r.total_count = total_count
 
     # count reductions for aggregated fields based on the view index
@@ -780,9 +784,8 @@ def select_ids(connection, query, skip=0, limit=None):
         for handler, field in query.aggregate:
             condition = first(x for x in queries if x.field == field)
             value_index = cached[condition]
-
-            r.aggregations.append(
-                handler(x for x in value_iterator(index, value_index)))
+            r.aggregations.append(handler(
+                x for x in value_iterator(aggregate_index, value_index)))
     defer.returnValue(r)
 
 

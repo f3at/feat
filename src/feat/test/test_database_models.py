@@ -171,7 +171,10 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         js = yield self.model_as_json(res)
         self.assertIn('aggregations', js)
         self.assertIn('total_field1', js['aggregations'])
-        self.assertEqual(sum(range(20)), js['aggregations']['total_field1'])
+        # we expect only the even values to be saved, because of the static
+        # condition fields3='A'
+        self.assertEqual(sum(range(0, 20, 2)),
+                         js['aggregations']['total_field1'])
 
     @defer.inlineCallbacks
     def testJsonSerialization(self):
