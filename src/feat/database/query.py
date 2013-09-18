@@ -646,6 +646,7 @@ class Query(serialization.Serializable):
     aggregate = property(_get_aggregate, _set_aggregate)
 
     def set_sorting(self, sorting):
+        self.reset()
         self.sorting = sorting
         bad_sorting = ("Sorting should be a tuple: (field, direction)"
                        ", %r given" % (self.sorting, ))
