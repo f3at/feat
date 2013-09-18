@@ -3,7 +3,7 @@ import operator
 import sys
 import types
 
-from zope.interface import implements, Interface, Attribute
+from zope.interface import implements, Interface, Attribute, classProvides
 
 from feat.common import serialization, enum, first, defer, annotate, log, error
 from feat.common import container
@@ -11,6 +11,7 @@ from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
 from feat.database.interface import IPlanBuilder, IQueryCache
+from feat.interface.serialization import IRestorator, ISerializable
 
 
 class CacheEntry(object):
@@ -711,7 +712,13 @@ class Query(serialization.Serializable):
         return "(%s)" % (body, )
 
 
+@serialization.register
 class Result(list):
+
+    type_name = 'feat.database.query.Result'
+
+    classProvides(IRestorator)
+    implements(ISerializable)
 
     total_count = None
     aggregations = None
@@ -719,6 +726,29 @@ class Result(list):
     def update(self, new_list):
         del self[:]
         self.extend(new_list)
+
+    ### ISerializable ###
+
+    def snapshot(self):
+        r = {'rows': list(self)}
+        if self.total_count:
+            r['total_count'] = self.total_count
+        if self.aggregations:
+            r['aggregations'] = self.aggregations
+        return r
+
+    def recover(self, snapshot):
+        self.update(snapshot['rows'])
+        if 'total_count' in snapshot:
+            self.total_count = snapshot['total_count']
+        if 'aggregations' in snapshot:
+            self.aggregations = snapshot['aggregations']
+
+    ### IRestorator ###
+
+    @classmethod
+    def prepare(cls):
+        return cls()
 
 
 @defer.inlineCallbacks
