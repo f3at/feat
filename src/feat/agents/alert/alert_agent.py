@@ -23,7 +23,7 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from zope.interface import implements
 
-from feat.common import text_helper, fiber
+from feat.common import text_helper, fiber, error
 from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager, task
 
@@ -38,6 +38,7 @@ from feat.interface.agency import ExecMode
 from feat.interface.alert import IAlert, Severity
 from feat.interface.agent import IAlertAgent
 from feat.agents.alert.interface import INagiosSenderLabourFactory
+from feat.database.interface import NotFoundError
 
 
 @feat.register_descriptor("alert_agent")
@@ -263,8 +264,19 @@ class AlertAgent(agent.BaseAgent):
         updates = {'received_count': alert.received_count,
                    'status_info': alert.status_info}
         db = state.medium.get_database()
-        return db.update_document(alert, update.attributes, updates,
-                                  force_save=True)
+        d = db.update_document(alert, update.attributes, updates,
+                               force_save=True)
+        d.addErrback(self._handle_failure_updating, alert)
+        return d
+
+    @replay.immutable
+    def _handle_failure_updating(self, state, fail, alert):
+        db = state.medium.get_database()
+        if fail.check(NotFoundError):
+            return db.save_document(alert)
+        error.handle_failure(self, fail,
+                             "Failed updating the state of persitent"
+                             " alert. Doc: %r", alert)
 
     ### receiving alert notifications ###
 
