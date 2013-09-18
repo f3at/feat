@@ -11,6 +11,19 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
+class CheckConflicts(task.StealthPeriodicTask):
+
+    CLEANUP_FREQUENCY = 300 #once every 5 minutes
+
+    def initiate(self):
+        return task.StealthPeriodicTask.initiate(
+            self, self.CLEANUP_FREQUENCY)
+
+    @replay.immutable
+    def run(self, state):
+        return state.query_conflicts()
+
+
 class CleanupLogsTask(task.StealthPeriodicTask):
 
     CLEANUP_FREQUENCY = 60 #once a minute
@@ -63,7 +76,11 @@ class IntegrityAgent(agent.BaseAgent):
         db = state.medium.get_database()
         db.changes_listener(conflicts.Conflicts, self.conflict_cb)
 
-        self.call_next(self.query_conflicts_on_startup)
+        # The change listener is not always informing us the new
+        # incoming conflicts. If the conflicting revision is a
+        # loosing one, no conflict will be emitted. To remedy this
+        # we query for conflicts one every 5 minutes.
+        self.initiate_protocol(CheckConflicts)
 
     @replay.mutable
     def shutdown(self, state):
@@ -76,14 +93,14 @@ class IntegrityAgent(agent.BaseAgent):
     ### solving conflicts ###
 
     @replay.immutable
-    def query_conflicts_on_startup(self, state):
+    def query_conflicts(self, state):
         db = state.medium.get_database()
         d = db.query_view(conflicts.Conflicts, parse_results=False)
-        d.addCallback(self.handle_conflicts_on_startup)
+        d.addCallback(self.handle_conflicts)
         return d
 
-    def handle_conflicts_on_startup(self, rows):
-        self.info("Detected %d conflicts on startup", len(rows))
+    def handle_conflicts(self, rows):
+        self.info("Detected %d conflicts", len(rows))
         d = defer.succeed(None)
         for row in rows:
             d.addCallback(defer.drop_param, self.conflict_cb,
@@ -112,15 +129,21 @@ class IntegrityAgent(agent.BaseAgent):
 
     @replay.immutable
     def _solve_err(self, state, fail):
-        fail.trap(conflicts.UnsolvableConflict)
-        doc = fail.value.doc
-        if IDocument.providedBy(doc):
-            doc_id = doc.doc_id
-        else:
-            doc_id = doc['_id']
-        state.unsolvable_conflicts.add(doc_id)
+        if fail.check(conflicts.UnsolvableConflict):
+            doc = fail.value.doc
+            if IDocument.providedBy(doc):
+                doc_id = doc.doc_id
+            else:
+                doc_id = doc['_id']
+                state.unsolvable_conflicts.add(doc_id)
+            self.warning('Cannot solve conflict for document id: %s. '
+                         'Reason: %s', doc_id, fail.value)
 
-        self.raise_alert(ALERT_NAME, ', '.join(state.unsolvable_conflicts))
+            self.raise_alert(ALERT_NAME, ', '.join(state.unsolvable_conflicts))
+        else:
+            error.handle_failure(self, fail, 'Failed solving conflict.')
+            msg = error.get_failure_message(fail)
+            self.raise_alert(ALERT_NAME, msg, severity=alert.Severity.critical)
 
     ### private initialization ###
 
