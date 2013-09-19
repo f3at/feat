@@ -96,15 +96,26 @@ class IntegrityAgent(agent.BaseAgent):
     def query_conflicts(self, state):
         db = state.medium.get_database()
         d = db.query_view(conflicts.Conflicts, parse_results=False)
+        d.addCallback(self.update_unsolvable_conflicts)
         d.addCallback(self.handle_conflicts)
         return d
 
-    def handle_conflicts(self, rows):
+    @replay.mutable
+    def update_unsolvable_conflicts(self, state, rows):
+        ids = set([x[2] for x in rows])
+        # The conflict might have been solved by different instance or
+        # by intervention from human. Here we notice this so that the
+        # alert is eventually resolved.
+        for x in state.unsolvable_conflicts - ids:
+            state.unsolvable_conflicts.remove(x)
+        return ids
+
+    def handle_conflicts(self, ids):
         self.info("Detected %d conflicts", len(rows))
         d = defer.succeed(None)
-        for row in rows:
+        for doc_id in ids:
             d.addCallback(defer.drop_param, self.conflict_cb,
-                          row[2], rev=None, deleted=False, own_change=False)
+                          doc_id, rev=None, deleted=False, own_change=False)
         return d
 
     @replay.immutable
