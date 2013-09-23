@@ -38,14 +38,12 @@ class ResolverChain(resolve.ResolverChain):
 
 class Resolver(client.Resolver):
 
-    def getHostByName(self, name, timeout = None, effort = 10):
+    def lookupAllRecords(self, name, timeout = None):
         """
         Overwrite this method to use A type query instead of ANY
         which is done by default by the resolver.
         """
-        d = self.lookupAddress(name, timeout)
-        d.addCallback(self._cbRecords, name, effort)
-        return d
+        return self._lookup(name, dns.IN, dns.A, timeout)
 
     def _query(self, *args):
         d = client.Resolver._query(self, *args)
