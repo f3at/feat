@@ -1,4 +1,5 @@
 import os
+import re
 import glob
 import ConfigParser
 import StringIO
@@ -148,8 +149,16 @@ def _is_static_section(section):
 
 def _get_target(section, option):
     targets = _target_config()
-    # may raise ConfigParse.NoOptionError, this is ok, let it fail
-    return targets.get(section, option)
+    try:
+        return targets.get(section, option)
+    except ConfigParser.NoOptionError:
+        # this is to handle multiple options combined into the lists
+        # subsitute the string like monitor1 to monitor??
+        new_option = re.sub(r'[0-9]*$', '??', option)
+        if new_option == option:
+            raise
+        # may raise ConfigParser.NoOptionError, this is ok, let it fail
+        return targets.get(section, new_option)
 
 
 def _target_config():
@@ -216,13 +225,5 @@ category: host-category
 [nagios]:
 send_nsca: send-nsca-path
 config_path: nsca-config-path
-monitor: nagios-monitor
-monitor1: nagios-monitor
-monitor2: nagios-monitor
-monitor3: nagios-monitor
-monitor4: nagios-monitor
-monitor5: nagios-monitor
-monitor6: nagios-monitor
-monitor7: nagios-monitor
-monitor8: nagios-monitor
+monitor??: nagios-monitor
 """)

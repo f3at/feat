@@ -62,7 +62,7 @@ class TestConfigFile(common.TestCase):
         category: address:fixed storage:static
 
         [nagios]
-        monitor1: some.monitor.com
+        monitor: some.monitor.com
         monitor2: other.monitor.com
         """)
 
