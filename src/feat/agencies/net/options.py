@@ -295,6 +295,10 @@ def add_nagios_options(parser):
                      dest='nagios_monitors',
                      help=("host to push nsca notifications to "
                            "(multiple allowed)"), metavar="HOST")
+    group.add_option('--nagios-host', default=[], action="append",
+                     dest='nagios_hosts',
+                     help=("hostname from which to accept incoming alerts"
+                           "(multiple allowed)"), metavar="HOST")
 
 
 def _load_module(option, opt, value, parser):

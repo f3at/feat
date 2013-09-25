@@ -108,6 +108,7 @@ class NagiosConfig(formatable.Formatable):
     formatable.field('send_nsca', options.DEFAULT_SEND_NSCA_PATH)
     formatable.field('config_file', options.DEFAULT_NSCA_CONFIG_PATH)
     formatable.field('monitors', list())
+    formatable.field('hosts', list())
 
 
 @register

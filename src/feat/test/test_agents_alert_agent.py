@@ -40,6 +40,7 @@ class TestAgent(common.TestCase, ModelTestMixin):
         self.medium.agent = self.agent
         yield self.agent.initiate_agent()
         self.state = self.agent._get_state()
+        self.state.config.hosts = ['host1', 'host2', 'host3']
 
     @defer.inlineCallbacks
     def testReceiveAlertsForUnknownService(self):

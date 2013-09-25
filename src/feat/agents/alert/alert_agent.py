@@ -137,9 +137,9 @@ class AlertAgent(agent.BaseAgent):
     def initiate(self, state):
         state.medium.register_interest(AlertsCollector)
 
-        config = state.medium.agency.get_config()
+        state.config = state.medium.agency.get_config().nagios
         state.nagios = self.dependency(INagiosSenderLabourFactory, self,
-                                       config.nagios)
+                                       state.config)
         # (hostname, description) -> AlertService
         state.alerts = dict()
 
@@ -175,6 +175,8 @@ class AlertAgent(agent.BaseAgent):
         self.info("Loading info about persistent services. %d entries found",
                   len(view_result))
         for doc in view_result:
+            if not self._check_should_handle_alert(doc):
+                continue
             key = self._alert_key(doc)
             if key not in state.alerts:
                 state.alerts[key] = doc
@@ -282,6 +284,8 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def alert_raised(self, state, alert):
+        if not self._check_should_handle_alert(alert):
+            return
         r = self._find_entry(alert)
         should_notify = (r.received_count == 0 or
                          r.status_info != alert.status_info or
@@ -297,6 +301,8 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def alert_resolved(self, state, alert):
+        if not self._check_should_handle_alert(alert):
+            return
         r = self._find_entry(alert)
         should_notify = (r.received_count > 0 or
                          r.status_info != alert.status_info)
@@ -310,6 +316,15 @@ class AlertAgent(agent.BaseAgent):
             return f
 
     ### private ###
+
+    @replay.immutable
+    def _check_should_handle_alert(self, state, alert, name=None):
+        if alert.hostname not in state.config.hosts:
+            self.debug("Ignoring alert %s from hostname %s, because "
+                       "it's not on our hosts white list: %s",
+                       name or alert.name, alert.hostname, state.config.hosts)
+            return False
+        return True
 
     @replay.immutable
     def _notify_change_config(self, state, changed):
@@ -344,6 +359,8 @@ class AlertAgent(agent.BaseAgent):
         old_keys = state.alerts.keys()
         for agent in response:
             for alert in agent.alerts:
+                if not self._check_should_handle_alert(agent, alert.name):
+                    continue
                 key = (agent.hostname, alert.description
                        or "-".join([agent.agent_id, alert.name]))
                 if key in old_keys:

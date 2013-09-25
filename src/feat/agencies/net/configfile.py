@@ -226,4 +226,5 @@ category: host-category
 send_nsca: send-nsca-path
 config_path: nsca-config-path
 monitor??: nagios-monitor
+host??: nagios-host
 """)
