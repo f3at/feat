@@ -262,9 +262,13 @@ class Binary(BaseValue):
         return self._encoding
 
 
-class _InterfaceValue(BaseValue):
+class InterfaceValue(BaseValue):
 
     _value_interface = None
+
+    def __init__(self, value_interface=None):
+        if type(self)._value_interface is None:
+            self._value_interface = value_interface
 
     def validate(self, value):
         new_value = BaseValue.validate(self, value)
@@ -280,7 +284,7 @@ class _InterfaceValue(BaseValue):
         return new_value
 
 
-class Response(_InterfaceValue):
+class Response(InterfaceValue):
     """Definition of a model value."""
 
     _value_interface = IResponse
@@ -288,7 +292,7 @@ class Response(_InterfaceValue):
     value_type(ValueTypes.model)
 
 
-class Model(_InterfaceValue):
+class Model(InterfaceValue):
     """Definition of a model value."""
 
     _value_interface = IModel
@@ -296,7 +300,7 @@ class Model(_InterfaceValue):
     value_type(ValueTypes.model)
 
 
-class Reference(_InterfaceValue):
+class Reference(InterfaceValue):
     """Definition of a model value."""
 
     _value_interface = IReference

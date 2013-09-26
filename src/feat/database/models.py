@@ -114,40 +114,9 @@ class QueryViewMeta(type(model.Collection)):
         AggregateValue = value.MetaCollection.new(
             name, [FixedValues(cls._model_aggregations.keys())])
 
-        def build_query(value, context, *args, **kwargs):
-
-            def merge_conditions(static_conditions, factory, q):
-                subquery = query.Query(factory, *static_conditions)
-                return query.Query(factory, q, query.Operator.AND, subquery,
-                                   include_value=cls._include_value)
-
-            def merge_query_options(query, kwargs):
-                if kwargs.get('include_value'):
-                    query.include_value.extend(kwargs['include_value'])
-                    # reset call below is to get rid of cached query plan
-                    # if it has been already calculated
-                    query.reset()
-                if kwargs.get('aggregate'):
-                    aggregate = list()
-                    for name in kwargs['aggregate']:
-                        definition = cls._model_aggregations[name]
-                        aggregate.append((definition[1], definition[2]))
-                    query.aggregate = aggregate
-                return query
-
-            def store_in_context(query):
-                context['query'] = query
-                return query
-
-            cls = type(context['model'])
-            if cls._static_conditions:
-                d = cls._static_conditions(None, context)
-                d.addCallback(merge_conditions, cls._view, kwargs['query'])
-            else:
-                d = defer.succeed(kwargs['query'])
-            d.addCallback(merge_query_options, kwargs)
-            d.addCallback(store_in_context)
-            return d
+        build_query = parse_incoming_query(cls._view, cls._static_conditions,
+                                           cls._include_value,
+                                           cls._model_aggregations)
 
         def render_select_response(value, context, *args, **kwargs):
             cls = type(context['model'])
@@ -257,6 +226,56 @@ class QueryViewMeta(type(model.Collection)):
                     return context['view']
 
             cls.annotate_child_view(fetch_view)
+
+
+def parse_incoming_query(factory, static_conditions=None,
+                         include_value=[], model_aggregations=dict()):
+    '''
+    Effect factory parsing the query value from params and merging in
+    the static_conditions specified.
+
+    @param factory: IQueryView
+    @param static_conditions: effect to be called to build up static
+                               conditions of the query
+    @param include_value: list of fields which should be always included
+    @param model_aggregations: dict() of name -> (IValueInfo, name, field)
+    '''
+
+    def build_query(value, context, *args, **kwargs):
+
+        def merge_conditions(static_conditions, q):
+            subquery = query.Query(factory, *static_conditions)
+            return query.Query(factory, q, query.Operator.AND, subquery,
+                               include_value=[])
+
+        def merge_query_options(query, kwargs):
+            if kwargs.get('include_value'):
+                query.include_value.extend(kwargs['include_value'])
+                # reset call below is to get rid of cached query plan
+                # if it has been already calculated
+                query.reset()
+            if kwargs.get('aggregate'):
+                aggregate = list()
+                for name in kwargs['aggregate']:
+                    definition = model_aggregations[name]
+                    aggregate.append((definition[1], definition[2]))
+                query.aggregate = aggregate
+            return query
+
+        def store_in_context(query):
+            context['query'] = query
+            return query
+
+        if static_conditions:
+            d = static_conditions(None, context)
+            d.addCallback(merge_conditions, kwargs['query'])
+        else:
+            d = defer.succeed(kwargs['query'])
+        d.addCallback(merge_query_options, kwargs)
+        d.addCallback(store_in_context)
+        return d
+
+    return build_query
 
 
 class QueryView(model.Collection):
