@@ -267,7 +267,8 @@ def parse_incoming_query(factory, static_conditions=None,
             return query
 
         if static_conditions:
-            d = static_conditions(None, context)
+            d = defer.succeed(None)
+            d.addCallback(static_conditions, context)
             d.addCallback(merge_conditions, kwargs['query'])
         else:
             d = defer.succeed(kwargs['query'])
