@@ -826,31 +826,24 @@ def count(connection, query):
     defer.returnValue(len(temp))
 
 
+@defer.inlineCallbacks
 def values(connection, query, field):
-    defers = []
     if not query.factory.has_field(field):
         raise ValueError("%r doesn't have %s field defined" %
                          (query.factory, field))
-    defers.append(connection.query_view(
-        query.factory, startkey=(field, ),
-        endkey=(field, {}), parse_results=False))
-    defers.append(select_ids(connection, query))
-    d = defer.DeferredList(defers)
-    d.addCallback(_parse_values_response)
-    return d
+    query.include_value.append(field)
+
+    temp, responses = yield _get_query_response(connection, query)
+    cached = connection.get_query_cache()._cache[query.factory.name]
+    index = first(v for k, v in cached.iteritems()
+                  if k.field == field)
+    resp = list()
+    for x in temp:
+        resp.append(index.values.get(x))
+    defer.returnValue(resp)
 
 
 ### private ###
-
-
-def _parse_values_response(results):
-    (s1, rows), (s2, ids) = results
-    if not s1:
-        return rows
-    if not s2:
-        return ids
-
-    return set(x[0][1] for x in rows if x[2] in ids)
 
 
 @defer.inlineCallbacks
