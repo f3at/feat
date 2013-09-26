@@ -21,7 +21,7 @@ class CheckConflicts(task.StealthPeriodicTask):
 
     @replay.immutable
     def run(self, state):
-        return state.query_conflicts()
+        return state.agent.query_conflicts()
 
 
 class CleanupLogsTask(task.StealthPeriodicTask):
