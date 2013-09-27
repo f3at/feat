@@ -832,6 +832,7 @@ def values(connection, query, field):
         raise ValueError("%r doesn't have %s field defined" %
                          (query.factory, field))
     query.include_value.append(field)
+    query.reset() # ensures the field condition gets included
 
     temp, responses = yield _get_query_response(connection, query)
     cached = connection.get_query_cache()._cache[query.factory.name]
