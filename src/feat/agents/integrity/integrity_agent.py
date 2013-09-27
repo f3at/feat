@@ -111,7 +111,7 @@ class IntegrityAgent(agent.BaseAgent):
         return ids
 
     def handle_conflicts(self, ids):
-        self.info("Detected %d conflicts", len(rows))
+        self.info("Detected %d conflicts", len(ids))
         d = defer.succeed(None)
         for doc_id in ids:
             d.addCallback(defer.drop_param, self.conflict_cb,
