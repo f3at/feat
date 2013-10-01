@@ -249,6 +249,8 @@ class dbscript(object):
 
     def __exit__(self, type, value, traceback):
         self._deferred.addErrback(self._handle_error)
+        self._deferred.addBoth(defer.drop_param,
+                               self.connection.database.disconnect)
         self._deferred.addBoth(defer.drop_param, reactor.stop)
         reactor.callWhenRunning(self._deferred.callback, self.connection)
         reactor.run()

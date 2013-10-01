@@ -481,12 +481,17 @@ class ConnectionPool(Connection):
         # this is used by http.BaseProtocol, passing None defaults to 60s
         self.response_timeout = response_timeout
 
+        # flag telling the error handler that this connection pool is
+        # expecting all the requests to be cancelled
+        self._disconnecting = False
+
     ### public ###
 
     def is_idle(self):
         return all([x.is_idle() for x in self._connected])
 
     def disconnect(self):
+        self._disconnecting = True
         [x.cancel() for x in self._awaiting_client]
         [x.transport.loseConnection() for x in self._connected]
 
@@ -543,7 +548,8 @@ class ConnectionPool(Connection):
                      headers, body, decoder, outside_of_the_pool,
                      dont_pipeline, reset_retry):
         fail.trap(ConnectionReset)
-        if reset_retry > 3:
+        # don't retry more than 3 times or if we are disconnecting
+        if reset_retry > 3 or self._disconnecting:
             return fail
         self.warning("The request will be retrying, because the underlying"
                      " connection was closed before the response was received."
@@ -553,6 +559,8 @@ class ConnectionPool(Connection):
                             dont_pipeline, reset_retry + 1)
 
     def onClientConnectionFailed(self, reason):
+        if self._disconnecting:
+            return
         self._connecting -= 1
         self.info("Failed connecting to %s:%s. Reason: %s",
                   self._host, self._port, reason)

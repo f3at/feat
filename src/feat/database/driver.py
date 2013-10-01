@@ -507,6 +507,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             d.addCallback(self._set_version)
             d.addCallback(defer.drop_param, self._setup_notifiers)
             d.addErrback(failure.Failure.trap, NotConnectedError)
+            d.addErrback(failure.Failure.trap, defer.CancelledError)
             self.reconnector = time.callLater(wait, d.callback, None)
             return d
         else:
