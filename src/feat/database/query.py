@@ -18,6 +18,7 @@ class CacheEntry(object):
 
     def __init__(self, seq_num, entries, keep_value=False):
         self.seq_num = seq_num
+        self.includes_values = keep_value
         if not keep_value:
             # here entries is just a list of ids
             self.entries = entries
@@ -90,7 +91,7 @@ class Cache(log.Logger):
             elif entry.seq_num == seq_num:
                 self.log("Query served from the cache hit, %d rows",
                          len(entry.entries))
-                return entry.entries
+                return entry
             else:
                 d = connection.get_changes(factory, limit=2,
                                            since=entry.seq_num)
@@ -120,10 +121,10 @@ class Cache(log.Logger):
                  subquery, seq_num, len(entries))
         if factory.name not in self._cache:
             self._cache[factory.name] = dict()
-        self._cache[factory.name][subquery] = CacheEntry(seq_num, entries,
-                                                         keep_value)
+        entry = CacheEntry(seq_num, entries, keep_value)
+        self._cache[factory.name][subquery] = entry
         self._check_size_limit()
-        return self._cache[factory.name][subquery].entries
+        return entry
 
     def _analyze_changes(self, connection, factory, subquery, entry, changes,
                          seq_num):
@@ -136,11 +137,10 @@ class Cache(log.Logger):
         else:
             self.log("View %s has not changed, marking cached fragments as "
                      "fresh. %d rows", factory.name, len(entry.entries))
-            result = entry.entries
             if factory.name in self._cache:
-                for entry in self._cache[factory.name].itervalues():
-                    entry.seq_num = seq_num
-            return result
+                for to_update in self._cache[factory.name].itervalues():
+                    to_update.seq_num = seq_num
+            return entry
 
     ### private, check that the cache is not too big ###
 
@@ -763,7 +763,8 @@ def select_ids(connection, query, skip=0, limit=None):
         stop = None
 
     name, direction = query.sorting
-    index = first(v for k, v in responses.iteritems() if k.field == name)
+    index = first(v.entries
+                  for k, v in responses.iteritems() if k.field == name)
 
     if direction == Direction.DESC:
         index = reversed(index)
@@ -835,9 +836,14 @@ def values(connection, query, field):
     query.reset() # ensures the field condition gets included
 
     temp, responses = yield _get_query_response(connection, query)
-    cached = connection.get_query_cache()._cache[query.factory.name]
-    index = first(v for k, v in cached.iteritems()
+    index = first(v for k, v in responses.iteritems()
                   if k.field == field)
+    if not index.includes_values:
+        raise ValueError('The query controller of %s field '
+                         'of %s factory is not marked to '
+                         'keep the value in the cache. You have to enable '
+                         'it to make query.value() work.' %
+                         (field, query.factory))
     resp = list()
     for x in temp:
         resp.append(index.values.get(x))
@@ -871,7 +877,8 @@ def _calculate_query_response(responses, query):
 
     for part in query.parts:
         if isinstance(part, Condition):
-            for_parts.append(set(responses[part.get_basic_queries()[0]]))
+            key = part.get_basic_queries()[0]
+            for_parts.append(set(responses[key].entries))
         elif isinstance(part, Query):
             for_parts.append(_calculate_query_response(responses, part))
     if len(for_parts) == 1:

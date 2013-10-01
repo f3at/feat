@@ -551,6 +551,7 @@ class IQueryCache(Interface):
         @param connection: L{IDatabaseClient}
         @param factory: L{IQueryViewFactory}
         @param subquery: C{tuple} (field_name, Evaluator, value)
+        @rtype: L{feat.database.query.CacheEntry}
         '''
 
 

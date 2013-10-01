@@ -40,7 +40,7 @@ class DummyCache(object):
         assert isinstance(subquery, query.Condition), repr(subquery)
 
         try:
-            return defer.succeed(self.stubs[subquery])
+            return defer.succeed(query.CacheEntry(0, self.stubs[subquery]))
         except KeyError:
             raise AssertionError('%r not in %r' %
                                  (subquery, self.stubs.keys()))
