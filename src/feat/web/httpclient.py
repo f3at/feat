@@ -80,6 +80,7 @@ class ResponseDecoder(object, Protocol):
     def __init__(self):
         self._deferred = defer.Deferred()
         self._response = Response()
+        self._buffer = list()
 
     ### IProtocol ###
 
@@ -87,9 +88,7 @@ class ResponseDecoder(object, Protocol):
         pass
 
     def dataReceived(self, data):
-        if self._response.body is None:
-            self._response.body = ''
-        self._response.body += data
+        self._buffer.append(data)
 
     def connectionLost(self, reason=None):
         if not self._response and not reason:
@@ -98,6 +97,8 @@ class ResponseDecoder(object, Protocol):
         if reason:
             self._deferred.errback(reason)
         else:
+            self._response.body = "".join(self._buffer)
+            del self._buffer[:]
             self._deferred.callback(self._response)
 
     ### private interface of the decoder ###
