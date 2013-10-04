@@ -1208,6 +1208,9 @@ class ModelItem(BaseModelItem):
     def initiate(self):
         """If the returned deferred is fired with None,
         the item will be disabled as if did not exists."""
+        if not self.model.officer.is_item_allowed(self.model, self._name):
+            return defer.succeed(None)
+
         if not callable(self._enabled):
             d = defer.succeed(self._enabled)
         else:
@@ -1242,6 +1245,8 @@ class ModelItem(BaseModelItem):
         return self._reference
 
     def browse(self):
+        if not self.model.officer.is_browse_allowed(self.model, self):
+            return defer.succeed(None)
         officer = self.model.officer.get_browse_officer(self.model, self)
         return self._create_model(view_getter=self._view,
                                   source_getters=[self._source, self._browse],
@@ -1249,6 +1254,8 @@ class ModelItem(BaseModelItem):
                                   officer=officer)
 
     def fetch(self):
+        if not self.model.officer.is_fetch_allowed(self.model, self):
+            return defer.succeed(None)
         officer = self.model.officer.get_fetch_officer(self.model, self)
         return self._create_model(view_getter=self._view,
                                   source_getters=[self._source, self._fetch],
@@ -1529,6 +1536,8 @@ class DynamicModelItem(BaseModelItem):
         return self
 
     def initiate(self):
+        if not self.model.officer.is_item_allowed(self.model, self._name):
+            return defer.succeed(None)
         #FIXME: dynamic items officer are always fetched never browsed
         officer = self.model.officer.get_fetch_officer(self.model, self)
         # We need to do it right away to be sure the source exists
