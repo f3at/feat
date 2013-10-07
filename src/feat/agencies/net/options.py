@@ -214,6 +214,9 @@ def add_db_options(parser):
     group.add_option('--dbpassword', dest="db_password",
                      help="password to use for authentication ",
                      metavar="USER")
+    group.add_option('--dbhttps', dest="db_https",
+                     help="Use SSL connection",
+                     default=False, action="store_true")
     parser.add_option_group(group)
 
 

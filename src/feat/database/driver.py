@@ -32,7 +32,7 @@ from twisted.web.http import _DataLoss as DataLoss
 from feat.database.client import Connection, ChangeListener
 from feat.common import log, defer, time, error
 from feat.agencies import common
-from feat.web import http, httpclient, auth
+from feat.web import http, httpclient, auth, security
 from feat import hacks
 
 json = hacks.import_json()
@@ -207,15 +207,21 @@ class CouchDB(httpclient.ConnectionPool):
     log_category = 'couchdb-connection'
 
     def __init__(self, host, port, username=None, password=None,
-                 maximum_connections=2, logger=None):
+                 https=False, maximum_connections=2, logger=None):
         if username is not None and password is not None:
             a = auth.BasicHTTPCredentials(username, password)
             self._auth_header = a.header_value
         else:
             self._auth_header = None
+        if https:
+            sp = security.ClientPolicy(security.ClientContextFactory())
+        else:
+            sp = None
+
         httpclient.ConnectionPool.__init__(
             self, host, port,
             maximum_connections=maximum_connections,
+            security_policy=sp,
             logger=logger,
             enable_pipelineing=False)
 
@@ -261,7 +267,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     log_category = "database"
 
-    def __init__(self, host, port, db_name, username=None, password=None):
+    def __init__(self, host, port, db_name, username=None, password=None,
+                 https=False):
         common.ConnectionManager.__init__(self)
         log.LogProxy.__init__(self, log.get_default() or log.FluLogKeeper())
         ChangeListener.__init__(self, self)
@@ -271,6 +278,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self.version = None
         self.host = None
         self.port = None
+        self.https = None
         # name -> Notifier
         self.notifiers = dict()
         # this flag is prevents reconnector from being spawned
@@ -289,10 +297,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
 
-        self._configure(host, port, db_name, username, password)
+        self._configure(host, port, db_name, username, password,
+                        https)
 
-    def reconfigure(self, host, port, name, username=None, password=None):
-        self._configure(host, port, name, username, password)
+    def reconfigure(self, host, port, name, username=None, password=None,
+                    https=False):
+        self._configure(host, port, name, username, password, https)
 
     def show_connection_status(self):
         eta = self.reconnector and self.reconnector.active() and \
@@ -568,11 +578,13 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             else:
                 raise DatabaseError(str(int(response.status)) + ": " + msg)
 
-    def _configure(self, host, port, name, username, password):
+    def _configure(self, host, port, name, username, password, https):
         self._cancel_reconnector()
         self.host, self.port = host, port
         self.username, self.password = username, password
-        self.couchdb = CouchDB(host, port, username, password, logger=self)
+        self.https = https
+        self.couchdb = CouchDB(host, port, username, password, logger=self,
+                               https=https)
         self.db_name = name
         self.disconnected = False
 

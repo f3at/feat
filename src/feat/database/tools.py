@@ -158,7 +158,7 @@ def script():
     opts, args = parse_options()
     c = config.DbConfig(host=opts.db_host, port=opts.db_port,
                         name=opts.db_name, username=opts.db_username,
-                        password=opts.db_password)
+                        https=opts.db_https, password=opts.db_password)
     with dbscript(c) as d:
 
         def body(connection):

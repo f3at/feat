@@ -204,6 +204,7 @@ port: dbport
 name: dbname
 username: dbusername
 password: dbpassword
+https: dbhttps
 
 [manhole]
 public_key: pubkey

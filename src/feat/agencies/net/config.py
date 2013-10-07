@@ -45,6 +45,7 @@ class DbConfig(formatable.Formatable):
     formatable.field('name', options.DEFAULT_DB_NAME)
     formatable.field('username', None)
     formatable.field('password', None)
+    formatable.field('https', False)
 
 
 @register
