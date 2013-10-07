@@ -40,7 +40,7 @@ class QueryView(query.QueryView):
                 controller=query.KeepValueController)
     query.field('field2', extract_field2)
     query.field('field3', extract_field3)
-    query.field('doc_id', extract_doc_id)
+    query.field('doc_id', extract_doc_id, controller=query.KeepValueController)
     query.document_types(['query'])
 
 

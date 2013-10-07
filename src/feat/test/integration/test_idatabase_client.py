@@ -1041,7 +1041,7 @@ class TestCase(object):
     def _query_values(self, field, expected):
         values = yield query.values(self.connection,
                                     query.Query(QueryView), field)
-        self.assertEqual(expected, values)
+        self.assertEqual(expected, set(values))
 
     @defer.inlineCallbacks
     def _query_test(self, expected, *parts, **kwargs):
@@ -1096,8 +1096,8 @@ class QueryView(query.QueryView):
         yield doc.get('field3')
 
     query.field('field1', extract_field1, controller=query.KeepValueController)
-    query.field('field2', extract_field2)
-    query.field('field3', extract_field3)
+    query.field('field2', extract_field2, controller=query.KeepValueController)
+    query.field('field3', extract_field3, controller=query.KeepValueController)
     BaseField = query.BaseField
 
     @query.field('field1_resorted')
