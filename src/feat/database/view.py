@@ -56,7 +56,8 @@ class JavascriptView(annotate.Annotable):
             # return list of ids
             return list(rows)
         else:
-            return unserialize_list((x[3] for x in rows if len(x) == 4))
+            return unserialize_list((x[3] for x in rows
+                                     if len(x) == 4 and x[3]))
 
     @classmethod
     def perform_map(cls, doc):
@@ -107,7 +108,8 @@ class BaseView(annotate.Annotable):
             # return list of ids
             return [cls.parse(x[0], x[1], reduced) for x in rows]
         else:
-            return unserialize_list((x[3] for x in rows if len(x) == 4))
+            return unserialize_list((x[3] for x in rows
+                                     if len(x) == 4 and x[3]))
 
     @classmethod
     def parse(cls, key, value, reduced):
