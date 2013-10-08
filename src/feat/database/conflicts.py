@@ -175,6 +175,7 @@ def solve(connection, doc_id):
 
     try:
         yield handler(connection, doc, plain_doc['_conflicts'])
+        connection.debug("Solving conflict for document %s completed", doc_id)
     except UnsolvableConflict:
         raise
     except Exception as e:
