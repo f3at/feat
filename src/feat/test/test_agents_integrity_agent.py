@@ -4,6 +4,7 @@ from feat.common import defer
 from feat.database import conflicts, emu
 from feat.test import common, dummies
 from feat.test.integration.common import ModelTestMixin
+from feat.models import response
 
 from feat.models.interface import InvalidParameters
 
@@ -126,6 +127,15 @@ class ApiTest(_Base):
         self.assertEqual('target', repl.get('target'))
         self.assertEqual('test', repl.get('source'))
         self.assertEqual('featjs/replication', repl.get('filter'))
+
+        # now delete the replication
+        r = yield submodel.perform_action('del')
+        self.assertIsInstance(r, response.Deleted)
+
+        view = yield self.connection.query_view(conflicts.Replications,
+                                                key=('source', 'test'),
+                                                include_docs=True)
+        self.assertEqual(0, len(view))
 
     @defer.inlineCallbacks
     def testCreateReplicationAlreadyExist(self):

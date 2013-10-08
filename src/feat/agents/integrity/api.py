@@ -2,7 +2,7 @@ import operator
 
 from feat.agents.integrity import integrity_agent
 from feat.common import defer
-from feat.database import conflicts
+from feat.database import conflicts, update
 from feat.gateway.application import featmodels
 from feat.gateway import models
 from feat.models import model, value, call, getter, response, action, effect
@@ -86,6 +86,28 @@ class Replication(model.Model):
                                                 call.model_perform('pause'),
                                                 response.done('done')],
                                        result_info=value.Response()))
+    model.delete('del',
+                 effect.context_value('key'),
+                 call.model_perform('delete'),
+                 response.deleted("Replication deleted"),
+                 label="Delete",
+                 desc=("Delete all the replication documents"))
+
+    def delete(self, value):
+        state = self.source._get_state()
+        connection = state.replicator
+        d = connection.query_view(conflicts.Replications,
+                                  key=('target', value))
+
+        def delete_all(replications):
+            d = defer.succeed(None)
+            for key, value, doc_id in replications:
+                d.addCallback(defer.drop_param, connection.update_document,
+                              doc_id, update.delete)
+            return d
+
+        d.addCallback(delete_all)
+        return d
 
     def pause(self, value):
         if not self.continuous:
