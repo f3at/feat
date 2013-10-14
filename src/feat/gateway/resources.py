@@ -557,9 +557,13 @@ class ActionResource(BaseResource):
                     else:
                         params[param.name] = request.arguments[param.name][0]
 
-        request.debug("Performing action %r on %s model %r with parameters %r",
+        # avoid putting lots of text into the log
+        repr_params = repr(params)
+        if len(repr_params) > 500:
+            repr_params = repr_params[:500] + ' (truncated)'
+        request.debug("Performing action %r on %s model %r with parameters %s",
                     self._action.name, self._context.models[-1].identity,
-                    self._context.models[-1].name, params)
+                    self._context.models[-1].name, repr_params)
         d = self._action.perform(**params)
         d.addCallback(got_data)
         d.addErrback(self.filter_errors)
