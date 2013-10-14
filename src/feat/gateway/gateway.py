@@ -30,6 +30,7 @@ from feat.web import security, webserver, http
 # Import supported formats
 from feat.models import applicationjson
 from feat.models import texthtml
+from feat.models import applicationoctetstream
 
 
 class NoPortAvailableError(Exception):
@@ -141,3 +142,4 @@ class Gateway(log.LogProxy, log.Logger):
         server.initiate()
         server.enable_mime_type(texthtml.MIME_TYPE)
         server.enable_mime_type(applicationjson.MIME_TYPE)
+        server.enable_mime_type(applicationoctetstream.MIME_TYPE)
