@@ -320,6 +320,8 @@ class ModelWriter(log.Logger):
         if get_action is not None:
             try:
                 value = yield get_action.perform()
+                if value is None:
+                    defer.returnValue("")
             except Exception as e:
                 self.debug('Failed fetching value for model %r, '
                            'context path is: %r, exception: %r',
