@@ -101,14 +101,19 @@ def push_initial_data(connection, overwrite=False, push_design_docs=True):
                     if a[name] != b[name]:
                         diffs[what] = (a[name], b[name])
 
+            def strcode(x):
+                if not x:
+                    return ''
+                if isinstance(x, (str, unicode)):
+                    return x
+                return "\n".join("%s: %s" % t for t in x.items())
+
             for what in diffs:
                 for name in diffs[what]:
-                    strcode = lambda x: "\n".join(
-                        "%s: %s" % t for t in x.items())
                     log.info('script',
                              '%s code changed. \nOLD: \n%s\n\nNEW:\n%s\n',
-                             what, strcode(diffs[what][0]),
-                             strcode(diffs[what][1]))
+                             what, strcode(diffs[what][name][0]),
+                             strcode(diffs[what][name][1]))
 
 
 @defer.inlineCallbacks
