@@ -15,7 +15,7 @@ class RequestError(error.FeatError):
     pass
 
 
-class RequestCanceled(RequestError):
+class RequestCancelled(RequestError, defer.CancelledError):
     pass
 
 
@@ -164,8 +164,11 @@ class Protocol(http.BaseProtocol):
         self._requests.append(decoder)
 
         self.transport.writeSequence(seq)
+        finished_decoding = decoder.get_result()
 
-        return decoder.get_result()
+        d = defer.Deferred(canceller=self._cancel_request)
+        finished_decoding.chainDeferred(d)
+        return d
 
     ### Overridden Methods ###
 
@@ -254,6 +257,12 @@ class Protocol(http.BaseProtocol):
             self._response = None
 
     ### Private Methods ###
+
+    def _cancel_request(self, d):
+        ex = RequestCancelled('Request aborted by the caller')
+        d._suppressAlreadyCalled = True
+        d.errback(ex)
+        self._client_error(ex)
 
     def _encode_body(self, body):
         if body is None:

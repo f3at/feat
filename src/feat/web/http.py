@@ -379,7 +379,7 @@ class BaseProtocol(log.Logger, basic.LineReceiver, timeout.Mixin):
         self._handle_received(data)
 
     def connectionLost(self, reason):
-        self.log('Connection lost: %s', reason.getErrorMessage())
+        self.log('Connection lost: %s', reason)
 
         self.cancel_all_timeouts()
 
