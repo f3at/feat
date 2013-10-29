@@ -46,12 +46,11 @@ case "$1" in
   shutdown)
 	doit shutdown "Shutting down"
         ;;
-  status|clean|hostcleanup)
-        su "$USER" -s /bin/bash -c "$PROG $1"
-        ;;
   *)
-        echo $"Usage: $0 {start|stop|shutdown|restart|status|clean|hostcleanup}"
-        exit 1
+        # Forward all other commands to feat-service, also pass any parameters.
+        COMMAND="$PROG "$@""
+        su "$USER" -s /bin/bash -c "$COMMAND"
+        exit $?
 esac
 
 exit $RETVAL
