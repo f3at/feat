@@ -300,7 +300,7 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
                                            "after finalize() method has been "
                                            "called. Method: %r" % (method, ))
 
-        d = defer.Deferred()
+        d = defer.Deferred(canceller=self._cancel_agent_side_call)
         self._agent_jobs.append(d)
         d.addCallback(defer.drop_param, method, *args, **kwargs)
         d.addErrback(self._error_handler, method)
@@ -366,6 +366,10 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
         return self.agent.send_msg(self.recipients, msg)
 
     ### private ###
+
+    def _cancel_agent_side_call(self, d):
+        d._suppressAlreadyCalled = True
+        d.errback(failure.Failure(self.create_expired_error("")))
 
     def _run_and_terminate(self, method, *args, **kwargs):
         d = self.call_agent_side(method, *args, **kwargs)
