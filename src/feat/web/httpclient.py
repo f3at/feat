@@ -370,8 +370,6 @@ class Connection(log.LogProxy, log.Logger):
         self._pending = 0
         self.log_name = '%s:%d (%s)' % (
             self._host, self._port, self._http_scheme.name)
-        self.debug('Connection to %s:%d using %s',
-            self._host, self._port, self._http_scheme.name)
 
     ### public ###
 
@@ -422,6 +420,9 @@ class Connection(log.LogProxy, log.Logger):
         if self.connect_timeout is not None:
             kwargs['timeout'] = self.connect_timeout
         kwargs['bindAddress'] = self.bind_address
+
+        self.debug('Connecting to %s:%d using %s',
+            self._host, self._port, self._http_scheme.name)
 
         if self._security_policy.use_ssl:
             context_factory = self._security_policy.get_ssl_context_factory()
