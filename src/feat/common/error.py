@@ -224,21 +224,23 @@ def handle_failure(source, failure, template, *args, **kwargs):
 
     info = kwargs.get("info", None)
     debug = kwargs.get("debug", None)
-    msg = get_failure_message(failure)
 
     category = logger.log_category
     if category is None:
         category = 'feat'
     if failure.check(NonCritical):
         e = failure.value
+        msg = failure.getErrorMessage()
         msg = (e.log_line_template %
                dict(class_name=type(failure.value), msg=msg))
         logger.logex(e.log_level, msg, ())
     elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
+        msg = get_failure_message(failure)
         cleanup = kwargs.get("clean_traceback", False)
         tb = get_failure_traceback(failure, cleanup)
         logger.error(template + ": %s\n%s", *(args + (msg, tb)))
     else:
+        msg = get_failure_message(failure)
         logger.error(template + ": %s", *(args + (msg, )))
 
     if log.verbose:
