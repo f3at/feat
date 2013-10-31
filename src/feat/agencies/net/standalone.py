@@ -96,7 +96,7 @@ class Agency(agency.Agency):
 
     def _acquire_lock(self):
         if not self._lock_file:
-            self._lock_file = open(self.config.agency.lock_path, 'rb+')
+            self._lock_file = open(self.config.agency.lock_path, 'wb+')
         self.debug("Trying to take a lock on %s to start the master agency",
                    self._lock_file.name)
 
