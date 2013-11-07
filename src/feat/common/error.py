@@ -262,7 +262,7 @@ def handle_exception(source, exception, template, *args, **kwargs):
         category = 'feat'
     if isinstance(exception, NonCritical):
         e = exception
-        msg = e.log_line_template % dict(class_name=type(exception))
+        msg = e.log_line_template % dict(class_name=type(exception), msg=msg)
         logger.logex(e.log_level, msg, ())
     elif xlog.getCategoryLevel(category) in [xlog.LOG, xlog.DEBUG]:
         cleanup = kwargs.get("clean_traceback", False)
