@@ -52,6 +52,9 @@ class Replication(view.JavascriptView):
     '''
     Replication filter to be used between feat database.
     The deletes of update logs are made local.
+    The design documents are not transfered, because its a
+    responsibility of feat-service upgrade command to
+    maintain them.
     '''
 
     design_doc_id = 'featjs'
@@ -60,6 +63,9 @@ class Replication(view.JavascriptView):
     filter = format_block('''
     function(doc, request) {
         if (doc[".type"] == "update_log" && doc._deleted) {
+            return false;
+        }
+        if (doc._id.indexOf("_design") === 0) {
             return false;
         }
         return true;
