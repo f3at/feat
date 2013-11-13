@@ -99,7 +99,7 @@ def push_initial_data(connection, overwrite=False, push_design_docs=True):
 
                 for name in set(a.keys()).intersection(set(b.keys())):
                     if a[name] != b[name]:
-                        diffs[what] = (a[name], b[name])
+                        diffs[what][name] = (a[name], b[name])
 
             def strcode(x):
                 if not x:
