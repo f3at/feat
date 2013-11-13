@@ -99,7 +99,7 @@ def push_initial_data(connection, overwrite=False, push_design_docs=True):
 
                 for name in set(a.keys()).intersection(set(b.keys())):
                     if a[name] != b[name]:
-                        diffs[what] = (a[name], b[name])
+                        diffs[what][name] = (a[name], b[name])
 
             def strcode(x):
                 if not x:
@@ -112,8 +112,8 @@ def push_initial_data(connection, overwrite=False, push_design_docs=True):
                 for name in diffs[what]:
                     log.info('script',
                              '%s code changed. \nOLD: \n%s\n\nNEW:\n%s\n',
-                             what, strcode(diffs[what][name][0]),
-                             strcode(diffs[what][name][1]))
+                             what, strcode(diffs[what][name][1]),
+                             strcode(diffs[what][name][0]))
 
 
 @defer.inlineCallbacks
