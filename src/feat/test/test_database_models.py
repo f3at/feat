@@ -177,6 +177,16 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
                          js['aggregations']['total_field1'])
 
     @defer.inlineCallbacks
+    def testValuesAction(self):
+        res = yield self.model.perform_action('values',
+                                              fields=["field1"], query=[])
+        js = yield self.model_as_json(res)
+        self.assertIsInstance(js, dict)
+        self.assertEquals(['field1'], js.keys())
+        self.assertEqual({18, 10, 12, 14, 16, 6, 4, 2, 0, 8},
+                         set(js['field1']))
+
+    @defer.inlineCallbacks
     def testJsonSerialization(self):
         q = []
         res = yield self.model.perform_action('select', query=q)
