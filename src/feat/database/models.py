@@ -184,6 +184,21 @@ class QueryViewMeta(type(model.Collection)):
             params=[action.Param('query', QueryValue())])
         cls.annotate_action(u"count", CountAction)
 
+        # define values action (fetch the values for the range)
+        ValuesAction = action.MetaAction.new(
+            utils.mk_class_name(cls._view.name, "Values"),
+            ActionCategories.retrieve,
+            effects=[
+                build_query,
+                call.model_perform('fetch_values')],
+            # FIXME: the result is a dictionary of name -> [values],
+            # consider creating the IValidator for this structure
+            result_info=value.Value(),
+            is_idempotent=False,
+            params=[action.Param('query', QueryValue()),
+                    action.Param('fields', IncludeValue())])
+        cls.annotate_action(u"values", ValuesAction)
+
         # define how to fetch items
         if cls._item_field:
 
@@ -314,6 +329,12 @@ class QueryView(model.Collection):
 
     def do_count(self, value):
         return query.count(self.connection, value)
+
+    def fetch_values(self, value, fields):
+        res = applicationjson.AsyncDict()
+        for field in fields:
+            res.add(field, query.values(self.connection, value, field))
+        return res.wait()
 
     ### annotations ###
 

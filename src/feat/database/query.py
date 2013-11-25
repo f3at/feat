@@ -844,10 +844,10 @@ def values(connection, query, field):
                          'keep the value in the cache. You have to enable '
                          'it to make query.value() work.' %
                          (field, query.factory))
-    resp = list()
+    resp = set()
     for x in temp:
-        resp.append(index.values.get(x))
-    defer.returnValue(resp)
+        resp.add(index.values.get(x))
+    defer.returnValue(list(resp))
 
 
 ### private ###
