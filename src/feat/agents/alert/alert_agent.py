@@ -160,11 +160,14 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def _cleanup_orphaned_services(self, state):
+        self.info("Cleaning up orphaned services.")
         to_delete = list()
         for alert in state.alerts.itervalues():
             if alert.persistent and not alert.agent_id:
                 to_delete.append(alert)
         if to_delete:
+            self._notify_change_config(changed=True)
+
             f = fiber.FiberList([self.delete_alert(x) for x in to_delete],
                                 consumeErrors=True)
             f.add_callback(fiber.override_result, None)
