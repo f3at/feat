@@ -153,9 +153,9 @@ class AlertAgent(agent.BaseAgent):
     @replay.journaled
     def startup(self, state):
         state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
-        # 24 hours after we started we want the get rid of any persistent
+        # 23 hours after we started we want the get rid of any persistent
         # services which noone claimed responsibility for
-        state.medium.call_later_ex(24 * 3600, self._cleanup_orphaned_services,
+        state.medium.call_later_ex(23 * 3600, self._cleanup_orphaned_services,
                                    busy=False)
 
     @replay.mutable
