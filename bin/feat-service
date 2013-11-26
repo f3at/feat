@@ -477,3 +477,4 @@ if __name__ == '__main__':
         main(sys.argv[1:])
     except Exception:
         logger.error("Fatal error running feat-service", exc_info=True)
+        sys.exit(1)
