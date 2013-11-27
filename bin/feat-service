@@ -203,6 +203,7 @@ def main(args):
                 DeprecationWarning)
 
         from feat.web import security
+
         sp = security.ClientPolicy(
             security.ClientContextFactory(p12_filename=c.gateway.client_p12))
         client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
@@ -241,7 +242,6 @@ def main(args):
 
         from feat.database import tools
         from feat.utils import alert_cleanup
-        from feat.common import log
 
         log.set_default(log.PythonLogKeeper(logger))
 
