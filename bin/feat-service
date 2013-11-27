@@ -95,11 +95,14 @@ def main(args):
     * alertclean - Clean up the persistent nagios services.
     """)
 
+    logger.debug('Running command: %s', " ".join(sys.argv))
+
     try:
         command = args.pop(0)
     except IndexError:
         print usage
         sys.exit(1)
+
 
     if command == 'start':
         rundir = configure.rundir
