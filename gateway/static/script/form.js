@@ -65,7 +65,16 @@ $.fn.featform._onSubmit = function(ev) {
     var options = $this.data('featform.options');
     if (options.method == 'GET') {
         var url = options.url;
-        var serialized  = $this.serialize();
+        var serialized  = '';
+        var array = $this.serializeArray();
+        for (var i in array) {
+            if (array[i].value) {
+                if (serialized) serialized += '&';
+                serialized += array[i].name;
+                serialized += "=";
+                serialized += array[i].value;
+            }
+        }
         if (serialized) {
             url = url + "?" + serialized;
         }
