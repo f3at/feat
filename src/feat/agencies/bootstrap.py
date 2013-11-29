@@ -200,7 +200,7 @@ def bootstrap(parser=None, args=None, descriptors=None):
     else:
         logname = "%s.%s.log" % ('feat', agency.agency_id)
         logfile = os.path.join(config.agency.logdir, logname)
-        log.info("bootstrap", "Daemon processs will be loggin to %s path",
+        log.info("bootstrap", "Daemon processs will be logging to %s",
                  logfile)
 
         try:

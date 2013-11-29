@@ -95,11 +95,14 @@ def main(args):
     * alertclean - Clean up the persistent nagios services.
     """)
 
+    logger.debug('Running command: %s', " ".join(sys.argv))
+
     try:
         command = args.pop(0)
     except IndexError:
         print usage
         sys.exit(1)
+
 
     if command == 'start':
         rundir = configure.rundir
@@ -203,6 +206,7 @@ def main(args):
                 DeprecationWarning)
 
         from feat.web import security
+
         sp = security.ClientPolicy(
             security.ClientContextFactory(p12_filename=c.gateway.client_p12))
         client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
@@ -241,7 +245,6 @@ def main(args):
 
         from feat.database import tools
         from feat.utils import alert_cleanup
-        from feat.common import log
 
         log.set_default(log.PythonLogKeeper(logger))
 
@@ -477,3 +480,4 @@ if __name__ == '__main__':
         main(sys.argv[1:])
     except Exception:
         logger.error("Fatal error running feat-service", exc_info=True)
+        sys.exit(1)

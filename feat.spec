@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.28.0
 %define unmangled_version 0.28.0
-%define build_rev 0.2
+%define build_rev 0.4
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit

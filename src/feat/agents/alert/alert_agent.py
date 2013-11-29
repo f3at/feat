@@ -153,18 +153,21 @@ class AlertAgent(agent.BaseAgent):
     @replay.journaled
     def startup(self, state):
         state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
-        # 24 hours after we started we want the get rid of any persistent
+        # 23 hours after we started we want the get rid of any persistent
         # services which noone claimed responsibility for
-        state.medium.call_later_ex(24 * 3600, self._cleanup_orphaned_services,
+        state.medium.call_later_ex(23 * 3600, self._cleanup_orphaned_services,
                                    busy=False)
 
     @replay.mutable
     def _cleanup_orphaned_services(self, state):
+        self.info("Cleaning up orphaned services.")
         to_delete = list()
         for alert in state.alerts.itervalues():
             if alert.persistent and not alert.agent_id:
                 to_delete.append(alert)
         if to_delete:
+            self._notify_change_config(changed=True)
+
             f = fiber.FiberList([self.delete_alert(x) for x in to_delete],
                                 consumeErrors=True)
             f.add_callback(fiber.override_result, None)
