@@ -301,7 +301,7 @@ def standalone(script, options=[]):
                           metavar="USER", default=c.db.username)
         parser.add_option('--dbpassword', dest="db_password",
                           help="password to use for authentication ",
-                          metavar="USER", default=c.db.password)
+                          metavar="PASSWORD", default=c.db.password)
         parser.add_option('--ssl', '-S', action='store_true', dest='db_https',
                           help='whether to use SSL db connections',
                           default=True)
