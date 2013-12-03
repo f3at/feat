@@ -291,6 +291,9 @@ def standalone(script, options=[]):
         parser.add_option('--dbpassword', dest="db_password",
                           help="password to use for authentication ",
                           metavar="USER", default=c.db.password)
+        parser.add_option('--ssl', '-S', action='store_true', dest='db_https',
+                          help='whether to use SSL db connections',
+                          default=True)
 
         parser.add_option('--log', action='store', dest='log',
                           type='str', help='log level to set',
@@ -313,6 +316,7 @@ def standalone(script, options=[]):
     db = config.parse_service_config().db
     db.host, db.port, db.name = opts.db_host, opts.db_port, opts.db_name
     db.username, db.password = opts.db_username, opts.db_password
+    db.https = opts.db_https
 
     with dbscript(db) as d:
         d.addCallback(script, opts)
