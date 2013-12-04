@@ -427,7 +427,7 @@ class Connection(log.LogProxy, log.Logger):
     ### private ###
 
     def _connect(self):
-        d = defer.Deferred()
+        d = defer.Deferred(canceller=cancel_connector)
         factory = self.create_protocol(d)
 
         kwargs = {}
@@ -440,11 +440,15 @@ class Connection(log.LogProxy, log.Logger):
 
         if self._security_policy.use_ssl:
             context_factory = self._security_policy.get_ssl_context_factory()
-            reactor.connectSSL(self._host, self._port,
-                               factory, context_factory, **kwargs)
-            return d
+            # the reference to connector is given to the Deferred to be
+            # used by its cancellator (cancel_connector)
+            d.connector = reactor.connectSSL(self._host, self._port,
+                                             factory, context_factory,
+                                             **kwargs)
+        else:
+            d.connector = reactor.connectTCP(self._host, self._port, factory,
+                                             **kwargs)
 
-        reactor.connectTCP(self._host, self._port, factory, **kwargs)
         return d
 
     def _on_connected(self, protocol):
@@ -465,6 +469,22 @@ class Connection(log.LogProxy, log.Logger):
     def _request_done(self, param):
         self._pending -= 1
         return param
+
+
+def cancel_connector(d):
+    if not hasattr(d, 'connector'):
+        log.warning('httpclient', "The Deferred called with cancel_connector()"
+                    " doesn't have the reference to the connector set.")
+        return
+    if d.connector.state == 'connecting':
+        timeoutCall = d.connector.timeoutID
+        msg = ('Connection to %s:%s was cancelled by the user %.3f '
+               'seconds after it was initialized' %
+               (d.connector.host, d.connector.port,
+                time.time() - timeoutCall.getTime() + d.connector.timeout))
+        d.connector.stopConnecting()
+
+        d.errback(defer.CancelledError(msg))
 
 
 class PoolProtocol(Protocol):
