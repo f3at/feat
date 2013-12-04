@@ -2,6 +2,7 @@ from zope.interface import Interface, Attribute, implements
 
 from twisted.internet import reactor, error as terror
 from twisted.internet.protocol import ClientFactory, Protocol
+from twisted.internet.interfaces import ISSLTransport
 from twisted.python import failure
 
 from feat.common import defer, error, log, time, first
@@ -167,6 +168,17 @@ class Protocol(http.BaseProtocol):
         finished_decoding = decoder.get_result()
 
         d = defer.Deferred(canceller=self._cancel_request)
+        # The parameters below are used to format a nice error message
+        # if d.cancel() gets called.
+        d.request_params = {
+            'method': method.name,
+            'location': location,
+            'scheme': 'https' if ISSLTransport.providedBy(self.transport) \
+                       else 'http',
+            'host': self.transport.addr[0],
+            'port': self.transport.addr[1],
+            'started_epoch': time.time()}
+
         finished_decoding.chainDeferred(d)
         return d
 
@@ -259,7 +271,12 @@ class Protocol(http.BaseProtocol):
     ### Private Methods ###
 
     def _cancel_request(self, d):
-        ex = RequestCancelled('Request aborted by the caller')
+        p = d.request_params
+        p['elapsed'] = time.time() - p['started_epoch']
+        ex = RequestCancelled('%(method)s to %(scheme)s'
+                              '://%(host)s:%(port)s%(location)s '
+                              'was cancelled by the user %(elapsed).3f seconds'
+                              ' after it was sent.' % p)
         d._suppressAlreadyCalled = True
         d.errback(ex)
         self._client_error(ex)
