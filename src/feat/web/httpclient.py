@@ -92,9 +92,6 @@ class ResponseDecoder(object, Protocol):
         self._buffer.append(data)
 
     def connectionLost(self, reason=None):
-        if not self._response and not reason:
-            reason = RequestError("Request cancelled before receiving of "
-                                  "the response started")
         if reason:
             self._deferred.errback(reason)
         else:
@@ -106,6 +103,12 @@ class ResponseDecoder(object, Protocol):
 
     def get_result(self):
         return self._deferred
+
+
+STATE_DESCRIPTIONS = {
+    0: 'waiting for the status line',
+    1: 'receiving the headers',
+    2: 'receiving the response body'}
 
 
 class Protocol(http.BaseProtocol):
@@ -162,15 +165,9 @@ class Protocol(http.BaseProtocol):
 
         if decoder is None:
             decoder = ResponseDecoder()
-        self._requests.append(decoder)
-
-        self.transport.writeSequence(seq)
-        finished_decoding = decoder.get_result()
-
-        d = defer.Deferred(canceller=self._cancel_request)
         # The parameters below are used to format a nice error message
-        # if d.cancel() gets called.
-        d.request_params = {
+        # shall this request fail in any way
+        decoder.request_params = {
             'method': method.name,
             'location': location,
             'scheme': 'https' if ISSLTransport.providedBy(self.transport) \
@@ -179,6 +176,14 @@ class Protocol(http.BaseProtocol):
             'port': self.transport.addr[1],
             'started_epoch': time.time()}
 
+        self._requests.append(decoder)
+
+        self.transport.writeSequence(seq)
+        finished_decoding = decoder.get_result()
+
+        d = defer.Deferred(canceller=self._cancel_request)
+        # Reference to decoder is unsed by canceller
+        d.decoder = decoder
         finished_decoding.chainDeferred(d)
         return d
 
@@ -258,7 +263,28 @@ class Protocol(http.BaseProtocol):
         self._response = None
 
     def process_timeout(self):
-        self._client_error(RequestTimeout())
+        if self._state == self.STATE_REQLINE:
+            # This can be either inactivity timeout or first line timeout.
+            # We don't yet have self._response set here, because we haven't
+            # even received the status line.
+            try:
+                self._response = self._requests.pop(0)
+            except IndexError:
+                # this is inactivity timeout, just disconnect
+                self.transport.loseConnection()
+                return
+
+        ctime = time.time()
+        p = self._response.request_params
+        p['elapsed'] = ctime - p['started_epoch']
+        p['state_description'] = STATE_DESCRIPTIONS[self._state]
+        msg = ('%(method)s to %(scheme)s'
+               '://%(host)s:%(port)s%(location)s '
+               'failed because of timeout '
+               '%(elapsed).3fs after it was sent. '
+               'When it happend it was %(state_description)s.'
+               % p)
+        self._client_error(RequestTimeout(msg))
 
     def process_parse_error(self):
         self._client_error(InvalidResponse())
@@ -271,11 +297,11 @@ class Protocol(http.BaseProtocol):
     ### Private Methods ###
 
     def _cancel_request(self, d):
-        p = d.request_params
+        p = d.decoder.request_params
         p['elapsed'] = time.time() - p['started_epoch']
         ex = RequestCancelled('%(method)s to %(scheme)s'
                               '://%(host)s:%(port)s%(location)s '
-                              'was cancelled by the user %(elapsed).3f seconds'
+                              'was cancelled by the user %(elapsed).3fs'
                               ' after it was sent.' % p)
         d._suppressAlreadyCalled = True
         d.errback(ex)
@@ -291,10 +317,11 @@ class Protocol(http.BaseProtocol):
         return body
 
     def _client_error(self, exception):
+        reason = failure.Failure(exception)
         if self._response:
-            self._response.connectionLost(failure.Failure(exception))
+            self._response.connectionLost(reason)
             self._response = None
-        self.transport.loseConnection()
+        self.transport.loseConnection(reason)
 
 
 class Factory(ClientFactory):
