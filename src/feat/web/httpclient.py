@@ -1,6 +1,6 @@
 from zope.interface import Interface, Attribute, implements
 
-from twisted.internet import reactor
+from twisted.internet import reactor, error as terror
 from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.python import failure
 
@@ -298,6 +298,20 @@ class Factory(ClientFactory):
         return proto
 
     def clientConnectionFailed(self, connector, reason):
+        if reason.check(terror.TimeoutError):
+            msg = ('Timeout of %s seconds expired while trying to connected to'
+                   ' %s:%s' % (connector.timeout, connector.host,
+                               connector.port))
+            reason = failure.Failure(terror.TimeoutError(string=msg))
+            reason.cleanFailure()
+        elif reason.check(terror.ConnectError):
+            # all the other connection errors which are not directly related
+            # to the timeout
+            msg = ('Failed to connect to %s:%s' %
+                   (connector.host, connector.port))
+            reason = failure.Failure(type(reason.value)(string=msg))
+            reason.cleanFailure()
+
         time.call_next(self._deferred.errback, reason)
         del self._deferred
         if self.owner:
