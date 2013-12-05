@@ -321,7 +321,7 @@ class Protocol(http.BaseProtocol):
         if self._response:
             self._response.connectionLost(reason)
             self._response = None
-        self.transport.loseConnection(reason)
+        self.transport.loseConnection()
 
 
 class Factory(ClientFactory):

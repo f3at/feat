@@ -26,6 +26,7 @@ class TestProtocol(common.TestCase):
 
     def setUp(self):
         self.transport = StringTransportWithDisconnection()
+        self.transport.addr = ('testsite.com', 80)
         self.protocol = httpclient.Protocol(self, owner=None)
         self.protocol.factory = MockFactory()
         self.protocol.makeConnection(self.transport)
@@ -63,6 +64,7 @@ class TestProtocol(common.TestCase):
 
         self.assertTrue(self.protocol.factory.onConnectionReset_called)
 
+    @defer.inlineCallbacks
     def testCancelledRequest(self):
         d = self.protocol.request(http.Methods.GET, '/',
                                   headers={'accept': 'text/html'})
@@ -70,7 +72,9 @@ class TestProtocol(common.TestCase):
 
         self.assertFalse(self.transport.connected)
         self.assertFailure(d, httpclient.RequestCancelled)
-        return d
+        f = yield d
+        exp = 'GET to http://testsite.com:80/ was cancelled by the user 0.000s after it was sent.'
+        self.assertEqual(exp, str(f))
 
     def _disconnect_protocol(self):
         if self.transport.connected:
