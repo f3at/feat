@@ -1,6 +1,6 @@
 from zope.interface import Interface, Attribute, implements
 
-from twisted.internet import reactor, error as terror
+from twisted.internet import reactor as treactor, error as terror
 from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.internet.interfaces import ISSLTransport
 from twisted.python import failure
@@ -401,10 +401,11 @@ class Connection(log.LogProxy, log.Logger):
     bind_address = None
 
     def __init__(self, host, port=None, protocol=None,
-                 security_policy=None, logger=None):
+                 security_policy=None, logger=None, reactor=None):
         logger = logger or log.get_default() or log.FluLogKeeper()
         log.LogProxy.__init__(self, logger)
         log.Logger.__init__(self, logger)
+        self.reactor = reactor or treactor
 
         self._host = host
         self._port = port
@@ -486,12 +487,12 @@ class Connection(log.LogProxy, log.Logger):
             context_factory = self._security_policy.get_ssl_context_factory()
             # the reference to connector is given to the Deferred to be
             # used by its cancellator (cancel_connector)
-            d.connector = reactor.connectSSL(self._host, self._port,
+            d.connector = self.reactor.connectSSL(self._host, self._port,
                                              factory, context_factory,
                                              **kwargs)
         else:
-            d.connector = reactor.connectTCP(self._host, self._port, factory,
-                                             **kwargs)
+            d.connector = self.reactor.connectTCP(self._host, self._port,
+                                                  factory, **kwargs)
 
         return d
 
