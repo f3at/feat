@@ -3,6 +3,7 @@ import re
 import glob
 import ConfigParser
 import StringIO
+import sys
 
 from feat import applications
 from feat.common.text_helper import format_block
@@ -77,9 +78,14 @@ def _parse_application_section(cfg, parser, section):
     [application:flt]
     import: flt.application
     name: flt
+    # pythonpath is optional
+    pythonpath: /etc/flt/python
     '''
-    #TODO: Create an Application object here which will manage loading
-    #the modules and (in future) reloading them.
+    try:
+        sys.path.append(cfg.get(section, 'pythonpath'))
+    except ConfigParser.NoOptionError:
+        pass
+
     module = cfg.get(section, 'import')
     name = cfg.get(section, 'name')
     try:
