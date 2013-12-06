@@ -148,6 +148,8 @@ def parse_options(parser=None, args=None):
 def create_db(connection):
 
     def display_warning(f):
+        if 'file_exists' in str(f.value):
+            return
         log.warning('script', 'Creating of database failed, reason: %s',
                     f.value)
 
