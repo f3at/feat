@@ -264,7 +264,7 @@ def upgrade(connection):
 
     to_rotate = yield update_views(connection)
     stop(signal.SIGUSR2) # ignore the result of stop
-    yield tools.create_database(connection)
+    yield tools.create_db(connection)
     yield tools.push_initial_data(connection,
                                   overwrite=True,
                                   push_design_docs=False)
