@@ -202,6 +202,10 @@ class Connection(log.Logger, log.LogProxy):
         # Unlocked callbacks
         self._unlocked_callbacks = set()
 
+        # set([doc_id, rev]), This is used to trigger the asynchronous hook
+        # of the document upgrade only ones
+        self._upgrades_ran = set()
+
     ### IRevisionStore ###
 
     @property
@@ -554,16 +558,24 @@ class Connection(log.Logger, log.LogProxy):
         if IVersionedDocument.providedBy(doc):
             if doc.has_migrated:
                 d = defer.succeed(doc)
-                for handler, context in doc.get_asynchronous_actions():
-                    if handler.use_custom_registry:
-                        conn = Connection(self._database, handler.unserializer)
-                    else:
-                        conn = self
-                    d.addCallback(defer.keep_param, defer.inject_param, 1,
-                                  handler.asynchronous_hook, conn, context)
-                    d.addErrback(self.handle_immediate_failure,
-                                 handler.asynchronous_hook, context)
-                d.addCallback(self.save_document)
+                key = (doc.doc_id, doc.rev)
+                if key not in self._upgrades_ran:
+                    # Make sure that the connection instance only triggers
+                    # once asychronous upgrade. This minimizes the amount
+                    # of possible conflicts when fetching old document
+                    # version more than once.
+                    self._upgrades_ran.add(key)
+                    for handler, context in doc.get_asynchronous_actions():
+                        if handler.use_custom_registry:
+                            conn = Connection(self._database, handler.unserializer)
+                        else:
+                            conn = self
+                        d.addCallback(defer.keep_param, defer.inject_param, 1,
+                                      handler.asynchronous_hook, conn, context)
+                        d.addErrback(self.handle_immediate_failure,
+                                     handler.asynchronous_hook, context)
+
+                    d.addCallback(self.save_document)
                 d.addErrback(self.handle_unserialize_failure, raw)
                 return d
 
@@ -580,7 +592,7 @@ class Connection(log.Logger, log.LogProxy):
         version = raw.get('.version')
 
         if fail.check(ConflictError):
-            self.debug('Got conflict error when trying the upgrade the '
+            self.debug('Got conflict error when trying to upgrade the '
                        'document: %s version: %s. Refetching it.',
                        type_name, version)
             # probably we've already upgraded it concurrently
