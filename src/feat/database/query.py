@@ -828,7 +828,7 @@ def count(connection, query):
 
 
 @defer.inlineCallbacks
-def values(connection, query, field):
+def values(connection, query, field, unique=True):
     if not query.factory.has_field(field):
         raise ValueError("%r doesn't have %s field defined" %
                          (query.factory, field))
@@ -844,10 +844,16 @@ def values(connection, query, field):
                          'keep the value in the cache. You have to enable '
                          'it to make query.value() work.' %
                          (field, query.factory))
-    resp = set()
-    for x in temp:
-        resp.add(index.values.get(x))
-    defer.returnValue(list(resp))
+    if unique:
+        resp = set()
+        for x in temp:
+            resp.add(index.values.get(x))
+        defer.returnValue(list(resp))
+    else:
+        resp = list()
+        for x in temp:
+            resp.append(index.values.get(x))
+        defer.returnValue(resp)
 
 
 ### private ###
