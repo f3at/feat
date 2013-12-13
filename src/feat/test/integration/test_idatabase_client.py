@@ -468,6 +468,7 @@ class TestCase(object):
         self.assertRaises(NotFoundError, doc.delete_attachment, 'unknown')
         doc.delete_attachment('attachment')
         doc = yield self.connection.save_document(doc)
+
         self.assertEquals(set(['attachment2', 'attachment3']),
                           set(doc.attachments.keys()))
 
