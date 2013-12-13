@@ -342,9 +342,8 @@ def get_replication_status(rconnection, source):
     if version < (1, 2, 0):
         raise ValueError("CouchDB 1.2.0 required, found %r" % (version, ))
 
-    active_tasks = yield database.couchdb_call('_active_tasks',
-                                               database.couchdb.get,
-                                               '/_active_tasks')
+    active_tasks = yield database.couchdb_call(
+        database.couchdb.get, '/_active_tasks')
     # In couchdb version >= 1.2.2 the replication_id is suffixed with
     # string literal '+continuous'. Here we cut it off
     for task in active_tasks:
