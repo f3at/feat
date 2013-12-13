@@ -30,7 +30,7 @@ from twisted.protocols import basic
 from twisted.web.http import _DataLoss as DataLoss
 
 from feat.database.client import Connection, ChangeListener
-from feat.common import log, defer, time, error
+from feat.common import log, defer, time, error, enum
 from feat.agencies import common
 from feat.web import http, httpclient, auth, security
 from feat import hacks
@@ -296,6 +296,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._pending_notifications = dict()
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
+        self._cache = GetCache()
 
         self._configure(host, port, db_name, username, password,
                         https)
@@ -440,6 +441,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             d = self.couchdb_call(self.couchdb.post, url, body=body)
         else:
             d = self.couchdb_call(self.couchdb.get, url)
+        # TODO, custom parsing should go inside the CacheEntry handling or body Decoder
         d.addCallback(self._parse_view_result)
         return d
 
@@ -547,33 +549,40 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def couchdb_call(self, method, url, *args, **kwargs):
         method_name = method.__name__.upper()
-        d = method(url, *args, **kwargs)
-        d.addCallbacks(self._couchdb_cb, self._error_handler,
-                       callbackArgs=(method_name, url))
-        return d
+        entry = None
+        if method_name == 'GET' and kwargs.pop('cache', True):
+            entry = self._cache.get_url(url)
+            if entry and entry.state == EntryState.waiting:
+                # There is ongoing request to this URL, just wait
+                # for the result.
+                return entry.wait()
 
-    def _couchdb_cb(self, response, method_name, url):
-        self._on_connected()
-        if response.status < 400:
-            if (response.headers.get('content-type') == 'application/json'):
-                try:
-                    return json.loads(response.body)
-                except ValueError:
-                    self.error(
-                        "Could not parse json data from couchdb. Data: %r",
-                        response.body)
-                    raise DatabaseError("Json parse error")
-            else:
-                return response.body
+            if not entry:
+                # Its the first request to this request or its not
+                # a cacheable entity.
+                entry = CacheEntry(url)
+                self._cache[url] = entry
+                time.call_next(self._cache.cleanup)
+
+            if entry.etag:
+                entry.state = EntryState.waiting
+
+                # We have cached entry with ETag header,
+                # there is a big chance that its fresh.
+                # Below use the normal HTTP way of revalidating the cache.
+                kwargs.setdefault('headers', dict())
+                kwargs['headers']['If-None-Match'] = entry.etag
+
+        d = method(url, *args, **kwargs)
+        d.addCallback(defer.bridge_param, self._on_connected)
+        if entry:
+            d.addBoth(defer.keep_param, entry.got_response)
+            d.addErrback(self._error_handler)
+            return entry.wait()
         else:
-            msg = ("%s on %s gave %s status with body: %s"
-                   % (method_name, url, response.status, response.body))
-            if response.status == http.Status.NOT_FOUND:
-                raise NotFoundError(msg)
-            elif response.status == http.Status.CONFLICT:
-                raise ConflictError(msg)
-            else:
-                raise DatabaseError(msg)
+            d.addCallbacks(parse_response, self._error_handler,
+                           callbackArgs=(method_name, url))
+            return d
 
     def _configure(self, host, port, name, username, password, https):
         self._cancel_reconnector()
@@ -654,3 +663,145 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             raise NotConnectedError("Connection to the database was lost.")
         else:
             failure.raiseException()
+
+
+class EntryState(enum.Enum):
+    '''
+    waiting - request is in progress
+    ready - the data is ready and cached
+    invalid - the entry should be removed from the cache
+    '''
+
+    waiting, ready, invalid = range(3)
+
+
+class CacheEntry(object):
+
+    __slots__ = (
+        '_parsed', '_waiting', 'cached_at', 'etag',
+        'last_accessed_at', 'num_accessed', 'size', 'state', 'url')
+
+    def __init__(self, url):
+        # public attributes
+        self.url = url
+        self.state = EntryState.waiting
+        self.etag = None
+
+        # private attributes
+        self._waiting = list()
+        self._parsed = None
+
+        # public statistics
+        self.cached_at = None
+        self.last_accessed_at = None
+        self.num_accessed = 0
+        self.size = None
+
+    def wait(self, ctime=None):
+        self.last_accessed_at = ctime or int(time.time())
+        self.num_accessed += 1
+
+        if self.state == EntryState.ready:
+            return defer.succeed(self._parsed)
+        else:
+            d = defer.Deferred()
+            self._waiting.append(d)
+            return d
+
+    def got_response(self, response, ctime=None):
+        if isinstance(response, failure.Failure):
+            self.size = None
+            self._parsed = response
+            self.state = EntryState.invalid
+
+        elif response.status == 304:
+            self.state = EntryState.ready
+        else:
+            self._parsed = parse_response(response, 'GET', self.url)
+            if isinstance(self._parsed, failure.Failure):
+                self.state = EntryState.invalid
+            else:
+                self.state = EntryState.ready
+                self.size = len(response.body)
+
+                if not self.cached_at:
+                    self.cached_at = ctime or int(time.time())
+                if response.headers.get('etag'):
+                    self.etag = response.headers.get('etag')
+                else:
+                    self.state = EntryState.invalid
+
+        # trigger waiting Deferreds
+        waiting = self._waiting
+        self._waiting = list()
+
+        for d in waiting:
+            d.callback(self._parsed)
+
+    def __str__(self):
+        return "<Entry, state: %s, url: %s>" % (self.state.name, self.url)
+
+
+class GetCache(dict):
+    '''
+    url -> CacheEntry
+    '''
+
+    # rule of thumb: its fine to keep a 100 byte request body if it
+    # has been in cache for five minutes and was accessed only once
+    threshold = 1.0 / 3000
+
+    def __init__(self, threshold=None):
+        super(GetCache, self).__init__()
+        if threshold is not None:
+            self.threshold = threshold
+
+    def get_url(self, url):
+        if url in self and self[url].state != EntryState.invalid:
+            return self[url]
+
+    def cleanup(self, ctime=None):
+        '''
+        Condition for survival:
+        n_accessed / time_in_cache / size > threshold
+        '''
+        ctime = ctime or int(time.time())
+        expire = list()
+        for entry in self.itervalues():
+            if entry.state is EntryState.invalid:
+                expire.append(entry.url)
+                continue
+            if entry.state is EntryState.waiting:
+                continue
+
+            time_in_cache = max([ctime - entry.cached_at, 1])
+            usefullness = (float(entry.num_accessed) /
+                           time_in_cache / entry.size)
+            if usefullness < self.threshold:
+                expire.append(entry.url)
+                continue
+        for url in expire:
+            del self[url]
+
+
+def parse_response(response, method_name, url):
+    if response.status < 300:
+        if (response.headers.get('content-type') == 'application/json'):
+            try:
+                return json.loads(response.body)
+            except ValueError:
+                log.error('couchdb',
+                    "Could not parse json data from couchdb. Data: %r",
+                    response.body)
+                return failure.Failure(DatabaseError("Json parse error"))
+        else:
+            return response.body
+    else:
+        msg = ("%s on %s gave %s status with body: %s"
+               % (method_name, url, response.status.name, response.body))
+        if response.status == http.Status.NOT_FOUND:
+            return failure.Failure(NotFoundError(msg))
+        elif response.status == http.Status.CONFLICT:
+            return failure.Failure(ConflictError(msg))
+        else:
+            return failure.Failure(DatabaseError(msg))
