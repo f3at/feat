@@ -1293,7 +1293,6 @@ class NonEmuTests(object):
 
         # # make sure this is commited
         yield self.connection.database.couchdb_call(
-            'ensure_full_commit',
             self.connection.database.couchdb.post,
             '/%s/_ensure_full_commit' % (dbname, ))
 

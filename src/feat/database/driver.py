@@ -160,7 +160,7 @@ class Notifier(object):
             if 'since' not in query:
                 url = '/%s/' % (self._db.db_name, )
                 d.addCallback(defer.drop_param, self._db.couchdb_call,
-                              'infoDB', self._db.couchdb.get, url)
+                              self._db.couchdb.get, url)
 
                 def set_since(resp):
                     query['since'] = resp['update_seq']
@@ -329,7 +329,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                 if isinstance(v, types.BooleanType):
                     extra[k] = str(v).lower()
             url += urlencode(extra)
-        return self.couchdb_call(doc_id, self.couchdb.get, url)
+        return self.couchdb_call(self.couchdb.get, url)
 
     def copy_doc(self, doc_id, destination_id, rev=None):
         url = '/%s/%s' % (self.db_name, quote(doc_id.encode('utf-8')))
@@ -337,7 +337,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         if rev:
             dest += '?rev=' + quote(rev.encode('utf-8'))
         headers = {'Destination': dest}
-        return self.couchdb_call(doc_id, self.couchdb.copy, url,
+        return self.couchdb_call(self.couchdb.copy, url,
                                  headers=headers)
 
     @defer.inlineCallbacks
@@ -358,7 +358,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         force_json = True
 
         if not following_attachments:
-            r = yield self.couchdb_call(doc_id, method, url, doc)
+            r = yield self.couchdb_call(method, url, doc)
             defer.returnValue(r)
         elif version >= (1, 1, 2) and not force_json:
             ### FIXME: This part is disabled because force_json is always True
@@ -375,7 +375,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             content_type = 'multipart/related;boundary=%s' % (BOUNDARY, )
             headers = {'content-type': content_type}
             r = yield self.couchdb_call(
-                doc_id, method, url, body, headers=headers)
+                method, url, body, headers=headers)
             defer.returnValue(r)
         else:
             # Updating documents with multipart/related doesnt work
@@ -387,7 +387,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                     del unserialized['_attachments'][name]
             doc = json.dumps(unserialized)
 
-            r = yield self.couchdb_call(doc_id, method, url, doc)
+            r = yield self.couchdb_call(method, url, doc)
             for attachment in following_attachments.itervalues():
                 r = yield self.save_attachment(r['id'], r['rev'], attachment)
             defer.returnValue(r)
@@ -396,22 +396,22 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = "/%s/%s?%s" % (self.db_name, quote(doc_id.encode('utf-8')),
                              urlencode({'rev': revision.encode('utf-8')}))
 
-        return self.couchdb_call(doc_id, self.couchdb.delete, url)
+        return self.couchdb_call(self.couchdb.delete, url)
 
     def create_db(self):
         url = '/%s/' % (self.db_name, )
-        return self.couchdb_call(self.db_name, self.couchdb.put, url)
+        return self.couchdb_call(self.couchdb.put, url)
 
     def delete_db(self):
         url = '/%s/' % (self.db_name, )
-        return self.couchdb_call(self.db_name, self.couchdb.delete, url)
+        return self.couchdb_call(self.couchdb.delete, url)
 
     def replicate(self, source, target, **options):
         url = '/_replicate'
         params = dict(source=source, target=target)
         params.update(options)
         body = json.dumps(params)
-        return self.couchdb_call('replicate', self.couchdb.post, url, body)
+        return self.couchdb_call(self.couchdb.post, url, body)
 
     def disconnect(self):
         self._cancel_reconnector()
@@ -437,10 +437,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                                      for k, v in options.iteritems()))
             url += '?' + encoded
         if body:
-            d = self.couchdb_call(factory.design_doc_id, self.couchdb.post,
-                                  url, body=body)
+            d = self.couchdb_call(self.couchdb.post, url, body=body)
         else:
-            d = self.couchdb_call(factory.design_doc_id, self.couchdb.get, url)
+            d = self.couchdb_call(self.couchdb.get, url)
         d.addCallback(self._parse_view_result)
         return d
 
@@ -453,7 +452,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         body = attachment.get_body()
         if isinstance(body, unicode):
             body = body.encode('utf-8')
-        d = self.couchdb_call(doc_id, self.couchdb.put, uri, body,
+        d = self.couchdb_call(self.couchdb.put, uri, body,
                               headers=headers)
         return d
 
@@ -462,12 +461,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                               quote(doc_id.encode('utf-8')),
                               quote(name.encode('utf-8'))))
         headers = {'accept': '*'}
-        return self.couchdb_call(doc_id, self.couchdb.get, uri,
-                                 headers=headers, return_raw=True)
+        return self.couchdb_call(self.couchdb.get, uri,
+                                 headers=headers)
 
     def get_update_seq(self):
         url = "/%s/" % (self.db_name, )
-        d = self.couchdb_call('update_seq', self.couchdb.get, url)
+        d = self.couchdb_call(self.couchdb.get, url)
         d.addCallback(lambda x: x['update_seq'])
         return d
 
@@ -479,18 +478,18 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             params['filter'] = str('%s/%s' % (filter_.view.design_doc_id,
                                               filter_.view.name))
         url = str('/%s/_changes?%s' % (self.db_name, urlencode(params)))
-        return self.couchdb_call('get_changes', self.couchdb.get, url)
+        return self.couchdb_call(self.couchdb.get, url)
 
     def bulk_get(self, doc_ids):
         url = '/%s/_all_docs?include_docs=true' % (self.db_name, )
-        return self.couchdb_call('bulk_get', self.couchdb.post,
+        return self.couchdb_call(self.couchdb.post,
                                  url, json.dumps(dict(keys=doc_ids)))
 
     def get_version(self):
         if self.version:
             return defer.succeed(self.version)
         else:
-            d = self.couchdb_call('info', self.couchdb.get, '/')
+            d = self.couchdb_call(self.couchdb.get, '/')
             d.addCallback(self._set_version)
             return d
 
@@ -513,7 +512,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                            '%d seconds.', self.retry, wait)
             d = defer.Deferred()
             d.addCallback(defer.drop_param, self.couchdb_call,
-                          'reconnect', self.couchdb.get, '/')
+                          self.couchdb.get, '/')
             d.addCallback(self._set_version)
             d.addCallback(defer.drop_param, self._setup_notifiers)
             d.addErrback(failure.Failure.trap, NotConnectedError)
@@ -546,18 +545,17 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     ### private
 
-    def couchdb_call(self, tag, method, *args, **kwargs):
-        return_raw = kwargs.pop('return_raw', False)
-        d = method(*args, **kwargs)
+    def couchdb_call(self, method, url, *args, **kwargs):
+        method_name = method.__name__.upper()
+        d = method(url, *args, **kwargs)
         d.addCallbacks(self._couchdb_cb, self._error_handler,
-                       callbackArgs=(tag, return_raw), errbackArgs=(tag, ))
+                       callbackArgs=(method_name, url))
         return d
 
-    def _couchdb_cb(self, response, tag, return_raw):
+    def _couchdb_cb(self, response, method_name, url):
         self._on_connected()
         if response.status < 400:
-            if (not return_raw and
-                response.headers.get('content-type') == 'application/json'):
+            if (response.headers.get('content-type') == 'application/json'):
                 try:
                     return json.loads(response.body)
                 except ValueError:
@@ -568,15 +566,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             else:
                 return response.body
         else:
-            msg = response.body
-            if tag:
-                msg = tag + " " + msg
+            msg = ("%s on %s gave %s status with body: %s"
+                   % (method_name, url, response.status, response.body))
             if response.status == http.Status.NOT_FOUND:
                 raise NotFoundError(msg)
             elif response.status == http.Status.CONFLICT:
                 raise ConflictError(msg)
             else:
-                raise DatabaseError(str(int(response.status)) + ": " + msg)
+                raise DatabaseError(msg)
 
     def _configure(self, host, port, name, username, password, https):
         self._cancel_reconnector()
@@ -644,7 +641,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             self.reconnector = None
             self.retry = 0
 
-    def _error_handler(self, failure, tag=None):
+    def _error_handler(self, failure):
         if failure.check(tw_error.ConnectionRefusedError):
             self._on_disconnected()
             self.reconnect()
