@@ -296,7 +296,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._pending_notifications = dict()
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
-        self._cache = GetCache()
+        self._cache = Cache()
 
         self._configure(host, port, db_name, username, password,
                         https)
@@ -430,7 +430,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                                            quote(str(factory.design_doc_id)),
                                            quote(str(factory.name)))
         if 'keys' in options:
-            body = json.dumps({"keys": options.pop("keys")})
+            keys = options.pop("keys")
+            body = json.dumps({"keys": keys})
+            cache_id = "%s#%s" % (url, hash(tuple(sorted(keys))))
         else:
             body = None
         if options:
@@ -438,12 +440,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                                      for k, v in options.iteritems()))
             url += '?' + encoded
         if body:
-            d = self.couchdb_call(self.couchdb.post, url, body=body)
+            return self.couchdb_call(
+                self.couchdb.post, url, body=body,
+                cache_id=cache_id, parser=parse_view_result)
         else:
-            d = self.couchdb_call(self.couchdb.get, url)
-        # TODO, custom parsing should go inside the CacheEntry handling or body Decoder
-        d.addCallback(self._parse_view_result)
-        return d
+            return self.couchdb_call(self.couchdb.get, url, cache_id=url,
+                                     parser=parse_view_result)
 
     def save_attachment(self, doc_id, revision, attachment):
         attachment = IAttachmentPrivate(attachment)
@@ -464,7 +466,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                               quote(name.encode('utf-8'))))
         headers = {'accept': '*'}
         return self.couchdb_call(self.couchdb.get, uri,
-                                 headers=headers)
+                                 headers=headers,
+                                 cache_id=uri)
 
     def get_update_seq(self):
         url = "/%s/" % (self.db_name, )
@@ -484,8 +487,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def bulk_get(self, doc_ids):
         url = '/%s/_all_docs?include_docs=true' % (self.db_name, )
+        body = dict(keys=doc_ids)
+        cache_id = "%s#%s" % (url, hash(tuple(doc_ids)))
         return self.couchdb_call(self.couchdb.post,
-                                 url, json.dumps(dict(keys=doc_ids)))
+                                 url, json.dumps(body), cache_id=cache_id)
 
     def get_version(self):
         if self.version:
@@ -548,10 +553,14 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     ### private
 
     def couchdb_call(self, method, url, *args, **kwargs):
-        method_name = method.__name__.upper()
+        cache_id = kwargs.pop('cache_id', None)
+        parser = kwargs.pop('parser', parse_response)
+
+        tag = "%s on %s" % (method.__name__.upper(), url)
         entry = None
-        if method_name == 'GET' and kwargs.pop('cache', True):
-            entry = self._cache.get_url(url)
+
+        if cache_id:
+            entry = self._cache.get_url(cache_id)
             if entry and entry.state == EntryState.waiting:
                 # There is ongoing request to this URL, just wait
                 # for the result.
@@ -560,8 +569,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             if not entry:
                 # Its the first request to this request or its not
                 # a cacheable entity.
-                entry = CacheEntry(url)
-                self._cache[url] = entry
+
+                entry = CacheEntry(tag, parser)
+                self._cache[cache_id] = entry
                 time.call_next(self._cache.cleanup)
 
             if entry.etag:
@@ -580,8 +590,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             d.addErrback(self._error_handler)
             return entry.wait()
         else:
-            d.addCallbacks(parse_response, self._error_handler,
-                           callbackArgs=(method_name, url))
+            d.addCallbacks(parser, self._error_handler,
+                           callbackArgs=(tag, ))
             return d
 
     def _configure(self, host, port, name, username, password, https):
@@ -598,21 +608,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._document_locks.clear()
 
         self.reconnect()
-
-    def _parse_view_result(self, resp):
-        assert "rows" in resp
-
-        for row in resp["rows"]:
-            if "id" in row:
-                if "doc" in row:
-                    # querying with include_docs=True
-                    yield row["key"], row["value"], row["id"], row["doc"]
-                else:
-                    # querying without reduce
-                    yield row["key"], row["value"], row["id"]
-            else:
-                # querying with reduce
-                yield row["key"], row["value"]
 
     def _setup_notifiers(self):
         defers = list()
@@ -678,18 +673,25 @@ class EntryState(enum.Enum):
 class CacheEntry(object):
 
     __slots__ = (
-        '_parsed', '_waiting', 'cached_at', 'etag',
-        'last_accessed_at', 'num_accessed', 'size', 'state', 'url')
+        '_parsed', '_parser',
+        '_waiting', 'cached_at', 'etag', 'last_accessed_at',
+        'num_accessed', 'size', 'state', 'tag')
 
-    def __init__(self, url):
-        # public attributes
-        self.url = url
+    def __init__(self, tag, parser):
+        # tag is used for error handling
+        self.tag = tag
         self.state = EntryState.waiting
         self.etag = None
 
         # private attributes
         self._waiting = list()
         self._parsed = None
+        # parser is a callable taking parameters:
+        # - response object
+        # - tag C{str}
+        # It returns failure.Failure() instance or any object which will be
+        # considered the result of the request (and will be cached)
+        self._parser = parser
 
         # public statistics
         self.cached_at = None
@@ -717,7 +719,7 @@ class CacheEntry(object):
         elif response.status == 304:
             self.state = EntryState.ready
         else:
-            self._parsed = parse_response(response, 'GET', self.url)
+            self._parsed = self._parser(response, self.tag)
             if isinstance(self._parsed, failure.Failure):
                 self.state = EntryState.invalid
             else:
@@ -739,10 +741,10 @@ class CacheEntry(object):
             d.callback(self._parsed)
 
     def __str__(self):
-        return "<Entry, state: %s, url: %s>" % (self.state.name, self.url)
+        return "<Entry, state: %s, tag: %s>" % (self.state.name, self.tag)
 
 
-class GetCache(dict):
+class Cache(dict):
     '''
     url -> CacheEntry
     '''
@@ -752,13 +754,13 @@ class GetCache(dict):
     threshold = 1.0 / 3000
 
     def __init__(self, threshold=None):
-        super(GetCache, self).__init__()
+        super(Cache, self).__init__()
         if threshold is not None:
             self.threshold = threshold
 
-    def get_url(self, url):
-        if url in self and self[url].state != EntryState.invalid:
-            return self[url]
+    def get_url(self, identifier):
+        if identifier in self and self[identifier].state != EntryState.invalid:
+            return self[identifier]
 
     def cleanup(self, ctime=None):
         '''
@@ -767,9 +769,9 @@ class GetCache(dict):
         '''
         ctime = ctime or int(time.time())
         expire = list()
-        for entry in self.itervalues():
+        for ident, entry in self.iteritems():
             if entry.state is EntryState.invalid:
-                expire.append(entry.url)
+                expire.append(ident)
                 continue
             if entry.state is EntryState.waiting:
                 continue
@@ -778,13 +780,13 @@ class GetCache(dict):
             usefullness = (float(entry.num_accessed) /
                            time_in_cache / entry.size)
             if usefullness < self.threshold:
-                expire.append(entry.url)
+                expire.append(ident)
                 continue
-        for url in expire:
-            del self[url]
+        for ident in expire:
+            del self[ident]
 
 
-def parse_response(response, method_name, url):
+def parse_response(response, tag):
     if response.status < 300:
         if (response.headers.get('content-type') == 'application/json'):
             try:
@@ -797,11 +799,39 @@ def parse_response(response, method_name, url):
         else:
             return response.body
     else:
-        msg = ("%s on %s gave %s status with body: %s"
-               % (method_name, url, response.status.name, response.body))
+        msg = ("%s gave %s status with body: %s"
+               % (tag, response.status.name, response.body))
         if response.status == http.Status.NOT_FOUND:
             return failure.Failure(NotFoundError(msg))
         elif response.status == http.Status.CONFLICT:
             return failure.Failure(ConflictError(msg))
         else:
             return failure.Failure(DatabaseError(msg))
+
+
+def parse_view_result(response, tag):
+    resp = parse_response(response, tag)
+    if isinstance(resp, failure.Failure):
+        return resp
+
+    if "rows" not in resp:
+        msg = ("The response didn't have the \"rows\" key.\n%r" %
+               (response.body, ))
+        return failure.Failure(DatabaseError(msg))
+
+    result = list()
+
+    for row in resp["rows"]:
+        if "id" in row:
+            if "doc" in row:
+                # querying with include_docs=True
+                r = (row["key"], row["value"], row["id"], row["doc"])
+                result.append(r)
+            else:
+                # querying without reduce
+                result.append((row["key"], row["value"], row["id"]))
+        else:
+            # querying with reduce
+            result.append((row["key"], row["value"]))
+
+    return result
