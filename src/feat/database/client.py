@@ -399,8 +399,6 @@ class Connection(log.Logger, log.LogProxy):
     @serialization.freeze_tag('IDatabaseClient.disconnect')
     @journal.named_side_effect('IDatabaseClient.disconnect')
     def disconnect(self):
-        if hasattr(self, '_query_cache'):
-            self._query_cache.empty()
         for l_id in self._listeners.keys():
             self._cancel_listener(l_id)
 
@@ -439,22 +437,6 @@ class Connection(log.Logger, log.LogProxy):
         d = self._database.bulk_get(doc_ids)
         d.addCallback(parse_bulk_response)
         return d
-
-    ### public method used by query mechanism ###
-
-    def get_query_cache(self, create=True):
-        '''Called by methods inside feat.database.query module to obtain
-        the query cache.
-        @param create: C{bool} if True cache will be initialized if it doesnt
-                       exist yet, returns None otherwise
-        '''
-
-        if not hasattr(self, '_query_cache'):
-            if create:
-                self._query_cache = query.Cache(self)
-            else:
-                return None
-        return self._query_cache
 
     ### public methods used by update and replication mechanism ###
 

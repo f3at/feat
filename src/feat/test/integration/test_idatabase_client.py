@@ -216,7 +216,7 @@ class ReduceFieldController(query.BaseQueryViewController):
             r['descending'] = True
         return r
 
-    def parse_view_result(self, rows):
+    def parse_view_result(self, rows, tag):
         # here we are given multiple values for the same document, we only
         # should take the first one, because we are interested in the highest
         # value
@@ -226,7 +226,7 @@ class ReduceFieldController(query.BaseQueryViewController):
             if row[1]['_id'] not in seen:
                 seen.add(row[1]['_id'])
                 result.append((row[1]['_id'], row[1]['value']))
-        return result
+        return query.CacheEntry(result, keep_value=True)
 
 
 class QueryReduceView(query.QueryView):

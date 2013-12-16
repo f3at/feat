@@ -149,6 +149,21 @@ class QueryViewMeta(type(model.Collection)):
                                    officer=context.get('officer'),
                                    aspect=context.get('aspect'))
 
+        def store_select_result(value, context, *args, **kwargs):
+            context['result'], context['responses'] = value
+            return value[0]
+
+        def do_include_value(value, context, *args, **kwargs):
+            # If there was a custom routing for fetching items defined,
+            # we need to call the include_value() explicitely. If
+            # query.select() was used, there is no need for that.
+            cls = context['model']
+            if context['query'].include_value and cls._fetch_documents_set:
+                return query.include_values(value, context['responses'],
+                                            context['query'])
+            else:
+                return value
+
         SelectAction = action.MetaAction.new(
             utils.mk_class_name(cls._view.name, "Select"),
             ActionCategories.retrieve,
@@ -156,8 +171,9 @@ class QueryViewMeta(type(model.Collection)):
             effects=(
                 build_query,
                 call.model_perform('do_select'),
-                effect.store_in_context('result'),
+                store_select_result,
                 cls._fetch_documents,
+                do_include_value,
                 render_select_response,
                 ),
             params=[action.Param('query', QueryValue()),
@@ -217,6 +233,8 @@ class QueryViewMeta(type(model.Collection)):
                 q = query.Query(cls._view, c)
                 d = build_query(None, context, query=q)
                 d.addCallback(context['model'].do_select, skip=0)
+                # the result on this points (rows, responses)
+                d.addCallback(lambda (r, _): r)
                 d.addCallback(cls._fetch_documents, context)
 
                 def unpack(result):
@@ -325,7 +343,8 @@ class QueryView(model.Collection):
             method = query.select_ids
         else:
             method = query.select
-        return method(self.connection, value, skip, limit)
+        return method(self.connection, value, skip, limit,
+                      include_responses=True)
 
     def do_count(self, value):
         return query.count(self.connection, value)

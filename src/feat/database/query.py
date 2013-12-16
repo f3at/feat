@@ -1,23 +1,20 @@
 import inspect
-import operator
-import sys
 import types
 
 from zope.interface import implements, Interface, Attribute, classProvides
 
-from feat.common import serialization, enum, first, defer, annotate, log, error
+from feat.common import serialization, enum, first, defer, annotate, error
 from feat.common import container
 from feat.database import view
 
 from feat.database.interface import IQueryViewFactory
-from feat.database.interface import IPlanBuilder, IQueryCache
+from feat.database.interface import IPlanBuilder
 from feat.interface.serialization import IRestorator, ISerializable
 
 
 class CacheEntry(object):
 
-    def __init__(self, seq_num, entries, keep_value=False):
-        self.seq_num = seq_num
+    def __init__(self, entries, keep_value=False):
         self.includes_values = keep_value
         if not keep_value:
             # here entries is just a list of ids
@@ -30,135 +27,15 @@ class CacheEntry(object):
                 self.entries.append(entry)
                 self.values[entry] = value
 
-        self.size = sys.getsizeof(entries)
 
-
-class Cache(log.Logger):
-
-    implements(IQueryCache)
-
-    CACHE_LIMIT = 1024 * 1024 * 20 # 20 MB of memory max
-
-    def __init__(self, logger):
-        log.Logger.__init__(self, logger)
-        # name -> query -> CacheEntry
-        self._cache = dict()
-
-    ### IQueryCache ###
-
-    def empty(self):
-        self.log("Emptying query cache.")
-        self._cache.clear()
-
-    def query(self, connection, factory, subquery, update_seq=None):
-        self.log("query() called for %s view and subquery %r. Update seq: %r",
-                 factory.name, subquery, update_seq)
-        if update_seq is None:
-            d = connection.get_update_seq()
-        else:
-            d = defer.succeed(update_seq)
-        d.addCallback(defer.inject_param, 3,
-            self._got_seq_num, connection, factory, subquery)
-        return d
-
-    ### public ###
-
-    def get_cache_size(self):
-        size = 0
-        for name, subcache in self._cache.iteritems():
-            for query, entry in subcache.iteritems():
-                size += entry.size
-        return size
-
-    def on_document_deleted(self, doc_id, rev, deleted, own_change):
-        for cache in self._cache.itervalues():
-            for entry in cache.itervalues():
-                try:
-                    entry.entries.remove(doc_id)
-                    self.debug("Removed %s from cache results, because it was"
-                               " deleted", doc_id)
-                except:
-                    pass
-
-    ### private, continuations of query process ###
-
-    def _got_seq_num(self, connection, factory, subquery, seq_num):
-        if factory.name in self._cache:
-            entry = self._cache[factory.name].get(subquery)
-            if not entry:
-                return self._fetch_subquery(
-                    connection, factory, subquery, seq_num)
-            elif entry.seq_num == seq_num:
-                self.log("Query served from the cache hit, %d rows",
-                         len(entry.entries))
-                return entry
-            else:
-                d = connection.get_changes(factory, limit=2,
-                                           since=entry.seq_num)
-                d.addCallback(defer.inject_param, 4,
-                              self._analyze_changes,
-                              connection, factory, subquery, entry, seq_num)
-                return d
-        else:
-            return self._fetch_subquery(connection, factory, subquery, seq_num)
-
-    def _fetch_subquery(self, connection, factory, subquery, seq_num):
-        controller = factory.get_view_controller(subquery.field)
-
-        keys = controller.generate_keys(subquery.field, subquery.evaluator,
-                                        subquery.value)
-        self.log("Will query view %s, with keys %r, as a result of"
-                 " subquery: %r", factory.name, keys, subquery)
-        d = connection.query_view(factory, parse_results=False, **keys)
-        d.addCallback(controller.parse_view_result)
-        d.addCallback(self._cache_response, factory, subquery, seq_num,
-                      keep_value=controller.keeps_value)
-        return d
-
-    def _cache_response(self, entries, factory, subquery, seq_num,
-                        keep_value=False):
-        self.log("Caching response for %r at seq_num: %d, %d rows",
-                 subquery, seq_num, len(entries))
-        if factory.name not in self._cache:
-            self._cache[factory.name] = dict()
-        entry = CacheEntry(seq_num, entries, keep_value)
-        self._cache[factory.name][subquery] = entry
-        self._check_size_limit()
-        return entry
-
-    def _analyze_changes(self, connection, factory, subquery, entry, changes,
-                         seq_num):
-        if changes['results']:
-            self.log("View %s has changed, expiring cache.", factory.name)
-            if factory.name in self._cache: # this is not to fail on
-                                            # concurrent checks expiring cache
-                self._cache[factory.name].clear()
-            return self._fetch_subquery(connection, factory, subquery, seq_num)
-        else:
-            self.log("View %s has not changed, marking cached fragments as "
-                     "fresh. %d rows", factory.name, len(entry.entries))
-            if factory.name in self._cache:
-                for to_update in self._cache[factory.name].itervalues():
-                    to_update.seq_num = seq_num
-            return entry
-
-    ### private, check that the cache is not too big ###
-
-    def _check_size_limit(self):
-        size = self.get_cache_size()
-        if size > self.CACHE_LIMIT:
-            self._cleanup_old_cache(size - self.CACHE_LIMIT)
-
-    def _cleanup_old_cache(self, to_release):
-        entries = [(x.seq_num, x.size, name, subquery)
-                   for name, subcache in self._cache.iteritems()
-                   for subquery, x in subcache.iteritems()]
-        entries.sort(key=operator.itemgetter(0))
-        released = 0
-        while released < to_release:
-            entry = entries.pop(0)
-            released += entry[1]
-            del self._cache[entry[2]][entry[3]]
+def fetch_subquery(connection, factory, subquery):
+    controller = factory.get_view_controller(subquery.field)
+    keys = controller.generate_keys(subquery.field, subquery.evaluator,
+                                    subquery.value)
+    return connection.query_view(factory, parse_results=False,
+                                 cache_id_suffix='#' + factory.name,
+                                 post_process=controller.parse_view_result,
+                                 **keys)
 
 
 class BaseField(object):
@@ -214,10 +91,10 @@ class QueryViewMeta(type(view.BaseView)):
         cls._view_controllers = dict()
         cls._fields = list()
 
-        # map() and filter() function have to be generated separetely for
-        # each subclass, because they will have different constants attached
+        # map() function has to be generated separetely for
+        # each subclass, because it will have different constants attached
         # in func_globals
-        # alrernatively they could be defined inside the subclass of
+        # alrernatively it could be defined inside the subclass of
         # QueryView
 
         def map(doc):
@@ -252,10 +129,6 @@ class QueryViewMeta(type(view.BaseView)):
 
         cls.map = cls._querymethod(dct.pop('map', map))
 
-        def filter(doc, request):
-            return doc.get('.type') in DOCUMENT_TYPES
-        cls.filter = cls._querymethod(dct.pop('filter', filter))
-
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
 
@@ -263,8 +136,6 @@ class QueryViewMeta(type(view.BaseView)):
 
         cls.attach_constant(
             cls.map, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
-        cls.attach_constant(
-            cls.filter, 'DOCUMENT_TYPES', cls.DOCUMENT_TYPES)
 
     def attach_dict_of_objects(cls, query_method, name):
         # we cannot use normal mechanism for attaching code to query methods,
@@ -354,6 +225,8 @@ class IQueryViewController(Interface):
         The format of those IDs is transparently returned as result of
         select_ids() method.
         @param tag: C{str} used for logging to identify the requests.
+
+        @rtype: C{CacheEntry}
         '''
 
 
@@ -374,12 +247,12 @@ class BaseQueryViewController(object):
     def generate_keys(self, field, evaluator, value):
         return self._generate_keys(self.transform, field, evaluator, value)
 
-    def parse_view_result(self, rows):
+    def parse_view_result(self, rows, tag):
         # If the row emitted the link with _id=doc_id this value is used,
         # otherwise the id of the emiting document is used
-        return [
-            x[1]['_id'] if (isinstance(x[1], dict) and '_id' in x[1]) else x[2]
-            for x in rows]
+        return CacheEntry([x[1]['_id']
+                           if (isinstance(x[1], dict) and '_id' in x[1])
+                           else x[2] for x in rows])
 
     ### protected ###
 
@@ -411,8 +284,8 @@ class KeepValueController(BaseQueryViewController):
 
     keeps_value = True
 
-    def parse_view_result(self, rows):
-        return [(x[2], x[0][1]) for x in rows]
+    def parse_view_result(self, rows, tag):
+        return CacheEntry([(x[2], x[0][1]) for x in rows], keep_value=True)
 
 
 class HighestValueFieldController(BaseQueryViewController):
@@ -435,7 +308,7 @@ class HighestValueFieldController(BaseQueryViewController):
             r['descending'] = True
         return r
 
-    def parse_view_result(self, rows):
+    def parse_view_result(self, rows, tag):
         # here we are given multiple values for the same document, we only
         # should take the first one, because we are interested in the highest
         # value
@@ -445,7 +318,7 @@ class HighestValueFieldController(BaseQueryViewController):
             if row[1]['_id'] not in seen:
                 seen.add(row[1]['_id'])
                 result.append((row[1]['_id'], row[1]['value']))
-        return result
+        return CacheEntry(result, keep_value=True)
 
 
 def field(name, definition=None, controller=None):
@@ -754,7 +627,8 @@ class Result(list):
 
 
 @defer.inlineCallbacks
-def select_ids(connection, query, skip=0, limit=None):
+def select_ids(connection, query, skip=0, limit=None,
+               include_responses=False):
     temp, responses = yield _get_query_response(connection, query)
 
     total_count = len(temp)
@@ -781,14 +655,15 @@ def select_ids(connection, query, skip=0, limit=None):
     # count reductions for aggregated fields based on the view index
     if query.aggregate:
         r.aggregations = list()
-        cached = connection.get_query_cache()._cache[query.factory.name]
-        queries = query.get_basic_queries()
         for handler, field in query.aggregate:
-            condition = first(x for x in queries if x.field == field)
-            value_index = cached[condition]
+            value_index = first(v for k, v in responses.iteritems()
+                                if k.field == field)
             r.aggregations.append(handler(
                 x for x in value_iterator(aggregate_index, value_index)))
-    defer.returnValue(r)
+    if include_responses:
+        defer.returnValue((r, responses))
+    else:
+        defer.returnValue(r)
 
 
 def value_iterator(index, value_index):
@@ -799,21 +674,23 @@ def value_iterator(index, value_index):
 
 
 @defer.inlineCallbacks
-def select(connection, query, skip=0, limit=None):
-    res = yield select_ids(connection, query, skip, limit)
+def select(connection, query, skip=0, limit=None, include_responses=False):
+    res, responses = yield select_ids(connection, query, skip, limit,
+                                      include_responses=True)
     temp = yield connection.bulk_get(res)
     res.update(temp)
 
     if query.include_value:
-        yield include_values(res, connection.get_query_cache(), query)
-    defer.returnValue(res)
+        yield include_values(res, responses, query)
+    if include_responses:
+        defer.returnValue((res, responses))
+    else:
+        defer.returnValue(res)
 
 
-def include_values(docs, cache, query):
-    # dict (field, evaluator, value) -> CacheEntry
-    cached = cache._cache[query.factory.name]
+def include_values(docs, responses, query):
     # dict field_name -> CacheEntry
-    lookup = dict((field, first(v for k, v in cached.iteritems()
+    lookup = dict((field, first(v for k, v in responses.iteritems()
                                 if k.field == field))
                   for field in query.include_value)
     for doc in docs:
@@ -862,21 +739,28 @@ def values(connection, query, field, unique=True):
 
 @defer.inlineCallbacks
 def _get_query_response(connection, query):
-    cache = connection.get_query_cache()
     responses = dict()
     defers = list()
 
-    update_seq = yield connection.get_update_seq()
     for subquery in query.get_basic_queries():
-        d = cache.query(connection, query.factory, subquery, update_seq)
+        d = fetch_subquery(connection, query.factory, subquery)
         d.addCallback(defer.inject_param, 1, responses.__setitem__,
                       subquery)
-        d.addErrback(defer.inject_param, 1, error.handle_failure,
-                     connection, "Failed querying subquery %s", subquery)
+        d.addErrback(_fail_on_subquery, connection, subquery)
         defers.append(d)
     if defers:
-        yield defer.DeferredList(defers, consumeErrors=True)
+        r = yield defer.DeferredList(defers, consumeErrors=True)
+        for success, res in r:
+            if not success:
+                defer.returnValue(res)
+
     defer.returnValue((_calculate_query_response(responses, query), responses))
+
+
+def _fail_on_subquery(fail, connection, subquery):
+    error.handle_failure(connection, fail,
+                         "Failed querying subquery %s", subquery)
+    return fail
 
 
 def _calculate_query_response(responses, query):
