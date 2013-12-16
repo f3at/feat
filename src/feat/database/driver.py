@@ -24,13 +24,14 @@ import operator
 from urllib import urlencode, quote
 
 from zope.interface import implements
-from twisted.internet import error as tw_error
+from twisted.internet import error as tw_error, task
 from twisted.python import failure
 from twisted.protocols import basic
 from twisted.web.http import _DataLoss as DataLoss
 
+
 from feat.database.client import Connection, ChangeListener
-from feat.common import log, defer, time, error, enum
+from feat.common import log, defer, time, error, enum, container
 from feat.agencies import common
 from feat.web import http, httpclient, auth, security
 from feat import hacks
@@ -267,6 +268,11 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     log_category = "database"
 
+    LoopingCall = task.LoopingCall
+    CLEANUP_FREQ = 10 * 60
+    # we should take roughly 10MB of cache
+    DESIRED_CACHE_SIZE = 10 * 1024 * 1024
+
     def __init__(self, host, port, db_name, username=None, password=None,
                  https=False):
         common.ConnectionManager.__init__(self)
@@ -296,7 +302,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         self._pending_notifications = dict()
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
-        self._cache = Cache()
+        self._cache = Cache(desired_size=self.DESIRED_CACHE_SIZE)
+
+        self._cache_cleanup_task = self.LoopingCall(self._cache.cleanup)
 
         self._configure(host, port, db_name, username, password,
                         https)
@@ -416,6 +424,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def disconnect(self):
         self._cancel_reconnector()
+        if self._cache_cleanup_task.running:
+            self._cache_cleanup_task.stop()
         self.couchdb.disconnect()
         self.disconnected = True
 
@@ -572,7 +582,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
                 entry = CacheEntry(tag, parser)
                 self._cache[cache_id] = entry
-                time.call_next(self._cache.cleanup)
 
             if entry.etag:
                 entry.state = EntryState.waiting
@@ -623,6 +632,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         return notifier.setup()
 
     def _on_connected(self):
+        if not self._cache_cleanup_task.running:
+            self._cache_cleanup_task.start(self.CLEANUP_FREQ, now=False)
         common.ConnectionManager._on_connected(self)
         self._cancel_reconnector()
 
@@ -749,13 +760,12 @@ class Cache(dict):
     url -> CacheEntry
     '''
 
-    # rule of thumb: its fine to keep a 100 byte request body if it
-    # has been in cache for five minutes and was accessed only once
-    threshold = 1.0 / 3000
+    DEFAULT_DESIRED_SIZE = 10 * 1024 * 1024
 
-    def __init__(self, threshold=None):
+    def __init__(self, desired_size=None):
         super(Cache, self).__init__()
-        self.threshold = threshold or type(self).threshold
+        self.desired_size = desired_size or self.DEFAULT_DESIRED_SIZE
+        self.average_size = container.RunningAverage(0)
 
     def get_url(self, identifier):
         if identifier in self and self[identifier].state != EntryState.invalid:
@@ -763,33 +773,68 @@ class Cache(dict):
 
     def cleanup(self, ctime=None):
         '''
-        Condition for survival:
-        n_accessed / time_in_cache / size > threshold
+        This method is called iteratively by the connection owning it.
+        Its job is to control the size of cache and remove old entries.
         '''
         ctime = ctime or int(time.time())
+        log.debug('couchdb', "Running cache cleanup().")
+        # first remove already invalidated entries, used this iteration to
+        # build up the map of usage
         expire = list()
+
+        # [(num_accessed / time_in_cache, size, ident)]
+        usage = list()
+
+        actual_size = 0
+
         for ident, entry in self.iteritems():
             if entry.state is EntryState.invalid:
                 expire.append(ident)
                 continue
-            if entry.state is EntryState.waiting:
+            elif entry.state is EntryState.waiting:
                 continue
+            else: # EntryState.ready
+                actual_size += entry.size
+                time_in_cache = max([ctime - entry.cached_at, 1])
+                usage.append((
+                    float(entry.num_accessed) / time_in_cache,
+                    -entry.size,
+                    ident))
 
-            time_in_cache = max([ctime - entry.cached_at, 1])
-            usefullness = (float(entry.num_accessed) /
-                           time_in_cache / entry.size)
-            if usefullness < self.threshold:
+        self.average_size.add_point(actual_size)
+
+        if self.average_size.get_value() > 3 * self.desired_size:
+            log.warning("couchdb", "The average size of Cache is %.2f times "
+                        "bigger than the desired size of: %s. It might be "
+                        "a good idea to rethink the caching strategy.",
+                        self.desired_size / self.average_size.get_value(),
+                        self.desired_size)
+
+        if actual_size > self.desired_size:
+            log.debug('couchdb', "I will have to cleanup some data, "
+                      "the actual size is: %s, the desired limit is %s.",
+                      actual_size, self.desired_size)
+            # The usage list is sorted in order of things I will
+            # be removing first. The important factor is "density" of usages
+            # in time.
+            usage.sort()
+            size_to_delete = 0
+            num_to_delete = 0
+            while (len(usage) > 1 and
+                   actual_size - size_to_delete > self.desired_size):
+                _, negative_size, ident = usage.pop(0)
+                size_to_delete += -negative_size
+                num_to_delete += 1
                 expire.append(ident)
-                continue
+            log.debug('couchdb', "I will remove %d entries from cache of the "
+                      "size of %s to compensate the size.",
+                      num_to_delete, size_to_delete)
+
         for ident in expire:
             del self[ident]
 
     def get_size(self):
         return sum([x.size for x in self.itervalues()])
-
-    def get_valid_size(self):
-        return sum([x.size for x in self.itervalues()
-                    if x.state is EntryState.ready])
 
 
 def parse_response(response, tag):

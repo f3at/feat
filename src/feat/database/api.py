@@ -3,7 +3,7 @@ import pprint
 from feat.gateway.application import featmodels
 
 from feat.database import driver
-from feat.models import model, value, getter, response, action, call
+from feat.models import model, value, getter, response, action, call, setter
 
 from feat.models.interface import IModel, ActionCategories
 
@@ -30,6 +30,14 @@ class Cache(model.Model):
     model.attribute('size', value.Integer(),
                     desc="Sum of sizes of cached fragments",
                     getter=call.source_call('get_size'))
+    model.attribute('average_size', value.Integer(),
+                    desc="Average size of cache calculated during the "
+                         "cleanup call",
+                    getter=call.model_call('get_average_size'))
+    model.attribute('desired_size', value.Integer(),
+                    desc="Desired size of cache.",
+                    getter=getter.source_attr('desired_size'),
+                    setter=setter.source_attr('desired_size'))
     model.collection('entries',
                      child_names=call.source_call('keys'),
                      child_source=getter.source_get('get'),
@@ -39,6 +47,9 @@ class Cache(model.Model):
                                   'array-columns, id, tag, state, '
                                   'cached_at, last_accessed_at, '
                                   'num_accessed, size')])
+
+    def get_average_size(self):
+        return self.source.average_size.get_value()
 
     model.action('cleanup', action.MetaAction.new(
         'cleanup',
