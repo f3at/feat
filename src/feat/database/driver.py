@@ -439,6 +439,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         url = "/%s/_design/%s/_view/%s" % (self.db_name,
                                            quote(str(factory.design_doc_id)),
                                            quote(str(factory.name)))
+        cache_id = None
         if 'keys' in options:
             keys = options.pop("keys")
             body = json.dumps({"keys": keys})
@@ -449,13 +450,26 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             encoded = urlencode(dict((k, json.dumps(v))
                                      for k, v in options.iteritems()))
             url += '?' + encoded
-        if body:
-            return self.couchdb_call(
-                self.couchdb.post, url, body=body,
-                cache_id=cache_id, parser=parse_view_result)
+
+        if cache_id is None:
+            cache_id = url
+
+        if 'cache_id_suffix' in options:
+            cache_id += options.pop('cache_id_suffix')
+
+        if 'post_process' in options:
+            parser = (
+                parse_response, parse_view_result, options.pop('post_process'))
         else:
-            return self.couchdb_call(self.couchdb.get, url, cache_id=url,
-                                     parser=parse_view_result)
+            parser = (
+                parse_response, parse_view_result)
+
+        if body:
+            return self.couchdb_call(self.couchdb.post, url, body=body,
+                                     cache_id=cache_id, parser=parser)
+        else:
+            return self.couchdb_call(self.couchdb.get, url,
+                                     cache_id=cache_id, parser=parser)
 
     def save_attachment(self, doc_id, revision, attachment):
         attachment = IAttachmentPrivate(attachment)
@@ -702,6 +716,10 @@ class CacheEntry(object):
         # - tag C{str}
         # It returns failure.Failure() instance or any object which will be
         # considered the result of the request (and will be cached)
+
+        if not (callable(parser) or isinstance(parser, tuple)):
+            raise ValueError("parser needs to be a callable or tuple of "
+                             "callables, %r passed" % (parser, ))
         self._parser = parser
 
         # public statistics
@@ -730,7 +748,7 @@ class CacheEntry(object):
         elif response.status == 304:
             self.state = EntryState.ready
         else:
-            self._parsed = self._parser(response, self.tag)
+            self._parsed = self.parse_result(response, self.tag)
             if isinstance(self._parsed, failure.Failure):
                 self.state = EntryState.invalid
             else:
@@ -750,6 +768,15 @@ class CacheEntry(object):
 
         for d in waiting:
             d.callback(self._parsed)
+
+    def parse_result(self, response, tag):
+        if callable(self._parser):
+            return self._parser(response, self.tag)
+        for parser in self._parser:
+            response = parser(response, tag)
+            if isinstance(response, failure.Failure):
+                break
+        return response
 
     def __str__(self):
         return "<Entry, state: %s, tag: %s>" % (self.state.name, self.tag)
@@ -860,14 +887,10 @@ def parse_response(response, tag):
             return failure.Failure(DatabaseError(msg))
 
 
-def parse_view_result(response, tag):
-    resp = parse_response(response, tag)
-    if isinstance(resp, failure.Failure):
-        return resp
-
+def parse_view_result(resp, tag):
     if "rows" not in resp:
         msg = ("The response didn't have the \"rows\" key.\n%r" %
-               (response.body, ))
+               (resp, ))
         return failure.Failure(DatabaseError(msg))
 
     result = list()
