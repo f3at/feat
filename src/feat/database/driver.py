@@ -446,6 +446,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             cache_id = "%s#%s" % (url, hash(tuple(sorted(keys))))
         else:
             body = None
+        post_process = options.pop('post_process', None)
         if options:
             encoded = urlencode(dict((k, json.dumps(v))
                                      for k, v in options.iteritems()))
@@ -457,12 +458,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         if 'cache_id_suffix' in options:
             cache_id += options.pop('cache_id_suffix')
 
-        if 'post_process' in options:
-            parser = (
-                parse_response, parse_view_result, options.pop('post_process'))
+        if post_process:
+            parser = (parse_response, parse_view_result, post_process)
         else:
-            parser = (
-                parse_response, parse_view_result)
+            parser = (parse_response, parse_view_result)
 
         if body:
             return self.couchdb_call(self.couchdb.post, url, body=body,

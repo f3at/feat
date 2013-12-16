@@ -31,7 +31,7 @@ __all__ = ("VERSION_ATOM", "IDatabaseClient", "DatabaseError", "ConflictError",
            "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
-           "IPlanBuilder", "IQueryCache", "IQueryViewFactory", "IMigration",
+           "IPlanBuilder", "IQueryViewFactory", "IMigration",
            "ConflictResolutionStrategy")
 
 
@@ -536,22 +536,6 @@ class IQueryViewFactory(IViewFactory):
         '''
         @returns: C{callable} used to transform the values presented to the
                   outside world from what should be used as view indexes
-        '''
-
-
-class IQueryCache(Interface):
-
-    def empty():
-        '''
-        Should release all cached data.
-        '''
-
-    def query(connection, factory, subquery):
-        '''
-        @param connection: L{IDatabaseClient}
-        @param factory: L{IQueryViewFactory}
-        @param subquery: C{tuple} (field_name, Evaluator, value)
-        @rtype: L{feat.database.query.CacheEntry}
         '''
 
 

@@ -62,66 +62,6 @@ class DummyConnection(object):
         return defer.succeed(list(doc_ids))
 
 
-class TestWithDummyCache(common.TestCase):
-
-    def setUp(self):
-        E = query.Evaluator
-        C = query.Condition
-        self.cache = DummyCache({
-            C('field1', E.equals, 1): ['id1'],
-            C('field1', E.equals, 2): ['id2'],
-            C('field1', E.equals, 3): ['id3'],
-            C('field1', E.equals, 4): ['id4'],
-            C('field1', E.none, None): ['id1', 'id2', 'id3', 'id4'],
-            C('field1', E.le, 2): ['id1', 'id2'],
-            C('field2', E.equals, 'string'): ['id1', 'id3'],
-            C('field2', E.equals, 'other'): ['id2', 'id4']})
-        self.connection = DummyConnection(self.cache)
-
-    @defer.inlineCallbacks
-    def testQuery(self):
-        E = query.Evaluator
-        C = query.Condition
-        O = query.Operator
-        D = query.Direction
-
-        yield self._test(['id1'], C('field1', E.equals, 1))
-        yield self._test(['id1', 'id2'], C('field1', E.le, 2))
-        yield self._test(['id2', 'id1'], C('field1', E.le, 2),
-                         sorting=('field1', D.DESC))
-        yield self._test(['id1', 'id2'], C('field1', E.le, 2),
-                         sorting=('field1', D.ASC))
-        yield self._test(['id2'], C('field1', E.le, 2), O.AND,
-                         C('field2', E.equals, 'other'))
-        yield self._test(['id1', 'id2', 'id4'], C('field1', E.le, 2), O.OR,
-                         C('field2', E.equals, 'other'))
-        yield self._test(['id1', 'id2', 'id4', 'id3'],
-                         C('field1', E.le, 2), O.OR,
-                         C('field2', E.equals, 'other'), O.OR,
-                         C('field2', E.equals, 'string'))
-        yield self._test(['id1', 'id2', 'id3', 'id4'],
-                         C('field2', E.equals, 'other'), O.OR,
-                         C('field2', E.equals, 'string'),
-                         sorting=('field1', D.ASC))
-        yield self._test(['id4', 'id3', 'id2', 'id1'],
-                         C('field2', E.equals, 'other'), O.OR,
-                         C('field2', E.equals, 'string'),
-                         sorting=('field1', D.DESC))
-
-        subquery = query.Query(DummyView, C('field1', E.equals, 1))
-        yield self._test([], C('field1', E.equals, 2), O.AND, subquery)
-        yield self._test(['id2', 'id1'], C('field1', E.equals, 2),
-                         O.OR, subquery)
-
-    @defer.inlineCallbacks
-    def _test(self, result, *parts, **kwargs):
-        q = query.Query(DummyView, *parts, sorting=kwargs.pop('sorting', None))
-        count = yield query.count(self.connection, q)
-        self.assertEquals(len(result), count)
-        res = yield query.select(self.connection, q)
-        self.assertEquals(result, res)
-
-
 class TestQueryObject(common.TestCase):
 
     def testValidation(self):
@@ -217,31 +157,6 @@ class QueryView(query.QueryView):
         document_types = []
 
 
-class TestQueryCache(common.TestCase):
-    '''
-    This test uses private methods of query.Cache(), beware!
-    '''
-
-    def testReleaseCache(self):
-        s = lambda: str(uuid.uuid1()).replase('-', '')
-        cache = query.Cache(self)
-
-        for seq_num in range(0, 10):
-            cache._cache_response(
-                [s for x in range(10000)], DummyView,
-                ('field' + str(seq_num), query.Evaluator.none, None), seq_num)
-
-        for expected_release in range(0, 10):
-            size = cache.get_cache_size()
-            cache.CACHE_LIMIT = size - 1
-            cache._check_size_limit()
-            self.assertTrue(size > cache.get_cache_size())
-            expected_present = range(expected_release + 1, 10)
-            for entry in cache._cache[DummyView.name].itervalues():
-                expected_present.remove(entry.seq_num)
-            self.assertEqual([], expected_present)
-
-
 class TestQueryView(common.TestCase):
 
     def testMap(self):
@@ -281,14 +196,3 @@ class TestQueryView(common.TestCase):
             {'_id': 'id1', '.type': 'type3', 'name': 'John'}))
         self.assertEqual(0, len(r))
 
-    def testFilter(self):
-        code = QueryView.get_code('filter')
-        self.assertIn("DOCUMENT_TYPES = set(['type1', 'type2'])", code)
-
-        r = QueryView.filter(
-            {'_id': 'id1', '.type': 'type3', 'name': 'John'}, None)
-        self.assertIs(False, r)
-
-        r = QueryView.filter(
-            {'_id': 'id1', '.type': 'type1', 'name': 'John'}, None)
-        self.assertIs(True, r)
