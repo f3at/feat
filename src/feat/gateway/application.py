@@ -33,6 +33,7 @@ class FeatModels(applications.Application):
         'feat.gateway.application']
     loadlist = [
         'feat.gateway.models',
-        'feat.gateway.dummies']
+        'feat.gateway.dummies',
+        'feat.database.api']
 
 featmodels = FeatModels()

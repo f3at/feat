@@ -755,8 +755,7 @@ class Cache(dict):
 
     def __init__(self, threshold=None):
         super(Cache, self).__init__()
-        if threshold is not None:
-            self.threshold = threshold
+        self.threshold = threshold or type(self).threshold
 
     def get_url(self, identifier):
         if identifier in self and self[identifier].state != EntryState.invalid:
@@ -784,6 +783,13 @@ class Cache(dict):
                 continue
         for ident in expire:
             del self[ident]
+
+    def get_size(self):
+        return sum([x.size for x in self.itervalues()])
+
+    def get_valid_size(self):
+        return sum([x.size for x in self.itervalues()
+                    if x.state is EntryState.ready])
 
 
 def parse_response(response, tag):

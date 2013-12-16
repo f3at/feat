@@ -384,6 +384,10 @@ class Agency(model.Model):
                 model='feat.agency.journaler',
                 label='Journaler')
 
+    model.child('database',
+                source=getter.source_attr('_database'),
+                label="Database")
+
     #FIXME: use another mean to specify the default action than name
     model.delete("del",
                  effect.delay(call.source_call("kill",
