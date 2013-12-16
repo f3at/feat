@@ -348,11 +348,12 @@ class IQueryViewController(Interface):
         @param value: value used
         '''
 
-    def parse_view_result(rows):
+    def parse_view_result(rows, tag):
         '''
         Transform the rows given by couchdb to a list of IDs.
         The format of those IDs is transparently returned as result of
         select_ids() method.
+        @param tag: C{str} used for logging to identify the requests.
         '''
 
 

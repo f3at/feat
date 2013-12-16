@@ -238,6 +238,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
             d.addCallback(self._include_docs)
         d.addCallback(self._apply_slice, **options)
         d.addCallback(self._sort_by_key, **options)
+        if 'post_process' in options:
+            tag = 'query to %s' % (factory.name, )
+            d.addCallback(options['post_process'], tag)
         return d
 
     def disconnect(self):
