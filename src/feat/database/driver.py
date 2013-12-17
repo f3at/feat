@@ -433,7 +433,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     # cancel_listener from ChangeListener
 
-    def query_view(self, factory, **options):
+    def query_view(self, factory, post_process=None, cache_id_suffix='',
+                   if_modified_since=None, **options):
         factory = IViewFactory(factory)
 
         url = "/%s/_design/%s/_view/%s" % (self.db_name,
@@ -446,9 +447,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             cache_id = "%s#%s" % (url, hash(tuple(sorted(keys))))
         else:
             body = None
-
-        post_process = options.pop('post_process', None)
-        cache_id_suffix = options.pop('cache_id_suffix', '')
 
         if options:
             encoded = urlencode(dict((k, json.dumps(v))
@@ -466,10 +464,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
         if body:
             return self.couchdb_call(self.couchdb.post, url, body=body,
-                                     cache_id=cache_id, parser=parser)
+                                     cache_id=cache_id, parser=parser,
+                                     if_modified_since=if_modified_since)
         else:
             return self.couchdb_call(self.couchdb.get, url,
-                                     cache_id=cache_id, parser=parser)
+                                     cache_id=cache_id, parser=parser,
+                                     if_modified_since=if_modified_since)
 
     def save_attachment(self, doc_id, revision, attachment):
         attachment = IAttachmentPrivate(attachment)
@@ -579,6 +579,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     def couchdb_call(self, method, url, *args, **kwargs):
         cache_id = kwargs.pop('cache_id', None)
         parser = kwargs.pop('parser', parse_response)
+        if_modified_since = kwargs.pop('if_modified_since', None)
 
         tag = "%s on %s" % (method.__name__.upper(), url)
         entry = None
@@ -598,6 +599,12 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                 self._cache[cache_id] = entry
 
             if entry.etag:
+
+                if if_modified_since and if_modified_since < entry.fresh_at:
+                    # just reuse the cached response if the response was
+                    # cached latere than the provided time
+                    return entry.wait()
+
                 entry.state = EntryState.waiting
 
                 # We have cached entry with ETag header,
@@ -609,6 +616,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         d = method(url, *args, **kwargs)
         d.addCallback(defer.bridge_param, self._on_connected)
         if entry:
+            d.addCallback(defer.keep_param, self._cache.freshen_entries)
             d.addBoth(defer.keep_param, entry.got_response)
             d.addErrback(self._error_handler)
             return entry.wait()
@@ -699,7 +707,7 @@ class CacheEntry(object):
 
     __slots__ = (
         '_parsed', '_parser',
-        '_waiting', 'cached_at', 'etag', 'last_accessed_at',
+        '_waiting', 'cached_at', 'etag', 'fresh_at', 'last_accessed_at',
         'num_accessed', 'size', 'state', 'tag')
 
     def __init__(self, tag, parser):
@@ -724,12 +732,13 @@ class CacheEntry(object):
 
         # public statistics
         self.cached_at = None
+        self.fresh_at = None
         self.last_accessed_at = None
         self.num_accessed = 0
         self.size = None
 
     def wait(self, ctime=None):
-        self.last_accessed_at = ctime or int(time.time())
+        self.last_accessed_at = ctime or time.time()
         self.num_accessed += 1
 
         if self.state == EntryState.ready:
@@ -740,6 +749,7 @@ class CacheEntry(object):
             return d
 
     def got_response(self, response, ctime=None):
+        ctime = ctime or time.time()
         if isinstance(response, failure.Failure):
             self.size = None
             self._parsed = response
@@ -747,6 +757,7 @@ class CacheEntry(object):
 
         elif response.status == 304:
             self.state = EntryState.ready
+            self.fresh_at = ctime
         else:
             self._parsed = self.parse_result(response, self.tag)
             if isinstance(self._parsed, failure.Failure):
@@ -756,7 +767,8 @@ class CacheEntry(object):
                 self.size = len(response.body)
 
                 if not self.cached_at:
-                    self.cached_at = ctime or int(time.time())
+                    self.cached_at = ctime
+                    self.fresh_at = ctime
                 if response.headers.get('etag'):
                     self.etag = response.headers.get('etag')
                 else:
@@ -803,7 +815,7 @@ class Cache(dict):
         This method is called iteratively by the connection owning it.
         Its job is to control the size of cache and remove old entries.
         '''
-        ctime = ctime or int(time.time())
+        ctime = ctime or time.time()
         log.debug('couchdb', "Running cache cleanup().")
         # first remove already invalidated entries, used this iteration to
         # build up the map of usage
@@ -862,6 +874,14 @@ class Cache(dict):
 
     def get_size(self):
         return sum([x.size for x in self.itervalues()])
+
+    def freshen_entries(self, response):
+        etag = response.headers.get('etag')
+        if response.status == 304 and etag:
+            ctime = time.time()
+            for entry in self.itervalues():
+                if entry.etag == etag:
+                    entry.fresh_at = ctime
 
 
 def parse_response(response, tag):

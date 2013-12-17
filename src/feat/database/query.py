@@ -1,4 +1,5 @@
 import inspect
+import time
 import types
 
 from zope.interface import implements, Interface, Attribute, classProvides
@@ -28,13 +29,14 @@ class CacheEntry(object):
                 self.values[entry] = value
 
 
-def fetch_subquery(connection, factory, subquery):
+def fetch_subquery(connection, factory, subquery, if_modified_since=None):
     controller = factory.get_view_controller(subquery.field)
     keys = controller.generate_keys(subquery.field, subquery.evaluator,
                                     subquery.value)
     return connection.query_view(factory, parse_results=False,
                                  cache_id_suffix='#' + factory.name,
                                  post_process=controller.parse_view_result,
+                                 if_modified_since=if_modified_since,
                                  **keys)
 
 
@@ -737,17 +739,33 @@ def values(connection, query, field, unique=True):
 ### private ###
 
 
+def _do_fetch(connection, responses, ctime, factory, subquery):
+    d = fetch_subquery(connection, factory, subquery,
+                       if_modified_since=ctime)
+    d.addCallback(defer.inject_param, 1, responses.__setitem__,
+                  subquery)
+    d.addErrback(_fail_on_subquery, connection, subquery)
+    return d
+
+
 @defer.inlineCallbacks
 def _get_query_response(connection, query):
     responses = dict()
     defers = list()
 
-    for subquery in query.get_basic_queries():
-        d = fetch_subquery(connection, query.factory, subquery)
-        d.addCallback(defer.inject_param, 1, responses.__setitem__,
-                      subquery)
-        d.addErrback(_fail_on_subquery, connection, subquery)
-        defers.append(d)
+    # First query should be performed separetely so that we know its ETag.
+    # This allows not making additional requests when they are not needed.
+    ctime = time.time()
+    subqueries = query.get_basic_queries()
+
+    if subqueries:
+        subquery = subqueries[0]
+        yield _do_fetch(connection, responses, ctime, query.factory, subquery)
+
+        for subquery in subqueries[1:]:
+            defers.append(_do_fetch(
+                connection, responses, ctime, query.factory, subquery))
+
     if defers:
         r = yield defer.DeferredList(defers, consumeErrors=True)
         for success, res in r:
