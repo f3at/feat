@@ -344,8 +344,7 @@ def report_progress(connection, doc_id):
     from feat.common import first
 
     db = connection._database
-    active_tasks = yield db.couchdb_call(
-        'active_tasks', db.couchdb.get, '/_active_tasks')
+    active_tasks = yield db.couchdb_call(db.couchdb.get, '/_active_tasks')
     relevant = first(x for x in active_tasks
                      if (x.get('type') == 'indexer' and
                          x.get('database') == db.db_name and
