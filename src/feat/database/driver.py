@@ -446,7 +446,10 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             cache_id = "%s#%s" % (url, hash(tuple(sorted(keys))))
         else:
             body = None
+
         post_process = options.pop('post_process', None)
+        cache_id_suffix = options.pop('cache_id_suffix', '')
+
         if options:
             encoded = urlencode(dict((k, json.dumps(v))
                                      for k, v in options.iteritems()))
@@ -454,9 +457,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
         if cache_id is None:
             cache_id = url
-
-        if 'cache_id_suffix' in options:
-            cache_id += options.pop('cache_id_suffix')
+        cache_id += cache_id_suffix
 
         if post_process:
             parser = (parse_response, parse_view_result, post_process)
