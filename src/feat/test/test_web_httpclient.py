@@ -249,8 +249,8 @@ class TestProtocol(common.TestCase):
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
         exp = ('GET to http://testsite.com:80/ was cancelled by '
-               'the user 0.000s after it was sent.')
-        self.assertEqual(exp, str(f))
+               'the user 0.(\d+)s after it was sent.')
+        self.assertTrue(re.match(exp, str(f)), str(f))
 
     def _disconnect_protocol(self):
         if self.transport.connected:
