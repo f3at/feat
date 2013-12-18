@@ -537,6 +537,17 @@ class IQueryField(Interface):
                             "values of each row")
     view = Attribute("L{IViewFactory} to be used as the index")
 
+    def fetch(connection, condition, if_modified_since=None):
+        '''
+        Fetch the value range for a condition.
+        @param connection: L{IDatabaseConnection}
+        @param condition: L{feat.database.query.Condition}
+        @param if_modified_since: optional epoch time; if specified the cache
+                                  will not perform the query if it has a
+                                  matching entry not older than specified
+        @callback: L{feat.database.query.CacheEntry}
+        '''
+
     def generate_keys(evaluator, value):
         '''
         @param evaluator: enum values of Evaluator

@@ -44,6 +44,21 @@ class Field(object):
             raise TypeError('Uknown parameters: %s' %
                             (", ".join(kwargs.keys())))
 
+    ### IQueryField ###
+
+    def fetch(self, connection, condition, if_modified_since=None):
+        assert isinstance(condition, Condition), repr(type(condition))
+
+        keys = self.generate_keys(condition.evaluator, condition.value)
+        cache_id_suffix = "#%s/%s" % (self.view.name, self.field)
+        return connection.query_view(self.view, parse_results=False,
+                                     cache_id_suffix=cache_id_suffix,
+                                     post_process=self.parse_view_result,
+                                     if_modified_since=if_modified_since,
+                                     **keys)
+
+    ### protected ###
+
     def generate_keys(self, evaluator, value):
         return generate_keys(self.transform, self.field, evaluator, value)
 
@@ -59,8 +74,6 @@ class Field(object):
                       if isinstance(x[1], dict) and '_id' in x[1]
                       else x[2] for x in rows]
         return CacheEntry(parsed, keep_value=self.keeps_value)
-
-    ### protected ###
 
     def _identity(self, value):
         return value
@@ -451,17 +464,6 @@ class Result(list):
         return cls()
 
 
-def fetch_subquery(connection, factory, subquery, if_modified_since=None):
-    controller = factory.fields[subquery.field]
-    keys = controller.generate_keys(subquery.evaluator, subquery.value)
-    cache_id_suffix = "#%s/%s" % (factory.name, subquery.field)
-    return connection.query_view(controller.view, parse_results=False,
-                                 cache_id_suffix=cache_id_suffix,
-                                 post_process=controller.parse_view_result,
-                                 if_modified_since=if_modified_since,
-                                 **keys)
-
-
 @defer.inlineCallbacks
 def select_ids(connection, query, skip=0, limit=None,
                include_responses=False):
@@ -574,8 +576,8 @@ def values(connection, query, field, unique=True):
 
 
 def _do_fetch(connection, responses, ctime, factory, subquery):
-    d = fetch_subquery(connection, factory, subquery,
-                       if_modified_since=ctime)
+    d = factory.fields[subquery.field].fetch(
+        connection, subquery, if_modified_since=ctime)
     d.addCallback(defer.inject_param, 1, responses.__setitem__,
                   subquery)
     d.addErrback(_fail_on_subquery, connection, subquery)
