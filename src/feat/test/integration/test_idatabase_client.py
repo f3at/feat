@@ -1175,6 +1175,7 @@ class NonEmuTests(object):
             rconnection = yield conflicts.configure_replicator_database(
                 host, port)
         except ValueError as e:
+            self.database.disconnect()
             raise SkipTest(str(e))
 
         @defer.inlineCallbacks
@@ -1520,6 +1521,7 @@ class CouchdbIntegrationTest(common.IntegrationTest, TestCase,
         host, port = config['host'], config['port']
         self.database = driver.Database(host, port, 'test')
         self.connection = self.database.get_connection()
+
         yield self.connection.create_database()
 
     def tearDown(self):
