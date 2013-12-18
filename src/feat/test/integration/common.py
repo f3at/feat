@@ -95,6 +95,7 @@ class FullIntegrationTest(IntegrationTest):
         c = self.db_process.get_config()
         db_host, db_port, db_name = c['host'], c['port'], 'test'
         db = database.Database(db_host, db_port, db_name)
+        self.addCleanup(db.disconnect)
         self.db = db.get_connection()
         yield tools.create_db(self.db)
 
