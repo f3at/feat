@@ -365,3 +365,16 @@ def iter_linked_id(doc, type_name):
     for row in doc.get('linked', list()):
         if row[0] == type_name:
             yield row[1]
+
+
+def parse_enum(value):
+    if isinstance(value, list) and len(value) == 2 and value[0] == '.enum':
+        return value[1].split('.')[-1]
+
+
+def parse_decimal(value):
+    if isinstance(value, dict) and value.get('.type') == 'decimal':
+        try:
+            return float(value.get('.state'))
+        except ValueError:
+            pass
