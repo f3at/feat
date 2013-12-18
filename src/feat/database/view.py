@@ -21,6 +21,7 @@
 # Headers in this file shall remain intact.
 import re
 import inspect
+import types
 
 from zope.interface import directlyProvides
 
@@ -157,6 +158,35 @@ class BaseView(annotate.Annotable):
                                                    QUERY_METHODS))
         query_method.source += "\n%s" % (code, )
         exec code in {}, query_method.func_globals
+
+    @classmethod
+    def attach_dict_of_objects(cls, query_method, name):
+        # we cannot use normal mechanism for attaching code to query methods,
+        # because we want to build a complex object out of it, so we need to
+        # inject it after all the annotations have been processed
+        names = {}
+        obj = getattr(cls, name)
+        if not isinstance(obj, dict):
+            raise ValueError("%s.%s expected dict, %r found" %
+                             (cls, name, obj))
+        for field, handler in obj.items():
+            if isinstance(handler, types.FunctionType):
+                cls.attach_method(query_method, handler)
+            elif isinstance(handler, types.TypeType):
+                cls.attach_class_definition(query_method, handler)
+            else:
+                raise ValueError(handler)
+            names[field] = handler.__name__
+        code = ", ".join(["'%s': %s" % (k, v)
+                          for k, v in sorted(names.iteritems())])
+        cls.attach_code(query_method, "%s = {%s}" % (name, code))
+
+    @classmethod
+    def attach_class_definition(cls, query_method, definition):
+        mro = definition.mro()
+        if mro[1] is not object and mro[1] not in query_method.func_globals:
+            cls.attach_class_definition(query_method, mro[1])
+        cls.attach_method(query_method, definition)
 
     @classmethod
     def get_code(cls, name):
@@ -308,6 +338,8 @@ class DesignDocument(document.Document):
 
         for view in views:
             view = IViewFactory(view)
+            if view.name is None:
+                raise ValueError("%r.name is None!" % (view, ))
             instance = get_instance(view)
             entry = dict()
             if hasattr(view, 'map'):
@@ -324,3 +356,12 @@ class DesignDocument(document.Document):
 def generate_design_docs():
     generator = applications.get_view_registry().itervalues()
     return DesignDocument.generate_from_views(generator)
+
+
+### helper methods usefull in view definitions ###
+
+
+def iter_linked_id(doc, type_name):
+    for row in doc.get('linked', list()):
+        if row[0] == type_name:
+            yield row[1]

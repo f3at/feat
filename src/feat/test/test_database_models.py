@@ -20,28 +20,25 @@ class QueryDoc(document.Document):
         return u'value'
 
 
-class QueryView(query.QueryView):
+class QueryView(view.BaseView):
 
-    name = 'query_view'
+    name = 'query'
 
-    def extract_field1(doc):
-        yield doc.get('field1')
+    def map(doc):
+        if doc.get('.type') == 'query':
+            for attr in ('field1', 'field2', 'field3'):
+                yield (attr, doc.get(attr)), None
+            yield ('doc_id', doc.get('_id')), None
 
-    def extract_field2(doc):
-        yield doc.get('field2')
 
-    def extract_field3(doc):
-        yield doc.get('field3')
+class Query(query.Query):
 
-    def extract_doc_id(doc):
-        yield doc.get('_id')
+    name = 'query'
 
-    query.field('field1', extract_field1,
-                controller=query.KeepValueController)
-    query.field('field2', extract_field2)
-    query.field('field3', extract_field3)
-    query.field('doc_id', extract_doc_id, controller=query.KeepValueController)
-    query.document_types(['query'])
+    query.field(query.Field('field1', QueryView, keeps_value=True))
+    query.field(query.Field('field2', QueryView))
+    query.field(query.Field('field3', QueryView))
+    query.field(query.Field('doc_id', QueryView, keeps_value=True))
 
 
 class DocumentModel(model.Model):
@@ -62,9 +59,7 @@ class QueryModel(models.QueryView):
     models.query_model(DocumentModel)
     model.view(effect.static_value('static-view'))
     models.db_connection(effect.context_value('source'))
-    models.view_factory(
-        QueryView, ['field1', 'field2'],
-        item_field='doc_id')
+    models.factory(Query, ['field1', 'field2'], item_field='doc_id')
     models.aggregation('total_field1', value.Integer(), 'sum', 'field1')
     models.static_conditions(call.model_call('get_static_conditions'))
     models.fetch_documents(call.model_filter('fetch_documents'))
@@ -228,7 +223,7 @@ class TestValues(common.TestCase):
 
     def testValidateQuery(self):
         QueryValue = models.MetaQueryValue.new(
-            'Test', QueryView, ['field1', 'field2'])
+            'Test', Query, ['field1', 'field2'])
         query_value = QueryValue()
         v = query_value.validate([{'field': 'field1', 'evaluator': 'equals',
                                    'value': 'spam'}])
@@ -258,8 +253,8 @@ class TestValues(common.TestCase):
         self.assertRaises(ValueError, query_value.validate, wrong)
 
     def testStringInteger(self):
-        QueryValue = models.MetaQueryValue.new(
-            'Test', QueryView, ['field1', 'field2'])
+        QueryValue = models.MetaQueryValue.new('Test', Query,
+                                               ['field1', 'field2'])
         query_value = QueryValue()
 
         v = query_value.validate([

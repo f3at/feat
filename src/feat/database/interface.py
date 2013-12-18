@@ -31,7 +31,7 @@ __all__ = ("VERSION_ATOM", "IDatabaseClient", "DatabaseError", "ConflictError",
            "IDbConnectionFactory",
            "IDatabaseDriver", "IDbConnectionFactory", "IDocument",
            "IVersionedDocument", "IRevisionStore", "IViewFactory",
-           "IPlanBuilder", "IQueryViewFactory", "IMigration",
+           "IPlanBuilder", "IQueryFactory", "IQueryField", "IMigration",
            "ConflictResolutionStrategy")
 
 
@@ -523,19 +523,34 @@ class IViewFactory(Interface):
         '''
 
 
-class IQueryViewFactory(IViewFactory):
+class IQueryFactory(Interface):
 
     fields = Attribute("C{list} of str. Names of fields defined by this view")
+    name = Attribute("C{name}")
 
-    def has_field(name):
+
+class IQueryField(Interface):
+
+    field = Attribute("C{str}")
+    keeps_value = Attribute("C{bool} flag saying if the CacheEntry returned "
+                            "by this subquery can be used to extract the "
+                            "values of each row")
+    view = Attribute("L{IViewFactory} to be used as the index")
+
+    def generate_keys(evaluator, value):
         '''
-        @returns: C{bool} if this name is part of the view
+        @param evaluator: enum values of Evaluator
+        @param value: value used
         '''
 
-    def get_transform(name):
+    def parse_view_result(rows, tag):
         '''
-        @returns: C{callable} used to transform the values presented to the
-                  outside world from what should be used as view indexes
+        Transform the rows given by couchdb to a list of IDs.
+        The format of those IDs is transparently returned as result of
+        select_ids() method.
+        @param tag: C{str} used for logging to identify the requests.
+
+        @rtype: C{CacheEntry}
         '''
 
 
