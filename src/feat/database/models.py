@@ -6,7 +6,7 @@ from feat.models import model, action, value, utils, call, effect
 from feat.models import applicationjson
 from feat.web import document
 
-from feat.database.interface import IQueryViewFactory, IDatabaseClient
+from feat.database.interface import IQueryFactory, IDatabaseClient
 from feat.models.interface import IContextMaker, ActionCategories
 from feat.models.interface import IValueOptions, ValueTypes, IModel
 from feat.models.interface import IValueInfo
@@ -22,12 +22,11 @@ def query_target(target):
                                  target)
 
 
-def view_factory(factory, allowed_fields=[],
-                 item_field=None, include_value=list()):
+def factory(factory, allowed_fields=[],
+            item_field=None, include_value=list()):
     annotate.injectClassCallback(
-        "view_factory", 3, "annotate_view_factory",
-        factory, allowed_fields=allowed_fields,
-        include_value=include_value,
+        "factory", 3, "annotate_factory", factory,
+        allowed_fields=allowed_fields, include_value=include_value,
         item_field=item_field)
 
 
@@ -77,7 +76,7 @@ class QueryViewMeta(type(model.Collection)):
         cls._query_model = None
         cls._connection_getter = None
         cls._static_conditions = None
-        cls._view = None
+        cls._factory = None
         cls._fetch_documents_set = False
         cls._fetch_documents = staticmethod(effect.identity)
         cls._item_field = None
@@ -85,7 +84,7 @@ class QueryViewMeta(type(model.Collection)):
         # this processes all the annotations
         super(QueryViewMeta, cls).__init__(name, bases, dct)
 
-        if cls._view is None:
+        if cls._factory is None:
             # The class is not annotated with view_factory() annotations
             # This is only valid in the base class, althought no actions
             # should be created.
@@ -101,20 +100,22 @@ class QueryViewMeta(type(model.Collection)):
                              "db_connection(effect) annotation")
 
         # define the Select and Count actions
-        name = utils.mk_class_name(cls._view.name, "Query")
-        QueryValue = MetaQueryValue.new(name, cls._view, cls._allowed_fields,
+        name = utils.mk_class_name(cls._factory.name, "Query")
+        QueryValue = MetaQueryValue.new(name, cls._factory,
+                                        cls._allowed_fields,
                                         cls._include_value)
         result_info = value.Model()
 
-        name = utils.mk_class_name(cls._view.name, "IncludeValue")
+        name = utils.mk_class_name(cls._factory.name, "IncludeValue")
         IncludeValue = value.MetaCollection.new(
             name, [FixedValues(cls._allowed_fields)])
 
-        name = utils.mk_class_name(cls._view.name, "AggregateValue")
+        name = utils.mk_class_name(cls._factory.name, "AggregateValue")
         AggregateValue = value.MetaCollection.new(
             name, [FixedValues(cls._model_aggregations.keys())])
 
-        build_query = parse_incoming_query(cls._view, cls._static_conditions,
+        build_query = parse_incoming_query(cls._factory,
+                                           cls._static_conditions,
                                            cls._include_value,
                                            cls._model_aggregations)
 
@@ -165,7 +166,7 @@ class QueryViewMeta(type(model.Collection)):
                 return value
 
         SelectAction = action.MetaAction.new(
-            utils.mk_class_name(cls._view.name, "Select"),
+            utils.mk_class_name(cls._factory.name, "Select"),
             ActionCategories.retrieve,
             is_idempotent=False, result_info=result_info,
             effects=(
@@ -190,7 +191,7 @@ class QueryViewMeta(type(model.Collection)):
 
         # define count action
         CountAction = action.MetaAction.new(
-            utils.mk_class_name(cls._view.name, "Count"),
+            utils.mk_class_name(cls._factory.name, "Count"),
             ActionCategories.retrieve,
             effects=[
                 build_query,
@@ -202,7 +203,7 @@ class QueryViewMeta(type(model.Collection)):
 
         # define values action (fetch the values for the range)
         ValuesAction = action.MetaAction.new(
-            utils.mk_class_name(cls._view.name, "Values"),
+            utils.mk_class_name(cls._factory.name, "Values"),
             ActionCategories.retrieve,
             effects=[
                 build_query,
@@ -220,7 +221,7 @@ class QueryViewMeta(type(model.Collection)):
 
             def fetch_names(value, context):
                 model = context['model']
-                d = build_query(None, context, query=query.Query(cls._view))
+                d = build_query(None, context, query=cls._factory())
                 d.addCallback(defer.inject_param, 1,
                               query.values, model.connection, cls._item_field)
                 return d
@@ -228,9 +229,9 @@ class QueryViewMeta(type(model.Collection)):
             cls.annotate_child_names(fetch_names)
 
             def fetch_matching(value, context):
-                c = query.Condition(cls._item_field, query.Evaluator.equals,
-                                    context['key'])
-                q = query.Query(cls._view, c)
+                c = query.Condition(
+                    cls._item_field, query.Evaluator.equals, context['key'])
+                q = cls._factory(c)
                 d = build_query(None, context, query=q)
                 d.addCallback(context['model'].do_select, skip=0)
                 # the result on this points (rows, responses)
@@ -277,9 +278,8 @@ def parse_incoming_query(factory, static_conditions=None,
     def build_query(value, context, *args, **kwargs):
 
         def merge_conditions(static_conditions, q):
-            subquery = query.Query(factory, *static_conditions)
-            return query.Query(factory, q, query.Operator.AND, subquery,
-                               include_value=[])
+            subquery = factory(*static_conditions)
+            return factory(q, query.Operator.AND, subquery, include_value=[])
 
         def merge_query_options(query, kwargs):
             if kwargs.get('include_value'):
@@ -386,24 +386,24 @@ class QueryView(model.Collection):
         cls._fetch_documents = model._validate_effect(effect)
 
     @classmethod
-    def annotate_view_factory(cls, factory, allowed_fields=[],
-                              include_value=list(),
-                              item_field=None):
+    def annotate_factory(cls, factory, allowed_fields=[],
+                         include_value=list(),
+                         item_field=None):
 
-        cls._view = IQueryViewFactory(factory)
+        cls._factory = IQueryFactory(factory)
 
         for x in allowed_fields:
-            if not cls._view.has_field(x):
+            if x not in cls._factory.fields:
                 raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
         cls._allowed_fields = allowed_fields
 
         for x in include_value:
-            if not cls._view.has_field(x):
+            if x not in cls._factory.fields:
                 raise ValueError("%r doesn't define a field: '%s'" % (cls, x))
         cls._include_value = include_value
 
         if item_field:
-            if not cls._view.has_field(item_field):
+            if item_field not in cls._factory.fields:
                 raise ValueError("%r doesn't define a field: '%s'" %
                                  (cls, item_field))
             cls._item_field = item_field
@@ -457,7 +457,7 @@ class MetaQueryValue(type(value.Collection)):
     @staticmethod
     def new(name, factory, allowed_fields, include_value=list()):
         cls = MetaQueryValue(name, (QueryValue, ),
-                             {'factory': factory,
+                             {'factory': IQueryFactory(factory),
                               'allowed_fields': allowed_fields,
                               'include_value': include_value})
         # this is to make conditions with strings work
@@ -495,7 +495,7 @@ class QueryValue(value.Collection):
     def validate(self, v):
         v = value.Collection.validate(self, v)
         cls = type(self)
-        return query.Query(cls.factory, *v, include_value=cls.include_value)
+        return cls.factory(*v, include_value=cls.include_value)
 
     def publish(self, v):
         return str(v)

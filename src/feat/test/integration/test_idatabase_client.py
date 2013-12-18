@@ -200,57 +200,38 @@ class VersionDocument(document.Document):
     document.field('version', None)
 
 
-class ReduceFieldController(query.BaseQueryViewController):
-
-    # this informs the QueryCache that parse_view_result() will be returning
-    # a tuples() including the actual value
-    keeps_value = True
-
-    def generate_keys(self, field, evaluator, value):
-        s = super(ReduceFieldController, self).generate_keys
-        r = s(field, evaluator, value)
-        # we are interesed in the highest value, so here we revert the
-        # row order to later only take the highest value
-        if 'startkey' in r and 'endkey' in r:
-            r['endkey'], r['startkey'] = r['startkey'], r['endkey']
-            r['descending'] = True
-        return r
-
-    def parse_view_result(self, rows, tag):
-        # here we are given multiple values for the same document, we only
-        # should take the first one, because we are interested in the highest
-        # value
-        seen = set()
-        result = list()
-        for row in rows:
-            if row[1]['_id'] not in seen:
-                seen.add(row[1]['_id'])
-                result.append((row[1]['_id'], row[1]['value']))
-        return query.CacheEntry(result, keep_value=True)
+iter_linked_id = view.iter_linked_id
 
 
-class QueryReduceView(query.QueryView):
+def version_sorting(value):
+    import re
+    return tuple(int(x) for x in re.findall(r'[0-9]+', value))
+
+
+class QueryReduceView(view.BaseView):
 
     name = 'test_query_view'
-    BaseField = query.BaseField
-    JoinedVersionField = query.JoinedVersionField
 
-    @query.field('field')
-    class Field(BaseField):
+    def map(doc):
+        if doc.get('.type') == 'info-document':
+            yield ('field', doc.get('field')), None
+        if doc.get('.type') == 'version-document':
+            plain = doc.get('version')
+            value = version_sorting(plain)
+            for doc_id in iter_linked_id(doc, 'info-document'):
+                yield ('version', value), {'_id': doc_id, 'value': plain}
 
-        document_types = ["info-document"]
+    view.attach_method(map, iter_linked_id)
+    view.attach_method(map, version_sorting)
 
-        @staticmethod
-        def field_value(doc):
-            yield doc.get('field')
 
-    @query.field('version', controller=query.HighestValueFieldController)
-    class VersionField(JoinedVersionField):
+class ReduceQuery(query.Query):
 
-        document_types = ["version-document"]
-        version_field = 'version'
-        target_document_type = 'info-document'
+    name = 'test_query_view'
 
+    query.field(query.Field('field', QueryReduceView))
+    query.field(query.HighestValueField('version', QueryReduceView,
+                                        sorting=version_sorting))
 
 ### used to tests update_document() ###
 
@@ -947,10 +928,10 @@ class TestCase(object):
 
         C = query.Condition
         E = query.Evaluator
-        Q = query.Query
+        Q = ReduceQuery
         D = query.Direction
 
-        q = Q(QueryReduceView, include_value=["version"])
+        q = Q(include_value=["version"])
         res = yield query.select(self.connection, q)
         self.assertEqual(saved, res) # its sorted by first field
         # the version fields are set correctly
@@ -959,11 +940,11 @@ class TestCase(object):
         self.assertEqual('5.6.7', res[2].version)
         self.assertEqual(None, res[3].version)
 
-        q = Q(QueryReduceView, sorting=('version', D.ASC))
+        q = Q(sorting=('version', D.ASC))
         res = yield query.select(self.connection, q)
         self.assertEqual([saved[0], saved[2], saved[1], saved[3]], res)
 
-        q = Q(QueryReduceView, C('version', E.equals, '11.2.3'))
+        q = Q(C('version', E.equals, '11.2.3'))
         res = yield query.select(self.connection, q)
         self.assertEqual([saved[0]], res)
 
@@ -984,7 +965,7 @@ class TestCase(object):
         C = query.Condition
         E = query.Evaluator
         O = query.Operator
-        Q = query.Query
+        Q = DummyQuery
         D = query.Direction
 
         c1 = C('field1', E.le, 9)
@@ -1005,7 +986,7 @@ class TestCase(object):
                                sorting=('field1', D.ASC))
         yield self._query_test([19, 17, 15, 13, 11, 9, 7, 5, 3, 1],
                                c3, sorting=('field1_resorted', D.ASC))
-        q = Q(QueryView, c3)
+        q = Q(c3)
         yield self._query_test([1, 3, 5, 7, 9], q, O.AND, c1,
                                sorting=('field1', D.ASC))
         yield self._query_test([13, 11, 9, 7, 5], q, O.AND, c4,
@@ -1020,7 +1001,7 @@ class TestCase(object):
         yield d
 
         # now check reductions with sum
-        q = Q(QueryView, c1, aggregate=[['sum', 'field1']])
+        q = Q(c1, aggregate=[['sum', 'field1']])
         res = yield query.select_ids(self.connection, q)
         self.assertEqual([sum(range(10))], res.aggregations)
 
@@ -1041,12 +1022,12 @@ class TestCase(object):
     @defer.inlineCallbacks
     def _query_values(self, field, expected):
         values = yield query.values(self.connection,
-                                    query.Query(QueryView), field)
+                                    DummyQuery(), field)
         self.assertEqual(expected, set(values))
 
     @defer.inlineCallbacks
     def _query_test(self, expected, *parts, **kwargs):
-        q = query.Query(QueryView, *parts, sorting=kwargs.pop('sorting', None))
+        q = DummyQuery(*parts, sorting=kwargs.pop('sorting', None))
         order_kept = kwargs.pop('order_kept', None)
         res = yield query.select(self.connection, q)
         result = [x.field1 for x in res]
@@ -1083,38 +1064,28 @@ class QueryDoc(document.Document):
     document.field('field3', None)
 
 
-class QueryView(query.QueryView):
+class QueryView(view.BaseView):
 
     name = 'query_view'
 
-    def extract_field1(doc):
-        yield doc.get('field1')
+    def map(doc):
+        if doc.get('.type') != 'query':
+            return
+        for field in ('field1', 'field2', 'field3'):
+            yield (field, doc.get(field)), None
+        yield ('field1_resorted', 100 - doc.get('field1')), None
 
-    def extract_field2(doc):
-        yield doc.get('field2')
 
-    def extract_field3(doc):
-        yield doc.get('field3')
+class DummyQuery(query.Query):
 
-    query.field('field1', extract_field1, controller=query.KeepValueController)
-    query.field('field2', extract_field2, controller=query.KeepValueController)
-    query.field('field3', extract_field3, controller=query.KeepValueController)
-    BaseField = query.BaseField
+    query.field(query.Field('field1', QueryView, keeps_value=True))
+    query.field(query.Field('field2', QueryView, keeps_value=True))
+    query.field(query.Field('field3', QueryView, keeps_value=True))
 
-    @query.field('field1_resorted')
-    class ResortedField(BaseField):
+    def resort(value):
+        return 100 - value
 
-        document_types = ['query']
-
-        @staticmethod
-        def field_value(doc):
-            yield doc.get('field1')
-
-        @staticmethod
-        def sort_key(value):
-            return 100 - value
-
-    query.document_types(['query'])
+    query.field(query.Field('field1_resorted', QueryView, sorting=resort))
 
 
 class CallbacksReceiver(Mock):
