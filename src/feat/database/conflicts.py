@@ -141,6 +141,7 @@ def configure_replicator_database(host, port):
     connection = database.get_connection()
     version = yield database.get_version()
     if version < (1, 1, 0):
+        database.disconnect()
         raise ValueError("Found couchdb version %r. "
                          "_replicator database has been introduced in 1.1.0." %
                          (version, ))
