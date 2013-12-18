@@ -291,8 +291,12 @@ def update_views(connection):
             else:
                 to_update.append((design_doc, fetched))
 
-    yield defer.DeferredList([update_design_doc(connection, doc)
-                              for doc, _orig in to_update])
+    results = yield defer.DeferredList([update_design_doc(connection, doc)
+                                        for doc, _orig in to_update])
+    for success, result in results:
+        if not success:
+            defer.returnValue(result)
+
     defer.returnValue(to_update)
 
 
