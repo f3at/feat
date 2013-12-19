@@ -621,8 +621,8 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
             d.addErrback(self._error_handler)
             return entry.wait()
         else:
-            d.addCallbacks(parser, self._error_handler,
-                           callbackArgs=(tag, ))
+            d.addCallbacks(apply_parsers, self._error_handler,
+                           callbackArgs=(parser, tag, ))
             return d
 
     def _configure(self, host, port, name, username, password, https):
@@ -759,7 +759,7 @@ class CacheEntry(object):
             self.state = EntryState.ready
             self.fresh_at = ctime
         else:
-            self._parsed = self.parse_result(response, self.tag)
+            self._parsed = apply_parsers(response, self._parser, self.tag)
             if isinstance(self._parsed, failure.Failure):
                 self.state = EntryState.invalid
             else:
@@ -780,15 +780,6 @@ class CacheEntry(object):
 
         for d in waiting:
             d.callback(self._parsed)
-
-    def parse_result(self, response, tag):
-        if callable(self._parser):
-            return self._parser(response, self.tag)
-        for parser in self._parser:
-            response = parser(response, tag)
-            if isinstance(response, failure.Failure):
-                break
-        return response
 
     def __str__(self):
         return "<Entry, state: %s, tag: %s>" % (self.state.name, self.tag)
@@ -882,6 +873,16 @@ class Cache(dict):
             for entry in self.itervalues():
                 if entry.etag == etag:
                     entry.fresh_at = ctime
+
+
+def apply_parsers(response, parsers, tag):
+    if callable(parsers):
+        return parsers(response, tag)
+    for parser in parsers:
+        response = parser(response, tag)
+        if isinstance(response, failure.Failure):
+            break
+    return response
 
 
 def parse_response(response, tag):
