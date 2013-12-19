@@ -532,7 +532,7 @@ class IQueryFactory(Interface):
 class IQueryField(Interface):
 
     field = Attribute("C{str}")
-    keeps_value = Attribute("C{bool} flag saying if the CacheEntry returned "
+    keeps_value = Attribute("C{bool} flag saying if the ParsedIndex returned "
                             "by this subquery can be used to extract the "
                             "values of each row")
     view = Attribute("L{IViewFactory} to be used as the index")
@@ -545,7 +545,7 @@ class IQueryField(Interface):
         @param if_modified_since: optional epoch time; if specified the cache
                                   will not perform the query if it has a
                                   matching entry not older than specified
-        @callback: L{feat.database.query.CacheEntry}
+        @callback: L{feat.database.query.ParsedIndex}
         '''
 
     def generate_keys(evaluator, value):
@@ -561,7 +561,7 @@ class IQueryField(Interface):
         select_ids() method.
         @param tag: C{str} used for logging to identify the requests.
 
-        @rtype: C{CacheEntry}
+        @rtype: C{ParsedIndex}
         '''
 
 
