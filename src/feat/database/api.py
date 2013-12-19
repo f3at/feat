@@ -34,10 +34,18 @@ class Cache(model.Model):
                     desc="Average size of cache calculated during the "
                          "cleanup call",
                     getter=call.model_call('get_average_size'))
+    model.attribute('average_cleanup_time', value.Integer(),
+                    desc="Average size of cache calculated during the "
+                         "cleanup call",
+                    getter=call.model_call('get_average_cleanup_time'))
     model.attribute('desired_size', value.Integer(),
                     desc="Desired size of cache.",
                     getter=getter.source_attr('desired_size'),
                     setter=setter.source_attr('desired_size'))
+    model.attribute('operation', value.Integer(),
+                    desc=("Internal counter of operations used to "
+                          "determine when to call cleanup()"),
+                    getter=getter.source_attr('_operation'))
     model.collection('entries',
                      child_names=call.source_call('keys'),
                      child_source=getter.source_get('get'),
@@ -50,6 +58,9 @@ class Cache(model.Model):
 
     def get_average_size(self):
         return self.source.average_size.get_value()
+
+    def get_average_cleanup_time(self):
+        return self.source.average_cleanup_time.get_value()
 
     model.action('cleanup', action.MetaAction.new(
         'cleanup',

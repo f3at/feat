@@ -269,7 +269,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
     log_category = "database"
 
     LoopingCall = task.LoopingCall
-    CLEANUP_FREQ = 10 * 60
     # we should take roughly 10MB of cache
     DESIRED_CACHE_SIZE = 10 * 1024 * 1024
 
@@ -303,8 +302,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         # doc_id -> C{int} number of locks
         self._document_locks = dict()
         self._cache = Cache(desired_size=self.DESIRED_CACHE_SIZE)
-
-        self._cache_cleanup_task = self.LoopingCall(self._cache.cleanup)
 
         self._configure(host, port, db_name, username, password,
                         https)
@@ -424,8 +421,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
     def disconnect(self):
         self._cancel_reconnector()
-        if self._cache_cleanup_task.running:
-            self._cache_cleanup_task.stop()
         self.couchdb.disconnect()
         self.disconnected = True
 
@@ -654,8 +649,6 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
         return notifier.setup()
 
     def _on_connected(self):
-        if not self._cache_cleanup_task.running:
-            self._cache_cleanup_task.start(self.CLEANUP_FREQ, now=False)
         common.ConnectionManager._on_connected(self)
         self._cancel_reconnector()
 
@@ -791,15 +784,29 @@ class Cache(dict):
     '''
 
     DEFAULT_DESIRED_SIZE = 10 * 1024 * 1024
+    OPERATIONS_PER_CLEANUP = 500
 
     def __init__(self, desired_size=None):
         super(Cache, self).__init__()
         self.desired_size = desired_size or self.DEFAULT_DESIRED_SIZE
         self.average_size = container.RunningAverage(0)
+        self.average_cleanup_time = container.RunningAverage(0)
+        self.last_cleanup = None
+        self._operation = 0
 
     def get_url(self, identifier):
+        self._bump_counter()
         if identifier in self and self[identifier].state != EntryState.invalid:
             return self[identifier]
+
+    def __setitem__(self, key, value):
+        super(Cache, self).__setitem__(key, value)
+        self._bump_counter()
+
+    def _bump_counter(self):
+        self._operation += 1
+        if self._operation % self.OPERATIONS_PER_CLEANUP == 0:
+            self.cleanup()
 
     def cleanup(self, ctime=None):
         '''
@@ -807,6 +814,10 @@ class Cache(dict):
         Its job is to control the size of cache and remove old entries.
         '''
         ctime = ctime or time.time()
+        if self.last_cleanup:
+            self.average_cleanup_time.add_point(ctime - self.last_cleanup)
+        self.last_cleanup = ctime
+
         log.debug('couchdb', "Running cache cleanup().")
         # first remove already invalidated entries, used this iteration to
         # build up the map of usage
