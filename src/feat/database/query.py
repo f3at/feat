@@ -10,7 +10,7 @@ from feat.database.interface import IPlanBuilder, IQueryField, IQueryFactory
 from feat.interface.serialization import IRestorator, ISerializable
 
 
-class CacheEntry(object):
+class ParsedIndex(object):
 
     def __init__(self, entries, keep_value=False):
         self.includes_values = keep_value
@@ -73,7 +73,7 @@ class Field(object):
             parsed = [x[1]['_id']
                       if isinstance(x[1], dict) and '_id' in x[1]
                       else x[2] for x in rows]
-        return CacheEntry(parsed, keep_value=self.keeps_value)
+        return ParsedIndex(parsed, keep_value=self.keeps_value)
 
     def _identity(self, value):
         return value
@@ -114,7 +114,7 @@ class HighestValueField(Field):
             if row[1]['_id'] not in seen:
                 seen.add(row[1]['_id'])
                 result.append((row[1]['_id'], row[1]['value']))
-        return CacheEntry(result, keep_value=True)
+        return ParsedIndex(result, keep_value=True)
 
 
 def generate_keys(transform, field, evaluator, value):
@@ -527,7 +527,7 @@ def select(connection, query, skip=0, limit=None, include_responses=False):
 
 
 def include_values(docs, responses, query):
-    # dict field_name -> CacheEntry
+    # dict field_name -> ParsedIndex
     lookup = dict((field, first(v for k, v in responses.iteritems()
                                 if k.field == field))
                   for field in query.include_value)
