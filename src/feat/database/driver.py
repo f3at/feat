@@ -846,7 +846,7 @@ class Cache(dict):
             log.warning("couchdb", "The average size of Cache is %.2f times "
                         "bigger than the desired size of: %s. It might be "
                         "a good idea to rethink the caching strategy.",
-                        self.desired_size / self.average_size.get_value(),
+                        self.average_size.get_value() / self.desired_size,
                         self.desired_size)
 
         if actual_size > self.desired_size:
