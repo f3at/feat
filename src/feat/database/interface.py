@@ -532,10 +532,9 @@ class IQueryFactory(Interface):
 class IQueryField(Interface):
 
     field = Attribute("C{str}")
-    keeps_value = Attribute("C{bool} flag saying if the ParsedIndex returned "
+    keeps_value = Attribute("C{bool} flag saying if the IQueryIndex returned "
                             "by this subquery can be used to extract the "
                             "values of each row")
-    view = Attribute("L{IViewFactory} to be used as the index")
 
     def fetch(connection, condition, if_modified_since=None):
         '''
@@ -545,23 +544,21 @@ class IQueryField(Interface):
         @param if_modified_since: optional epoch time; if specified the cache
                                   will not perform the query if it has a
                                   matching entry not older than specified
-        @callback: L{feat.database.query.ParsedIndex}
+        @callback: L{IQueryIndex}
         '''
 
-    def generate_keys(evaluator, value):
-        '''
-        @param evaluator: enum values of Evaluator
-        @param value: value used
-        '''
 
-    def parse_view_result(rows, tag):
-        '''
-        Transform the rows given by couchdb to a list of IDs.
-        The format of those IDs is transparently returned as result of
-        select_ids() method.
-        @param tag: C{str} used for logging to identify the requests.
+class IQueryIndex(Interface):
 
-        @rtype: C{ParsedIndex}
+    includes_values = Attribute("C{bool} flag saying if the index "
+                                "can be used to extract the "
+                                "values of each row")
+    entries = Attribute("C{list} of sorted ids returned by the index")
+
+    def get_value(id):
+        '''
+        Extract a value for a ID, only works if includes_values==True
+        @returns: value or None
         '''
 
 

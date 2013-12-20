@@ -7,10 +7,13 @@ from feat.common import serialization, enum, first, defer, annotate, error
 from feat.common import container
 
 from feat.database.interface import IPlanBuilder, IQueryField, IQueryFactory
+from feat.database.interface import IQueryIndex
 from feat.interface.serialization import IRestorator, ISerializable
 
 
 class ParsedIndex(object):
+
+    implements(IQueryIndex)
 
     def __init__(self, entries, keep_value=False):
         self.includes_values = keep_value
@@ -24,6 +27,9 @@ class ParsedIndex(object):
             for entry, value in entries:
                 self.entries.append(entry)
                 self.values[entry] = value
+
+    def get_value(self, id):
+        return self.values.get(id)
 
 
 class Field(object):
@@ -506,7 +512,7 @@ def select_ids(connection, query, skip=0, limit=None,
 
 def value_iterator(index, value_index):
     for x in index:
-        v = value_index.values.get(x)
+        v = value_index.get_value(x)
         if v is not None:
             yield v
 
@@ -533,7 +539,7 @@ def include_values(docs, responses, query):
                   for field in query.include_value)
     for doc in docs:
         for name, cache_entry in lookup.iteritems():
-            setattr(doc, name, cache_entry.values.get(doc.doc_id))
+            setattr(doc, name, cache_entry.get_value(doc.doc_id))
     return docs
 
 
@@ -563,12 +569,12 @@ def values(connection, query, field, unique=True):
     if unique:
         resp = set()
         for x in temp:
-            resp.add(index.values.get(x))
+            resp.add(index.get_value(x))
         defer.returnValue(list(resp))
     else:
         resp = list()
         for x in temp:
-            resp.append(index.values.get(x))
+            resp.append(index.get_value(x))
         defer.returnValue(resp)
 
 
