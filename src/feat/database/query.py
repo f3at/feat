@@ -74,8 +74,8 @@ class Field(object):
         # If the row emitted the link with _id=doc_id this value is used,
         # otherwise the id of the emiting document is used
         if self.keeps_value:
-            parsed = [(x[1][self.id_key], x[1].get('value', x[0][1]))
-                      if isinstance(x[1], dict) and self.id_key in x[1]
+            parsed = [(x[1].get(self.id_key, x[2]), x[1].get('value', x[0][1]))
+                      if isinstance(x[1], dict)
                       else (x[2], x[0][1]) for x in rows]
         else:
             parsed = [x[1][self.id_key]
