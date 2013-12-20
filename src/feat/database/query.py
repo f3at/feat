@@ -1,3 +1,4 @@
+import decimal
 import inspect
 import time
 
@@ -38,14 +39,15 @@ class Field(object):
 
     keeps_value = False
 
-    def __init__(self, field, view, **kwargs):
+    def __init__(self, field, view, id_key='_id', **kwargs):
         self.field = field
         self.view = view
         self.keeps_value = kwargs.pop('keeps_value', type(self).keeps_value)
+        self.id_key = id_key
         if 'sorting' in kwargs:
             self.transform = kwargs.pop('sorting')
         else:
-            self.transform = self._identity
+            self.transform = identity
         if kwargs:
             raise TypeError('Uknown parameters: %s' %
                             (", ".join(kwargs.keys())))
@@ -72,22 +74,22 @@ class Field(object):
         # If the row emitted the link with _id=doc_id this value is used,
         # otherwise the id of the emiting document is used
         if self.keeps_value:
-            parsed = [(x[1]['_id'], x[0][1])
-                      if isinstance(x[1], dict) and '_id' in x[1]
+            parsed = [(x[1][self.id_key], x[1].get('value', x[0][1]))
+                      if isinstance(x[1], dict) and self.id_key in x[1]
                       else (x[2], x[0][1]) for x in rows]
         else:
-            parsed = [x[1]['_id']
-                      if isinstance(x[1], dict) and '_id' in x[1]
+            parsed = [x[1][self.id_key]
+                      if isinstance(x[1], dict) and self.id_key in x[1]
                       else x[2] for x in rows]
         return ParsedIndex(parsed, keep_value=self.keeps_value)
-
-    def _identity(self, value):
-        return value
 
     ### python ###
 
     def __str__(self):
         return "<Field: %s/%s>" % (self.view.name, self.field)
+
+
+identity = lambda x: x
 
 
 class HighestValueField(Field):
@@ -117,9 +119,74 @@ class HighestValueField(Field):
         seen = set()
         result = list()
         for row in rows:
-            if row[1]['_id'] not in seen:
-                seen.add(row[1]['_id'])
-                result.append((row[1]['_id'], row[1]['value']))
+            if row[1][self.id_key] not in seen:
+                seen.add(row[1][self.id_key])
+                result.append((row[1][self.id_key], row[1]['value']))
+        return ParsedIndex(result, keep_value=True)
+
+
+class ListValueField(Field):
+
+    keeps_value = True
+
+    def parse_view_result(self, rows, tag):
+        # here we are given multiple values for the same document,
+        # we compile them to lists of values so that the view index like:
+        # ['preapproved_by', 'lender1'], {'_id': 'merchant_record_1'}
+        # ['preapproved_by', 'lender2'], {'_id': 'merchant_record_1'}
+        # ['preapproved_by', 'lender3'], {'_id': 'merchant_record_1'}
+        # ['preapproved_by', 'lender1'], {'_id': 'merchant_record_2'}
+        # ...
+        # is resolved to the following:
+        # [('merchant_record_1', ['lender1', 'lender2', 'lender3']),
+        #  ('merchant_record_2', ['lender1'])]
+        indexes = dict() # doc_id -> index in result table
+        result = list()
+        for row in rows:
+            doc_id = (row[1][self.id_key]
+                      if (row[1] and self.id_key in row[1]) else row[2])
+            if doc_id not in indexes:
+                indexes[doc_id] = len(result)
+                result.append((doc_id, list()))
+            result[indexes[doc_id]][1].append(row[0][1])
+        return ParsedIndex(result, keep_value=True)
+
+
+class SumValueField(Field):
+
+    keeps_value = True
+
+    def parse_view_result(self, rows, tag):
+        # here we are given multiple float values for the same document,
+        # we parse them as decimals and sum
+
+        # ['loan_amount', 1002.2], {'_id': 'merchant_record_1'}
+        # ['loan_amount', 2001.2], {'_id': 'merchant_record_2'}
+        # ...
+        # is resolved to the following:
+        # [('merchant_record_1', decimal.Decimal('1002.20')),
+        #  ('merchant_record_2', decimal.Decimal('2001.20'))]
+
+        indexes = dict() # doc_id -> index in result table
+        result = list()
+        for row in rows:
+            if row[1] and self.id_key in row[1]:
+                doc_id = row[1][self.id_key]
+            else:
+                doc_id = row[2]
+            if doc_id not in indexes:
+                indexes[doc_id] = len(result)
+                result.append((doc_id, decimal.Decimal()))
+            try:
+                v = decimal.Decimal(str(row[0][1]))
+            except:
+                error.handle_exception(None, None,
+                                       'Failed parsing decimal value')
+                continue
+            else:
+                result[indexes[doc_id]] = (
+                    doc_id, result[indexes[doc_id]][1] + v)
+
         return ParsedIndex(result, keep_value=True)
 
 
