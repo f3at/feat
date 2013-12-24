@@ -237,12 +237,10 @@ def migration_script(connection):
 class dbscript(object):
 
     def __init__(self, dbconfig):
-        log.debug('dbscript', '__init__')
         assert isinstance(dbconfig, config.DbConfig), str(type(dbconfig))
         self.config = dbconfig
 
     def __enter__(self):
-        log.debug('dbscript', '__enter__')
         self.connection = create_connection(
             self.config.host, self.config.port, self.config.name,
             self.config.username, self.config.password)
@@ -257,21 +255,12 @@ class dbscript(object):
         error.handle_failure('script', fail, 'Error in the end')
 
     def __exit__(self, type, value, traceback):
-        log.debug('dbscript', '__exit__')
-        self._deferred.addCallback(lambda _:
-            log.debug('dbscript', 'deferred callback'))
         self._deferred.addErrback(self._handle_error)
         self._deferred.addBoth(defer.drop_param,
                                self.connection.database.disconnect)
         self._deferred.addBoth(defer.drop_param, reactor.stop)
-        def caller():
-            log.debug('dbscript', 'calling callback on deferred %r',
-                self._deferred)
-            self._deferred.callback(self.connection)
-        reactor.callWhenRunning(caller)
-        log.debug('dbscript', 'running reactor')
+        reactor.callWhenRunning(self._deferred.callback, self.connection)
         reactor.run()
-        log.debug('dbscript', 'ran reactor')
 
 
 @feat.register_restorator
