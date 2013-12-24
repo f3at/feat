@@ -292,8 +292,7 @@ def standalone(script, options=[]):
                           metavar="USER", default=c.db.username)
         parser.add_option('--dbpassword', dest="db_password",
                           help="password to use for authentication ",
-                          metavar="USER", default=c.db.password)
-
+                          metavar="PASSWORD", default=c.db.password)
         parser.add_option('--log', action='store', dest='log',
                           type='str', help='log level to set',
                           default=os.environ.get('FEAT_DEBUG', '2'))
