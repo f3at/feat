@@ -47,6 +47,18 @@ starts = [
             Block(None),
         ])
     ]),
+# FIXME: need a way to remove the first divider line too
+# +---------------------------------------------------------------------
+# | File /usr/lib64/python2.7/site-packages/twisted/names/client.py,
+# | line 261, in twisted.names.client.Resolver._query
+# |   Warning: @param for unknown parameter "*args"
+# |   
+# ending in 3 spaces!
+    Start('^\| File .*/twisted/.*$', [
+        Stop('^\|   $', [
+            Block(None),
+        ])
+    ]),
 ]
 
 singles = [
