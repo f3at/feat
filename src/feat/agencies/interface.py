@@ -224,17 +224,17 @@ class IRecord(Interface):
     def commit(**data):
         '''
         Commits the entry. The dictionary should contain the following keys:
-        agent_id           - id of the agent
-        instance_id        - id of the instance
-        journal_id         - serialized id of the IRecorder
-        function_id        - id of the journaled function called
-        args               - serialized arguments of the call
-        kwargs             - serialized keywords of the call
-        fiber_id           - id of the fiber
-        fiber_depth        - depth in the fiber
-        result             - serialized result of the call
-        side_effects       - serialized list of side effects produced
-                             by the call
+         - agent_id           - id of the agent
+         - instance_id        - id of the instance
+         - journal_id         - serialized id of the IRecorder
+         - function_id        - id of the journaled function called
+         - args               - serialized arguments of the call
+         - kwargs             - serialized keywords of the call
+         - fiber_id           - id of the fiber
+         - fiber_depth        - depth in the fiber
+         - result             - serialized result of the call
+         - side_effects       - serialized list of side effects produced
+                                by the call
         '''
 
 
@@ -295,18 +295,18 @@ class IJournalReader(Interface):
 
         The trigger value of returned Deferred is the list of journal entries.
         Single entry is a dictionary with the keys:
-        - agent_id,
-        - instance_id,
-        - journal_id,
-        - function_id,
-        - fiber_id,
-        - fiber_depth,
-        - args,
-        - kwargs,
-        - side_effects,
-        - result,
-        - timestamp,
-        - entry_type = "journal"
+         - agent_id,
+         - instance_id,
+         - journal_id,
+         - function_id,
+         - fiber_id,
+         - fiber_depth,
+         - args,
+         - kwargs,
+         - side_effects,
+         - result,
+         - timestamp,
+         - entry_type = "journal"
 
         @param history: History object interesting us.
         @type history: L{feat.agencies.journal.History}
@@ -339,14 +339,14 @@ class IJournalReader(Interface):
         all the entries.
 
         The return format is a list dictionaries with keys:
-        - message,
-        - level,
-        - category,
-        - log_name,
-        - file_path,
-        - line_num,
-        - timestamp
-        - entry_type = "log"
+         - message,
+         - level,
+         - category,
+         - log_name,
+         - file_path,
+         - line_num,
+         - timestamp
+         - entry_type = "log"
 
         @type start_data, end_data: C{int} epoch time.
         @param filters: List of dictionaries containg following keys:

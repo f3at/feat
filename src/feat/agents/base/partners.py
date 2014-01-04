@@ -158,6 +158,7 @@ class BasePartner(serialization.Serializable, mro.FiberMroMixin):
     def on_goodbye(self, agent, brothers):
         '''
         Called when the partner goes through the termination procedure.
+
         @param brothers: The list of the partner of the same class
                          of the agent.
         '''
@@ -192,7 +193,8 @@ class BasePartner(serialization.Serializable, mro.FiberMroMixin):
         Called when all the hope is lost. Noone took the responsability for
         handling the agents death, and monitoring agent failed to restart it.
 
-        @param payload: Same as in on_goodbye.
+        @param brothers: The list of the partner of the same class
+                         of the agent.
         '''
 
     ### utility methods to be used from the handlers ###
@@ -284,9 +286,9 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         In case it was not found return the default.
 
         Logic goes as follows:
-        - First try to find exact match for identifier and role,
-        - Try to find match for identifier and role=None,
-        - Return default handler.
+         - First try to find exact match for identifier and role,
+         - Try to find match for identifier and role=None,
+         - Return default handler.
         '''
         key = cls._key_for(identifier, role)
         handler = cls._handlers.get(key, None)

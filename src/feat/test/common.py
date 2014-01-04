@@ -484,10 +484,13 @@ class AgencyTestHelper(object):
         '''
         Sets up the destination for tested component to send messages to.
 
-        @returns endpoint: Receipient instance pointing to the queue above
-                           (use it for reply-to fields)
-        @returns queue: Queue instance we use may call .get() on to get
-                        messages from components being tested
+        This returns:
+         - endpoint: Recipient instance pointing to the queue above
+                     (use it for reply-to fields)
+         - queue: Queue instance we use may call .get() on to get
+                  messages from components being tested
+
+        @returns: tuple of endpoint, queue
         '''
         endpoint = recipient.Agent(str(uuid.uuid1()), 'lobby')
         messaging = self._messaging
@@ -508,10 +511,11 @@ class AgencyTestHelper(object):
     # methods for handling documents
 
     def doc_factory(self, doc_class, **options):
-        '''Builds document of selected class and saves it to the database
+        '''
+        Builds document of given class and saves it to the database.
 
         @returns: Document with id and revision set
-        @return_type: subclass of feat.agents.document.Document
+        @rtype:   subclass of feat.agents.document.Document
         '''
         document = factories.build(doc_class.type_name, **options)
         return self.agency._database.get_connection().save_document(document)

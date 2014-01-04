@@ -86,15 +86,15 @@ class IAgentFactory(Interface):
 
 class AgencyAgentState(enum.Enum):
     '''
-    not_initiated - Agent is not yet initialized.
-    initiating    - Agent is currently initializing.
-    initiated     - Initialize done.
-    starting_up   - Agent is starting up.
-    ready         - Agent has finished starting up and is ready.
-    disconnected  - Triggered when agency looses database or messaging
-                    connection.
-    terminating   - Agent is going through termination procedure.
-    terminated    - Agent is terminated and unregistered.
+     - not_initiated - Agent is not yet initialized.
+     - initiating    - Agent is currently initializing.
+     - initiated     - Initialize done.
+     - starting_up   - Agent is starting up.
+     - ready         - Agent has finished starting up and is ready.
+     - disconnected  - Triggered when agency looses database or messaging
+                       connection.
+     - terminating   - Agent is going through termination procedure.
+     - terminated    - Agent is terminated and unregistered.
     '''
     (not_initiated, initiating, initiated, starting_up,
      ready, disconnected, terminating, terminated) = range(8)
@@ -121,16 +121,16 @@ class IAgencyAgent(Interface):
         Use it if you want to know keep the
         information about the result of the fiber without keeping the
         reference to the original object. This is usefull when dealing with
-        transient object like Tasks, Managers, etc. Examples:
+        transient object like Tasks, Managers, etc. Examples::
 
-        observer = state.medium.observe(task.notify_finish)
-        ....
-        f = observer.notify_finish()
-        (do sth with f)
+            observer = state.medium.observe(task.notify_finish)
+            ....
+            f = observer.notify_finish()
+            (do sth with f)
 
-        Synchronous methods:
-        if not observer.active():
-          res = oserver.get_result()
+            Synchronous methods:
+            if not observer.active():
+              res = oserver.get_result()
 
         @type fiber: L{feat.interface.fiber.IFiber}
         @rtype: L{feat.interface.fiber.IObserver}
@@ -246,12 +246,12 @@ class IAgencyAgent(Interface):
                        filtering
         @param callback: callable to be called, it will be called with the
                          following parametes:
-                         - doc_id
-                         - rev
-                         - deleted (flag)
-                         - own_change (flag saying if the notification was
-                           triggered by the change done on the same
-                           connection)
+                          - doc_id
+                          - rev
+                          - deleted (flag)
+                          - own_change (flag saying if the notification was
+                            triggered by the change done on the same
+                            connection)
         @params kwargs: Optional keywords to be passed to the changes query.
         @return: None
         '''
@@ -260,7 +260,6 @@ class IAgencyAgent(Interface):
         '''
         Unregister agent from receiving the notifications about document
         changes.
-        @param doc_id: id of the document.
         '''
 
     def query_view(factory, **options):
@@ -271,8 +270,8 @@ class IAgencyAgent(Interface):
         implementation the options are just passed to the query. This means
         that basicly everything is supported. In emu database implementation
         the only supported option is:
-        - reduce C{boolean}: optionaly lets fetch the result of the map from
-          the map-reduce view (skips the reduce part).
+         - reduce C{boolean}: optionaly lets fetch the result of the map from
+           the map-reduce view (skips the reduce part).
         In case you want to use more features of CouchDB you should implement
         them feat.agencies.emu.database.Database, and test their intergration
         in feat.test.integration.test_idatabase_client.
@@ -295,13 +294,13 @@ class IAgencyAgent(Interface):
         Performs all the necessary steps to end the life of the agent in a
         gentle way. The termination process consits of following steps:
 
-        1. Revoke all interests.
-        2. Terminate all retrying protocols.
-        3. Kill all protocols (with making them expire instantly).
-        4. Run the IAgent.shutdown() and wait for it to finish.
-           perform agent-side shutdown part common to all agents.
-        5. Remove agents descriptor from the database.
-        6. Delete the agents queue.
+         1. Revoke all interests.
+         2. Terminate all retrying protocols.
+         3. Kill all protocols (with making them expire instantly).
+         4. Run the IAgent.shutdown() and wait for it to finish.
+            perform agent-side shutdown part common to all agents.
+         5. Remove agents descriptor from the database.
+         6. Delete the agents queue.
 
         @returns: Deferred.
         '''
@@ -315,10 +314,10 @@ class IAgencyAgent(Interface):
         is on_killed(), we are not sending goodbyes to the partners, nor
         touching the descriptor or the queue.
 
-        1. Revoke all interests.
-        2. Terminate all retrying protocols.
-        3. Kill all protocols (with making them expire instantly).
-        4. Run the IAgent.on_killed() and wait for it to finish.
+         1. Revoke all interests.
+         2. Terminate all retrying protocols.
+         3. Kill all protocols (with making them expire instantly).
+         4. Run the IAgent.on_killed() and wait for it to finish.
 
         @returns: Deferred.
         '''
@@ -453,6 +452,7 @@ class IPartner(Interface):
     def on_goodbye(agent, brothers):
         '''
         Called when the partner goes through the termination procedure.
+
         @param brothers: The list of the partner of the same class
                          of the agent.
         '''
@@ -478,8 +478,6 @@ class IPartner(Interface):
         Called after the partner is restarted by the monitoring agent.
         After returning a synchronous result or when the returned fiber
         is finished the partner is stored to descriptor.
-        @param migrated: Flag saying whether the IRecipient of partner has
-                         changed
         '''
 
     def on_buried(agent, brothers=None):
@@ -487,7 +485,8 @@ class IPartner(Interface):
         Called when all the hope is lost. Noone took the responsability for
         handling the agents death, and monitoring agent failed to restart it.
 
-        @param payload: Same as in on_goodbye.
+        @param brothers: The list of the partner of the same class
+                         of the agent.
         '''
 
 

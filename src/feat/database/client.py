@@ -490,9 +490,9 @@ class Connection(log.Logger, log.LogProxy):
     def _parse_view_results(self, rows, factory, options):
         '''
         rows here should be a list of tuples:
-        - (key, value) for reduce views
-        - (key, value, id) for nonreduce views without include docs
-        - (key, value, id, doc) for nonreduce with with include docs
+         - (key, value) for reduce views
+         - (key, value, id) for nonreduce views without include docs
+         - (key, value, id, doc) for nonreduce with with include docs
         '''
         kwargs = dict()
         kwargs['reduced'] = factory.use_reduce and options.get('reduce', True)

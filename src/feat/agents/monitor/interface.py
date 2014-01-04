@@ -64,12 +64,12 @@ class LocationState(enum.Enum):
     """
     Enum for the monitoring state:
 
-    normal       - Stable state. Normal location behaviours.
-    isolated     - Temporary state. All patient are dead so wait extra time
-                   to to let a chance to recover temporary network failures.
-    recovering   - Temporary state. After being isolated some patient
-                   resurrected. Give the other some extra time to ressurect
-                   before handling there death.
+     - normal       - Stable state. Normal location behaviours.
+     - isolated     - Temporary state. All patient are dead so wait extra time
+                      to to let a chance to recover temporary network failures.
+     - recovering   - Temporary state. After being isolated some patient
+                      resurrected. Give the other some extra time to ressurect
+                      before handling there death.
     """
 
     normal, isolated, recovering = range(3)
@@ -79,16 +79,16 @@ class MonitorState(enum.Enum):
     """
     Enum for the monitoring state:
 
-    normal       - Stable state. Normal monitoring behaviours.
-    isolated     - Temporary state. All locations minus the one of the monitor
-                   itself are isolated, so the monitoring is waiting extra time
-                   to cover for a temporary network disconnection.
-    recovering   - Temporary state. After waiting extra time isolated nothing
-                   changed so we are now in recovering state meaning that
-                   each locations are given there usual isolation time to
-                   recover or will be handled with.
-    disconnected - Stable state. the monitor is disconnected from the network.
-                   Nothing should be done until reconnected.
+     - normal       - Stable state. Normal monitoring behaviours.
+     - isolated     - Temporary state. All locations minus the one of the
+                      monitor itself are isolated, so the monitoring is waiting
+                      extra time to cover for a temporary network disconnection.
+     - recovering   - Temporary state. After waiting extra time isolated nothing
+                      changed so we are now in recovering state meaning that
+                      each locations are given there usual isolation time to
+                      recover or will be handled with.
+     - disconnected - Stable state. the monitor is disconnected from the
+                      network.  Nothing should be done until reconnected.
     """
 
     normal, isolated, recovering, disconnected = range(4)
@@ -97,14 +97,14 @@ class MonitorState(enum.Enum):
 class RestartStrategy(enum.Enum):
     """
     Enum for the IAgentFactory.restart_strategy attribute
-    buryme    - Don't try to restart agent, just notify everybody about the
-                death.
-    local     - May be be restarted but only in the same shard.
-    wherever - May be restarted wherever in the cluster.
-    monitor   - Special strategy used by monitoring agents. When monitor
-                cannot be restarted in the shard before dying for good his
-                partners will get monitored by the monitoring agent who is
-                resolving this issue.
+     - buryme    - Don't try to restart agent, just notify everybody about the
+                   death.
+     - local     - May be be restarted but only in the same shard.
+     - wherever  - May be restarted wherever in the cluster.
+     - monitor   - Special strategy used by monitoring agents. When monitor
+                   cannot be restarted in the shard before dying for good his
+                   partners will get monitored by the monitoring agent who is
+                   resolving this issue.
     """
     buryme, local, wherever, monitor = range(4)
 

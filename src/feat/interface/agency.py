@@ -44,7 +44,8 @@ class IAgency(Interface):
         Start new agent for the given descriptor.
         The factory is lookuped at in the agents registry.
         The kwargs will be passed to the agents initiate_agent() method.
-        @return_type: L{IAgencyAngent}
+
+        @rtype: L{IAgencyAngent}
         '''
 
     def get_time():

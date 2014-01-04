@@ -47,8 +47,9 @@ class IChannel(Interface):
 
         @param route: Optional. If specified limits the result to the selected
                       shard. If None return all.
+
         @returns: List of IRecipient.
-        @return_type: list
+        @rtype:   list
         '''
 
 

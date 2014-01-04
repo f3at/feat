@@ -164,14 +164,15 @@ class HamsterCall(object):
         return self._recorder._get_state()
 
     def add_side_effect(self, result, *args, **kwargs):
-        '''There is various was of adding a side-effect:
-            - args is empty and result is a BaseSideEffect sub-class:
-               call.add_side_effect(SideEffect(42, "fun_name", some_arg))
-            - args is empty and result is use as a AnySideEffect result:
-               call.add_side_effect("foo")
-            - args is not empty, the first argument is a function identifier
-              or a function:
-               call.add_side_effect(42, agent.initiate, param, key=word)
+        '''
+        There are various ways of adding a side effect:
+          - args is empty and result is a BaseSideEffect sub-class:
+            call.add_side_effect(SideEffect(42, "fun_name", some_arg))
+          - args is empty and result is use as a AnySideEffect result:
+            call.add_side_effect("foo")
+          - args is not empty, the first argument is a function identifier
+            or a function:
+            call.add_side_effect(42, agent.initiate, param, key=word)
         '''
         if not args:
             if isinstance(result, SideEffect):

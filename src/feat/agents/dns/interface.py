@@ -49,8 +49,11 @@ class IDNSServerLabour(Interface):
         @rtype: Deferred'''
 
     def update_records(name, records):
-        '''Update the dns records for the given name.
-        @type record: list of Record'''
+        '''
+        Update the dns records for the given name.
+
+        @type records: list of L{_BaseRecord}
+        '''
 
     def notify_slave():
         '''

@@ -312,7 +312,8 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
     def configure_queue(self, queue):
         '''
         Configures the WrappedQueue to receive messages from the client.
-        @param queue; WrappedQueue
+
+        @type queue: L{WrappedQueue}
         '''
         return self._call_on_channel(self._configure_queue, queue)
 

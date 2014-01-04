@@ -60,7 +60,7 @@ class BaseTask(protocols.BaseInitiator):
         state.medium.terminate()
 
     def expired(self):
-        '''@see L{IAgentTask}'''
+        '''@see: L{IAgentTask}'''
 
     @replay.immutable
     def finished(self, state):

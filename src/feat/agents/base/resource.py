@@ -152,9 +152,9 @@ class Range(serialization.Serializable):
         Correct format of args here is:
         cmd1, param1, param2, cmd2, param1, ...
         Supported commands:
-        - add - allocate specified number of random values more
-        - add_specific - allocate specific value
-        - release - release allocated specific value
+         - add - allocate specified number of random values more
+         - add_specific - allocate specific value
+         - release - release allocated specific value
         '''
         res = RangeModification()
         last_cmd = None

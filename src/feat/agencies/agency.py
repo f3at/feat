@@ -1448,10 +1448,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         '''
         This method starts saves the host agent descriptor and runs it.
         To make this happen following conditions needs to be fulfilled:
-        - it is a master agency,
-        - we are not starting a host agent already,
-        - we are not terminating,
-        - and last but not least, we dont have a host agent running.
+         - it is a master agency,
+         - we are not starting a host agent already,
+         - we are not terminating,
+         - and last but not least, we dont have a host agent running.
         '''
 
         def set_flag(value):

@@ -363,10 +363,10 @@ class RunningAverage(object):
 @serialization.register
 class ExpDict(ExpBase):
     """
-    WARNING: - Getting the length and therefore construct like
-               "if exp_dict: ..." or "bool(exp_dict)"
-               will iterate over all elements.
-             - Comparison operations are very expensive.
+    @warning: Getting the length, and therefore construct like
+              "if exp_dict: ..." or "bool(exp_dict)",
+              will iterate over all elements.
+    @warning: Comparison operations are very expensive.
     """
 
     DEFAULT_MAX_SIZE = 100
@@ -598,10 +598,10 @@ class ExpDict(ExpBase):
 @serialization.register
 class ExpQueue(ExpBase):
     """
-    WARNING: - Getting the length and therefore construct like
-               "if exp_dict: ..." or "bool(exp_dict)"
-               will iterate over all elements.
-             - Comparison operations are very expensive.
+    @warning: Getting the length, and therefore constructs like
+              "if exp_dict: ..." or "bool(exp_dict)"
+              will iterate over all elements.
+    @warning: Comparison operations are very expensive.
     """
 
     DEFAULT_MAX_SIZE = 100

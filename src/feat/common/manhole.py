@@ -22,7 +22,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 import re
-import copy
 from functools import partial
 
 from twisted.internet import defer
@@ -302,8 +301,8 @@ class Parser(log.Logger):
         Main part of the protocol handling. Whan comes in as the parameter is
         a array of expresions, for example:
 
-        ["1", "'some string'", "variable",
-         "some_call(param1, some_other_call())"]
+          [ "1", "'some string'", "variable",
+            "some_call(param1, some_other_call())" ]
 
         Each element of the is evaluated in synchronous way. In case of method
         calls, the call is performed by iterating the method.
