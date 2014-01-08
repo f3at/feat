@@ -43,8 +43,9 @@ def get_current_initials():
     return applications.get_initial_data_registry().get_snapshot()
 
 
-def create_connection(host, port, name, username=None, password=None):
-    db = driver.Database(host, int(port), name, username, password)
+def create_connection(host, port, name, username=None, password=None,
+                      https=False):
+    db = driver.Database(host, int(port), name, username, password, https)
     return db.get_connection()
 
 
@@ -243,10 +244,11 @@ class dbscript(object):
     def __enter__(self):
         self.connection = create_connection(
             self.config.host, self.config.port, self.config.name,
-            self.config.username, self.config.password)
+            self.config.username, self.config.password, self.config.https)
 
-        log.info('script', "Using host: %s, port: %s, db_name; %s",
-                 self.config.host, self.config.port, self.config.name)
+        log.info('script', "Using host: %s, port: %s, db_name; %s, ssl: %r",
+                 self.config.host, self.config.port, self.config.name,
+                 self.config.https)
 
         self._deferred = defer.Deferred()
         return self._deferred
@@ -293,6 +295,10 @@ def standalone(script, options=[]):
         parser.add_option('--dbpassword', dest="db_password",
                           help="password to use for authentication ",
                           metavar="PASSWORD", default=c.db.password)
+        parser.add_option('--ssl', '-S', action='store_true', dest='db_https',
+                          help='whether to use SSL db connections',
+                          default=False)
+
         parser.add_option('--log', action='store', dest='log',
                           type='str', help='log level to set',
                           default=os.environ.get('FEAT_DEBUG', '2'))
@@ -314,6 +320,7 @@ def standalone(script, options=[]):
     db = config.parse_service_config().db
     db.host, db.port, db.name = opts.db_host, opts.db_port, opts.db_name
     db.username, db.password = opts.db_username, opts.db_password
+    db.https = opts.db_https
 
     with dbscript(db) as d:
         d.addCallback(script, opts)

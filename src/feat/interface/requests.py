@@ -27,7 +27,8 @@ __all__ = ["RequestState", "IRequestPeer"]
 
 
 class RequestState(enum.Enum):
-    '''Request protocol state:
+    '''
+    Request protocol state:
 
       - none: Not initiated.
       - requested: The requested has send a request message to to repliers.

@@ -66,7 +66,7 @@ class IntegrityAgent(agent.BaseAgent):
 
         state.db_config = c = state.medium.agency.get_config().db
         f = fiber.wrap_defer(conflicts.configure_replicator_database,
-                             c.host, c.port)
+                             c.host, c.port, c.username, c.password)
         f.add_callback(self._replicator_configured)
         return f
 

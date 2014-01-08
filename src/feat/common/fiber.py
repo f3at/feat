@@ -778,11 +778,11 @@ class FiberList(Fiber):
 
     Constructor parameters can alter this behaviour:
 
-        if fireOnOneCallback is True, the first fiber returning a value
+     -  if fireOnOneCallback is True, the first fiber returning a value
         will fire the FiberList execution with parameter a tuple with
         the value and the index of the fiber the result comes from.
 
-        if fireOnOneErrback is True, the first fiber returning a failure
+     -  if fireOnOneErrback is True, the first fiber returning a failure
         will fire the FiberList errback with a L{defer.FirstError}.
 
     If sub-fibers are not triggered, they will be started in function

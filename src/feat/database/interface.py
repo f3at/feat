@@ -200,20 +200,18 @@ class IDatabaseClient(Interface):
     def changes_listener(doc_ids, callback):
         '''
         Register a callback called when the document is changed.
-        If different=True (defualt) only changes triggered by this session
-        are ignored.
-        @param document: Document ids to look to
+
+        @param doc_ids:  Document ids to look to
         @param callback: Callable to call
-        @param different: Flag telling whether to ignore changes triggered
-                          by this session.
         '''
 
     def query_view(factory, **options):
         '''
         @param factory: View factory to query.
-        @type factory: L{feat.interface.view.IViewFactory}
+        @type  factory: L{feat.interface.view.IViewFactory}
         @param options: Dictionary of parameters to pass to the query.
-        @return: C{list} of results.
+
+        @rtype: C{list} of results.
         '''
 
     def disconnect():
@@ -302,9 +300,10 @@ class IDatabaseDriver(Interface):
     def save_attachment(doc_id, revision, attachment):
         '''
         Saves the attachment to the database.
-        @param doc_id: _id of the document to attach
-        @param revision: revision of the document
-        @attachment: L{IAttachmentPrivate}
+
+        @param doc_id:     _id of the document to attach
+        @param revision:   revision of the document
+        @type  attachment: L{IAttachmentPrivate}
         '''
 
     def get_attachment(doc_id, name):
@@ -375,7 +374,8 @@ class IDocument(Interface):
     def delete_attachment(name):
         '''
         Removes the attachments by name. The document still needs to be saved.
-        @raises: L{NotFoundError} for unknown name
+
+        @raise L{NotFoundError}: for unknown name
         '''
 
 
@@ -591,12 +591,11 @@ class IMigration(Interface):
         asynchronous part of the migration which is run after the
         migration has been processed.
 
-        @rvalue: C{dict} with adapted snapshot or C{tuple} of snapshot, context.
+        @rtype: C{dict} with adapted snapshot or C{tuple} of snapshot, context.
         '''
 
     def asynchronous_hook(connection, document, context):
         '''
-        @param database: IDatabaseDriver
         @param document: unserializer document instance
         @param context: context returned by adapt_snapshot()
         '''
@@ -606,14 +605,14 @@ class ConflictResolutionStrategy(enum.Enum):
     '''
     How should conflict resoultion mechanism handle this document type.
 
-    db_winner - winner elected by database is fine
-    alert     - use this for document types, where conflict should never happen
-                detecting the conflict will result in raise an alert with
-                the necessary information
-    merge     - documents of this type, should only be updated with
-                update_document() calls. This will create a special document
-                with all the information necessary to later recreate the change
-                if conflict happens.
+     - db_winner - winner elected by database is fine
+     - alert     - use this for document types, where conflict should never
+                   happen detecting the conflict will result in raise an alert
+                   with the necessary information
+     - merge     - documents of this type, should only be updated with
+                   update_document() calls. This will create a special document
+                   with all the information necessary to later recreate the
+                   change if conflict happens.
     '''
 
     db_winner, alert, merge = range(3)

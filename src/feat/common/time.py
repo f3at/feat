@@ -73,12 +73,14 @@ def future(seconds):
 
 def left(moment):
     '''
-    How much time is left to specified time in future taking into account
-    time scalling.
+    How much time is left until the specified time in future, taking into
+    account time scaling.
+
     @param moment: Time in number of scaled seconds since Epoc
-    @rtype moment: C{float}
+    @type moment:  C{float}
+
     @return: Time in real seconds left.
-    @rtype: C{float}
+    @rtype:  C{float}
     '''
     return (moment - time())
 

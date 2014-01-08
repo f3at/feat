@@ -40,8 +40,9 @@ meta = models_meta.meta
 def label(lable):
     """
     Annotates the IValueInfo label.
-    @param label: label of the IValueInfo being defined.
-    @type label: str or unicode
+
+    @param lable: label of the IValueInfo being defined.
+    @type  lable: str or unicode
     """
     _annotate("label", lable)
 
@@ -78,13 +79,14 @@ def option(value, is_default=False, label=None):
     """
     Annotates a possible value for IValueOptions,
     will be validated at instance creation time.
-    @param value: a possible value for the IValueOptions being defined.
-    @type value: Any
+
+    @param value:      a possible value for the IValueOptions being defined.
+    @type  value:      Any
     @param is_default: if the option should be the default value.
-    @type is_default: bool
-    @param label: option label or None; if none the string representation
-                  of the value will be used as label.
-    @type value: str or unicode or None
+    @type  is_default: bool
+    @param label:      option label or None; if none the string representation
+                       of the value will be used as label.
+    @type  label:      str or unicode or None
     """
     _annotate("option", value, is_default=is_default, label=label)
 
@@ -114,17 +116,21 @@ def is_ordered(flag):
 
 
 def min_size(size):
-    """Annotate a collection minimum size.
+    """
+    Annotate a collection minimum size.
+
     @param size: the collection minimum size.
-    @type flag: int
+    @type  size: int
     """
     _annotate("min_size", size)
 
 
 def max_size(size):
-    """Annotate a collection maximum size.
+    """
+    Annotate a collection maximum size.
+
     @param size: the collection maximum size.
-    @type flag: int
+    @type  size: int
     """
     _annotate("max_size", size)
 

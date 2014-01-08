@@ -67,7 +67,6 @@ class Agency(agency.Agency):
         Tries to spawn a master agency if the slave agency failed to connect
         for several times. To avoid several slave agencies spawning the master
         agency a file lock is used
-        @param master: Remote reference to the broker object
         '''
         self.info("We could not contact the master agency, starting a new one")
         if self._starting_master:

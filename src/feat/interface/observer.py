@@ -47,5 +47,5 @@ class IObserver(Interface):
         has finished. Overwise it should raise runtime error.
         If the job failed this method returns the Failure instance.
 
-        @raises: RuntimeError
+        @raises RuntimeError
         '''

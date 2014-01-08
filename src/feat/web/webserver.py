@@ -94,20 +94,21 @@ class IWebResource(Interface):
 
     def locate_resource(request, location, remaining):
         """
-        Must returns:
-            IWebResource :
+        Must return:
+         -  IWebResource :
                 The leaf resource to use to render the resource
-                The new location will be:
+                The new location will be::
                   new_loc = old_loc + old_rem
-            (IWebResource, remaining) :
+         -  (IWebResource, remaining) :
                 An intermediary resource to use to continue
-                resource location. The new location will be:
+                resource location. The new location will be::
                   new_loc = old_loc + old_rem[:len(old_rem) - len(rem)]
                 if remaining size is smaller than old_rem.
-                Otherwise the oldLocation do not change.
-            (IWebResource, location, remaining) :
+                Otherwise the oldLocation does not change.
+         -  (IWebResource, location, remaining) :
                 An intermediary resource to use to continue
                 resource location. The new location will be the returned one.
+
         Can return a Deferred.
         Modifying the location can be used to dynamically and transparently
         rewrite the resource location. The final location will be used for
@@ -458,21 +459,21 @@ class ELFLog(object):
     @param path: where to store the file
     @param format: list of fields separated with spaces,
                    the supported values are:
-                   - time
-                   - date
-                   - cs-method
-                   - cs-uri
-                   - bytes
-                   - time-taken
-                   - c-ip
-                   - s-ip
-                   - sc-status status code
-                   - sc-comment comment returned with the status code
-                   - cs-uri-stem
-                   - cs-uri-query
-                   - sc-comment
-                   - sc(NAME) response header NAME value
-                   - cs(NAME) request header NAME value
+                    - time
+                    - date
+                    - cs-method
+                    - cs-uri
+                    - bytes
+                    - time-taken
+                    - c-ip
+                    - s-ip
+                    - sc-status status code
+                    - sc-comment comment returned with the status code
+                    - cs-uri-stem
+                    - cs-uri-query
+                    - sc-comment
+                    - sc(NAME) response header NAME value
+                    - cs(NAME) request header NAME value
     @param dateformat: use it to override the date format used
     @param timeformat: use it to override the time format used
     '''

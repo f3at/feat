@@ -31,10 +31,11 @@ __all__ = ["ProtocolFailed", "ProtocolNotCriticalError",
 
 
 class InterestType(enum.Enum):
-    '''Type of Interest:
+    '''
+    Type of Interest:
 
-    - private:   Dialog is initiated with 1-1 communication
-    - public:     Dialog is initiated with 1-* communication
+     - private:   Dialog is initiated with 1-1 communication
+     - public:     Dialog is initiated with 1-* communication
     '''
 
     (private, public) = range(2)

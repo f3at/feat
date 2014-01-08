@@ -109,7 +109,7 @@ def attribute(name, value, getter=None, setter=None, deleter=None,
     @type deleter: callable or None
     @param label: the attribute label or None.
     @type label: str or unicode or None
-    @parama desc: the description of the attribute or None if not documented.
+    @param desc: the description of the attribute or None if not documented.
     @type desc: str or unicode or None
     @param meta: model item metadata atoms.
     @type meta: list of tuple
@@ -144,7 +144,7 @@ def child(name, source=None, view=None, model=None,
     @type fetch: callable
     @param label: the sub-model label or None.
     @type label: str or unicode or None
-    @parama desc: the description of the sub-model or None if not documented.
+    @param desc: the description of the sub-model or None if not documented.
     @type desc: str or unicode or None
     @param meta: model item metadata atoms.
     @type meta: list of tuple
@@ -161,9 +161,10 @@ def command():
 def create(name, *effects, **kwargs):
     """
     Annotate a non-idempotent create action to the model being defined.
-    Should really be:
+    Should really be::
       create(name, *effects, value=None, params=None, label=None, desc=None)
     but it is not supported by python < 3.
+
     @param name: item name unique for the model being defined.
     @type name: str or unicode
     @param effects:
@@ -174,7 +175,7 @@ def create(name, *effects, **kwargs):
     @type params: IActionPram or list of IActionParam
     @param label: the action label or None.
     @type label: str or unicode or None
-    @parama desc: the action  description or None if not documented.
+    @param desc: the action  description or None if not documented.
     @type desc: str or unicode or None
     """
     value_info = kwargs.pop("value", None)
@@ -222,7 +223,7 @@ def delete(name, *effects, **kwargs):
     @type effects: str or unicode
     @param label: the action label or None.
     @type label: str or unicode or None
-    @parama desc: the action  description or None if not documented.
+    @param desc: the action  description or None if not documented.
     @type desc: str or unicode or None
     """
     label = kwargs.pop("label", None)
@@ -255,32 +256,33 @@ def collection(name, child_names=None, child_source=None,
                label=None, desc=None, meta=None, model_meta=None):
     """
     Annotate a dynamic collection of sub-models.
-    @param name: the name of the collection model containing the sub-models.
-    @type name: str or unicode
-    @param child_names: an effect that retrieve all sub-models names or
-                        None if sub-models are not iterable.
-    @type child_source: callable
+
+    @param name:         name of the collection model containing the sub-models.
+    @type  name:         str or unicode
+    @param child_names:  an effect that retrieve all sub-models names or
+                         None if sub-models are not iterable.
+    @type  child_names:  callable
     @param child_source: an effect that retrieve a sub-model source.
-    @type child_source: callable
-    @param child_view: an effect that retrieve a sub-model view.
-    @type child_view: callable
-    @param child_model: the model identity, model factory or effect to get it,
-                        or None to use IModel adapter.
-    @type child_model: str or unicode or callable or IModelFactory or None
-    @param child_label: the model items label or None.
-    @type child_label: str or unicode or None
-    @param child_desc: the model items description or None.
-    @type child_desc: str or unicode or None
-    @param child_meta: collection model's items metadata.
-    @type child_meta: list of tuple
-    @param label: the collection label or None.
-    @type label: str or unicode or None
-    @param desc: the collection description or None.
-    @type desc: str or unicode or None
-    @param meta: item metadata.
-    @type meta: list of tuple
-    @param model_meta: collection model metadata.
-    @type model_meta: list of tuple
+    @type  child_source: callable
+    @param child_view:   an effect that retrieve a sub-model view.
+    @type  child_view:   callable
+    @param child_model:  the model identity, model factory or effect to get it,
+                         or None to use IModel adapter.
+    @type  child_model:  str or unicode or callable or IModelFactory or None
+    @param child_label:  the model items label or None.
+    @type  child_label:  str or unicode or None
+    @param child_desc:   the model items description or None.
+    @type  child_desc:   str or unicode or None
+    @param child_meta:   collection model's items metadata.
+    @type  child_meta:   list of tuple
+    @param label:        the collection label or None.
+    @type  label:        str or unicode or None
+    @param desc:         the collection description or None.
+    @type  desc:         str or unicode or None
+    @param meta:         item metadata.
+    @type  meta:         list of tuple
+    @param model_meta:   collection model metadata.
+    @type  model_meta:   list of tuple
     """
     _annotate("collection", name, child_names=child_names,
               child_source=child_source, child_view=child_view,
@@ -292,9 +294,10 @@ def collection(name, child_names=None, child_source=None,
 def child_model(model_factory):
     """
     Annotate the effect used to retrieve the model's children names.
-    @param model: the child's model identity, model factory or effect
-                  to get it, or None to use IModel adapter.
-    @type model: str or unicode or callable or IModelFactory or None
+
+    @param model_factory: the child's model identity, model factory or effect
+                          to get it, or None to use IModel adapter.
+    @type  model_factory: str or unicode or callable or IModelFactory or None
     """
     _annotate("child_model", model_factory)
 

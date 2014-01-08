@@ -343,7 +343,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def become_slave(self, broker):
         '''
         Run as part of the handshake.
-        @param master: Remote reference to the broker object
+        @param broker: Remote reference to the broker object
         '''
         self._set_state(BrokerRole.slave)
         self._master = broker

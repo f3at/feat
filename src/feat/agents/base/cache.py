@@ -68,8 +68,8 @@ class IQueueHolder(Interface):
         '''
         Synchronous method that perfroms a changes on the document.
         It may return the modified version of the document or raise:
-        - DeleteDocument - order the document to be deleted.
-        - ResignFromModifying - just cancel the change.
+         - DeleteDocument - order the document to be deleted.
+         - ResignFromModifying - just cancel the change.
         '''
 
     def on_confirm(item_id):
@@ -248,9 +248,9 @@ class PersistentUpdater(replay.Replayable, log.Logger, log.LogProxy):
     I'm a utility used for performing the updates of the documents in
     CouchDB minding the concurency. I comunicate with two object passed
     at creation time:
-    - queue_holder is the one who is responsible of storing the information
-      about the tasks to perform, and performing them
-    - cache is holding the documents in memory (DocumentCache instance)
+     - queue_holder is the one who is responsible of storing the information
+       about the tasks to perform, and performing them
+     - cache is holding the documents in memory (DocumentCache instance)
     """
 
     ignored_state_keys = ['queue_holder', 'cache', 'medium', 'notifier']

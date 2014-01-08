@@ -32,8 +32,8 @@ __all__ = ["TriggerType", "FiberError",
 class TriggerType(enum.Enum):
     '''Type of fiber triggering:
 
-     - succeed:   Execution starts by the callback part of the chain.
-     - fail:      Execution starts by the errback part of the chain.
+      - succeed:   Execution starts by the callback part of the chain.
+      - fail:      Execution starts by the errback part of the chain.
     '''
 
     succeed, fail = range(2)

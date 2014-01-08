@@ -78,13 +78,13 @@ def use(module=None, decode=None, encode=None):
     corresponding JSON string. Exceptions raised by decoding and encoding
     should be propagated up unaltered.
 
-    :param module: the name of the JSON library module to use, or the module
+    @param module: the name of the JSON library module to use, or the module
                    object itself
-    :type module: str or module
-    :param decode: a function for decoding JSON strings
-    :type decode: callable
-    :param encode: a function for encoding objects as JSON strings
-    :type encode: callable
+    @type module:  str or module
+    @param decode: a function for decoding JSON strings
+    @type decode:  callable
+    @param encode: a function for encoding objects as JSON strings
+    @type encode:  callable
     """
     global _decode, _encode, _initialized, _using
     if module is not None:
