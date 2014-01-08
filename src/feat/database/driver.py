@@ -890,10 +890,10 @@ def apply_parsers(response, parsers, tag):
     if callable(parsers):
         return parsers(response, tag)
     for parser in parsers:
-        if callable(parser):
-            response = parser(response, tag)
-        else:
+        if isinstance(parser, (list, tuple)):
             response = parser[0](response, tag, *parser[1:])
+        else:
+            response = parser(response, tag)
         if isinstance(response, failure.Failure):
             break
     return response
