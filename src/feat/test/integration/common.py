@@ -46,7 +46,7 @@ from feat.test.test_models_applicationjson import DummyContext
 
 from feat.database.interface import NotFoundError
 from feat.models.interface import IModel, ActionCategories, Unauthorized
-from feat.models.interface import IQueryModel, NotSupported
+from feat.models.interface import IQueryModel, NotSupported, IAttribute
 
 attr = common.attr
 delay = common.delay
@@ -565,6 +565,8 @@ class ModelTestMixin(object):
         if fail.check(NotSupported):
             self.info("Model %r doesn't support fetching items", model)
             return
+        if IAttribute.providedBy(model) and fail.check(ValueError):
+            return
         error.handle_failure(
             self, fail,
             "Failed writing the model for the mime type: %r, \n"
@@ -572,6 +574,8 @@ class ModelTestMixin(object):
         self.fail("Failed writing model, look at logs.")
 
     def _action_errback(self, fail, action, model):
+        if IAttribute.providedBy(model) and fail.check(ValueError):
+            return
         error.handle_failure(self, fail,
             "Failed running action name: %s on model: %r",
             action.name, model)
