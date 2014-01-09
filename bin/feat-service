@@ -262,9 +262,9 @@ def main(args):
 def upgrade(connection):
     from feat.database import tools
 
+    yield tools.create_db(connection)
     to_rotate = yield update_views(connection)
     stop(signal.SIGUSR2) # ignore the result of stop
-    yield tools.create_db(connection)
     yield tools.push_initial_data(connection,
                                   overwrite=True,
                                   push_design_docs=False)
@@ -481,6 +481,9 @@ logger = _prepare_logging()
 
 if __name__ == '__main__':
     try:
+        log.init(os.path.join(configure.logdir, 'feat-service.log'))
+        log.FluLogKeeper.set_debug('4')
+
         main(sys.argv[1:])
     except Exception:
         logger.error("Fatal error running feat-service", exc_info=True)

@@ -239,8 +239,8 @@ def get_pidpath(rundir, process_type, name=None):
     path = os.path.join(rundir, '%s.pid' % process_type)
     if name:
         path = os.path.join(rundir, '%s.%s.pid' % (process_type, name))
-    log.debug('common', 'get_pidpath for type %s, name %r: %s'
-              % (process_type, name, path))
+    log.log('common', 'get_pidpath for type %s, name %r: %s'
+            % (process_type, name, path))
     return path
 
 
