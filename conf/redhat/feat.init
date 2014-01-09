@@ -49,7 +49,7 @@ case "$1" in
   *)
         # Forward all other commands to feat-service, also pass any parameters.
         COMMAND="$PROG "$@""
-        su "$USER" -s /bin/bash -c "$COMMAND"
+        su "$USER" -m -s /bin/bash -c "$COMMAND"
         exit $?
 esac
 
