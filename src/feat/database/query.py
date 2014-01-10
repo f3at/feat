@@ -58,7 +58,7 @@ class Field(object):
         assert isinstance(condition, Condition), repr(type(condition))
 
         keys = self.generate_keys(condition.evaluator, condition.value)
-        cache_id_suffix = "#%s/%s" % (self.view.name, self.field)
+        cache_id_suffix = "#%s/%s" % (self.view.name, id(self))
         return connection.query_view(self.view, parse_results=False,
                                      cache_id_suffix=cache_id_suffix,
                                      post_process=self.parse_view_result,
