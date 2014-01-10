@@ -393,7 +393,6 @@ class ModelResource(BaseResource):
 
     def action_GET(self, request, response, location):
         response.set_header("Cache-Control", "no-cache")
-        response.set_header("connection", "close")
         context = self.make_context(request)
         if location[-1] == u"":
             return self.render_action("get", request, response, context)
@@ -516,7 +515,6 @@ class ActionResource(BaseResource):
 
         def got_data(data):
             response.set_header("Cache-Control", "no-cache")
-            response.set_header("connection", "close")
 
             if IEncodingInfo.providedBy(self._action.result_info):
                 enc_info = IEncodingInfo(self._action.result_info)
@@ -645,7 +643,7 @@ class StaticResource(BaseResource):
 
         response.set_length(length)
         response.set_mime_type(mime_type)
-        response.set_header("connection", "close")
+
         if content_encoding is not None:
             response.set_header("content-encoding", content_encoding)
 
