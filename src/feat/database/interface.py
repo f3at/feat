@@ -69,6 +69,9 @@ class NotMigratable(DatabaseError):
     '''
     Thrown when we cannot figure out how to upgrade the document loaded
     from the database.
+
+    @ivar args: triple of (class_name, version_from, version_to)
+    @type args: triple of (str, int, int)
     '''
 
 
