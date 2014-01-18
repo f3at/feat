@@ -528,6 +528,7 @@ def cancel_connector(d):
                (d.connector.host, d.connector.port,
                 time.time() - timeoutCall.getTime() + d.connector.timeout))
         d.connector.stopConnecting()
+        d._suppressAlreadyCalled = True
 
         d.errback(defer.CancelledError(msg))
 
