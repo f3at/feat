@@ -240,6 +240,7 @@ class dbscript(object):
     def __init__(self, dbconfig):
         assert isinstance(dbconfig, config.DbConfig), str(type(dbconfig))
         self.config = dbconfig
+        self.failed = False
 
     def __enter__(self):
         self.connection = create_connection(
@@ -255,6 +256,7 @@ class dbscript(object):
 
     def _handle_error(self, fail):
         error.handle_failure('script', fail, 'Error in the end')
+        self.failed = True
 
     def __exit__(self, type, value, traceback):
         self._deferred.addErrback(self._handle_error)
