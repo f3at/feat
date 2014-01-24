@@ -77,7 +77,7 @@ def stop(sig=signal.SIGUSR1):
 
 def main(args):
     usage = text_helper.format_block("""
-    Usage: feat {start|stop|shutdown|restart|status|clean|hostclean} [extra_options]
+    Usage: feat {command} [extra_options]
 
     Commands:
     * start - Start the service
@@ -93,6 +93,8 @@ def main(args):
     * hostclean - Cleans up descriptors of the agents running on the host.
     * agentrestart - Restarts a statically configured agent.
     * alertclean - Clean up the persistent nagios services.
+    * pushinitialdata - Populate the database with the initial data
+    * migrate - Run the migration script.
     """)
 
     logger.debug('Running command: %s', " ".join(sys.argv))
@@ -215,13 +217,7 @@ def main(args):
     if command == 'upgrade':
         c = config.parse_service_config()
 
-        from feat.agencies.net.options import _load_module as load_module
-
-        parser = optparse.OptionParser()
-        parser.add_option('-i', '--import', help='import specified module',
-                          action='callback', callback=load_module,
-                          type="str", metavar="MODULE")
-
+        parser = _importing_parser(optparse.OptionParser())
         opts, args = parser.parse_args(args)
 
         from feat.database import tools
@@ -229,6 +225,31 @@ def main(args):
             d.addCallback(upgrade)
 
         sys.exit(start(args))
+
+    if command == 'pushinitialdata':
+        c = config.parse_service_config()
+
+        parser = _importing_parser(optparse.OptionParser())
+        opts, args = parser.parse_args(args)
+
+        from feat.database import tools
+        context = tools.dbscript(c.db)
+        with context as d:
+            d.addCallback(tools.push_initial_data, overwrite=True)
+        sys.exit(context.failed and 1 or 0)
+
+    if command == 'migrate':
+        c = config.parse_service_config()
+
+        parser = _importing_parser(optparse.OptionParser())
+
+        opts, args = parser.parse_args(args)
+
+        from feat.database import tools
+        context = tools.dbscript(c.db)
+        with context as d:
+            d.addCallback(tools.migration_script)
+        sys.exit(context.failed and 1 or 0)
 
     if command == 'alertclean':
         c = config.parse_service_config()
@@ -403,6 +424,15 @@ def agent_restart(client, static_name, config):
         defer.returnValue(1)
 
 
+def _importing_parser(parser):
+    from feat.agencies.net.options import _load_module as load_module
+
+    parser.add_option('-i', '--import', help='import specified module',
+                      action='callback', callback=load_module,
+                      type="str", metavar="MODULE")
+    return parser
+
+
 def _gateway_script(method, client, *args, **kwargs):
     from twisted.internet import reactor
     from feat.common import error
@@ -461,10 +491,9 @@ def _prepare_logging():
     logger.addHandler(handler)
 
     # log INFO and higher to sys.stderr
-    logger = logging.getLogger('feat-service')
-    logger.setLevel(logging.INFO)
 
     handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
     handler.setFormatter(logging.Formatter('%(message)s'))
     logger.addHandler(handler)
 
