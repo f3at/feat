@@ -166,10 +166,10 @@ class AlertAgent(agent.BaseAgent):
             if alert.persistent and not alert.agent_id:
                 to_delete.append(alert)
         if to_delete:
-            self._notify_change_config(changed=True)
-
             f = fiber.FiberList([self.delete_alert(x) for x in to_delete],
                                 consumeErrors=True)
+            f.add_callback(fiber.drop_param, self._notify_change_config,
+                           changed=True)
             f.add_callback(fiber.override_result, None)
             return f.succeed()
 
