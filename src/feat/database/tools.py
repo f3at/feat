@@ -276,38 +276,44 @@ class ApplicationVersion(document.Document):
     document.field("version", None)
 
 
-def standalone(script, options=[]):
+def define_standalone_options(parser, extra_options=None):
+    '''
+    Adds the options specific to the database connection.
+    Parses the agency configuration files and uses its configuration as the
+    default values.
+    '''
+    c = config.parse_service_config()
 
-    def define_options(extra_options):
-        c = config.parse_service_config()
+    parser.add_option('--dbhost', '-H', action='store', dest='db_host',
+                      type='str', help='hostname of the database',
+                      default=c.db.host)
+    parser.add_option('--dbname', '-n', action='store', dest='db_name',
+                      type='str', help='name of database to use',
+                      default=c.db.name)
+    parser.add_option('--dbport', '-P', action='store', dest='db_port',
+                      type='str', help='port of database to use',
+                      default=c.db.port)
+    parser.add_option('--dbusername', dest="db_username",
+                      help="username to use for authentication ",
+                      metavar="USER", default=c.db.username)
+    parser.add_option('--dbpassword', dest="db_password",
+                      help="password to use for authentication ",
+                      metavar="PASSWORD", default=c.db.password)
+    parser.add_option('--ssl', '-S', action='store_true', dest='db_https',
+                      help='whether to use SSL db connections',
+                      default=False)
 
-        parser = optparse.OptionParser()
-        parser.add_option('--dbhost', '-H', action='store', dest='db_host',
-                          type='str', help='hostname of the database',
-                          default=c.db.host)
-        parser.add_option('--dbname', '-n', action='store', dest='db_name',
-                          type='str', help='name of database to use',
-                          default=c.db.name)
-        parser.add_option('--dbport', '-P', action='store', dest='db_port',
-                          type='str', help='port of database to use',
-                          default=c.db.port)
-        parser.add_option('--dbusername', dest="db_username",
-                          help="username to use for authentication ",
-                          metavar="USER", default=c.db.username)
-        parser.add_option('--dbpassword', dest="db_password",
-                          help="password to use for authentication ",
-                          metavar="PASSWORD", default=c.db.password)
-        parser.add_option('--ssl', '-S', action='store_true', dest='db_https',
-                          help='whether to use SSL db connections',
-                          default=False)
+    parser.add_option('--log', action='store', dest='log',
+                      type='str', help='log level to set',
+                      default=os.environ.get('FEAT_DEBUG', '2'))
 
-        parser.add_option('--log', action='store', dest='log',
-                          type='str', help='log level to set',
-                          default=os.environ.get('FEAT_DEBUG', '2'))
-
+    if extra_options:
         for option in extra_options:
             parser.add_option(option)
-        return parser
+    return parser
+
+
+def standalone(script, options=[]):
 
     def _error_handler(fail):
         error.handle_failure('script', fail, "Finished with exception: ")
@@ -315,7 +321,7 @@ def standalone(script, options=[]):
     # call log.init before define_option, which parses the service config
     # and can fail
     log.init()
-    parser = define_options(options)
+    parser = define_standalone_options(optparse.OptionParser(), options)
     opts, args = parser.parse_args()
     log.FluLogKeeper.set_debug(opts.log)
 
