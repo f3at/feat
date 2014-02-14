@@ -154,8 +154,24 @@ def child(name, source=None, view=None, model=None,
               label=label, desc=desc, meta=meta)
 
 
-def command():
-    raise NotImplementedError("model.command() is not implemented yet")
+def command(name, *effects, **kwargs):
+    label = kwargs.pop("label", None)
+    desc = kwargs.pop("desc", None)
+    value_info = kwargs.pop("value", None)
+    result_info = kwargs.pop('result', None)
+    params = kwargs.pop("params", None)
+    if kwargs:
+        raise TypeError("command() got an unexpected keyword '%s'"
+                        % kwargs.keys()[0])
+    name = _validate_str(name)
+    factory = models_action.MetaAction.new(name,
+                                           category=ActionCategories.command,
+                                           value_info=value_info,
+                                           result_info=result_info,
+                                           is_idempotent=False,
+                                           params=params,
+                                           effects=effects)
+    _annotate("action", name, factory, label=label, desc=desc)
 
 
 def create(name, *effects, **kwargs):

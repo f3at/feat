@@ -736,6 +736,12 @@ class Agent(model.Model):
                  label="Shutdown", desc=("Shutdown the agent, "
                                          "saying goodbye to partners"))
 
+    model.command('restart',
+                  call.model_call('_restart'),
+                  response.done("Restarted"),
+                  result=value.Response(),
+                  label="Restart", desc="Restart the agent")
+
     model.meta("html-order", "type, shard, id, instance, "
                "status, partners, resources")
     model.item_meta("id", "html-link", "owner")
@@ -757,6 +763,12 @@ class Agent(model.Model):
     def _terminate(self):
         self._medium.terminate_hard()
         return reference.Local("agents")
+
+    def _restart(self):
+        d = self._medium.terminate_hard()
+        d.addCallback(defer.drop_param, self._medium.agency.start_agent,
+                      self._medium.get_descriptor())
+        return d
 
     def get_application(self):
         return self.source.application.name

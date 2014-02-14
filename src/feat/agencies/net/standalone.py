@@ -54,7 +54,7 @@ class Agency(agency.Agency):
 
     def unregister_agent(self, medium):
         agency.Agency.unregister_agent(self, medium)
-        return self._shutdown(stop_process=True)
+        time.callLater(1, self._shutdown, stop_process=True)
 
     def wait_running(self):
         d = defer.succeed(None)
