@@ -20,6 +20,7 @@ class HostAgent(models.Agent):
     model.child('static_agents', model='feat.host_agent.static_agents',
                 label="Static agents",
                 view=call.source_call('get_static_agents'))
+    model.item_meta('static_agents', 'html-render', 'array, 1')
 
 
 @featmodels.register_model
@@ -28,6 +29,8 @@ class StaticAgents(model.Collection):
     model.child_names(call.model_call('get_names'))
     model.child_view(getter.model_get('get_definition'))
     model.child_model('feat.host_agent.static_agents.INDEX')
+    model.meta('html-render', 'array, 1')
+    model.meta("html-render", "array-columns, name, running, agent_id")
 
     def get_names(self):
         return [x.name for x in self.view]
@@ -65,6 +68,8 @@ class StartStaticAgent(action.Action):
 @featmodels.register_model
 class StaticAgent(model.Model):
     model.identity('feat.host_agent.static_agents.INDEX')
+    model.attribute('name', value.String(), getter.view_attr('name'))
+    model.item_meta("name", "html-link", "owner")
     model.attribute('running', value.Boolean(), getter.model_attr('running'))
     model.child('initial_descriptor',
                 view=getter.view_attr('initial_descriptor'),
