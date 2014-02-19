@@ -88,6 +88,8 @@ def main(args):
     * restart - Stop service gently and start it back.
     * upgrade - Update the couchdb views, wait for the indexes to be ready
                 and restart the service.
+    * updateviews - Update the couchdb views and trigger rebuilding them.
+                    Do not touch the service.
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
     * hostclean - Cleans up descriptors of the agents running on the host.
@@ -225,6 +227,24 @@ def main(args):
             d.addCallback(upgrade)
 
         sys.exit(start(args))
+
+    if command == 'updateviews':
+        c = config.parse_service_config()
+
+        parser = _importing_parser(optparse.OptionParser())
+        opts, args = parser.parse_args(args)
+
+        @defer.inlineCallbacks
+        def body(connection):
+            tools.create_db(connection)
+            to_rotate = yield update_views(connection)
+            yield rotate_views(connection, to_rotate)
+
+        from feat.database import tools
+        context = tools.dbscript(c.db)
+        with context as d:
+            d.addCallback(body)
+        sys.exit(context.failed and 1 or 0)
 
     if command == 'pushinitialdata':
         c = config.parse_service_config()
