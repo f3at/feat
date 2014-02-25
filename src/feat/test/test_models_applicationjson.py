@@ -75,14 +75,12 @@ class DummyError(object):
 
     implements(interface.IErrorPayload)
 
-    def __init__(self, type, code, message, subjects, reasons, debug, trace):
+    def __init__(self, type, code, message, subjects, reasons):
         self.error_type = type
         self.error_code = code
         self.message = message
         self.subjects = subjects
         self.reasons = reasons
-        self.debug = debug
-        self.trace = trace
 
 
 class DummySnapshotable(serialization.Snapshotable):
@@ -612,37 +610,27 @@ class TestApplicationJSON(common.TestCase):
     def testErrorWriter(self):
         K = DummyError
         t = ErrorTypes.generic
-        yield self.check(K(t, None, None, None, None, None, None),
+        yield self.check(K(t, None, None, None, None),
                          {u"type": u"error",
                           u"error": u"generic"})
-        yield self.check(K(t, 42, None, None, None, None, None),
+        yield self.check(K(t, 42, None, None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"code": 42})
-        yield self.check(K(t, None, "spam", None, None, None, None),
+        yield self.check(K(t, None, "spam", None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"message": u"spam"})
-        yield self.check(K(t, None, None, None, None, "bacon", None),
-                         {u"type": u"error",
-                          u"error": u"generic",
-                          u"debug": u"bacon"})
-        yield self.check(K(t, None, None, None, None, None, "sausage"),
-                         {u"type": u"error",
-                          u"error": u"generic",
-                          u"trace": u"sausage"})
-        yield self.check(K(t, 42, "spam", None, None, "bacon", "sausage"),
+        yield self.check(K(t, 42, "spam", None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"code": 42,
-                          u"message": u"spam",
-                          u"debug": u"bacon",
-                          u"trace": u"sausage"})
-        yield self.check(K(t, None, None, ["a", "b"], None, None, None),
+                          u"message": u"spam"})
+        yield self.check(K(t, None, None, ["a", "b"], None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"subjects": [u"a", u"b"]})
-        yield self.check(K(t, None, None, None, {"a": "spam"}, None, None),
+        yield self.check(K(t, None, None, None, {"a": "spam"}),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"reasons": {u"a": u"spam"}})

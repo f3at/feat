@@ -418,10 +418,6 @@ def write_error(doc, obj, *args, **kwargs):
     if obj.reasons:
         result[u"reasons"] = dict([k, str(v)]
                                    for k, v in obj.reasons.iteritems())
-    if obj.debug is not None:
-        result[u"debug"] = obj.debug
-    if obj.trace is not None:
-        result[u"trace"] = obj.trace
     render_json(result, doc)
 
 
