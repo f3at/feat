@@ -3,6 +3,7 @@ import operator
 from feat.agents.application import feat
 from feat.common.text_helper import format_block
 from feat.database import view
+from feat.database.interface import IDocument
 
 
 @feat.register_view
@@ -53,6 +54,8 @@ class Join(view.JavascriptView):
 
     @staticmethod
     def keys(doc_id, type_name=None):
+        if IDocument.providedBy(doc_id):
+            doc_id = doc_id.doc_id
         if type_name is not None:
             return dict(key=(doc_id, type_name))
         else:
