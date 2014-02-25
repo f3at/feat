@@ -115,7 +115,8 @@ class TestConnection(common.TestCase):
         d.cancel()
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
-        exp = r'GET to http://TCP:testsite.com/ was cancelled by the user 0.(\d+)s after it was sent.'
+        exp = (r'GET to http://TCP:testsite.com/ was cancelled '
+               'by the user 0.(\d+)s after it was sent.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
     @defer.inlineCallbacks

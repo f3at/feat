@@ -338,17 +338,18 @@ def write_certificates(file_or_filename, *certs):
 ### private ###
 
 
-"""
-@param verify_ca_from_p12: for a server, setting this to true will present
-                           the full CA chain's certificates stored in the .p12
-@type  verify_ca_from_p12: C{bool}
-"""
 def _create_ssl_context(key_filename=None,
                         cert_filename=None,
                         verify_ca_filename=None,
                         p12_filename=None,
                         verify_ca_from_p12=False,
                         key_pass=None, p12_pass=None):
+    """
+    @param verify_ca_from_p12: for a server, setting this to true will present
+                               the full CA chain's certificates stored in
+                               the .p12
+    @type  verify_ca_from_p12: C{bool}
+    """
 
     ctx = SSL.Context(SSL.SSLv3_METHOD)
 

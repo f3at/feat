@@ -53,4 +53,3 @@ class TestUpdateAttributes(common.TestCase):
                           {'field1': 5})
         self.assertRaises(ResignFromModifying, update.attributes, self.doc,
                           {('field2', 'a'): 0})
-

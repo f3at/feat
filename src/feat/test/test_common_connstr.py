@@ -31,7 +31,6 @@ class ConnStrTest(common.TestCase):
         self.assertEqual('encoder001.fff.sss.ggg', resp['host'])
         self.assertEqual(123, resp['port'])
 
-
     def testSQLite(self):
         resp = connstr.parse('sqlite:///var/log/journal.sqlite3')
         self.assertEqual('sqlite', resp['protocol'])

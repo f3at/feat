@@ -1537,4 +1537,3 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
     def get_config(self):
         from feat.agencies.net import config
         return config.Config()
-

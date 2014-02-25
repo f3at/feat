@@ -32,8 +32,9 @@ class GloballyStartAgent(task.BaseTask):
     This goal of this task is to start an agent somewhere in a cluser,
     being given only his descriptor. It consists of following steps:
 
-     1. Clear the shard field from the agents descriptor. This step is necessary
-        to make the new instance of the agent bind to correct exchange.
+     1. Clear the shard field from the agents descriptor. This step is
+        necessary to make the new instance of the agent bind to correct
+        exchange.
      2. Discover Resource Allocation Agent running in the shard.
      3. Ask him for the allocation (retrying protocol with max 3 retries)
      4. Ask resulting host agent to run the agent.

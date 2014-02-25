@@ -273,7 +273,7 @@ def collection(name, child_names=None, child_source=None,
     """
     Annotate a dynamic collection of sub-models.
 
-    @param name:         name of the collection model containing the sub-models.
+    @param name:         name of the collection model containing the sub-models
     @type  name:         str or unicode
     @param child_names:  an effect that retrieve all sub-models names or
                          None if sub-models are not iterable.

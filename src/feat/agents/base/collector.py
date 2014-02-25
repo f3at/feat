@@ -70,7 +70,6 @@ class BaseCollector(log.Logger, replay.Replayable):
         replay.Replayable.restored(self)
         log.Logger.__init__(self, state.medium)
 
-# FIXME: initiate is not in the interface ?
     def initiate(self):
         '''@see: L{feat.interface.collector.IAgentCollector}'''
 

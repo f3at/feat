@@ -32,7 +32,6 @@ class Versioned(serialization.Serializable, serialization.VersionAdapter):
                                      type(serialization.VersionAdapter)), {})
 
 
-
 class Av1(Versioned):
     type_name = "A"
 

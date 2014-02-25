@@ -39,7 +39,6 @@ class AgencyRoles(enum.Enum):
     unknown, master, slave, standalone = range(4)
 
 
-
 class IAgencyProtocolInternal(Interface):
     '''Represents a protocol which can be registered in AgencyAgent.'''
 

@@ -27,7 +27,6 @@ def parse_service_config():
     return c
 
 
-
 @register
 class MsgConfig(formatable.Formatable):
 

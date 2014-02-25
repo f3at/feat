@@ -36,7 +36,8 @@ class NagiosAgentTest(common.TestCase):
         # simulate receiving the config, the update task should be triggered
         yield self.agent.config_changed(recp, body)
         self.assertEqual(['update-nagios'],
-                         [x.factory.protocol_id for x in self.medium.protocols])
+                         [x.factory.protocol_id
+                          for x in self.medium.protocols])
         self.medium.reset()
 
         # now run the task itself

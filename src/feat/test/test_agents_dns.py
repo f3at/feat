@@ -213,7 +213,6 @@ class TestDNSAgent(common.TestCase):
         # Remove wrong mapping
         yield self.dns.remove_mapping('test', '1.1.1.2')
 
-
     @defer.inlineCallbacks
     def testAlias(self):
         # Add alias

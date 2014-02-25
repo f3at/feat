@@ -547,7 +547,8 @@ class Connection(log.Logger, log.LogProxy):
                     self._upgrades_ran.add(key)
                     for handler, context in doc.get_asynchronous_actions():
                         if handler.use_custom_registry:
-                            conn = Connection(self._database, handler.unserializer)
+                            conn = Connection(self._database,
+                                              handler.unserializer)
                         else:
                             conn = self
                         d.addCallback(defer.keep_param, defer.inject_param, 1,

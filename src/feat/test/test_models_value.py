@@ -80,7 +80,7 @@ class TestStructure(value.Structure):
 class DictObject(object):
 
     def __init__(self, **params):
-        self._params =  params
+        self._params = params
 
     def __getattr__(self, name):
         if name not in self._params:

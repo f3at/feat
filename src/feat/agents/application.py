@@ -48,5 +48,4 @@ class Feat(applications.Application):
         ]
 
 
-
 feat = Feat()

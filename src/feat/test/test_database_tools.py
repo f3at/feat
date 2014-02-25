@@ -52,7 +52,6 @@ class VersionedTest2(VersionedTest1):
     type_name = 'version-document-test'
 
 
-
 class SimpleMigration(migration.Migration):
 
     def synchronous_hook(self, snapshot):

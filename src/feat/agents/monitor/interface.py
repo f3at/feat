@@ -81,12 +81,13 @@ class MonitorState(enum.Enum):
 
      - normal       - Stable state. Normal monitoring behaviours.
      - isolated     - Temporary state. All locations minus the one of the
-                      monitor itself are isolated, so the monitoring is waiting
-                      extra time to cover for a temporary network disconnection.
-     - recovering   - Temporary state. After waiting extra time isolated nothing
-                      changed so we are now in recovering state meaning that
-                      each locations are given there usual isolation time to
-                      recover or will be handled with.
+                      monitor itself are isolated, so the monitoring is
+                      waiting extra time to cover for a temporary network
+                      disconnection.
+     - recovering   - Temporary state. After waiting extra time isolated
+                      nothing changed so we are now in recovering state
+                      meaning that each locations are given there usual
+                      isolation time to recover or will be handled with.
      - disconnected - Stable state. the monitor is disconnected from the
                       network.  Nothing should be done until reconnected.
     """
