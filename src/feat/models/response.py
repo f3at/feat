@@ -24,8 +24,8 @@ from zope.interface import implements
 
 from feat.models import model, value, getter
 
-from feat.models.interface import *
-
+from feat.models.interface import IResponse, ResponseTypes
+from feat.database.interface import IDocument
 
 ### effects factories ###
 
@@ -78,8 +78,11 @@ class Response(model.Model):
                     getter.model_attr("source"))
     model.attribute("type", value.Enum(ResponseTypes),
                     getter.model_attr("_response_type"))
+    model.attribute("id", value.String(),
+                    getter.model_attr("id"))
 
     def __init__(self, response_type, message):
+        self.id = None
         model.Model.__init__(self, message)
         self._response_type = response_type
 
@@ -97,6 +100,8 @@ class Created(Response):
     def __init__(self, reference, message):
         Response.__init__(self, ResponseTypes.created, message)
         self.reference = reference if reference is not None else None
+        if IDocument.providedBy(reference):
+            self.id = reference.doc_id
 
 
 class Updated(Response):
