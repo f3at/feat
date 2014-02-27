@@ -1,4 +1,4 @@
-PYTHON = /usr/bin/python
+PYTHON = python
 top_srcdir = src
 COVERAGE_MODULES = feat
 TOOLS = tools
@@ -58,9 +58,9 @@ check-fast:
 	  TRIAL_FLAGS="--skip-slow"
 
 check-commit:
-	@current=`pwd`;							\
-	repo=`dirname $$current`;					\
-	reponame=`basename $$repo`;					\
+	current=`pwd`;							\
+        repo=`pwd`;							\
+	reponame=`basename $$current`;					\
 	dst=/tmp/$$reponame;						\
 	if test -d $$dst; then						\
 	(echo Removing old $$dst; rm -rf $$dst);			\
