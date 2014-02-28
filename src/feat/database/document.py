@@ -400,10 +400,19 @@ class LinkedDocuments(object):
             self._links.remove(r)
 
     def first(self, type_name):
-        '''Return doc_id of the document of the first matching type.'''
+        '''
+        Return doc_id of the document of the first matching type.
+        '''
+        return first(self.by_type(type_name))
+
+    def by_type(self, type_name):
+        '''
+        Return an iterator of doc_ids of the documents of the
+        specified type.
+        '''
         if IRestorator.providedBy(type_name):
             type_name = type_name.type_name
-        return first(x[1] for x in self._links if x[0] == type_name)
+        return (x[1] for x in self._links if x[0] == type_name)
 
     def _get(self, doc_id, noraise):
         r = first(x for x in self._links if x[1] == doc_id)
