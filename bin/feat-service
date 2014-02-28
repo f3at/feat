@@ -23,6 +23,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
+
 import commands
 import glob
 import logging
@@ -31,6 +32,8 @@ import os
 import sys
 import time
 import warnings
+
+from feat.web import security
 
 from feat.common import run, signal, text_helper, log, defer
 from feat.configure import configure
@@ -93,6 +96,7 @@ def main(args):
     * status - Checks if the service is running.
     * clean - Cleans the log and rundir.
     * hostclean - Cleans up descriptors of the agents running on the host.
+    * agentlist - List all statically configured agents.
     * agentrestart - Restarts a statically configured agent.
     * alertclean - Clean up the persistent nagios services.
     * pushinitialdata - Populate the database with the initial data
@@ -189,6 +193,14 @@ def main(args):
             d.addCallback(host_restart.do_cleanup, opts.hostname)
         return
 
+    if command == 'agentlist':
+        c = config.parse_service_config()
+        sp = security.ClientPolicy(
+            security.ClientContextFactory(p12_filename=c.gateway.client_p12))
+        client = gateway_client.Client(sp, logger=log.VoidLogKeeper())
+        sys.exit(_gateway_script(agent_list, client, c))
+
+
     if command == 'agentrestart':
         c = config.parse_service_config()
         # for compatibility, still accept -n to pass the name
@@ -208,8 +220,6 @@ def main(args):
             warnings.warn(
                 "The agent name is not optional.  Specify it as an argument.",
                 DeprecationWarning)
-
-        from feat.web import security
 
         sp = security.ClientPolicy(
             security.ClientContextFactory(p12_filename=c.gateway.client_p12))
@@ -397,6 +407,23 @@ def report_progress(connection, doc_id):
     if relevant:
         logger.info('The progress of updating %s is %s%%', doc_id,
                     relevant.get('progress'))
+
+@defer.inlineCallbacks
+def agent_list(client, config):
+    hostname = config.agency.full_hostname
+    port = config.gateway.port
+
+    context = dict(hostname=hostname)
+    path = '/agents/%(hostname)s/static_agents' % context
+    status, static = yield client.get(hostname, port, path)
+    if status == 404:
+        logger.error(
+            "Got 404 response fetching info about static agents. "
+            "This most likely means that the Host Agent is not running.")
+        defer.returnValue(1)
+
+    for agent in static:
+        sys.stdout.write('%s\n' % agent)
 
 
 @defer.inlineCallbacks
