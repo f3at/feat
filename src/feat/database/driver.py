@@ -485,6 +485,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
                               quote(name.encode('utf-8'))))
         headers = {'accept': '*'}
         return self.couchdb_call(self.couchdb.get, uri,
+                                 parser=parse_binary,
                                  headers=headers,
                                  cache_id=uri)
 
@@ -918,6 +919,18 @@ def parse_response(response, tag):
             return failure.Failure(NotFoundError(msg))
         elif response.status == http.Status.CONFLICT:
             return failure.Failure(ConflictError(msg))
+        else:
+            return failure.Failure(DatabaseError(msg))
+
+
+def parse_binary(response, tag):
+    if response.status < 300:
+        return response.body
+    else:
+        msg = ("%s gave %s status with body: %s"
+               % (tag, response.status.name, response.body))
+        if response.status == http.Status.NOT_FOUND:
+            return failure.Failure(NotFoundError(msg))
         else:
             return failure.Failure(DatabaseError(msg))
 
