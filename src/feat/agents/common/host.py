@@ -189,6 +189,7 @@ def _check_recp_not_empty(recp, shard):
 class StartAgentManager(manager.BaseManager):
 
     protocol_id = 'start-agent'
+    grant_timeout = 20
 
     @replay.entry_point
     def initiate(self, state, desc, kwargs):
@@ -214,7 +215,7 @@ class StartAgentManager(manager.BaseManager):
 class StartAgentRequester(requester.BaseRequester):
 
     protocol_id = 'start-agent'
-    timeout = 10
+    timeout = 20
 
     @replay.journaled
     def initiate(self, state, descriptor, allocation_id, *args, **kwargs):
