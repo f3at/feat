@@ -504,7 +504,7 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
 class StartAgent(task.BaseTask):
 
-    timeout = 10
+    timeout = 20
     protocol_id = "host_agent.start-agent"
 
     @replay.entry_point
