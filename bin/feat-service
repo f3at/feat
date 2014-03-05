@@ -95,6 +95,7 @@ def main(args):
     * alertclean - Clean up the persistent nagios services.
     * pushinitialdata - Populate the database with the initial data
     * migrate - Run the migration script.
+    * cleandescriptors - Remove all agent descriptors from the database.
     """)
 
     logger.debug('Running command: %s', " ".join(sys.argv))
@@ -273,6 +274,25 @@ def main(args):
             d.addCallback(alert_cleanup.do_cleanup, opts.hostname)
         return
 
+    if command == 'cleandescriptors':
+        c = config.parse_service_config()
+
+        parser = optparse.OptionParser()
+        parser.add_option('--dry', '-n',
+                          help="dry run, don't actually delete anything",
+                          default=False,
+                          action='store_true', dest='dry_run')
+
+        opts, _ = parser.parse_args(args)
+
+
+        from feat.database import tools
+        from feat.utils import host_restart
+        context = tools.dbscript(c.db)
+        with context as d:
+            d.addCallback(host_restart.clean_all_descriptors,
+                          dry_run=opts.dry_run)
+        sys.exit(context.failed and 1 or 0)
 
     logger.error("No such command, %s", command)
     print >> sys.stderr, usage
