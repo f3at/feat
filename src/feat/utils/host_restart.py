@@ -1,7 +1,9 @@
 from feat.agents.common import host
-from feat.common import defer, first, log
+from feat.common import defer, first, log, serialization
+from feat.database import view, update
 
 from feat.database.interface import NotFoundError
+from feat.interface.agent import IDescriptor
 
 
 @defer.inlineCallbacks
@@ -53,3 +55,43 @@ def safe_get(connection, doc_id):
                   "Fetched document with id %s", doc_id)
     d.addErrback(trap)
     return d
+
+
+@defer.inlineCallbacks
+def clean_all_descriptors(connection, dry_run=False):
+    rows = yield connection.query_view(view.DocumentByType,
+                                       group_level=1, parse_results=False)
+    to_delete = list()
+    for row in rows:
+        type_name = row[0][0]
+        restorator = serialization.lookup(type_name)
+        if not restorator:
+            log.info('cleanup',
+                     'Could not lookup restorator for type name: %s. '
+                     'There is %s documents of this type.',
+                     type_name, row[1])
+            continue
+        if IDescriptor.implementedBy(restorator):
+            log.info('cleanup',
+                     'I will delete %s documents of type name: %s',
+                     row[1], type_name)
+            to_delete.append(type_name)
+
+    if dry_run:
+        log.info("cleanup",
+                 "Not deleting anything, this is just a dry run.")
+        return
+
+    for type_name in to_delete:
+        keys = view.DocumentByType.fetch(type_name)
+        keys['include_docs'] = False
+        rows = yield connection.query_view(
+            view.DocumentByType, parse_results=False, **keys)
+
+        for (key, value, doc_id) in rows:
+            try:
+                yield connection.update_document(doc_id, update.delete)
+            except Exception as e:
+                log.error("cleanup",
+                          "Cannot delete the documents of type %s with ID: %s."
+                          " Reason: %s", type_name, doc_id, e)
