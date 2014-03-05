@@ -32,7 +32,7 @@ from feat.agents.common import host, rpc, monitor
 from feat.agents.common import shard as common_shard
 from feat.agents.common.host import check_categories
 from feat.agencies import recipient, message
-from feat.database import document
+from feat.database import document, update
 from feat.common import fiber, manhole, defer, error, formatable, first
 from feat import applications
 
@@ -472,16 +472,24 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
 
     @replay.journaled
     def _spawn_agent_failed(self, state, fail, desc, alert_name=None):
-        error.handle_failure(self, fail, "Spawning agent failed! "
-                             "I will remove the descriptor.")
+        error.handle_failure(self, fail,
+                             "Spawning agent failed! "
+                             "Agent type: %s, agent id: %s. "
+                             "I will remove the descriptor.",
+                             desc.type_name, desc.doc_id)
         if alert_name:
-            self.info('raising alert %s', alert_name)
+            self.info('Raising alert %s', alert_name)
             self.raise_alert(alert_name, error.get_failure_message(fail),
                              severity=alert.Severity.critical)
-        f = self.get_document(desc.doc_id)
-        f.add_callback(self.delete_document)
-        f.add_both(fiber.override_result, None)
+        f = self.update_document(desc, update.delete)
+        f.add_callback(fiber.override_result, None)
+        f.add_errback(self._delete_descriptor_failed)
         return f
+
+    def _delete_descriptor_failed(self, fail):
+        if fail.check(NotFoundError):
+            return
+        error.handle_failure(self, fail, "Failed to delete the descriptor")
 
     @replay.immutable
     def check_requirements(self, state, doc):
@@ -521,7 +529,8 @@ class StartAgent(task.BaseTask):
         f.add_callback(self._check_if_successful)
         return f
 
-    def _check_if_successful(self, agency_agent):
+    @replay.immutable
+    def _check_if_successful(self, state, agency_agent):
         # agency_agent here is either IAgencyAgent for agents started in
         # the same process or IRecipient for standalone process.
         # In case of the failure while starting the standalone agent the
@@ -529,15 +538,16 @@ class StartAgent(task.BaseTask):
         if (IAgencyAgent.providedBy(agency_agent) and
             agency_agent.startup_failure):
             return agency_agent.startup_failure
-        return self._establish_partnership(recipient.IRecipient(agency_agent))
+        recp = recipient.IRecipient(agency_agent)
 
-    @replay.immutable
-    def _establish_partnership(self, state, recp):
-        f = state.agent.establish_partnership(
-            recp, state.allocation_id, our_role=u'host',
-            allow_double=True, static_name=state.static_name)
-        f.add_callback(fiber.override_result, recp)
-        return f
+        self.info("Agent of type %s with id %s started successfully, "
+                  "establishing partnership in the broken execution chain.",
+                  state.descriptor.type_name, recp.key)
+
+        state.agent.call_next(state.agent.establish_partnership,
+                              recp, state.allocation_id, our_role=u'host',
+                              allow_double=True, static_name=state.static_name)
+        return recp
 
     @replay.mutable
     def _fetch_descriptor(self, state):
