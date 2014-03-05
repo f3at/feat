@@ -684,6 +684,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'changing our descriptor. This means that I got '
                      'restarted on some other machine and need to commit '
                      'suicide :(. Or you have a bug ;).')
+        self.debug("Revision received: %s, deleted flag: %s, "
+                   "current revision: %s", rev, deleted,
+                   self._descriptor.rev)
         return self.terminate_hard()
 
     def _configuration_changed(self, doc_id, rev, deleted, own_change):
