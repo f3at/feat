@@ -664,7 +664,7 @@ class ConnectionPool(Connection):
         self._connected.add(protocol)
         self._return_to_the_pool(protocol)
         self.debug("Connection made to %s:%s, pool has now %d connections "
-                   "%d of with are idle", self._host, self._port,
+                   "%d of which are idle", self._host, self._port,
                    len(self._connected), len(self._idle))
 
     def onClientConnectionLost(self, protocol, reason):
