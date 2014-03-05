@@ -232,6 +232,12 @@ class StartAgentRequester(requester.BaseRequester):
 @feat.register_descriptor("host_agent")
 class Descriptor(descriptor.Descriptor):
 
+    # Agency ID is stored for this type of agent, to have a "salt" in a
+    # document which is reinsterted to the database.
+    # This is a workaround for a bug in CouchbDB. See:
+    # "https://issues.apache.org/jira/browse/COUCHDB-1415
+    descriptor.field('agency_id', None)
+
     @property
     def hostname(self):
         return self.doc_id

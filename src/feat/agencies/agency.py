@@ -1463,7 +1463,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         def handle_error_on_get(fail, connection, doc_id):
             fail.trap(NotFoundError)
             factory = serialization.lookup('host_agent')
-            desc = factory(shard=u'lobby', doc_id=doc_id)
+            desc = factory(shard=u'lobby', doc_id=doc_id,
+                           agency_id=self.agency_id)
             self.info("Host Agent descriptor not found in database, "
                       "creating a brand new instance.")
             return connection.save_document(desc)
