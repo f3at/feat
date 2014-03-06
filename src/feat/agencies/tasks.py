@@ -77,6 +77,9 @@ class AgencyTask(common.AgencyMiddleBase):
         if self.factory.busy:
             # Busy task cannot be canceled
             return
+        if self._finalize_called:
+            # already finished (or cancelled)
+            return
         d = self.call_agent_side(self.task.cancel)
         d.addBoth(self.finalize)
         return d

@@ -684,6 +684,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
                      'changing our descriptor. This means that I got '
                      'restarted on some other machine and need to commit '
                      'suicide :(. Or you have a bug ;).')
+        self.debug("Revision received: %s, deleted flag: %s, "
+                   "current revision: %s", rev, deleted,
+                   self._descriptor.rev)
         return self.terminate_hard()
 
     def _configuration_changed(self, doc_id, rev, deleted, own_change):
@@ -1463,7 +1466,8 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         def handle_error_on_get(fail, connection, doc_id):
             fail.trap(NotFoundError)
             factory = serialization.lookup('host_agent')
-            desc = factory(shard=u'lobby', doc_id=doc_id)
+            desc = factory(shard=u'lobby', doc_id=doc_id,
+                           agency_id=self.agency_id)
             self.info("Host Agent descriptor not found in database, "
                       "creating a brand new instance.")
             return connection.save_document(desc)

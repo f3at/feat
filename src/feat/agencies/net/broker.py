@@ -255,7 +255,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     # Server specific
 
     def remote_handshake(self, broker, slave, agency_id, standalone):
-        self.debug('Appending slave agency: %r', slave)
+        self.debug('Appending slave agency. Agency id: : %s', agency_id)
         self.append_slave(broker, agency_id, slave, standalone)
         slave.notifyOnDisconnect(self.remove_slave(agency_id))
         return self.shared_state.items()
@@ -384,7 +384,7 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def wait_event(self, *args):
         self._ensure_connected()
         if self.is_master():
-            self.debug('Registering event for args %r', args)
+            self.debug('Registering listener for event %r', args)
             key = self._event_key(*args)
             return self.notifier.wait(key)
         elif self.is_slave():
@@ -394,10 +394,12 @@ class Broker(log.Logger, log.LogProxy, common.StateMachineMixin,
     def push_event(self, *args):
         self._ensure_connected()
         if self.is_master():
-            self.debug("Triggering events for the args %r.", args)
+            self.debug("Triggering event listeners for the args %r.", args)
             key = self._event_key(*args)
             self.notifier.callback(key, None)
         elif self.is_slave():
+            self.debug("Notifying master about successful event for the "
+                       "args %r.", args)
             return self._master.callRemote('push_event', *args)
 
     @manhole.expose()

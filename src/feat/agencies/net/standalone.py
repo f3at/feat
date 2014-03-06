@@ -148,13 +148,16 @@ class Agency(agency.Agency):
         if medium.startup_failure:
             # we access this branch of code when the agent raises from
             # initiate_agent()
+            self.info("Pushing failed notification to master.")
             return self._broker.fail_event(medium.startup_failure,
                                            recp.key, 'started')
         else:
+            self.info("Pushing successful notification to master.")
             return self._broker.push_event(recp.key, 'started')
 
     def notify_failed(self, failure, agent_id):
         error.handle_failure(self, failure,
                              "Failed to spawn the agent. I will terminate")
         time.call_next(self._shutdown, stop_process=True)
+        self.info("Pushing failed notification to master.")
         return self._broker.fail_event(failure, agent_id, 'started')

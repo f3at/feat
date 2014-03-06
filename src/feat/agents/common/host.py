@@ -189,6 +189,7 @@ def _check_recp_not_empty(recp, shard):
 class StartAgentManager(manager.BaseManager):
 
     protocol_id = 'start-agent'
+    grant_timeout = 20
 
     @replay.entry_point
     def initiate(self, state, desc, kwargs):
@@ -214,7 +215,7 @@ class StartAgentManager(manager.BaseManager):
 class StartAgentRequester(requester.BaseRequester):
 
     protocol_id = 'start-agent'
-    timeout = 10
+    timeout = 20
 
     @replay.journaled
     def initiate(self, state, descriptor, allocation_id, *args, **kwargs):
@@ -231,6 +232,12 @@ class StartAgentRequester(requester.BaseRequester):
 
 @feat.register_descriptor("host_agent")
 class Descriptor(descriptor.Descriptor):
+
+    # Agency ID is stored for this type of agent, to have a "salt" in a
+    # document which is reinsterted to the database.
+    # This is a workaround for a bug in CouchbDB. See:
+    # "https://issues.apache.org/jira/browse/COUCHDB-1415
+    descriptor.field('agency_id', None)
 
     @property
     def hostname(self):
