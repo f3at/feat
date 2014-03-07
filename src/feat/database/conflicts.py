@@ -444,8 +444,14 @@ def parse_rev(rev):
 
 @defer.inlineCallbacks
 def _check_conflict(connection, doc_id):
-    raw_doc = yield connection.get_document(doc_id, raw=True, conflicts=True)
-    in_conflict = '_conflicts' in raw_doc
+    try:
+        raw_doc = yield connection.get_document(doc_id, raw=True,
+                                                conflicts=True)
+    except NotFoundError:
+        in_conflict = False
+        raw_doc = {'_id': doc_id, '_deleted': True}
+    else:
+        in_conflict = '_conflicts' in raw_doc
     defer.returnValue((in_conflict, raw_doc))
 
 
