@@ -4,7 +4,7 @@
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
 %define version 0.28.4
 %define unmangled_version 0.28.4
-%define build_rev 1
+%define build_rev 2
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -176,6 +176,10 @@ fi
 
 
 %changelog
+* Fri Mar 07 2014 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.28.4-2
+- increase startup timeout to 20 sec
+
 * Thu Mar 06 2014 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.28.4-1
 - new release, to make the reset script work
