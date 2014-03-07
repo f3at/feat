@@ -63,7 +63,17 @@ class Client(log.Logger, log.LogProxy):
                     location += '?' + url.query
             else:
                 if response.headers['content-type'] == 'application/json':
-                    defer.returnValue((response.status,
-                                       json.loads(response.body)))
+                    try:
+                        parsed = json.loads(response.body)
+                    except ValueError:
+                        self.error(
+                            "Failed to parse: %s, headers: %s, status: %s",
+                            response.body, response.headers,
+                            response.status.name)
+                        raise
+                    else:
+                        defer.returnValue((response.status, parsed))
+
+
                 else:
                     defer.returnValue((response.status, response.body))
