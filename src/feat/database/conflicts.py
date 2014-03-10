@@ -427,7 +427,8 @@ def cleanup_logs(connection, rconnection):
         in_conflict, raw_doc = yield _check_conflict(connection, owner_id)
         last_rev = entries[-1][0]
         if (not in_conflict and
-            parse_rev(last_rev) <= parse_rev(raw_doc['_rev'])):
+            (raw_doc.get('_deleted') or
+             parse_rev(last_rev) <= parse_rev(raw_doc['_rev']))):
             for (rev, doc_id) in entries:
                 deletes_count += 1
                 yield _cleanup_update_log(connection, doc_id)
