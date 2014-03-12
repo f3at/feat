@@ -223,7 +223,7 @@ def migration_script(connection):
                         include_docs=True)
 
                     migrated += len(fetched)
-                    if not migrated:
+                    if not fetched:
                         break
                 log.info("script", "Migrated %d documents of the type %s "
                          "from %s version to %s", migrated, type_name,
