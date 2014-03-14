@@ -81,6 +81,7 @@ class DummyError(object):
         self.message = message
         self.subjects = subjects
         self.reasons = reasons
+        self.stamp = None
 
 
 class DummySnapshotable(serialization.Snapshotable):

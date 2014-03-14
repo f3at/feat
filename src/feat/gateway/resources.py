@@ -122,6 +122,10 @@ class ErrorPayload(object):
             msg += "\n%s" % (self.trace, )
         return msg
 
+    @property
+    def stamp(self):
+        return hex(id(self))
+
 
 class Context(object):
 

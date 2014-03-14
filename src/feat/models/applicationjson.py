@@ -24,17 +24,16 @@ import json
 
 from zope.interface import implements
 
-from feat.common import defer, serialization, error
+from feat.common import defer, serialization, error, log
 from feat.common.serialization import json as feat_json
 from feat.web import document
-from feat.models import model
 
 from feat.models.interface import IModel, IReference
 from feat.models.interface import IErrorPayload
 from feat.models.interface import IActionPayload, IMetadata, IAttribute
 from feat.models.interface import IValueCollection, IValueOptions, IValueRange
 from feat.models.interface import IEncodingInfo, ValueTypes
-from feat.models.interface import Unauthorized, IQueryModel
+from feat.models.interface import Unauthorized
 
 MIME_TYPE = "application/json"
 
@@ -418,6 +417,10 @@ def write_error(doc, obj, *args, **kwargs):
     if obj.reasons:
         result[u"reasons"] = dict([k, str(v)]
                                    for k, v in obj.reasons.iteritems())
+    if obj.stamp:
+        result[u"stamp"] = obj.stamp
+        log.debug('application/json',
+                  'Wrote error response with debug stamp: %s', obj.stamp)
     render_json(result, doc)
 
 
