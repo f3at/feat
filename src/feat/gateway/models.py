@@ -668,6 +668,9 @@ class RemoteAgent(model.Model):
     model.attribute("type", value.String(),
                     getter=call.model_call("_get_agent_type"),
                     label="Agent type", desc="Agent type")
+    model.attribute("description", value.String(),
+                    label="Description",
+                    getter=getter.model_attr('agent_description'))
 
     model.meta("html-order", "type, id, status")
     model.item_meta("id", "html-link", "owner")
@@ -681,6 +684,8 @@ class RemoteAgent(model.Model):
         gateway_port = yield agency_ref.callRemote("get_gateway_port")
         root = (gateway_host, gateway_port)
         self._reference = reference.Absolute(root, "agents", self.name)
+        self.agent_description = yield self.source.reference.callRemote(
+            'get_description')
 
     def _get_agent_type(self):
         return self.source.callRemote('get_agent_type')

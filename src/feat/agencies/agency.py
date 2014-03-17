@@ -542,6 +542,10 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         return self.agency
 
     @manhole.expose()
+    def get_description(self):
+        return self.agent.get_description()
+
+    @manhole.expose()
     def get_agent(self):
         '''Returns the agent side instance.'''
         return self.agent
