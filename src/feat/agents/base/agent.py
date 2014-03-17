@@ -493,6 +493,14 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
     def remove_tunneling_route(self, state, recp, url):
         state.medium.remove_external_route('tunnel', recipient=recp, uri=url)
 
+    ### used by model api ###
+
+    def get_description(self):
+        '''
+        Override this to give an description specific for the instance of the
+        agent. This will be shown in the the /agents section of the gateway.
+        '''
+
     ### Private Methods ###
 
     def _expire_handler(self, fail):

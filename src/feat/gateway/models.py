@@ -614,7 +614,8 @@ class Agents(model.Collection):
 
     model.meta("html-render", "array, 1")
     model.meta("html-render",
-               "array-columns, Agent Id, Agent type, Status, Application")
+               "array-columns, Agent Id, Agent type, Status, Description, "
+               "Application")
 
     def init(self):
         if not self.officer.peer_info.has_role("admin"):
@@ -707,6 +708,10 @@ class Agent(model.Model):
                     getter=call.model_call("get_application"),
                     label="Application",
                     desc="Application the agent belongs to")
+    model.attribute("description", value.String(),
+                    getter=call.model_call("get_description"),
+                    label="Description",
+                    desc="Descirption specific to the agent's instance")
 
     model.child("partners",
                 model="feat.partners",
@@ -778,6 +783,9 @@ class Agent(model.Model):
 
     def get_protocol(self, key):
         return self._medium._protocols.get(key)
+
+    def get_description(self):
+        return self.source.get_description()
 
 
 @featmodels.register_model
