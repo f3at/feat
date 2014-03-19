@@ -37,7 +37,7 @@ def load(module_name, name):
         raise
     else:
         get_application_registry().register(application)
-        log.info('application', "Loading application %s complete.", name)
+        log.debug('application', "Loading application %s complete.", name)
 
 
 def unload(name):
@@ -78,12 +78,12 @@ class Application(log.Logger):
         self._migrations = migration.get_registry()
 
     def load(self):
-        self.info("Loading application %s", self.name)
+        self.debug("Loading application %s", self.name)
         for module in self.loadlist:
             self.debug("Importing module %s", module)
             if module in sys.modules:
-                self.warning("Module %s is already available in sys.modules.",
-                             module)
+                self.debug("Module %s is already available in sys.modules.",
+                           module)
             else:
                 reflect.named_module(module)
 
