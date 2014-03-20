@@ -52,7 +52,7 @@ class RestartFailed(error.FeatError):
 class MonitoringFailed(error.NonCritical):
     log_level = 3
     log_line_template = ("Monitor agent not found. This is normal "
-                         "I will keep on retrying untill he is started.")
+                         "I will keep on retrying until he is started.")
 
 
 class PatientState(enum.Enum):
