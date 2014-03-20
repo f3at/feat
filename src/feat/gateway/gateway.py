@@ -112,7 +112,7 @@ class Gateway(log.LogProxy, log.Logger):
         log_tag = log_tag + " " if log_tag else ""
         for port in xrange(min_port, max_port + 1):
             try:
-                self.log("Initializing %sgateway on %s:%d",
+                self.debug("Initializing %sgateway on %s:%d",
                          log_tag, self._host, port)
                 server = webserver.Server(port, self._build_resource(port),
                                           security_policy=self._security,
@@ -131,7 +131,9 @@ class Gateway(log.LogProxy, log.Logger):
                            log_tag)
                 continue
 
-        raise NoPortAvailableError("No port available for %sgateway" % log_tag)
+        raise NoPortAvailableError(
+            "No port available for %sgateway between %d and %d" % (
+                log_tag, min_port, max_port))
 
     def _build_resource(self, port):
         return resources.Root(self._host, port,
