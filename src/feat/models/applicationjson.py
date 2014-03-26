@@ -417,6 +417,8 @@ def write_error(doc, obj, *args, **kwargs):
     if obj.reasons:
         result[u"reasons"] = dict([k, str(v)]
                                    for k, v in obj.reasons.iteritems())
+    if obj.debug is not None:
+        result[u"debug"] = obj.debug
     if obj.stamp:
         result[u"stamp"] = obj.stamp
         log.debug('application/json',
