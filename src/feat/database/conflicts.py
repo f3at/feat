@@ -427,7 +427,8 @@ def cleanup_logs(connection, rconnection):
         in_conflict, raw_doc = yield _check_conflict(connection, owner_id)
         last_rev = entries[-1][0]
         if (not in_conflict and
-            parse_rev(last_rev) <= parse_rev(raw_doc['_rev'])):
+            (raw_doc.get('_deleted') or
+             parse_rev(last_rev) <= parse_rev(raw_doc['_rev']))):
             for (rev, doc_id) in entries:
                 deletes_count += 1
                 yield _cleanup_update_log(connection, doc_id)
@@ -444,8 +445,14 @@ def parse_rev(rev):
 
 @defer.inlineCallbacks
 def _check_conflict(connection, doc_id):
-    raw_doc = yield connection.get_document(doc_id, raw=True, conflicts=True)
-    in_conflict = '_conflicts' in raw_doc
+    try:
+        raw_doc = yield connection.get_document(doc_id, raw=True,
+                                                conflicts=True)
+    except NotFoundError:
+        in_conflict = False
+        raw_doc = {'_id': doc_id, '_deleted': True}
+    else:
+        in_conflict = '_conflicts' in raw_doc
     defer.returnValue((in_conflict, raw_doc))
 
 

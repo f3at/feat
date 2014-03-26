@@ -905,7 +905,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         error.handle_failure(self, fail,
                              "Agent raised an error while starting up. "
                              "He will be punished by terminating. "
-                             "Medium state while that happend: %r",
+                             "Medium state while that happened: %r",
                              self._get_machine_state())
 
         # this allows StartAgent task of Host Agent know what is going on
