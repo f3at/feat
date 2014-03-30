@@ -994,6 +994,7 @@ class IErrorPayload(Interface):
                         "@type: {unicode(): unicode()}")
     debug = Attribute("Debugging information. @type: unicode or None")
     trace = Attribute("Debugging trace. @type: unicode or None")
+    stamp = Attribute("Debugging stamp. @type; unicode or None")
 
 
 ### private interfaces ###

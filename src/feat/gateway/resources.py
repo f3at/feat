@@ -76,7 +76,7 @@ class ErrorPayload(object):
             message = str(ex) or type(ex).__name__
 
         if not isinstance(ex, http.HTTPError):
-            debug = error.get_exception_message(ex)
+            debug = str(ex)
             trace = error.get_exception_traceback(ex)
 
         return cls(error_type=error_type, error_code=error_code,
@@ -121,6 +121,10 @@ class ErrorPayload(object):
         if self.trace is not None:
             msg += "\n%s" % (self.trace, )
         return msg
+
+    @property
+    def stamp(self):
+        return hex(id(self))
 
 
 class Context(object):

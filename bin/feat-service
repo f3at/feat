@@ -26,7 +26,6 @@
 
 import commands
 import glob
-import logging
 import optparse
 import os
 import sys
@@ -35,7 +34,7 @@ import warnings
 
 from feat.web import security
 
-from feat.common import run, signal, text_helper, log, defer
+from feat.common import run, signal, text_helper, log, defer, error
 from feat.configure import configure
 from feat.gateway import client as gateway_client
 
@@ -215,7 +214,7 @@ def main(args):
         if not args:
             if not opts.static_name:
                 logger.error("Please specify the name of a statically "
-                    "configured agent to restart.")
+                             "configured agent to restart.")
                 sys.exit(1)
             args = [opts.static_name, ]
             warnings.warn(
@@ -325,7 +324,7 @@ def main(args):
         sys.exit(context.failed and 1 or 0)
 
     logger.error("No such command, %s", command)
-    print >> sys.stderr, usage
+    print usage
     sys.exit(1)
 
 
@@ -428,6 +427,7 @@ def report_progress(connection, doc_id):
         logger.info('The progress of updating %s is %s%%', doc_id,
                     relevant.get('progress'))
 
+
 @defer.inlineCallbacks
 def agent_list(client, config):
     hostname = config.agency.full_hostname
@@ -502,7 +502,6 @@ def _importing_parser(parser):
 
 def _gateway_script(method, client, *args, **kwargs):
     from twisted.internet import reactor
-    from feat.common import error
 
     def set_exitcode(res, context):
         context['exitcode'] = res
@@ -546,31 +545,12 @@ def _pidfile_exist():
 
 
 def _prepare_logging():
-    # prepare logger
-    logger = logging.getLogger('feat-service')
-    logger.setLevel(logging.DEBUG)
-
-    # log to file
+    stderr = sys.stderr
     path = os.path.join(configure.logdir, 'feat-service.log')
-    handler = logging.FileHandler(path)
-    handler.setFormatter(logging.Formatter(
-        '[%(asctime)s] [%(levelname)s] %(message)s'))
-    logger.addHandler(handler)
+    tee = log.init(path)
+    tee.add_keeper('console', log.Console(stderr, log.LogLevel.info))
 
-    # log INFO and higher to sys.stderr
-
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(logging.Formatter('%(message)s'))
-    logger.addHandler(handler)
-
-    # initializing feat log is necessary for methods defined
-    # in feat.common.run module
-    keeper = log.VoidLogKeeper()
-    # #line below allows keeping feat logger output
-    # keeper = log.PythonLogKeeper(logger)
-    log.set_default(keeper)
-    return logger
+    return log.Logger(log.get_default())
 
 logger = _prepare_logging()
 
@@ -581,6 +561,8 @@ if __name__ == '__main__':
         log.FluLogKeeper.set_debug('4')
 
         main(sys.argv[1:])
-    except Exception:
-        logger.error("Fatal error running feat-service", exc_info=True)
+    except Exception as e:
+        error.handle_exception(
+            'feat-service', e,
+            "Fatal error running feat-service")
         sys.exit(1)

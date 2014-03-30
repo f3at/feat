@@ -18,7 +18,7 @@ view_index_dir = $COUCHDBDIR/db
 uri_file = $COUCHDBDIR/couch.uri
 
 [query_servers]
-python = ${_my_path}/../bin/feat-couchpy
+python = ${_my_path}/../bin/feat-couchpy --log-file $COUCHDBDIR/couchpy.log
 
 [httpd]
 bind_address = ${HOST:-127.0.0.1}

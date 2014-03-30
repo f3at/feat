@@ -614,7 +614,8 @@ class Agents(model.Collection):
 
     model.meta("html-render", "array, 1")
     model.meta("html-render",
-               "array-columns, Agent Id, Agent type, Status, Application")
+               "array-columns, Agent Id, Agent type, Status, Description, "
+               "Application")
 
     def init(self):
         if not self.officer.peer_info.has_role("admin"):
@@ -667,6 +668,9 @@ class RemoteAgent(model.Model):
     model.attribute("type", value.String(),
                     getter=call.model_call("_get_agent_type"),
                     label="Agent type", desc="Agent type")
+    model.attribute("description", value.String(),
+                    label="Description",
+                    getter=getter.model_attr('agent_description'))
 
     model.meta("html-order", "type, id, status")
     model.item_meta("id", "html-link", "owner")
@@ -680,6 +684,8 @@ class RemoteAgent(model.Model):
         gateway_port = yield agency_ref.callRemote("get_gateway_port")
         root = (gateway_host, gateway_port)
         self._reference = reference.Absolute(root, "agents", self.name)
+        self.agent_description = yield self.source.reference.callRemote(
+            'get_description')
 
     def _get_agent_type(self):
         return self.source.callRemote('get_agent_type')
@@ -707,6 +713,10 @@ class Agent(model.Model):
                     getter=call.model_call("get_application"),
                     label="Application",
                     desc="Application the agent belongs to")
+    model.attribute("description", value.String(),
+                    getter=call.model_call("get_description"),
+                    label="Description",
+                    desc="Descirption specific to the agent's instance")
 
     model.child("partners",
                 model="feat.partners",
@@ -778,6 +788,9 @@ class Agent(model.Model):
 
     def get_protocol(self, key):
         return self._medium._protocols.get(key)
+
+    def get_description(self):
+        return self.source.get_description()
 
 
 @featmodels.register_model

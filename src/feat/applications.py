@@ -12,13 +12,13 @@ from feat.interface.application import IApplication
 
 
 def load(module_name, name):
-    log.info('application', "Importing application %s from module %s",
-             name, module_name)
+    log.log('application', "Importing application %s from module %s",
+            name, module_name)
     module = sys.modules.get(module_name)
     if module:
-        log.warning('application',
-                    "Application module %s has already been loaded. ",
-                    module_name)
+        log.log('application',
+                "Application module %s has already been loaded. ",
+                module_name)
     else:
         module = reflect.named_module(module_name)
     application = getattr(module, name, None)
@@ -37,7 +37,7 @@ def load(module_name, name):
         raise
     else:
         get_application_registry().register(application)
-        log.info('application', "Loading application %s complete.", name)
+        log.debug('application', "Loading application %s complete.", name)
 
 
 def unload(name):
@@ -78,12 +78,12 @@ class Application(log.Logger):
         self._migrations = migration.get_registry()
 
     def load(self):
-        self.info("Loading application %s", self.name)
+        self.debug("Loading application %s", self.name)
         for module in self.loadlist:
             self.debug("Importing module %s", module)
             if module in sys.modules:
-                self.warning("Module %s is already available in sys.modules.",
-                             module)
+                self.debug("Module %s is already available in sys.modules.",
+                           module)
             else:
                 reflect.named_module(module)
 
@@ -91,7 +91,7 @@ class Application(log.Logger):
 
     def load_adapters(self):
         if self._adapter_hook in interface.adapter_hooks:
-            self.warning("Adapter hook has already been present")
+            self.log("Adapter hook has already been present")
         else:
             interface.adapter_hooks.append(self._adapter_hook)
 
@@ -99,7 +99,7 @@ class Application(log.Logger):
         try:
             interface.adapter_hooks.remove(self._adapter_hook)
         except ValueError:
-            self.warning("Adapter hook has not been present")
+            self.log("Adapter hook has not been present")
 
     def unload(self):
         self.info("Unloading application %s", self.name)

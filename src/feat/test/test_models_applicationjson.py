@@ -75,12 +75,15 @@ class DummyError(object):
 
     implements(interface.IErrorPayload)
 
-    def __init__(self, type, code, message, subjects, reasons):
+    def __init__(self, type, code, message, subjects, reasons, debug):
         self.error_type = type
         self.error_code = code
         self.message = message
         self.subjects = subjects
         self.reasons = reasons
+        self.debug = debug
+        self.stamp = None
+
 
 
 class DummySnapshotable(serialization.Snapshotable):
@@ -610,27 +613,27 @@ class TestApplicationJSON(common.TestCase):
     def testErrorWriter(self):
         K = DummyError
         t = ErrorTypes.generic
-        yield self.check(K(t, None, None, None, None),
+        yield self.check(K(t, None, None, None, None, None),
                          {u"type": u"error",
                           u"error": u"generic"})
-        yield self.check(K(t, 42, None, None, None),
+        yield self.check(K(t, 42, None, None, None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"code": 42})
-        yield self.check(K(t, None, "spam", None, None),
+        yield self.check(K(t, None, "spam", None, None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"message": u"spam"})
-        yield self.check(K(t, 42, "spam", None, None),
+        yield self.check(K(t, 42, "spam", None, None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"code": 42,
                           u"message": u"spam"})
-        yield self.check(K(t, None, None, ["a", "b"], None),
+        yield self.check(K(t, None, None, ["a", "b"], None, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"subjects": [u"a", u"b"]})
-        yield self.check(K(t, None, None, None, {"a": "spam"}),
+        yield self.check(K(t, None, None, None, {"a": "spam"}, None),
                          {u"type": u"error",
                           u"error": u"generic",
                           u"reasons": {u"a": u"spam"}})

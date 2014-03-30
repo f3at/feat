@@ -160,6 +160,21 @@ class Logger(object):
                             self.log_category, format, args)
 
 
+class Console(object):
+
+    implements(ILogKeeper)
+
+    def __init__(self, fd, level=None):
+        self.fd = fd
+        self.level = level
+
+    def do_log(self, level, object, category, format, args,
+               depth=2, file_path=None, line_num=None):
+        if self.level is None or self.level >= level:
+            self.fd.write(format if not args else format % args)
+            self.fd.write("\n")
+
+
 class LogProxy(object):
     '''Proxies log entries to another log keeper.'''
 

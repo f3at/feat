@@ -421,6 +421,12 @@ class IAgent(Interface):
         Calls on_reconnect() methods from MRO  in reverse-mro order.
         '''
 
+    def get_description():
+        '''
+        Override this to give an description specific for the instance of the
+        agent. This will be shown in the the /agents section of the gateway.
+        '''
+
 
 class IDescriptor(IDocument):
     '''Interface implemented by the documents holding persitent state of the
