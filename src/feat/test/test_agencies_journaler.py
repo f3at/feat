@@ -48,8 +48,9 @@ class GenerateEntryMixin(object):
             'line_num': 100,
             'timestamp': int(time.time())}
 
-        defaults.update(opts)
-        return defaults
+        r = dict(defaults)
+        r.update(opts)
+        return r
 
     def _generate_entry(self, **opts):
         if not hasattr(self, 'serializer'):
@@ -69,8 +70,9 @@ class GenerateEntryMixin(object):
             'side_effects': self.serializer.convert(list()),
             'timestamp': int(time.time())}
 
-        defaults.update(opts)
-        return defaults
+        r = dict(defaults)
+        r.update(opts)
+        return r
 
 
 class SqliteWriter(journaler.SqliteWriter, common.Mock):
@@ -123,13 +125,27 @@ class DBTests(common.TestCase, ModelTestMixin, GenerateEntryMixin):
         yield self._assert_entries(jour, num)
 
     @defer.inlineCallbacks
+    def testStoringUnicodeMamboJambo(self):
+        jour = journaler.Journaler()
+        writer = journaler.SqliteWriter(self, encoding='zip')
+
+        yield writer.initiate()
+        yield jour.configure_with(writer)
+        troublemaker = 'Jim\xc3\xa9nez'.decode('iso-8859-1')
+        yield jour.insert_entry(**self._generate_log(
+            message=troublemaker))
+
+        log_entries = yield writer.get_log_entries()
+        self.assertEqual(1, len(log_entries))
+        self.assertEqual('Jim??nez', log_entries[0]['message'])
+
+    @defer.inlineCallbacks
     def testStoringAndReadingEntries(self):
         jour = journaler.Journaler()
         writer = journaler.SqliteWriter(self, encoding='zip')
 
         yield writer.initiate()
         yield jour.configure_with(writer)
-
         yield jour.insert_entry(**self._generate_entry())
         histories = yield writer.get_histories()
         self.assertIsInstance(histories, list)

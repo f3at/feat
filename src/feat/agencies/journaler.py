@@ -862,7 +862,19 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         for key in to_blob:
             safe = data[key]
             if self._encoding:
-                safe = safe.encode(self._encoding)
+                try:
+                    safe = safe.encode(self._encoding)
+                except UnicodeEncodeError:
+                    self.warning("Failed to encode: %s to %s", safe,
+                                 self._encoding)
+                    try:
+                        safe = safe.encode('ascii', 'replace')
+                        safe = safe.encode(self._encoding)
+                    except UnicodeEncodeError:
+                        self.error("Encoding to ascii with replace didn't "
+                                   "help either. Skipping this piece of data "
+                                   "in the journal")
+                        safe = ""
             result[key] = sqlite3.Binary(safe)
 
         return result
