@@ -423,6 +423,9 @@ def write_error(doc, obj, *args, **kwargs):
         result[u"stamp"] = obj.stamp
         log.debug('application/json',
                   'Wrote error response with debug stamp: %s', obj.stamp)
+        log.debug('application/json', 'Error: %s', result[u'error'])
+        if obj.message:
+            log.debug('application/json', 'Message: %s', obj.message)
     render_json(result, doc)
 
 
