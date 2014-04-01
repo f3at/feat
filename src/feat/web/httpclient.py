@@ -440,9 +440,11 @@ class Connection(log.LogProxy, log.Logger):
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
         if self._protocol is None:
+            self.debug('Creating new protocol for request')
             d = self._connect()
             d.addCallback(self._on_connected)
         else:
+            self.debug('Reusing protocol for request')
             d = defer.succeed(self._protocol)
 
         d.addCallback(self._request, method, location, headers, body, decoder)
@@ -450,6 +452,7 @@ class Connection(log.LogProxy, log.Logger):
 
     def disconnect(self):
         if self._protocol:
+            self.debug('Disconnecting protocol')
             self._protocol.transport.loseConnection()
 
     ### virtual ###
@@ -467,6 +470,8 @@ class Connection(log.LogProxy, log.Logger):
         pass
 
     def onClientConnectionLost(self, protocol, reason):
+        self.debug('Client connection lost because of %r, resetting protocol',
+            reason)
         self._protocol = None
 
     ### private ###
