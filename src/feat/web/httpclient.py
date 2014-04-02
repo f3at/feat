@@ -167,13 +167,14 @@ class Protocol(http.BaseProtocol):
             decoder = ResponseDecoder()
         # The parameters below are used to format a nice error message
         # shall this request fail in any way
+        scheme, host, port = self._get_target()
+
         decoder.request_params = {
             'method': method.name,
             'location': location,
-            'scheme': 'https' if ISSLTransport.providedBy(self.transport) \
-                       else 'http',
-            'host': self.transport.addr[0],
-            'port': self.transport.addr[1],
+            'scheme': scheme,
+            'host': host,
+            'port': port,
             'started_epoch': time.time()}
 
         self._requests.append(decoder)
@@ -190,6 +191,8 @@ class Protocol(http.BaseProtocol):
     ### Overridden Methods ###
 
     def onConnectionMade(self):
+        scheme, host, port = self._get_target()
+        self.debug('Connected to %s://%s:%d', scheme, host, port)
         self.factory.onConnectionMade(self)
 
     def onConnectionLost(self, reason):
@@ -295,6 +298,13 @@ class Protocol(http.BaseProtocol):
             self._response = None
 
     ### Private Methods ###
+
+    def _get_target(self):
+        scheme = ('https' if ISSLTransport.providedBy(self.transport) else
+                  'http')
+        host = self.transport.addr[0]
+        port = self.transport.addr[1]
+        return scheme, host, port
 
     def _cancel_request(self, d):
         p = d.decoder.request_params
@@ -485,8 +495,8 @@ class Connection(log.LogProxy, log.Logger):
             kwargs['timeout'] = self.connect_timeout
         kwargs['bindAddress'] = self.bind_address
 
-        self.debug('Connecting to %s:%d using %s',
-            self._host, self._port, self._http_scheme.name)
+        self.debug('Connecting to %s://%s:%d',
+            self._http_scheme.name, self._host, self._port)
 
         if self._security_policy.use_ssl:
             context_factory = self._security_policy.get_ssl_context_factory()
