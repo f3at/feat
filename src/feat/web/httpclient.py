@@ -471,7 +471,8 @@ class Connection(log.LogProxy, log.Logger):
         return self.factory(self, self, deferred)
 
     def onClientConnectionFailed(self, reason):
-        pass
+        self.info("Failed to connect to %s:%s. Reason: %s",
+                  self._host, self._port, reason)
 
     def onClientConnectionMade(self, protocol):
         pass
