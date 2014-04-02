@@ -297,8 +297,6 @@ def main(args):
         from feat.database import tools
         from feat.utils import alert_cleanup
 
-        log.set_default(log.PythonLogKeeper(logger))
-
         with tools.dbscript(c.db) as d:
             d.addCallback(alert_cleanup.do_cleanup, opts.hostname)
         return
@@ -507,9 +505,6 @@ def _gateway_script(method, client, *args, **kwargs):
         context['exitcode'] = res
 
     def error_handler(fail):
-        from feat.extern.log import log as xlog
-        xlog.setDebug('4')
-        log.set_default(log.PythonLogKeeper(logger))
         error.handle_failure(None, fail,
                              'Agent restart failed with: ')
         context['exitcode'] = 1
