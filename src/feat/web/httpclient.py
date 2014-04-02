@@ -499,18 +499,6 @@ class Connection(log.LogProxy, log.Logger):
             d.connector = self.reactor.connectTCP(self._host, self._port,
                                                   factory, **kwargs)
 
-        def cb(self, result):
-            self.debug('Connected to %s:%d using %s',
-                self._host, self._port, self._http_scheme.name)
-            return result
-        d.addCallback(cb)
-
-        def eb(self, failure):
-            self.debug('Failed to connect to %s:%d using %s: %r',
-                self._host, self._port, self._http_scheme.name, failure)
-            return failure
-        d.addErrback(eb)
-
         return d
 
     def _on_connected(self, protocol):
