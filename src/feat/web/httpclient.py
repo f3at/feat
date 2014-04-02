@@ -446,16 +446,18 @@ class Connection(log.LogProxy, log.Logger):
         return self._protocol is None or self._protocol.is_idle()
 
     def request(self, method, location, headers=None, body=None, decoder=None):
-        self.debug('%s-ing on %s', method.name, location)
-        self.log('Headers: %r', headers)
-        self.log('Body: %r', body)
         if self._protocol is None:
-            self.debug('Creating new protocol for request')
+            self.debug('%s-ing on %s. Creating new protocol for the request.',
+                       method.name, location)
             d = self._connect()
             d.addCallback(self._on_connected)
         else:
-            self.debug('Reusing protocol for request')
+            self.debug('%s-ing on %s. Reusing connected protocol for '
+                       'the request.', method.name, location)
             d = defer.succeed(self._protocol)
+
+        self.log('Headers: %r', headers)
+        self.log('Body: %r', body)
 
         d.addCallback(self._request, method, location, headers, body, decoder)
         return d
