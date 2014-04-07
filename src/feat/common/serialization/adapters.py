@@ -100,9 +100,20 @@ class ExceptionAdapter(BaseAdapter):
     def restore(cls, snapshot):
         extype, args, attrs = snapshot
         adapter = cls.get_adapter(extype)
-        ex = adapter.__new__(adapter)
-        ex.args = args
-        ex.__dict__.update(attrs)
+        if issubclass(adapter, UnicodeError):
+            # We need to unserialize the UnicodeEncodeError and UnicodeDecodeError
+            # in a special way. There is a bug in python:
+            # http://bugs.python.org/issue21134
+            # Which causes a seg fault later on, when the __str__() is
+            # called on the exception instance.
+            args = list(args)
+            args[0] = str(args[0])
+            args[4] = str(args[4])
+            ex = adapter(*args)
+        else:
+            ex = adapter.__new__(adapter)
+            ex.args = args
+            ex.__dict__.update(attrs)
         return ex
 
 
