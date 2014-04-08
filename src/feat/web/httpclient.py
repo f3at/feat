@@ -311,7 +311,7 @@ class Protocol(http.BaseProtocol):
         p['elapsed'] = time.time() - p['started_epoch']
         ex = RequestCancelled('%(method)s to %(scheme)s'
                               '://%(host)s:%(port)s%(location)s '
-                              'was cancelled by the user %(elapsed).3fs'
+                              'was cancelled %(elapsed).3fs'
                               ' after it was sent.' % p)
         d._suppressAlreadyCalled = True
         d.errback(ex)
@@ -541,7 +541,7 @@ def cancel_connector(d):
         return
     if d.connector.state == 'connecting':
         timeoutCall = d.connector.timeoutID
-        msg = ('Connection to %s:%s was cancelled by the user %.3f '
+        msg = ('Connection to %s:%s was cancelled %.3f '
                'seconds after it was initialized' %
                (d.connector.host, d.connector.port,
                 time.time() - timeoutCall.getTime() + d.connector.timeout))

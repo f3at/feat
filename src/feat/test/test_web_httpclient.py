@@ -77,8 +77,8 @@ class TestConnection(common.TestCase):
         self.assertFailure(d, defer.CancelledError)
         f = yield d
         exp = (r'Connection to testsite.com:80 was cancelled '
-               'by the user 0.(\d+) seconds after it was initialized')
-        self.assertTrue(re.match(exp, str(f)), exp)
+               '0.(\d+) seconds after it was initialized')
+        self.assertTrue(re.match(exp, str(f)), (exp, str(f)))
 
     @defer.inlineCallbacks
     def testConnectTimeout(self):
@@ -116,7 +116,7 @@ class TestConnection(common.TestCase):
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
         exp = (r'GET to http://TCP:testsite.com/ was cancelled '
-               'by the user 0.(\d+)s after it was sent.')
+               '0.(\d+)s after it was sent.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
     @defer.inlineCallbacks
@@ -249,8 +249,8 @@ class TestProtocol(common.TestCase):
         self.assertFalse(self.transport.connected)
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
-        exp = ('GET to http://testsite.com:80/ was cancelled by '
-               'the user 0.(\d+)s after it was sent.')
+        exp = ('GET to http://testsite.com:80/ was cancelled '
+               '0.(\d+)s after it was sent.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
     def _disconnect_protocol(self):
