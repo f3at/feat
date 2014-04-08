@@ -192,7 +192,7 @@ class Protocol(http.BaseProtocol):
 
     def onConnectionMade(self):
         scheme, host, port = self._get_target()
-        self.debug('Connected to %s://%s:%d', scheme, host, port)
+        self.debug('Connected to %s://%s:%s', scheme, host, port)
         self.factory.onConnectionMade(self)
 
     def onConnectionLost(self, reason):
