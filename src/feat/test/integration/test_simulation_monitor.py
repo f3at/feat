@@ -252,6 +252,7 @@ class RestartingSimulation(common.SimulationTest):
         yield self.process(script)
         random_medium = first(self.driver.iter_agents('random-agent'))
         self.assertTrue(random_medium is not None)
+        yield self.wait_for_idle(20)
         self.assert_has_host('random-agent')
 
         yield random_medium.terminate_hard()

@@ -469,6 +469,7 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
                 if not old_doc.get('_deleted', False):
                     if (doc.get('_rev', None) is None
                         or old_doc['_rev'] != doc['_rev']):
+                        print doc, old_doc
                         raise ConflictError('Document update conflict.')
 
         doc['_id'] = doc_id
