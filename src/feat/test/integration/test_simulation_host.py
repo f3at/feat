@@ -66,7 +66,8 @@ class HostAgentTests(common.SimulationTest):
 
     def testHostname(self):
         expected = 'test.host.lan_1'
-        expected_ip = socket.gethostbyname(socket.gethostname())
+        hostname = socket.gethostname()
+        expected_ip = socket.gethostbyname(hostname)
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
