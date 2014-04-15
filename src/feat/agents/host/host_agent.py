@@ -56,11 +56,20 @@ class HostedPartner(agent.BasePartner):
         self.static_name = static_name
         if self.static_name:
             agent.resolve_alert(self.static_name, "ok")
+        # Handle a situation when this agent was started when
+        # host agent was still in the 'lobby' and when HA entered
+        # shard it was not yet in a partnership with this agent.
+        # Without code below, such agent would be left there
+        # waiting.
+        if (self.recipient.shard == 'lobby' and
+            agent.get_shard_id() != 'lobby'):
+            return agent.call_remote(self.recipient, 'switch_shard',
+                                     agent.get_shard_id())
 
     def on_restarted(self, agent):
         agent.call_next(agent.check_if_agency_hosts, self.recipient)
         if self.static_name:
-            agent.resolve_alert(self.static_name, "Restarted")
+            agent.resolve_alert(self.static_name, "ok")
 
     def on_died(self, agent):
         if self.static_name:
@@ -249,26 +258,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
         f.add_callback(fiber.drop_param, self.get_shard_partner)
         return f
 
-    @replay.journaled
-    def switch_shard(self, state, shard):
-        self.debug('Switching shard to %r.', shard)
-        desc = state.medium.get_descriptor()
-        if desc.shard == shard:
-            self.debug("switch_shard(%s) called, but we are already member "
-                       "of this shard, ignoring.", shard)
-            return fiber.succeed()
-
-        def save_change(desc, shard):
-            desc.shard = shard
-
-        f = fiber.Fiber()
-        f.add_callback(fiber.drop_param, state.medium.leave_shard, desc.shard)
-        f.add_callback(fiber.drop_param, self.update_descriptor,
-                       save_change, shard)
-        f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
-        f.add_callback(fiber.drop_param, self._fix_alert_poster, shard)
-        return f.succeed()
-
     @rpc.publish
     @replay.journaled
     def upgrade(self, state, upgrade_cmd):
@@ -384,16 +373,6 @@ class HostAgent(agent.BaseAgent, notifier.AgentMixin, resource.AgentMixin):
                      if getattr(x, 'static_name', None) == name)
 
     ### Private Methods ###
-
-    @replay.mutable
-    def _fix_alert_poster(self, state, shard):
-        '''
-        Called after agent has switched a shard. Alert poster needs an update
-        in this case, bacause otherwise its posting to lobby instead of the
-        shard exchange.
-        '''
-        recp = recipient.Broadcast(alert.AlertPoster.protocol_id, shard)
-        state.alerter.update_recipients(recp)
 
     @defer.inlineCallbacks
     @replay.immutable

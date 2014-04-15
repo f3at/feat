@@ -78,6 +78,15 @@ class HostPartner(BasePartner):
                        self.recipient.key)
             agent.terminate_hard()
 
+    def on_restarted(self, agent):
+        '''
+        This called also after host agent has switched shard.
+        The agents which have been initialized before it happened should be
+        restarted accordingly.
+        '''
+        if agent.get_shard_id == 'lobby':
+            return agent.switch_shard(self.recipient.shard)
+
 
 class Partners(partners.Partners):
 
@@ -256,6 +265,39 @@ class BaseAgent(mro.FiberMroMixin, log.Logger, log.LogProxy, replay.Replayable,
 
     def get_cmd_line(self, *args, **kwargs):
         raise NotImplemented('To be used for standalone agents!')
+
+    @rpc.publish
+    @replay.journaled
+    def switch_shard(self, state, shard):
+        self.debug('Switching shard to %r.', shard)
+        desc = state.medium.get_descriptor()
+        if desc.shard == shard:
+            self.debug("switch_shard(%s) called, but we are already member "
+                       "of this shard, ignoring.", shard)
+            return fiber.succeed()
+
+        def save_change(desc, shard):
+            desc.shard = shard
+
+        f = fiber.Fiber()
+        f.add_callback(fiber.drop_param, state.medium.leave_shard, desc.shard)
+        f.add_callback(fiber.drop_param, self.update_descriptor,
+                       save_change, shard)
+        f.add_callback(fiber.drop_param, state.medium.join_shard, shard)
+        f.add_callback(fiber.drop_param, self._fix_alert_poster, shard)
+        f.add_callback(fiber.drop_param,
+                       self._notify_partners_about_shard_switch)
+        return f.succeed()
+
+    @replay.immutable
+    def _notify_partners_about_shard_switch(self, state):
+        fibers = list()
+        own = self.get_own_address()
+        for partner in state.partners.all:
+            fibers.append(requester.notify_restarted(
+                self, partner.recipient, own, own))
+        if fibers:
+            return fiber.FiberList(fibers, consumeErrors=True).succeed()
 
     ### ITimeProvider Methods ###
 

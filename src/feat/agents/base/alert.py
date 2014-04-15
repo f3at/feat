@@ -180,6 +180,16 @@ class AgentMixin(object):
 
     ### private ###
 
+    @replay.mutable
+    def _fix_alert_poster(self, state, shard):
+        '''
+        Called after agent has switched a shard. Alert poster needs an update
+        in this case, bacause otherwise its posting to lobby instead of the
+        shard exchange.
+        '''
+        recp = recipient.Broadcast(AlertPoster.protocol_id, shard)
+        state.alerter.update_recipients(recp)
+
     @replay.immutable
     def _generate_alert(self, state, service_name, status_info,
                         severity):
