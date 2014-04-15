@@ -25,8 +25,9 @@ from cStringIO import StringIO
 
 from twisted.spread import banana
 
-from feat.common.serialization import sexp
-from feat.interface.serialization import *
+from feat.common import reflect
+from feat.common.serialization import sexp, base
+from feat.interface.serialization import Capabilities
 
 
 class BananaCodec(object):
@@ -53,12 +54,35 @@ class BananaCodec(object):
         return heap[0]
 
 
+BANANA_CONVERTER_CAPS = base.DEFAULT_CONVERTER_CAPS \
+                        | set([Capabilities.method_values,
+                               Capabilities.function_values,
+                               ])
+
+
+METHOD_ATOM = '.banana_method'
+FUNCTION_ATOM = '.banana_function'
+
+
 class Serializer(sexp.Serializer, BananaCodec):
 
     def __init__(self, externalizer=None, source_ver=None, target_ver=None):
         sexp.Serializer.__init__(self, externalizer=externalizer,
+                                 converter_caps=BANANA_CONVERTER_CAPS,
+                                 freezer_caps=BANANA_CONVERTER_CAPS,
                                  source_ver=source_ver, target_ver=target_ver)
         BananaCodec.__init__(self)
+
+    def pack_method(self, data):
+        if self._externalizer is not None:
+            extid = self._externalizer.identify(data)
+            if extid is None:
+                raise TypeError("Failed to serialize %r. Can only serialize "
+                                "methods of values known to externalizer.")
+            return [METHOD_ATOM, extid, data.__name__]
+
+    def pack_function(self, data):
+        return [FUNCTION_ATOM, reflect.canonical_name(data)]
 
     ### Overridden Methods ###
 
@@ -71,6 +95,7 @@ class Unserializer(sexp.Unserializer, BananaCodec):
     def __init__(self, registry=None, externalizer=None,
                  source_ver=None, target_ver=None):
         sexp.Unserializer.__init__(self, registry=registry,
+                                   converter_caps=BANANA_CONVERTER_CAPS,
                                    externalizer=externalizer,
                                    source_ver=source_ver,
                                    target_ver=target_ver)
@@ -80,6 +105,20 @@ class Unserializer(sexp.Unserializer, BananaCodec):
 
     def pre_convertion(self, data):
         return self.decode(data)
+
+    def analyse_data(self, data):
+        if isinstance(data, list) and data[0] == METHOD_ATOM:
+            instance = self._externalizer.lookup(data[1])
+            if instance is None:
+                raise ValueError(
+                    "Failed to lookup the externalize object: %r" %
+                    (data[1], ))
+            return getattr(instance, data[2])
+
+        if isinstance(data, list) and data[0] == FUNCTION_ATOM:
+            return reflect.named_object(data[1])
+
+        return super(Unserializer, self).analyse_data(data)
 
 
 def serialize(value):
