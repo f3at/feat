@@ -11,44 +11,6 @@ class Descriptor(descriptor.Descriptor):
     pass
 
 
-class CheckConflicts(task.StealthPeriodicTask):
-
-    CLEANUP_FREQUENCY = 300 #once every 5 minutes
-
-    def initiate(self):
-        return task.StealthPeriodicTask.initiate(
-            self, self.CLEANUP_FREQUENCY)
-
-    @replay.immutable
-    def run(self, state):
-        return state.agent.query_conflicts()
-
-
-class CleanupLogsTask(task.StealthPeriodicTask):
-
-    CLEANUP_FREQUENCY = 60 #once a minute
-
-    @replay.mutable
-    def initiate(self, state, connection):
-        '''
-        @param connection: IDatabaseConnection bound to _replicator database.
-        '''
-        state.connection = connection
-        return fiber.wrap_defer(task.StealthPeriodicTask.initiate, self,
-                                self.CLEANUP_FREQUENCY)
-
-    @replay.immutable
-    def run(self, state):
-        self.debug("Running cleanup update logs.")
-        d = conflicts.cleanup_logs(state.agent.get_database(),
-                                   state.connection)
-        d.addCallback(defer.inject_param, 1, self.debug,
-                      "Cleaned up %d update logs.")
-        d.addErrback(defer.inject_param, 1, error.handle_failure,
-                     self, "cleanup_logs() call failed")
-        return d
-
-
 ALERT_NAME = 'couchdb-conflicts'
 
 
@@ -72,7 +34,8 @@ class IntegrityAgent(agent.BaseAgent):
 
     @replay.journaled
     def startup(self, state):
-        self.initiate_protocol(CleanupLogsTask, state.replicator)
+        self.initiate_protocol(task.LoopingCall, 60, #once a minute
+                               self.cleanup_logs)
         db = state.medium.get_database()
         db.changes_listener(conflicts.Conflicts, self.conflict_cb)
 
@@ -80,7 +43,7 @@ class IntegrityAgent(agent.BaseAgent):
         # incoming conflicts. If the conflicting revision is a
         # loosing one, no conflict will be emitted. To remedy this
         # we query for conflicts one every 5 minutes.
-        self.initiate_protocol(CheckConflicts)
+        self.initiate_protocol(task.LoopingCall, 300, self.query_conflicts)
 
     @replay.mutable
     def shutdown(self, state):
@@ -89,6 +52,18 @@ class IntegrityAgent(agent.BaseAgent):
     @replay.mutable
     def on_killed(self, state):
         self._clear_connections()
+
+    ### cleanup of logs ###
+
+    @replay.immutable
+    def cleanup_logs(self, state):
+        self.debug("Running cleanup update logs.")
+        d = conflicts.cleanup_logs(self.get_database(), state.replicator)
+        d.addCallback(defer.inject_param, 1, self.debug,
+                      "Cleaned up %d update logs.")
+        d.addErrback(defer.inject_param, 1, error.handle_failure,
+                     self, "cleanup_logs() call failed")
+        return d
 
     ### solving conflicts ###
 

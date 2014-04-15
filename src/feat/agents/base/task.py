@@ -22,11 +22,10 @@
 from zope.interface import implements
 
 from feat.agents.base import protocols, replay
-from feat.common import serialization, reflect, defer, error
+from feat.common import reflect, defer, error
 from feat.agents.application import feat
 
-from feat.interface.protocols import *
-from feat.interface.task import *
+from feat.interface.task import ITaskFactory, IAgentTask, NOT_DONE_YET
 
 
 class Meta(type(replay.Replayable)):
@@ -121,3 +120,15 @@ class StealthPeriodicTask(BaseTask):
         self._call = state.medium.call_later_ex(self._period,
                                                 self._run,
                                                 busy=False)
+
+
+class LoopingCall(StealthPeriodicTask):
+
+    def initiate(self, _period, _method, *args, **kwargs):
+        self._method = _method
+        self._args = args
+        self._kwargs = kwargs
+        return super(LoopingCall, self).initiate(_period)
+
+    def run(self):
+        return self._method(*self._args, **self._kwargs)
