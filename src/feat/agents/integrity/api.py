@@ -17,6 +17,10 @@ class IntegrityAgent(models.Agent):
 
     model.child('replications', model='feat.integrity_agent.replications',
                 label="Replications")
+    model.command('trigger_replication_check',
+                  call.source_call('check_configured_replications'),
+                  response.done('Done'),
+                  result=value.Response())
 
 
 @featmodels.register_model

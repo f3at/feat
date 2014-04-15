@@ -1,3 +1,5 @@
+import urlparse
+
 from feat.agents.application import feat
 from feat.agents.base import agent, descriptor, replay, task, alert
 from feat.common import error, fiber, defer
@@ -12,6 +14,9 @@ class Descriptor(descriptor.Descriptor):
 
 
 ALERT_NAME = 'couchdb-conflicts'
+
+
+REPLICATION_PROGRESS_ALERT_THRESHOLD = 0.99
 
 
 @feat.register_agent("integrity_agent")
@@ -32,11 +37,10 @@ class IntegrityAgent(agent.BaseAgent):
         f.add_callback(self._replicator_configured)
         return f
 
-    @replay.journaled
-    def startup(self, state):
+    def startup(self):
         self.initiate_protocol(task.LoopingCall, 60, #once a minute
                                self.cleanup_logs)
-        db = state.medium.get_database()
+        db = self.get_database()
         db.changes_listener(conflicts.Conflicts, self.conflict_cb)
 
         # The change listener is not always informing us the new
@@ -45,13 +49,87 @@ class IntegrityAgent(agent.BaseAgent):
         # we query for conflicts one every 5 minutes.
         self.initiate_protocol(task.LoopingCall, 300, self.query_conflicts)
 
-    @replay.mutable
-    def shutdown(self, state):
+        # One of the responsibilities of this agent is to warn us
+        # if replication to configured databases fails for any reason.
+        # It checks it once every 5 minutes.
+        self.initiate_protocol(task.LoopingCall, 300,
+                               self.check_configured_replications)
+
+    def shutdown(self):
         self._clear_connections()
 
-    @replay.mutable
-    def on_killed(self, state):
+    def on_killed(self):
         self._clear_connections()
+
+    ### checking status of configured replications ###
+
+    @replay.immutable
+    @defer.inlineCallbacks
+    def check_configured_replications(self, state):
+        self.debug("Checking status of configured replications.")
+        statuses = yield conflicts.get_replication_status(
+            state.replicator, state.db_config.name)
+        if not statuses:
+            self.debug("There is no replications configured. Exiting")
+            return
+        db = self.get_database()
+        our_seq = yield db.get_update_seq()
+
+        for target, rows in statuses.iteritems():
+            alert_name = self.get_replication_alert_name(target)
+            self.may_raise_alert(
+                alert.DynamicAlert(
+                    name=alert_name,
+                    severity=alert.Severity.warn,
+                    persistent=True,
+                    description='replication-' + alert_name))
+
+            update_seq, continuous, status, replication_id = rows[0]
+            progress = float(update_seq) / our_seq
+            if progress >= REPLICATION_PROGRESS_ALERT_THRESHOLD:
+                self.debug("Replication to %s is fine.", target)
+                self.resolve_alert(alert_name, 'ok')
+            else:
+                if status == 'completed':
+                    info = ('The replication is paused, '
+                            'last progress: %2.0f %%.'
+                            % (progress * 100, ))
+                    severity = alert.Severity.warn
+                elif status == 'task_missing':
+                    info = (
+                        'The continuous replication is triggered '
+                        'but there is no active task running for it. '
+                        'The only time I saw this case was due to the '
+                        'bug in couchdb, which required restarting it. '
+                        'Please investigate!')
+                    severity = alert.Severity.critical
+                elif status == 'running':
+                    info = (
+                        "The replication is running, but hasn't yet reached "
+                        "the desired threshold of: %2.0f %%. "
+                        "Current progress is: %2.0f %%"
+                        % (REPLICATION_PROGRESS_ALERT_THRESHOLD * 100,
+                           progress * 100))
+                    severity = alert.Severity.warn
+                else:
+                    info = 'The replication is in %s state.' % (
+                        status, )
+                    severity = alert.Severity.critical
+
+                self.info("Replication to %s is not fine. Rasing alert: %s",
+                          target, info)
+                self.raise_alert(alert_name, info, severity)
+
+    def get_replication_alert_name(self, target):
+        '''
+        Generate a name out replication target extracted from
+        couchdb.
+        '''
+        parsed = urlparse.urlparse(target)
+        netloc = parsed.netloc
+        if '@' in netloc:
+            netloc = netloc.split('@', 1)[1]
+        return netloc + parsed.path
 
     ### cleanup of logs ###
 
