@@ -54,8 +54,7 @@ class BananaCodec(object):
         return heap[0]
 
 
-BANANA_CONVERTER_CAPS = base.DEFAULT_CONVERTER_CAPS \
-                        | set([Capabilities.method_values,
+BANANA_CONVERTER_CAPS = set([Capabilities.method_values,
                                Capabilities.function_values,
                                ])
 
@@ -67,9 +66,10 @@ FUNCTION_ATOM = '.banana_function'
 class Serializer(sexp.Serializer, BananaCodec):
 
     def __init__(self, externalizer=None, source_ver=None, target_ver=None):
-        sexp.Serializer.__init__(self, externalizer=externalizer,
-                                 converter_caps=BANANA_CONVERTER_CAPS,
-                                 freezer_caps=BANANA_CONVERTER_CAPS,
+        sexp.Serializer.__init__(
+            self, externalizer=externalizer,
+            converter_caps=base.DEFAULT_CONVERTER_CAPS | BANANA_CONVERTER_CAPS,
+            freezer_caps=base.DEFAULT_FREEZER_CAPS | BANANA_CONVERTER_CAPS,
                                  source_ver=source_ver, target_ver=target_ver)
         BananaCodec.__init__(self)
 
