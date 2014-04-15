@@ -43,7 +43,6 @@ class Replications(model.Collection):
         rows = self.statuses.get(name)
         if not rows:
             return
-        rows.sort(key=operator.itemgetter(0), reverse=True)
         return rows[0]
 
     model.create('post',

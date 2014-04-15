@@ -159,8 +159,9 @@ class ApiTest(_Base):
         self.patch(conflicts, 'get_replication_status', get_replication_status)
 
         result = {
-            'target1': [(4, True, 'completed', 'id1'),
-                        (10, True, 'triggered', 'id2')],
+            'target1': [(10, True, 'triggered', 'id2'),
+                        (4, True, 'completed', 'id1'),
+                        ],
             'target2': [(0, False, 'error', 'id3')]}
         get_replication_status.reset(defer.succeed(result))
         submodel = yield self.model_descend(self.model, 'replications')

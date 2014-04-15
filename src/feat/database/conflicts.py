@@ -360,7 +360,7 @@ def get_replication_status(rconnection, source):
                                                 key=('source', source),
                                                 include_docs=True)
 
-    # target database -> [(checkpointed_source_seq, continuous, status)]
+    # target -> [(checkpointed_source_seq, continuous, status, replication_id)]
     result = dict()
     for replication in replications:
         target = replication['target']
@@ -376,12 +376,18 @@ def get_replication_status(rconnection, source):
             task = active_tasks.get(r_id)
             if not task:
                 result[target].append((0, True, 'task_missing', r_id))
-                continue
-            seq = task['checkpointed_source_seq']
-            result[target].append((seq, True, 'running', r_id))
+            else:
+                seq = task['checkpointed_source_seq']
+                result[target].append((seq, True, 'running', r_id))
         else:
-
             result[target].append((0, r_continuous, r_state, r_id))
+
+    # Sort the results so that the first row for the target
+    # is the row with the highest update_seq, aka the most
+    # recent one.
+    for rows in result.itervalues():
+        rows.sort(key=operator.itemgetter(0), reverse=True)
+
     defer.returnValue(result)
 
 
