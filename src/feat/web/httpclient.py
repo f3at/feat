@@ -446,6 +446,7 @@ class Connection(log.LogProxy, log.Logger):
         return self._protocol is None or self._protocol.is_idle()
 
     def request(self, method, location, headers=None, body=None, decoder=None):
+        started = time.time()
         if self._protocol is None:
             self.debug('%s-ing on %s. Creating new protocol for the request.',
                        method.name, location)
@@ -460,6 +461,8 @@ class Connection(log.LogProxy, log.Logger):
         self.log('Body: %r', body)
 
         d.addCallback(self._request, method, location, headers, body, decoder)
+        d.addBoth(defer.keep_param, self._log_request_result, method, location,
+                  started)
         return d
 
     def disconnect(self):
@@ -488,6 +491,16 @@ class Connection(log.LogProxy, log.Logger):
         self._protocol = None
 
     ### private ###
+
+    def _log_request_result(self, result, method, location, started):
+        elapsed = time.time() - started
+        if isinstance(result, failure.Failure):
+            self.debug("%s on %s failed with error: %s. Elapsed: %.2f",
+                       method.name, location, result.value, elapsed)
+        else:
+            self.debug('%s on %s finished with %s status, elapsed: %.2f',
+                       method.name, location, int(result.status),
+                       elapsed)
 
     def _connect(self):
         d = defer.Deferred(canceller=cancel_connector)
@@ -610,6 +623,7 @@ class ConnectionPool(Connection):
     def request(self, method, location, headers=None, body=None, decoder=None,
                 outside_of_the_pool=False, dont_pipeline=False,
                 reset_retry=1):
+        started = time.time()
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
@@ -651,6 +665,8 @@ class ConnectionPool(Connection):
         d.addErrback(self._handle_connection_reset, method, location,
                      headers, body, decoder, outside_of_the_pool,
                      dont_pipeline, reset_retry)
+        d.addBoth(defer.keep_param, self._log_request_result,
+                  method, location, started)
         return d
 
     def _handle_connection_reset(self, fail, method, location,
