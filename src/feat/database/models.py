@@ -1,5 +1,3 @@
-from zope.interface import implements
-
 from feat.common import annotate, defer, container, error
 from feat.database import query
 from feat.models import model, action, value, utils, call, effect
@@ -8,8 +6,7 @@ from feat.web import document
 
 from feat.database.interface import IQueryFactory, IDatabaseClient
 from feat.models.interface import IContextMaker, ActionCategories
-from feat.models.interface import IValueOptions, ValueTypes, IModel
-from feat.models.interface import IValueInfo
+from feat.models.interface import IModel, IValueInfo
 
 
 def db_connection(effect):
@@ -108,11 +105,11 @@ class QueryViewMeta(type(model.Collection)):
 
         name = utils.mk_class_name(cls._factory.name, "IncludeValue")
         IncludeValue = value.MetaCollection.new(
-            name, [FixedValues(cls._allowed_fields)])
+            name, [value.FixedValues(cls._allowed_fields)])
 
         name = utils.mk_class_name(cls._factory.name, "AggregateValue")
         AggregateValue = value.MetaCollection.new(
-            name, [FixedValues(cls._model_aggregations.keys())])
+            name, [value.FixedValues(cls._model_aggregations.keys())])
 
         build_query = parse_incoming_query(cls._factory,
                                            cls._static_conditions,
@@ -501,26 +498,13 @@ class QueryValue(value.Collection):
         return str(v)
 
 
-class FixedValues(value.Value):
-
-    value.value_type(ValueTypes.string)
-    value.options_only()
-
-    implements(IValueOptions)
-
-    def __init__(self, values, *args, **kwargs):
-        value.Value.__init__(self, *args, **kwargs)
-        for v in values:
-            self._add_option(v)
-
-
 class MetaConditionValue(type(value.Structure)):
 
     @staticmethod
     def new(name, allowed_fields, evaluators, value_type):
         cls = MetaConditionValue(name, (ConditionValue, ), {})
-        cls.annotate_param('field', FixedValues(allowed_fields))
-        cls.annotate_param('evaluator', FixedValues(evaluators))
+        cls.annotate_param('field', value.FixedValues(allowed_fields))
+        cls.annotate_param('evaluator', value.FixedValues(evaluators))
         cls.annotate_param('value', value_type)
         return cls
 
@@ -639,3 +623,8 @@ def write_query_result(doc, obj, *args, **kwargs):
 
 document.register_writer(write_query_result, applicationjson.MIME_TYPE,
                          QueryResult)
+
+
+# This used to be defined in this module, prevent all code from
+# failing with ImportError
+FixedValues = value.FixedValues
