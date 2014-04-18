@@ -5,7 +5,7 @@ from feat.models import reference
 from feat.web import document, http
 from feat.web.markup import html
 
-from feat.models.interface import ActionCategories, ValueTypes
+from feat.models.interface import ValueTypes
 from feat.models.interface import IModel, IAttribute, IMetadata
 from feat.models.interface import IValueOptions, IErrorPayload, IQueryModel
 from feat.models.interface import Unauthorized, IContext, NotSupported
@@ -71,7 +71,8 @@ class ModelLayout(BaseLayout):
         BaseLayout.__init__(self, title, context)
         headers = self._render_header(model, context)
         self.div(_class='header')(*headers).close()
-        self.h1()(title).close()
+        if title:
+            self.h1()(title).close()
         self.content = self.div(_class='content')()
 
     def _render_header(self, model, context):
@@ -195,9 +196,12 @@ class ModelWriter(log.Logger):
                 submodel = yield safe_fetch(item)
                 li = markup.li()
 
-                url = item.reference.resolve(context)
-                markup.span(_class='name')(
-                    html.tags.a(href=url)(item.label or item.name)).close()
+                if item.reference:
+                    url = item.reference.resolve(context)
+                    markup.span(_class='name')(
+                        html.tags.a(href=url)(item.label or item.name)).close()
+                else:
+                    markup.span(_class='name')(item.label or item.name).close()
 
                 if IAttribute.providedBy(submodel):
                     li.append(self._format_attribute_item(item, context))
