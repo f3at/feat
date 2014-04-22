@@ -845,7 +845,7 @@ class StartAgentContractor(contractor.BaseContractor):
     @replay.immutable
     def _starting_failed(self, state, fail):
         error.handle_failure(self, fail, 'Starting failed, cancelling')
-        msg = message.Cancellation(reason=fail)
+        msg = message.Cancellation(reason=str(fail))
         f = fiber.succeed()
         f.add_callback(fiber.drop_param, self._release_allocation)
         f.add_callback(fiber.drop_param, state.medium.defect,
